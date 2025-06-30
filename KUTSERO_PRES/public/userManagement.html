@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>User Management</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      margin: 0;
+      background-color: #f2f2f2;
+      color: #333;
+    }
+
+    .usermanagement-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .menu-toggle {
+      display: none;
+      background: #D2691E;
+      color: white;
+      border: none;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      cursor: pointer;
+      position: fixed;
+      top: 1rem;
+      left: 1rem;
+      z-index: 1002;
+    }
+
+    @media (max-width: 768px) {
+      .menu-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+
+    .main-content {
+      flex: 1;
+      margin-left: 80px;
+      padding: 2rem;
+      transition: margin-left 0.3s ease;
+    }
+
+    .header {
+      background: white;
+      padding: 1rem 2rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      margin-bottom: 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 1.8rem;
+    }
+
+    .header p {
+      margin: 0.3rem 0 0;
+      color: #777;
+    }
+
+    .notification-btn {
+      background: #f8f9fa;
+      border: none;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .search-container {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      background: white;
+      padding: 1rem 1.5rem;
+      border-radius: 12px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+    }
+
+    .search-container input[type="text"] {
+      flex: 1;
+      padding: 0.75rem 1rem;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      font-size: 1rem;
+      transition: 0.3s;
+    }
+
+    .search-container input:focus {
+      border-color: #D2691E;
+      outline: none;
+    }
+
+    .search-container button {
+      background-color: #D2691E;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.2rem;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 1rem;
+      transition: background-color 0.3s;
+    }
+
+    .search-container button:hover {
+      background-color: #a94d14;
+    }
+
+    .table-wrapper {
+      background: white;
+      border-radius: 12px;
+      overflow-x: auto;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.05);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 600px;
+    }
+
+    th, td {
+      padding: 1rem;
+      border-bottom: 1px solid #eee;
+      text-align: left;
+    }
+
+    th {
+      background-color: #f9f9f9;
+      text-transform: uppercase;
+      font-size: 0.9rem;
+      color: #666;
+    }
+
+    tr:hover {
+      background-color: #f1f1f1;
+    }
+
+    .verified-badge {
+      background-color: #28a745;
+      color: white;
+      padding: 0.3rem 0.7rem;
+      border-radius: 1rem;
+      font-size: 0.8rem;
+    }
+
+    .unverified-badge {
+      background-color: #dc3545;
+      color: white;
+      padding: 0.3rem 0.7rem;
+      border-radius: 1rem;
+      font-size: 0.8rem;
+    }
+
+    .actions {
+      font-size: 1.5rem;
+      cursor: pointer;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="usermanagement-container">
+    <button class="menu-toggle" onclick="toggleSidebar()">☰</button>
+
+    <div id="sidebar-placeholder"></div>
+
+    <div class="main-content">
+      <div class="header">
+        <div>
+          <h1>User Management</h1>
+          <p>Manage all users registered in the system.</p>
+        </div>
+        <button class="notification-btn">
+          <img src="Images/notification.png" alt="Notif" style="width: 24px;">
+        </button>
+      </div>
+
+      <div class="search-container">
+        <input type="text" id="searchInput" placeholder="🔍 Search for users..." />
+        <button onclick="filterTable()">Filter</button>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="userTable">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Status</th>
+              <th>Verified</th>
+              <th>Joined Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>John Doe</td>
+              <td>Active</td>
+              <td><span class="verified-badge">Verified</span></td>
+              <td>2023-09-15</td>
+              <td class="actions">⋯</td>
+            </tr>
+            <tr>
+              <td>Jane Smith</td>
+              <td>Inactive</td>
+              <td><span class="unverified-badge">Unverified</span></td>
+              <td>2023-08-10</td>
+              <td class="actions">⋯</td>
+            </tr>
+            <tr>
+              <td>Michael Reyes</td>
+              <td>Active</td>
+              <td><span class="verified-badge">Verified</span></td>
+              <td>2023-06-21</td>
+              <td class="actions">⋯</td>
+            </tr>
+            <tr>
+              <td>Ana Cruz</td>
+              <td>Inactive</td>
+              <td><span class="unverified-badge">Unverified</span></td>
+              <td>2023-04-05</td>
+              <td class="actions">⋯</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Load sidebar
+    fetch('sidebar.html')
+      .then(res => res.text())
+      .then(data => {
+        const sidebar = document.getElementById('sidebar-placeholder');
+        sidebar.innerHTML = data;
+
+        sidebar.addEventListener('mouseenter', () => {
+          document.querySelector('.main-content').style.marginLeft = '250px';
+        });
+
+        sidebar.addEventListener('mouseleave', () => {
+          document.querySelector('.main-content').style.marginLeft = '80px';
+        });
+      });
+
+    function toggleSidebar() {
+      const sidebar = document.getElementById("sidebar-placeholder");
+      const main = document.querySelector(".main-content");
+      if (sidebar.style.display === "none" || !sidebar.style.display) {
+        sidebar.style.display = "block";
+        main.style.marginLeft = "250px";
+      } else {
+        sidebar.style.display = "none";
+        main.style.marginLeft = "80px";
+      }
+    }
+
+    function filterTable() {
+      const input = document.getElementById("searchInput").value.toLowerCase();
+      const table = document.getElementById("userTable");
+      const rows = table.getElementsByTagName("tr");
+
+      for (let i = 1; i < rows.length; i++) {
+        const cells = rows[i].getElementsByTagName("td");
+        let match = false;
+
+        for (let j = 0; j < cells.length; j++) {
+          const content = cells[j].textContent.toLowerCase();
+          if (content.includes(input)) {
+            match = true;
+            break;
+          }
+        }
+
+        rows[i].style.display = match ? "" : "none";
+      }
+    }
+  </script>
+
+</body>
+</html>
