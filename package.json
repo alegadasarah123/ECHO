@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "expo-router": "^5.1.1"
+  }
+}
