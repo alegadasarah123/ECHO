@@ -119,6 +119,62 @@
         background: rgba(255, 255, 255, 0.1);
         border-radius: 8px;
     }
+
+    /* --- Logout Modal --- */
+  .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+  }
+
+  .modal {
+      background: white;
+      padding: 30px;
+      border-radius: 12px;
+      text-align: center;
+      max-width: 400px;
+      width: 90%;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  }
+
+  .modal h2 {
+      margin-bottom: 20px;
+      font-size: 20px;
+      color: #333;
+  }
+
+  .modal-buttons {
+      display: flex;
+      justify-content: space-around;
+      margin-top: 20px;
+  }
+
+  .modal-buttons button {
+      padding: 10px 20px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+  }
+
+  #confirmLogout {
+      background-color: #D2691E;
+      color: white;
+  }
+
+  #cancelLogout {
+      background-color: #ccc;
+      color: black;
+  }
+
 </style>
 
 <div class="sidebar">
@@ -147,22 +203,59 @@
     <div class="nav-text">Settings</div>
     </a>
 
-  <a class="logout" href="#">
-    <div class="nav-icon"><img src="Images/logout.png" alt="Logout" /></div>
-    <div class="nav-text">Logout</div>
-  </a>
+  <a class="logout" href="javascript:void(0);" id="logoutButton">
+  <div class="nav-icon"><img src="Images/logout.png" alt="Logout" /></div>
+  <div class="nav-text">Logout</div>
+</a>
+
+
+  <!-- Logout Confirmation Modal -->
+<!-- Logout Confirmation Modal -->
+<div id="logoutModal" class="modal-overlay">
+  <div class="modal">
+    <h2>Are you sure you want to log out?</h2>
+    <div class="modal-buttons">
+      <button id="confirmLogout" onclick="confirmLogout()">Yes, Logout</button>
+      <button id="cancelLogout" onclick="closeLogoutModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+
+
 </div>
 <script>
   document.addEventListener("DOMContentLoaded", function () {
+    // Highlight current page
     const currentPage = window.location.pathname.split("/").pop() || "index.html";
-
     document.querySelectorAll(".nav-item").forEach(item => {
       const href = item.getAttribute("href");
       if (href && href === currentPage) {
         item.classList.add("active");
-        console.log("Activated:", href); 
+        console.log("Activated:", href);
       }
     });
+
+    // Open modal on logout click
+    const logoutButton = document.getElementById("logoutButton");
+    if (logoutButton) {
+      logoutButton.addEventListener("click", function () {
+        const modal = document.getElementById("logoutModal");
+        if (modal) {
+          modal.style.display = "flex";
+        }
+      });
+    }
   });
+
+  // Close and confirm logout
+  function closeLogoutModal() {
+    document.getElementById("logoutModal").style.display = "none";
+  }
+
+  function confirmLogout() {
+    window.location.href = "logout.html"; // Your actual logout logic
+  }
 </script>
+
 
