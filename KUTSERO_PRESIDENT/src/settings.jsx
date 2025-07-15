@@ -1,25 +1,9 @@
 import React, { useEffect } from "react";
+import Sidebar from "./sidebar";
 
 const Settings = () => {
-  useEffect(() => {
-    const sidebar = document.getElementById("sidebar-placeholder");
-    fetch("sidebar.html")
-      .then((res) => res.text())
-      .then((data) => {
-        sidebar.innerHTML = data;
-
-        sidebar.addEventListener("mouseenter", () => {
-          document.querySelector(".main-content").style.marginLeft = "250px";
-        });
-
-        sidebar.addEventListener("mouseleave", () => {
-          document.querySelector(".main-content").style.marginLeft = "80px";
-        });
-      });
-  }, []);
-
   const toggleSidebar = () => {
-    const sidebar = document.getElementById("sidebar-placeholder");
+    const sidebar = document.querySelector(".sidebar");
     const main = document.querySelector(".main-content");
     if (sidebar.style.display === "none" || !sidebar.style.display) {
       sidebar.style.display = "block";
@@ -184,7 +168,7 @@ const Settings = () => {
 
       <div className="settings-container">
         <button className="menu-toggle" onClick={toggleSidebar}>☰</button>
-        <div id="sidebar-placeholder"></div>
+      <Sidebar />
 
         <div className="main-content">
           <div className="header">

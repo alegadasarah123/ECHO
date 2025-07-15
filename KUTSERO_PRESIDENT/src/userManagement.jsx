@@ -1,23 +1,9 @@
-import React, { useEffect } from "react";
+import React from "react";
+import Sidebar from "./sidebar"; 
 
 const UserManagementPage = () => {
-  useEffect(() => {
-    const sidebar = document.getElementById("sidebar-placeholder");
-    fetch("sidebar.html")
-      .then((res) => res.text())
-      .then((data) => {
-        sidebar.innerHTML = data;
-        sidebar.addEventListener("mouseenter", () => {
-          document.querySelector(".main-content").style.marginLeft = "250px";
-        });
-        sidebar.addEventListener("mouseleave", () => {
-          document.querySelector(".main-content").style.marginLeft = "80px";
-        });
-      });
-  }, []);
-
   const toggleSidebar = () => {
-    const sidebar = document.getElementById("sidebar-placeholder");
+    const sidebar = document.querySelector(".sidebar");
     const main = document.querySelector(".main-content");
     if (sidebar.style.display === "none" || !sidebar.style.display) {
       sidebar.style.display = "block";
@@ -243,7 +229,9 @@ const UserManagementPage = () => {
 
       <div className="usermanagement-container">
         <button className="menu-toggle" onClick={toggleSidebar}>☰</button>
-        <div id="sidebar-placeholder"></div>
+
+        {/* 🔁 Sidebar now imported as a component */}
+        <Sidebar />
 
         <div className="main-content">
           <div className="header">

@@ -23,7 +23,7 @@ const Sidebar = () => {
   };
 
   const confirmLogout = () => {
-    navigate("/logout");
+    navigate("/#");
   };
 
   const closeLogoutModal = () => {
@@ -230,22 +230,12 @@ const Sidebar = () => {
           <div
             className="nav-item"
             data-href="userManagement"
-            onClick={() => navigate("/userManagement")}
+            onClick={() => navigate("/users")}
           >
             <div className="nav-icon">
               <img src="Images/user.png" alt="User Management" />
             </div>
             <div className="nav-text">User Management</div>
-          </div>
-          <div
-            className="nav-item"
-            data-href="messages"
-            onClick={() => navigate("/messages")}
-          >
-            <div className="nav-icon">
-              <img src="Images/messages.png" alt="Messages" />
-            </div>
-            <div className="nav-text">Messages</div>
           </div>
           <div
             className="nav-item"
