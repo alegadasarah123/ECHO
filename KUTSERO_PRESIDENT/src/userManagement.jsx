@@ -1,16 +1,16 @@
 import React from "react";
-import Sidebar from "./sidebar"; 
+import Sidebar from "./sidebar";
 
 const UserManagementPage = () => {
   const toggleSidebar = () => {
     const sidebar = document.querySelector(".sidebar");
     const main = document.querySelector(".main-content");
-    if (sidebar.style.display === "none" || !sidebar.style.display) {
-      sidebar.style.display = "block";
+    if (sidebar.classList.contains("mobile-hidden")) {
+      sidebar.classList.remove("mobile-hidden");
       main.style.marginLeft = "250px";
     } else {
-      sidebar.style.display = "none";
-      main.style.marginLeft = "80px";
+      sidebar.classList.add("mobile-hidden");
+      main.style.marginLeft = "0";
     }
   };
 
@@ -54,6 +54,27 @@ const UserManagementPage = () => {
             align-items: center;
             justify-content: center;
           }
+
+          .sidebar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 250px;
+            height: 100%;
+            background: #333;
+            transition: transform 0.3s ease;
+            z-index: 1001;
+          }
+
+          .sidebar.mobile-hidden {
+            transform: translateX(-100%);
+          }
+
+          .main-content {
+            margin-left: 0 !important;
+            padding: 1rem;
+            width: 100%;
+          }
         }
 
         .main-content {
@@ -72,6 +93,8 @@ const UserManagementPage = () => {
           display: flex;
           justify-content: space-between;
           align-items: center;
+          flex-wrap: wrap;
+          gap: 1rem;
         }
 
         .header h1 {
@@ -146,8 +169,6 @@ const UserManagementPage = () => {
         }
 
         .table-wrapper {
-          max-height: 300px;
-          overflow-y: auto;
           overflow-x: auto;
           border: 1px solid #ddd;
           border-radius: 8px;
@@ -156,6 +177,7 @@ const UserManagementPage = () => {
         table {
           width: 100%;
           border-collapse: collapse;
+          min-width: 600px;
           margin-top: 1rem;
         }
 
@@ -230,7 +252,6 @@ const UserManagementPage = () => {
       <div className="usermanagement-container">
         <button className="menu-toggle" onClick={toggleSidebar}>☰</button>
 
-        {/* 🔁 Sidebar now imported as a component */}
         <Sidebar />
 
         <div className="main-content">
