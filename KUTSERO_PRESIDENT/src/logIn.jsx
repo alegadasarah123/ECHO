@@ -1,10 +1,10 @@
-import React from 'react'
+import React from 'react';
 
 function Login() {
   const handleSubmit = (e) => {
-    e.preventDefault()
-    window.location.href = '/dashboard'
-  }
+    e.preventDefault();
+    window.location.href = '/dashboard';
+  };
 
   return (
     <>
@@ -15,7 +15,11 @@ function Login() {
           box-sizing: border-box;
         }
 
-        body, .login-wrapper {
+        html, body {
+          height: 100%;
+        }
+
+        .login-wrapper {
           font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
           height: 100vh;
           display: flex;
@@ -60,10 +64,9 @@ function Login() {
 
         .container {
           display: flex;
-          width: 90%;
-          max-width: 900px;
+          width: 900px;
           height: 600px;
-          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.2);
           border-radius: 20px;
           overflow: hidden;
           animation: fadeIn 1s ease forwards;
@@ -73,7 +76,6 @@ function Login() {
 
         .left-panel,
         .right-panel {
-          flex: 1;
           display: flex;
           flex-direction: column;
           justify-content: center;
@@ -84,21 +86,25 @@ function Login() {
         .left-panel {
           background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
           animation: slideLeft 1s ease forwards;
+          flex: 1;
         }
 
         .right-panel {
           background: linear-gradient(135deg, #D2691E 0%, #CD853F 100%);
           color: white;
           animation: slideRight 1s ease forwards;
+          flex: 1;
         }
 
         .horse-image {
           width: 120px;
+          height: 120px;
           margin-bottom: 1rem;
+          object-fit: contain;
         }
 
         .brand-title {
-          font-size: 1.8rem;
+          font-size: 2.8rem;
           font-weight: 700;
           color: #8B4513;
           letter-spacing: 2px;
@@ -106,10 +112,11 @@ function Login() {
         }
 
         .brand-text {
-          font-size: 1rem;
-          font-weight: 500;
+          font-size: 0.9rem;
+          font-weight: 600;
           color: #8B4513;
           text-align: center;
+          line-height: 1.2;
         }
 
         .login-form {
@@ -140,9 +147,10 @@ function Login() {
 
         .form-group label {
           display: block;
-          margin-bottom: 0.3rem;
-          font-size: 0.85rem;
+          margin-bottom: 0.4rem;
+          font-size: 0.9rem;
           opacity: 0.9;
+          font-weight: 500;
         }
 
         .form-group input {
@@ -224,29 +232,31 @@ function Login() {
           to { opacity: 1; transform: translateX(0); }
         }
 
-        @media (max-width: 768px) {
+        /* Media Queries only affect smaller screens */
+        @media (max-width: 992px) {
           .container {
-            flex-direction: column;
+            width: 90%;
             height: auto;
-            border-radius: 0;
+            flex-direction: column;
+            border-radius: 10px;
           }
 
-          .left-panel,
+          .left-panel, .right-panel {
+            padding: 1.5rem;
+            min-height: auto;
+          }
+
           .right-panel {
-            flex: unset;
+            min-height: 400px;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .container {
             width: 100%;
-          }
-
-          .horse-image {
-            width: 100px;
-          }
-
-          .brand-title {
-            font-size: 1.5rem;
-          }
-
-          .login-form {
-            max-width: 90%;
+            margin: 0;
+            border-radius: 0;
+            height: auto;
           }
         }
       `}</style>
@@ -260,7 +270,7 @@ function Login() {
 
         <div className="container">
           <div className="left-panel">
-            <img src="/images/logo.png" alt="Horse silhouette" className="horse-image" />
+            <img src="/Images/logo.png" alt="Horse silhouette" className="horse-image" />
             <h1 className="brand-title">ECHO</h1>
             <div className="brand-text">KUTSERO PRESIDENT LOGIN</div>
           </div>
@@ -271,14 +281,15 @@ function Login() {
                 <h1>Welcome back!</h1>
                 <p>Sign in to your account</p>
               </div>
+
               <form onSubmit={handleSubmit}>
                 <div className="form-group">
                   <label htmlFor="username">Username</label>
-                  <input type="text" id="username" name="username" placeholder="Enter your username" />
+                  <input type="text" id="username" name="username" placeholder="Enter your username" required />
                 </div>
                 <div className="form-group">
                   <label htmlFor="password">Password</label>
-                  <input type="password" id="password" name="password" placeholder="Enter your password" />
+                  <input type="password" id="password" name="password" placeholder="Enter your password" required />
                 </div>
                 <div className="forgot-password">
                   <a href="#">Forgot Password?</a>
@@ -290,7 +301,7 @@ function Login() {
         </div>
       </div>
     </>
-  )
+  );
 }
 
-export default Login
+export default Login;
