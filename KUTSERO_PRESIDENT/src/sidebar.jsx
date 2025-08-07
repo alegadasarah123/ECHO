@@ -5,6 +5,7 @@ const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [showModal, setShowModal] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   useEffect(() => {
     const currentPage = location.pathname.split("/").pop();
@@ -18,24 +19,17 @@ const Sidebar = () => {
     });
   }, [location.pathname]);
 
-  const handleLogoutClick = () => {
-    setShowModal(true);
-  };
-
-  const confirmLogout = () => {
-    navigate("/#");
-  };
-
-  const closeLogoutModal = () => {
-    setShowModal(false);
-  };
+  const handleLogoutClick = () => setShowModal(true);
+  const confirmLogout = () => navigate("/#");
+  const closeLogoutModal = () => setShowModal(false);
+  const toggleSidebar = () => setCollapsed(!collapsed);
 
   return (
     <div>
       <style>{`
         .sidebar {
           background: linear-gradient(135deg, #D2691E 0%, #CD853F 100%);
-          width: 80px;
+          width: 250px;
           transition: width 0.3s ease;
           position: fixed;
           height: 100vh;
@@ -43,7 +37,11 @@ const Sidebar = () => {
           overflow: hidden;
         }
 
-        .sidebar:hover {
+        .sidebar.collapsed {
+          width: 80px;
+        }
+
+        .sidebar.collapsed:hover {
           width: 250px;
         }
 
@@ -51,14 +49,22 @@ const Sidebar = () => {
           padding: 1.5rem;
           display: flex;
           align-items: center;
+          justify-content: space-between;
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .toggle-btn {
+          background: none;
+          border: none;
+          color: white;
+          font-size: 24px;
+          cursor: pointer;
         }
 
         .logo {
           width: 40px;
           height: 40px;
           min-width: 40px;
-          border-radius: 8px;
           display: flex;
           align-items: center;
           justify-content: center;
@@ -76,12 +82,12 @@ const Sidebar = () => {
           font-size: 1.2rem;
           font-weight: 600;
           white-space: nowrap;
-          opacity: 0;
+          opacity: 1;
           transition: opacity 0.3s ease;
         }
 
-        .sidebar:hover .logo-text {
-          opacity: 1;
+        .sidebar.collapsed .logo-text {
+          opacity: 0;
         }
 
         .nav-menu {
@@ -126,11 +132,15 @@ const Sidebar = () => {
         .nav-text {
           margin-left: 1rem;
           white-space: nowrap;
-          opacity: 0;
+          opacity: 1;
           transition: opacity 0.3s ease;
         }
 
-        .sidebar:hover .nav-text {
+        .sidebar.collapsed .nav-text {
+          opacity: 0;
+        }
+
+        .sidebar.collapsed:hover .nav-text {
           opacity: 1;
         }
 
@@ -208,12 +218,15 @@ const Sidebar = () => {
         }
       `}</style>
 
-      <div className="sidebar">
+      <div className={`sidebar ${collapsed ? "collapsed" : ""}`}>
         <div className="sidebar-header">
           <div className="logo">
             <img src="Images/logo.png" alt="Logo" />
           </div>
           <div className="logo-text">ECHO</div>
+          <button className="toggle-btn" onClick={toggleSidebar}>
+            ☰
+          </button>
         </div>
 
         <div className="nav-menu">
