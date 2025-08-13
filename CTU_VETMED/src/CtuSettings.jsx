@@ -14,8 +14,10 @@ function CtuSettings() {
   const [users, setUsers] = useState([])
   const [searchTerm, setSearchTerm] = useState("") // Added search term state
   const [newUser, setNewUser] = useState({
-    username: "",
+    firstname: "",
+    lastname: "",
     email: "",
+    phone: "",
     role: "",
     password: "", // Changed from department to password
   })
@@ -124,8 +126,10 @@ function CtuSettings() {
   // Save functions
   const saveProfileSettings = () => {
     const formData = {
-      username: document.getElementById("username")?.value || "",
+      firstname: document.getElementById("firstname")?.value || "",
+      lastname: document.getElementById("lastname")?.value || "",
       email: document.getElementById("email")?.value || "",
+      phone: document.getElementById("phone")?.value || "",
       location: document.getElementById("location")?.value || "",
       language: document.getElementById("language")?.value || "",
       theme: document.getElementById("theme")?.value || "",
@@ -198,15 +202,24 @@ function CtuSettings() {
   }
 
   const addNewUser = () => {
-    if (!newUser.username || !newUser.email || !newUser.role || !newUser.password) {
+    if (
+      !newUser.firstname ||
+      !newUser.lastname ||
+      !newUser.email ||
+      !newUser.phone ||
+      !newUser.role ||
+      !newUser.password
+    ) {
       alert("Please fill in all required fields")
       return
     }
 
     const userToAdd = {
       id: Date.now(),
-      username: newUser.username,
+      firstname: newUser.firstname,
+      lastname: newUser.lastname,
       email: newUser.email,
+      phone: newUser.phone,
       role: newUser.role,
       password: newUser.password, // Store the password for display in table
       createdAt: new Date().toISOString(),
@@ -214,7 +227,7 @@ function CtuSettings() {
     }
 
     setUsers((prev) => [...prev, userToAdd])
-    setNewUser({ username: "", email: "", role: "", password: "" })
+    setNewUser({ firstname: "", lastname: "", email: "", phone: "", role: "", password: "" })
     setIsPasswordVisible(false) // Reset password visibility when form is cleared
     alert("User added successfully!")
   }
@@ -293,6 +306,7 @@ function CtuSettings() {
 
   return (
     <div className="bodyWrapper">
+      {/* ... existing sidebar and header code ... */}
       <div className="sidebar" id="sidebar" ref={sidebarRef}>
         <div className="sidebarLogo">
           <img src="/images/logo.png" alt="CTU Logo" className="logo" />
@@ -462,16 +476,28 @@ function CtuSettings() {
                 <div className="profileFormContent">
                   <form id="profileForm">
                     <div className="formGroup">
-                      <label className="formLabel" htmlFor="username">
-                        Username
+                      <label className="formLabel" htmlFor="firstname">
+                        First Name
                       </label>
-                      <input type="text" id="username" className="formInput" placeholder="Enter username" />
+                      <input type="text" id="firstname" className="formInput" placeholder="Enter first name" />
+                    </div>
+                    <div className="formGroup">
+                      <label className="formLabel" htmlFor="lastname">
+                        Last Name
+                      </label>
+                      <input type="text" id="lastname" className="formInput" placeholder="Enter last name" />
                     </div>
                     <div className="formGroup">
                       <label className="formLabel" htmlFor="email">
                         Email Address
                       </label>
                       <input type="email" id="email" className="formInput" placeholder="Enter email address" />
+                    </div>
+                    <div className="formGroup">
+                      <label className="formLabel" htmlFor="phone">
+                        Phone Number
+                      </label>
+                      <input type="tel" id="phone" className="formInput" placeholder="Enter phone number" />
                     </div>
                     <div className="formGroup">
                       <label className="formLabel" htmlFor="location">
@@ -539,7 +565,7 @@ function CtuSettings() {
               </div>
             )}
 
-            {/* Security Settings View */}
+            {/* ... existing security settings code ... */}
             {activeSettingsView === "security" && (
               <div id="security-settings" className="securitySettings">
                 <div className="settingsHeader">
@@ -729,15 +755,27 @@ function CtuSettings() {
                     <div className="addUserForm">
                       <div className="formRow">
                         <div className="formGroup">
-                          <label className="formLabel">Username</label>
+                          <label className="formLabel">First Name</label>
                           <input
                             type="text"
                             className="formInput"
-                            placeholder="Enter username"
-                            value={newUser.username}
-                            onChange={(e) => handleNewUserChange("username", e.target.value)}
+                            placeholder="Enter first name"
+                            value={newUser.firstname}
+                            onChange={(e) => handleNewUserChange("firstname", e.target.value)}
                           />
                         </div>
+                        <div className="formGroup">
+                          <label className="formLabel">Last Name</label>
+                          <input
+                            type="text"
+                            className="formInput"
+                            placeholder="Enter last name"
+                            value={newUser.lastname}
+                            onChange={(e) => handleNewUserChange("lastname", e.target.value)}
+                          />
+                        </div>
+                      </div>
+                      <div className="formRow">
                         <div className="formGroup">
                           <label className="formLabel">Email</label>
                           <input
@@ -746,6 +784,16 @@ function CtuSettings() {
                             placeholder="Enter email"
                             value={newUser.email}
                             onChange={(e) => handleNewUserChange("email", e.target.value)}
+                          />
+                        </div>
+                        <div className="formGroup">
+                          <label className="formLabel">Phone Number</label>
+                          <input
+                            type="tel"
+                            className="formInput"
+                            placeholder="Enter phone number"
+                            value={newUser.phone}
+                            onChange={(e) => handleNewUserChange("phone", e.target.value)}
                           />
                         </div>
                       </div>
@@ -812,8 +860,10 @@ function CtuSettings() {
                     ) : (
                       <div className="usersTable">
                         <div className="tableHeader">
-                          <div className="tableHeaderCell">Username</div>
+                          <div className="tableHeaderCell">First Name</div>
+                          <div className="tableHeaderCell">Last Name</div>
                           <div className="tableHeaderCell">Email</div>
+                          <div className="tableHeaderCell">Phone</div>
                           <div className="tableHeaderCell">Role</div>
                           <div className="tableHeaderCell">Password</div>
                           <div className="tableHeaderCell">Status</div>
@@ -821,8 +871,10 @@ function CtuSettings() {
                         </div>
                         {users.map((user) => (
                           <div key={user.id} className="tableRow">
-                            <div className="tableCell">{user.username}</div>
+                            <div className="tableCell">{user.firstname}</div>
+                            <div className="tableCell">{user.lastname}</div>
                             <div className="tableCell">{user.email}</div>
+                            <div className="tableCell">{user.phone}</div>
                             <div className="tableCell">
                               <span className={`roleBadge role${user.role}`}>{user.role}</span>
                             </div>
