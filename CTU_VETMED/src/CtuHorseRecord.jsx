@@ -1,6 +1,6 @@
 "use client"
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Link, useNavigate } from "react-router-dom"
 import "./CtuHorseRecord.css"; // Import the new CSS file
 
 function CtuHorseRecord() {
@@ -19,152 +19,8 @@ function CtuHorseRecord() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
 
-  // Dummy Data (replace with actual data fetching)
   const [notifications, setNotifications] = useState([])
-  const [horseRecords, setHorseRecords] = useState([
-    // Example dummy data
-    {
-      id: 1,
-      name: "Spirit",
-      owner: "John Doe",
-      location: "Cebu City",
-      status: "healthy",
-      age: "5 years",
-      breed: "Arabian",
-      sex: "Male",
-      contact: "09123456789",
-      email: "john.doe@example.com",
-      facebook: "facebook.com/john.doe",
-      medicalRecords: [
-        {
-          id: 101,
-          date: "2023-01-15",
-          diagnosis: "Colic",
-          veterinarian: "Dr. Smith",
-          status: "completed",
-          details: {
-            signalment: {
-              breed: "Arabian",
-              age: "5 years",
-              sex: "Male",
-              color: "Bay",
-              markings: "Star, Snip",
-            },
-            vitals: {
-              temperature: "100.5°F",
-              heartRate: "40 bpm",
-              respiratoryRate: "16 bpm",
-              capillaryRefillTime: "<2 sec",
-            },
-            assessment: "Mild colic, responsive to medication.",
-            medication: {
-              name: "Flunixin Meglumine",
-              dosage: "1.1 mg/kg IV",
-              frequency: "Once",
-              route: "Intravenous",
-            },
-            remarks: "Advised owner to monitor for recurrence.",
-          },
-        },
-        {
-          id: 102,
-          date: "2023-03-20",
-          diagnosis: "Lameness (Left Fore)",
-          veterinarian: "Dr. Jones",
-          status: "ongoing",
-          details: {
-            signalment: {
-              breed: "Arabian",
-              age: "5 years",
-              sex: "Male",
-              color: "Bay",
-              markings: "Star, Snip",
-            },
-            vitals: {
-              temperature: "99.8°F",
-              heartRate: "36 bpm",
-              respiratoryRate: "12 bpm",
-              capillaryRefillTime: "<2 sec",
-            },
-            assessment: "Mild lameness, suspected soft tissue injury.",
-            medication: {
-              name: "Phenylbutazone",
-              dosage: "4.4 mg/kg PO",
-              frequency: "BID",
-              route: "Oral",
-            },
-            remarks: "Rest and controlled exercise recommended.",
-          },
-        },
-      ],
-      treatmentHistory: [
-        {
-          id: 201,
-          date: "2023-01-15",
-          treatment: "Pain Management",
-          administeredBy: "Dr. Smith",
-          result: "Successful",
-          details: {
-            treatmentInfo: {
-              type: "Pain Management",
-              date: "2023-01-15",
-              administeredBy: "Dr. Smith",
-              dosage: "1.1 mg/kg Flunixin Meglumine",
-              route: "Intravenous",
-              duration: "Single dose",
-            },
-            medicalData: {
-              temperature: "100.5°F",
-              heartRate: "40 bpm",
-              respiratoryRate: "16 bpm",
-              capillaryRefillTime: "<2 sec",
-            },
-            preVaccination: "No pre-vaccination required.",
-            nextVaccination: "Annual tetanus booster due 2024-01-15.",
-          },
-        },
-        {
-          id: 202,
-          date: "2023-03-20",
-          treatment: "Anti-inflammatory",
-          administeredBy: "Dr. Jones",
-          result: "Ongoing",
-          details: {
-            treatmentInfo: {
-              type: "Anti-inflammatory",
-              date: "2023-03-20",
-              administeredBy: "Dr. Jones",
-              dosage: "4.4 mg/kg Phenylbutazone",
-              route: "Oral",
-              duration: "7 days",
-            },
-            medicalData: {
-              temperature: "99.8°F",
-              heartRate: "36 bpm",
-              respiratoryRate: "12 bpm",
-            },
-            preVaccination: "No pre-vaccination required.",
-            nextVaccination: "Re-evaluation in 7 days.",
-          },
-        },
-      ],
-    },
-    {
-      id: 2,
-      name: "Thunder",
-      owner: "Jane Smith",
-      location: "Manila",
-      status: "sick",
-      age: "8 years",
-      breed: "Thoroughbred",
-      sex: "Female",
-      contact: "09234567890",
-      email: "jane.smith@example.com",
-      facebook: "facebook.com/jane.smith",
-      medicalRecords: [],
-      treatmentHistory: [],
-    },
-  ])
+  const [horseRecords, setHorseRecords] = useState([])
 
   const [selectedHorse, setSelectedHorse] = useState(null)
   const [selectedMedicalRecord, setSelectedMedicalRecord] = useState(null)
@@ -211,7 +67,6 @@ function CtuHorseRecord() {
   }
 
   const loadNotifications = useCallback(() => {
-    // Placeholder for fetching notifications from backend
     setNotifications([]) // Initialize as empty
   }, [])
 
@@ -663,7 +518,7 @@ function CtuHorseRecord() {
                   <div>Status</div>
                   <div>Action</div>
                 </div>
-                {selectedHorse.medicalRecords.length === 0 ? (
+                {selectedHorse.medicalRecords?.length === 0 || !selectedHorse.medicalRecords ? (
                   <div className="empty-state">
                     <i className="fas fa-file-medical"></i>
                     <h3>No medical records</h3>
@@ -698,7 +553,7 @@ function CtuHorseRecord() {
                   <div>Result</div>
                   <div>Action</div>
                 </div>
-                {selectedHorse.treatmentHistory.length === 0 ? (
+                {selectedHorse.treatmentHistory?.length === 0 || !selectedHorse.treatmentHistory ? (
                   <div className="empty-state">
                     <i className="fas fa-syringe"></i>
                     <h3>No treatment history</h3>
@@ -748,15 +603,15 @@ function CtuHorseRecord() {
               <div className="profile-details">
                 <div className="detail-item">
                   <span className="detail-label">Breed</span>
-                  <div className="detail-value">{selectedMedicalRecord.details.signalment.breed}</div>
+                  <div className="detail-value">{selectedMedicalRecord.details?.signalment?.breed || "N/A"}</div>
                 </div>
                 <div className="detail-item">
                   <span className="detail-label">Age</span>
-                  <div className="detail-value">{selectedMedicalRecord.details.signalment.age}</div>
+                  <div className="detail-value">{selectedMedicalRecord.details?.signalment?.age || "N/A"}</div>
                 </div>
                 <div className="detail-item">
                   <span className="detail-label">Sex</span>
-                  <div className="detail-value">{selectedMedicalRecord.details.signalment.sex}</div>
+                  <div className="detail-value">{selectedMedicalRecord.details?.signalment?.sex || "N/A"}</div>
                 </div>
                 <div className="detail-item">
                   <span className="detail-label">Owner</span>
@@ -779,54 +634,62 @@ function CtuHorseRecord() {
                     <div className="signalment-grid">
                       <div className="info-item">
                         <span className="info-label">Color</span>
-                        <span className="info-value">{selectedMedicalRecord.details.signalment.color}</span>
+                        <span className="info-value">{selectedMedicalRecord.details.signalment?.color || "N/A"}</span>
                       </div>
                       <div className="info-item">
                         <span className="info-label">Markings</span>
-                        <span className="info-value">{selectedMedicalRecord.details.signalment.markings}</span>
+                        <span className="info-value">
+                          {selectedMedicalRecord.details.signalment?.markings || "N/A"}
+                        </span>
                       </div>
                     </div>
                     <div className="section-title">Vital Signs</div>
                     <div className="signalment-grid">
                       <div className="vital-sign">
-                        <div className="vital-value">{selectedMedicalRecord.details.vitals.temperature}</div>
+                        <div className="vital-value">{selectedMedicalRecord.details.vitals?.temperature || "N/A"}</div>
                         <div className="vital-label">Temperature</div>
                       </div>
                       <div className="vital-sign">
-                        <div className="vital-value">{selectedMedicalRecord.details.vitals.heartRate}</div>
+                        <div className="vital-value">{selectedMedicalRecord.details.vitals?.heartRate || "N/A"}</div>
                         <div className="vital-label">Heart Rate</div>
                       </div>
                       <div className="vital-sign">
-                        <div className="vital-value">{selectedMedicalRecord.details.vitals.respiratoryRate}</div>
+                        <div className="vital-value">
+                          {selectedMedicalRecord.details.vitals?.respiratoryRate || "N/A"}
+                        </div>
                         <div className="vital-label">Respiratory Rate</div>
                       </div>
                       <div className="vital-sign">
-                        <div className="vital-value">{selectedMedicalRecord.details.vitals.capillaryRefillTime}</div>
+                        <div className="vital-value">
+                          {selectedMedicalRecord.details.vitals?.capillaryRefillTime || "N/A"}
+                        </div>
                         <div className="vital-label">CRT</div>
                       </div>
                     </div>
                     <div className="section-title">Assessment</div>
-                    <p className="assessment-text">{selectedMedicalRecord.details.assessment}</p>
+                    <p className="assessment-text">
+                      {selectedMedicalRecord.details.assessment || "No assessment available"}
+                    </p>
                     <div className="medication-section">
                       <div className="medication-title">Medication Administered</div>
                       <div className="medication-details">
                         <div>
-                          <strong>Name:</strong> {selectedMedicalRecord.details.medication.name}
+                          <strong>Name:</strong> {selectedMedicalRecord.details.medication?.name || "N/A"}
                         </div>
                         <div>
-                          <strong>Dosage:</strong> {selectedMedicalRecord.details.medication.dosage}
+                          <strong>Dosage:</strong> {selectedMedicalRecord.details.medication?.dosage || "N/A"}
                         </div>
                         <div>
-                          <strong>Frequency:</strong> {selectedMedicalRecord.details.medication.frequency}
+                          <strong>Frequency:</strong> {selectedMedicalRecord.details.medication?.frequency || "N/A"}
                         </div>
                         <div>
-                          <strong>Route:</strong> {selectedMedicalRecord.details.medication.route}
+                          <strong>Route:</strong> {selectedMedicalRecord.details.medication?.route || "N/A"}
                         </div>
                       </div>
                     </div>
                     <div className="remarks-section">
                       <div className="remarks-title">Remarks</div>
-                      <p className="remarks-text">{selectedMedicalRecord.details.remarks}</p>
+                      <p className="remarks-text">{selectedMedicalRecord.details.remarks || "No remarks available"}</p>
                     </div>
                   </>
                 ) : (
@@ -865,23 +728,23 @@ function CtuHorseRecord() {
                       <div className="treatment-info-title">Treatment Information</div>
                       <div className="treatment-info-grid">
                         <div className="treatment-info-item">
-                          <strong>Type:</strong> {selectedTreatmentHistory.details.treatmentInfo.type}
+                          <strong>Type:</strong> {selectedTreatmentHistory.details.treatmentInfo?.type || "N/A"}
                         </div>
                         <div className="treatment-info-item">
-                          <strong>Date:</strong> {selectedTreatmentHistory.details.treatmentInfo.date}
+                          <strong>Date:</strong> {selectedTreatmentHistory.details.treatmentInfo?.date || "N/A"}
                         </div>
                         <div className="treatment-info-item">
                           <strong>Administered By:</strong>{" "}
-                          {selectedTreatmentHistory.details.treatmentInfo.administeredBy}
+                          {selectedTreatmentHistory.details.treatmentInfo?.administeredBy || "N/A"}
                         </div>
                         <div className="treatment-info-item">
-                          <strong>Dosage:</strong> {selectedTreatmentHistory.details.treatmentInfo.dosage}
+                          <strong>Dosage:</strong> {selectedTreatmentHistory.details.treatmentInfo?.dosage || "N/A"}
                         </div>
                         <div className="treatment-info-item">
-                          <strong>Route:</strong> {selectedTreatmentHistory.details.treatmentInfo.route}
+                          <strong>Route:</strong> {selectedTreatmentHistory.details.treatmentInfo?.route || "N/A"}
                         </div>
                         <div className="treatment-info-item">
-                          <strong>Duration:</strong> {selectedTreatmentHistory.details.treatmentInfo.duration}
+                          <strong>Duration:</strong> {selectedTreatmentHistory.details.treatmentInfo?.duration || "N/A"}
                         </div>
                       </div>
                     </div>
@@ -889,22 +752,26 @@ function CtuHorseRecord() {
                       <div className="medical-data-title">Medical Data at Time of Treatment</div>
                       <div className="medical-data-grid">
                         <div className="medical-data-item">
-                          <div className="vital-value">{selectedTreatmentHistory.details.medicalData.temperature}</div>
+                          <div className="vital-value">
+                            {selectedTreatmentHistory.details.medicalData?.temperature || "N/A"}
+                          </div>
                           <div className="vital-label">Temperature</div>
                         </div>
                         <div className="medical-data-item">
-                          <div className="vital-value">{selectedTreatmentHistory.details.medicalData.heartRate}</div>
+                          <div className="vital-value">
+                            {selectedTreatmentHistory.details.medicalData?.heartRate || "N/A"}
+                          </div>
                           <div className="vital-label">Heart Rate</div>
                         </div>
                         <div className="medical-data-item">
                           <div className="vital-value">
-                            {selectedTreatmentHistory.details.medicalData.respiratoryRate}
+                            {selectedTreatmentHistory.details.medicalData?.respiratoryRate || "N/A"}
                           </div>
                           <div className="vital-label">Respiratory Rate</div>
                         </div>
                         <div className="medical-data-item">
                           <div className="vital-value">
-                            {selectedTreatmentHistory.details.medicalData.capillaryRefillTime}
+                            {selectedTreatmentHistory.details.medicalData?.capillaryRefillTime || "N/A"}
                           </div>
                           <div className="vital-label">CRT</div>
                         </div>
@@ -912,11 +779,15 @@ function CtuHorseRecord() {
                     </div>
                     <div className="pre-vaccination-section">
                       <div className="pre-vaccination-title">Pre-Vaccination Status</div>
-                      <p className="pre-vaccination-text">{selectedTreatmentHistory.details.preVaccination}</p>
+                      <p className="pre-vaccination-text">
+                        {selectedTreatmentHistory.details.preVaccination || "No information available"}
+                      </p>
                     </div>
                     <div className="next-vaccination-section">
                       <div className="next-vaccination-title">Next Vaccination/Follow-up</div>
-                      <p className="next-vaccination-text">{selectedTreatmentHistory.details.nextVaccination}</p>
+                      <p className="next-vaccination-text">
+                        {selectedTreatmentHistory.details.nextVaccination || "No information available"}
+                      </p>
                     </div>
                   </>
                 ) : (

@@ -4,45 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import "./CtuDirectory.css"
 
-// Dummy data for directory entries
-const initialDirectoryData = [
-  { id: "H001", name: "Thunder", type: "Horse", location: "Cebu City", status: "Healthy" },
-  { id: "H002", name: "Lightning", type: "Horse", location: "Manila", status: "Healthy" },
-  { id: "V001", name: "Dr. Maria Santos", type: "Veterinarian", location: "Cebu City", status: "Active" },
-  { id: "V002", name: "Dr. Juan Cruz", type: "Veterinarian", location: "Davao", status: "Active" },
-  { id: "K001", name: "Pedro Reyes", type: "Kutsero", location: "Cebu City", status: "Active" },
-  { id: "H003", name: "Shadow", type: "Horse", location: "Cebu City", status: "Inactive" },
-  { id: "V003", name: "Dr. Anna Lim", type: "Veterinarian", location: "Manila", status: "Inactive" },
-  { id: "K002", name: "Jose Dela Cruz", type: "Kutsero", location: "Davao", status: "Inactive" },
-]
-
-// Dummy data for notifications
-const initialNotifications = [
-  {
-    id: 1,
-    title: "New Account Request",
-    message: "John Doe has requested account approval.",
-    type: "info",
-    timestamp: new Date(Date.now() - 5 * 60 * 1000),
-    read: false,
-  },
-  {
-    id: 2,
-    title: "System Update",
-    message: "Dashboard will be updated tonight.",
-    type: "warning",
-    timestamp: new Date(Date.now() - 65 * 60 * 1000),
-    read: false,
-  },
-  {
-    id: 3,
-    title: "Report Generated",
-    message: "Monthly health report is ready for download.",
-    type: "success",
-    timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-    read: true,
-  },
-]
+const initialDirectoryData = []
+const initialNotifications = []
 
 function CtuDirectory() {
   const navigate = useNavigate()
@@ -106,13 +69,13 @@ function CtuDirectory() {
     // Apply tab filter
     switch (currentTab) {
       case "horses":
-        filtered = filtered.filter((item) => item.type.toLowerCase() === "horse")
+        filtered = filtered.filter((item) => item.type?.toLowerCase() === "horse")
         break
       case "veterinarian":
-        filtered = filtered.filter((item) => item.type.toLowerCase() === "veterinarian")
+        filtered = filtered.filter((item) => item.type?.toLowerCase() === "veterinarian")
         break
       case "kutsero":
-        filtered = filtered.filter((item) => item.type.toLowerCase() === "kutsero")
+        filtered = filtered.filter((item) => item.type?.toLowerCase() === "kutsero")
         break
       case "horses-per-owner":
         // This would require special handling for grouping horses by owner
@@ -125,12 +88,12 @@ function CtuDirectory() {
 
     // Apply area filter
     if (areaFilter) {
-      filtered = filtered.filter((item) => item.location.toLowerCase().includes(areaFilter.toLowerCase()))
+      filtered = filtered.filter((item) => item.location?.toLowerCase().includes(areaFilter.toLowerCase()))
     }
 
     // Apply status filter
     if (statusFilter) {
-      filtered = filtered.filter((item) => item.status.toLowerCase() === statusFilter.toLowerCase())
+      filtered = filtered.filter((item) => item.status?.toLowerCase() === statusFilter.toLowerCase())
     }
 
     // Apply search term
@@ -138,11 +101,11 @@ function CtuDirectory() {
       const lowerCaseSearchTerm = searchTerm.toLowerCase()
       filtered = filtered.filter(
         (item) =>
-          item.id.toLowerCase().includes(lowerCaseSearchTerm) ||
-          item.name.toLowerCase().includes(lowerCaseSearchTerm) ||
-          item.type.toLowerCase().includes(lowerCaseSearchTerm) ||
-          item.location.toLowerCase().includes(lowerCaseSearchTerm) ||
-          item.status.toLowerCase().includes(lowerCaseSearchTerm),
+          item.id?.toLowerCase().includes(lowerCaseSearchTerm) ||
+          item.name?.toLowerCase().includes(lowerCaseSearchTerm) ||
+          item.type?.toLowerCase().includes(lowerCaseSearchTerm) ||
+          item.location?.toLowerCase().includes(lowerCaseSearchTerm) ||
+          item.status?.toLowerCase().includes(lowerCaseSearchTerm),
       )
     }
 
@@ -429,7 +392,7 @@ function CtuDirectory() {
                         <td>{item.type}</td>
                         <td>{item.location}</td>
                         <td>
-                          <span className={`status-badge status-${item.status.toLowerCase()}`}>{item.status}</span>
+                          <span className={`status-badge status-${item.status?.toLowerCase()}`}>{item.status}</span>
                         </td>
                       </tr>
                     ))}
