@@ -19,7 +19,6 @@ function CtuSettings() {
     email: "",
     phone: "",
     role: "",
-    password: "", // Changed from department to password
   })
   const [isPasswordVisible, setIsPasswordVisible] = useState(false) // Added password visibility state
   const [isCurrentPasswordVisible, setIsCurrentPasswordVisible] = useState(false) // For current password
@@ -203,7 +202,6 @@ function CtuSettings() {
 
 
 
-  // Fetch existing users from backend
 const fetchUsers = async () => {
   try {
     const response = await fetch("http://127.0.0.1:8000/users/", {
@@ -211,18 +209,21 @@ const fetchUsers = async () => {
       headers: { "Content-Type": "application/json" },
     });
     if (!response.ok) throw new Error("Failed to fetch users");
+    
     const data = await response.json();
-    // Map backend data to match table fields
+
+    // Backend already sends clean field names
     const mappedUsers = data.users.map((u) => ({
       id: u.id,
-      firstname: u.ctu_fname || u.firstName,
-      lastname: u.ctu_lname || u.lastName,
-      email: u.ctu_email || u.email,
-      phone: u.ctu_phonenum || u.phoneNumber,
+      firstname: u.firstname,
+      lastname: u.lastname,
+      email: u.email,
+      phone: u.phone,
       role: u.role || "Vet", // default role
-      password: u.password || "••••••", // if needed
+      password: u.password || "••••••", // placeholder if not returned
       status: u.status || "Active",
     }));
+
     setUsers(mappedUsers);
   } catch (err) {
     console.error("Error fetching users:", err);
@@ -231,16 +232,15 @@ const fetchUsers = async () => {
 
 
   const addNewUser = async () => {
-  const { firstname, lastname, email, password, phone } = newUser;
+  const { firstname, lastname, email, phone } = newUser;
 
-  if (!firstname || !lastname || !email || !password || !phone) {
+  if (!firstname || !lastname || !email || !phone) {
     alert("Please fill in all required fields.");
     return;
   }
 
   const payload = {
     email: email.trim(),
-    password: password.trim(),
     firstName: firstname.trim(),
     lastName: lastname.trim(),
     phoneNumber: phone.trim(),
@@ -278,12 +278,11 @@ const fetchUsers = async () => {
         email: data.user.email,
         phone: data.user.phoneNumber,
         role: "Ctu-Vetmed",
-        password: password,
         status: "Active",
       },
     ]);
 
-    setNewUser({ firstname: "", lastname: "", email: "", password: "", phone: "" });
+    setNewUser({ firstname: "", lastname: "", email: "", phone: "" });
     alert("User created successfully!");
   } catch (err) {
     console.error("Error adding user:", err);
@@ -871,40 +870,10 @@ const fetchUsers = async () => {
                           >
                             <option value="">Select role</option>
                             <option value="admin">Administrator</option>
-                            <option value="veterinarian">Veterinarian</option>
+                            <option value="veterinarian">Ctu-VetMed</option>
                           </select>
                         </div>
-                        <div className="formGroup">
-                          <label className="formLabel">Password</label>
-                          <div className="passwordInputContainer" style={{ position: "relative" }}>
-                            <input
-                              type={isPasswordVisible ? "text" : "password"}
-                              className="formInput"
-                              placeholder="Enter password"
-                              value={newUser.password}
-                              onChange={(e) => handleNewUserChange("password", e.target.value)}
-                              style={{ paddingRight: "40px" }}
-                            />
-                            <button
-                              type="button"
-                              onClick={togglePasswordVisibility}
-                              style={{
-                                position: "absolute",
-                                right: "10px",
-                                top: "50%",
-                                transform: "translateY(-50%)",
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                                color: "#666",
-                                fontSize: "16px",
-                              }}
-                              title={isPasswordVisible ? "Hide password" : "Show password"}
-                            >
-                              <i className={`fas ${isPasswordVisible ? "fa-eye-slash" : "fa-eye"}`}></i>
-                            </button>
-                          </div>
-                        </div>
+                        
                       </div>
                       <button type="button" className="btn btnPrimary" onClick={addNewUser}>
                         <i className="fas fa-plus"></i> Add User
@@ -931,7 +900,7 @@ const fetchUsers = async () => {
                             <div className="tableHeaderCell">Email</div>
                             <div className="tableHeaderCell">Phone</div>
                             <div className="tableHeaderCell">Role</div>
-                            <div className="tableHeaderCell">Password</div>
+                           
                             <div className="tableHeaderCell">Status</div>
                             <div className="tableHeaderCell">Actions</div>
                           </div>
@@ -943,43 +912,18 @@ const fetchUsers = async () => {
 
                             return (
                               <div key={user.id} className="tableRow">
-                                <div className="tableCell">{user.ctu_fname}</div>
-                                <div className="tableCell">{user.ctu_lname}</div>
-                                <div className="tableCell">{user.ctu_email}</div>
-                                <div className="tableCell">{user.ctu_phonenum}</div>
+                                <div className="tableCell">{user.firstname}</div>
+                                <div className="tableCell">{user.lastname}</div>
+                                <div className="tableCell">{user.email}</div>
+                                <div className="tableCell">{user.phone}</div>
                                 <div className="tableCell">
                                   <span className={`roleBadge role${user.role?.toLowerCase() || "vet"}`}>
                                     {user.role || "Vet"}
                                   </span>
                                 </div>
+                                
                                 <div className="tableCell">
-                                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                    <span style={{ fontFamily: "monospace", fontSize: "14px" }}>
-                                      {isVisible ? password : "•".repeat(password.length)}
-                                    </span>
-                                    {password && (
-                                      <button
-                                        type="button"
-                                        onClick={() => toggleTablePasswordVisibility(user.id)}
-                                        style={{
-                                          background: "none",
-                                          border: "none",
-                                          cursor: "pointer",
-                                          color: "#666",
-                                          fontSize: "14px",
-                                          padding: "2px",
-                                        }}
-                                        title={isVisible ? "Hide password" : "Show password"}
-                                      >
-                                        <i className={`fas ${isVisible ? "fa-eye-slash" : "fa-eye"}`}></i>
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="tableCell">
-                                  <span
-                                    className={`statusBadge status${user.status?.toLowerCase() || "active"}`}
-                                  >
+                                  <span className={`statusBadge status${user.status?.toLowerCase() || "active"}`}>
                                     {user.status || "Active"}
                                   </span>
                                 </div>
@@ -993,7 +937,7 @@ const fetchUsers = async () => {
                                   </button>
                                 </div>
                               </div>
-                            );
+                                                          );
                           })}
                         </div>
                       )}
