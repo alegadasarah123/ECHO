@@ -1,11 +1,13 @@
-from django.contrib import admin
-from django.urls import path
-from api import views
+from django.urls import path  # include needed only if using include()
+from api import views  # adjust 'api' to your actual app name
 
 urlpatterns = [
-   path("signup/", views.signup, name="signup"),
-    path('login/', views.login, name='login'),
-    path('get-data/', views.get_data, name='get_data'),
-    path('insert-ctu-vet-profile/', views.insert_ctu_vet_profile, name='insert_vet_profile'),
-    path('get-users/', views.get_users, name='get_users'),
+    # If you want to include all app URLs:
+    # path('api/', include('api.urls')),
+
+    # Direct paths to views:
+    path('signup/', views.signup, name='signup'),
+    path('login/', views.user_login, name='login'),
+    path('users/', views.get_users, name='get_users'),
+
 ]

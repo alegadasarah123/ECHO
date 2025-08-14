@@ -201,38 +201,97 @@ function CtuSettings() {
     }))
   }
 
+
+
+  // Fetch existing users from backend
+const fetchUsers = async () => {
+  try {
+    const response = await fetch("http://127.0.0.1:8000/users/", {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    });
+    if (!response.ok) throw new Error("Failed to fetch users");
+    const data = await response.json();
+    // Map backend data to match table fields
+    const mappedUsers = data.users.map((u) => ({
+      id: u.id,
+      firstname: u.ctu_fname || u.firstName,
+      lastname: u.ctu_lname || u.lastName,
+      email: u.ctu_email || u.email,
+      phone: u.ctu_phonenum || u.phoneNumber,
+      role: u.role || "Vet", // default role
+      password: u.password || "••••••", // if needed
+      status: u.status || "Active",
+    }));
+    setUsers(mappedUsers);
+  } catch (err) {
+    console.error("Error fetching users:", err);
+  }
+};
+
+
   const addNewUser = async () => {
+  const { firstname, lastname, email, password, phone } = newUser;
+
+  if (!firstname || !lastname || !email || !password || !phone) {
+    alert("Please fill in all required fields.");
+    return;
+  }
+
+  const payload = {
+    email: email.trim(),
+    password: password.trim(),
+    firstName: firstname.trim(),
+    lastName: lastname.trim(),
+    phoneNumber: phone.trim(),
+  };
+
   try {
     const response = await fetch("http://127.0.0.1:8000/signup/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: newUser.email,
-        password: newUser.password,      // Only for Auth
-        ctuId: newUser.ctuId,
-        firstName: newUser.firstname,
-        lastName: newUser.lastname,
-        phoneNumber: newUser.phone,
-      }),
+      body: JSON.stringify(payload),
     });
 
+    // Get raw text first (so HTML or JSON both work)
+    const rawText = await response.text();
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch {
+      data = { error: rawText };
+    }
+
     if (!response.ok) {
-      const errorData = await response.json();
-      alert(`Error: ${errorData.error}`);
+      console.error("Signup failed:", data);
+      alert(data.error || data.details || "Unknown error occurred");
       return;
     }
 
-    const data = await response.json();
-    alert("User created successfully!");
+    // Add the new user to the table
+    setUsers((prev) => [
+      ...prev,
+      {
+        id: data.user.id,
+        firstname: data.user.firstName,
+        lastname: data.user.lastName,
+        email: data.user.email,
+        phone: data.user.phoneNumber,
+        role: "Ctu-Vetmed",
+        password: password,
+        status: "Active",
+      },
+    ]);
 
-    // Update UI
-    setUsers((prev) => [...prev, data.user]);
-    setNewUser({ firstname: "", lastname: "", email: "", password: "", phone: "", ctuId: "" });
+    setNewUser({ firstname: "", lastname: "", email: "", password: "", phone: "" });
+    alert("User created successfully!");
   } catch (err) {
     console.error("Error adding user:", err);
     alert("Failed to add user. Make sure backend is running.");
   }
 };
+
+
 
 
 
@@ -854,80 +913,98 @@ function CtuSettings() {
                   </div>
 
                   {/* Users List Section */}
-                  <div className="userSection">
-                    <h3 className="userSectionTitle">Existing Users</h3>
-                    {users.length === 0 ? (
-                      <div className="emptyState">
-                        <i className="fas fa-users"></i>
-                        <h3>No users found</h3>
-                        <p>Add your first user to get started</p>
-                      </div>
-                    ) : (
-                      <div className="usersTable">
-                        <div className="tableHeader">
-                          <div className="tableHeaderCell">First Name</div>
-                          <div className="tableHeaderCell">Last Name</div>
-                          <div className="tableHeaderCell">Email</div>
-                          <div className="tableHeaderCell">Phone</div>
-                          <div className="tableHeaderCell">Role</div>
-                          <div className="tableHeaderCell">Password</div>
-                          <div className="tableHeaderCell">Status</div>
-                          <div className="tableHeaderCell">Actions</div>
+                    <div className="userSection">
+                      <h3 className="userSectionTitle">Existing Users</h3>
+
+                      {users.length === 0 ? (
+                        <div className="emptyState">
+                          <i className="fas fa-users"></i>
+                          <h3>No users found</h3>
+                          <p>Add your first user to get started</p>
                         </div>
-                        {users.map((user) => (
-                          <div key={user.id} className="tableRow">
-                            <div className="tableCell">{user.firstname}</div>
-                            <div className="tableCell">{user.lastname}</div>
-                            <div className="tableCell">{user.email}</div>
-                            <div className="tableCell">{user.phone}</div>
-                            <div className="tableCell">
-                              <span className={`roleBadge role${user.role}`}>{user.role}</span>
-                            </div>
-                            <div className="tableCell">
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                <span style={{ fontFamily: "monospace", fontSize: "14px" }}>
-                                  {passwordVisibility[user.id] ? user.password : "•".repeat(user.password.length)}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleTablePasswordVisibility(user.id)}
-                                  style={{
-                                    background: "none",
-                                    border: "none",
-                                    cursor: "pointer",
-                                    color: "#666",
-                                    fontSize: "14px",
-                                    padding: "2px",
-                                  }}
-                                  title={passwordVisibility[user.id] ? "Hide password" : "Show password"}
-                                >
-                                  <i className={`fas ${passwordVisibility[user.id] ? "fa-eye-slash" : "fa-eye"}`}></i>
-                                </button>
-                              </div>
-                            </div>
-                            <div className="tableCell">
-                              <span className={`statusBadge status${user.status.toLowerCase()}`}>{user.status}</span>
-                            </div>
-                            <div className="tableCell">
-                              <button
-                                className="btn btnDanger btnSmall"
-                                onClick={() => deleteUser(user.id)}
-                                title="Delete user"
-                              >
-                                <i className="fas fa-trash"></i>
-                              </button>
-                            </div>
+                      ) : (
+                        <div className="usersTable">
+                          {/* Table Header */}
+                          <div className="tableHeader">
+                            <div className="tableHeaderCell">First Name</div>
+                            <div className="tableHeaderCell">Last Name</div>
+                            <div className="tableHeaderCell">Email</div>
+                            <div className="tableHeaderCell">Phone</div>
+                            <div className="tableHeaderCell">Role</div>
+                            <div className="tableHeaderCell">Password</div>
+                            <div className="tableHeaderCell">Status</div>
+                            <div className="tableHeaderCell">Actions</div>
                           </div>
-                        ))}
-                      </div>
-                    )}
+
+                          {/* Table Rows */}
+                          {users.map((user) => {
+                            const password = user.password || ""; // fallback if undefined
+                            const isVisible = passwordVisibility[user.id] || false;
+
+                            return (
+                              <div key={user.id} className="tableRow">
+                                <div className="tableCell">{user.firstname}</div>
+                                <div className="tableCell">{user.lastname}</div>
+                                <div className="tableCell">{user.email}</div>
+                                <div className="tableCell">{user.phone}</div>
+                                <div className="tableCell">
+                                  <span className={`roleBadge role${user.role?.toLowerCase() || "vet"}`}>
+                                    {user.role || "Vet"}
+                                  </span>
+                                </div>
+                                <div className="tableCell">
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                    <span style={{ fontFamily: "monospace", fontSize: "14px" }}>
+                                      {isVisible ? password : "•".repeat(password.length)}
+                                    </span>
+                                    {password && (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleTablePasswordVisibility(user.id)}
+                                        style={{
+                                          background: "none",
+                                          border: "none",
+                                          cursor: "pointer",
+                                          color: "#666",
+                                          fontSize: "14px",
+                                          padding: "2px",
+                                        }}
+                                        title={isVisible ? "Hide password" : "Show password"}
+                                      >
+                                        <i className={`fas ${isVisible ? "fa-eye-slash" : "fa-eye"}`}></i>
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="tableCell">
+                                  <span
+                                    className={`statusBadge status${user.status?.toLowerCase() || "active"}`}
+                                  >
+                                    {user.status || "Active"}
+                                  </span>
+                                </div>
+                                <div className="tableCell">
+                                  <button
+                                    className="btn btnDanger btnSmall"
+                                    onClick={() => deleteUser(user.id)}
+                                    title="Delete user"
+                                  >
+                                    <i className="fas fa-trash"></i>
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                </div>
+                {/* Back Button */}
+                  <div className="formActions">
+                    <button type="button" className="btn btnSecondary" onClick={goBackToSettings}>
+                      Back
+                    </button>
                   </div>
-                </div>
-                <div className="formActions">
-                  <button type="button" className="btn btnSecondary" onClick={goBackToSettings}>
-                    Back
-                  </button>
-                </div>
               </div>
             )}
           </div>
