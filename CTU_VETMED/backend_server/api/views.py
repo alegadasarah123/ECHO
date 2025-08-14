@@ -15,7 +15,7 @@ SUPABASE_URL = settings.SUPABASE_URL
 
 @api_view(['POST'])
 def signup(request):
-    # Extract and clean data
+    # Extract and strip required fields
     email = request.data.get("email", "").strip()
     password = request.data.get("password", "").strip()
     ctu_id = request.data.get("ctuId", "").strip()
@@ -24,11 +24,18 @@ def signup(request):
     phone_number = request.data.get("phoneNumber", "").strip()
 
     # Validate required fields
-    if not all([email, password, ctu_id, first_name, last_name]):
+    if not all([email, password, ctu_id, first_name, last_name, phone_number]):
         return Response(
-            {"error": "Email, password, vet ID, first name, and last name are required"},
+            {"error": "All fields are required: email, password, ctu ID, first name, last name, phone number"},
             status=status.HTTP_400_BAD_REQUEST
         )
+
+    # Convert numeric fields
+    try:
+        ctu_id = int(ctu_id)
+        phone_number = int(phone_number)
+    except ValueError:
+        return Response({"error": "CTU ID and phone number must be numbers"}, status=status.HTTP_400_BAD_REQUEST)
 
     # Check if vet ID already exists
     existing_vet = supabase.table("ctu_vet_profile").select("*").eq("ctu_id", ctu_id).execute()
@@ -43,16 +50,14 @@ def signup(request):
         "Content-Type": CONTENT_TYPE_JSON
     }
     auth_payload = {"email": email, "password": password, "email_confirm": True}
+    auth_response = requests.post(signup_url, json=auth_payload, headers=headers)
 
-    try:
-        auth_response = requests.post(signup_url, json=auth_payload, headers=headers)
-        auth_response.raise_for_status()
-    except requests.RequestException as e:
-        return Response({"error": "Failed to create user in Supabase Auth", "details": str(e)}, status=400)
+    if auth_response.status_code not in [200, 201]:
+        return Response({"error": "Failed to create user in Supabase Auth", "details": auth_response.text}, status=400)
 
     user_id = auth_response.json().get("id")
 
-    # Insert vet profile
+    # Insert into ctu_vet_profile
     profile_payload = {
         "ctu_id": ctu_id,
         "ctu_fname": first_name,
@@ -60,15 +65,12 @@ def signup(request):
         "ctu_email": email,
         "ctu_phonenum": phone_number
     }
+    profile_response = supabase.table("ctu_vet_profile").insert(profile_payload).execute()
 
-    try:
-        profile_response = supabase.table("ctu_vet_profile").insert(profile_payload).execute()
-        if not profile_response.data:
-            raise Exception("No data returned from profile insert")
-    except Exception as e:
+    if not profile_response.data:
         # Rollback Auth user
         requests.delete(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=headers)
-        return Response({"error": "Failed to insert vet profile", "details": str(e)}, status=400)
+        return Response({"error": "Failed to insert vet profile"}, status=400)
 
     return Response({
         "message": "User created successfully",
@@ -97,26 +99,20 @@ def user_login(request):
         "Content-Type": CONTENT_TYPE_JSON
     }
     payload = {"email": email, "password": password}
+    auth_response = requests.post(login_url, json=payload, headers=headers)
 
-    try:
-        auth_response = requests.post(login_url, json=payload, headers=headers)
-        auth_response.raise_for_status()
-        auth_data = auth_response.json()
-    except requests.RequestException:
-        return Response({"error": "Invalid login credentials"}, status=status.HTTP_401_UNAUTHORIZED)
-    except ValueError:
-        return Response({"error": "Invalid response from Supabase"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    if auth_response.status_code not in [200, 201]:
+        return Response({"error": "Invalid login credentials", "details": auth_response.text}, status=status.HTTP_401_UNAUTHORIZED)
 
+    auth_data = auth_response.json()
     user_id = auth_data.get("user", {}).get("id")
 
     # Fetch vet profile info
     vet_profile = supabase.table("ctu_vet_profile").select("*").eq("ctu_email", email).execute()
     profile_data = vet_profile.data[0] if vet_profile.data else {}
 
-    # Only return tokens and vet profile (do not return password)
     return Response({
         "message": "Login successful",
-        "access_token": auth_data.get("access_token"),
-        "refresh_token": auth_data.get("refresh_token"),
+        "auth_data": auth_data,
         "vet_profile": profile_data
     }, status=status.HTTP_200_OK)
