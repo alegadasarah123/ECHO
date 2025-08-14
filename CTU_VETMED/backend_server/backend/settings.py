@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+
 # Load environment variables from .env file in BASE_DIR
 load_dotenv(dotenv_path=BASE_DIR / '.env')
 

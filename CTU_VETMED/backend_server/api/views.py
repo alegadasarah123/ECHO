@@ -1,175 +1,122 @@
-from django.shortcuts import render
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
-from supabase import create_client, Client
+from supabase import create_client
 from django.conf import settings
 import requests
 
-# Initialize Supabase client with anon key
-supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
+CONTENT_TYPE_JSON = "application/json"
 
-# Service role key for admin operations
+# Supabase clients
+supabase = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
 SUPABASE_SERVICE_ROLE_KEY = settings.SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_URL = settings.SUPABASE_URL
-SUPABASE_ANON_KEY = settings.SUPABASE_ANON_KEY
-
-
-@api_view(['GET'])
-def get_data(request):
-    data = supabase.table("ctu_vet_profile").select("*").execute()
-    return Response(data.data)
-
-
-@api_view(['POST'])
-def insert_vet_profile(request):
-    payload = {
-        "ctu_id": request.data.get("vetId"),  # This must be the UUID from auth.users
-        "ctu_fname": request.data.get("firstName"),
-        "ctu_lname": request.data.get("lastName"),
-        "vet_phone_num": request.data.get("phoneNumber"),
-    }
-
-    # Must use Service Role key for bypassing RLS and inserting with foreign key
-    service_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
-    data = service_client.table("vet_profile").insert(payload).execute()
-
-    if data.data:
-        return Response({"message": "Vet profile created", "data": data.data}, status=201)
-    else:
-        return Response({"error": str(data.error)}, status=400)
 
 
 @api_view(['POST'])
 def signup(request):
+    # Extract and clean data
     email = request.data.get("email", "").strip()
     password = request.data.get("password", "").strip()
+    ctu_id = request.data.get("ctuId", "").strip()
+    first_name = request.data.get("firstName", "").strip()
+    last_name = request.data.get("lastName", "").strip()
+    phone_number = request.data.get("phoneNumber", "").strip()
 
-    if not email or not password:
-        return Response({"error": "Email and password are required"}, status=status.HTTP_400_BAD_REQUEST)
+    # Validate required fields
+    if not all([email, password, ctu_id, first_name, last_name]):
+        return Response(
+            {"error": "Email, password, vet ID, first name, and last name are required"},
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
-    # 0. Check if email already exists in Supabase Auth
-    check_url = f"{SUPABASE_URL}/auth/v1/admin/users?email={email}"
+    # Check if vet ID already exists
+    existing_vet = supabase.table("ctu_vet_profile").select("*").eq("ctu_id", ctu_id).execute()
+    if existing_vet.data:
+        return Response({"error": "Vet ID already exists"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Create Supabase Auth user
+    signup_url = f"{SUPABASE_URL}/auth/v1/admin/users"
     headers = {
         "apikey": SUPABASE_SERVICE_ROLE_KEY,
         "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": CONTENT_TYPE_JSON
     }
-    check_response = requests.get(check_url, headers=headers)
-    if check_response.status_code == 200:
-        users_list = check_response.json().get("users", [])
-        if any(u.get("email") == email for u in users_list):
-            return Response({"error": "Email already exists"}, status=status.HTTP_400_BAD_REQUEST)
+    auth_payload = {"email": email, "password": password, "email_confirm": True}
 
-    # 1. Create Auth user
-    signup_url = f"{SUPABASE_URL}/auth/v1/admin/users"
-    payload_auth = {
-        "email": email,
-        "password": password
-    }
-    auth_response = requests.post(signup_url, json=payload_auth, headers=headers)
-    if auth_response.status_code not in [200, 201]:
-        return Response({"error": "Sign up failed: Failed to create user in Supabase Auth"}, status=400)
+    try:
+        auth_response = requests.post(signup_url, json=auth_payload, headers=headers)
+        auth_response.raise_for_status()
+    except requests.RequestException as e:
+        return Response({"error": "Failed to create user in Supabase Auth", "details": str(e)}, status=400)
 
-    user_data = auth_response.json()
-    user_id = user_data.get("id")
+    user_id = auth_response.json().get("id")
 
-    # 2. Insert into public.users
-    user_payload = {
-        "id": user_id,
-        "role": "Veterinarian",
-        "status": "pending"
-    }
-    insert_users_url = f"{SUPABASE_URL}/rest/v1/users"
-    insert_users_headers = {
-        "apikey": SUPABASE_SERVICE_ROLE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"
-    }
-    users_response = requests.post(insert_users_url, json=user_payload, headers=insert_users_headers)
-    if users_response.status_code not in [200, 201]:
-        requests.delete(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=headers)
-        return Response({"error": "Failed to insert into public.users"}, status=400)
-
-    # 3. Insert into vet_profile
+    # Insert vet profile
     profile_payload = {
-        "vet_id": user_id,
-        "vet_fname": request.data.get("firstName"),
-        "vet_mname": request.data.get("middleName"),
-        "vet_lname": request.data.get("lastName"),
-        "vet_dob": request.data.get("dob"),
-        "vet_sex": request.data.get("sex"),
-        "vet_phone_num": request.data.get("phoneNumber"),
-        "vet_province": request.data.get("province"),
-        "vet_city": request.data.get("city"),
-        "vet_brgy": request.data.get("barangay"),
-        "vet_zipcode": request.data.get("zipCode"),
-        "vet_email": email,
-        "vet_license_num": request.data.get("licenseNumber"),
-        "vet_exp_yr": int(request.data.get("yearsOfExperience") or 0),
-        "vet_specialization": request.data.get("specialization"),
-        "vet_org": request.data.get("affiliatedOrganization"),
-        "vet_doc_image": request.data.get("document"),
+        "ctu_id": ctu_id,
+        "ctu_fname": first_name,
+        "ctu_lname": last_name,
+        "ctu_email": email,
+        "ctu_phonenum": phone_number
     }
-    insert_profile_url = f"{SUPABASE_URL}/rest/v1/vet_profile"
-    profile_response = requests.post(insert_profile_url, json=profile_payload, headers=insert_users_headers)
 
-    if profile_response.status_code not in [200, 201]:
-        requests.delete(f"{SUPABASE_URL}/rest/v1/users?id=eq.{user_id}", headers=insert_users_headers)
+    try:
+        profile_response = supabase.table("ctu_vet_profile").insert(profile_payload).execute()
+        if not profile_response.data:
+            raise Exception("No data returned from profile insert")
+    except Exception as e:
+        # Rollback Auth user
         requests.delete(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=headers)
-        return Response({"error": "Failed to insert vet profile"}, status=400)
+        return Response({"error": "Failed to insert vet profile", "details": str(e)}, status=400)
 
     return Response({
-        "message": "User signed up successfully",
-        "auth_user": user_data,
-        "app_user": users_response.json(),
-        "vet_profile": profile_response.json()
+        "message": "User created successfully",
+        "user": {
+            "id": user_id,
+            "email": email,
+            "firstName": first_name,
+            "lastName": last_name,
+            "ctuId": ctu_id,
+            "phoneNumber": phone_number
+        }
     }, status=status.HTTP_201_CREATED)
 
+
 @api_view(['POST'])
-def login(request):
+def user_login(request):
     email = request.data.get("email", "").strip()
     password = request.data.get("password", "").strip()
 
     if not email or not password:
         return Response({"error": "Email and password are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Supabase login URL
     login_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
     headers = {
-        "apikey": settings.SUPABASE_ANON_KEY,  # Use anon key for Auth login
-        "Content-Type": "application/json"
+        "apikey": settings.SUPABASE_ANON_KEY,
+        "Content-Type": CONTENT_TYPE_JSON
     }
-    payload = {
-        "email": email,
-        "password": password
-    }
+    payload = {"email": email, "password": password}
 
-    auth_response = requests.post(login_url, json=payload, headers=headers)
+    try:
+        auth_response = requests.post(login_url, json=payload, headers=headers)
+        auth_response.raise_for_status()
+        auth_data = auth_response.json()
+    except requests.RequestException:
+        return Response({"error": "Invalid login credentials"}, status=status.HTTP_401_UNAUTHORIZED)
+    except ValueError:
+        return Response({"error": "Invalid response from Supabase"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    if auth_response.status_code not in [200, 201]:
-        try:
-            error_details = auth_response.json()
-        except ValueError:
-            error_details = {"message": auth_response.text}
-        return Response({
-            "error": "Invalid login credentials",
-            "details": error_details  # Show actual Supabase error
-        }, status=status.HTTP_401_UNAUTHORIZED)
-
-    auth_data = auth_response.json()
-
-    # Optionally fetch user details from your users table
     user_id = auth_data.get("user", {}).get("id")
-    if not user_id:
-        return Response({"error": "Login failed: missing user id"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Query app-specific user data
-    user_info = supabase.table("users").select("*").eq("id", user_id).execute()
-    
+    # Fetch vet profile info
+    vet_profile = supabase.table("ctu_vet_profile").select("*").eq("ctu_email", email).execute()
+    profile_data = vet_profile.data[0] if vet_profile.data else {}
+
+    # Only return tokens and vet profile (do not return password)
     return Response({
         "message": "Login successful",
-        "auth_data": auth_data,  # contains access_token, refresh_token, etc.
-        "user_info": user_info.data
+        "access_token": auth_data.get("access_token"),
+        "refresh_token": auth_data.get("refresh_token"),
+        "vet_profile": profile_data
     }, status=status.HTTP_200_OK)

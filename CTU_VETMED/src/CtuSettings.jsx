@@ -201,36 +201,41 @@ function CtuSettings() {
     }))
   }
 
-  const addNewUser = () => {
-    if (
-      !newUser.firstname ||
-      !newUser.lastname ||
-      !newUser.email ||
-      !newUser.phone ||
-      !newUser.role ||
-      !newUser.password
-    ) {
-      alert("Please fill in all required fields")
-      return
+  const addNewUser = async () => {
+  try {
+    const response = await fetch("http://127.0.0.1:8000/signup/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: newUser.email,
+        password: newUser.password,      // Only for Auth
+        ctuId: newUser.ctuId,
+        firstName: newUser.firstname,
+        lastName: newUser.lastname,
+        phoneNumber: newUser.phone,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      alert(`Error: ${errorData.error}`);
+      return;
     }
 
-    const userToAdd = {
-      id: Date.now(),
-      firstname: newUser.firstname,
-      lastname: newUser.lastname,
-      email: newUser.email,
-      phone: newUser.phone,
-      role: newUser.role,
-      password: newUser.password, // Store the password for display in table
-      createdAt: new Date().toISOString(),
-      status: "Active",
-    }
+    const data = await response.json();
+    alert("User created successfully!");
 
-    setUsers((prev) => [...prev, userToAdd])
-    setNewUser({ firstname: "", lastname: "", email: "", phone: "", role: "", password: "" })
-    setIsPasswordVisible(false) // Reset password visibility when form is cleared
-    alert("User added successfully!")
+    // Update UI
+    setUsers((prev) => [...prev, data.user]);
+    setNewUser({ firstname: "", lastname: "", email: "", password: "", phone: "", ctuId: "" });
+  } catch (err) {
+    console.error("Error adding user:", err);
+    alert("Failed to add user. Make sure backend is running.");
   }
+};
+
+
+
 
   const deleteUser = (userId) => {
     if (confirm("Are you sure you want to delete this user?")) {
