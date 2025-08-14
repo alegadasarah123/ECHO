@@ -83,11 +83,18 @@ def signup(request):
 
         # 4️⃣ Send password reset email
         reset_url = f"{SUPABASE_URL}/auth/v1/recover"
+        reset_payload = {
+            "email": email,
+            "redirect_to": "http://localhost:3000/ctu-reset-password"
+        }
         reset_headers = {
             "apikey": SUPABASE_ANON_KEY,
             "Content-Type": CONTENT_TYPE_JSON
         }
-        requests.post(reset_url, json={"email": email}, headers=reset_headers)
+        reset_res = requests.post(reset_url, json=reset_payload, headers=reset_headers)
+
+        if reset_res.status_code not in [200, 201]:
+            print("Failed to send password reset email:", reset_res.text)
 
         return Response({
             "message": "User created successfully. Password reset email sent.",
@@ -102,59 +109,54 @@ def signup(request):
 
     except Exception as e:
         return Response({"error": "Internal Server Error", "details": str(e)}, status=500)
-    
+
+
 @api_view(["POST"])
 def user_login(request):
     try:
-        email = (request.data.get("email") or "").strip()
-        password = (request.data.get("password") or "").strip()
+        email = request.data.get("email", "").strip()
+        password = request.data.get("password", "").strip()
 
         if not email or not password:
-            return Response(
-                {"error": "Email and password are required."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response({"error": "Email and password are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 1️⃣ Login via Supabase Auth (anon key)
+        # Supabase Auth login endpoint
         login_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
-        headers = {"apikey": SUPABASE_ANON_KEY, "Content-Type": CONTENT_TYPE_JSON}
-        payload = {"email": email, "password": password}
-        auth_resp = requests.post(login_url, json=payload, headers=headers)
+        headers = {
+            "apikey": SUPABASE_ANON_KEY,  # Use anon key for login
+            "Content-Type": CONTENT_TYPE_JSON
+        }
+        payload = {
+            "email": email,
+            "password": password
+        }
 
-        if auth_resp.status_code not in (200, 201):
-            return Response(
-                {"error": "Invalid login credentials."},
-                status=status.HTTP_401_UNAUTHORIZED
-            )
+        auth_res = requests.post(login_url, json=payload, headers=headers)
 
-        auth_data = auth_resp.json()
-        user_id = (auth_data.get("user") or {}).get("id")
+        if auth_res.status_code not in [200, 201]:
+            try:
+                error_details = auth_res.json()
+            except ValueError:
+                error_details = {"message": auth_res.text}
+            return Response({
+                "error": "Invalid login credentials",
+                "details": error_details
+            }, status=status.HTTP_401_UNAUTHORIZED)
+
+        auth_data = auth_res.json()
+        user_id = auth_data.get("user", {}).get("id")
 
         if not user_id:
-            return Response(
-                {"error": "Failed to get user ID from auth response."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return Response({"error": "Login failed: missing user id"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 2️⃣ Lookup profile by ctu_id
-        profile_res = sr_client.table("ctu_vet_profile") \
-                               .select("*") \
-                               .eq("ctu_id", user_id) \
-                               .limit(1) \
-                               .execute()
-        profile = profile_res.data[0] if profile_res.data else {}
+        # Optionally fetch app-specific user data
+        user_info = sr_client.table("ctu_vet_profile").select("*").eq("ctu_id", user_id).execute()
 
-        return Response(
-            {
-                "message": "Login successful",
-                "auth_data": auth_data,
-                "ctu_vet_profile": profile
-            },
-            status=status.HTTP_200_OK
-        )
+        return Response({
+            "message": "Login successful",
+            "auth_data": auth_data,  # contains access_token, refresh_token, etc.
+            "user_info": user_info.data
+        }, status=status.HTTP_200_OK)
 
     except Exception as e:
-        return Response(
-            {"error": "Internal Server Error", "details": str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return Response({"error": "Internal Server Error", "details": str(e)}, status=500)

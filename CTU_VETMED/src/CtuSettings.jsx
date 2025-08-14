@@ -219,7 +219,7 @@ const fetchUsers = async () => {
       lastname: u.lastname,
       email: u.email,
       phone: u.phone,
-      role: u.role || "Vet", // default role
+      role: u.role || "Ctu-Vet", // default role
       password: u.password || "••••••", // placeholder if not returned
       status: u.status || "Active",
     }));
@@ -277,7 +277,7 @@ const fetchUsers = async () => {
         lastname: data.user.lastName,
         email: data.user.email,
         phone: data.user.phoneNumber,
-        role: "Ctu-Vetmed",
+        role: "Ctu-Vet",
         status: "Active",
       },
     ]);
@@ -869,8 +869,8 @@ const fetchUsers = async () => {
                             onChange={(e) => handleNewUserChange("role", e.target.value)}
                           >
                             <option value="">Select role</option>
-                            <option value="admin">Administrator</option>
-                            <option value="veterinarian">Ctu-VetMed</option>
+                            <option value="dvmf">Dvmf</option>
+                            <option value="veterinarian">Ctu-Vet</option>
                           </select>
                         </div>
                         
@@ -918,7 +918,7 @@ const fetchUsers = async () => {
                                 <div className="tableCell">{user.phone}</div>
                                 <div className="tableCell">
                                   <span className={`roleBadge role${user.role?.toLowerCase() || "vet"}`}>
-                                    {user.role || "Vet"}
+                                    {user.role || "Ctu-Vet"}
                                   </span>
                                 </div>
                                 
