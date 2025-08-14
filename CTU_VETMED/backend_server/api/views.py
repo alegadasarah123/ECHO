@@ -105,7 +105,6 @@ def user_login(request):
         return Response({"error": "Invalid login credentials", "details": auth_response.text}, status=status.HTTP_401_UNAUTHORIZED)
 
     auth_data = auth_response.json()
-    user_id = auth_data.get("user", {}).get("id")
 
     # Fetch vet profile info
     vet_profile = supabase.table("ctu_vet_profile").select("*").eq("ctu_email", email).execute()
