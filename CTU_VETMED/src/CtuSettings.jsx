@@ -943,10 +943,10 @@ const fetchUsers = async () => {
 
                             return (
                               <div key={user.id} className="tableRow">
-                                <div className="tableCell">{user.firstname}</div>
-                                <div className="tableCell">{user.lastname}</div>
-                                <div className="tableCell">{user.email}</div>
-                                <div className="tableCell">{user.phone}</div>
+                                <div className="tableCell">{user.ctu_fname}</div>
+                                <div className="tableCell">{user.ctu_lname}</div>
+                                <div className="tableCell">{user.ctu_email}</div>
+                                <div className="tableCell">{user.ctu_phonenum}</div>
                                 <div className="tableCell">
                                   <span className={`roleBadge role${user.role?.toLowerCase() || "vet"}`}>
                                     {user.role || "Vet"}

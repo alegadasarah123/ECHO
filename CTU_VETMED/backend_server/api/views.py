@@ -58,8 +58,8 @@ def signup(request):
         # 4️⃣ Insert into public.users
         user_payload = {
             "id": user_id,
-            "role": "Veterinarian",
-            "status": "pending"
+            "role": "Ctu-Vetmed",
+            "status": "approved"
         }
         insert_users_url = f"{SUPABASE_URL}/rest/v1/users"
         insert_users_headers = {
@@ -159,18 +159,21 @@ def user_login(request):
 
 @api_view(["GET"])
 def get_users(request):
-    """
-    Returns all vet profiles (service role), newest first.
-    """
     try:
-        res = sr_client.table("ctu_vet_profile") \
-                       .select("*") \
-                       .order("ctu_fname", desc=False) \
-                       .execute()
-        return Response({"users": res.data or []}, status=status.HTTP_200_OK)
+        res = sr_client.table("ctu_vet_profile").select("*").execute()
+        users = [
+            {
+                "id": row["id"],
+                "firstname": row["ctu_fname"],
+                "lastname": row["ctu_lname"],
+                "email": row["ctu_email"],
+                "phone": str(row["ctu_phonenum"]) if row.get("ctu_phonenum") else "",
+                "role": row.get("role", "Vet"),
+                "status": "Active"  # default since not in table
+            }
+            for row in (res.data or [])
+        ]
+        return Response({"users": users}, status=status.HTTP_200_OK)
     except Exception as e:
-        return json_error(
-            "Internal Server Error.",
-            status.HTTP_500_INTERNAL_SERVER_ERROR,
-            details=str(e)
-        )
+        return json_error("Internal Server Error.", status.HTTP_500_INTERNAL_SERVER_ERROR, details=str(e))
+
