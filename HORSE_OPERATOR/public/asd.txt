@@ -1,0 +1,1184 @@
+// Fixed Signup Component
+import { useState } from "react"
+import {
+  Alert,
+  Dimensions,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  Modal,
+  FlatList,
+  Image,
+  Platform,
+} from "react-native"
+import DateTimePicker from "@react-native-community/datetimepicker"
+import {
+  launchImageLibrary,
+  launchCamera,
+  type ImagePickerResponse,
+  type MediaType,
+  type PhotoQuality,
+} from "react-native-image-picker"
+
+const { width, height } = Dimensions.get("window")
+
+// Responsive scaling functions
+const scale = (size: number) => (width / 375) * size
+const verticalScale = (size: number) => (height / 812) * size
+const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor
+
+// Cebu Province cities and municipalities
+const cebuCities = [
+  "Cebu City",
+  "Mandaue City",
+  "Lapu-Lapu City",
+  "Talisay City",
+  "Toledo City",
+  "Danao City",
+  "Carcar City",
+]
+
+const cebuMunicipalities = [
+  "Alcantara",
+  "Alcoy",
+  "Alegria",
+  "Aloguinsan",
+  "Argao",
+  "Asturias",
+  "Badian",
+  "Balamban",
+  "Bantayan",
+  "Barili",
+  "Bogo",
+  "Boljoon",
+  "Borbon",
+  "Carmen",
+  "Catmon",
+  "Compostela",
+  "Consolacion",
+  "Cordova",
+  "Daanbantayan",
+  "Dalaguete",
+  "Dumanjug",
+  "Ginatilan",
+  "Liloan",
+  "Madridejos",
+  "Malabuyoc",
+  "Medellin",
+  "Minglanilla",
+  "Moalboal",
+  "Oslob",
+  "Pilar",
+  "Pinamungajan",
+  "Poro",
+  "Ronda",
+  "Samboan",
+  "San Fernando",
+  "San Francisco",
+  "San Remigio",
+  "Santa Fe",
+  "Santander",
+  "Sibonga",
+  "Sogod",
+  "Tabogon",
+  "Tabuelan",
+  "Tuburan",
+  "Tudela",
+]
+
+// Combined list for city selection
+const allCebuLocations = [...cebuCities, ...cebuMunicipalities].sort()
+
+const municipalitiesByCity: { [key: string]: string[] } = {
+  "Cebu City": ["Lahug", "Capitol Site", "Guadalupe", "Mabolo", "Banilad", "Talamban", "Apas", "Kasambagan"],
+  "Mandaue City": ["Alang-alang", "Bakilid", "Banilad", "Basak", "Cabancalan", "Canduman", "Casuntingan"],
+  "Lapu-Lapu City": ["Agus", "Babag", "Bankal", "Basak", "Buaya", "Calawisan", "Canjulao", "Caubian"],
+  "Talisay City": ["Biasong", "Bulacao", "Cadulawan", "Camp Lapu-lapu", "Candulawan", "Cansojong"],
+  "Toledo City": ["Awihao", "Bagakay", "Bato", "Biga", "Bulongan", "Calongcalong", "Cambang-ug"],
+  "Danao City": ["Baliang", "Bayabas", "Binaliw", "Cabanawan", "Cabungahan", "Cagat-lamac"],
+  "Carcar City": ["Bolinawan", "Buenavista", "Can-asujan", "Guadalupe", "Liburon", "Napo"],
+}
+
+const sexOptions = ["Male", "Female", "Other", "Prefer not to say"]
+
+const routeOptions = [
+  "Route 1 - North Cebu",
+  "Route 2 - South Cebu",
+  "Route 3 - Metro Cebu",
+  "Route 4 - Cebu City Center",
+  "Route 5 - Mactan Island",
+]
+
+const toOptions = [
+  "SM City Cebu",
+  "Ayala Center Cebu",
+  "Robinson's Galleria Cebu",
+  "SM Seaside City Cebu",
+  "IT Park",
+  "Lahug",
+  "Capitol Site",
+  "Colon Street",
+]
+
+interface SignupProps {
+  onBackToLogin: () => void
+}
+
+interface DropdownFieldProps {
+  label: string
+  value: string
+  placeholder: string
+  options: string[]
+  onSelect: (value: string) => void
+  disabled?: boolean
+}
+
+// Updated API configuration with better timeout handling
+const API_CONFIG = {
+  BASE_URL: "http://192.168.1.8:8000/api/signup/",
+  TIMEOUT: 60000,
+  RETRY_ATTEMPTS: 2,
+  RETRY_DELAY: 3000,
+};
+
+export default function Signup({ onBackToLogin }: SignupProps) {
+  const [currentStep, setCurrentStep] = useState(1)
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [dropdownVisible, setDropdownVisible] = useState<string | null>(null)
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
+
+  // Form data states
+  const [formData, setFormData] = useState({
+    // Step 1 - Personal Info
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    dateOfBirth: new Date(),
+    sex: "",
+    phoneNumber: "",
+
+    // Step 2 - Location (Cebu only)
+    city: "",
+    municipality: "",
+    barangay: "",
+    zipCode: "",
+    houseAddress: "",
+    route: "",
+    to: "",
+
+    // Step 3 - Contact Info
+    email: "",
+    facebook: "",
+
+    // Step 4 - Login Credentials
+    username: "",
+    password: "",
+    confirmPassword: "",
+
+    // Step 5 - Profile Picture
+    profilePicture: null,
+  })
+
+  const updateFormData = (field: string, value: any) => {
+    setFormData((prev) => {
+      const updated = { ...prev, [field]: value }
+
+      // Reset dependent fields when parent changes
+      if (field === "city") {
+        updated.municipality = ""
+      }
+
+      return updated
+    })
+  }
+
+  const nextStep = () => {
+    if (currentStep < 5) {
+      setCurrentStep(currentStep + 1)
+    }
+  }
+
+  const prevStep = () => {
+    if (currentStep > 1) {
+      setCurrentStep(currentStep - 1)
+    }
+  }
+
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    setShowDatePicker(Platform.OS === "ios")
+    if (selectedDate) {
+      updateFormData("dateOfBirth", selectedDate)
+    }
+  }
+
+  const formatDate = (date: Date) => {
+    return date.toLocaleDateString("en-CA") // YYYY-MM-DD format
+  }
+
+  const handleImagePicker = () => {
+    Alert.alert("Select Photo", "Choose how you want to add your photo", [
+      { text: "Camera", onPress: openCamera },
+      { text: "Gallery", onPress: openGallery },
+      { text: "Cancel", style: "cancel" },
+    ])
+  }
+
+  const openCamera = () => {
+    const options = {
+      mediaType: "photo" as MediaType,
+      quality: 0.8 as PhotoQuality,
+      maxWidth: 500,
+      maxHeight: 500,
+    }
+
+    launchCamera(options, (response: ImagePickerResponse) => {
+      if (response.assets && response.assets[0]) {
+        setSelectedImage(response.assets[0].uri || null)
+        updateFormData("profilePicture", response.assets[0])
+      }
+    })
+  }
+
+  const openGallery = () => {
+    const options = {
+      mediaType: "photo" as MediaType,
+      quality: 0.8 as PhotoQuality,
+      maxWidth: 500,
+      maxHeight: 500,
+    }
+
+    launchImageLibrary(options, (response: ImagePickerResponse) => {
+      if (response.assets && response.assets[0]) {
+        setSelectedImage(response.assets[0].uri || null)
+        updateFormData("profilePicture", response.assets[0])
+      }
+    })
+  }
+
+  // Enhanced fetch with timeout and retry logic
+  const fetchWithTimeout = async (url: string, options: any, timeout: number) => {
+    const controller = new AbortController()
+    const id = setTimeout(() => controller.abort(), timeout)
+    
+    try {
+      const response = await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      })
+      clearTimeout(id)
+      return response
+    } catch (error) {
+      clearTimeout(id)
+      throw error
+    }
+  }
+
+  const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
+
+  const makeAPIRequest = async (data: any, attempt: number = 1): Promise<Response> => {
+    try {
+      console.log(API Request attempt ${attempt}/${API_CONFIG.RETRY_ATTEMPTS})
+      console.log("Request URL:", API_CONFIG.BASE_URL)
+      console.log("Request data:", JSON.stringify(data, null, 2))
+
+      const response = await fetchWithTimeout(
+        API_CONFIG.BASE_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+          },
+          body: JSON.stringify(data),
+        },
+        API_CONFIG.TIMEOUT
+      )
+
+      console.log("Response status:", response.status)
+      console.log("Response headers:", response.headers)
+
+      return response
+    } catch (error) {
+      console.error(Attempt ${attempt} failed:, error)
+      
+      if (attempt < API_CONFIG.RETRY_ATTEMPTS) {
+        console.log(Retrying in ${API_CONFIG.RETRY_DELAY / 1000} seconds...)
+        await delay(API_CONFIG.RETRY_DELAY)
+        return makeAPIRequest(data, attempt + 1)
+      }
+      
+      throw error
+    }
+  }
+
+  const handleSignUp = async () => {
+    // Validate required fields
+    if (!formData.username || !formData.password || !formData.confirmPassword) {
+      Alert.alert("Error", "Please fill in all required fields")
+      return
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      Alert.alert("Error", "Passwords do not match")
+      return
+    }
+
+    if (!formData.firstName || !formData.lastName) {
+      Alert.alert("Error", "First name and last name are required")
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      // Prepare data for Django backend
+      const signupData = {
+        // Personal Info
+        firstName: formData.firstName,
+        middleName: formData.middleName || "",
+        lastName: formData.lastName,
+        dateOfBirth: formData.dateOfBirth.toISOString().split("T")[0],
+        sex: formData.sex || "",
+        phoneNumber: formData.phoneNumber || "",
+
+        // Location Info
+        province: "Cebu",
+        city: formData.city || "",
+        municipality: formData.municipality || "",
+        barangay: formData.barangay || "",
+        zipCode: formData.zipCode || "",
+        houseAddress: formData.houseAddress || "",
+        route: formData.route || "",
+        to: formData.to || "",
+
+        // Contact Info
+        email: formData.email || "",
+        facebook: formData.facebook || "",
+
+        // Login Credentials
+        username: formData.username,
+        password: formData.password,
+
+        // Profile Picture (for now, just indicate if one was selected)
+        profilePicture: formData.profilePicture ? "selected" : null,
+      }
+
+      const response = await makeAPIRequest(signupData)
+      const responseData = await response.json()
+      
+      console.log("Final response:", responseData)
+
+      if (response.ok) {
+        Alert.alert("Success", "Account created successfully! You can now log in with your credentials.", [
+          { text: "OK", onPress: onBackToLogin },
+        ])
+      } else {
+        // Handle specific error messages from backend
+        const errorMessage = responseData.error || responseData.message || "Failed to create account"
+        Alert.alert("Error", errorMessage)
+      }
+    } catch (error: any) {
+      console.error("Signup error:", error)
+      
+      let errorMessage = "An unexpected error occurred. Please try again."
+      
+      if (error.name === 'AbortError') {
+        errorMessage = "Request timed out. Please check your internet connection and try again."
+      } else if (error.message?.includes('Network request failed')) {
+        errorMessage = "Network error. Please check your connection and try again."
+      } else if (error.message?.includes('timeout')) {
+        errorMessage = "Request timed out. Please try again."
+      }
+      
+      Alert.alert("Connection Error", errorMessage)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const DropdownField = ({ label, value, placeholder, options, onSelect, disabled = false }: DropdownFieldProps) => {
+    const dropdownKey = label.toLowerCase().replace(/\s+/g, "")
+
+    return (
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>{label}</Text>
+        <TouchableOpacity
+          style={[styles.dropdownContainer, disabled && styles.disabledDropdown]}
+          onPress={() => !disabled && setDropdownVisible(dropdownKey)}
+          disabled={disabled}
+        >
+          <Text style={[styles.dropdownText, !value && styles.placeholderText]}>{value || placeholder}</Text>
+          <Text style={styles.dropdownArrow}>▼</Text>
+        </TouchableOpacity>
+
+        <Modal
+          visible={dropdownVisible === dropdownKey}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setDropdownVisible(null)}
+        >
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setDropdownVisible(null)}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Select {label}</Text>
+              <FlatList
+                data={options}
+                keyExtractor={(item) => item}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.optionItem}
+                    onPress={() => {
+                      onSelect(item)
+                      setDropdownVisible(null)
+                    }}
+                  >
+                    <Text style={styles.optionText}>{item}</Text>
+                  </TouchableOpacity>
+                )}
+                style={styles.optionsList}
+              />
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      </View>
+    )
+  }
+
+  const renderStep1 = () => {
+    return (
+      <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
+        <Text style={styles.stepTitle}>Tell us about yourself</Text>
+        <Text style={styles.stepSubtitle}>Please complete the information below</Text>
+
+        <Text style={styles.sectionTitle}>Your Name</Text>
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.textInput}
+            value={formData.firstName}
+            onChangeText={(value) => updateFormData("firstName", value)}
+            placeholder="First Name"
+            placeholderTextColor="#999"
+          />
+        </View>
+
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.textInput}
+            value={formData.middleName}
+            onChangeText={(value) => updateFormData("middleName", value)}
+            placeholder="Middle Name"
+            placeholderTextColor="#999"
+          />
+        </View>
+
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.textInput}
+            value={formData.lastName}
+            onChangeText={(value) => updateFormData("lastName", value)}
+            placeholder="Last Name"
+            placeholderTextColor="#999"
+          />
+        </View>
+
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Date of Birth</Text>
+          <TouchableOpacity style={styles.dateInputContainer} onPress={() => setShowDatePicker(true)}>
+            <Text style={styles.dateText}>{formatDate(formData.dateOfBirth)}</Text>
+            <Text style={styles.calendarIcon}>📅</Text>
+          </TouchableOpacity>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={formData.dateOfBirth}
+              mode="date"
+              display="default"
+              onChange={handleDateChange}
+              maximumDate={new Date()}
+            />
+          )}
+        </View>
+
+        <DropdownField
+          label="Sex"
+          value={formData.sex}
+          placeholder="Please Select"
+          options={sexOptions}
+          onSelect={(value) => updateFormData("sex", value)}
+        />
+
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Phone Number</Text>
+          <TextInput
+            style={styles.textInput}
+            value={formData.phoneNumber}
+            onChangeText={(value) => updateFormData("phoneNumber", value)}
+            placeholder="Your Contact Number"
+            placeholderTextColor="#999"
+            keyboardType="phone-pad"
+          />
+        </View>
+
+        <Text style={styles.sectionTitle}>ADDRESS IN CEBU PROVINCE</Text>
+        <DropdownField
+          label="City/Municipality"
+          value={formData.city}
+          placeholder="Select City or Municipality in Cebu"
+          options={allCebuLocations}
+          onSelect={(value) => updateFormData("city", value)}
+        />
+
+        <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
+          <Text style={styles.nextButtonText}>Next</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    )
+  }
+
+  const renderStep2 = () => {
+    const availableMunicipalities = formData.city ? municipalitiesByCity[formData.city] || [] : []
+
+    return (
+      <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
+        <Text style={styles.stepTitle}>Tell us about yourself</Text>
+        <Text style={styles.stepSubtitle}>Please complete the information below</Text>
+
+        {availableMunicipalities.length > 0 && (
+          <DropdownField
+            label="Barangay/District"
+            value={formData.municipality}
+            placeholder="Please Select"
+            options={availableMunicipalities}
+            onSelect={(value) => updateFormData("municipality", value)}
+            disabled={!formData.city}
+          />
+        )}
+
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Barangay</Text>
+          <TextInput
+            style={styles.textInput}
+            value={formData.barangay}
+            onChangeText={(value) => updateFormData("barangay", value)}
+            placeholder="Enter your barangay"
+            placeholderTextColor="#999"
+          />
+        </View>
+
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>Zip Code</Text>
+          <TextInput
+            style={styles.textInput}
+            value={formData.zipCode}
+            onChangeText={(value) => updateFormData("zipCode", value)}
+            placeholder="Enter zip code"
+            placeholderTextColor="#999"
+            keyboardType="numeric"
+          />
+        </View>
+
+        <View style={styles.inputContainer}>
+          <Text style={styles.inputLabel}>House Number or Street Address</Text>
+          <TextInput
+            style={styles.textInput}
+            value={formData.houseAddress}
+            onChangeText={(value) => updateFormData("houseAddress", value)}
+            placeholder="Enter your address"
+            placeholderTextColor="#999"
+          />
+        </View>
+
+        <DropdownField
+          label="Route"
+          value={formData.route}
+          placeholder="Please Select"
+          options={routeOptions}
+          onSelect={(value) => updateFormData("route", value)}
+        />
+
+        <DropdownField
+          label="To"
+          value={formData.to}
+          placeholder="Please Select"
+          options={toOptions}
+          onSelect={(value) => updateFormData("to", value)}
+        />
+
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.prevButton} onPress={prevStep}>
+            <Text style={styles.prevButtonText}>Previous</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
+            <Text style={styles.nextButtonText}>Next</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    )
+  }
+
+  const renderStep3 = () => (
+    <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
+      <Text style={styles.stepTitle}>Tell us about yourself</Text>
+      <Text style={styles.stepSubtitle}>Please complete the information below</Text>
+
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Email (if any)</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.email}
+          onChangeText={(value) => updateFormData("email", value)}
+          placeholder="Your Email"
+          placeholderTextColor="#999"
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+      </View>
+
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Facebook</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.facebook}
+          onChangeText={(value) => updateFormData("facebook", value)}
+          placeholder="Your Facebook"
+          placeholderTextColor="#999"
+        />
+      </View>
+
+      <View style={styles.buttonRow}>
+        <TouchableOpacity style={styles.prevButton} onPress={prevStep}>
+          <Text style={styles.prevButtonText}>Previous</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
+          <Text style={styles.nextButtonText}>Next</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  )
+
+  const renderStep4 = () => (
+    <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
+      <Text style={styles.stepTitle}>Login Credentials</Text>
+      <Text style={styles.stepSubtitle}>Create your login information</Text>
+
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Username</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.username}
+          onChangeText={(value) => updateFormData("username", value)}
+          placeholder="Choose a username"
+          placeholderTextColor="#999"
+          autoCapitalize="none"
+          editable={!isLoading}
+        />
+      </View>
+
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Password</Text>
+        <View style={styles.passwordInputContainer}>
+          <TextInput
+            style={styles.passwordInput}
+            value={formData.password}
+            onChangeText={(value) => updateFormData("password", value)}
+            placeholder="Create a password"
+            placeholderTextColor="#999"
+            secureTextEntry={!showPassword}
+            editable={!isLoading}
+          />
+          <TouchableOpacity style={styles.eyeIconContainer} onPress={() => setShowPassword(!showPassword)}>
+            <View style={styles.eyeIcon}>
+              {showPassword ? (
+                <View style={styles.eyeOpen}>
+                  <View style={styles.eyeball} />
+                </View>
+              ) : (
+                <View style={styles.eyeClosed}>
+                  <View style={styles.eyeball} />
+                  <View style={styles.eyeLine} />
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>Confirm Password</Text>
+        <View style={styles.passwordInputContainer}>
+          <TextInput
+            style={styles.passwordInput}
+            value={formData.confirmPassword}
+            onChangeText={(value) => updateFormData("confirmPassword", value)}
+            placeholder="Confirm your password"
+            placeholderTextColor="#999"
+            secureTextEntry={!showConfirmPassword}
+            editable={!isLoading}
+          />
+          <TouchableOpacity
+            style={styles.eyeIconContainer}
+            onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+          >
+            <View style={styles.eyeIcon}>
+              {showConfirmPassword ? (
+                <View style={styles.eyeOpen}>
+                  <View style={styles.eyeball} />
+                </View>
+              ) : (
+                <View style={styles.eyeClosed}>
+                  <View style={styles.eyeball} />
+                  <View style={styles.eyeLine} />
+                </View>
+              )}
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <View style={styles.buttonRow}>
+        <TouchableOpacity
+          style={[styles.prevButton, isLoading && styles.disabledButton]}
+          onPress={prevStep}
+          disabled={isLoading}
+        >
+          <Text style={styles.prevButtonText}>Previous</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.nextButton, isLoading && styles.disabledButton]}
+          onPress={nextStep}
+          disabled={isLoading}
+        >
+          <Text style={styles.nextButtonText}>Next</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  )
+
+  const renderStep5 = () => (
+    <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
+      <Text style={styles.stepTitle}>Set Your Profile Picture</Text>
+      <Text style={styles.stepSubtitle}>Upload or capture a photo for your profile</Text>
+
+      <View style={styles.profilePictureContainer}>
+        <View style={styles.profilePicturePlaceholder}>
+          {selectedImage ? (
+            <Image source={{ uri: selectedImage }} style={styles.profileImage} />
+          ) : (
+            <View style={styles.profileIcon}>
+              <View style={styles.profileHead} />
+              <View style={styles.profileBody} />
+            </View>
+          )}
+        </View>
+      </View>
+
+      <TouchableOpacity style={styles.photoButton} onPress={handleImagePicker}>
+        <Text style={styles.photoButtonText}>📷 Add Profile Photo</Text>
+      </TouchableOpacity>
+
+      <Text style={styles.optionalText}>Profile photo is optional. You can skip this step and add it later.</Text>
+
+      <View style={styles.buttonRow}>
+        <TouchableOpacity style={styles.prevButton} onPress={prevStep}>
+          <Text style={styles.prevButtonText}>Previous</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.signUpButton, isLoading && styles.disabledButton]} 
+          onPress={handleSignUp}
+          disabled={isLoading}
+        >
+          <Text style={styles.signUpButtonText}>{isLoading ? "Creating Account..." : "Sign Up"}</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  )
+
+  const renderCurrentStep = () => {
+    switch (currentStep) {
+      case 1:
+        return renderStep1()
+      case 2:
+        return renderStep2()
+      case 3:
+        return renderStep3()
+      case 4:
+        return renderStep4()
+      case 5:
+        return renderStep5()
+      default:
+        return renderStep1()
+    }
+  }
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#B8763E" />
+
+      {/* Orange Header Section */}
+      <View style={styles.headerSection} />
+
+      {/* White Content Section */}
+      <View style={styles.contentSection}>
+        {renderCurrentStep()}
+
+        <View style={styles.signInContainer}>
+          <Text style={styles.signInText}>
+            Already have an account?{" "}
+            <Text style={styles.signInLink} onPress={onBackToLogin}>
+              Sign In
+            </Text>
+          </Text>
+        </View>
+      </View>
+    </SafeAreaView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#B8763E",
+  },
+  headerSection: {
+    backgroundColor: "#B8763E",
+    paddingTop: verticalScale(20),
+    paddingBottom: verticalScale(20),
+    minHeight: verticalScale(80),
+  },
+  contentSection: {
+    flex: 1,
+    backgroundColor: "white",
+    borderTopLeftRadius: moderateScale(30),
+    borderTopRightRadius: moderateScale(30),
+    marginTop: verticalScale(-10),
+  },
+  stepContainer: {
+    flex: 1,
+    paddingHorizontal: scale(20),
+    paddingTop: verticalScale(30),
+  },
+  stepTitle: {
+    fontSize: moderateScale(20, 0.3),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(6),
+    textAlign: "left",
+  },
+  stepSubtitle: {
+    fontSize: moderateScale(12, 0.3),
+    color: "#666",
+    marginBottom: verticalScale(25),
+    lineHeight: moderateScale(16),
+  },
+  sectionTitle: {
+    fontSize: moderateScale(14, 0.3),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(12),
+    marginTop: verticalScale(😎,
+  },
+  inputContainer: {
+    marginBottom: verticalScale(15),
+    width: "100%",
+  },
+  inputLabel: {
+    fontSize: moderateScale(12, 0.3),
+    color: "#666",
+    marginBottom: verticalScale(6),
+    marginLeft: scale(4),
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: moderateScale(20),
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(12),
+    fontSize: moderateScale(14, 0.3),
+    backgroundColor: "white",
+    width: "100%",
+    minHeight: verticalScale(45),
+  },
+  dropdownContainer: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: moderateScale(20),
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(12),
+    backgroundColor: "white",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    minHeight: verticalScale(45),
+  },
+  disabledDropdown: {
+    backgroundColor: "#f5f5f5",
+    borderColor: "#e0e0e0",
+  },
+  dropdownText: {
+    fontSize: moderateScale(14, 0.3),
+    color: "#333",
+    flex: 1,
+  },
+  placeholderText: {
+    color: "#999",
+  },
+  dropdownArrow: {
+    fontSize: moderateScale(10),
+    color: "#666",
+    marginLeft: scale(😎,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: moderateScale(15),
+    padding: scale(20),
+    width: "80%",
+    maxHeight: "70%",
+  },
+  modalTitle: {
+    fontSize: moderateScale(16, 0.3),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(15),
+    textAlign: "center",
+  },
+  optionsList: {
+    maxHeight: verticalScale(300),
+  },
+  optionItem: {
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(16),
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+  },
+  optionText: {
+    fontSize: moderateScale(14, 0.3),
+    color: "#333",
+  },
+  dateInputContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: moderateScale(20),
+    backgroundColor: "white",
+    minHeight: verticalScale(45),
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(12),
+  },
+  dateText: {
+    flex: 1,
+    fontSize: moderateScale(14, 0.3),
+    color: "#333",
+  },
+  calendarIcon: {
+    paddingRight: scale(12),
+    fontSize: moderateScale(16),
+  },
+  passwordInputContainer: {
+    position: "relative",
+    width: "100%",
+  },
+  passwordInput: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: moderateScale(20),
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(12),
+    paddingRight: scale(45),
+    fontSize: moderateScale(14, 0.3),
+    backgroundColor: "white",
+    width: "100%",
+    minHeight: verticalScale(45),
+  },
+  eyeIconContainer: {
+    position: "absolute",
+    right: scale(12),
+    top: "50%",
+    transform: [{ translateY: verticalScale(-10) }],
+    padding: scale(4),
+    width: scale(30),
+    height: verticalScale(30),
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  eyeIcon: {
+    width: scale(20),
+    height: verticalScale(20),
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  eyeOpen: {
+    width: scale(16),
+    height: verticalScale(10),
+    borderWidth: 1.5,
+    borderColor: "#666",
+    borderRadius: moderateScale(😎,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  eyeClosed: {
+    width: scale(16),
+    height: verticalScale(10),
+    borderWidth: 1.5,
+    borderColor: "#666",
+    borderRadius: moderateScale(😎,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  eyeball: {
+    width: scale(4),
+    height: verticalScale(4),
+    backgroundColor: "#666",
+    borderRadius: moderateScale(2),
+  },
+  eyeLine: {
+    position: "absolute",
+    width: scale(20),
+    height: 1.5,
+    backgroundColor: "#666",
+    transform: [{ rotate: "45deg" }],
+  },
+  profilePictureContainer: {
+    alignItems: "center",
+    marginVertical: verticalScale(30),
+  },
+  profilePicturePlaceholder: {
+    width: scale(100),
+    height: scale(100),
+    borderRadius: scale(50),
+    borderWidth: 2,
+    borderColor: "#ddd",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#f9f9f9",
+    overflow: "hidden",
+  },
+  profileImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: scale(50),
+  },
+  profileIcon: {
+    alignItems: "center",
+  },
+  profileHead: {
+    width: scale(25),
+    height: scale(25),
+    borderRadius: scale(12.5),
+    borderWidth: 2,
+    borderColor: "#ccc",
+    marginBottom: scale(4),
+  },
+  profileBody: {
+    width: scale(40),
+    height: scale(28),
+    borderTopLeftRadius: scale(20),
+    borderTopRightRadius: scale(20),
+    borderWidth: 2,
+    borderColor: "#ccc",
+  },
+  photoButton: {
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: moderateScale(20),
+    paddingVertical: verticalScale(12),
+    alignItems: "center",
+    marginBottom: verticalScale(12),
+    backgroundColor: "white",
+    minHeight: verticalScale(45),
+    justifyContent: "center",
+  },
+  photoButtonText: {
+    fontSize: moderateScale(14, 0.3),
+    color: "#333",
+  },
+  optionalText: {
+    fontSize: moderateScale(12, 0.3),
+    color: "#999",
+    textAlign: "center",
+    marginBottom: verticalScale(20),
+    fontStyle: "italic",
+  },
+  buttonRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: verticalScale(15),
+    marginBottom: verticalScale(20),
+    gap: scale(10),
+  },
+  prevButton: {
+    backgroundColor: "#f5f5f5",
+    borderRadius: moderateScale(20),
+    paddingVertical: verticalScale(12),
+    alignItems: "center",
+    flex: 1,
+    minHeight: verticalScale(45),
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  prevButtonText: {
+    color: "#666",
+    fontSize: moderateScale(14, 0.3),
+    fontWeight: "600",
+  },
+  nextButton: {
+    backgroundColor: "#B8763E",
+    borderRadius: moderateScale(20),
+    paddingVertical: verticalScale(12),
+    alignItems: "center",
+    flex: 1,
+    minHeight: verticalScale(45),
+    justifyContent: "center",
+  },
+  nextButtonText: {
+    color: "white",
+    fontSize: moderateScale(14, 0.3),
+    fontWeight: "600",
+  },
+  signUpButton: {
+    backgroundColor: "#B8763E",
+    borderRadius: moderateScale(20),
+    paddingVertical: verticalScale(12),
+    alignItems: "center",
+    flex: 1,
+    minHeight: verticalScale(45),
+    justifyContent: "center",
+  },
+  signUpButtonText: {
+    color: "white",
+    fontSize: moderateScale(14, 0.3),
+    fontWeight: "600",
+  },
+  signInContainer: {
+    alignItems: "center",
+    paddingBottom: verticalScale(25),
+    paddingHorizontal: scale(20),
+  },
+  signInText: {
+    fontSize: moderateScale(12, 0.3),
+    color: "#666",
+    textAlign: "center",
+  },
+  signInLink: {
+    color: "#B8763E",
+    fontWeight: "600",
+  },
+  disabledButton: {
+    opacity: 0.6,
+  },
+})
