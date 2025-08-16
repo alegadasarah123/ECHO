@@ -8,6 +8,6 @@ urlpatterns = [
     # Direct paths to views:
     path('signup/', views.signup, name='signup'),
     path('login/', views.user_login, name='login'),
-
+    path("get-vet-profiles/", views.get_vet_profiles, name="get_vet_profiles"),
 
 ]

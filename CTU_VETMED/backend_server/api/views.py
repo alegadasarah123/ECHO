@@ -20,8 +20,9 @@ def signup(request):
         first_name = request.data.get("firstName", "").strip()
         last_name = request.data.get("lastName", "").strip()
         phone_number = str(request.data.get("phoneNumber", "")).strip()
+        password = request.data.get("password", "").strip()  # 👈 added
 
-        if not all([email, first_name, last_name, phone_number]):
+        if not all([email, first_name, last_name, phone_number, password]):
             return Response({"error": "All fields are required"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Admin headers
@@ -39,9 +40,9 @@ def signup(request):
             if any(u.get("email") == email for u in users_list):
                 return Response({"error": "Email already exists"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # 1️⃣ Create user without password (Auth)
+        # 1️⃣ Create user with password in Supabase Auth
         signup_url = f"{SUPABASE_URL}/auth/v1/admin/users"
-        payload_auth = {"email": email}
+        payload_auth = {"email": email, "password": password}  # 👈 add password here
         auth_res = requests.post(signup_url, json=payload_auth, headers=admin_headers)
         if auth_res.status_code not in [200, 201]:
             return Response({"error": "Failed to create user in Supabase Auth"}, status=400)
@@ -67,13 +68,14 @@ def signup(request):
             requests.delete(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=admin_headers)
             return Response({"error": "Failed to insert into public.users"}, status=400)
 
-        # 3️⃣ Insert into ctu_vet_profile
+        # 3️⃣ Insert into ctu_vet_profile (including ctu_pass)
         profile_payload = {
             "ctu_id": user_id,
             "ctu_fname": first_name,
             "ctu_lname": last_name,
             "ctu_email": email,
-            "ctu_phonenum": phone_number
+            "ctu_phonenum": phone_number,
+            "ctu_pass": password   # 👈 added
         }
         profile_res = sr_client.table("ctu_vet_profile").insert(profile_payload).execute()
         if not profile_res.data:
@@ -81,23 +83,9 @@ def signup(request):
             requests.delete(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=admin_headers)
             return Response({"error": "Failed to insert into ctu_vet_profile"}, status=400)
 
-        # 4️⃣ Send password reset email
-        reset_url = f"{SUPABASE_URL}/auth/v1/recover"
-        reset_payload = {
-            "email": email,
-            "redirect_to": "http://localhost:3000/ctu-reset-password"
-        }
-        reset_headers = {
-            "apikey": SUPABASE_ANON_KEY,
-            "Content-Type": CONTENT_TYPE_JSON
-        }
-        reset_res = requests.post(reset_url, json=reset_payload, headers=reset_headers)
-
-        if reset_res.status_code not in [200, 201]:
-            print("Failed to send password reset email:", reset_res.text)
-
+        # ✅ No need for reset email since we already created with password
         return Response({
-            "message": "User created successfully. Password reset email sent.",
+            "message": "User created successfully.",
             "user": {
                 "id": user_id,
                 "email": email,
@@ -160,3 +148,18 @@ def user_login(request):
 
     except Exception as e:
         return Response({"error": "Internal Server Error", "details": str(e)}, status=500)
+
+
+@api_view(['GET'])
+def get_vet_profiles(request):
+    try:
+        # Query vet_profile table
+        response = sr_client.table("vet_profile").select("*").execute()
+
+        if response.data:
+            return Response(response.data, status=status.HTTP_200_OK)
+        else:
+            return Response({"message": "No records found"}, status=status.HTTP_404_NOT_FOUND)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

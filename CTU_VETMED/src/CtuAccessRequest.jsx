@@ -14,6 +14,9 @@ function CtuAccessRequest() {
   const [currentRequestId, setCurrentRequestId] = useState(null)
   const [accessRequests, setAccessRequests] = useState([]) // Placeholder for access request data
   const [windowWidth, setWindowWidth] = useState(window.innerWidth)
+  const [activeFilter, setActiveFilter] = useState("pending") // Changed default from "all" to "pending"
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [deleteRequestId, setDeleteRequestId] = useState(null)
 
   const sidebarRef = useRef(null)
   const notificationBellRef = useRef(null)
@@ -53,33 +56,17 @@ function CtuAccessRequest() {
     setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
   }
 
-  // Function to load notifications from your backend (placeholder)
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
-    setNotifications([]) // For now, just set empty notifications
+    setNotifications([
+     
+    ])
   }, [])
 
-  // Function to load access requests from your backend (placeholder)
   const loadAccessRequests = useCallback(() => {
     console.log("Loading access requests...")
-    // Example dummy data for demonstration
     setAccessRequests([
-      // {
-      //   id: "REQ001",
-      //   horseName: "Spirit",
-      //   requestedBy: "Dr. Emily White",
-      //   reason: "Routine check-up and vaccination history",
-      //   dateRequested: new Date(2024, 6, 15, 10, 30),
-      //   status: "pending",
-      // },
-      // {
-      //   id: "REQ002",
-      //   horseName: "Thunder",
-      //   requestedBy: "Dr. John Doe",
-      //   reason: "Injury assessment and treatment plan",
-      //   dateRequested: new Date(2024, 6, 14, 14, 0),
-      //   status: "pending",
-      // },
+     
     ])
   }, [])
 
@@ -98,10 +85,9 @@ function CtuAccessRequest() {
 
   const confirmLogout = () => {
     console.log("User logged out")
-    // In a real app, clear session/token and redirect to login
     localStorage.removeItem("currentUser")
     localStorage.removeItem("loginTime")
-    navigate("/CtuLogin") // Redirect to login page
+    navigate("/CtuLogin")
     closeLogoutModal()
   }
 
@@ -134,18 +120,14 @@ function CtuAccessRequest() {
   const confirmAction = () => {
     if (actionDetails.action === "approve" && currentRequestId) {
       console.log(`Approving request: ${currentRequestId}`)
-      // Update status in state (for demonstration)
       setAccessRequests((prev) =>
         prev.map((req) => (req.id === currentRequestId ? { ...req, status: "approved" } : req)),
       )
-      // Here you would integrate with your backend API to approve
     } else if (actionDetails.action === "decline" && currentRequestId) {
       console.log(`Declining request: ${currentRequestId}`)
-      // Update status in state (for demonstration)
       setAccessRequests((prev) =>
         prev.map((req) => (req.id === currentRequestId ? { ...req, status: "declined" } : req)),
       )
-      // Here you would integrate with your backend API to decline
     }
     closeActionModal()
   }
@@ -153,10 +135,43 @@ function CtuAccessRequest() {
   const handleSearchInput = (e) => {
     const searchTerm = e.target.value.toLowerCase()
     console.log(`Searching for: ${searchTerm}`)
-    // Implement actual search logic here if needed
   }
 
-  // Effects
+  const deleteRequest = (requestId) => {
+    setDeleteRequestId(requestId)
+    setIsDeleteModalOpen(true)
+  }
+
+  const closeDeleteModal = () => {
+    setIsDeleteModalOpen(false)
+    setDeleteRequestId(null)
+  }
+
+  const confirmDelete = () => {
+    if (deleteRequestId) {
+      console.log(`Deleting request: ${deleteRequestId}`)
+      setAccessRequests((prev) => prev.filter((req) => req.id !== deleteRequestId))
+    }
+    closeDeleteModal()
+  }
+
+  const getFilteredAndSortedRequests = () => {
+    let filtered = accessRequests
+
+    filtered = filtered.filter((request) => request.status === activeFilter)
+
+    // Sort by most recent (dateRequested descending)
+    return filtered.sort((a, b) => new Date(b.dateRequested) - new Date(a.dateRequested))
+  }
+
+  const getFilterCounts = () => {
+    return {
+      pending: accessRequests.filter((req) => req.status === "pending").length,
+      approved: accessRequests.filter((req) => req.status === "approved").length,
+      declined: accessRequests.filter((req) => req.status === "declined").length,
+    }
+  }
+
   useEffect(() => {
     loadAccessRequests()
     loadNotifications()
@@ -164,7 +179,6 @@ function CtuAccessRequest() {
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      // Close notification dropdown
       if (
         notificationBellRef.current &&
         !notificationBellRef.current.contains(event.target) &&
@@ -174,14 +188,16 @@ function CtuAccessRequest() {
         setIsNotificationDropdownOpen(false)
       }
 
-      // Close logout modal
       if (isLogoutModalOpen && logoutModalRef.current && event.target === logoutModalRef.current) {
         closeLogoutModal()
       }
 
-      // Close action modal
       if (isActionModalOpen && actionModalRef.current && event.target === actionModalRef.current) {
         closeActionModal()
+      }
+
+      if (isDeleteModalOpen && event.target.classList.contains("modal-overlay")) {
+        closeDeleteModal()
       }
     }
 
@@ -189,7 +205,7 @@ function CtuAccessRequest() {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
     }
-  }, [isNotificationDropdownOpen, isLogoutModalOpen, isActionModalOpen])
+  }, [isNotificationDropdownOpen, isLogoutModalOpen, isActionModalOpen, isDeleteModalOpen])
 
   useEffect(() => {
     const handleResize = () => {
@@ -199,6 +215,9 @@ function CtuAccessRequest() {
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
+  const filteredRequests = getFilteredAndSortedRequests()
+  const filterCounts = getFilterCounts()
+
   return (
     <div className="bodyWrapper">
       <div className="sidebar" id="sidebar" ref={sidebarRef}>
@@ -207,7 +226,11 @@ function CtuAccessRequest() {
         </div>
         <nav className="nav-menu">
           {[
-            { name: "Dashboard", iconClass: "fas fa-th-large", path: "/CtuDashboard" },
+            {
+              name: "Dashboard",
+              iconClass: "fas fa-th-large",
+              path: "/CtuDashboard",
+            },
             { name: "Account Approval", iconClass: "fas fa-user-check", path: "/CtuAccountApproval" },
             { name: "Access Requests", iconClass: "fas fa-file-alt", path: "/CtuAccessRequest", active: true },
             { name: "Horse Records", iconClass: "fas fa-clipboard-list", path: "/CtuHorseRecord" },
@@ -216,11 +239,7 @@ function CtuAccessRequest() {
             { name: "Directory", iconClass: "fas fa-folder", path: "/CtuDirectory" },
             { name: "Settings", iconClass: "fas fa-cog", path: "/CtuSettings" },
           ].map((item) => (
-            <Link
-              key={item.name}
-              to={item.path}
-              className={`nav-item ${item.active ? "active" : ""}`}
-            >
+            <Link key={item.name} to={item.path} className={`nav-item ${item.active ? "active" : ""}`}>
               <i className={`nav-icon ${item.iconClass}`}></i>
               {item.name}
             </Link>
@@ -311,8 +330,28 @@ function CtuAccessRequest() {
         <div className="content-area">
           <div className="page-header">
             <h1 className="page-title">Access Request</h1>
+            <div className="status-filter-tabs">
+              <button
+                className={`filter-tab ${activeFilter === "pending" ? "active" : ""}`}
+                onClick={() => setActiveFilter("pending")}
+              >
+                Pending ({filterCounts.pending})
+              </button>
+              <button
+                className={`filter-tab ${activeFilter === "approved" ? "active" : ""}`}
+                onClick={() => setActiveFilter("approved")}
+              >
+                Approved ({filterCounts.approved})
+              </button>
+              <button
+                className={`filter-tab ${activeFilter === "declined" ? "active" : ""}`}
+                onClick={() => setActiveFilter("declined")}
+              >
+                Declined ({filterCounts.declined})
+              </button>
+            </div>
             <div className="access-table">
-              <div className="table-headers">
+              <div className="table-headerss">
                 <div>Request ID</div>
                 <div>Horse Name</div>
                 <div>Requested by (Vet)</div>
@@ -321,15 +360,15 @@ function CtuAccessRequest() {
                 <div>Status</div>
                 <div>Action</div>
               </div>
-              {accessRequests.length === 0 ? (
+              {filteredRequests.length === 0 ? (
                 <div className="empty-state">
                   <i className="fas fa-file-alt"></i>
                   <h3>No access requests</h3>
-                  <p>Access requests will appear here when available</p>
+                  <p>No {activeFilter} requests found</p>
                 </div>
               ) : (
-                accessRequests.map((request) => (
-                  <div key={request.id} className="table-row">
+                filteredRequests.map((request) => (
+                  <div key={request.id} className="table-rows">
                     <div>{request.id}</div>
                     <div>{request.horseName}</div>
                     <div>{request.requestedBy}</div>
@@ -341,13 +380,18 @@ function CtuAccessRequest() {
                     <div className="action-buttons">
                       {request.status === "pending" && (
                         <>
-                          <button className="action-btn approve-btn" onClick={() => approveRequest(request.id)}>
+                          <button className="action-btns approve-btn" onClick={() => approveRequest(request.id)}>
                             Approve
                           </button>
-                          <button className="action-btn decline-btn" onClick={() => declineRequest(request.id)}>
+                          <button className="action-btns decline-btn" onClick={() => declineRequest(request.id)}>
                             Decline
                           </button>
                         </>
+                      )}
+                      {(request.status === "approved" || request.status === "declined") && (
+                        <button className="action-btns delete-btn" onClick={() => deleteRequest(request.id)}>
+                          Delete
+                        </button>
                       )}
                     </div>
                   </div>
@@ -358,7 +402,6 @@ function CtuAccessRequest() {
         </div>
       </div>
 
-      {/* Chat Widget - Button Only */}
       <div className="chat-widget">
         <button className="chat-button" id="chatButton" onClick={() => navigate("/CtuMessage")}>
           <div className="chat-dots">
@@ -369,7 +412,6 @@ function CtuAccessRequest() {
         </button>
       </div>
 
-      {/* Logout Modal */}
       {isLogoutModalOpen && (
         <div
           className="modal-overlay active"
@@ -395,7 +437,6 @@ function CtuAccessRequest() {
         </div>
       )}
 
-      {/* Action Confirmation Modal */}
       {isActionModalOpen && (
         <div
           className="modal-overlay active"
@@ -411,10 +452,27 @@ function CtuAccessRequest() {
                 Cancel
               </button>
               <button
-                className={`confirmation-btn confirm ${actionDetails.action === "decline" ? "decline" : ""}`}
+                className={`confirmation-btns confirm ${actionDetails.action === "decline" ? "decline" : ""}`}
                 onClick={confirmAction}
               >
                 {actionDetails.action === "approve" ? "Approve" : "Decline"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDeleteModalOpen && (
+        <div className="modal-overlay active">
+          <div className="confirmation-modal">
+            <h3>Delete Request</h3>
+            <p>Are you sure you want to delete request {deleteRequestId}? This action cannot be undone.</p>
+            <div className="confirmation-buttons">
+              <button className="confirmation-btn cancel" onClick={closeDeleteModal}>
+                Cancel
+              </button>
+              <button className="confirmation-btns confirm decline" onClick={confirmDelete}>
+                Delete
               </button>
             </div>
           </div>

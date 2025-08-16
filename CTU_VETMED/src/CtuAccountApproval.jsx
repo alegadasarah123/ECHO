@@ -5,14 +5,20 @@ import "./CtuAccountApproval.css"; // Import the new CSS file
 
 function CtuAccountApproval() {
   const navigate = useNavigate()
-  // Removed dummy data for registrations as requested
-  const [registrationData, setRegistrationData] = useState([])
+
+  const [registrationData, setRegistrationData] = useState([
+    
+  ])
+
   const [activeTab, setActiveTab] = useState("pending")
-  const [typeFilter, setTypeFilter] = useState("all")
   const [recentFilter, setRecentFilter] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
-  const [notifications, setNotifications] = useState([]) // Empty notifications array
+
+  const [notifications, setNotifications] = useState([
+    
+  ])
+
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
   const [isViewDetailsModalOpen, setIsViewDetailsModalOpen] = useState(false)
@@ -59,26 +65,21 @@ function CtuAccountApproval() {
   }
 
   const loadNotifications = useCallback(() => {
-    // Placeholder for fetching notifications from backend
-    // For now, just set some dummy notifications
-    setNotifications([])
-  }, [])
+    // In a real app, this would fetch from backend
+    console.log("Notifications loaded:", notifications.length)
+  }, [notifications.length])
 
   const filterRegistrations = useCallback(() => {
     let filtered = registrationData
     // Filter by tab status
     filtered = filtered.filter((user) => user.status === activeTab)
-    // Filter by type
-    if (typeFilter !== "all") {
-      filtered = filtered.filter((user) => user.type === typeFilter)
-    }
     // Filter by search term
     if (searchTerm) {
       filtered = filtered.filter(
         (user) =>
-          user.firstName.toLowerCase().includes(searchTerm) ||
-          user.lastName.toLowerCase().includes(searchTerm) ||
-          user.email.toLowerCase().includes(searchTerm),
+          user.vet_fname.toLowerCase().includes(searchTerm) ||
+          user.vet_lname.toLowerCase().includes(searchTerm) ||
+          user.vet_email.toLowerCase().includes(searchTerm),
       )
     }
     // Filter by recent (placeholder logic, as actual date fields are not in dummy data for this)
@@ -87,7 +88,7 @@ function CtuAccountApproval() {
       console.log(`Filtering by recent: ${recentFilter} (logic not fully implemented with dummy data)`)
     }
     return filtered
-  }, [registrationData, activeTab, typeFilter, searchTerm, recentFilter])
+  }, [registrationData, activeTab, searchTerm, recentFilter])
 
   const viewDetails = (userId, status) => {
     const user = registrationData.find((u) => u.id === userId)
@@ -179,10 +180,6 @@ function CtuAccountApproval() {
     setSearchTerm(e.target.value.toLowerCase())
   }
 
-  const handleTypeFilterChange = (e) => {
-    setTypeFilter(e.target.value)
-  }
-
   const handleRecentFilterChange = (e) => {
     setRecentFilter(e.target.value)
   }
@@ -203,6 +200,34 @@ function CtuAccountApproval() {
     navigate("/CtuLogin")
     closeLogoutModal()
   }
+
+
+useEffect(() => {
+  const loadVetProfiles = async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:8000/get-vet-profiles/");
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const data = await response.json();
+      console.log("Fetched vet profiles:", data);
+
+      // ✅ Set the data into state so it will display
+      setRegistrationData(
+        data.map((item) => ({
+          ...item,
+          status: "pending", // default status if not coming from backend
+          type: item.type || "vet", // ensure type exists for badge
+        }))
+      );
+    } catch (error) {
+      console.error("Failed to fetch vet profiles:", error);
+    }
+  };
+
+  loadVetProfiles();
+}, []);
+
 
   // Effects
   useEffect(() => {
@@ -270,7 +295,11 @@ function CtuAccountApproval() {
         </div>
         <nav className="nav-menu">
           {[
-            { name: "Dashboard", iconClass: "fas fa-th-large", path: "/CtuDashboard" },
+            {
+              name: "Dashboard",
+              iconClass: "fas fa-th-large",
+              path: "/CtuDashboard",
+            },
             { name: "Account Approval", iconClass: "fas fa-user-check", path: "/CtuAccountApproval", active: true },
             { name: "Access Requests", iconClass: "fas fa-file-alt", path: "/CtuAccessRequest" },
             { name: "Horse Records", iconClass: "fas fa-clipboard-list", path: "/CtuHorseRecord" },
@@ -279,11 +308,7 @@ function CtuAccountApproval() {
             { name: "Directory", iconClass: "fas fa-folder", path: "/CtuDirectory" },
             { name: "Settings", iconClass: "fas fa-cog", path: "/CtuSettings" },
           ].map((item) => (
-            <Link
-              key={item.name}
-              to={item.path}
-              className={`nav-item ${item.active ? "active" : ""}`}
-            >
+            <Link key={item.name} to={item.path} className={`nav-item ${item.active ? "active" : ""}`}>
               <i className={`nav-icon ${item.iconClass}`}></i>
               {item.name}
             </Link>
@@ -372,7 +397,7 @@ function CtuAccountApproval() {
         <div className="content-area">
           <div className="page-header">
             <h1>Account Approval</h1>
-            <h2>Manage registration request from Kutseros and Veterinarians</h2>
+            <h2>Manage registration requests from Veterinarians</h2>
             <div className="tabs-container">
               <button
                 className={`tab ${activeTab === "pending" ? "active" : ""}`}
@@ -396,11 +421,6 @@ function CtuAccountApproval() {
           </div>
           <div className="controls-row">
             <div className="filter-controls">
-              <select className="filter-select" value={typeFilter} onChange={handleTypeFilterChange}>
-                <option value="all">All Types</option>
-                <option value="kutsero">Kutsero</option>
-                <option value="veterinarian">Veterinarian</option>
-              </select>
               <select className="filter-select" value={recentFilter} onChange={handleRecentFilterChange}>
                 <option value="all">Most Recent</option>
                 <option value="today">Today</option>
@@ -436,15 +456,15 @@ function CtuAccountApproval() {
             ) : (
               filteredRegistrations.map((user) => (
                 <div key={user.id} className="registration-item">
-                  <div className="user-avatar">{user.firstName.charAt(0) + user.lastName.charAt(0)}</div>
+                  <div className="user-avatar">{user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}</div>
                   <div className="user-info">
                     <div className="user-name">
-                      {user.firstName} {user.middleName} {user.lastName}
+                      {user.vet_fname} {user.vet_mname} {user.vet_lname}
                       <span className={`user-type-badge badge-${user.type}`}>{user.type}</span>
                     </div>
-                    <div className="user-email">{user.email}</div>
+                    <div className="user-email">{user.vet_email}</div>
                     <div className="user-details">
-                      {user.city}, {user.province}
+                      {user.vet_city}, {user.vet_province}
                     </div>
                   </div>
                   <div className="action-buttons">
@@ -485,76 +505,125 @@ function CtuAccountApproval() {
               &times;
             </button>
             <div className="modal-header">
-              <div className="modal-avatar">{selectedUser.firstName.charAt(0) + selectedUser.lastName.charAt(0)}</div>
+              <div className="modal-avatar">{selectedUser.vet_fname.charAt(0) + selectedUser.vet_lname.charAt(0)}</div>
               <div className="modal-user-info">
                 <h3>
-                  {selectedUser.firstName} {selectedUser.middleName} {selectedUser.lastName}
+                  {selectedUser.vet_fname} {selectedUser.vet_mname} {selectedUser.vet_lname}
                 </h3>
                 <span className={`modal-user-badge badge-${selectedUser.type}`}>{selectedUser.type}</span>
               </div>
             </div>
-            <div className="modal-section">
-              <h4>Personal Information</h4>
-              <div className="modal-grid">
-                <div className="modal-field">
-                  <span className="modal-label">First Name:</span>
-                  <div className="modal-value">{selectedUser.firstName}</div>
+
+            <div className="modal-body">
+              <div className="modal-section-box">
+                <div className="section-header">
+                  <i className="fas fa-user section-icon"></i>
+                  <h4>Name Information</h4>
                 </div>
-                <div className="modal-field">
-                  <span className="modal-label">Middle Name:</span>
-                  <div className="modal-value">{selectedUser.middleName}</div>
+                <div className="modal-grid">
+                  <div className="modal-field">
+                    <span className="modal-label">First Name:</span>
+                    <div className="modal-value">{selectedUser.vet_fname}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">Middle Name:</span>
+                    <div className="modal-value">{selectedUser.vet_mname}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">Last Name:</span>
+                    <div className="modal-value">{selectedUser.vet_lname}</div>
+                  </div>
                 </div>
-                <div className="modal-field">
-                  <span className="modal-label">Last Name:</span>
-                  <div className="modal-value">{selectedUser.lastName}</div>
+              </div>
+
+              <div className="modal-section-box">
+                <div className="section-header">
+                  <i className="fas fa-id-card section-icon"></i>
+                  <h4>Personal Information</h4>
                 </div>
-                <div className="modal-field">
-                  <span className="modal-label">Date of Birth:</span>
-                  <div className="modal-value">{selectedUser.dob}</div>
+                <div className="modal-grid">
+                  <div className="modal-field">
+                    <span className="modal-label">Date of Birth:</span>
+                    <div className="modal-value">{selectedUser.vet_dob}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">Sex:</span>
+                    <div className="modal-value">{selectedUser.vet_sex || "Not specified"}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Phone Number:</span>
+                    <div className="modal-value">{selectedUser.vet_phone_num}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Email:</span>
+                    <div className="modal-value">{selectedUser.vet_email}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Facebook:</span>
+                    <div className="modal-value">{selectedUser.facebook}</div>
+                  </div>
                 </div>
-                <div className="modal-field full-width">
-                  <span className="modal-label">Phone Number:</span>
-                  <div className="modal-value">{selectedUser.phone}</div>
+              </div>
+
+              <div className="modal-section-box">
+                <div className="section-header">
+                  <i className="fas fa-map-marker-alt section-icon"></i>
+                  <h4>Address Information</h4>
                 </div>
-                <div className="modal-field full-width">
-                  <span className="modal-label">Email:</span>
-                  <div className="modal-value">{selectedUser.email}</div>
+                <div className="modal-grid">
+                  <div className="modal-field">
+                    <span className="modal-label">Province:</span>
+                    <div className="modal-value">{selectedUser.vet_province}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">City:</span>
+                    <div className="modal-value">{selectedUser.vet_city}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">Barangay:</span>
+                    <div className="modal-value">{selectedUser.vet_brgy}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">Zip Code:</span>
+                    <div className="modal-value">{selectedUser.vet_zipcode}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Complete Address/Street Name:</span>
+                    <div className="modal-value">{selectedUser.address}</div>
+                  </div>
                 </div>
-                <div className="modal-field full-width">
-                  <span className="modal-label">Sex:</span>
-                  <div className="modal-value">{selectedUser.facebook}</div>
+              </div>
+
+              <div className="modal-section-box">
+                <div className="section-header">
+                  <i className="fas fa-stethoscope section-icon"></i>
+                  <h4>Professional Information</h4>
+                </div>
+                <div className="modal-grid">
+                  <div className="modal-field">
+                    <span className="modal-label">License Number:</span>
+                    <div className="modal-value">{selectedUser.vet_license_num || "Not provided"}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">Experience Years:</span>
+                    <div className="modal-value">{selectedUser.vet_exp_yr || "Not specified"}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Specialization:</span>
+                    <div className="modal-value">{selectedUser.vet_specialization || "Not specified"}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Organization:</span>
+                    <div className="modal-value">{selectedUser.vet_org || "Not specified"}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Document Image:</span>
+                    <div className="modal-value">{selectedUser.vet_doc_image || "Not provided"}</div>
+                  </div>
                 </div>
               </div>
             </div>
-            <div className="modal-section">
-              <h4>Address Information</h4>
-              <div className="modal-grid">
-                <div className="modal-field">
-                  <span className="modal-label">Province:</span>
-                  <div className="modal-value">{selectedUser.province}</div>
-                </div>
-                <div className="modal-field">
-                  <span className="modal-label">City:</span>
-                  <div className="modal-value">{selectedUser.city}</div>
-                </div>
-                <div className="modal-field">
-                  <span className="modal-label">Barangay:</span>
-                  <div className="modal-value">{selectedUser.barangay}</div>
-                </div>
-                <div className="modal-field">
-                  <span className="modal-label">Zip Code:</span>
-                  <div className="modal-value">{selectedUser.zipCode}</div>
-                </div>
-                <div className="modal-field full-width">
-                  <span className="modal-label">Complete Address/Street Name:</span>
-                  <div className="modal-value">{selectedUser.address}</div>
-                </div>
-                <div className="modal-field full-width">
-                  <span className="modal-label">Route:</span>
-                  <div className="modal-value">{selectedUser.route}</div>
-                </div>
-              </div>
-            </div>
+
             <div className={`modal-footer ${selectedUser.status !== "pending" ? "close-only" : ""}`}>
               <button className="modal-btn" onClick={closeModal}>
                 Close
@@ -573,6 +642,7 @@ function CtuAccountApproval() {
           </div>
         </div>
       )}
+
       {/* Confirmation Modal */}
       {isConfirmationModalOpen && (
         <div className="modal-overlay active" ref={confirmationOverlayRef}>
@@ -593,6 +663,7 @@ function CtuAccountApproval() {
           </div>
         </div>
       )}
+
       {/* Logout Modal */}
       {isLogoutModalOpen && (
         <div
