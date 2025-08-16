@@ -11,8 +11,8 @@ function CtuDashboard() {
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [activePage, setActivePage] = useState("dashboard")
   const [notifications, setNotifications] = useState([])
-  const [horsesCount, setHorsesCount] = useState(0)
-  const [kutserosCount, setKutserosCount] = useState(0)
+  const [recordCount, setrecordCount] = useState(0)
+  const [vetCount, setvetCount] = useState(0)
   const [recentActivities, setRecentActivities] = useState([])
   const [calendarDate, setCalendarDate] = useState(new Date())
   const [searchQuery, setSearchQuery] = useState("")
@@ -69,8 +69,8 @@ function CtuDashboard() {
   // Data loading functions
   const loadStats = useCallback(() => {
     console.log("Loading statistics...")
-    setHorsesCount(0)
-    setKutserosCount(0)
+    setrecordCount(0)
+    setvetCount(0)
   }, [])
 
   const loadRecentActivities = useCallback(() => {
@@ -144,12 +144,13 @@ function CtuDashboard() {
   }
 
   const handleStatsCardClick = (type) => {
-    if (type === "horses") {
-      alert(`Total Horses: ${horsesCount}\n\nClick to view detailed horse statistics`)
-    } else if (type === "kutseros") {
-      alert(`Registered Kutseros: ${kutserosCount}\n\nClick to view detailed kutsero statistics`)
-    }
+  if (type === "horses") {
+    alert(`Total Record: ${recordCount}\n\nClick to view detailed horse statistics`)
+  } else if (type === "vet") {
+    alert(`Registered Veterinarian: ${vetCount}\n\nClick to view detailed veterinarian statistics`)
   }
+}
+
 
   // Effects
   useEffect(() => {
@@ -351,12 +352,12 @@ function CtuDashboard() {
         <div className="content-area">
           <div className="stats-container">
             <div className="stat-card" onClick={() => handleStatsCardClick("horses")}>
-              <div className="stat-title">Total Horses</div>
-              <div className="stat-number">{horsesCount}</div>
+              <div className="stat-title">Total Record</div>
+              <div className="stat-number">{recordCount}</div>
             </div>
-            <div className="stat-card" onClick={() => handleStatsCardClick("kutseros")}>
-              <div className="stat-title">Registered Kutseros</div>
-              <div className="stat-number">{kutserosCount}</div>
+            <div className="stat-card" onClick={() => handleStatsCardClick("vet")}>
+              <div className="stat-title">Registered Veterinarian</div>
+              <div className="stat-number">{vetCount}</div>
             </div>
           </div>
 
