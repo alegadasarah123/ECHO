@@ -521,7 +521,7 @@ function CtuAccountApproval() {
                   <div className="modal-value">{selectedUser.email}</div>
                 </div>
                 <div className="modal-field full-width">
-                  <span className="modal-label">Facebook:</span>
+                  <span className="modal-label">Sex:</span>
                   <div className="modal-value">{selectedUser.facebook}</div>
                 </div>
               </div>
