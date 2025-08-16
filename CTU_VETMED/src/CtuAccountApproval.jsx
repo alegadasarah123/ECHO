@@ -217,7 +217,7 @@ useEffect(() => {
         data.map((item) => ({
           ...item,
           status: "pending", // default status if not coming from backend
-          type: item.type || "vet", // ensure type exists for badge
+          type: item.type || "Veterinarian", // ensure type exists for badge
         }))
       );
     } catch (error) {
@@ -227,6 +227,23 @@ useEffect(() => {
 
   loadVetProfiles();
 }, []);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
   // Effects
