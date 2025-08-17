@@ -13,6 +13,8 @@ CONTENT_TYPE_JSON = "application/json"
 # Supabase service role client
 sr_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+
+
 @api_view(['POST'])
 def signup(request):
     try:
@@ -153,8 +155,8 @@ def user_login(request):
 @api_view(['GET'])
 def get_vet_profiles(request):
     try:
-        # Query vet_profile table
-        response = sr_client.table("vet_profile").select("*").execute()
+        # Query vet_profile table and include user's status
+        response = sr_client.table("vet_profile").select("*, users(status)").execute()
 
         if response.data:
             return Response(response.data, status=status.HTTP_200_OK)
@@ -163,3 +165,35 @@ def get_vet_profiles(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+@api_view(["PATCH"])
+def update_vet_status(request, vet_profile_id):
+    try:
+        new_status = request.data.get("status")
+        if not new_status:
+            return Response({"error": "Status is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # 1️⃣ Update status in vet_profile table
+        res = sr_client.table("vet_profile") \
+            .update({"status": new_status}) \
+            .eq("id", vet_profile_id) \
+            .execute()
+
+        if not res.data:
+            return Response({"error": "Vet profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # 2️⃣ Optionally update users table if needed
+        vet_id_res = sr_client.table("vet_profile").select("vet_id").eq("id", vet_profile_id).single().execute()
+        if vet_id_res.data:
+            vet_id = vet_id_res.data["vet_id"]
+            sr_client.table("users").update({"status": new_status}).eq("id", vet_id).execute()
+
+        return Response(
+            {"message": f"Vet status updated to {new_status}", "data": res.data[0]},
+            status=status.HTTP_200_OK,
+        )
+
+    except Exception as e:
+        print("🔥 ERROR in update_vet_status:", str(e))
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

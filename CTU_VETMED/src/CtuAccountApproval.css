@@ -754,11 +754,12 @@ h2 {
 
 .modal-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding-top: 16px;
   border-top: 1px solid #e5e7eb;
   gap: 12px;
   flex-wrap: wrap;
+  
 }
 
 .modal-footer.close-only {
@@ -1125,15 +1126,85 @@ h2 {
 }
 
 .modal-avatar {
-  width: 48px;
-  height: 48px;
+  width: 60px;
+  height: 60px;
   border-radius: 50%;
-  background: #6b7280;
+  background-color: #6b7280;
+  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  font-weight: 600;
+  font-weight: bold;
   font-size: 20px;
-  flex-shrink: 0;
+  position: relative;
+}
+
+.modal-btns {
+  padding: 8px 18px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.modal-btns.approve {
+  background-color: #27ae60;
+  color: white;
+}
+
+.modal-btns.decline {
+  background-color: #e74c3c;
+  color: white;
+}
+
+.modal-btns.close {
+  background-color: #73797a;
+  color: black;
+}
+
+
+/* Wrapper for circle and text side by side */
+.modal-status-wrapper {
+  display: flex;
+  align-items: center;
+  position: absolute;
+  bottom: 0; /* adjust to sit at bottom-right */
+  right: -60px; /* shift right of avatar */
+  gap: 4px;
+}
+
+/* Circle for status */
+.modal-status-circle {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid white;
+}
+
+/* Status text */
+.modal-status-text {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+/* Status colors */
+.modal-status-circle.status-pending {
+  background-color: #ffe066; /* yellow */
+}
+.modal-status-circle.status-approved {
+  background-color: #2ecc71; /* green */
+}
+.modal-status-circle.status-declined {
+  background-color: #e74c3c; /* red */
+}
+
+.modal-status-text.status-pending {
+  color: #856404;
+}
+.modal-status-text.status-approved {
+  color: #155724;
+}
+.modal-status-text.status-declined {
+  color: #721c24;
 }

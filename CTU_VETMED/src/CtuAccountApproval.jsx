@@ -6,18 +6,14 @@ import "./CtuAccountApproval.css"; // Import the new CSS file
 function CtuAccountApproval() {
   const navigate = useNavigate()
 
-  const [registrationData, setRegistrationData] = useState([
-    
-  ])
+  const [registrationData, setRegistrationData] = useState([])
 
   const [activeTab, setActiveTab] = useState("pending")
   const [recentFilter, setRecentFilter] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
 
-  const [notifications, setNotifications] = useState([
-    
-  ])
+  const [notifications, setNotifications] = useState([])
 
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
@@ -201,50 +197,50 @@ function CtuAccountApproval() {
     closeLogoutModal()
   }
 
+  useEffect(() => {
+    const loadVetProfiles = async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:8000/get-vet-profiles/")
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
+        }
+        const data = await response.json()
+        console.log("Fetched vet profiles:", data)
 
-useEffect(() => {
-  const loadVetProfiles = async () => {
-    try {
-      const response = await fetch("http://127.0.0.1:8000/get-vet-profiles/");
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        console.log("[v0] Raw backend data:", data)
+        data.forEach((item, index) => {
+          console.log(`[v0] Item ${index}:`, {
+            id: item.id,
+            name: `${item.vet_fname} ${item.vet_lname}`,
+            status: item.status,
+            statusType: typeof item.status,
+            allFields: Object.keys(item),
+          })
+        })
+
+        setRegistrationData(
+          data.map((item) => ({
+            ...item,
+            status: item.status || "pending", // Use actual status from backend, fallback to "pending"
+            type: item.type || "Veterinarian", // ensure type exists for badge
+          })),
+        )
+
+        console.log(
+          "[v0] Processed registration data:",
+          data.map((item) => ({
+            id: item.id,
+            name: `${item.vet_fname} ${item.vet_lname}`,
+            finalStatus: item.status || "pending",
+          })),
+        )
+      } catch (error) {
+        console.error("Failed to fetch vet profiles:", error)
       }
-      const data = await response.json();
-      console.log("Fetched vet profiles:", data);
-
-      // ✅ Set the data into state so it will display
-      setRegistrationData(
-        data.map((item) => ({
-          ...item,
-          status: "pending", // default status if not coming from backend
-          type: item.type || "Veterinarian", // ensure type exists for badge
-        }))
-      );
-    } catch (error) {
-      console.error("Failed to fetch vet profiles:", error);
     }
-  };
 
-  loadVetProfiles();
-}, []);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    loadVetProfiles()
+  }, [])
 
   // Effects
   useEffect(() => {
@@ -521,15 +517,32 @@ useEffect(() => {
             <button className="modal-close" onClick={closeModal}>
               &times;
             </button>
+            
             <div className="modal-header">
-              <div className="modal-avatar">{selectedUser.vet_fname.charAt(0) + selectedUser.vet_lname.charAt(0)}</div>
+              <div className="modal-avatar-container">
+                <div className="modal-avatar">
+                  {selectedUser.vet_fname.charAt(0) + selectedUser.vet_lname.charAt(0)}
+                  <div className="modal-status-wrapper">
+                    <span className={`modal-status-circle status-${selectedUser.users?.status}`}></span>
+                    <span className={`modal-status-text status-${selectedUser.users?.status}`}>
+                      {selectedUser.users?.status.charAt(0).toUpperCase() + selectedUser.users?.status.slice(1)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               <div className="modal-user-info">
                 <h3>
                   {selectedUser.vet_fname} {selectedUser.vet_mname} {selectedUser.vet_lname}
                 </h3>
-                <span className={`modal-user-badge badge-${selectedUser.type}`}>{selectedUser.type}</span>
+                <div className="modal-user-meta">
+                  <span className={`modal-user-badge badge-${selectedUser.type}`}>{selectedUser.type}</span>
+                </div>
               </div>
             </div>
+
+
+
 
             <div className="modal-body">
               <div className="modal-section-box">
@@ -642,15 +655,15 @@ useEffect(() => {
             </div>
 
             <div className={`modal-footer ${selectedUser.status !== "pending" ? "close-only" : ""}`}>
-              <button className="modal-btn" onClick={closeModal}>
+              <button className="modal-btns" onClick={closeModal}>
                 Close
               </button>
               {selectedUser.status === "pending" && (
                 <>
-                  <button className="modal-btn approve" onClick={showApproveConfirmationFromModal}>
+                  <button className="modal-btns approve" onClick={showApproveConfirmationFromModal}>
                     Approve
                   </button>
-                  <button className="modal-btn decline" onClick={showDeclineConfirmationFromModal}>
+                  <button className="modal-btns decline" onClick={showDeclineConfirmationFromModal}>
                     Decline
                   </button>
                 </>
