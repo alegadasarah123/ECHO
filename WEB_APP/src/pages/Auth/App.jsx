@@ -1,19 +1,8 @@
 
-import { Button } from "./components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card"
-import { Badge } from "./components/ui/badge"
-import {
-  Heart,
-  MessageSquare,
-  FileText,
-  Bell,
-  Shield,
-  Clock,
-  Users,
-  CheckCircle,
-  ArrowRight,
-  Stethoscope,
-} from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import {Heart,MessageSquare,FileText,Bell,Shield,Clock,Users,CheckCircle,ArrowRight,Stethoscope,UserCheck} from "lucide-react"
 import { useState } from "react"
 import LogIn from "./logIn"
 import { Link } from "react-router-dom"

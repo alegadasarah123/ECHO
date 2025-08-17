@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {Search,Menu,Bell,Shield,Lock,Unlock,Mail,MessageCircle,HelpCircle,Phone,FileText,Settings as SettingsIcon,Eye,EyeOff,Check,X,Key,UserCheck,AlertTriangle,Info,ExternalLink,Download,RefreshCw,Clock,Globe} from 'lucide-react';
-import Sidebar from './components/ui/sideBar';
-import ProfileModal from './components/modal/profileModal';
+import Sidebar from '@/components/ui/sideBar';
+import ProfileModal from '@/components/modal/profileModal';
 
 const Settings = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);

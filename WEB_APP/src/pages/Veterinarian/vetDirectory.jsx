@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import {Search,Menu,Bell,Eye,Filter,MapPin,Phone,Mail,MessageCircle,X,Heart,Star,Award,Clock,Users,CheckCircle,Briefcase,Calendar,GraduationCap,UserCheck
 } from 'lucide-react';
-import Sidebar from './components/ui/sideBar';
-import FloatingMessages from './components/modal/floatingMessages';
-import ProfileModal from './components/modal/profileModal';
+import Sidebar from '@/components/ui/sideBar';
+import FloatingMessages from '@/components/modal/floatingMessages';
+import ProfileModal from '@/components/modal/profileModal';
 
 const VetDirectory = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -55,90 +55,6 @@ const VetDirectory = () => {
       bio: "Dr. Chen is a skilled surgeon specializing in small animal surgery. He has performed over 2,000 successful surgeries and is known for his gentle approach with both pets and their owners.",
       workingHours: "Mon-Fri: 7AM-5PM, Sun: 10AM-2PM",
       languages: ["English", "Mandarin", "Filipino"],
-      emergencyServices: false
-    },
-    {
-      id: 3,
-      name: "Dr. Emily Rodriguez",
-      email: "emily.rodriguez@vetcare.com",
-      phone: "(555) 345-6789",
-      location: "789 Pet Plaza, Westside",
-      city: "Cebu City",
-      state: "Cebu",
-      specialization: "Exotic Animal Care",
-      experience: "15 years",
-      rating: 4.9,
-      reviews: 234,
-      photo: "https://images.unsplash.com/photo-1594824388838-d3c569d2b84a?w=400&h=400&fit=crop&crop=face",
-      isAvailable: false,
-      education: "DVM - Central Luzon State University",
-      certifications: ["Exotic Animal Medicine Board Certified", "Wildlife Rehabilitation Specialist"],
-      bio: "Dr. Rodriguez is a renowned expert in exotic animal care, treating birds, reptiles, and small mammals. She has published numerous research papers on exotic animal medicine.",
-      workingHours: "Tue-Sat: 9AM-4PM",
-      languages: ["English", "Spanish", "Filipino"],
-      emergencyServices: true
-    },
-    {
-      id: 4,
-      name: "Dr. Robert Taylor",
-      email: "robert.taylor@vetcare.com",
-      phone: "(555) 456-7890",
-      location: "321 Healing Way, Eastside",
-      city: "Davao City",
-      state: "Davao del Sur",
-      specialization: "Veterinary Dentistry",
-      experience: "10 years",
-      rating: 4.7,
-      reviews: 87,
-      photo: "https://images.unsplash.com/photo-1582750433449-648ed127bb54?w=400&h=400&fit=crop&crop=face",
-      isAvailable: true,
-      education: "DVM - University of Southern Mindanao",
-      certifications: ["Veterinary Dental Specialist", "Oral Surgery Certified"],
-      bio: "Dr. Taylor specializes in veterinary dentistry and oral surgery. He has helped thousands of animals maintain healthy teeth and gums throughout their lives.",
-      workingHours: "Mon-Fri: 8AM-5PM",
-      languages: ["English", "Filipino"],
-      emergencyServices: false
-    },
-    {
-      id: 5,
-      name: "Dr. Amanda Foster",
-      email: "amanda.foster@vetcare.com",
-      phone: "(555) 567-8901",
-      location: "654 Care Circle, Northside",
-      city: "Baguio City",
-      state: "Benguet",
-      specialization: "Emergency Medicine",
-      experience: "6 years",
-      rating: 4.8,
-      reviews: 145,
-      photo: "https://images.unsplash.com/photo-1559757148-5c350d0d3c56?w=400&h=400&fit=crop&crop=face",
-      isAvailable: true,
-      education: "DVM - Benguet State University",
-      certifications: ["Emergency and Critical Care Specialist", "Advanced Life Support Certified"],
-      bio: "Dr. Foster is an emergency medicine specialist who provides critical care for animals in life-threatening situations. She is available 24/7 for emergency consultations.",
-      workingHours: "24/7 Emergency Services",
-      languages: ["English", "Filipino", "Ilocano"],
-      emergencyServices: true
-    },
-    {
-      id: 6,
-      name: "Dr. Lisa Wang",
-      email: "lisa.wang@vetcare.com",
-      phone: "(555) 678-9012",
-      location: "987 Wellness Way, Central",
-      city: "Iloilo City",
-      state: "Iloilo",
-      specialization: "Internal Medicine",
-      experience: "14 years",
-      rating: 4.9,
-      reviews: 189,
-      photo: "https://images.unsplash.com/photo-1551847812-1ad7b48cce90?w=400&h=400&fit=crop&crop=face",
-      isAvailable: true,
-      education: "DVM - University of the Philippines Los Baños",
-      certifications: ["Internal Medicine Specialist", "Cardiology Certified"],
-      bio: "Dr. Wang is an internal medicine specialist with expertise in complex medical cases. She has a particular interest in cardiology and endocrine disorders.",
-      workingHours: "Mon-Sat: 8AM-6PM",
-      languages: ["English", "Mandarin", "Filipino", "Hiligaynon"],
       emergencyServices: false
     }
   ];
@@ -223,7 +139,6 @@ const VetDirectory = () => {
 
         {/* Directory Content */}
         <div className="flex-1 p-6 overflow-auto">
-          {/* Header */}
           <div className="flex items-center justify-between mb-6">
             <div>
               <h1 className="text-3xl font-bold text-gray-800 mb-2">Veterinarian Directory</h1>
@@ -292,11 +207,6 @@ const VetDirectory = () => {
                       <h3 className="text-lg font-bold text-gray-800 mb-1">{vet.name}</h3>
                       <p className="text-green-600 text-sm font-medium">{vet.specialization}</p>
                     </div>
-                    <div className="flex items-center space-x-1">
-                      <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                      <span className="text-sm font-medium text-gray-700">{vet.rating}</span>
-                      <span className="text-xs text-gray-500">({vet.reviews})</span>
-                    </div>
                   </div>
                   
                   <div className="space-y-2 mb-4">
@@ -354,10 +264,6 @@ const VetDirectory = () => {
                   <div>
                     <h2 className="text-2xl font-bold">{selectedVet.name}</h2>
                     <p className="text-green-100 text-sm">{selectedVet.specialization}</p>
-                    <div className="flex items-center space-x-2 mt-1">
-                      <Star className="w-4 h-4 text-yellow-300 fill-current" />
-                      <span className="text-sm text-white">{selectedVet.rating} ({selectedVet.reviews} reviews)</span>
-                    </div>
                   </div>
                 </div>
                 <button 

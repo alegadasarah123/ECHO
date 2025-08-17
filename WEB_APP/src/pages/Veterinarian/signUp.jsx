@@ -1,31 +1,30 @@
-"use client"
-
 import { useState } from "react"
-import { Link } from "react-router-dom"
-import { Button } from "./components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./components/ui/card"
-import { Input } from "./components/ui/input"
-import { Label } from "./components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./components/ui/select"
+import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Eye, EyeOff, Upload, User, MapPin, Briefcase, Lock, Stethoscope, CheckCircle } from "lucide-react"
 
 function SignUp() {
+  const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState(1)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [errors, setErrors] = useState({}) // State to hold validation errors
+  const [errors, setErrors] = useState({}) 
 
   // State for personal information
   const [firstName, setFirstName] = useState("")
   const [middleName, setMiddleName] = useState("")
   const [lastName, setLastName] = useState("")
   const [dob, setDob] = useState("")
-  const [sex, setSex] = useState("")
+  const [sex, setSex] = useState("") 
   const [phoneNumber, setPhoneNumber] = useState("")
 
   // State for address
-  const [province, setProvince] = useState("")
-  const [city, setCity] = useState("")
+  const [province, setProvince] = useState("") 
+  const [city, setCity] = useState("") 
   const [barangay, setBarangay] = useState("")
   const [zipCode, setZipCode] = useState("")
 
@@ -35,68 +34,55 @@ function SignUp() {
   const [yearsOfExperience, setYearsOfExperience] = useState("")
   const [specialization, setSpecialization] = useState("")
   const [affiliatedOrganization, setAffiliatedOrganization] = useState("")
-  const [document, setDocument] = useState(null) // For file upload
+  const [document, setDocument] = useState(null)
 
   // State for login credentials
-  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
 
-  const totalSteps = 4 // Define total number of steps
+  const totalSteps = 4
   const stepTitles = ["Personal Info", "Address Details", "Professional Info", "Set Up Login"]
+
+  // Philippine provinces and cities data
+  const philippineLocations = {
+    metro_manila: ["Quezon City", "Manila", "Makati", "Taguig", "Pasig"],
+    cebu: ["Cebu City", "Mandaue City", "Lapu-Lapu City", "Talisay City"],
+    davao_del_sur: ["Davao City", "Digos City", "Santa Cruz", "Bansalan"]
+  }
 
   const validateStep = () => {
     const newErrors = {}
     let isValid = true
 
     if (currentStep === 1) {
-      if (!firstName.trim()) {
-        newErrors.firstName = "First name is required."
-      }
-      if (!lastName.trim()) {
-        newErrors.lastName = "Last name is required."
-      }
-      if (!dob) {
-        newErrors.dob = "Date of Birth is required."
-      }
-      if (!sex) {
-        newErrors.sex = "Sex is required."
-      }
+      if (!firstName.trim()) newErrors.firstName = "First name is required."
+      if (!middleName.trim()) newErrors.middleName = "Middle name is required." 
+      if (!lastName.trim()) newErrors.lastName = "Last name is required."
+      if (!dob) newErrors.dob = "Date of Birth is required."
+      if (!sex) newErrors.sex = "Sex is required."
       if (!phoneNumber.trim()) {
         newErrors.phoneNumber = "Phone number is required."
       } else if (!/^\+?\d{10,15}$/.test(phoneNumber)) {
-        // Basic phone number regex
         newErrors.phoneNumber = "Invalid phone number format."
       }
-      if (!email.trim()) {
-        newErrors.email = "Email address is required."
-      } else if (!/\S+@\S+\.\S+/.test(email)) {
-        // Basic email regex
-        newErrors.email = "Invalid email address format."
-      }
     } else if (currentStep === 2) {
-      if (!province) {
-        newErrors.province = "Province is required."
-      }
-      if (!city) {
-        newErrors.city = "City is required."
-      }
-      if (!barangay.trim()) {
-        newErrors.barangay = "Barangay is required."
-      }
+      if (!province) newErrors.province = "Province is required."
+      if (!city) newErrors.city = "City is required."
+      if (!barangay.trim()) newErrors.barangay = "Barangay is required."
       if (!zipCode.trim()) {
         newErrors.zipCode = "ZIP Code is required."
       } else if (!/^\d{4}$/.test(zipCode)) {
-        // Basic 4-digit ZIP code regex for PH
         newErrors.zipCode = "Invalid ZIP Code format (e.g., 1000)."
       }
     } else if (currentStep === 3) {
-      if (!licenseNumber.trim()) {
-        newErrors.licenseNumber = "License number is required."
-      }
+      if (!licenseNumber.trim()) newErrors.licenseNumber = "License number is required."
+      if (!yearsOfExperience.trim()) newErrors.yearsOfExperience = "Years of experience is required." 
+      if (!document) newErrors.document = "Please upload a document." 
     } else if (currentStep === 4) {
-      if (!username.trim()) {
-        newErrors.username = "Username is required."
+      if (!email.trim()) {
+        newErrors.email = "Email address is required."
+      } else if (!/\S+@\S+\.\S+/.test(email)) {
+        newErrors.email = "Invalid email address format."
       }
       if (!password) {
         newErrors.password = "Password is required."
@@ -123,40 +109,65 @@ function SignUp() {
   }
 
   const handlePrevious = () => {
-    setErrors({}) // Clear errors when going back
+    setErrors({}) 
     setCurrentStep((prev) => Math.max(prev - 1, 1))
   }
 
-  const handleSubmit = (e) => {
-    e.preventDefault()
-    if (validateStep()) {
-      // Validate final step before submission
-      console.log("Sign Up Attempt:", {
-        firstName,
-        middleName,
-        lastName,
-        dob,
-        sex,
-        phoneNumber,
-        province,
-        city,
-        barangay,
-        zipCode,
-        email,
-        licenseNumber,
-        yearsOfExperience,
-        specialization,
-        affiliatedOrganization,
-        document,
-        username,
-        password,
-        confirmPassword,
-      })
-      alert("Sign up form submitted! (Check console for data)")
-      // In a real app, you'd send this data to your backend
-      // and then potentially redirect: navigate('/login');
+// Handle form submission
+const handleSubmit = async (e) => {
+  e.preventDefault();
+
+  if (!validateStep()) return;
+
+  const payload = {
+    firstName,
+    middleName,
+    lastName,
+    dob,
+    sex,
+    phoneNumber,
+    province,
+    city,
+    barangay,
+    zipCode,
+    email,
+    licenseNumber,
+    yearsOfExperience,
+    specialization: specialization || "",
+    affiliatedOrganization: affiliatedOrganization || "",
+    document: document || "", 
+    password,
+    password_confirmation: confirmPassword,
+  };
+
+  try {
+    const response = await fetch("http://127.0.0.1:8000/api/signup/", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      alert("Sign up successful!");
+      console.log("Signup response:", data);
+      navigate("/login");
+    } else {
+      if (data.errors) {
+        setErrors(data.errors);
+      } else {
+        alert("Sign up failed: " + (data.error || "Unknown error"));
+      }
     }
+  } catch (error) {
+    console.error("Error during sign up:", error);
+    alert("Sign up failed due to network error.");
   }
+};
+
 
   const renderStepContent = () => {
     switch (currentStep) {
@@ -166,7 +177,7 @@ function SignUp() {
             <h3 className="text-xl font-semibold text-gray-800 border-b border-gray-200 pb-2 flex items-center gap-2">
               <User className="h-5 w-5 text-[#10B981]" /> Personal & Contact Information
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="firstName">First Name</Label>
                 <Input
@@ -181,6 +192,17 @@ function SignUp() {
                   required
                 />
                 {errors.firstName && <p className="text-red-500 text-xs mt-1">{errors.firstName}</p>}
+              </div>
+              <div>
+                <Label htmlFor="middleName">Middle Name</Label>
+                <Input
+                  id="middleName"
+                  value={middleName}
+                  onChange={(e) => setMiddleName(e.target.value)}
+                  placeholder="Middle Name"
+                  className={errors.middleName ? "border-red-500" : ""}
+                />
+                {errors.middleName && <p className="text-red-500 text-xs mt-1">{errors.middleName}</p>}
               </div>
               <div>
                 <Label htmlFor="lastName">Last Name</Label>
@@ -198,7 +220,7 @@ function SignUp() {
                 {errors.lastName && <p className="text-red-500 text-xs mt-1">{errors.lastName}</p>}
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="dob">Date Of Birth</Label>
                 <Input
@@ -225,13 +247,14 @@ function SignUp() {
                   value={sex}
                   required
                 >
-                  <SelectTrigger id="sex" className={errors.sex ? "border-red-500" : ""}>
+                  <SelectTrigger id="sex" className={errors.sex ? "border-red-500 bg-white" : "bg-white"}>
                     <SelectValue placeholder="Please Select" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white">
                     <SelectItem value="male">Male</SelectItem>
                     <SelectItem value="female">Female</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
+                    <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
                   </SelectContent>
                 </Select>
                 {errors.sex && <p className="text-red-500 text-xs mt-1">{errors.sex}</p>}
@@ -253,22 +276,6 @@ function SignUp() {
               />
               {errors.phoneNumber && <p className="text-red-500 text-xs mt-1">{errors.phoneNumber}</p>}
             </div>
-            <div>
-              <Label htmlFor="email">Email Address</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value)
-                  setErrors((prev) => ({ ...prev, email: "" }))
-                }}
-                placeholder="your.email@example.com"
-                className={errors.email ? "border-red-500" : ""}
-                required
-              />
-              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-            </div>
           </div>
         )
       case 2:
@@ -283,19 +290,19 @@ function SignUp() {
                 <Select
                   onValueChange={(value) => {
                     setProvince(value)
-                    setErrors((prev) => ({ ...prev, province: "" }))
+                    setCity("") // Reset city when province changes
+                    setErrors((prev) => ({ ...prev, province: "", city: "" }))
                   }}
                   value={province}
                   required
                 >
-                  <SelectTrigger id="province" className={errors.province ? "border-red-500" : ""}>
+                  <SelectTrigger id="province" className={errors.province ? "border-red-500 bg-white" : "bg-white"}>
                     <SelectValue placeholder="Please Select" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white">
                     <SelectItem value="metro_manila">Metro Manila</SelectItem>
                     <SelectItem value="cebu">Cebu</SelectItem>
                     <SelectItem value="davao_del_sur">Davao del Sur</SelectItem>
-                    {/* Add more provinces as needed */}
                   </SelectContent>
                 </Select>
                 {errors.province && <p className="text-red-500 text-xs mt-1">{errors.province}</p>}
@@ -308,16 +315,21 @@ function SignUp() {
                     setErrors((prev) => ({ ...prev, city: "" }))
                   }}
                   value={city}
+                  disabled={!province}
                   required
                 >
-                  <SelectTrigger id="city" className={errors.city ? "border-red-500" : ""}>
-                    <SelectValue placeholder="Please Select" />
+                  <SelectTrigger id="city" className={errors.city ? "border-red-500 bg-white" : "bg-white"}>
+                    <SelectValue placeholder={province ? "Select City" : "Select Province First"} />
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="quezon_city">Quezon City</SelectItem>
-                    <SelectItem value="cebu_city">Cebu City</SelectItem>
-                    <SelectItem value="davao_city">Davao City</SelectItem>
-                    {/* Add more cities based on selected province */}
+                  <SelectContent className="bg-white">
+                    {province && philippineLocations[province]?.map((cityName) => (
+                      <SelectItem 
+                        key={cityName} 
+                        value={cityName.toLowerCase().replace(/\s+/g, '_')}
+                      >
+                        {cityName}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
                 {errors.city && <p className="text-red-500 text-xs mt-1">{errors.city}</p>}
@@ -381,14 +393,17 @@ function SignUp() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="yearsOfExperience">Years of Experience (Optional)</Label>
+                <Label htmlFor="yearsOfExperience">Years of Experience</Label>
                 <Input
-                  id="yearsOfExperience"
-                  type="number"
-                  value={yearsOfExperience}
-                  onChange={(e) => setYearsOfExperience(e.target.value)}
-                  placeholder="e.g., 5"
-                />
+                id="yearsOfExperience"
+                type="number"
+                value={yearsOfExperience}
+                onChange={(e) => setYearsOfExperience(e.target.value)}
+                placeholder="e.g., 5"
+                className={errors.yearsOfExperience ? "border-red-500" : ""}
+              />
+              {errors.yearsOfExperience && <p className="text-red-500 text-xs mt-1">{errors.yearsOfExperience}</p>}
+
               </div>
               <div>
                 <Label htmlFor="specialization">Specialization (Optional)</Label>
@@ -427,10 +442,12 @@ function SignUp() {
                   id="documentUpload"
                   type="file"
                   onChange={(e) => setDocument(e.target.files ? e.target.files[0] : null)}
-                  className="hidden" // Hide the default file input
-                />
+                  className="hidden"
+              />
                 {document && <span className="text-sm text-gray-500">{document.name}</span>}
               </div>
+              {errors.document && <p className="text-red-500 text-xs mt-1">{errors.document}</p>}
+
               <p className="text-sm text-gray-500">
                 Note: Actual file upload functionality requires backend integration. This is a placeholder.
               </p>
@@ -444,19 +461,23 @@ function SignUp() {
               <Lock className="h-5 w-5 text-[#10B981]" /> Set up your login
             </h3>
             <div>
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="email">Email Address</Label>
               <Input
-                id="username"
-                value={username}
+                id="email"
+                type="email"
+                value={email}
                 onChange={(e) => {
-                  setUsername(e.target.value)
-                  setErrors((prev) => ({ ...prev, username: "" }))
+                  setEmail(e.target.value)
+                  setErrors((prev) => ({ ...prev, email: "" }))
                 }}
-                placeholder="Choose a username"
-                className={errors.username ? "border-red-500" : ""}
+                placeholder="your.email@example.com"
+                className={errors.email ? "border-red-500" : ""}
                 required
               />
-              {errors.username && <p className="text-red-500 text-xs mt-1">{errors.username}</p>}
+              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
+              <p className="text-xs text-gray-500 mt-1">
+                This will be your login email address.
+              </p>
             </div>
             <div>
               <Label htmlFor="password">Password</Label>
@@ -520,13 +541,10 @@ function SignUp() {
       <div className="w-full max-w-2xl relative">
         {/* Back to Login Link */}
         <div className="mb-6 animate-in slide-in-from-top duration-500">
-          <Link
-            to="/login"
-            className="inline-flex items-center text-sm text-gray-600 hover:text-[#10B981] transition-colors group"
-          >
+          <button className="inline-flex items-center text-sm text-gray-600 hover:text-[#10B981] transition-colors group">
             <ArrowLeft className="h-4 w-4 mr-2 group-hover:-translate-x-1 transition-transform duration-200" />
             Back to Login
-          </Link>
+          </button>
         </div>
 
         {/* Sign Up Card */}
@@ -568,7 +586,7 @@ function SignUp() {
           </CardHeader>
 
           <CardContent className="space-y-8 p-6 md:p-8">
-            <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="space-y-6">
               {renderStepContent()}
 
               {/* Navigation Buttons */}
@@ -596,25 +614,23 @@ function SignUp() {
                 )}
                 {currentStep === totalSteps && (
                   <Button
-                    type="submit"
+                    type="button"
+                    onClick={handleSubmit}
                     className="w-full bg-[#10B981] hover:bg-[#0e9f71] text-white py-3 text-base font-medium hover:scale-[1.02] transition-all duration-200 hover:shadow-lg"
                   >
                     <CheckCircle className="h-5 w-5 mr-2" /> Create Account
                   </Button>
                 )}
               </div>
-            </form>
+            </div>
 
             {/* Already have an account link */}
             <div className="text-center mt-4">
               <p className="text-sm text-gray-600">
                 Already have an account?{" "}
-                <Link
-                  to="/login"
-                  className="text-[#10B981] hover:text-[#0e9f71] font-medium hover:underline transition-colors"
-                >
+                <button className="text-[#10B981] hover:text-[#0e9f71] font-medium hover:underline transition-colors">
                   Sign in
-                </Link>
+                </button>
               </p>
             </div>
           </CardContent>
@@ -622,7 +638,7 @@ function SignUp() {
 
         {/* Footer */}
         <div className="mt-8 text-center text-xs text-gray-500 animate-in fade-in duration-500 delay-1400">
-          <p>© 2024 Echo Veterinary Systems. All rights reserved.</p>
+          <p>© 2025 Echo - Veterinarian. All rights reserved.</p>
           <div className="mt-2 space-x-4">
             <a href="#" className="hover:text-[#10B981] transition-colors">
               Privacy Policy

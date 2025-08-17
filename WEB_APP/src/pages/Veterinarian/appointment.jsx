@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import {Calendar,Users,FileText,Search,Menu,Clock,MessageCircle,Bell,Filter,Eye,Trash2,MoreVertical,PawPrint,User,Phone,MapPin,CheckCircle,AlertCircle,RefreshCw,Check,X,Clock3,AlertTriangle
 } from 'lucide-react';
-import Sidebar from './components/ui/sideBar';
-import FloatingMessages from './components/modal/floatingMessages';
-import ProfileModal from './components/modal/profileModal';
+import Sidebar from '@/components/ui/sideBar';
+import FloatingMessages from '@/components/modal/floatingMessages';
+import ProfileModal from '@/components/modal/profileModal';
 
 const VetAppointments = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
