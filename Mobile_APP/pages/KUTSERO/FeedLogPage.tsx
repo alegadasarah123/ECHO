@@ -7,7 +7,7 @@ import {
     ScrollView,
     StatusBar,
     StyleSheet,
-    Text,
+    Text,   
     TouchableOpacity,
     View,
 } from "react-native"
