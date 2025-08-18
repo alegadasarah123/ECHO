@@ -11,6 +11,15 @@ import VetAccessRequests from "./pages/Veterinarian/accessRequest.jsx"
 import HealthLogs from "./pages/Veterinarian/healthLog.jsx"
 import VetDirectory from "./pages/Veterinarian/vetDirectory.jsx"
 import Settings from "./pages/Veterinarian/settings.jsx"
+import AccessRequests from "./CtuAccessRequest.jsx"
+import AccountApproval from "./CtuAccountApproval.jsx"
+import Announcements from "./CtuAnnouncement.jsx"
+import CtuDashboard from "./CtuDashboard.jsx"
+import Directory from "./CtuDirectory.jsx"
+import HealthReport from "./CtuHealthReport.jsx"
+import HorseRecord from "./CtuHorseRecord.jsx"
+import Message from "./CtuMessage.jsx"
+import Settings from "./CtuSettings.jsx"
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -25,6 +34,15 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <Route path="/health-logs" element={<HealthLogs />} />
         <Route path="/vet-directory" element={<VetDirectory />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/CtuDashboard" element={<CtuDashboard />} />
+        <Route path="/CtuAccountApproval" element={<AccountApproval />} />
+        <Route path="/CtuAccessRequest" element={<AccessRequests />} />
+        <Route path="/CtuHorseRecord" element={<HorseRecord />} />
+        <Route path="/CtuHealthReport" element={<HealthReport />} />
+        <Route path="/CtuAnnouncement" element={<Announcements />} />
+        <Route path="/CtuDirectory" element={<Directory />} />
+        <Route path="/CtuSettings" element={<Settings />} />
+        <Route path="/CtuMessage" element={<Message />} />
       </Routes>
     </BrowserRouter>
   </React.StrictMode>,
