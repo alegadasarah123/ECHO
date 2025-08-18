@@ -14,6 +14,7 @@
     "components": "@/components",
     "utils": "@/lib/utils",
     "ui": "@/components/ui",
+    "modal": "@/components/modal",
     "lib": "@/lib",
     "hooks": "@/hooks"
   },
