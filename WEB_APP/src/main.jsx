@@ -1,33 +1,34 @@
-import React from "react"
-import ReactDOM from "react-dom/client"
-import { BrowserRouter, Route, Routes } from "react-router-dom"
-import AccessRequests from "./CtuAccessRequest.jsx"
-import AccountApproval from "./CtuAccountApproval.jsx"
-import Announcements from "./CtuAnnouncement.jsx"
-import CtuDashboard from "./CtuDashboard.jsx"
-import Directory from "./CtuDirectory.jsx"
-import HealthReport from "./CtuHealthReport.jsx"
-import HorseRecord from "./CtuHorseRecord.jsx"
-import Message from "./CtuMessage.jsx"
-import Setting from "./CtuSettings.jsx"
-import AccessRequest from "./DvmfAccessRequest.jsx"
-import AccountApprovals from "./DvmfAccountApproval.jsx"
-import Announcement from "./DvmfAnnouncement.jsx"
-import Directorys from "./DvmfDirectory.jsx"
-import HealthReports from "./DvmfHealthReport.jsx"
-import HorseRecords from "./DvmfHorseRecord.jsx"
-import Messages from "./DvmfMessage.jsx"
-import Settingss from "./DvmfSettings.jsx"
-import "./index.css"
-import App from "./pages/Auth/App.jsx"
-import LogIn from "./pages/Auth/logIn.jsx"
-import VetAccessRequests from "./pages/Veterinarian/accessRequest.jsx"
-import VetAppointments from "./pages/Veterinarian/appointment.jsx"
-import VetDashboard from "./pages/Veterinarian/dashboard.jsx"
-import HealthLogs from "./pages/Veterinarian/healthLog.jsx"
-import Settings from "./pages/Veterinarian/settings.jsx"
-import SignUp from "./pages/Veterinarian/signUp.jsx"
-import VetDirectory from "./pages/Veterinarian/vetDirectory.jsx"
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import "./index.css";
+import App from "./pages/Auth/App.jsx";
+import LogIn from "./pages/Auth/logIn.jsx";
+import AccessRequests from "./pages/Ctu-Vetmed/CtuAccessRequest.jsx";
+import AccountApproval from "./pages/Ctu-Vetmed/CtuAccountApproval.jsx";
+import Announcements from "./pages/Ctu-Vetmed/CtuAnnouncement.jsx";
+import CtuDashboard from "./pages/Ctu-Vetmed/CtuDashboard.jsx";
+import Directory from "./pages/Ctu-Vetmed/CtuDirectory.jsx";
+import HealthReport from "./pages/Ctu-Vetmed/CtuHealthReport.jsx";
+import HorseRecord from "./pages/Ctu-Vetmed/CtuHorseRecord.jsx";
+import Message from "./pages/Ctu-Vetmed/CtuMessage.jsx";
+import Setting from "./pages/Ctu-Vetmed/CtuSettings.jsx";
+import AccessRequest from "./pages/Dvmf/DvmfAccessRequest.jsx";
+import AccountApprovals from "./pages/Dvmf/DvmfAccountApproval.jsx";
+import Announcement from "./pages/Dvmf/DvmfAnnouncement.jsx";
+import DvmfDashboard from "./pages/Dvmf/DvmfDashboard.jsx";
+import Directorys from "./pages/Dvmf/DvmfDirectory.jsx";
+import HealthReports from "./pages/Dvmf/DvmfHealthReport.jsx";
+import HorseRecords from "./pages/Dvmf/DvmfHorseRecord.jsx";
+import Messages from "./pages/Dvmf/DvmfMessage.jsx";
+import Settingss from "./pages/Dvmf/DvmfSettings.jsx";
+import VetAccessRequests from "./pages/Veterinarian/accessRequest.jsx";
+import VetAppointments from "./pages/Veterinarian/appointment.jsx";
+import VetDashboard from "./pages/Veterinarian/dashboard.jsx";
+import HealthLogs from "./pages/Veterinarian/healthLog.jsx";
+import Settings from "./pages/Veterinarian/settings.jsx";
+import SignUp from "./pages/Veterinarian/signUp.jsx";
+import VetDirectory from "./pages/Veterinarian/vetDirectory.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>

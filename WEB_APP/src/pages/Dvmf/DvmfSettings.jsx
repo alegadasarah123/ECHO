@@ -1,7 +1,7 @@
 "use client"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import "./Dvmfettings.css"
+import "./DvmfSettings.css"
 
 function DvmfSettings() {
   const navigate = useNavigate()
