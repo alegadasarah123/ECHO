@@ -4,6 +4,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import "./index.css";
 import App from "./pages/Auth/App.jsx";
 import LogIn from "./pages/Auth/logIn.jsx";
+import SignUp from "./pages/Auth/signUp.jsx";
 import AccessRequests from "./pages/Ctu-Vetmed/CtuAccessRequest.jsx";
 import AccountApproval from "./pages/Ctu-Vetmed/CtuAccountApproval.jsx";
 import Announcements from "./pages/Ctu-Vetmed/CtuAnnouncement.jsx";
@@ -22,14 +23,13 @@ import HealthReports from "./pages/Dvmf/DvmfHealthReport.jsx";
 import HorseRecords from "./pages/Dvmf/DvmfHorseRecord.jsx";
 import Messages from "./pages/Dvmf/DvmfMessage.jsx";
 import Settingss from "./pages/Dvmf/DvmfSettings.jsx";
-import VetRequest from "./pages/Veterinarian/VetRequest.jsx";
+import KutDashboard from "./pages/Kutsero/KutDashboard.jsx";
 import VetAppointment from "./pages/Veterinarian/VetAppointment.jsx";
 import VetDashboard from "./pages/Veterinarian/VetDashboard.jsx";
-import VetHealthLog from "./pages/Veterinarian/VetHealthLog.jsx";
-import VetSettings from "./pages/Veterinarian/VetSettings.jsx";
-import SignUp from "./pages/Auth/signUp.jsx";
 import VetDirectory from "./pages/Veterinarian/vetDirectory.jsx";
-import KutDashboard from "./pages/Kutsero/KutDashboard.jsx";
+import VetHealthLog from "./pages/Veterinarian/VetHealthLog.jsx";
+import VetRequest from "./pages/Veterinarian/VetRequest.jsx";
+import VetSettings from "./pages/Veterinarian/VetSettings.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
