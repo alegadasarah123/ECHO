@@ -1,5 +1,5 @@
 import React from "react";
-import Sidebar from "./sidebar";
+import Sidebar from "./KutSidebar";
 
 const UserManagementPage = () => {
   const toggleSidebar = () => {

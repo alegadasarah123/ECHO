@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import Sidebar from './sidebar';
+import Sidebar from './KutSidebar';
 
 const Dashboard = () => {
   useEffect(() => {
