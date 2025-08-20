@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from "react"
 import {
@@ -82,12 +81,19 @@ interface Horse {
 interface UserData {
   id: string
   email: string
-  firstName?: string
-  lastName?: string
-  middleName?: string
-  username?: string
-  phoneNumber?: string
-  profile?: any
+  profile?: {
+    kutsero_id: string
+    kutsero_fname?: string
+    kutsero_lname?: string
+    kutsero_mname?: string
+    kutsero_username?: string
+    kutsero_phone_num?: string
+    kutsero_email?: string
+    [key: string]: any
+  }
+  access_token: string
+  refresh_token?: string
+  user_status?: string
 }
 
 // Reaction types
@@ -112,6 +118,36 @@ const REACTIONS: Reaction[] = [
   { type: 'angry', emoji: '😡', color: '#F25268', label: 'Angry' },
 ]
 
+// Backend API configuration
+const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
+
+// Session storage class to replace AsyncStorage
+class SessionStorage {
+  private static storage: { [key: string]: string } = {}
+
+  static async setItem(key: string, value: string): Promise<void> {
+    this.storage[key] = value
+  }
+
+  static async getItem(key: string): Promise<string | null> {
+    return this.storage[key] || null
+  }
+
+  static async multiRemove(keys: string[]): Promise<void> {
+    keys.forEach(key => {
+      delete this.storage[key]
+    })
+  }
+
+  static async removeItem(key: string): Promise<void> {
+    delete this.storage[key]
+  }
+
+  static clear(): void {
+    this.storage = {}
+  }
+}
+
 export default function DashboardScreen() {
   const router = useRouter()
   const [searchText, setSearchText] = useState("")
@@ -121,7 +157,6 @@ export default function DashboardScreen() {
   // Updated user state management
   const [currentUser, setCurrentUser] = useState("User") // Default fallback
   const [userData, setUserData] = useState<UserData | null>(null)
-  const [userProfile, setUserProfile] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   
   const [selectedHorse, setSelectedHorse] = useState<Horse>({
@@ -170,7 +205,42 @@ export default function DashboardScreen() {
 
   const commentCount = comments.length
 
-  // Load user data and selected horse from storage on component mount
+  // Validate authentication token
+  const validateAuthToken = async (token: string): Promise<boolean> => {
+    try {
+      // You can add a backend endpoint to validate token
+      // For now, we'll assume token is valid if it exists
+      return token.length > 0
+    } catch (error) {
+      console.error('Token validation error:', error)
+      return false
+    }
+  }
+
+  // API call to get user profile data
+  const fetchUserProfile = async (userId: string, token: string): Promise<any> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/profile/${userId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        return data
+      } else {
+        throw new Error('Failed to fetch profile')
+      }
+    } catch (error) {
+      console.error('Error fetching profile:', error)
+      throw error
+    }
+  }
+
+  // Load user data and selected horse from session storage
   useEffect(() => {
     loadUserData()
     loadSelectedHorse()
@@ -187,14 +257,20 @@ export default function DashboardScreen() {
   const loadUserData = async () => {
     setIsLoading(true)
     try {
-      // Get the stored authentication data
-      const storedAuthData = await AsyncStorage.getItem('userAuthData')
-      const storedAccessToken = await AsyncStorage.getItem('accessToken')
+      // Get the stored authentication data from session storage
+      const storedAuthData = await SessionStorage.getItem('userAuthData')
+      const storedAccessToken = await SessionStorage.getItem('accessToken')
       
       if (storedAuthData && storedAccessToken) {
-        const authData = JSON.parse(storedAuthData)
-        setUserData(authData.user)
-        setUserProfile(authData.profile)
+        const authData: UserData = JSON.parse(storedAuthData)
+        
+        // Validate token
+        const isValidToken = await validateAuthToken(storedAccessToken)
+        if (!isValidToken) {
+          throw new Error('Invalid token')
+        }
+
+        setUserData(authData)
         
         // Set display name based on available data
         let displayName = "User" // default fallback
@@ -209,16 +285,15 @@ export default function DashboardScreen() {
           } else if (kutsero_fname) {
             displayName = kutsero_fname
           }
-        } else if (authData.user) {
+        } else if (authData.email) {
           // Fallback to user email if no profile
-          displayName = authData.user.email?.split('@')[0] || "User"
+          displayName = authData.email.split('@')[0]
         }
         
         setCurrentUser(displayName)
         
         console.log('Loaded user data:', {
-          user: authData.user,
-          profile: authData.profile,
+          user: authData,
           displayName: displayName
         })
       } else {
@@ -230,7 +305,7 @@ export default function DashboardScreen() {
           [
             {
               text: "OK",
-              onPress: () => router.replace('/login')
+              onPress: () => router.replace('../pages/auth/login')
             }
           ]
         )
@@ -243,7 +318,7 @@ export default function DashboardScreen() {
         [
           {
             text: "OK",
-            onPress: () => router.replace('/login')
+            onPress: () => router.replace('../pages/auth/login')
           }
         ]
       )
@@ -254,7 +329,7 @@ export default function DashboardScreen() {
 
   const loadSelectedHorse = async () => {
     try {
-      const savedHorseData = await AsyncStorage.getItem('selectedHorseData')
+      const savedHorseData = await SessionStorage.getItem('selectedHorseData')
       if (savedHorseData) {
         const horse = JSON.parse(savedHorseData)
         setSelectedHorse(horse)
@@ -272,19 +347,13 @@ export default function DashboardScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            // Clear all user data from storage
-            await AsyncStorage.multiRemove([
-              'userAuthData',
-              'accessToken',
-              'refreshToken',
-              'selectedHorseData',
-              'currentUser'
-            ])
-            router.replace('/login')
+            // Clear all user data from session storage
+            SessionStorage.clear()
+            router.replace('../pages/auth/login')
           } catch (error) {
             console.error('Error during logout:', error)
             // Still navigate even if storage clear fails
-            router.replace('/login')
+            router.replace('../pages/auth/login')
           }
         },
       },
@@ -379,14 +448,28 @@ export default function DashboardScreen() {
     }
   }
 
-  const handleCheckIn = () => {
-    const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    setIsCheckedIn(true)
-    setCheckInTime(currentTime)
-    Alert.alert("Success", `Checked in with ${selectedHorse.name} at ${currentTime}`)
+  const handleCheckIn = async () => {
+    try {
+      const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+      
+      // Store check-in data in session storage
+      await SessionStorage.setItem('checkInData', JSON.stringify({
+        horseId: selectedHorse.id,
+        horseName: selectedHorse.name,
+        checkInTime: currentTime,
+        timestamp: Date.now()
+      }))
+      
+      setIsCheckedIn(true)
+      setCheckInTime(currentTime)
+      Alert.alert("Success", `Checked in with ${selectedHorse.name} at ${currentTime}`)
+    } catch (error) {
+      console.error('Error during check-in:', error)
+      Alert.alert("Error", "Failed to check in. Please try again.")
+    }
   }
 
-  const handleCheckOut = () => {
+  const handleCheckOut = async () => {
     const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     Alert.alert(
       "Check Out Confirmation",
@@ -395,15 +478,43 @@ export default function DashboardScreen() {
         { text: "Cancel", style: "cancel" },
         {
           text: "Check Out",
-          onPress: () => {
-            setIsCheckedIn(false)
-            setCheckInTime(null)
-            Alert.alert("Success", `Successfully checked out from ${selectedHorse.name}`)
+          onPress: async () => {
+            try {
+              // Clear check-in data from session storage
+              await SessionStorage.removeItem('checkInData')
+              
+              setIsCheckedIn(false)
+              setCheckInTime(null)
+              Alert.alert("Success", `Successfully checked out from ${selectedHorse.name}`)
+            } catch (error) {
+              console.error('Error during check-out:', error)
+              Alert.alert("Error", "Failed to check out. Please try again.")
+            }
           },
         },
       ],
     )
   }
+
+  // Load check-in status on component mount
+  useEffect(() => {
+    const loadCheckInStatus = async () => {
+      try {
+        const checkInData = await SessionStorage.getItem('checkInData')
+        if (checkInData) {
+          const data = JSON.parse(checkInData)
+          if (data.horseId === selectedHorse.id) {
+            setIsCheckedIn(true)
+            setCheckInTime(data.checkInTime)
+          }
+        }
+      } catch (error) {
+        console.log('Error loading check-in status:', error)
+      }
+    }
+
+    loadCheckInStatus()
+  }, [selectedHorse.id])
 
   // Dashboard/Home Icon Component
   const DashboardIcon = ({ color }: { color: string }) => (
@@ -450,15 +561,15 @@ export default function DashboardScreen() {
           if (tabKey === "home") {
             // Stay on dashboard - already here
           } else if (tabKey === "horse") {
-            router.push('/(tabs)/horsecare')
+            router.push('./horsecare')
           } else if (tabKey === "chat") {
-            router.push('/(tabs)/messages')
+            router.push('./messages')
           } else if (tabKey === "calendar") {
-            router.push('/(tabs)/calendar')
+            router.push('./calendar')
           } else if (tabKey === "history") {
-            router.push('/(tabs)/history')
+            router.push('./history')
           } else if (tabKey === "profile") {
-            router.push('/(tabs)/profile')
+            router.push('./profile')
           }
         }
       }}
@@ -564,8 +675,11 @@ export default function DashboardScreen() {
           <View style={styles.welcomeSection}>
             <Text style={styles.welcomeText}>Welcome,</Text>
             <Text style={styles.userName}>{currentUser}</Text>
-            {userProfile && userProfile.kutsero_email && (
-              <Text style={styles.userEmail}>{userProfile.kutsero_email}</Text>
+            {userData?.profile?.kutsero_email && (
+              <Text style={styles.userEmail}>{userData.profile.kutsero_email}</Text>
+            )}
+            {userData?.user_status === 'pending' && (
+              <Text style={styles.statusText}>Account Status: Pending Approval</Text>
             )}
           </View>
           <View style={styles.headerActions}>
@@ -673,7 +787,7 @@ export default function DashboardScreen() {
               {/* Change Horse Button - Moved below check in/out buttons */}
               <TouchableOpacity
                 style={styles.changeHorseButton}
-                onPress={() => router.push('/(tabs)/horseselection')}
+                onPress={() => router.push('./horseselection')}
               >
                 <Text style={styles.changeHorseButtonText}>Change Horse</Text>
               </TouchableOpacity>
@@ -897,6 +1011,12 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(11),
     color: "rgba(255,255,255,0.8)",
     marginTop: verticalScale(2),
+  },
+  statusText: {
+    fontSize: moderateScale(10),
+    color: "#FFE082",
+    marginTop: verticalScale(2),
+    fontWeight: "500",
   },
   headerActions: {
     flexDirection: "row",

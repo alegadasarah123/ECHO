@@ -45,7 +45,7 @@ const SOSScreen = () => {
 
   const handleSuccessOK = () => {
     setShowSuccessModal(false);
-    router.replace('/home');
+    router.replace('./home');
   };
 
   const handleImagePick = async () => {
@@ -80,7 +80,7 @@ const SOSScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.replace('/home')} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.replace('./home')} style={styles.backButton}>
           <FontAwesome5 name="arrow-left" size={20} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>SOS Emergency Alert</Text>

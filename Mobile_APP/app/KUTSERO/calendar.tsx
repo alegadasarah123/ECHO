@@ -148,17 +148,17 @@ export default function CalendarScreen() {
       onPress={() => {
         // Navigate directly without updating local state
         if (tabKey === "home") {
-          router.push("/(tabs)/dashboard")
+          router.push("./dashboard")
         } else if (tabKey === "horse") {
-          router.push("/(tabs)/horsecare")
+          router.push("./horsecare")
         } else if (tabKey === "chat") {
-          router.push("/(tabs)/messages")
+          router.push("./messages")
         } else if (tabKey === "calendar") {
           // Stay on calendar - already here
         } else if (tabKey === "history") {
-          router.push("/(tabs)/history")
+          router.push("./history")
         } else if (tabKey === "profile") {
-          router.push("/(tabs)/profile")
+          router.push("./profile")
         }
       }}
     >

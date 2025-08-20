@@ -8,7 +8,7 @@ export default function LoadingScreen() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      router.replace('/Login'); // Navigate after delay
+      router.replace('./login'); // Navigate after delay
     }, 8000); // 3 seconds
 
     return () => clearTimeout(timer);
@@ -17,7 +17,7 @@ export default function LoadingScreen() {
   return (
     <View style={styles.container}>
       <Image
-        source={require('@/assets/images/logo1.png')}
+        source={require('@/assets/images/logo.png')}
         style={styles.logo}
         resizeMode="contain"
       />

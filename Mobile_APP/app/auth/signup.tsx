@@ -1,6 +1,6 @@
 "use client"
 
-// Fixed Signup Component
+// Enhanced Signup Component with Role Selection
 import { useState } from "react"
 import { useRouter } from "expo-router"
 import {
@@ -109,6 +109,22 @@ const municipalitiesByCity: { [key: string]: string[] } = {
 
 const sexOptions = ["Male", "Female", "Other", "Prefer not to say"]
 
+// Role options for the signup
+const roleOptions = [
+  {
+    value: "kutsero",
+    label: "Kutsero",
+    description: "Driver of horse-drawn vehicle",
+    icon: "🐴",
+  },
+  {
+    value: "horse_operator", 
+    label: "Horse Operator",
+    description: "Owner/operator of horse business",
+    icon: "🏇",
+  },
+]
+
 const routeOptions = [
   "Route 1 - North Cebu",
   "Route 2 - South Cebu",
@@ -146,7 +162,7 @@ interface ProfilePicture {
 
 // Updated API configuration
 const API_CONFIG = {
-  BASE_URL: "http://192.168.1.8:8000/api/signup/",
+  BASE_URL: "http://192.168.1.8:8000/api/kutsero/signup/",
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,
@@ -162,7 +178,7 @@ export default function Signup() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
-  // Form data states with proper typing
+  // Form data states with proper typing - now includes role
   const [formData, setFormData] = useState({
     // Step 1 - Personal Info
     firstName: "",
@@ -172,7 +188,10 @@ export default function Signup() {
     sex: "",
     phoneNumber: "",
 
-    // Step 2 - Location (Cebu only)
+    // Step 2 - Role Selection (NEW)
+    role: "",
+
+    // Step 3 - Location (Cebu only)
     city: "",
     municipality: "",
     barangay: "",
@@ -181,16 +200,16 @@ export default function Signup() {
     route: "",
     to: "",
 
-    // Step 3 - Contact Info
+    // Step 4 - Contact Info
     email: "",
     facebook: "",
 
-    // Step 4 - Login Credentials
+    // Step 5 - Login Credentials
     username: "",
     password: "",
     confirmPassword: "",
 
-    // Step 5 - Profile Picture
+    // Step 6 - Profile Picture
     profilePicture: null as ProfilePicture | null,
   })
 
@@ -208,7 +227,7 @@ export default function Signup() {
   }
 
   const nextStep = () => {
-    if (currentStep < 5) {
+    if (currentStep < 6) {
       setCurrentStep(currentStep + 1)
     }
   }
@@ -318,6 +337,11 @@ export default function Signup() {
       return
     }
 
+    if (!formData.role) {
+      Alert.alert("Error", "Please select your role")
+      return
+    }
+
     if (formData.password !== formData.confirmPassword) {
       Alert.alert("Error", "Passwords do not match")
       return
@@ -334,7 +358,7 @@ export default function Signup() {
       // Create FormData for multipart upload
       const uploadData = new FormData()
 
-      // Add all text form fields first
+      // Add all text form fields first (including role)
       const fieldsToAdd = {
         firstName: formData.firstName,
         middleName: formData.middleName,
@@ -342,6 +366,7 @@ export default function Signup() {
         dateOfBirth: formData.dateOfBirth.toISOString().split("T")[0],
         sex: formData.sex,
         phoneNumber: formData.phoneNumber,
+        role: formData.role, // NEW: Include role in the data
         city: formData.city,
         municipality: formData.municipality,
         barangay: formData.barangay,
@@ -407,7 +432,9 @@ export default function Signup() {
             {
               text: "OK",
               onPress: () => {
-                // Reset form and go back to login
+                // Reset form and navigate based on role
+                const userRole = formData.role
+                
                 setFormData({
                   firstName: "",
                   middleName: "",
@@ -415,6 +442,7 @@ export default function Signup() {
                   dateOfBirth: new Date(),
                   sex: "",
                   phoneNumber: "",
+                  role: "",
                   city: "",
                   municipality: "",
                   barangay: "",
@@ -431,7 +459,15 @@ export default function Signup() {
                 })
                 setSelectedImage(null)
                 setCurrentStep(1)
-                router.replace("/login")
+                
+                // Navigate to appropriate dashboard based on role
+                if (userRole === "horse_operator") {
+                  router.replace("../home")
+                } else if (userRole === "kutsero") {
+                  router.replace("../dashboard")
+                } else {
+                  router.replace("../login")
+                }
               },
             },
           ],
@@ -463,7 +499,7 @@ export default function Signup() {
   }
 
   const handleBackToLogin = () => {
-    router.replace("/login")
+    router.replace("../login")
   }
 
   const DropdownField = ({ label, value, placeholder, options, onSelect, disabled = false }: DropdownFieldProps) => {
@@ -588,15 +624,6 @@ export default function Signup() {
           />
         </View>
 
-        <Text style={styles.sectionTitle}>ADDRESS IN CEBU PROVINCE</Text>
-        <DropdownField
-          label="City/Municipality"
-          value={formData.city}
-          placeholder="Select City or Municipality in Cebu"
-          options={allCebuLocations}
-          onSelect={(value) => updateFormData("city", value)}
-        />
-
         <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
           <Text style={styles.nextButtonText}>Next</Text>
         </TouchableOpacity>
@@ -614,13 +641,92 @@ export default function Signup() {
     )
   }
 
+  // NEW: Role Selection Step
   const renderStep2 = () => {
+    return (
+      <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
+        <Text style={styles.stepTitle}>Select Your Role</Text>
+        <Text style={styles.stepSubtitle}>Choose what describes you best</Text>
+
+        <View style={styles.roleSelectionContainer}>
+          {roleOptions.map((role) => (
+            <TouchableOpacity
+              key={role.value}
+              style={[
+                styles.roleCard,
+                formData.role === role.value && styles.roleCardSelected,
+              ]}
+              onPress={() => updateFormData("role", role.value)}
+            >
+              <View style={styles.roleIconContainer}>
+                <Text style={styles.roleIcon}>{role.icon}</Text>
+              </View>
+              <View style={styles.roleContent}>
+                <Text style={[
+                  styles.roleLabel,
+                  formData.role === role.value && styles.roleLabelSelected,
+                ]}>
+                  {role.label}
+                </Text>
+                <Text style={[
+                  styles.roleDescription,
+                  formData.role === role.value && styles.roleDescriptionSelected,
+                ]}>
+                  {role.description}
+                </Text>
+              </View>
+              <View style={styles.roleRadio}>
+                <View style={[
+                  styles.radioOuter,
+                  formData.role === role.value && styles.radioOuterSelected,
+                ]}>
+                  {formData.role === role.value && (
+                    <View style={styles.radioInner} />
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.prevButton} onPress={prevStep}>
+            <Text style={styles.prevButtonText}>Previous</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
+            <Text style={styles.nextButtonText}>Next</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Sign In Link */}
+        <View style={styles.signInLinkContainer}>
+          <Text style={styles.signInText}>
+            Already have an account?{" "}
+            <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
+              <Text style={styles.signInLink}>Sign in</Text>
+            </TouchableOpacity>
+          </Text>
+        </View>
+      </ScrollView>
+    )
+  }
+
+  const renderStep3 = () => {
     const availableMunicipalities = formData.city ? municipalitiesByCity[formData.city] || [] : []
 
     return (
       <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
         <Text style={styles.stepTitle}>Tell us about yourself</Text>
         <Text style={styles.stepSubtitle}>Please complete the information below</Text>
+
+        <Text style={styles.sectionTitle}>ADDRESS IN CEBU PROVINCE</Text>
+        <DropdownField
+          label="City/Municipality"
+          value={formData.city}
+          placeholder="Select City or Municipality in Cebu"
+          options={allCebuLocations}
+          onSelect={(value) => updateFormData("city", value)}
+        />
 
         {availableMunicipalities.length > 0 && (
           <DropdownField
@@ -705,7 +811,7 @@ export default function Signup() {
     )
   }
 
-  const renderStep3 = () => (
+  const renderStep4 = () => (
     <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
       <Text style={styles.stepTitle}>Tell us about yourself</Text>
       <Text style={styles.stepSubtitle}>Please complete the information below</Text>
@@ -755,7 +861,7 @@ export default function Signup() {
     </ScrollView>
   )
 
-  const renderStep4 = () => (
+  const renderStep5 = () => (
     <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
       <Text style={styles.stepTitle}>Login Credentials</Text>
       <Text style={styles.stepSubtitle}>Create your login information</Text>
@@ -863,7 +969,7 @@ export default function Signup() {
     </ScrollView>
   )
 
-  const renderStep5 = () => (
+  const renderStep6 = () => (
     <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
       <Text style={styles.stepTitle}>Set Your Profile Picture</Text>
       <Text style={styles.stepSubtitle}>Upload or capture a photo for your profile</Text>
@@ -934,13 +1040,15 @@ export default function Signup() {
       case 1:
         return renderStep1()
       case 2:
-        return renderStep2()
+        return renderStep2() // NEW: Role selection step
       case 3:
         return renderStep3()
       case 4:
         return renderStep4()
       case 5:
         return renderStep5()
+      case 6:
+        return renderStep6()
       default:
         return renderStep1()
     }
@@ -960,9 +1068,9 @@ export default function Signup() {
           <View style={styles.placeholder} />
         </View>
         
-        {/* Progress Indicator */}
+        {/* Progress Indicator - Updated to show 6 steps */}
         <View style={styles.progressContainer}>
-          {[1, 2, 3, 4, 5].map((step) => (
+          {[1, 2, 3, 4, 5, 6].map((step) => (
             <View key={step} style={styles.progressStep}>
               <View
                 style={[
@@ -979,7 +1087,7 @@ export default function Signup() {
                   {step}
                 </Text>
               </View>
-              {step < 5 && (
+              {step < 6 && (
                 <View
                   style={[
                     styles.progressLine,
@@ -1000,7 +1108,7 @@ export default function Signup() {
   )
 }
 
-// StyleSheet
+// StyleSheet - Enhanced with role selection styles
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1049,9 +1157,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   progressCircle: {
-    width: moderateScale(30),
-    height: moderateScale(30),
-    borderRadius: moderateScale(15),
+    width: moderateScale(25),
+    height: moderateScale(25),
+    borderRadius: moderateScale(12.5),
     backgroundColor: "rgba(255, 255, 255, 0.3)",
     justifyContent: "center",
     alignItems: "center",
@@ -1064,14 +1172,14 @@ const styles = StyleSheet.create({
   },
   progressText: {
     color: "rgba(255, 255, 255, 0.8)",
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(10),
     fontWeight: "bold",
   },
   progressTextActive: {
     color: "#B8763E",
   },
   progressLine: {
-    width: moderateScale(30),
+    width: moderateScale(20),
     height: 2,
     backgroundColor: "rgba(255, 255, 255, 0.3)",
   },
@@ -1110,6 +1218,83 @@ const styles = StyleSheet.create({
     marginBottom: moderateScale(15),
     marginTop: moderateScale(10),
   },
+  
+  // NEW: Role selection styles
+  roleSelectionContainer: {
+    marginBottom: moderateScale(30),
+  },
+  roleCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderWidth: 2,
+    borderColor: "#E0E0E0",
+    borderRadius: moderateScale(12),
+    padding: moderateScale(20),
+    marginBottom: moderateScale(15),
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+  },
+  roleCardSelected: {
+    borderColor: "#B8763E",
+    backgroundColor: "#FFF8F5",
+  },
+  roleIconContainer: {
+    marginRight: moderateScale(15),
+  },
+  roleIcon: {
+    fontSize: moderateScale(32),
+  },
+  roleContent: {
+    flex: 1,
+  },
+  roleLabel: {
+    fontSize: moderateScale(18),
+    fontWeight: "bold",
+    color: "#333333",
+    marginBottom: moderateScale(4),
+  },
+  roleLabelSelected: {
+    color: "#B8763E",
+  },
+  roleDescription: {
+    fontSize: moderateScale(14),
+    color: "#666666",
+    lineHeight: moderateScale(20),
+  },
+  roleDescriptionSelected: {
+    color: "#8B5A2B",
+  },
+  roleRadio: {
+    marginLeft: moderateScale(10),
+  },
+  radioOuter: {
+    width: moderateScale(20),
+    height: moderateScale(20),
+    borderRadius: moderateScale(10),
+    borderWidth: 2,
+    borderColor: "#E0E0E0",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  radioOuterSelected: {
+    borderColor: "#B8763E",
+  },
+  radioInner: {
+    width: moderateScale(10),
+    height: moderateScale(10),
+    borderRadius: moderateScale(5),
+    backgroundColor: "#B8763E",
+  },
+  
+  // Rest of the existing styles...
   inputContainer: {
     marginBottom: moderateScale(15),
   },
@@ -1385,7 +1570,7 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.6,
   },
-  // New styles for Sign In Link
+  // Sign In Link styles
   signInLinkContainer: {
     alignItems: "center",
     marginTop: moderateScale(20),
