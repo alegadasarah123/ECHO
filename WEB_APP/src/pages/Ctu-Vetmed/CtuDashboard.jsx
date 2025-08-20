@@ -129,7 +129,7 @@ function CtuDashboard() {
     console.log("User logged out")
     localStorage.removeItem("currentUser")
     localStorage.removeItem("loginTime")
-    navigate("/Ctulogin")
+    navigate("/login")
     closeLogoutModal()
   }
 

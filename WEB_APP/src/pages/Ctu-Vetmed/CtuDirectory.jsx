@@ -432,7 +432,7 @@ function CtuDirectory() {
                 className="logout-modal-btn confirm"
                 onClick={() => {
                   console.log("User logged out")
-                  navigate("/CtuLogin") // Navigate to login page
+                  navigate("/login") // Navigate to login page
                   setShowLogoutModal(false)
                 }}
               >

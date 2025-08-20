@@ -23,7 +23,7 @@ import HealthReports from "./pages/Dvmf/DvmfHealthReport.jsx";
 import HorseRecords from "./pages/Dvmf/DvmfHorseRecord.jsx";
 import Messages from "./pages/Dvmf/DvmfMessage.jsx";
 import Settingss from "./pages/Dvmf/DvmfSettings.jsx";
-import KutDashboard from "./pages/Kutsero/KutDashboard.jsx";
+import KutDashboard from "./pages/Kutsero President/KutDashboard.jsx";
 import VetAppointment from "./pages/Veterinarian/VetAppointment.jsx";
 import VetDashboard from "./pages/Veterinarian/VetDashboard.jsx";
 import VetDirectory from "./pages/Veterinarian/vetDirectory.jsx";

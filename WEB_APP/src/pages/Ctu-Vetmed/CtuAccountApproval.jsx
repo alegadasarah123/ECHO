@@ -193,7 +193,7 @@ function CtuAccountApproval() {
     console.log("User logged out")
     localStorage.removeItem("currentUser")
     localStorage.removeItem("loginTime")
-    navigate("/CtuLogin")
+    navigate("/login")
     closeLogoutModal()
   }
 

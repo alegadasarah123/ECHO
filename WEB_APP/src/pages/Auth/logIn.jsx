@@ -239,9 +239,9 @@ function LogIn({ onBack }) {
     const role = data.role;
     if (role === "Veterinarian") {
       navigate("/VetDashboard");
-    } else if (role === "Ctu-VetMed") {
+    }else if (role === "ctu_vetmed" || role === "Ctu-VetMed") {
       navigate("/CtuDashboard");
-    } else if (role === "DVMF") {
+    } else if (role === "Dvmf") {
       navigate("/DvmfDashboard");
     } else {
       navigate("/KutDashboard");
