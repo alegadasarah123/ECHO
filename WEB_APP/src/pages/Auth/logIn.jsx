@@ -1,8 +1,9 @@
 "use client"
 
-import { ArrowLeft, Eye, EyeOff, Lock, Mail, Stethoscope } from "lucide-react"
-import { useState } from "react"
-import { Link } from "react-router-dom"
+import { ArrowLeft, Eye, EyeOff, Lock, Mail, Stethoscope } from "lucide-react";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+
 
 function LogIn({ onBack }) {
   const [showPassword, setShowPassword] = useState(false)
@@ -10,6 +11,7 @@ function LogIn({ onBack }) {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const navigate = useNavigate()   // ✅ navigation hook
 
   const styles = {
     container: {
@@ -246,6 +248,47 @@ function LogIn({ onBack }) {
     }
   }
 
+// ✅ USE THIS LOGIN HANDLER
+  const handleLogin = async (e) => {
+    e.preventDefault()
+    setError("")
+    setIsLoading(true)
+
+    try {
+      const response = await fetch("http://localhost:8000/user_login/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        setError(data.error || "Login failed")
+        return
+      }
+
+      // Save user info
+      localStorage.setItem("user_info", JSON.stringify(data.user_info))
+
+      // ✅ Redirect based on which table they belong to
+      if (data.dashboard === "CtuDashboard") {
+        navigate("/CtuDashboard")
+      } else if (data.dashboard === "DvmfDashboard") {
+        navigate("/DvmfDashboard")
+      } else {
+        navigate("/general-dashboard")
+      }
+    } catch (err) {
+      setError("Something went wrong. Try again.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+
   return (
     <div style={styles.container}>
       <div style={styles.backgroundPattern}></div>
@@ -278,7 +321,7 @@ function LogIn({ onBack }) {
           <p style={styles.subtitle}>Sign in to your Echo account</p>
         </div>
 
-        <form style={styles.form} onSubmit={handleSubmit}>
+        <form style={styles.form} onSubmit={handleLogin}>
           <div style={styles.inputGroup}>
             <label style={styles.label}>Email Address</label>
             <div style={styles.inputWrapper}>

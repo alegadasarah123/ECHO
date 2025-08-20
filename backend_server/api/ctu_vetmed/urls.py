@@ -1,5 +1,5 @@
 from django.urls import path  # include needed only if using include()
-from api import views  # adjust 'api' to your actual app name
+from api.ctu_vetmed import views # adjust 'api' to your actual app name
 
 urlpatterns = [
     # If you want to include all app URLs:

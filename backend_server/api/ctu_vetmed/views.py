@@ -110,46 +110,46 @@ def user_login(request):
         if not email or not password:
             return Response({"error": "Email and password are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Supabase Auth login endpoint
-        login_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
-        headers = {
-            "apikey": SUPABASE_ANON_KEY,  # Use anon key for login
-            "Content-Type": CONTENT_TYPE_JSON
-        }
-        payload = {
-            "email": email,
-            "password": password
-        }
+        # --- 1. Try CTU VetMed profile ---
+        ctu_query = (
+            sr_client.table("ctu_vet_profile")
+            .select("*")
+            .eq("ctu_email", email)
+            .eq("ctu_pass", password)
+            .execute()
+        )
 
-        auth_res = requests.post(login_url, json=payload, headers=headers)
-
-        if auth_res.status_code not in [200, 201]:
-            try:
-                error_details = auth_res.json()
-            except ValueError:
-                error_details = {"message": auth_res.text}
+        if ctu_query.data and len(ctu_query.data) > 0:
+            user_info = ctu_query.data[0]
             return Response({
-                "error": "Invalid login credentials",
-                "details": error_details
-            }, status=status.HTTP_401_UNAUTHORIZED)
+                "message": "Login successful",
+                "user_info": user_info,
+                "dashboard": "CtuDdashboard"
+            }, status=status.HTTP_200_OK)
 
-        auth_data = auth_res.json()
-        user_id = auth_data.get("user", {}).get("id")
+        # --- 2. Try DVMF profile ---
+        dvmf_query = (
+            sr_client.table("dvmf_profile")
+            .select("*")
+            .eq("dvmf_email", email)
+            .eq("dvmf_pass", password)
+            .execute()
+        )
 
-        if not user_id:
-            return Response({"error": "Login failed: missing user id"}, status=status.HTTP_400_BAD_REQUEST)
+        if dvmf_query.data and len(dvmf_query.data) > 0:
+            user_info = dvmf_query.data[0]
+            return Response({
+                "message": "Login successful",
+                "user_info": user_info,
+                "dashboard": "DvmfDashboard"
+            }, status=status.HTTP_200_OK)
 
-        # Optionally fetch app-specific user data
-        user_info = sr_client.table("ctu_vet_profile").select("*").eq("ctu_id", user_id).execute()
-
-        return Response({
-            "message": "Login successful",
-            "auth_data": auth_data,  # contains access_token, refresh_token, etc.
-            "user_info": user_info.data
-        }, status=status.HTTP_200_OK)
+        # --- If no match in either table ---
+        return Response({"error": "Invalid email or password"}, status=status.HTTP_401_UNAUTHORIZED)
 
     except Exception as e:
         return Response({"error": "Internal Server Error", "details": str(e)}, status=500)
+
 
 
 @api_view(['GET'])
