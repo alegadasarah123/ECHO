@@ -1,3 +1,4 @@
+/* Replacing entire CSS file with user's comprehensive styling */
 /* General Styles */
 body {
   margin: 0;
@@ -518,12 +519,11 @@ body {
   border: none;
   padding: 4px 8px;
   border-radius: 12px;
-font-size: clamp(10px, 1.8vw, 12px);
+  font-size: clamp(10px, 1.8vw, 12px);
   font-weight: 500; /* use a valid weight */
   cursor: pointer;
   transition: all 0.2s;
-    display: inline-block;
-  
+  display: inline-block;
 }
 
 /* Approve button */
@@ -555,7 +555,6 @@ font-size: clamp(10px, 1.8vw, 12px);
 .action-btns.delete-btn:hover {
   background: #fecaca;
 }
-
 
 /* Mobile Menu Button */
 .mobile-menu-btn {

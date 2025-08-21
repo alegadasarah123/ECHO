@@ -101,55 +101,6 @@ def signup(request):
         return Response({"error": "Internal Server Error", "details": str(e)}, status=500)
 
 
-@api_view(["POST"])
-def user_login(request):
-    try:
-        email = request.data.get("email", "").strip()
-        password = request.data.get("password", "").strip()
-
-        if not email or not password:
-            return Response({"error": "Email and password are required"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # --- 1. Try CTU VetMed profile ---
-        ctu_query = (
-            sr_client.table("ctu_vet_profile")
-            .select("*")
-            .eq("ctu_email", email)
-            .eq("ctu_pass", password)
-            .execute()
-        )
-
-        if ctu_query.data and len(ctu_query.data) > 0:
-            user_info = ctu_query.data[0]
-            return Response({
-                "message": "Login successful",
-                "user_info": user_info,
-                "dashboard": "CtuDdashboard"
-            }, status=status.HTTP_200_OK)
-
-        # --- 2. Try DVMF profile ---
-        dvmf_query = (
-            sr_client.table("dvmf_profile")
-            .select("*")
-            .eq("dvmf_email", email)
-            .eq("dvmf_pass", password)
-            .execute()
-        )
-
-        if dvmf_query.data and len(dvmf_query.data) > 0:
-            user_info = dvmf_query.data[0]
-            return Response({
-                "message": "Login successful",
-                "user_info": user_info,
-                "dashboard": "DvmfDashboard"
-            }, status=status.HTTP_200_OK)
-
-        # --- If no match in either table ---
-        return Response({"error": "Invalid email or password"}, status=status.HTTP_401_UNAUTHORIZED)
-
-    except Exception as e:
-        return Response({"error": "Internal Server Error", "details": str(e)}, status=500)
-
 
 
 @api_view(['GET'])

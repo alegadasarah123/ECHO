@@ -1,5 +1,3 @@
-"use client"
-
 import { ArrowLeft, Eye, EyeOff, Lock, Mail, Stethoscope } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -11,7 +9,7 @@ function LogIn({ onBack }) {
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const navigate = useNavigate()   // ✅ navigation hook
+  const navigate = useNavigate()   
 
   const styles = {
     container: {
@@ -215,78 +213,50 @@ function LogIn({ onBack }) {
     },
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    setError("")
-    setIsLoading(true)
+ const handleLogin = async (e) => {
+  e.preventDefault();
+  setError("");
+  setIsLoading(true);
 
-    try {
-      const res = await fetch("http://localhost:8000/api/login/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      })
+  try {
+    const response = await fetch("http://localhost:8000/api/login/", { 
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password }),
+    });
 
-      const data = await res.json()
+    const data = await response.json();
 
-      if (!res.ok) {
-        setError(data.error || "Login failed")
-        return
-      }
-
-      console.log("Login successful:", data)
-      localStorage.setItem("access_token", data.access_token)
-      // Navigate to dashboard or call onBack with success
-      if (onBack) onBack("dashboard")
-    } catch (err) {
-      console.error("Login error:", err)
-      setError("Login failed. Please try again.")
-    } finally {
-      setIsLoading(false)
+    if (!response.ok) {
+      setError(data.error || "Login failed");
+      return;
     }
-  }
 
-// ✅ USE THIS LOGIN HANDLER
-  const handleLogin = async (e) => {
-    e.preventDefault()
-    setError("")
-    setIsLoading(true)
+    console.log("Login successful:", data);
 
-    try {
-      const response = await fetch("http://localhost:8000/user_login/", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email, password }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        setError(data.error || "Login failed")
-        return
-      }
-
-      // Save user info
-      localStorage.setItem("user_info", JSON.stringify(data.user_info))
-
-      // ✅ Redirect based on which table they belong to
-      if (data.dashboard === "CtuDashboard") {
-        navigate("/CtuDashboard")
-      } else if (data.dashboard === "DvmfDashboard") {
-        navigate("/DvmfDashboard")
-      } else {
-        navigate("/general-dashboard")
-      }
-    } catch (err) {
-      setError("Something went wrong. Try again.")
-    } finally {
-      setIsLoading(false)
+    const role = data.role;
+    if (role === "Veterinarian") {
+      navigate("/VetDashboard");
+    }else if (role === "ctu_vetmed" || role === "Ctu-VetMed") {
+      navigate("/CtuDashboard");
+    } else if (role === "Dvmf") {
+      navigate("/DvmfDashboard");
+    } else {
+      navigate("/KutDashboard");
     }
+
+    // optional callback
+    if (onBack) onBack(role);
+
+  } catch (err) {
+    console.error("Login error:", err);
+    setError("Login failed. Please try again.");
+  } finally {
+    setIsLoading(false);
   }
+};
 
 
   return (
