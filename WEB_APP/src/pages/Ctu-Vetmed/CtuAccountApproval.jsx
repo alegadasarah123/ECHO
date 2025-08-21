@@ -427,12 +427,12 @@ function CtuAccountApproval() {
   color: #b91c1c;
 }
 
-.logouts {
-  padding: 10px;
+.logout {
+  padding: 20px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.logout-btns {
+.logout-btn {
   display: flex;
   align-items: center;
   color: white;
@@ -440,17 +440,17 @@ function CtuAccountApproval() {
   font-size: clamp(13px, 2vw, 15px);
   font-weight: 500;
   cursor: pointer;
-  padding: 14px 40px;
+  padding: 14px 20px;
   border-radius: 25px;
   transition: all 0.3s ease;
   min-height: 44px;
 }
 
-.logout-btns:hover {
+.logout-btn:hover {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-.logouts-icon {
+.logout-icon {
   width: 20px;
   height: 20px;
   margin-right: 15px;
@@ -728,7 +728,7 @@ function CtuAccountApproval() {
   font-size: 14px;
 }
 
-.content-areas {
+.content-area {
   flex: 1;
   padding: clamp(16px, 3vw, 24px);
   background: #f9fafb;
@@ -1269,13 +1269,13 @@ h2 {
 }
 
 .logout-modal-btn.cancel {
-          background: #f3f4f6;
-          color: #374151;
-        }
+  background: #6b7280;
+  color: white;
+}
 
-        .logout-modal-btn.cancel:hover {
-          background: #e5e7eb;
-        }
+.logout-modal-btn.cancel:hover {
+  background: #4b5563;
+}
 
 .logout-modal-btn.confirm {
   background: #ef4444;
@@ -1288,63 +1288,51 @@ h2 {
 
 /* Chat Widget */
 .chat-widget {
-          position: fixed;
-          bottom: 24px;
-          right: 24px;
-          z-index: 1000;
-        }
+  position: fixed;
+  bottom: clamp(20px, 4vw, 30px);
+  right: clamp(20px, 4vw, 30px);
+  z-index: 1000;
+}
 
-        .chat-button {
-          width: 64px;
-          height: 64px;
-          background: #b91c1c;
-          border: none;
-          border-radius: 20px;
-          color: white;
-          cursor: pointer;
-          box-shadow: 0 4px 12px rgba(28, 44, 185, 0.3);
-          transition: all 0.3s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          position: relative;
-        }
+.chat-button {
+  width: clamp(50px, 10vw, 60px);
+  height: clamp(50px, 10vw, 60px);
+  border-radius: 50%;
+  background: #b91c1c;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transition: all 0.3s ease;
+}
 
-        .chat-button::after {
-          content: "";
-          position: absolute;
-          bottom: -8px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 0;
-          height: 0;
-          border-left: 10px solid transparent;
-          border-right: 10px solid transparent;
-          border-top: 10px solid #b91c1c;
-        }
+.chat-button:hover {
+  background: #991b1b;
+  transform: scale(1.05);
+}
 
-        .chat-button:hover {
-          transform: scale(1.05);
-          box-shadow: 0 6px 16px rgba(28, 78, 185, 0.4);
-        }
+.chat-dots {
+  display: flex;
+  gap: clamp(2px, 0.5vw, 3px);
+}
 
-        .chat-button:hover::after {
-          border-top-color: #b91c1c;
-        }
+.chat-dot {
+  width: clamp(4px, 1vw, 6px);
+  height: clamp(4px, 1vw, 6px);
+  border-radius: 50%;
+  background: white;
+  animation: pulse 1.5s infinite;
+}
 
-        .chat-dots {
-          display: flex;
-          gap: 6px;
-          align-items: center;
-          justify-content: center;
-        }
+.chat-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
 
-        .chat-dot {
-          width: 8px;
-          height: 8px;
-          background: white;
-          border-radius: 50%;
-        }
+.chat-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
 
 @keyframes pulse {
   0%,
@@ -1386,7 +1374,7 @@ h2 {
     min-width: 150px;
   }
 
-  .content-areas {
+  .content-area {
     padding: 16px;
   }
 
@@ -1459,7 +1447,7 @@ h2 {
     min-width: 120px;
   }
 
-  .content-areas {
+  .content-area {
     padding: 12px;
   }
 
@@ -1590,9 +1578,9 @@ h2 {
             </Link>
           ))}
         </nav>
-        <div className="logouts">
-          <a href="#" className="logout-btns" id="logoutBtn" onClick={openLogoutModal}>
-            <LogOut className="logouts-icon" size={18} />
+        <div className="logout">
+          <a href="#" className="logout-btn" id="logoutBtn" onClick={openLogoutModal}>
+            <LogOut className="logout-icon" size={18} />
             Log Out
           </a>
         </div>
@@ -1665,7 +1653,7 @@ h2 {
             </div>
           </div>
         </header>
-        <div className="content-areas">
+        <div className="content-area">
           <div className="page-header">
             <h1>Account Approval</h1>
             <h2>Manage registration requests from Veterinarians</h2>
@@ -1957,7 +1945,7 @@ h2 {
         >
           <div className="logout-modal">
             <div className="logout-modal-icon">
-              <LogOut size={25} color="#f59e0b" />
+              <LogOut size={48} />
             </div>
             <h3>Confirm Logout</h3>
             <p>Are you sure you want to log out of your account?</p>

@@ -334,12 +334,12 @@ body {
   color: #b91c1c;
 }
 
-.logouts {
-  padding: 10px;
+.logout {
+  padding: 20px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.logout-btns {
+.logout-btn {
   display: flex;
   align-items: center;
   color: white;
@@ -347,13 +347,13 @@ body {
   font-size: clamp(13px, 2vw, 15px);
   font-weight: 500;
   cursor: pointer;
-  padding: 14px 40px;
+  padding: 14px 20px;
   border-radius: 25px;
   transition: all 0.3s ease;
   min-height: 44px;
 }
 
-.logout-btns:hover {
+.logout-btn:hover {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
@@ -407,7 +407,7 @@ body {
   color: #333; /* Darker on hover */
 }
 
-.search-containers {
+.search-container {
   flex: 1;
   max-width: 400px;
   margin-right: 20px;
@@ -1038,11 +1038,6 @@ body {
 }
 
 .logout-modal-btn.cancel:hover {
-  background: #4b5563;
-}
-
-
-.logout-modal-btn.cancel:hover {
   background: #e5e7eb;
 }
 
@@ -1194,7 +1189,7 @@ body {
 /* Touch devices */
 @media (hover: none) and (pointer: coarse) {
   .nav-item,
-  .logout-btns {
+  .logout-btn {
     min-height: 48px;
   }
 
@@ -1234,8 +1229,8 @@ body {
             )
           })}
         </nav>
-        <div className="logouts">
-          <a href="#" className="logout-btns" id="logoutBtn" onClick={openLogoutModal}>
+        <div className="logout">
+          <a href="#" className="logout-btn" id="logoutBtn" onClick={openLogoutModal}>
             <LogOut className="logout-icon" size={20} />
             Log Out
           </a>
@@ -1244,7 +1239,7 @@ body {
 
       <div className="main-content">
         <header className="headers">
-          <div className="search-containers">
+          <div className="search-container">
             <Search className="search-icon" size={20} />
             <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
           </div>
@@ -1411,7 +1406,7 @@ body {
         >
           <div className="logout-modal">
             <div className="logout-modal-icon">
-             <LogOut size={25} color="#f59e0b" />
+              <LogOut size={48} />
             </div>
             <h3>Confirm Logout</h3>
             <p>Are you sure you want to log out of your account?</p>
