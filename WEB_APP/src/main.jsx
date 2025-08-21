@@ -34,7 +34,8 @@ import VetHealthLog from "./pages/Veterinarian/VetHealthLog.jsx";
 import VetSettings from "./pages/Veterinarian/VetSettings.jsx";
 import SignUp from "./pages/Auth/signUp.jsx";
 import VetDirectory from "./pages/Veterinarian/vetDirectory.jsx";
-import KutDashboard from "./pages/Kutsero/KutDashboard.jsx";
+import KutDashboard from "./pages/Kutsero President/KutDashboard.jsx";
+import KutUserManagement from "./pages/Kutsero President/KutUserManagement.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
