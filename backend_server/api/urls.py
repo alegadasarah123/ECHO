@@ -1,3 +1,5 @@
+<<<<<<< HEAD
+=======
 from django.contrib import admin
 from django.urls import path, include
 from . import views
@@ -9,5 +11,6 @@ urlpatterns = [
     path('api/get_data/', views.get_data, name='get_data'),
     path('api/insert_vet_profile/', views.insert_vet_profile, name='insert_vet_profile'),
 ]
+>>>>>>> e693ea764fcee011ff199ef056b167dd3c7a9c83
 
 

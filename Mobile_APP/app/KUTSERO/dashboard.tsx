@@ -15,6 +15,7 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native"
+import * as SecureStore from "expo-secure-store"
 import NotificationsPage from "./notifications"
 import SOSEmergencyScreen from "./sos"
 
@@ -121,33 +122,6 @@ const REACTIONS: Reaction[] = [
 // Backend API configuration
 const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
 
-// Session storage class to replace AsyncStorage
-class SessionStorage {
-  private static storage: { [key: string]: string } = {}
-
-  static async setItem(key: string, value: string): Promise<void> {
-    this.storage[key] = value
-  }
-
-  static async getItem(key: string): Promise<string | null> {
-    return this.storage[key] || null
-  }
-
-  static async multiRemove(keys: string[]): Promise<void> {
-    keys.forEach(key => {
-      delete this.storage[key]
-    })
-  }
-
-  static async removeItem(key: string): Promise<void> {
-    delete this.storage[key]
-  }
-
-  static clear(): void {
-    this.storage = {}
-  }
-}
-
 export default function DashboardScreen() {
   const router = useRouter()
   const [searchText, setSearchText] = useState("")
@@ -240,7 +214,7 @@ export default function DashboardScreen() {
     }
   }
 
-  // Load user data and selected horse from session storage
+  // Load user data and selected horse from SecureStore
   useEffect(() => {
     loadUserData()
     loadSelectedHorse()
@@ -257,12 +231,16 @@ export default function DashboardScreen() {
   const loadUserData = async () => {
     setIsLoading(true)
     try {
-      // Get the stored authentication data from session storage
-      const storedAuthData = await SessionStorage.getItem('userAuthData')
-      const storedAccessToken = await SessionStorage.getItem('accessToken')
+      // Get the stored authentication data from SecureStore
+      const storedUserData = await SecureStore.getItemAsync('user_data')
+      const storedAccessToken = await SecureStore.getItemAsync('access_token')
       
-      if (storedAuthData && storedAccessToken) {
-        const authData: UserData = JSON.parse(storedAuthData)
+      console.log('Loading user data...')
+      console.log('Has stored user data:', !!storedUserData)
+      console.log('Has stored access token:', !!storedAccessToken)
+      
+      if (storedUserData && storedAccessToken) {
+        const parsedUserData = JSON.parse(storedUserData)
         
         // Validate token
         const isValidToken = await validateAuthToken(storedAccessToken)
@@ -270,14 +248,23 @@ export default function DashboardScreen() {
           throw new Error('Invalid token')
         }
 
-        setUserData(authData)
+        // Create a unified user data structure
+        const unifiedUserData: UserData = {
+          id: parsedUserData.id,
+          email: parsedUserData.email,
+          profile: parsedUserData.profile,
+          access_token: storedAccessToken,
+          user_status: parsedUserData.user_status || 'pending'
+        }
+
+        setUserData(unifiedUserData)
         
         // Set display name based on available data
         let displayName = "User" // default fallback
         
-        if (authData.profile) {
+        if (parsedUserData.profile) {
           // Use profile data if available
-          const { kutsero_fname, kutsero_lname, kutsero_username } = authData.profile
+          const { kutsero_fname, kutsero_lname, kutsero_username } = parsedUserData.profile
           if (kutsero_fname && kutsero_lname) {
             displayName = `${kutsero_fname} ${kutsero_lname}`
           } else if (kutsero_username) {
@@ -285,16 +272,18 @@ export default function DashboardScreen() {
           } else if (kutsero_fname) {
             displayName = kutsero_fname
           }
-        } else if (authData.email) {
+        } else if (parsedUserData.email) {
           // Fallback to user email if no profile
-          displayName = authData.email.split('@')[0]
+          displayName = parsedUserData.email.split('@')[0]
         }
         
         setCurrentUser(displayName)
         
-        console.log('Loaded user data:', {
-          user: authData,
-          displayName: displayName
+        console.log('Successfully loaded user data:', {
+          userId: parsedUserData.id,
+          email: parsedUserData.email,
+          displayName: displayName,
+          status: parsedUserData.user_status
         })
       } else {
         // No stored auth data - redirect to login
@@ -305,7 +294,7 @@ export default function DashboardScreen() {
           [
             {
               text: "OK",
-              onPress: () => router.replace('../pages/auth/login')
+              onPress: () => router.replace('../../pages/auth/login')
             }
           ]
         )
@@ -318,7 +307,7 @@ export default function DashboardScreen() {
         [
           {
             text: "OK",
-            onPress: () => router.replace('../pages/auth/login')
+            onPress: () => router.replace('../../pages/auth/login')
           }
         ]
       )
@@ -329,7 +318,7 @@ export default function DashboardScreen() {
 
   const loadSelectedHorse = async () => {
     try {
-      const savedHorseData = await SessionStorage.getItem('selectedHorseData')
+      const savedHorseData = await SecureStore.getItemAsync('selectedHorseData')
       if (savedHorseData) {
         const horse = JSON.parse(savedHorseData)
         setSelectedHorse(horse)
@@ -347,13 +336,19 @@ export default function DashboardScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            // Clear all user data from session storage
-            SessionStorage.clear()
-            router.replace('../pages/auth/login')
+            // Clear all user data from SecureStore
+            await SecureStore.deleteItemAsync('access_token')
+            await SecureStore.deleteItemAsync('refresh_token')
+            await SecureStore.deleteItemAsync('user_data')
+            await SecureStore.deleteItemAsync('selectedHorseData')
+            await SecureStore.deleteItemAsync('checkInData')
+            
+            console.log('User data cleared, navigating to login')
+            router.replace('../../pages/auth/login')
           } catch (error) {
             console.error('Error during logout:', error)
             // Still navigate even if storage clear fails
-            router.replace('../pages/auth/login')
+            router.replace('../../pages/auth/login')
           }
         },
       },
@@ -452,8 +447,8 @@ export default function DashboardScreen() {
     try {
       const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       
-      // Store check-in data in session storage
-      await SessionStorage.setItem('checkInData', JSON.stringify({
+      // Store check-in data in SecureStore
+      await SecureStore.setItemAsync('checkInData', JSON.stringify({
         horseId: selectedHorse.id,
         horseName: selectedHorse.name,
         checkInTime: currentTime,
@@ -480,8 +475,8 @@ export default function DashboardScreen() {
           text: "Check Out",
           onPress: async () => {
             try {
-              // Clear check-in data from session storage
-              await SessionStorage.removeItem('checkInData')
+              // Clear check-in data from SecureStore
+              await SecureStore.deleteItemAsync('checkInData')
               
               setIsCheckedIn(false)
               setCheckInTime(null)
@@ -500,7 +495,7 @@ export default function DashboardScreen() {
   useEffect(() => {
     const loadCheckInStatus = async () => {
       try {
-        const checkInData = await SessionStorage.getItem('checkInData')
+        const checkInData = await SecureStore.getItemAsync('checkInData')
         if (checkInData) {
           const data = JSON.parse(checkInData)
           if (data.horseId === selectedHorse.id) {
