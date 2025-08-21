@@ -87,7 +87,7 @@ function CtuSettings() {
     console.log("User logged out")
     localStorage.removeItem("currentUser")
     localStorage.removeItem("loginTime")
-    navigate("/CtuLogin")
+    navigate("/login")
     closeLogoutModal()
   }
 
@@ -2192,7 +2192,7 @@ function CtuSettings() {
             </div>
           </div>
         </div>
-      )}
+      )}  
     </div>
   )
 }

@@ -190,7 +190,7 @@ function CtuHorseRecord() {
   const confirmLogout = () => {
     console.log("User logged out")
     // In a real app, clear authentication tokens/session
-    navigate("/CtuLogin") // Assuming this is your login route
+    navigate("/login") // Assuming this is your login route
     closeLogoutModal()
   }
 
