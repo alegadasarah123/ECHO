@@ -4,17 +4,26 @@ import {
   BarChart3,
   Bell,
   BellOff,
+  Check,
   CheckCircle,
   ClipboardList,
+  Clock,
+  CreditCard,
   FileText,
   Folder,
   Info,
   LayoutDashboard,
   LogOut,
+  MapPin,
   Megaphone,
+  Search,
   Settings,
+  Stethoscope,
+  User,
   UserCheck,
-  XCircle
+  UserX,
+  X,
+  XCircle,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
@@ -54,23 +63,15 @@ function CtuAccountApproval() {
     return `${Math.floor(diffInMinutes / 1440)}d ago`
   }, [])
 
-  const toggleNotificationDropdown = () => {
-    setIsNotificationDropdownOpen((prev) => !prev)
-  }
-
-  const getNotificationIconClass = (type) => {
+  const getNotificationIcon = (type) => {
     const icons = {
       info: Info,
       success: CheckCircle,
       warning: AlertTriangle,
       error: XCircle,
     }
-    return icons[type] || icons.info
-  }
-
-    const handleChatButtonClick = () => {
-    console.log("Chat button clicked")
-    navigate("/CtuMessage")
+    const IconComponent = icons[type] || icons.info
+    return <IconComponent className={`notification-icon ${type}`} size={16} />
   }
 
   const markAsRead = (notificationId) => {
@@ -218,7 +219,7 @@ function CtuAccountApproval() {
     console.log("User logged out")
     localStorage.removeItem("currentUser")
     localStorage.removeItem("loginTime")
-    navigate("/login")
+    navigate("/CtuLogin")
     closeLogoutModal()
   }
 
@@ -325,439 +326,11 @@ function CtuAccountApproval() {
 
   const filteredRegistrations = filterRegistrations()
 
-  const handleLogout = () => {
-    localStorage.removeItem("currentUser")
-    localStorage.removeItem("loginTime")
-    navigate("/login")
-  }
-
   return (
-    <>
-      <div className="bodyWrapper">
-        <div className="sidebar" id="sidebar">
-          <div className="sidebar-logo">
-            <img src="/images/logo.png" alt="CTU Logo" className="logo" />
-          </div>
-          <nav className="nav-menu">
-            {[
-              {
-                name: "Dashboard",
-                icon: LayoutDashboard,
-                path: "/CtuDashboard",
-              },
-              { name: "Account Approval", icon: UserCheck, path: "/CtuAccountApproval", active: true },
-              { name: "Access Requests", icon: FileText, path: "/CtuAccessRequest" },
-              { name: "Horse Records", icon: ClipboardList, path: "/CtuHorseRecord" },
-              { name: "Health Reports", icon: BarChart3, path: "/CtuHealthReport" },
-              { name: "Announcements", icon: Megaphone, path: "/CtuAnnouncement" },
-              { name: "Directory", icon: Folder, path: "/CtuDirectory" },
-              { name: "Settings", icon: Settings, path: "/CtuSettings" },
-            ].map((item) => {
-              const IconComponent = item.icon
-              return (
-                <Link key={item.name} to={item.path} className={`nav-item ${item.active ? "active" : ""}`}>
-                  <IconComponent className="nav-icon" size={16} />
-                  {item.name}
-                </Link>
-              )
-            })}
-          </nav>
-          <div className="logout">
-            <a href="#" className="logout-btn" id="logoutBtn" onClick={openLogoutModal}>
-              <LogOut className="logout-icon" size={16} />
-              Log Out
-            </a>
-          </div>
-        </div>
-        <div className="main-content">
-        <header className="header">
-          <div className="search-container">
-            <div className="search-icon"></div>
-            <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
-          </div>
-          <div
-            className="notification-bell"
-            id="notification-bell"
-            ref={notificationBellRef}
-            onClick={toggleNotificationDropdown}
-          >
-            <Bell size={20} />
-            {notifications.filter((n) => !n.read).length > 0 && (
-              <div className="notification-count" style={{ display: "flex" }}>
-                {notifications.filter((n) => !n.read).length > 9 ? "9+" : notifications.filter((n) => !n.read).length}
-              </div>
-            )}
-            <div
-              className={`notification-dropdown ${isNotificationDropdownOpen ? "show" : ""}`}
-              ref={notificationDropdownRef}
-            >
-              <div className="notification-header">
-                <h3>Notifications</h3>
-                {notifications.filter((n) => !n.read).length > 0 && (
-                  <button className="mark-all-read" onClick={markAllAsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div id="notificationList">
-                {notifications.length === 0 ? (
-                  <div className="empty-state">
-                    <BellOff size={48} />
-                    <h3>No notifications</h3>
-                    <p>You're all caught up!</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => (
-                    <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
-                      <div className="notification-actions">
-                        {!notification.read && (
-                          <button
-                            className="notification-action"
-                            onClick={() => markAsRead(notification.id)}
-                            title="Mark as read"
-                          >
-                            <i className="fas fa-check"></i>
-                          </button>
-                        )}
-                        <button
-                          className="notification-action"
-                          onClick={() => deleteNotification(notification.id)}
-                          title="Delete"
-                        >
-                          <i className="fas fa-times"></i>
-                        </button>
-                      </div>
-                      <div className="notification-title">
-                        <i
-                          className={`notification-icon ${notification.type} ${getNotificationIconClass(notification.type)}`}
-                        ></i>
-                        {notification.title}
-                      </div>
-                      <div className="notification-message">{notification.message}</div>
-                      <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </header>
-        <div className="content-area">
-          <div className="page-header">
-            <h1>Account Approval</h1>
-            <h2>Manage registration requests from Veterinarians</h2>
-            <div className="tabs-container">
-              <button
-                className={`tab ${activeTab === "pending" ? "active" : ""}`}
-                onClick={() => setActiveTab("pending")}
-              >
-                Pending
-              </button>
-              <button
-                className={`tab ${activeTab === "approved" ? "active" : ""}`}
-                onClick={() => setActiveTab("approved")}
-              >
-                Approved
-              </button>
-              <button
-                className={`tab ${activeTab === "declined" ? "active" : ""}`}
-                onClick={() => setActiveTab("declined")}
-              >
-                Declined
-              </button>
-            </div>
-          </div>
-          <div className="controls-row">
-            <div className="filter-controls">
-              <select className="filter-select" value={recentFilter} onChange={handleRecentFilterChange}>
-                <option value="all">Most Recent</option>
-                <option value="today">Today</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-              </select>
-            </div>
-            {activeTab === "pending" && (
-              <button className="approve-all-btn" onClick={approveAllPending}>
-                Approve All
-              </button>
-            )}
-          </div>
-          <div className="registration-table" id="registrationTable">
-            {filteredRegistrations.length === 0 ? (
-              <div className="empty-state">
-                <i
-                  className={`fas ${
-                    activeTab === "pending"
-                      ? "fa-user-clock"
-                      : activeTab === "approved"
-                        ? "fa-user-check"
-                        : "fa-user-times"
-                  }`}
-                ></i>
-                <h3>No {activeTab === "pending" ? "pending" : activeTab} registrations</h3>
-                <p>
-                  {activeTab === "pending"
-                    ? "New registration requests will appear here"
-                    : `${activeTab} registrations will appear here`}
-                </p>
-              </div>
-            ) : (
-              filteredRegistrations.map((user) => (
-                <div key={user.id} className="registration-item">
-                  <div className="user-avatar">{user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}</div>
-                  <div className="user-info">
-                    <div className="user-name">
-                      {user.vet_fname} {user.vet_mname} {user.vet_lname}
-                      <span className={`user-type-badge badge-${user.type}`}>{user.type}</span>
-                    </div>
-                    <div className="user-email">{user.vet_email}</div>
-                    <div className="user-details">
-                      {user.vet_city}, {user.vet_province}
-                    </div>
-                  </div>
-                  <div className="action-buttons">
-                    <button className="action-btn btn-view" onClick={() => viewDetails(user.id, user.status)}>
-                      View Details
-                    </button>
-                    {user.status === "pending" && (
-                      <>
-                        <button className="action-btn btn-approve" onClick={() => showApproveConfirmation(user.id)}>
-                          Approve
-                        </button>
-                        <button className="action-btn btn-decline" onClick={() => showDeclineConfirmation(user.id)}>
-                          Decline
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-        <div className="chat-widget">
-        <button className="chat-button" onClick={handleChatButtonClick}>
-          <div className="chat-dots">
-            <div className="chat-dot" />
-            <div className="chat-dot" />
-            <div className="chat-dot" />
-          </div>
-        </button>
-      </div>
-        {/* View Details Modal */}
-      {isViewDetailsModalOpen && selectedUser && (
-        <div className="modal-overlay active" ref={viewDetailsModalOverlayRef}>
-          <div className="modal-content">
-            <button className="modal-close" onClick={closeModal}>
-              &times;
-            </button>
-            
-            <div className="modal-header">
-              <div className="modal-avatar-container">
-                <div className="modal-avatar">
-                  {selectedUser.vet_fname.charAt(0) + selectedUser.vet_lname.charAt(0)}
-                  <div className="modal-status-wrapper">
-                    <span className={`modal-status-circle status-${selectedUser.users?.status}`}></span>
-                    <span className={`modal-status-text status-${selectedUser.users?.status}`}>
-                      {selectedUser.users?.status.charAt(0).toUpperCase() + selectedUser.users?.status.slice(1)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="modal-user-info">
-                <h3>
-                  {selectedUser.vet_fname} {selectedUser.vet_mname} {selectedUser.vet_lname}
-                </h3>
-                <div className="modal-user-meta">
-                  <span className={`modal-user-badge badge-${selectedUser.type}`}>{selectedUser.type}</span>
-                </div>
-              </div>
-            </div>
-
-
-
-
-            <div className="modal-body">
-              <div className="modal-section-box">
-                <div className="section-header">
-                  <i className="fas fa-user section-icon"></i>
-                  <h4>Name Information</h4>
-                </div>
-                <div className="modal-grid">
-                  <div className="modal-field">
-                    <span className="modal-label">First Name:</span>
-                    <div className="modal-value">{selectedUser.vet_fname}</div>
-                  </div>
-                  <div className="modal-field">
-                    <span className="modal-label">Middle Name:</span>
-                    <div className="modal-value">{selectedUser.vet_mname}</div>
-                  </div>
-                  <div className="modal-field">
-                    <span className="modal-label">Last Name:</span>
-                    <div className="modal-value">{selectedUser.vet_lname}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="modal-section-box">
-                <div className="section-header">
-                  <i className="fas fa-id-card section-icon"></i>
-                  <h4>Personal Information</h4>
-                </div>
-                <div className="modal-grid">
-                  <div className="modal-field">
-                    <span className="modal-label">Date of Birth:</span>
-                    <div className="modal-value">{selectedUser.vet_dob}</div>
-                  </div>
-                  <div className="modal-field">
-                    <span className="modal-label">Sex:</span>
-                    <div className="modal-value">{selectedUser.vet_sex || "Not specified"}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Phone Number:</span>
-                    <div className="modal-value">{selectedUser.vet_phone_num}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Email:</span>
-                    <div className="modal-value">{selectedUser.vet_email}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Facebook:</span>
-                    <div className="modal-value">{selectedUser.facebook}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="modal-section-box">
-                <div className="section-header">
-                  <i className="fas fa-map-marker-alt section-icon"></i>
-                  <h4>Address Information</h4>
-                </div>
-                <div className="modal-grid">
-                  <div className="modal-field">
-                    <span className="modal-label">Province:</span>
-                    <div className="modal-value">{selectedUser.vet_province}</div>
-                  </div>
-                  <div className="modal-field">
-                    <span className="modal-label">City:</span>
-                    <div className="modal-value">{selectedUser.vet_city}</div>
-                  </div>
-                  <div className="modal-field">
-                    <span className="modal-label">Barangay:</span>
-                    <div className="modal-value">{selectedUser.vet_brgy}</div>
-                  </div>
-                  <div className="modal-field">
-                    <span className="modal-label">Zip Code:</span>
-                    <div className="modal-value">{selectedUser.vet_zipcode}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Complete Address/Street Name:</span>
-                    <div className="modal-value">{selectedUser.address}</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="modal-section-box">
-                <div className="section-header">
-                  <i className="fas fa-stethoscope section-icon"></i>
-                  <h4>Professional Information</h4>
-                </div>
-                <div className="modal-grid">
-                  <div className="modal-field">
-                    <span className="modal-label">License Number:</span>
-                    <div className="modal-value">{selectedUser.vet_license_num || "Not provided"}</div>
-                  </div>
-                  <div className="modal-field">
-                    <span className="modal-label">Experience Years:</span>
-                    <div className="modal-value">{selectedUser.vet_exp_yr || "Not specified"}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Specialization:</span>
-                    <div className="modal-value">{selectedUser.vet_specialization || "Not specified"}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Organization:</span>
-                    <div className="modal-value">{selectedUser.vet_org || "Not specified"}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Document Image:</span>
-                    <div className="modal-value">{selectedUser.vet_doc_image || "Not provided"}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className={`modal-footer ${selectedUser.status !== "pending" ? "close-only" : ""}`}>
-              <button className="modal-btns" onClick={closeModal}>
-                Close
-              </button>
-              {selectedUser.status === "pending" && (
-                <>
-                  <button className="modal-btns approve" onClick={showApproveConfirmationFromModal}>
-                    Approve
-                  </button>
-                  <button className="modal-btns decline" onClick={showDeclineConfirmationFromModal}>
-                    Decline
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-        {/* Confirmation Modal */}
-        {isConfirmationModalOpen && (
-          <div className="modal-overlay active" ref={confirmationOverlayRef}>
-            <div className="confirmation-modal">
-              <h3 id="confirmationTitle">{confirmationDetails.title}</h3>
-              <p id="confirmationMessage">{confirmationDetails.message}</p>
-              <div className="confirmation-buttons">
-                <button className="confirmation-btn cancel" onClick={closeConfirmation}>
-                  Cancel
-                </button>
-                <button
-                  className={`confirmation-btn confirm ${confirmationDetails.action === "decline" ? "decline" : ""}`}
-                  onClick={confirmAction}
-                >
-                  {confirmationDetails.action === "approve" ? "Approve" : "Decline"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Logout Modal */}
-        {isLogoutModalOpen && (
-          <div
-            className={`modal-overlay active`}
-            id="logoutModal"
-            ref={logoutModalRef}
-            onClick={(e) => e.target === logoutModalRef.current && closeLogoutModal()}
-          >
-            <div className="logout-modal">
-              <div className="logout-modal-icon">
-                <i className="fas fa-sign-out-alt" />
-              </div>
-              <h3>Confirm Logout</h3>
-              <p>Are you sure you want to log out of your account?</p>
-              <div className="logout-modal-buttons">
-                <button className={`logout-modal-btn cancel`} onClick={closeLogoutModal}>
-                  No
-                </button>
-                <button className={`logout-modal-btn confirm`} onClick={confirmLogout}>
-                  Yes
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      <style jsx>{`
-       .bodyWrapper {
+    <div className="bodyWrapper">
+      {/* Internal CSS here */}
+      <style>{`
+        .bodyWrapper {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background-color: #f5f5f5;
   display: flex;
@@ -766,7 +339,7 @@ function CtuAccountApproval() {
   width: 100%; /* Ensure it takes full width */
 }
 
-.sidebar {
+.sidebars {
   width: 250px; /* Default expanded width */
   background-color: #b91c1c;
   color: white;
@@ -780,7 +353,7 @@ function CtuAccountApproval() {
   transition: transform 0.3s ease, width 0.3s ease; /* Add width to transition */
 }
 
-.sidebar-logo {
+.sidebars-logo {
   padding: 5px;
   display: flex;
   flex-direction: column; /* Stack logo and text vertically */
@@ -790,13 +363,13 @@ function CtuAccountApproval() {
   position: relative; /* Needed for absolute positioning of close button */
 }
 
-.sidebar-logo img {
+.sidebars-logo img {
   width: 250px;
   height: 200px;
   object-fit: contain;
 }
 
-.sidebarLogoText {
+.sidebarsLogoText {
   font-size: 1.2rem;
   font-weight: 600;
   margin-top: 10px;
@@ -830,15 +403,15 @@ function CtuAccountApproval() {
 }
 
 .nav-item.active {
-          background-color: #f3f4f6;
-          color: #b91c1c;
-          border-radius: 20px 0 0 20px;
-          font-weight: 500;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-          width: 240px;
-          margin-left: 10px;
-          height:40px;
-        }
+  background-color: #f3f4f6;
+  color: #b91c1c;
+  border-radius: 20px 0 0 20px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  width: 240px;
+  margin-left: 10px;
+}
+
 .nav-icon {
   width: 20px;
   height: 20px;
@@ -854,30 +427,30 @@ function CtuAccountApproval() {
   color: #b91c1c;
 }
 
-.logout {
-          padding: 10px;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
+.logouts {
+  padding: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
 
-        .logout-btn {
-          display: flex;
-          align-items: center;
-          color: white;
-          text-decoration: none;
-          font-size: 15px;
-          font-weight: 500;
-          cursor: pointer;
-          padding: 14px 40px;
-          border-radius: 25px;
-          transition: all 0.3s ease;
-          min-height: 44px;
-        }
+.logout-btns {
+  display: flex;
+  align-items: center;
+  color: white;
+  text-decoration: none;
+  font-size: clamp(13px, 2vw, 15px);
+  font-weight: 500;
+  cursor: pointer;
+  padding: 14px 40px;
+  border-radius: 25px;
+  transition: all 0.3s ease;
+  min-height: 44px;
+}
 
-.logout-btn:hover {
+.logout-btns:hover {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-.logout-icon {
+.logouts-icon {
   width: 20px;
   height: 20px;
   margin-right: 15px;
@@ -897,7 +470,7 @@ function CtuAccountApproval() {
   transition: margin-left 0.3s ease; /* Add transition for margin */
 }
 
-.header {
+.headers {
   background: white;
   padding: 16px 24px;
   display: flex;
@@ -909,7 +482,7 @@ function CtuAccountApproval() {
 }
 
 /* New styles for the sidebarToggleBtn in the header */
-.header .sidebarToggleBtn {
+.headers .sidebarToggleBtn {
   background: none;
   border: none;
   color: #666; /* Or whatever color fits the header */
@@ -924,11 +497,11 @@ function CtuAccountApproval() {
   transition: color 0.2s;
 }
 
-.header .sidebarToggleBtn:hover {
+.headers .sidebarToggleBtn:hover {
   color: #333; /* Darker on hover */
 }
 
-.search-container {
+.search-containers {
   flex: 1;
   max-width: 400px;
   margin-right: 20px;
@@ -1122,21 +695,22 @@ function CtuAccountApproval() {
   color: #666;
 }
 
- .empty-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center; /* centers horizontally */
-          justify-content: center; /* centers vertically (if parent has height) */
-          text-align: center;
-          padding: 2rem;
-        }
+  .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* centers horizontally */
+  justify-content: center; /* centers vertically (if parent has height) */
+  text-align: center;
+  padding: 2rem;
+}
 
-        .icon-wrapper {
+.icon-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 1rem;
 }
+
 
 .empty-state i {
   font-size: 48px;
@@ -1154,7 +728,7 @@ function CtuAccountApproval() {
   font-size: 14px;
 }
 
-.content-area {
+.content-areas {
   flex: 1;
   padding: clamp(16px, 3vw, 24px);
   background: #f9fafb;
@@ -1695,13 +1269,13 @@ h2 {
 }
 
 .logout-modal-btn.cancel {
-  background: #6b7280;
-  color: white;
-}
+          background: #f3f4f6;
+          color: #374151;
+        }
 
-.logout-modal-btn.cancel:hover {
-  background: #4b5563;
-}
+        .logout-modal-btn.cancel:hover {
+          background: #e5e7eb;
+        }
 
 .logout-modal-btn.confirm {
   background: #ef4444;
@@ -1713,7 +1287,7 @@ h2 {
 }
 
 /* Chat Widget */
- .chat-widget {
+.chat-widget {
           position: fixed;
           bottom: 24px;
           right: 24px;
@@ -1728,7 +1302,7 @@ h2 {
           border-radius: 20px;
           color: white;
           cursor: pointer;
-          box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
+          box-shadow: 0 4px 12px rgba(28, 44, 185, 0.3);
           transition: all 0.3s ease;
           display: flex;
           align-items: center;
@@ -1751,7 +1325,7 @@ h2 {
 
         .chat-button:hover {
           transform: scale(1.05);
-          box-shadow: 0 6px 16px rgba(185, 28, 28, 0.4);
+          box-shadow: 0 6px 16px rgba(28, 78, 185, 0.4);
         }
 
         .chat-button:hover::after {
@@ -1771,6 +1345,7 @@ h2 {
           background: white;
           border-radius: 50%;
         }
+
 @keyframes pulse {
   0%,
   60%,
@@ -1784,12 +1359,12 @@ h2 {
 
 /* Responsive Design */
 @media (max-width: 768px) {
-  .sidebar {
+  .sidebars {
     transform: translateX(-100%);
     transition: transform 0.3s ease;
   }
 
-  .sidebar.expanded {
+  .sidebars.expanded {
     transform: translateX(0);
   }
 
@@ -1802,16 +1377,16 @@ h2 {
     display: flex;
   }
 
-  .header {
+  .headers {
     padding: 12px 16px;
   }
 
-  .search-container {
+  .search-containers {
     margin-right: 12px;
     min-width: 150px;
   }
 
-  .content-area {
+  .content-areas {
     padding: 16px;
   }
 
@@ -1880,11 +1455,11 @@ h2 {
     padding: 8px 12px;
   }
 
-  .search-container {
+  .search-containers {
     min-width: 120px;
   }
 
-  .content-area {
+  .content-areas {
     padding: 12px;
   }
 
@@ -1989,7 +1564,415 @@ h2 {
   color: #721c24;
 }
       `}</style>
-    </>
+
+      <div className="sidebars" id="sidebasr">
+        <div className="sidebars-logo">
+          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+        </div>
+        <nav className="nav-menu">
+          {[
+            {
+              name: "Dashboard",
+              icon: LayoutDashboard, // Replaced iconClass with Lucide icon component
+              path: "/CtuDashboard",
+            },
+            { name: "Account Approval", icon: UserCheck, path: "/CtuAccountApproval", active: true },
+            { name: "Access Requests", icon: FileText, path: "/CtuAccessRequest" },
+            { name: "Horse Records", icon: ClipboardList, path: "/CtuHorseRecord" },
+            { name: "Health Reports", icon: BarChart3, path: "/CtuHealthReport" },
+            { name: "Announcements", icon: Megaphone, path: "/CtuAnnouncement" },
+            { name: "Directory", icon: Folder, path: "/CtuDirectory" },
+            { name: "Settings", icon: Settings, path: "/CtuSettings" },
+          ].map((item) => (
+            <Link key={item.name} to={item.path} className={`nav-item ${item.active ? "active" : ""}`}>
+              <item.icon className="nav-icon" size={18} />
+              {item.name}
+            </Link>
+          ))}
+        </nav>
+        <div className="logouts">
+          <a href="#" className="logout-btns" id="logoutBtn" onClick={openLogoutModal}>
+            <LogOut className="logouts-icon" size={18} />
+            Log Out
+          </a>
+        </div>
+      </div>
+      <div className="main-content">
+        <header className="headers">
+          <div className="search-containers">
+            <Search className="search-icon" size={18} />
+            <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
+          </div>
+          <div
+            className="notification-bell"
+            id="notification-bell"
+            ref={notificationBellRef}
+            onClick={() => setIsNotificationDropdownOpen((prev) => !prev)}
+          >
+            <Bell size={20} />
+            {notifications.filter((n) => !n.read).length > 0 && (
+              <div className="notification-count" style={{ display: "flex" }}>
+                {notifications.filter((n) => !n.read).length > 9 ? "9+" : notifications.filter((n) => !n.read).length}
+              </div>
+            )}
+            <div
+              className={`notification-dropdown ${isNotificationDropdownOpen ? "show" : ""}`}
+              ref={notificationDropdownRef}
+            >
+              <div className="notification-header">
+                <h3>Notifications</h3>
+                {notifications.filter((n) => !n.read).length > 0 && (
+                  <button className="mark-all-read" onClick={markAllAsRead}>
+                    Mark all as read
+                  </button>
+                )}
+              </div>
+              <div id="notificationList">
+                {notifications.length === 0 ? (
+                  <div className="empty-state">
+                    <BellOff size={48} />
+                    <h3>No notifications</h3>
+                    <p>You're all caught up!</p>
+                  </div>
+                ) : (
+                  notifications.map((notification) => (
+                    <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
+                      <div className="notification-actions">
+                        {!notification.read && (
+                          <button
+                            className="notification-action"
+                            onClick={() => markAsRead(notification.id)}
+                            title="Mark as read"
+                          >
+                            <Check size={14} />
+                          </button>
+                        )}
+                        <button
+                          className="notification-action"
+                          onClick={() => deleteNotification(notification.id)}
+                          title="Delete"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <div className="notification-title">{getNotificationIcon(notification.type)}</div>
+                      <div className="notification-message">{notification.message}</div>
+                      <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </header>
+        <div className="content-areas">
+          <div className="page-header">
+            <h1>Account Approval</h1>
+            <h2>Manage registration requests from Veterinarians</h2>
+            <div className="tabs-container">
+              <button
+                className={`tab ${activeTab === "pending" ? "active" : ""}`}
+                onClick={() => setActiveTab("pending")}
+              >
+                Pending
+              </button>
+              <button
+                className={`tab ${activeTab === "approved" ? "active" : ""}`}
+                onClick={() => setActiveTab("approved")}
+              >
+                Approved
+              </button>
+              <button
+                className={`tab ${activeTab === "declined" ? "active" : ""}`}
+                onClick={() => setActiveTab("declined")}
+              >
+                Declined
+              </button>
+            </div>
+          </div>
+          <div className="controls-row">
+            <div className="filter-controls">
+              <select className="filter-select" value={recentFilter} onChange={handleRecentFilterChange}>
+                <option value="all">Most Recent</option>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+              </select>
+            </div>
+            {activeTab === "pending" && (
+              <button className="approve-all-btn" onClick={approveAllPending}>
+                Approve All
+              </button>
+            )}
+          </div>
+          <div className="registration-table" id="registrationTable">
+            {filteredRegistrations.length === 0 ? (
+              <div className="empty-state">
+                {activeTab === "pending" ? (
+                  <Clock size={48} />
+                ) : activeTab === "approved" ? (
+                  <UserCheck size={48} />
+                ) : (
+                  <UserX size={48} />
+                )}
+                <h3>No {activeTab === "pending" ? "pending" : activeTab} registrations</h3>
+                <p>
+                  {activeTab === "pending"
+                    ? "New registration requests will appear here"
+                    : `${activeTab} registrations will appear here`}
+                </p>
+              </div>
+            ) : (
+              filteredRegistrations.map((user) => (
+                <div key={user.id} className="registration-item">
+                  <div className="user-avatar">{user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}</div>
+                  <div className="user-info">
+                    <div className="user-name">
+                      {user.vet_fname} {user.vet_mname} {user.vet_lname}
+                      <span className={`user-type-badge badge-${user.type}`}>{user.type}</span>
+                    </div>
+                    <div className="user-email">{user.vet_email}</div>
+                    <div className="user-details">
+                      {user.vet_city}, {user.vet_province}
+                    </div>
+                  </div>
+                  <div className="action-buttons">
+                    <button className="action-btn btn-view" onClick={() => viewDetails(user.id, user.status)}>
+                      View Details
+                    </button>
+                    {user.status === "pending" && (
+                      <>
+                        <button className="action-btn btn-approve" onClick={() => showApproveConfirmation(user.id)}>
+                          Approve
+                        </button>
+                        <button className="action-btn btn-decline" onClick={() => showDeclineConfirmation(user.id)}>
+                          Decline
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="chat-widget">
+        <button className="chat-button" onClick={() => navigate("/CtuMessage")}>
+          <div className="chat-dots">
+            <div className="chat-dot"></div>
+            <div className="chat-dot"></div>
+            <div className="chat-dot"></div>
+          </div>
+        </button>
+      </div>
+      {/* View Details Modal */}
+      {isViewDetailsModalOpen && selectedUser && (
+        <div className="modal-overlay active" ref={viewDetailsModalOverlayRef}>
+          <div className="modal-content">
+            <button className="modal-close" onClick={closeModal}>
+              &times;
+            </button>
+
+            <div className="modal-header">
+              <div className="modal-avatar-container">
+                <div className="modal-avatar">
+                  {selectedUser.vet_fname.charAt(0) + selectedUser.vet_lname.charAt(0)}
+                  <div className="modal-status-wrapper">
+                    <span className={`modal-status-circle status-${selectedUser.users?.status}`}></span>
+                    <span className={`modal-status-text status-${selectedUser.users?.status}`}>
+                      {selectedUser.users?.status.charAt(0).toUpperCase() + selectedUser.users?.status.slice(1)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-user-info">
+                <h3>
+                  {selectedUser.vet_fname} {selectedUser.vet_mname} {selectedUser.vet_lname}
+                </h3>
+                <div className="modal-user-meta">
+                  <span className={`modal-user-badge badge-${selectedUser.type}`}>{selectedUser.type}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-body">
+              <div className="modal-section-box">
+                <div className="section-header">
+                  <User className="section-icon" size={20} />
+                  <h4>Name Information</h4>
+                </div>
+                <div className="modal-grid">
+                  <div className="modal-field">
+                    <span className="modal-label">First Name:</span>
+                    <div className="modal-value">{selectedUser.vet_fname}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">Middle Name:</span>
+                    <div className="modal-value">{selectedUser.vet_mname}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">Last Name:</span>
+                    <div className="modal-value">{selectedUser.vet_lname}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-section-box">
+                <div className="section-header">
+                  <CreditCard className="section-icon" size={20} />
+                  <h4>Personal Information</h4>
+                </div>
+                <div className="modal-grid">
+                  <div className="modal-field">
+                    <span className="modal-label">Date of Birth:</span>
+                    <div className="modal-value">{selectedUser.vet_dob}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">Sex:</span>
+                    <div className="modal-value">{selectedUser.vet_sex || "Not specified"}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Phone Number:</span>
+                    <div className="modal-value">{selectedUser.vet_phone_num}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Email:</span>
+                    <div className="modal-value">{selectedUser.vet_email}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Facebook:</span>
+                    <div className="modal-value">{selectedUser.facebook}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-section-box">
+                <div className="section-header">
+                  <MapPin className="section-icon" size={20} />
+                  <h4>Address Information</h4>
+                </div>
+                <div className="modal-grid">
+                  <div className="modal-field">
+                    <span className="modal-label">Province:</span>
+                    <div className="modal-value">{selectedUser.vet_province}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">City:</span>
+                    <div className="modal-value">{selectedUser.vet_city}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">Barangay:</span>
+                    <div className="modal-value">{selectedUser.vet_brgy}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">Zip Code:</span>
+                    <div className="modal-value">{selectedUser.vet_zipcode}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Complete Address/Street Name:</span>
+                    <div className="modal-value">{selectedUser.address}</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-section-box">
+                <div className="section-header">
+                  <Stethoscope className="section-icon" size={20} />
+                  <h4>Professional Information</h4>
+                </div>
+                <div className="modal-grid">
+                  <div className="modal-field">
+                    <span className="modal-label">License Number:</span>
+                    <div className="modal-value">{selectedUser.vet_license_num || "Not provided"}</div>
+                  </div>
+                  <div className="modal-field">
+                    <span className="modal-label">Experience Years:</span>
+                    <div className="modal-value">{selectedUser.vet_exp_yr || "Not specified"}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Specialization:</span>
+                    <div className="modal-value">{selectedUser.vet_specialization || "Not specified"}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Organization:</span>
+                    <div className="modal-value">{selectedUser.vet_org || "Not specified"}</div>
+                  </div>
+                  <div className="modal-field full-width">
+                    <span className="modal-label">Document Image:</span>
+                    <div className="modal-value">{selectedUser.vet_doc_image || "Not provided"}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className={`modal-footer ${selectedUser.status !== "pending" ? "close-only" : ""}`}>
+              <button className="modal-btns" onClick={closeModal}>
+                Close
+              </button>
+              {selectedUser.status === "pending" && (
+                <>
+                  <button className="modal-btns approve" onClick={showApproveConfirmationFromModal}>
+                    Approve
+                  </button>
+                  <button className="modal-btns decline" onClick={showDeclineConfirmationFromModal}>
+                    Decline
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal */}
+      {isConfirmationModalOpen && (
+        <div className="modal-overlay active" ref={confirmationOverlayRef}>
+          <div className="confirmation-modal">
+            <h3 id="confirmationTitle">{confirmationDetails.title}</h3>
+            <p id="confirmationMessage">{confirmationDetails.message}</p>
+            <div className="confirmation-buttons">
+              <button className="confirmation-btn cancel" onClick={closeConfirmation}>
+                Cancel
+              </button>
+              <button
+                className={`confirmation-btn confirm ${confirmationDetails.action === "decline" ? "decline" : ""}`}
+                onClick={confirmAction}
+              >
+                {confirmationDetails.action === "approve" ? "Approve" : "Decline"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Logout Modal */}
+      {isLogoutModalOpen && (
+        <div
+          className={`modal-overlay active`}
+          id="logoutModal"
+          ref={logoutModalRef}
+          onClick={(e) => e.target === logoutModalRef.current && closeLogoutModal()}
+        >
+          <div className="logout-modal">
+            <div className="logout-modal-icon">
+              <LogOut size={25} color="#f59e0b" />
+            </div>
+            <h3>Confirm Logout</h3>
+            <p>Are you sure you want to log out of your account?</p>
+            <div className="logout-modal-buttons">
+              <button className={`logout-modal-btn cancel`} onClick={closeLogoutModal}>
+                No
+              </button>
+              <button className={`logout-modal-btn confirm`} onClick={confirmLogout}>
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
