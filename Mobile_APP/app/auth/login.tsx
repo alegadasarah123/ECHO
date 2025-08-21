@@ -7,6 +7,7 @@ import {
   Dimensions,
   Image,
   SafeAreaView,
+  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
@@ -15,6 +16,20 @@ import {
   View,
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
+
+// Auth utility functions - you can also put these in a separate utils/auth.js file
+const logout = async () => {
+  try {
+    await SecureStore.deleteItemAsync("access_token")
+    await SecureStore.deleteItemAsync("refresh_token")
+    await SecureStore.deleteItemAsync("user_data")
+    await SecureStore.deleteItemAsync("selectedHorseData")
+    await SecureStore.deleteItemAsync("checkInData")
+    console.log("All tokens and user data cleared successfully")
+  } catch (error) {
+    console.error("Error clearing tokens:", error)
+  }
+}
 
 const { width, height } = Dimensions.get("window")
 const scale = (size: number) => (width / 375) * size
@@ -37,142 +52,401 @@ export default function LoginScreen() {
     setIsLoginLoading(true)
 
     try {
-      const response = await fetch("http://192.168.1.8:8000/api/kutsero/login/", {
+      // Clear any existing tokens first to ensure fresh login
+      console.log("Clearing existing tokens...")
+      await logout()
+
+      console.log("Attempting login for:", email.trim().toLowerCase())
+
+      const response = await fetch("http://10.0.0.79:8000/api/kutsero/login/", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        headers: { 
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ 
+          email: email.trim().toLowerCase(), 
+          password: password.trim()
+        }),
       })
 
       const data = await response.json()
-      console.log("Login response:", data)
+      console.log("Login response status:", response.status)
+      console.log("Login response data:", {
+        message: data.message,
+        user_role: data.user_role,
+        user_status: data.user_status,
+        has_access_token: !!data.access_token,
+        has_refresh_token: !!data.refresh_token,
+        expires_in: data.expires_in,
+        user_email: data.user?.email
+      })
 
       if (response.ok) {
-        // Store tokens securely
-        await SecureStore.setItemAsync("access_token", data.access_token)
-        await SecureStore.setItemAsync("refresh_token", data.refresh_token)
-
-        // Route based on user role
-        if (data.user_role === "kutsero") {
-          router.replace("/KUTSERO/dashboard")
-        } else if (data.user_role === "horse_operator") {
-          router.replace("/HORSE_OPERATOR/home")
+        // Store tokens securely in SecureStore
+        if (data.access_token) {
+          await SecureStore.setItemAsync("access_token", data.access_token)
+          console.log("✅ Access token stored successfully")
         } else {
-          Alert.alert("Error", "Unknown user role")
+          console.error("❌ No access token received")
+        }
+        
+        if (data.refresh_token) {
+          await SecureStore.setItemAsync("refresh_token", data.refresh_token)
+          console.log("✅ Refresh token stored successfully")
+        } else {
+          console.error("❌ No refresh token received")
+        }
+
+        // Store user info for later use (including profile data)
+        if (data.user) {
+          const userDataToStore = {
+            ...data.user,
+            user_role: data.user_role,
+            user_status: data.user_status,
+            profile: data.profile // Include profile data from login response
+          }
+          
+          await SecureStore.setItemAsync("user_data", JSON.stringify(userDataToStore))
+          console.log("✅ User data stored successfully:", {
+            hasProfile: !!data.profile,
+            userRole: data.user_role,
+            userStatus: data.user_status
+          })
+        }
+
+        // Validate user role
+        const userRole = data.user_role?.toLowerCase()?.trim()
+        console.log("Processing user role:", userRole)
+        
+        if (!userRole) {
+          console.error("❌ No user role received")
+          Alert.alert("Error", "No user role found. Please contact support.")
           return
         }
 
-        const statusMsg = data.user_status === "pending" ? "Your account is pending approval" : ""
-        Alert.alert("Login Successful", `Welcome ${data.user?.email || "User"}! ${statusMsg}`, [{ text: "OK" }])
+        // Route based on user role
+        if (userRole === "kutsero") {
+          console.log("✅ Routing to kutsero dashboard")
+          
+          // Show success message first
+          const statusMsg = data.user_status === "pending" 
+            ? "\n\nNote: Your account is pending approval but you can still use the app." 
+            : ""
+          
+          Alert.alert(
+            "Login Successful", 
+            `Welcome ${data.user?.email || "User"}!${statusMsg}`,
+            [{ 
+              text: "Continue", 
+              onPress: () => {
+                router.replace("../KUTSERO/dashboard")
+              }
+            }]
+          )
+          
+        } else if (userRole === "horse_operator") {
+          console.log("✅ Routing to horse operator home")
+          
+          const statusMsg = data.user_status === "pending" 
+            ? "\n\nNote: Your account is pending approval but you can still use the app." 
+            : ""
+          
+          Alert.alert(
+            "Login Successful", 
+            `Welcome ${data.user?.email || "User"}!${statusMsg}`,
+            [{ 
+              text: "Continue", 
+              onPress: () => {
+                router.replace("../HORSE_OPERATOR/home")
+              }
+            }]
+          )
+          
+        } else {
+          console.log("❌ Unrecognized user role:", userRole)
+          Alert.alert("Error", `Unrecognized user role: ${userRole}. Please contact support.`)
+          return
+        }
+
       } else {
-        const errorMessage = data.error || "Login failed"
-        Alert.alert("Login Failed", errorMessage)
+        // Handle login errors
+        console.error("❌ Login failed:", data.message || data.error || "Unknown error")
+        
+        let errorMessage = "Login failed. Please try again."
+        
+        if (data.message) {
+          errorMessage = data.message
+        } else if (data.error) {
+          errorMessage = data.error
+        } else if (response.status === 401) {
+          errorMessage = "Invalid email or password. Please check your credentials."
+        } else if (response.status >= 500) {
+          errorMessage = "Server error. Please try again later."
+        } else if (response.status >= 400) {
+          errorMessage = "Invalid request. Please check your input."
+        }
+
+        Alert.alert("Login Error", errorMessage)
       }
+
     } catch (error) {
-      console.error("Login error:", error)
-      Alert.alert("Error", "Network error. Please try again.")
+      console.error("❌ Login error:", error)
+      
+      let errorMessage = "Network error. Please check your connection and try again."
+      
+      if (error instanceof Error) {
+        if (error.message.includes("Network request failed")) {
+          errorMessage = "Unable to connect to server. Please check your internet connection."
+        } else if (error.message.includes("timeout")) {
+          errorMessage = "Request timed out. Please try again."
+        } else {
+          errorMessage = error.message
+        }
+      }
+      
+      Alert.alert("Connection Error", errorMessage)
     } finally {
       setIsLoginLoading(false)
     }
   }
 
-  const toggleShowPassword = useCallback(() => setShowPassword(prev => !prev), [])
-  const handleShowSignup = useCallback(() => router.push("./pages/auth/signup"), [router])
-  const handleShowForgotPassword = useCallback(() => router.push("./pages/auth/forgot-password"), [router])
+  const togglePasswordVisibility = useCallback(() => {
+    setShowPassword(prev => !prev)
+  }, [])
 
   return (
-    <SafeAreaView style={styles.loginContainer}>
-      <StatusBar barStyle="light-content" backgroundColor="#B8763E" />
-      <View style={styles.headerSection}>
-        <View style={styles.headerLogoContainer}>
-          <Image source={require("../assets/images/logo.png")} style={styles.headerLogo} resizeMode="contain" />
-        </View>
-      </View>
-
-      <View style={styles.loginSection}>
-        <Text style={styles.welcomeText}>Welcome Back</Text>
-
-        <View style={styles.inputContainer}>
-          <Text style={styles.inputLabel}>Email</Text>
-          <TextInput
-            style={styles.textInput}
-            value={email}
-            onChangeText={setEmail}
-            placeholder="Enter your email"
-            placeholderTextColor="#999"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            editable={!isLoginLoading}
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      
+      <ScrollView 
+        contentContainerStyle={styles.scrollContainer}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Logo/Header Section */}
+        <View style={styles.headerSection}>
+          <Image 
+            source={require("../../assets/images/logo.png")} // Adjust path as needed
+            style={styles.logo}
+            resizeMode="contain"
           />
+          <Text style={styles.title}>Welcome Back</Text>
+          <Text style={styles.subtitle}>Sign in to your account</Text>
         </View>
 
-        <View style={styles.inputContainer}>
-          <Text style={styles.inputLabel}>Password</Text>
-          <View style={styles.passwordInputContainer}>
+        {/* Form Section */}
+        <View style={styles.formSection}>
+          {/* Email Input */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Email</Text>
             <TextInput
-              style={styles.passwordInput}
-              value={password}
-              onChangeText={setPassword}
-              placeholder="Enter your password"
+              style={styles.textInput}
+              placeholder="Enter your email"
               placeholderTextColor="#999"
-              secureTextEntry={!showPassword}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              autoCorrect={false}
               editable={!isLoginLoading}
             />
-            <TouchableOpacity style={styles.eyeIconContainer} onPress={toggleShowPassword} disabled={isLoginLoading}>
-              <View style={styles.eyeIcon}>
-                {showPassword ? <View style={styles.eyeOpen}><View style={styles.eyeball} /></View> :
-                  <View style={styles.eyeClosed}><View style={styles.eyeball} /><View style={styles.eyeLine} /></View>}
-              </View>
-            </TouchableOpacity>
           </View>
+
+          {/* Password Input */}
+          <View style={styles.inputContainer}>
+            <Text style={styles.label}>Password</Text>
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Enter your password"
+                placeholderTextColor="#999"
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!isLoginLoading}
+              />
+              <TouchableOpacity 
+                style={styles.eyeButton}
+                onPress={togglePasswordVisibility}
+                disabled={isLoginLoading}
+              >
+                <Text style={styles.eyeText}>
+                  {showPassword ? "👁️" : "👁️‍🗨️"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Login Button */}
+          <TouchableOpacity 
+            style={[
+              styles.loginButton, 
+              isLoginLoading && styles.loginButtonDisabled
+            ]}
+            onPress={handleLogin}
+            disabled={isLoginLoading}
+          >
+            <Text style={styles.loginButtonText}>
+              {isLoginLoading ? "Signing In..." : "Sign In"}
+            </Text>
+          </TouchableOpacity>
+
+          {/* Forgot Password */}
+          <TouchableOpacity 
+            style={styles.forgotPasswordButton}
+            disabled={isLoginLoading}
+          >
+            <Text style={styles.forgotPasswordText}>
+              Forgot your password?
+            </Text>
+          </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.forgotPasswordContainer} onPress={handleShowForgotPassword} disabled={isLoginLoading}>
-          <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={[styles.signInButton, isLoginLoading && styles.disabledButton]} onPress={handleLogin} disabled={isLoginLoading}>
-          <Text style={styles.signInButtonText}>{isLoginLoading ? "Signing In..." : "Sign In"}</Text>
-        </TouchableOpacity>
-
-        <View style={styles.signUpContainer}>
-          <Text style={styles.signUpText}>
+        {/* Footer Section */}
+        <View style={styles.footerSection}>
+          <Text style={styles.footerText}>
             Don't have an account?{" "}
-            <Text style={[styles.signUpLink, isLoginLoading && styles.disabledText]} onPress={isLoginLoading ? undefined : handleShowSignup}>
+            <Text 
+              style={styles.signUpText}
+              onPress={() => !isLoginLoading && router.push("../auth/register")}
+            >
               Sign Up
             </Text>
           </Text>
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   )
 }
 
-// ------------------- Styles -------------------
 const styles = StyleSheet.create({
-  loginContainer: { flex: 1, backgroundColor: "#B8763E" },
-  headerSection: { backgroundColor: "#B8763E", paddingTop: verticalScale(40), paddingBottom: verticalScale(60), alignItems: "center" },
-  headerLogoContainer: { width: scale(120), height: verticalScale(100), justifyContent: "center", alignItems: "center" },
-  headerLogo: { width: "100%", height: "100%", maxWidth: scale(100), maxHeight: verticalScale(80) },
-  loginSection: { flex: 1, backgroundColor: "white", borderTopLeftRadius: moderateScale(30), borderTopRightRadius: moderateScale(30), paddingHorizontal: scale(30), paddingTop: verticalScale(40), marginTop: verticalScale(-30) },
-  welcomeText: { fontSize: moderateScale(24), fontWeight: "600", color: "#333", textAlign: "center", marginBottom: verticalScale(40) },
-  inputContainer: { marginBottom: verticalScale(20), width: "100%" },
-  inputLabel: { fontSize: moderateScale(14), color: "#666", marginBottom: verticalScale(8) },
-  textInput: { borderWidth: 1, borderColor: "#ddd", borderRadius: moderateScale(25), paddingHorizontal: scale(20), paddingVertical: verticalScale(15), fontSize: moderateScale(16), backgroundColor: "white", width: "100%" },
-  passwordInputContainer: { position: "relative", width: "100%" },
-  passwordInput: { borderWidth: 1, borderColor: "#ddd", borderRadius: moderateScale(25), paddingHorizontal: scale(20), paddingVertical: verticalScale(15), paddingRight: scale(50), fontSize: moderateScale(16), backgroundColor: "white", width: "100%" },
-  eyeIconContainer: { position: "absolute", right: scale(15), top: "50%", transform: [{ translateY: verticalScale(-12) }], width: scale(34), height: verticalScale(34), justifyContent: "center", alignItems: "center" },
-  eyeIcon: { width: scale(24), height: verticalScale(24), justifyContent: "center", alignItems: "center" },
-  eyeOpen: { width: scale(20), height: verticalScale(12), borderWidth: 2, borderColor: "#666", borderRadius: moderateScale(10), justifyContent: "center", alignItems: "center" },
-  eyeClosed: { width: scale(20), height: verticalScale(12), borderWidth: 2, borderColor: "#666", borderRadius: moderateScale(10), justifyContent: "center", alignItems: "center", position: "relative" },
-  eyeball: { width: scale(6), height: verticalScale(6), backgroundColor: "#666", borderRadius: moderateScale(3) },
-  eyeLine: { position: "absolute", width: scale(24), height: 2, backgroundColor: "#666", transform: [{ rotate: "45deg" }] },
-  forgotPasswordContainer: { alignItems: "flex-end", marginBottom: verticalScale(30), marginTop: verticalScale(10) },
-  forgotPasswordText: { color: "#B8763E", fontSize: moderateScale(14) },
-  signInButton: { backgroundColor: "#B8763E", borderRadius: moderateScale(25), paddingVertical: verticalScale(15), alignItems: "center", marginBottom: verticalScale(30), width: "100%", justifyContent: "center" },
-  disabledButton: { backgroundColor: "#ccc", opacity: 0.7 },
-  signInButtonText: { color: "white", fontSize: moderateScale(16), fontWeight: "600" },
-  signUpContainer: { alignItems: "center", marginTop: verticalScale(20), paddingBottom: verticalScale(30) },
-  signUpText: { fontSize: moderateScale(14), color: "#666", textAlign: "center" },
-  signUpLink: { color: "#B8763E", fontWeight: "600" },
-  disabledText: { color: "#ccc" }
+  container: {
+    flex: 1,
+    backgroundColor: "#ffffff",
+  },
+  scrollContainer: {
+    flexGrow: 1,
+    paddingHorizontal: scale(20),
+    paddingTop: verticalScale(20),
+    paddingBottom: verticalScale(40),
+  },
+  headerSection: {
+    alignItems: "center",
+    marginBottom: verticalScale(40),
+    marginTop: verticalScale(20),
+  },
+  logo: {
+    width: scale(120),
+    height: verticalScale(120),
+    marginBottom: verticalScale(20),
+  },
+  title: {
+    fontSize: moderateScale(28),
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: verticalScale(8),
+    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: moderateScale(16),
+    color: "#666",
+    textAlign: "center",
+  },
+  formSection: {
+    flex: 1,
+    marginBottom: verticalScale(20),
+  },
+  inputContainer: {
+    marginBottom: verticalScale(20),
+  },
+  label: {
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(8),
+  },
+  textInput: {
+    height: verticalScale(50),
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: moderateScale(8),
+    paddingHorizontal: scale(15),
+    fontSize: moderateScale(16),
+    backgroundColor: "#f9f9f9",
+    color: "#333",
+  },
+  passwordContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: moderateScale(8),
+    backgroundColor: "#f9f9f9",
+    height: verticalScale(50),
+  },
+  passwordInput: {
+    flex: 1,
+    paddingHorizontal: scale(15),
+    fontSize: moderateScale(16),
+    color: "#333",
+    height: "100%",
+  },
+  eyeButton: {
+    paddingHorizontal: scale(15),
+    paddingVertical: verticalScale(15),
+  },
+  eyeText: {
+    fontSize: moderateScale(18),
+  },
+  loginButton: {
+    height: verticalScale(50),
+    backgroundColor: "#007AFF",
+    borderRadius: moderateScale(8),
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: verticalScale(10),
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  loginButtonDisabled: {
+    backgroundColor: "#ccc",
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  loginButtonText: {
+    color: "#ffffff",
+    fontSize: moderateScale(18),
+    fontWeight: "600",
+  },
+  forgotPasswordButton: {
+    alignItems: "center",
+    marginTop: verticalScale(15),
+  },
+  forgotPasswordText: {
+    color: "#007AFF",
+    fontSize: moderateScale(16),
+    textDecorationLine: "underline",
+  },
+  footerSection: {
+    alignItems: "center",
+    marginTop: verticalScale(30),
+  },
+  footerText: {
+    fontSize: moderateScale(16),
+    color: "#666",
+    textAlign: "center",
+  },
+  signUpText: {
+    color: "#007AFF",
+    fontWeight: "600",
+    textDecorationLine: "underline",
+  },
 })
