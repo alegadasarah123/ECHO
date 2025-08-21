@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {Calendar,Users,FileText,Heart,Search,Settings,LogOut,Menu,ChevronLeft,ChevronRight,BarChart3,Clock,MessageCircle,Bell,} from 'lucide-react';
-import Sidebar from '@/components/ui/sideBar';
+import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
 import ProfileModal from '@/components/modal/profileModal';
 import NotificationModal from '@/components/modal/notificationModal';

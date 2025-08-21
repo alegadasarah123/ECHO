@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {Calendar,Users,FileText,Search,Menu,Clock,MessageCircle,Bell,Filter,Eye,Trash2,MoreVertical,PawPrint,User,Phone,MapPin,CheckCircle,AlertCircle,RefreshCw,Check,X,Clock3,AlertTriangle
 } from 'lucide-react';
-import Sidebar from '@/components/ui/sideBar';
+import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
 import ProfileModal from '@/components/modal/profileModal';
 
