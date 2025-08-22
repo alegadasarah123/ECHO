@@ -32,7 +32,7 @@ const { width, height } = Dimensions.get("window")
 
 // Responsive scaling functions
 const scale = (size: number) => (width / 375) * size
-const verticalScale = (size: number) => (height / 812) * size
+// const verticalScale = (size: number) => (height / 812) * size
 const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor
 
 // Cebu Province cities and municipalities
@@ -162,7 +162,7 @@ interface ProfilePicture {
 
 // Updated API configuration
 const API_CONFIG = {
-  BASE_URL: 'http://10.0.0.79:8000/api/kutsero/signup/',
+  BASE_URL: 'http://192.168.101.2:8000/api/signup_mobile/',
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,
@@ -363,10 +363,11 @@ export default function Signup() {
         firstName: formData.firstName,
         middleName: formData.middleName,
         lastName: formData.lastName,
-        dateOfBirth: formData.dateOfBirth.toISOString().split("T")[0],
+        dob: formData.dateOfBirth.toISOString().split("T")[0],
         sex: formData.sex,
         phoneNumber: formData.phoneNumber,
         role: formData.role, // NEW: Include role in the data
+        province: "Cebu",
         city: formData.city,
         municipality: formData.municipality,
         barangay: formData.barangay,
@@ -443,6 +444,7 @@ export default function Signup() {
                   sex: "",
                   phoneNumber: "",
                   role: "",
+
                   city: "",
                   municipality: "",
                   barangay: "",

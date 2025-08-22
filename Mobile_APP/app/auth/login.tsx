@@ -17,7 +17,7 @@ import {
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
 
-// Auth utility functions - you can also put these in a separate utils/auth.js file
+// Auth utility functions
 const logout = async () => {
   try {
     await SecureStore.deleteItemAsync("access_token")
@@ -34,7 +34,8 @@ const logout = async () => {
 const { width, height } = Dimensions.get("window")
 const scale = (size: number) => (width / 375) * size
 const verticalScale = (size: number) => (height / 812) * size
-const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor
+const moderateScale = (size: number, factor = 0.5) =>
+  size + (scale(size) - size) * factor
 
 export default function LoginScreen() {
   const router = useRouter()
@@ -58,16 +59,19 @@ export default function LoginScreen() {
 
       console.log("Attempting login for:", email.trim().toLowerCase())
 
-      const response = await fetch("http://10.0.0.79:8000/api/kutsero/login/", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ 
-          email: email.trim().toLowerCase(), 
-          password: password.trim()
-        }),
-      })
+      const response = await fetch(
+        "http://192.168.101.2:8000/api/login_mobile/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            password: password.trim(),
+          }),
+        }
+      )
 
       const data = await response.json()
       console.log("Login response status:", response.status)
@@ -78,7 +82,7 @@ export default function LoginScreen() {
         has_access_token: !!data.access_token,
         has_refresh_token: !!data.refresh_token,
         expires_in: data.expires_in,
-        user_email: data.user?.email
+        user_email: data.user?.email,
       })
 
       if (response.ok) {
@@ -89,7 +93,7 @@ export default function LoginScreen() {
         } else {
           console.error("❌ No access token received")
         }
-        
+
         if (data.refresh_token) {
           await SecureStore.setItemAsync("refresh_token", data.refresh_token)
           console.log("✅ Refresh token stored successfully")
@@ -103,21 +107,24 @@ export default function LoginScreen() {
             ...data.user,
             user_role: data.user_role,
             user_status: data.user_status,
-            profile: data.profile // Include profile data from login response
+            profile: data.profile,
           }
-          
-          await SecureStore.setItemAsync("user_data", JSON.stringify(userDataToStore))
+
+          await SecureStore.setItemAsync(
+            "user_data",
+            JSON.stringify(userDataToStore)
+          )
           console.log("✅ User data stored successfully:", {
             hasProfile: !!data.profile,
             userRole: data.user_role,
-            userStatus: data.user_status
+            userStatus: data.user_status,
           })
         }
 
         // Validate user role
         const userRole = data.user_role?.toLowerCase()?.trim()
         console.log("Processing user role:", userRole)
-        
+
         if (!userRole) {
           console.error("❌ No user role received")
           Alert.alert("Error", "No user role found. Please contact support.")
@@ -127,59 +134,70 @@ export default function LoginScreen() {
         // Route based on user role
         if (userRole === "kutsero") {
           console.log("✅ Routing to kutsero dashboard")
-          
-          // Show success message first
-          const statusMsg = data.user_status === "pending" 
-            ? "\n\nNote: Your account is pending approval but you can still use the app." 
-            : ""
-          
+
+          const statusMsg =
+            data.user_status === "pending"
+              ? "\n\nNote: Your account is pending approval but you can still use the app."
+              : ""
+
           Alert.alert(
-            "Login Successful", 
+            "Login Successful",
             `Welcome ${data.user?.email || "User"}!${statusMsg}`,
-            [{ 
-              text: "Continue", 
-              onPress: () => {
-                router.replace("../KUTSERO/dashboard")
-              }
-            }]
+            [
+              {
+                text: "Continue",
+                onPress: () => {
+                  router.replace("/KUTSERO/dashboard") // ✅ fixed path
+                },
+              },
+            ]
           )
-          
-        } else if (userRole === "horse_operator") {
+        } else if (
+          userRole === "Horse Operator"
+        ) {
           console.log("✅ Routing to horse operator home")
-          
-          const statusMsg = data.user_status === "pending" 
-            ? "\n\nNote: Your account is pending approval but you can still use the app." 
-            : ""
-          
+
+          const statusMsg =
+            data.user_status === "pending"
+              ? "\n\nNote: Your account is pending approval but you can still use the app."
+              : ""
+
           Alert.alert(
-            "Login Successful", 
+            "Login Successful",
             `Welcome ${data.user?.email || "User"}!${statusMsg}`,
-            [{ 
-              text: "Continue", 
-              onPress: () => {
-                router.replace("../HORSE_OPERATOR/home")
-              }
-            }]
+            [
+              {
+                text: "Continue",
+                onPress: () => {
+                  router.replace("/HORSE_OPERATOR/home") // ✅ fixed path
+                },
+              },
+            ]
           )
-          
         } else {
           console.log("❌ Unrecognized user role:", userRole)
-          Alert.alert("Error", `Unrecognized user role: ${userRole}. Please contact support.`)
+          Alert.alert(
+            "Error",
+            `Unrecognized user role: ${userRole}. Please contact support.`
+          )
           return
         }
-
       } else {
         // Handle login errors
-        console.error("❌ Login failed:", data.message || data.error || "Unknown error")
-        
+        console.error(
+          "❌ Login failed:",
+          data.message || data.error || "Unknown error"
+        )
+
         let errorMessage = "Login failed. Please try again."
-        
+
         if (data.message) {
           errorMessage = data.message
         } else if (data.error) {
           errorMessage = data.error
         } else if (response.status === 401) {
-          errorMessage = "Invalid email or password. Please check your credentials."
+          errorMessage =
+            "Invalid email or password. Please check your credentials."
         } else if (response.status >= 500) {
           errorMessage = "Server error. Please try again later."
         } else if (response.status >= 400) {
@@ -188,22 +206,23 @@ export default function LoginScreen() {
 
         Alert.alert("Login Error", errorMessage)
       }
-
     } catch (error) {
       console.error("❌ Login error:", error)
-      
-      let errorMessage = "Network error. Please check your connection and try again."
-      
+
+      let errorMessage =
+        "Network error. Please check your connection and try again."
+
       if (error instanceof Error) {
         if (error.message.includes("Network request failed")) {
-          errorMessage = "Unable to connect to server. Please check your internet connection."
+          errorMessage =
+            "Unable to connect to server. Please check your internet connection."
         } else if (error.message.includes("timeout")) {
           errorMessage = "Request timed out. Please try again."
         } else {
           errorMessage = error.message
         }
       }
-      
+
       Alert.alert("Connection Error", errorMessage)
     } finally {
       setIsLoginLoading(false)
@@ -211,22 +230,22 @@ export default function LoginScreen() {
   }
 
   const togglePasswordVisibility = useCallback(() => {
-    setShowPassword(prev => !prev)
+    setShowPassword((prev) => !prev)
   }, [])
 
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-      
-      <ScrollView 
+
+      <ScrollView
         contentContainerStyle={styles.scrollContainer}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         {/* Logo/Header Section */}
         <View style={styles.headerSection}>
-          <Image 
-            source={require("../../assets/images/logo.png")} // Adjust path as needed
+          <Image
+            source={require("../../assets/images/logo.png")}
             style={styles.logo}
             resizeMode="contain"
           />
@@ -267,23 +286,31 @@ export default function LoginScreen() {
                 autoCorrect={false}
                 editable={!isLoginLoading}
               />
-              <TouchableOpacity 
-                style={styles.eyeButton}
+              <TouchableOpacity
+                style={styles.eyeIconContainer}
                 onPress={togglePasswordVisibility}
-                disabled={isLoginLoading}
               >
-                <Text style={styles.eyeText}>
-                  {showPassword ? "👁️" : "👁️‍🗨️"}
-                </Text>
+                <View style={styles.eyeIcon}>
+                  {showPassword ? (
+                    <View style={styles.eyeOpen}>
+                      <View style={styles.eyeball} />
+                    </View>
+                  ) : (
+                    <View style={styles.eyeClosed}>
+                      <View style={styles.eyeball} />
+                      <View style={styles.eyeLine} />
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
             </View>
           </View>
 
           {/* Login Button */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[
-              styles.loginButton, 
-              isLoginLoading && styles.loginButtonDisabled
+              styles.loginButton,
+              isLoginLoading && styles.loginButtonDisabled,
             ]}
             onPress={handleLogin}
             disabled={isLoginLoading}
@@ -294,23 +321,21 @@ export default function LoginScreen() {
           </TouchableOpacity>
 
           {/* Forgot Password */}
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.forgotPasswordButton}
             disabled={isLoginLoading}
           >
-            <Text style={styles.forgotPasswordText}>
-              Forgot your password?
-            </Text>
+            <Text style={styles.forgotPasswordText}>Forgot your password?</Text>
           </TouchableOpacity>
         </View>
 
         {/* Footer Section */}
         <View style={styles.footerSection}>
           <Text style={styles.footerText}>
-            Don't have an account?{" "}
-            <Text 
+            Don&#39;t have an account?{" "}
+            <Text
               style={styles.signUpText}
-              onPress={() => !isLoginLoading && router.push("../auth/register")}
+              onPress={() => !isLoginLoading && router.push("/auth/signup")} // ✅ fixed path
             >
               Sign Up
             </Text>
@@ -448,5 +473,48 @@ const styles = StyleSheet.create({
     color: "#007AFF",
     fontWeight: "600",
     textDecorationLine: "underline",
+  },
+  eyeIconContainer: {
+    paddingHorizontal: moderateScale(15),
+    paddingVertical: moderateScale(12),
+  },
+  eyeIcon: {
+    width: moderateScale(20),
+    height: moderateScale(20),
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  eyeOpen: {
+    width: moderateScale(16),
+    height: moderateScale(12),
+    borderWidth: 2,
+    borderColor: "#666666",
+    borderRadius: moderateScale(8),
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  eyeClosed: {
+    width: moderateScale(16),
+    height: moderateScale(12),
+    borderWidth: 2,
+    borderColor: "#666666",
+    borderRadius: moderateScale(8),
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  eyeball: {
+    width: moderateScale(6),
+    height: moderateScale(6),
+    backgroundColor: "#666666",
+    borderRadius: moderateScale(3),
+  },
+  eyeLine: {
+    position: "absolute",
+    width: moderateScale(18),
+    height: 2,
+    backgroundColor: "#666666",
+    transform: [{ rotate: "45deg" }],
   },
 })

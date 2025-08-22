@@ -33,7 +33,7 @@ const HomeScreen = () => {
         // Check if user is logged in
         const isLoggedIn = await AsyncStorage.getItem('user_logged_in');
         if (!isLoggedIn) {
-          router.replace('/Login');
+          router.replace('../../pages/auth/login');
           return;
         }
         // Load current user data
