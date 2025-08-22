@@ -60,8 +60,8 @@ def login(request):
     # ✅ Return auth info + role for frontend
     return Response({
         "message": "Login successful",
-        "auth_data": auth_data,   # from Supabase Auth
-        "role": user_role          # from public.users
+        "auth_data": auth_data,  
+        "role": user_role       
     }, status=status.HTTP_200_OK)
 
 

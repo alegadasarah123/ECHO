@@ -30,7 +30,7 @@ import VetRequest from "./pages/Veterinarian/VetRequest.jsx";
 import VetSettings from "./pages/Veterinarian/VetSettings.jsx";
 import VetHealthLog from "./pages/Veterinarian/VetHealthLog.jsx";
 import KutDashboard from "./pages/Kutsero President/KutDashboard.jsx";
-import KutUserManagement from "./pages/Kutsero President/KutUserManagement.jsx";
+import KutUserManagement from "./pages/Kutsero President/KutUserApproval.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
