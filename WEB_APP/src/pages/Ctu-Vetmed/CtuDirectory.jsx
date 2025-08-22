@@ -5,6 +5,7 @@ import {
   BarChart3,
   Bell,
   BellOff,
+  Check,
   CheckCircle,
   ClipboardList,
   FileText,
@@ -16,9 +17,10 @@ import {
   Search,
   Settings,
   UserCheck,
+  X,
   XCircle,
 } from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
+import React, { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
 const initialDirectoryData = []
@@ -57,13 +59,13 @@ function CtuDirectory() {
   }, [])
 
   const getNotificationIcon = useCallback((type) => {
-    const iconComponents = {
+    const icons = {
       info: Info,
       success: CheckCircle,
       warning: AlertTriangle,
       error: XCircle,
     }
-    return iconComponents[type] || iconComponents.info
+    return icons[type] || icons.info
   }, [])
 
   // Notification handlers
@@ -194,280 +196,9 @@ function CtuDirectory() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <button className="mobile-menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-        ☰
-      </button>
+      <style>{`
+        
 
-      <div ref={sidebarRef} className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
-        <div className="sidebar-logo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
-        </div>
-
-        <nav className="nav-menu">
-          {[
-            {
-              name: "Dashboard",
-              IconComponent: LayoutDashboard,
-              page: "dashboard",
-              route: "/CtufDashboard",
-            },
-            {
-              name: "Account Approval",
-              IconComponent: UserCheck,
-              page: "approval",
-              route: "/CtuAccountApproval",
-            },
-            { name: "Access Requests", IconComponent: FileText, page: "requests", route: "/CtuAccessRequest" },
-            { name: "Horse Records", IconComponent: ClipboardList, page: "records", route: "/CtuHorseRecord" },
-            { name: "Health Reports", IconComponent: BarChart3, page: "reports", route: "/CtuHealthReport" },
-            { name: "Announcements", IconComponent: Megaphone, page: "announcements", route: "/CtuAnnouncement" },
-            { name: "Directory", IconComponent: Folder, page: "directory", route: "/CtuDirectory" },
-            { name: "Settings", IconComponent: Settings, page: "settings", route: "/CtuSettings" },
-          ].map((item) => (
-            <a
-              key={item.page}
-              href="#"
-              className={`nav-item ${currentPage === item.page ? "active" : ""}`}
-              onClick={(e) => {
-                e.preventDefault()
-                handleNavigation(item.route, item.page)
-              }}
-            >
-              <item.IconComponent className="nav-icon" size={18} />
-              <span>{item.name}</span>
-            </a>
-          ))}
-        </nav>
-
-        <div className="logout">
-          <a href="#" className="logout-btn" onClick={() => setShowLogoutModal(true)}>
-            <LogOut className="logout-icon" size={18} />
-            Log Out
-          </a>
-        </div>
-      </div>
-
-      <div className="main-content">
-        <header className="header">
-          <div className="search-container">
-            <Search className="search-icon" size={18} />
-            <input
-              type="text"
-              placeholder="Search directory..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-
-          <div
-            className="notification-bell"
-            ref={notificationBellRef}
-            onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
-          >
-            <Bell size={20} />
-            {notifications.filter((n) => !n.read).length > 0 && (
-              <div className="notification-count">
-                {notifications.filter((n) => !n.read).length > 9 ? "9+" : notifications.filter((n) => !n.read).length}
-              </div>
-            )}
-
-            <div
-              ref={notificationDropdownRef}
-              className={`notification-dropdown ${showNotificationDropdown ? "show" : ""}`}
-            >
-              <div className="notification-header">
-                <h3>Notifications</h3>
-                {notifications.filter((n) => !n.read).length > 0 && (
-                  <button className="mark-all-read" onClick={markAllAsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-
-              <div id="notificationList">
-                {notifications.length === 0 ? (
-                  <div className="empty-state">
-                    <BellOff size={48} />
-                    <h3>No notifications</h3>
-                    <p>You're all caught up!</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => (
-                    <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
-                      <div className="notification-actions">
-                        {!notification.read && (
-                          <button
-                            className="notification-action"
-                            onClick={() => markAsRead(notification.id)}
-                            title="Mark as read"
-                          >
-                            <CheckCircle size={14} />
-                          </button>
-                        )}
-                        <button
-                          className="notification-action"
-                          onClick={() => deleteNotification(notification.id)}
-                          title="Delete"
-                        >
-                          <XCircle size={14} />
-                        </button>
-                      </div>
-                      <div className="notification-title">
-                        {(() => {
-                          const IconComponent = getNotificationIcon(notification.type)
-                          return <IconComponent className={`notification-icon ${notification.type}`} size={16} />
-                        })()}
-                        {notification.title}
-                      </div>
-                      <div className="notification-message">{notification.message}</div>
-                      <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <div className="content-area">
-          <div className="directory-container">
-            <div className="tab-navigation">
-              <div
-                className={`tab-item ${currentTab === "all" ? "active" : ""}`}
-                onClick={() => setCurrentTab("all")}
-                data-tab="all"
-              >
-                All
-              </div>
-              <div
-                className={`tab-item ${currentTab === "horses" ? "active" : ""}`}
-                onClick={() => setCurrentTab("horses")}
-                data-tab="horses"
-              >
-                Horses
-              </div>
-              <div
-                className={`tab-item ${currentTab === "veterinarian" ? "active" : ""}`}
-                onClick={() => setCurrentTab("veterinarian")}
-                data-tab="veterinarian"
-              >
-                Veterinarian
-              </div>
-              <div
-                className={`tab-item ${currentTab === "horses-per-owner" ? "active" : ""}`}
-                onClick={() => setCurrentTab("horses-per-owner")}
-                data-tab="horses-per-owner"
-              >
-                Horses per owner
-              </div>
-              <div
-                className={`tab-item ${currentTab === "kutsero" ? "active" : ""}`}
-                onClick={() => setCurrentTab("kutsero")}
-                data-tab="kutsero"
-              >
-                Kutsero
-              </div>
-            </div>
-
-            <div className="directory-content">
-              <div className="filter-row">
-                <select className="filter-select" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
-                  <option value="">Filter by Area</option>
-                  <option value="cebu">Cebu City</option>
-                  <option value="manila">Manila</option>
-                  <option value="davao">Davao</option>
-                </select>
-                <select
-                  className="filter-select"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                >
-                  <option value="">All Statuses</option>
-                  <option value="healthy">Healthy</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-
-              {filteredDirectoryData.length === 0 ? (
-                <div className="empty-state">
-                  <i className="fas fa-folder-open"></i>
-                  <h3>No directory entries found</h3>
-                  <p>Directory entries will appear here when data is available</p>
-                </div>
-              ) : (
-                <table className="directory-table">
-                  <thead className="table-header">
-                    <tr>
-                      <th>ID</th>
-                      <th>Name</th>
-                      <th>Type</th>
-                      <th>Location</th>
-                      <th>Status</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredDirectoryData.map((item) => (
-                      <tr key={item.id} className="table-row">
-                        <td>{item.id}</td>
-                        <td>{item.name}</td>
-                        <td>{item.type}</td>
-                        <td>{item.location}</td>
-                        <td>
-                          <span className={`status-badge status-${item.status?.toLowerCase()}`}>{item.status}</span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Chat Widget */}
-      <div className="chat-widget">
-        <button className="chat-button" onClick={() => handleNavigation("/CtuMessage", "message")}>
-          <div className="chat-dots">
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-          </div>
-        </button>
-      </div>
-
-      {/* Logout Confirmation Modal */}
-      {showLogoutModal && (
-        <div className="modal-overlay active">
-          <div className="logout-modal">
-            <div className="logout-modal-icon">
-              <LogOut size={48} />
-            </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons">
-              <button className="logout-modal-btn cancel" onClick={() => setShowLogoutModal(false)}>
-                No
-              </button>
-              <button
-                className="logout-modal-btn confirm"
-                onClick={() => {
-                  console.log("User logged out")
-                  navigate("/login") // Navigate to login page
-                  setShowLogoutModal(false)
-                }}
-              >
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-;<style jsx>{`
 * {
   margin: 0;
   padding: 0;
@@ -481,7 +212,7 @@ body {
   box-sizing: border-box;
 }
 
-.sidebar {
+.sidebars {
   width: 250px;
   background-color: #b91c1c;
   color: white;
@@ -495,14 +226,14 @@ body {
   transition: transform 0.3s ease;
 }
 
-.sidebar-logo {
+.sidebars-logo {
   padding: 5px;
   display: flex;
   justify-content: center;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.sidebar-logo img {
+.sidebars-logo img {
   width: 250px;
   height: 200px;
   object-fit: contain;
@@ -559,12 +290,12 @@ body {
   color: #b91c1c;
 }
 
-.logout {
-  padding: 20px;
+ .logouts {
+  padding: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.logout-btn {
+.logout-btns {
   display: flex;
   align-items: center;
   color: white;
@@ -572,17 +303,17 @@ body {
   font-size: clamp(13px, 2vw, 15px);
   font-weight: 500;
   cursor: pointer;
-  padding: 14px 20px;
+  padding: 14px 40px;
   border-radius: 25px;
   transition: all 0.3s ease;
   min-height: 44px;
 }
 
-.logout-btn:hover {
+.logout-btns:hover {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-.logout-icon {
+.logout-icons {
   width: 20px;
   height: 20px;
   margin-right: 15px;
@@ -601,7 +332,7 @@ body {
   width: calc(100% - 250px);
 }
 
-.header {
+.headers {
   background: #ffffff;
   padding: 16px 24px;
   display: flex;
@@ -612,7 +343,7 @@ body {
   gap: 16px;
 }
 
-.search-container {
+.search-containers {
   flex: 1;
   max-width: 400px;
   margin-right: 20px;
@@ -634,7 +365,7 @@ body {
   border-color: #b91c1c;
 }
 
-.search-icon {
+.search-icons {
   position: absolute;
   left: 12px;
   top: 50%;
@@ -934,10 +665,20 @@ body {
 }
 
 /* Empty State */
-.empty-state {
+ .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* centers horizontally */
+  justify-content: center; /* centers vertically (if parent has height) */
   text-align: center;
-  padding: 60px 20px;
-  color: #6b7280;
+  padding: 2rem;
+}
+
+.icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
 }
 
 .empty-state i {
@@ -1134,11 +875,6 @@ body {
   margin: 0 auto 20px;
 }
 
-.logout-modal-icon i {
-  font-size: 28px;
-  color: #f59e0b;
-}
-
 .logout-modal h3 {
   font-size: 20px;
   font-weight: 600;
@@ -1205,22 +941,22 @@ body {
   .mobile-menu-btn {
     display: block;
   }
-  .sidebar {
+  .sidebars {
     transform: translateX(-100%);
     transition: transform 0.3s;
   }
-  .sidebar.open {
+  .sidebars.open {
     transform: translateX(0);
   }
   .main-content {
     margin-left: 0;
     width: 100%;
   }
-  .header {
+  .headers {
     margin-left: 60px;
     padding: 12px 16px;
   }
-  .search-container {
+  .search-containers {
     margin-right: 10px;
     min-width: 150px;
   }
@@ -1269,13 +1005,13 @@ body {
 
 /* Small Mobile */
 @media (max-width: 480px) {
-  .header {
+  .headers {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
     margin-left: 50px;
   }
-  .search-container {
+  .search-containers {
     margin-right: 0;
     min-width: auto;
   }
@@ -1308,6 +1044,285 @@ body {
     min-height: 48px;
   }
 }
-`}</style>
+
+      `}</style>
+
+      <button className="mobile-menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
+        ☰
+      </button>
+
+      <div ref={sidebarRef} className={`sidebars ${isSidebarOpen ? "open" : ""}`}>
+        <div className="sidebars-logo">
+          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+        </div>
+
+        <nav className="nav-menu">
+          {[
+            { name: "Dashboard", IconComponent: LayoutDashboard, page: "dashboard", route: "/CtuDashboard" },
+            {
+              name: "Account Approval",
+              IconComponent: UserCheck,
+              page: "approval",
+              route: "/CtuAccountApproval",
+            },
+            { name: "Access Requests", IconComponent: FileText, page: "requests", route: "/CtuAccessRequest" },
+            { name: "Horse Records", IconComponent: ClipboardList, page: "records", route: "/CtuHorseRecord" },
+            { name: "Health Reports", IconComponent: BarChart3, page: "reports", route: "/CtuHealthReport" },
+            { name: "Announcements", IconComponent: Megaphone, page: "announcements", route: "/CtuAnnouncement" },
+            { name: "Directory", IconComponent: Folder, page: "directory", route: "/CtuDirectory" },
+            { name: "Settings", IconComponent: Settings, page: "settings", route: "/CtuSettings" },
+          ].map((item) => (
+            <a
+              key={item.page}
+              href="#"
+              className={`nav-item ${currentPage === item.page ? "active" : ""}`}
+              onClick={(e) => {
+                e.preventDefault()
+                handleNavigation(item.route, item.page)
+              }}
+            >
+              <item.IconComponent className="nav-icon" size={20} />
+              <span>{item.name}</span>
+            </a>
+          ))}
+        </nav>
+
+        <div className="logouts">
+          <a href="#" className="logout-btns" onClick={() => setShowLogoutModal(true)}>
+            <LogOut className="logout-icons" size={20} />
+            Log Out
+          </a>
+        </div>
+      </div>
+
+      <div className="main-content">
+        <header className="headers">
+          <div className="search-containers">
+            <div className="search-icons">
+               <Search size={20} />
+            </div>
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search......"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+
+          <div
+            className="notification-bell"
+            ref={notificationBellRef}
+            onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
+          >
+            <Bell size={20} />
+            {notifications.filter((n) => !n.read).length > 0 && (
+              <div className="notification-count">
+                {notifications.filter((n) => !n.read).length > 9 ? "9+" : notifications.filter((n) => !n.read).length}
+              </div>
+            )}
+
+            <div
+              ref={notificationDropdownRef}
+              className={`notification-dropdown ${showNotificationDropdown ? "show" : ""}`}
+            >
+              <div className="notification-header">
+                <h3>Notifications</h3>
+                {notifications.filter((n) => !n.read).length > 0 && (
+                  <button className="mark-all-read" onClick={markAllAsRead}>
+                    Mark all as read
+                  </button>
+                )}
+              </div>
+
+              <div id="notificationList">
+                {notifications.length === 0 ? (
+                  <div className="empty-state">
+                    <BellOff size={48} />
+                    <h3>No notifications</h3>
+                    <p>You're all caught up!</p>
+                  </div>
+                ) : (
+                  notifications.map((notification) => (
+                    <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
+                      <div className="notification-actions">
+                        {!notification.read && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              markAsRead(notification.id)
+                            }}
+                            className="mark-read-btn"
+                            title="Mark as read"
+                          >
+                            <Check size={14} />
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            deleteNotification(notification.id)
+                          }}
+                          className="remove-btn"
+                          title="Remove notification"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                      <div className="notification-title">
+                        {React.createElement(getNotificationIcon(notification.type), {
+                          className: `notification-icon ${notification.type}`,
+                          size: 16,
+                        })}
+                        {notification.title}
+                      </div>
+                      <div className="notification-message">{notification.message}</div>
+                      <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="content-area">
+          <div className="directory-container">
+            <div className="tab-navigation">
+              <div
+                className={`tab-item ${currentTab === "all" ? "active" : ""}`}
+                onClick={() => setCurrentTab("all")}
+                data-tab="all"
+              >
+                All
+              </div>
+              <div
+                className={`tab-item ${currentTab === "horses" ? "active" : ""}`}
+                onClick={() => setCurrentTab("horses")}
+                data-tab="horses"
+              >
+                Horses
+              </div>
+              <div
+                className={`tab-item ${currentTab === "veterinarian" ? "active" : ""}`}
+                onClick={() => setCurrentTab("veterinarian")}
+                data-tab="veterinarian"
+              >
+                Veterinarian
+              </div>
+              <div
+                className={`tab-item ${currentTab === "horses-per-owner" ? "active" : ""}`}
+                onClick={() => setCurrentTab("horses-per-owner")}
+                data-tab="horses-per-owner"
+              >
+                Horses per owner
+              </div>
+              <div
+                className={`tab-item ${currentTab === "kutsero" ? "active" : ""}`}
+                onClick={() => setCurrentTab("kutsero")}
+                data-tab="kutsero"
+              >
+                Kutsero
+              </div>
+            </div>
+
+            <div className="directory-content">
+              <div className="filter-row">
+                <select className="filter-select" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
+                  <option value="">Filter by Area</option>
+                  <option value="cebu">Cebu City</option>
+                  <option value="manila">Manila</option>
+                  <option value="davao">Davao</option>
+                </select>
+                <select
+                  className="filter-select"
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                >
+                  <option value="">All Statuses</option>
+                  <option value="healthy">Healthy</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+
+              {filteredDirectoryData.length === 0 ? (
+                <div className="empty-state">
+                  <Folder size={48} />
+                  <h3>No directory entries found</h3>
+                  <p>Directory entries will appear here when data is available</p>
+                </div>
+              ) : (
+                <table className="directory-table">
+                  <thead className="table-header">
+                    <tr>
+                      <th>ID</th>
+                      <th>Name</th>
+                      <th>Type</th>
+                      <th>Location</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredDirectoryData.map((item) => (
+                      <tr key={item.id} className="table-row">
+                        <td>{item.id}</td>
+                        <td>{item.name}</td>
+                        <td>{item.type}</td>
+                        <td>{item.location}</td>
+                        <td>
+                          <span className={`status-badge status-${item.status?.toLowerCase()}`}>{item.status}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Chat Widget */}
+      <div className="chat-widget">
+        <button className="chat-button" onClick={() => handleNavigation("/CtuMessage", "message")}>
+          <div className="chat-dots">
+            <div className="chat-dot"></div>
+            <div className="chat-dot"></div>
+            <div className="chat-dot"></div>
+          </div>
+        </button>
+      </div>
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutModal && (
+        <div className="modal-overlay active">
+          <div className="logout-modal">
+            <div className="logout-modal-icon">
+              <LogOut size={25} color="#f59e0b" />
+            </div>
+            <h3>Confirm Logout</h3>
+            <p>Are you sure you want to log out of your account?</p>
+            <div className="logout-modal-buttons">
+              <button className="logout-modal-btn cancel" onClick={() => setShowLogoutModal(false)}>
+                No
+              </button>
+              <button
+                className="logout-modal-btn confirm"
+                onClick={() => {
+                  console.log("User logged out")
+                  navigate("/login") // Navigate to login page
+                  setShowLogoutModal(false)
+                }}
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default CtuDirectory

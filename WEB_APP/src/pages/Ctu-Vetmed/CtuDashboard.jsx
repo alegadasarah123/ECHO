@@ -1,22 +1,18 @@
 "use client"
 
 import {
-  AlertTriangle,
   BarChart3,
   Bell,
   BellOff,
-  CheckCircle,
   ClipboardList,
   FileText,
   Folder,
-  Info,
   LayoutDashboard,
   LogOut,
   Megaphone,
   Search,
   Settings,
   UserCheck,
-  XCircle,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -168,19 +164,6 @@ function CtuDashboard() {
     }
   }
 
-  const getNotificationIcon = (type) => {
-    switch (type) {
-      case "success":
-        return <CheckCircle className="notification-icon success" />
-      case "warning":
-        return <AlertTriangle className="notification-icon warning" />
-      case "error":
-        return <XCircle className="notification-icon error" />
-      default:
-        return <Info className="notification-icon info" />
-    }
-  }
-
   // Effects
   useEffect(() => {
     console.log("Veterinary Dashboard initialized")
@@ -237,49 +220,49 @@ function CtuDashboard() {
   const navigationItems = [
     {
       name: "Dashboard",
-      icon:  <LayoutDashboard className="nav-icon" />,
+      IconComponent: LayoutDashboard,
       page: "dashboard",
       route: "/CtuDashboard",
     },
     {
       name: "Account Approval",
-      icon: <UserCheck className="nav-icon" />,
+      IconComponent: UserCheck,
       page: "approval",
       route: "/CtuAccountApproval",
     },
     {
       name: "Access Requests",
-      icon: <FileText className="nav-icon" />,
+      IconComponent: FileText,
       page: "requests",
       route: "/CtuAccessRequest",
     },
     {
       name: "Horse Records",
-      icon: <ClipboardList className="nav-icon" />,
+      IconComponent: ClipboardList,
       page: "records",
       route: "/CtuHorseRecord",
     },
     {
       name: "Health Reports",
-      icon: <BarChart3 className="nav-icon" />,
+      IconComponent: BarChart3,
       page: "reports",
       route: "/CtuHealthReport",
     },
     {
       name: "Announcements",
-      icon: <Megaphone className="nav-icon" />,
+      IconComponent: Megaphone,
       page: "announcements",
       route: "/CtuAnnouncement",
     },
     {
       name: "Directory",
-      icon: <Folder className="nav-icon" />,
+      IconComponent: Folder,
       page: "directory",
       route: "/CtuDirectory",
     },
     {
       name: "Settings",
-      icon: <Settings className="nav-icon" />,
+      IconComponent: Settings,
       page: "settings",
       route: "/CtuSettings",
     },
@@ -287,192 +270,7 @@ function CtuDashboard() {
 
   return (
     <div className="body-wrapper">
-      <button className="mobile-menu-btn" onClick={toggleMobileMenu}>
-        ☰
-      </button>
-
-      <div className={`sidebar ${isSidebarOpen ? "open" : ""}`} id="sidebar" ref={sidebarRef}>
-        <div className="sidebar-logo">
-          <img src="/ctu-veterinary-logo.png" alt="CTU Logo" className="logo" />
-        </div>
-
-        <nav className="nav-menu">
-          {navigationItems.map((item) => (
-            <a
-              key={item.page}
-              href={item.route}
-              className={`nav-item ${activePage === item.page ? "active" : ""}`}
-              onClick={(e) => {
-                e.preventDefault()
-                handleNavItemClick(item.page, item.route)
-              }}
-            >
-              {item.icon}
-              {item.name}
-            </a>
-          ))}
-        </nav>
-
-        <div className="logout">
-          <a href="#" className="logout-btn" onClick={openLogoutModal}>
-            <LogOut className="logout-icon" />
-            Log Out
-          </a>
-        </div>
-      </div>
-
-      <div className="main-content">
-        <header className="header">
-          <div className="search-container">
-            <Search className="search-icon" />
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search......"
-              value={searchQuery}
-              onChange={handleSearchInput}
-            />
-          </div>
-          <div className="notification-bell" ref={notificationBellRef} onClick={toggleNotificationDropdown}>
-            <Bell />
-            {notifications.filter((n) => !n.read).length > 0 && (
-              <div className="notification-count">{notifications.filter((n) => !n.read).length}</div>
-            )}
-            <div
-              className={`notification-dropdown ${isNotificationDropdownOpen ? "show" : ""}`}
-              ref={notificationDropdownRef}
-            >
-              <div className="notification-header">
-                <h3>Notifications</h3>
-                {notifications.filter((n) => !n.read).length > 0 && (
-                  <button className="mark-all-read" onClick={markAllNotificationsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div id="notificationList">
-                {notifications.length === 0 ? (
-                  <div className="empty-state">
-                    <BellOff />
-                    <h3>No notifications</h3>
-                    <p>{"You're all caught up!"}</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`notification-item ${!notification.read ? "unread" : ""}`}
-                      onClick={() => handleNotificationClick(notification.id)}
-                    >
-                      <div className="notification-title">
-                        {getNotificationIcon(notification.type)}
-                        {notification.title}
-                      </div>
-                      <div className="notification-message">{notification.message}</div>
-                      <div className="notification-time">{notification.time}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <div className="content-area">
-          <div className="stats-container">
-            <div className="stat-card" onClick={() => handleStatsCardClick("horses")}>
-              <div className="stat-title">Total Record</div>
-              <div className="stat-number">{recordCount}</div>
-            </div>
-            <div className="stat-card" onClick={() => handleStatsCardClick("vet")}>
-              <div className="stat-title">Registered Veterinarian</div>
-              <div className="stat-number">{vetCount}</div>
-            </div>
-          </div>
-
-          <div className="main-grid">
-            <div className="recent-activity">
-              <h3 className="activity-header">Recent Activity</h3>
-              <p className="activity-subtitle">Latest updates from the system</p>
-
-              {recentActivities.length === 0 ? (
-                <div className="empty-state">
-                  <ClipboardList />
-                  <h3>No recent activity</h3>
-                  <p>Activity will appear here when available</p>
-                </div>
-              ) : (
-                <div id="activityList">
-                  {recentActivities.map((activity) => (
-                    <div key={activity.id} className="activity-item">
-                      <div className="activity-icon" />
-                      <div className="activity-content">
-                        <div className="activity-title">{activity.title}</div>
-                        <div className="activity-description">{activity.description}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="calendar-widget">
-              <div className="calendar-header">
-                <span className="calendar-title">{getCalendarTitle()}</span>
-                <div className="calendar-nav">
-                  <button className="calendar-nav-btn" onClick={goToToday}>
-                    Today
-                  </button>
-                </div>
-              </div>
-
-              <div className="calendar-grid">
-                <div className="calendar-day-header">Sun</div>
-                <div className="calendar-day-header">Mon</div>
-                <div className="calendar-day-header">Tue</div>
-                <div className="calendar-day-header">Wed</div>
-                <div className="calendar-day-header">Thu</div>
-                <div className="calendar-day-header">Fri</div>
-                <div className="calendar-day-header">Sat</div>
-                {initializeCalendar()}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="chat-widget">
-        <button className="chat-button" onClick={handleChatButtonClick}>
-          <div className="chat-dots">
-            <div className="chat-dot" />
-            <div className="chat-dot" />
-            <div className="chat-dot" />
-          </div>
-        </button>
-      </div>
-
-      {/* Logout Modal */}
-      {isLogoutModalOpen && (
-        <div className="modal-overlay active" ref={logoutModalRef}>
-          <div className="logout-modal">
-            <div className="logout-modal-icon">
-              <LogOut />
-            </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons">
-              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
-                No
-              </button>
-              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style jsx>{`
+      <style>{`
         .body-wrapper {
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
           background-color: #f5f5f5;
@@ -482,7 +280,7 @@ function CtuDashboard() {
           width: 100%;
         }
 
-        .sidebar {
+        .sidebars {
           width: 250px;
           background-color: #b91c1c;
           color: white;
@@ -496,14 +294,14 @@ function CtuDashboard() {
           transition: transform 0.3s ease;
         }
 
-        .sidebar-logo {
+        .sidebars-logo {
           padding: 5px;
           display: flex;
           justify-content: center;
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .sidebar-logo img {
+        .sidebars-logo img {
           width: 250px;
           height: 200px;
           object-fit: contain;
@@ -543,7 +341,6 @@ function CtuDashboard() {
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
           width: 240px;
           margin-left: 10px;
-          height:40px;
         }
 
         .nav-icon {
@@ -553,6 +350,7 @@ function CtuDashboard() {
           display: flex;
           align-items: center;
           justify-content: center;
+          font-size: 16px;
           flex-shrink: 0;
         }
 
@@ -560,38 +358,39 @@ function CtuDashboard() {
           color: #b91c1c;
         }
 
-        .logout {
-          padding: 10px;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
+       .logouts {
+  padding: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
 
-        .logout-btn {
-          display: flex;
-          align-items: center;
-          color: white;
-          text-decoration: none;
-          font-size: 15px;
-          font-weight: 500;
-          cursor: pointer;
-          padding: 14px 40px;
-          border-radius: 25px;
-          transition: all 0.3s ease;
-          min-height: 44px;
-        }
+.logout-btns {
+  display: flex;
+  align-items: center;
+  color: white;
+  text-decoration: none;
+  font-size: clamp(13px, 2vw, 15px);
+  font-weight: 500;
+  cursor: pointer;
+  padding: 14px 40px;
+  border-radius: 25px;
+  transition: all 0.3s ease;
+  min-height: 44px;
+}
 
-        .logout-btn:hover {
-          background-color: rgba(255, 255, 255, 0.1);
-        }
+.logout-btns:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
 
-        .logout-icon {
-          width: 20px;
-          height: 20px;
-          margin-right: 15px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
+.logout-icons {
+  width: 20px;
+  height: 20px;
+  margin-right: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
 
         .main-content {
           margin-left: 250px;
@@ -600,7 +399,7 @@ function CtuDashboard() {
           flex-direction: column;
         }
 
-        .header {
+        .headers {
           background: white;
           padding: 16px 24px;
           display: flex;
@@ -611,7 +410,7 @@ function CtuDashboard() {
           gap: 16px;
         }
 
-        .search-container {
+        .search-containers {
           flex: 1;
           max-width: 400px;
           margin-right: 20px;
@@ -640,7 +439,6 @@ function CtuDashboard() {
           transform: translateY(-50%);
           width: 16px;
           height: 16px;
-          color: #6b7280;
         }
 
         .notification-bell {
@@ -779,16 +577,39 @@ function CtuDashboard() {
           color: #ef4444;
         }
 
-        .empty-state {
+        .notification-actions {
+          position: absolute;
+          top: 10px;
+          right: 15px;
           display: flex;
-          flex-direction: column;
-          align-items: center; /* centers horizontally */
-          justify-content: center; /* centers vertically (if parent has height) */
-          text-align: center;
-          padding: 2rem;
+          gap: 5px;
         }
 
-        .icon-wrapper {
+        .notification-action {
+          background: none;
+          border: none;
+          color: #999;
+          cursor: pointer;
+          padding: 2px;
+          border-radius: 3px;
+          font-size: 12px;
+        }
+
+        .notification-action:hover {
+          background: #f0f0f0;
+          color: #666;
+        }
+
+        .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* centers horizontally */
+  justify-content: center; /* centers vertically (if parent has height) */
+  text-align: center;
+  padding: 2rem;
+}
+
+.icon-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -796,9 +617,8 @@ function CtuDashboard() {
 }
 
 
-        .empty-state svg {
-          width: 48px;
-          height: 48px;
+        .empty-state i {
+          font-size: 48px;
           margin-bottom: 16px;
           opacity: 0.5;
         }
@@ -813,11 +633,84 @@ function CtuDashboard() {
           font-size: 14px;
         }
 
-        .content-area {
+        .content-areas {
           flex: 1;
           padding: 24px;
           background: #f9fafb;
           overflow-y: auto;
+        }
+
+        .content-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 24px;
+          flex-wrap: wrap;
+          gap: 16px;
+        }
+
+        .content-logo {
+          width: 50px;
+          height: 50px;
+          border-radius: 50%;
+          background: #b91c1c;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border: 2px solid #fbbf24;
+          position: relative;
+          overflow: hidden;
+          flex-shrink: 0;
+        }
+
+        .content-logo::before {
+          content: "";
+          position: absolute;
+          width: 100%;
+          height: 100%;
+          background: conic-gradient(
+            from 0deg,
+            #b91c1c 0deg,
+            #fbbf24 60deg,
+            #22c55e 120deg,
+            #b91c1c 180deg,
+            #fbbf24 240deg,
+            #22c55e 300deg,
+            #dc2626 360deg
+          );
+          border-radius: 50%;
+        }
+
+        .content-logo::after {
+          content: "";
+          position: absolute;
+          width: 25px;
+          height: 18px;
+          background: white;
+          border-radius: 2px;
+          z-index: 2;
+          background-image: linear-gradient(45deg, #1f2937 25%, transparent 25%),
+            linear-gradient(-45deg, #1f2937 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1f2937 75%),
+            linear-gradient(-45deg, transparent 75%, #1f2937 75%);
+          background-size: 4px 4px;
+          background-position: 0 0, 0 2px, 2px -2px, -2px 0px;
+        }
+
+        .create-post-btn {
+          background: #b91c1c;
+          color: white;
+          border: none;
+          padding: 8px 16px;
+          border-radius: 6px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: background-color 0.2s;
+          min-height: 40px;
+        }
+
+        .create-post-btn:hover {
+          background: #991b1b;
         }
 
         .stats-container {
@@ -1048,7 +941,7 @@ function CtuDashboard() {
           border-radius: 20px;
           color: white;
           cursor: pointer;
-          box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
+          box-shadow: 0 4px 12px rgba(28, 44, 185, 0.3);
           transition: all 0.3s ease;
           display: flex;
           align-items: center;
@@ -1071,7 +964,7 @@ function CtuDashboard() {
 
         .chat-button:hover {
           transform: scale(1.05);
-          box-shadow: 0 6px 16px rgba(185, 28, 28, 0.4);
+          box-shadow: 0 6px 16px rgba(28, 78, 185, 0.4);
         }
 
         .chat-button:hover::after {
@@ -1150,9 +1043,8 @@ function CtuDashboard() {
           margin: 0 auto 20px;
         }
 
-        .logout-modal-icon svg {
-          width: 28px;
-          height: 28px;
+        .logout-modal-icon i {
+          font-size: 28px;
           color: #f59e0b;
         }
 
@@ -1223,11 +1115,11 @@ function CtuDashboard() {
           .mobile-menu-btn {
             display: block;
           }
-          .sidebar {
+          .sidebars {
             transform: translateX(-100%);
             transition: transform 0.3s;
           }
-          .sidebar.open {
+          .sidebars.open {
             transform: translateX(0);
           }
           .main-content {
@@ -1237,11 +1129,11 @@ function CtuDashboard() {
             margin-left: 60px;
             padding: 12px 16px;
           }
-          .search-container {
+          .search-containers {
             margin-right: 10px;
             min-width: 150px;
           }
-          .content-area {
+          .content-areas {
             padding: 16px;
           }
           .main-grid {
@@ -1291,7 +1183,7 @@ function CtuDashboard() {
             gap: 12px;
             margin-left: 50px;
           }
-          .search-container {
+          .search-containers {
             margin-right: 0;
             min-width: auto;
           }
@@ -1299,7 +1191,7 @@ function CtuDashboard() {
             align-self: flex-end;
             margin-right: 0;
           }
-          .content-area {
+          .content-areas {
             padding: 12px;
           }
           .stat-card,
@@ -1325,6 +1217,192 @@ function CtuDashboard() {
           }
         }
       `}</style>
+
+      <button className="mobile-menu-btn" onClick={toggleMobileMenu}>
+        ☰
+      </button>
+
+      <div className={`sidebars ${isSidebarOpen ? "open" : ""}`} id="sidebars" ref={sidebarRef}>
+        <div className="sidebars-logo">
+          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+        </div>
+
+        <nav className="nav-menu">
+          {navigationItems.map((item) => (
+            <a
+              key={item.page}
+              href={item.route}
+              className={`nav-item ${activePage === item.page ? "active" : ""}`}
+              onClick={(e) => {
+                e.preventDefault()
+                handleNavItemClick(item.page, item.route)
+              }}
+            >
+              <item.IconComponent className="nav-icon" size={20} />
+              {item.name}
+            </a>
+          ))}
+        </nav>
+
+        <div className="logouts">
+          <a href="#" className="logout-btns" onClick={openLogoutModal}>
+            <LogOut className="logout-icons" size={20} />
+            Log Out
+          </a>
+        </div>
+      </div>
+
+      <div className="main-content">
+        <header className="headers">
+          <div className="search-containers">
+            <Search className="search-icon" size={20} />
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search......"
+              value={searchQuery}
+              onChange={handleSearchInput}
+            />
+          </div>
+          <div className="notification-bell" ref={notificationBellRef} onClick={toggleNotificationDropdown}>
+            <Bell size={20} />
+            {notifications.filter((n) => !n.read).length > 0 && (
+              <div className="notification-count">{notifications.filter((n) => !n.read).length}</div>
+            )}
+            <div
+              className={`notification-dropdown ${isNotificationDropdownOpen ? "show" : ""}`}
+              ref={notificationDropdownRef}
+            >
+              <div className="notification-header">
+                <h3>Notifications</h3>
+                {notifications.filter((n) => !n.read).length > 0 && (
+                  <button className="mark-all-read" onClick={markAllNotificationsRead}>
+                    Mark all as read
+                  </button>
+                )}
+              </div>
+              <div id="notificationList">
+                {notifications.length === 0 ? (
+                  <div className="empty-state">
+                    <BellOff size={48} />
+                    <h3>No notifications</h3>
+                    <p>You're all caught up!</p>
+                  </div>
+                ) : (
+                  notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className={`notification-item ${!notification.read ? "unread" : ""}`}
+                      onClick={() => handleNotificationClick(notification.id)}
+                    >
+                      <div className="notification-title">
+                        <i className={`notification-icon ${notification.type || "info"}`} />
+                        {notification.title}
+                      </div>
+                      <div className="notification-message">{notification.message}</div>
+                      <div className="notification-time">{notification.time}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="content-areas">
+          <div className="stats-container">
+            <div className="stat-card" onClick={() => handleStatsCardClick("horses")}>
+              <div className="stat-title">Total Record</div>
+              <div className="stat-number">{recordCount}</div>
+            </div>
+            <div className="stat-card" onClick={() => handleStatsCardClick("vet")}>
+              <div className="stat-title">Registered Veterinarian</div>
+              <div className="stat-number">{vetCount}</div>
+            </div>
+          </div>
+
+          <div className="main-grid">
+            <div className="recent-activity">
+              <h3 className="activity-header">Recent Activity</h3>
+              <p className="activity-subtitle">Latest updates from the system</p>
+
+              {recentActivities.length === 0 ? (
+                <div className="empty-state">
+                  <ClipboardList size={48} />
+                  <h3>No recent activity</h3>
+                  <p>Activity will appear here when available</p>
+                </div>
+              ) : (
+                <div id="activityList">
+                  {recentActivities.map((activity) => (
+                    <div key={activity.id} className="activity-item">
+                      <div className="activity-icon" />
+                      <div className="activity-content">
+                        <div className="activity-title">{activity.title}</div>
+                        <div className="activity-description">{activity.description}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="calendar-widget">
+              <div className="calendar-header">
+                <span className="calendar-title">{getCalendarTitle()}</span>
+                <div className="calendar-nav">
+                  <button className="calendar-nav-btn" onClick={goToToday}>
+                    Today
+                  </button>
+                </div>
+              </div>
+
+              <div className="calendar-grid">
+                <div className="calendar-day-header">Sun</div>
+                <div className="calendar-day-header">Mon</div>
+                <div className="calendar-day-header">Tue</div>
+                <div className="calendar-day-header">Wed</div>
+                <div className="calendar-day-header">Thu</div>
+                <div className="calendar-day-header">Fri</div>
+                <div className="calendar-day-header">Sat</div>
+                {initializeCalendar()}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="chat-widget">
+        <button className="chat-button" onClick={handleChatButtonClick}>
+          <div className="chat-dots">
+            <div className="chat-dot" />
+            <div className="chat-dot" />
+            <div className="chat-dot" />
+          </div>
+        </button>
+      </div>
+
+      {/* Logout Modal */}
+      {isLogoutModalOpen && (
+        <div className="modal-overlay active" ref={logoutModalRef}>
+          <div className="logout-modal">
+            <div className="logout-modal-icon">
+              <LogOut size={25} color="#f59e0b" />
+
+            </div>
+            <h3>Confirm Logout</h3>
+            <p>Are you sure you want to log out of your account?</p>
+            <div className="logout-modal-buttons">
+              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
+                No
+              </button>
+              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
