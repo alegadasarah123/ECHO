@@ -4,6 +4,7 @@ import {
   BarChart3,
   Bell,
   BellOff,
+  Check,
   CheckCircle,
   ClipboardList,
   FileText,
@@ -15,6 +16,7 @@ import {
   Search,
   Settings,
   UserCheck,
+  X,
   XCircle,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
@@ -52,7 +54,7 @@ function CtuAccessRequest() {
     return `${Math.floor(diffInMinutes / 1440)}d ago`
   }, [])
 
-  const getNotificationIconClass = (type) => {
+  const getNotificationIcon = (type) => {
     const icons = {
       info: Info,
       success: CheckCircle,
@@ -101,7 +103,7 @@ function CtuAccessRequest() {
     console.log("User logged out")
     localStorage.removeItem("currentUser")
     localStorage.removeItem("loginTime")
-    navigate("/CtuLogin")
+    navigate("/login")
     closeLogoutModal()
   }
 
@@ -234,272 +236,9 @@ function CtuAccessRequest() {
 
   return (
     <div className="bodyWrapper">
-      <div className="sidebar" id="sidebar" ref={sidebarRef}>
-        <div className="sidebar-logo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
-        </div>
-        <nav className="nav-menu">
-          {[
-            {
-              name: "Dashboard",
-              icon: LayoutDashboard,
-              path: "/CtuDashboard",
-            },
-            { name: "Account Approval", icon: UserCheck, path: "/CtuAccountApproval" },
-            { name: "Access Requests", icon: FileText, path: "/CtuAccessRequest", active: true },
-            { name: "Horse Records", icon: ClipboardList, path: "/CtuHorseRecord" },
-            { name: "Health Reports", icon: BarChart3, path: "/CtuHealthReport" },
-            { name: "Announcements", icon: Megaphone, path: "/CtuAnnouncement" },
-            { name: "Directory", icon: Folder, path: "/CtuDirectory" },
-            { name: "Settings", icon: Settings, path: "/CtuSettings" },
-          ].map((item) => {
-            const IconComponent = item.icon
-            return (
-              <Link key={item.name} to={item.path} className={`nav-item ${item.active ? "active" : ""}`}>
-                <IconComponent className="nav-icon" size={18} />
-                {item.name}
-              </Link>
-            )
-          })}
-        </nav>
-        <div className="logout">
-          <a href="#" className="logout-btn" id="logoutBtn" onClick={openLogoutModal}>
-            <LogOut className="logout-icon" size={18} />
-            Log Out
-          </a>
-        </div>
-      </div>
-
-      <div className="main-content">
-        <header className="header">
-          <div className="search-container">
-            <Search className="search-icon" size={18} />
-            <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
-          </div>
-          <div
-            className="notification-bell"
-            id="notification-bell"
-            ref={notificationBellRef}
-            onClick={toggleNotificationDropdown}
-          >
-            <Bell size={20} />
-            {notifications.filter((n) => !n.read).length > 0 && (
-              <div className="notification-count" style={{ display: "flex" }}>
-                {notifications.filter((n) => !n.read).length > 9 ? "9+" : notifications.filter((n) => !n.read).length}
-              </div>
-            )}
-            <div
-              className={`notification-dropdown ${isNotificationDropdownOpen ? "show" : ""}`}
-              ref={notificationDropdownRef}
-            >
-              <div className="notification-header">
-                <h3>Notifications</h3>
-                {notifications.filter((n) => !n.read).length > 0 && (
-                  <button className="mark-all-read" onClick={markAllAsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div id="notificationList">
-                {notifications.length === 0 ? (
-                  <div className="empty-state">
-                    <BellOff size={48} />
-                    <h3>No notifications</h3>
-                    <p>You're all caught up!</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => {
-                    const IconComponent = getNotificationIconClass(notification.type)
-                    return (
-                      <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
-                        <div className="notification-actions">
-                          {!notification.read && (
-                            <button
-                              className="notification-action"
-                              onClick={() => markAsRead(notification.id)}
-                              title="Mark as read"
-                            >
-                              <CheckCircle size={14} />
-                            </button>
-                          )}
-                          <button
-                            className="notification-action"
-                            onClick={() => deleteNotification(notification.id)}
-                            title="Delete"
-                          >
-                            <XCircle size={14} />
-                          </button>
-                        </div>
-                        <div className="notification-title">
-                          <IconComponent className={`notification-icon ${notification.type}`} size={16} />
-                          {notification.title}
-                        </div>
-                        <div className="notification-message">{notification.message}</div>
-                        <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
-                      </div>
-                    )
-                  })
-                )}
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <div className="content-area">
-          <div className="page-header">
-            <h1 className="page-title">Access Request</h1>
-            <div className="status-filter-tabs">
-              <button
-                className={`filter-tab ${activeFilter === "pending" ? "active" : ""}`}
-                onClick={() => setActiveFilter("pending")}
-              >
-                Pending ({filterCounts.pending})
-              </button>
-              <button
-                className={`filter-tab ${activeFilter === "approved" ? "active" : ""}`}
-                onClick={() => setActiveFilter("approved")}
-              >
-                Approved ({filterCounts.approved})
-              </button>
-              <button
-                className={`filter-tab ${activeFilter === "declined" ? "active" : ""}`}
-                onClick={() => setActiveFilter("declined")}
-              >
-                Declined ({filterCounts.declined})
-              </button>
-            </div>
-            <div className="access-table">
-              <div className="table-headerss">
-                <div>Request ID</div>
-                <div>Horse Name</div>
-                <div>Requested by (Vet)</div>
-                <div>Reason for Access</div>
-                <div>Date Requested</div>
-                <div>Status</div>
-                <div>Action</div>
-              </div>
-              {filteredRequests.length === 0 ? (
-                <div className="empty-state">
-                  <FileText size={48} />
-                  <h3>No access requests</h3>
-                  <p>No {activeFilter} requests found</p>
-                </div>
-              ) : (
-                filteredRequests.map((request) => (
-                  <div key={request.id} className="table-rows">
-                    <div>{request.id}</div>
-                    <div>{request.horseName}</div>
-                    <div>{request.requestedBy}</div>
-                    <div>{request.reason}</div>
-                    <div>{request.dateRequested.toLocaleDateString()}</div>
-                    <div>
-                      <span className={`status-badge status-${request.status}`}>{request.status}</span>
-                    </div>
-                    <div className="action-buttons">
-                      {request.status === "pending" && (
-                        <>
-                          <button className="action-btns approve-btn" onClick={() => approveRequest(request.id)}>
-                            Approve
-                          </button>
-                          <button className="action-btns decline-btn" onClick={() => declineRequest(request.id)}>
-                            Decline
-                          </button>
-                        </>
-                      )}
-                      {(request.status === "approved" || request.status === "declined") && (
-                        <button className="action-btns delete-btn" onClick={() => deleteRequest(request.id)}>
-                          Delete
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="chat-widget">
-        <button className="chat-button" id="chatButton" onClick={() => navigate("/CtuMessage")}>
-          <div className="chat-dots">
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-          </div>
-        </button>
-      </div>
-
-      {isLogoutModalOpen && (
-        <div
-          className="modal-overlay active"
-          id="logoutModal"
-          ref={logoutModalRef}
-          onClick={(e) => e.target === logoutModalRef.current && closeLogoutModal()}
-        >
-          <div className="logout-modal">
-            <div className="logout-modal-icon">
-              <LogOut size={24} />
-            </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons">
-              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
-                No
-              </button>
-              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isActionModalOpen && (
-        <div
-          className="modal-overlay active"
-          id="actionModal"
-          ref={actionModalRef}
-          onClick={(e) => e.target === actionModalRef.current && closeActionModal()}
-        >
-          <div className="confirmation-modal">
-            <h3 id="actionTitle">{actionDetails.title}</h3>
-            <p id="actionMessage">{actionDetails.message}</p>
-            <div className="confirmation-buttons">
-              <button className="confirmation-btn cancel" onClick={closeActionModal}>
-                Cancel
-              </button>
-              <button
-                className={`confirmation-btns confirm ${actionDetails.action === "decline" ? "decline" : ""}`}
-                onClick={confirmAction}
-              >
-                {actionDetails.action === "approve" ? "Approve" : "Decline"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isDeleteModalOpen && (
-        <div className="modal-overlay active">
-          <div className="confirmation-modal">
-            <h3>Delete Request</h3>
-            <p>Are you sure you want to delete request {deleteRequestId}? This action cannot be undone.</p>
-            <div className="confirmation-buttons">
-              <button className="confirmation-btn cancel" onClick={closeDeleteModal}>
-                Cancel
-              </button>
-              <button className="confirmation-btns confirm decline" onClick={confirmDelete}>
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style jsx>{`
-        /* General Styles */
-       /* Replacing entire CSS file with user's comprehensive styling */
+      {/* Internal CSS here */}
+      <style>{`
+        /* Replacing entire CSS file with user's comprehensive styling */
 /* General Styles */
 body {
   margin: 0;
@@ -516,7 +255,7 @@ body {
   width: 100%;
 }
 
-.sidebar {
+.sidebars {
   width: 250px;
   background-color: #b91c1c;
   color: white;
@@ -530,7 +269,7 @@ body {
   transition: transform 0.3s ease;
 }
 
-.sidebar-logo {
+.sidebars-logo {
   padding: 5px;
   display: flex;
   justify-content: center;
@@ -538,7 +277,7 @@ body {
   position: relative; /* Needed for absolute positioning of close button */
 }
 
-.sidebar-logo img {
+.sidebars-logo img {
   width: 250px;
   height: 200px;
   object-fit: contain;
@@ -571,14 +310,13 @@ body {
 }
 
 .nav-item.active {
- background-color: #f3f4f6;
-          color: #b91c1c;
-          border-radius: 20px 0 0 20px;
-          font-weight: 500;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-          width: 240px;
-          margin-left: 10px;
-          height:40px;
+  background-color: #f3f4f6;
+  color: #b91c1c;
+  border-radius: 20px 0 0 20px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  width: 240px;
+  margin-left: 10px;
 }
 
 .nav-icon {
@@ -597,23 +335,23 @@ body {
 }
 
 .logout {
-          padding: 10px;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
+  padding: 20px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
 
-        .logout-btn {
-          display: flex;
-          align-items: center;
-          color: white;
-          text-decoration: none;
-          font-size: 15px;
-          font-weight: 500;
-          cursor: pointer;
-          padding: 14px 40px;
-          border-radius: 25px;
-          transition: all 0.3s ease;
-          min-height: 44px;
-        }
+.logout-btn {
+  display: flex;
+  align-items: center;
+  color: white;
+  text-decoration: none;
+  font-size: clamp(13px, 2vw, 15px);
+  font-weight: 500;
+  cursor: pointer;
+  padding: 14px 20px;
+  border-radius: 25px;
+  transition: all 0.3s ease;
+  min-height: 44px;
+}
 
 .logout-btn:hover {
   background-color: rgba(255, 255, 255, 0.1);
@@ -638,7 +376,7 @@ body {
   width: calc(100% - 250px);
 }
 
-.header {
+.headers {
   background: white;
   padding: 16px 24px;
   display: flex;
@@ -650,7 +388,7 @@ body {
 }
 
 /* New styles for the sidebarToggleBtn in the header */
-.header .sidebarToggleBtn {
+.headers .sidebarToggleBtn {
   background: none;
   border: none;
   color: #666; /* Or whatever color fits the header */
@@ -665,7 +403,7 @@ body {
   transition: color 0.2s;
 }
 
-.header .sidebarToggleBtn:hover {
+.headers .sidebarToggleBtn:hover {
   color: #333; /* Darker on hover */
 }
 
@@ -698,28 +436,6 @@ body {
   transform: translateY(-50%);
   width: 16px;
   height: 16px;
-}
-
-.search-icon::before {
-  content: "";
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border: 2px solid #6b7280;
-  border-radius: 50%;
-  top: 0;
-  left: 0;
-}
-
-.search-icon::after {
-  content: "";
-  position: absolute;
-  width: 2px;
-  height: 5px;
-  background: #6b7280;
-  transform: rotate(45deg);
-  bottom: 1px;
-  right: 1px;
 }
 
 .notification-bell {
@@ -884,16 +600,16 @@ body {
   color: #666;
 }
 
- .empty-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center; /* centers horizontally */
-          justify-content: center; /* centers vertically (if parent has height) */
-          text-align: center;
-          padding: 2rem;
-        }
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* centers horizontally */
+  justify-content: center; /* centers vertically (if parent has height) */
+  text-align: center;
+  padding: 2rem;
+}
 
-        .icon-wrapper {
+.icon-wrapper {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -916,14 +632,14 @@ body {
   font-size: 14px;
 }
 
-.content-area {
+.content-areas {
   flex: 1;
   padding: clamp(16px, 3vw, 24px);
   background: #f0f0f0;
   overflow-y: auto;
 }
 
-.page-header {
+.page-headers {
   margin-bottom: 24px;
 }
 
@@ -1087,7 +803,7 @@ body {
 }
 
 /* New Close Button (X) inside sidebar */
-.sidebarCloseBtn {
+.sidebarsCloseBtn {
   position: absolute;
   top: 20px; /* Adjust as needed */
   right: 20px; /* Adjust as needed */
@@ -1358,12 +1074,12 @@ body {
     display: block;
   }
 
-  .sidebar {
+  .sidebars {
     transform: translateX(-100%);
     transition: transform 0.3s;
   }
 
-  .sidebar.open {
+  .sidebars.open {
     transform: translateX(0);
   }
 
@@ -1372,17 +1088,17 @@ body {
     width: 100%;
   }
 
-  .header {
+  .headers {
     margin-left: 60px;
     padding: 12px 16px;
   }
 
-  .search-container {
+  .search-containers {
     margin-right: 10px;
     min-width: 150px;
   }
 
-  .content-area {
+  .content-areas {
     padding: 16px;
   }
 
@@ -1434,26 +1150,26 @@ body {
   }
 
   /* Show the internal close button when the sidebar is expanded on mobile */
-  .sidebar.open .sidebarCloseBtn {
+  .sidebars.open .sidebarCloseBtn {
     display: block;
   }
 
   /* Hide the mobile menu button when the sidebar is expanded */
-  .sidebar.open ~ .mobile-menu-btn {
+  .sidebars.open ~ .mobile-menu-btn {
     display: none;
   }
 }
 
 /* Small Mobile */
 @media (max-width: 480px) {
-  .header {
+  .headers {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
     margin-left: 50px;
   }
 
-  .search-container {
+  .search-containers {
     margin-right: 0;
     min-width: auto;
   }
@@ -1484,6 +1200,269 @@ body {
 }
 
       `}</style>
+
+      <div className="sidebars" id="sidebars" ref={sidebarRef}>
+        <div className="sidebars-logo">
+          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+        </div>
+        <nav className="nav-menu">
+          {[
+            {
+              name: "Dashboard",
+              icon: LayoutDashboard,
+              path: "/CtuDashboard",
+            },
+            { name: "Account Approval", icon: UserCheck, path: "/CtuAccountApproval" },
+            { name: "Access Requests", icon: FileText, path: "/CtuAccessRequest", active: true },
+            { name: "Horse Records", icon: ClipboardList, path: "/CtuHorseRecord" },
+            { name: "Health Reports", icon: BarChart3, path: "/CtuHealthReport" },
+            { name: "Announcements", icon: Megaphone, path: "/CtuAnnouncement" },
+            { name: "Directory", icon: Folder, path: "/CtuDirectory" },
+            { name: "Settings", icon: Settings, path: "/CtuSettings" },
+          ].map((item) => {
+            const IconComponent = item.icon
+            return (
+              <Link key={item.name} to={item.path} className={`nav-item ${item.active ? "active" : ""}`}>
+                <IconComponent className="nav-icon" size={20} />
+                {item.name}
+              </Link>
+            )
+          })}
+        </nav>
+        <div className="logout">
+          <a href="#" className="logout-btn" id="logoutBtn" onClick={openLogoutModal}>
+            <LogOut className="logout-icon" size={20} />
+            Log Out
+          </a>
+        </div>
+      </div>
+
+      <div className="main-content">
+        <header className="headers">
+          <div className="search-container">
+            <Search className="search-icon" size={20} />
+            <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
+          </div>
+          <div
+            className="notification-bell"
+            id="notification-bell"
+            ref={notificationBellRef}
+            onClick={toggleNotificationDropdown}
+          >
+            <Bell size={20} />
+            {notifications.filter((n) => !n.read).length > 0 && (
+              <div className="notification-count" style={{ display: "flex" }}>
+                {notifications.filter((n) => !n.read).length > 9 ? "9+" : notifications.filter((n) => !n.read).length}
+              </div>
+            )}
+            <div
+              className={`notification-dropdown ${isNotificationDropdownOpen ? "show" : ""}`}
+              ref={notificationDropdownRef}
+            >
+              <div className="notification-header">
+                <h3>Notifications</h3>
+                {notifications.filter((n) => !n.read).length > 0 && (
+                  <button className="mark-all-read" onClick={markAllAsRead}>
+                    Mark all as read
+                  </button>
+                )}
+              </div>
+              <div id="notificationList">
+                {notifications.length === 0 ? (
+                  <div className="empty-state">
+                    <BellOff size={48} />
+                    <h3>No notifications</h3>
+                    <p>You're all caught up!</p>
+                  </div>
+                ) : (
+                  notifications.map((notification) => {
+                    const NotificationIcon = getNotificationIcon(notification.type)
+                    return (
+                      <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
+                        <div className="notification-actions">
+                          {!notification.read && (
+                            <button
+                              className="notification-action"
+                              onClick={() => markAsRead(notification.id)}
+                              title="Mark as read"
+                            >
+                              <Check size={16} />
+                            </button>
+                          )}
+                          <button
+                            className="notification-action"
+                            onClick={() => deleteNotification(notification.id)}
+                            title="Delete"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                        <div className="notification-title">
+                          <NotificationIcon className={`notification-icon ${notification.type}`} size={16} />
+                          {notification.title}
+                        </div>
+                        <div className="notification-message">{notification.message}</div>
+                        <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="content-areas">
+          <div className="page-headers">
+            <h1 className="page-title">Access Request</h1>
+            <div className="status-filter-tabs">
+              <button
+                className={`filter-tab ${activeFilter === "pending" ? "active" : ""}`}
+                onClick={() => setActiveFilter("pending")}
+              >
+                Pending ({filterCounts.pending})
+              </button>
+              <button
+                className={`filter-tab ${activeFilter === "approved" ? "active" : ""}`}
+                onClick={() => setActiveFilter("approved")}
+              >
+                Approved ({filterCounts.approved})
+              </button>
+              <button
+                className={`filter-tab ${activeFilter === "declined" ? "active" : ""}`}
+                onClick={() => setActiveFilter("declined")}
+              >
+                Declined ({filterCounts.declined})
+              </button>
+            </div>
+            <div className="access-table">
+              <div className="table-headerss">
+                <div>Request ID</div>
+                <div>Horse Name</div>
+                <div>Requested by (Vet)</div>
+                <div>Reason for Access</div>
+                <div>Date Requested</div>
+                <div>Status</div>
+                <div>Action</div>
+              </div>
+              {filteredRequests.length === 0 ? (
+                <div className="empty-state">
+                  <FileText size={48} />
+                  <h3>No access requests</h3>
+                  <p>No {activeFilter} requests found</p>
+                </div>
+              ) : (
+                filteredRequests.map((request) => (
+                  <div key={request.id} className="table-rows">
+                    <div>{request.id}</div>
+                    <div>{request.horseName}</div>
+                    <div>{request.requestedBy}</div>
+                    <div>{request.reason}</div>
+                    <div>{request.dateRequested.toLocaleDateString()}</div>
+                    <div>
+                      <span className={`status-badge status-${request.status}`}>{request.status}</span>
+                    </div>
+                    <div className="action-buttons">
+                      {request.status === "pending" && (
+                        <>
+                          <button className="action-btns approve-btn" onClick={() => approveRequest(request.id)}>
+                            Approve
+                          </button>
+                          <button className="action-btns decline-btn" onClick={() => declineRequest(request.id)}>
+                            Decline
+                          </button>
+                        </>
+                      )}
+                      {(request.status === "approved" || request.status === "declined") && (
+                        <button className="action-btns delete-btn" onClick={() => deleteRequest(request.id)}>
+                          Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="chat-widget">
+        <button className="chat-button" id="chatButton" onClick={() => navigate("/CtuMessage")}>
+          <div className="chat-dots">
+            <div className="chat-dot"></div>
+            <div className="chat-dot"></div>
+            <div className="chat-dot"></div>
+          </div>
+        </button>
+      </div>
+
+      {isLogoutModalOpen && (
+        <div
+          className="modal-overlay active"
+          id="logoutModal"
+          ref={logoutModalRef}
+          onClick={(e) => e.target === logoutModalRef.current && closeLogoutModal()}
+        >
+          <div className="logout-modal">
+            <div className="logout-modal-icon">
+              <LogOut size={48} />
+            </div>
+            <h3>Confirm Logout</h3>
+            <p>Are you sure you want to log out of your account?</p>
+            <div className="logout-modal-buttons">
+              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
+                No
+              </button>
+              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isActionModalOpen && (
+        <div
+          className="modal-overlay active"
+          id="actionModal"
+          ref={actionModalRef}
+          onClick={(e) => e.target === actionModalRef.current && closeActionModal()}
+        >
+          <div className="confirmation-modal">
+            <h3 id="actionTitle">{actionDetails.title}</h3>
+            <p id="actionMessage">{actionDetails.message}</p>
+            <div className="confirmation-buttons">
+              <button className="confirmation-btn cancel" onClick={closeActionModal}>
+                Cancel
+              </button>
+              <button
+                className={`confirmation-btns confirm ${actionDetails.action === "decline" ? "decline" : ""}`}
+                onClick={confirmAction}
+              >
+                {actionDetails.action === "approve" ? "Approve" : "Decline"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {isDeleteModalOpen && (
+        <div className="modal-overlay active">
+          <div className="confirmation-modal">
+            <h3>Delete Request</h3>
+            <p>Are you sure you want to delete request {deleteRequestId}? This action cannot be undone.</p>
+            <div className="confirmation-buttons">
+              <button className="confirmation-btn cancel" onClick={closeDeleteModal}>
+                Cancel
+              </button>
+              <button className="confirmation-btns confirm decline" onClick={confirmDelete}>
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

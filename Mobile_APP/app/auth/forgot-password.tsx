@@ -31,7 +31,7 @@ export default function ForgotPasswordScreen() {
     Alert.alert(
       "Reset Link Sent", 
       "A password reset link has been sent to your email address.",
-      [{ text: "OK", onPress: () => router.replace('/') }]
+      [{ text: "OK", onPress: () => router.replace('/auth/login') }]
     )
   }
 
@@ -44,7 +44,7 @@ export default function ForgotPasswordScreen() {
       <View style={styles.contentSection}>
         <Text style={styles.title}>Forgot Password?</Text>
         <Text style={styles.subtitle}>
-          Enter your email address and we'll send you a link to reset your password.
+          Enter your email address and we&#39;ll send you a link to reset your password.
         </Text>
 
         <View style={styles.inputContainer}>
@@ -64,7 +64,7 @@ export default function ForgotPasswordScreen() {
           <Text style={styles.resetButtonText}>Send Reset Link</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.backToLoginContainer} onPress={() => router.replace('/')}>
+        <TouchableOpacity style={styles.backToLoginContainer} onPress={() => router.replace('/auth/login')}>
           <Text style={styles.backToLoginText}>Back to Login</Text>
         </TouchableOpacity>
       </View>

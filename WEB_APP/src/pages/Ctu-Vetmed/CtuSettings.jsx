@@ -1,7 +1,28 @@
 "use client"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import "./CtuSettings.css"
+
+import {
+  ArrowLeft,
+  BarChart3,
+  Bell,
+  BellOff,
+  ClipboardList,
+  Eye,
+  EyeOff,
+  FileText,
+  Folder,
+  LayoutDashboard,
+  LogOut,
+  Megaphone,
+  Plus,
+  SettingsIcon,
+  Shield,
+  Trash2,
+  UserCheck,
+  UserCircle,
+  Users,
+} from "lucide-react"
 
 function CtuSettings() {
   const navigate = useNavigate()
@@ -66,7 +87,7 @@ function CtuSettings() {
     console.log("User logged out")
     localStorage.removeItem("currentUser")
     localStorage.removeItem("loginTime")
-    navigate("/CtuLogin")
+    navigate("/login")
     closeLogoutModal()
   }
 
@@ -201,74 +222,71 @@ function CtuSettings() {
     }))
   }
 
-const addNewUser = async () => {
-  const { firstname, lastname, email, phone, password } = newUser;
+  const addNewUser = async () => {
+    const { firstname, lastname, email, phone, password } = newUser
 
-  if (!firstname || !lastname || !email || !phone || !password) {
-    alert("Please fill in all required fields.");
-    return;
-  }
+    if (!firstname || !lastname || !email || !phone || !password) {
+      alert("Please fill in all required fields.")
+      return
+    }
 
-  const payload = {
-    email: email.trim(),
-    firstName: firstname.trim(),
-    lastName: lastname.trim(),
-    phoneNumber: phone.trim(),
-    password: password.trim(),
-  };
+    const payload = {
+      email: email.trim(),
+      firstName: firstname.trim(),
+      lastName: lastname.trim(),
+      phoneNumber: phone.trim(),
+      password: password.trim(),
+    }
 
-  try {
-    const response = await fetch("http://127.0.0.1:8000/signup/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const rawText = await response.text();
-    let data;
     try {
-      data = JSON.parse(rawText);
-    } catch {
-      data = { error: rawText };
+      const response = await fetch("http://127.0.0.1:8000/signup/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+
+      const rawText = await response.text()
+      let data
+      try {
+        data = JSON.parse(rawText)
+      } catch {
+        data = { error: rawText }
+      }
+
+      if (!response.ok) {
+        console.error("Signup failed:", data)
+        alert(data.error || data.details || "Unknown error occurred")
+        return
+      }
+
+      // Add the new user to the table
+      setUsers((prev) => [
+        ...prev,
+        {
+          id: data.user.id,
+          firstname: data.user.firstName,
+          lastname: data.user.lastName,
+          email: data.user.email,
+          phone: data.user.phoneNumber,
+          password: data.user.password,
+          role: "Ctu-Vet",
+          status: "Active",
+        },
+      ])
+
+      // Reset form
+      setNewUser({ firstname: "", lastname: "", email: "", phone: "", password: "" })
+
+      alert("User created successfully!")
+
+      // ✅ balik sa User Management view
+      setActiveSettingsView("userManagement")
+      loadUsers() // reload fresh users if needed
+    } catch (err) {
+      console.error("Error adding user:", err)
+      alert("Failed to add user. Make sure backend is running.")
     }
-
-    if (!response.ok) {
-      console.error("Signup failed:", data);
-      alert(data.error || data.details || "Unknown error occurred");
-      return;
-    }
-
-    // Add the new user to the table
-    setUsers((prev) => [
-      ...prev,
-      {
-        id: data.user.id,
-        firstname: data.user.firstName,
-        lastname: data.user.lastName,
-        email: data.user.email,
-        phone: data.user.phoneNumber,
-        password: data.user.password,
-        role: "Ctu-Vet",
-        status: "Active",
-      },
-    ]);
-
-    // Reset form
-    setNewUser({ firstname: "", lastname: "", email: "", phone: "", password: "" });
-
-    alert("User created successfully!");
-
-    // ✅ balik sa User Management view
-    setActiveSettingsView("userManagement");
-    loadUsers(); // reload fresh users if needed
-
-  } catch (err) {
-    console.error("Error adding user:", err);
-    alert("Failed to add user. Make sure backend is running.");
   }
-};
-
-
 
   const deleteUser = (userId) => {
     if (confirm("Are you sure you want to delete this user?")) {
@@ -344,9 +362,1179 @@ const addNewUser = async () => {
 
   return (
     <div className="bodyWrapper">
+      <style>{`
+       /* Base styles from your existing CSS with modifications for React */
+.bodyWrapper {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #f5f5f5;
+  display: flex;
+  height: 100vh;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+.sidebars {
+  width: 250px;
+  background-color: #b91c1c;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  height: 100vh;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  transition: transform 0.3s ease, width 0.3s ease;
+}
+
+.sidebarsLogo {
+  padding: 5px;
+  display: flex;
+  justify-content: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  position: relative;
+}
+
+.sidebarsLogo img {
+  width: 250px;
+  height: 200px;
+  object-fit: contain;
+}
+
+.navMenu {
+  flex: 1;
+  padding: 20px 0;
+}
+
+.navItem {
+  display: flex;
+  align-items: center;
+  padding: 12px 40px;
+  color: white;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  font-size: clamp(13px, 2vw, 15px);
+  font-weight: 500;
+  cursor: pointer;
+  margin: 0px 0px 2px 0;
+  position: relative;
+  margin-left: 10px;
+  min-height: 44px;
+}
+
+.navItem:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 25px 0 0 25px;
+}
+
+.navItem.active {
+  background-color: #f3f4f6;
+  color: #b91c1c;
+  border-radius: 20px 0 0 20px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  width: 240px;
+  margin-left: 10px;
+}
+
+.navIcon {
+  width: 20px;
+  height: 20px;
+  margin-right: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.navItem.active .navIcon {
+  color: #b91c1c;
+}
+
+ .logouts {
+  padding: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.logout-btns {
+  display: flex;
+  align-items: center;
+  color: white;
+  text-decoration: none;
+  font-size: clamp(13px, 2vw, 15px);
+  font-weight: 500;
+  cursor: pointer;
+  padding: 14px 40px;
+  border-radius: 25px;
+  transition: all 0.3s ease;
+  min-height: 44px;
+}
+
+.logout-btns:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.logout-icons {
+  width: 20px;
+  height: 20px;
+  margin-right: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.mainContent {
+  margin-left: 250px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  transition: margin-left 0.3s ease;
+}
+
+.headers {
+  background: white;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.searchContainer {
+  flex: 1;
+  max-width: 400px;
+  margin-right: 20px;
+  position: relative;
+  min-width: 200px;
+}
+
+.notificationBell {
+  font-size: 20px;
+  color: #666;
+  cursor: pointer;
+  position: relative;
+  margin-right: 20px;
+  padding: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+}
+
+.notificationBell:hover {
+  color: #b91c1c;
+}
+
+.notificationCount {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  background-color: #b91c1c;
+  color: white;
+  font-size: 11px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  font-weight: 600;
+  border: 2px solid white;
+  box-sizing: border-box;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.notificationDropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: min(350px, 90vw);
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  display: none;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.notificationDropdown.show {
+  display: block;
+}
+
+.notificationHeader {
+  padding: 15px 20px;
+  border-bottom: 1px solid #eee;
+  background: #f8f9fa;
+  border-radius: 8px 8px 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.notificationHeader h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.markAllRead {
+  background: none;
+  border: none;
+  color: #b91c1c;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.notificationItem {
+  padding: 15px 20px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  position: relative;
+}
+
+ .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* centers horizontally */
+  justify-content: center; /* centers vertically (if parent has height) */
+  text-align: center;
+  padding: 2rem;
+}
+
+.icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.notificationItem:hover {
+  background-color: #f8f9fa;
+}
+
+.notificationItem.unread {
+  background-color: #f0f8ff;
+  border-left: 3px solid #b91c1c;
+}
+
+.notificationItem:last-child {
+  border-bottom: none;
+}
+
+.notificationTitle {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 5px;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notificationMessage {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 5px;
+  line-height: 1.4;
+}
+
+.notificationTime {
+  font-size: 11px;
+  color: #999;
+}
+
+.notificationIcon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 40px 20px;
+  color: #999;
+}
+
+.empty-state i {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state h3 {
+  font-size: 18px;
+  margin-bottom: 8px;
+  color: #666;
+}
+
+.empty-state p {
+  font-size: 14px;
+  color: #999;
+}
+
+.contentArea {
+  flex: 1;
+  padding: 40px;
+  background: #e5e7eb;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.settingsContainer {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  width: 120%;
+  max-width: 1000px;
+  overflow: hidden;
+}
+
+.settingsHeader {
+  padding: 24px 32px 20px 32px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+}
+
+.backButton {
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  margin-right: 16px;
+  font-size: 18px;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.backButton:hover {
+  background-color: #f3f4f6;
+}
+
+.settingsTitle {
+  font-size: 24px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.settingsList {
+  padding: 0;
+}
+
+.settingsItem {
+  display: flex;
+  align-items: center;
+  padding: 20px 32px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  min-height: 60px;
+}
+
+.settingsItem:hover {
+  background: #f9fafb;
+}
+
+.settingsItem:last-child {
+  border-bottom: none;
+}
+
+.settingsIcon {
+  width: 24px;
+  height: 24px;
+  margin-right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #111827;
+  flex-shrink: 0;
+}
+
+.settingsContent {
+  flex: 1;
+}
+
+.settingsItemTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 2px;
+}
+
+.settingsItemDescription {
+  font-size: 14px;
+  color: #9ca3af;
+  line-height: 1.4;
+}
+
+/* Form Styles */
+.profileFormContent,
+.securityFormContent,
+.userManagementContent {
+  padding: 32px 48px;
+  max-width: 950px;
+  margin: 0 auto;
+}
+
+.formGroup {
+  margin-bottom: 24px;
+}
+
+.formLabel {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.formInput {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+  min-height: 44px;
+}
+
+.formInput:focus {
+  outline: none;
+  border-color: #b91c1c;
+  box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.1);
+}
+
+.formSelect {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background-color: white;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.formSelect:focus {
+  outline: none;
+  border-color: #b91c1c;
+  box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.1);
+}
+
+.checkboxGroup {
+  margin-bottom: 16px;
+}
+
+.checkboxItem {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  min-height: 44px;
+}
+
+.checkboxInput {
+  margin-right: 12px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #b91c1c;
+}
+
+.checkboxLabel {
+  font-size: 14px;
+  color: #374151;
+  cursor: pointer;
+}
+
+.formActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 24px 32px;
+  border-top: 1px solid #e5e7eb;
+  background-color: #f9fafb;
+  flex-wrap: wrap;
+}
+
+.btn {
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  min-height: 44px;
+  min-width: 80px;
+}
+
+.btnSecondary {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+.btnSecondary:hover {
+  background-color: #e5e7eb;
+}
+
+.btnPrimary {
+  background-color: #b91c1c;
+  color: white;
+}
+
+.btnPrimary:hover {
+  background-color: #991b1b;
+}
+
+.btnDanger {
+  background-color: #dc2626;
+  color: white;
+}
+
+.btnDanger:hover {
+  background-color: #b91c1c;
+}
+
+.btnSmall {
+  padding: 6px 12px;
+  font-size: 12px;
+  min-height: 32px;
+  min-width: 60px;
+}
+
+/* Security specific styles */
+.securitySection {
+  margin-bottom: 32px;
+}
+
+.securitySectionTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.securityCheckboxGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.securityCheckboxItem {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  min-height: 44px;
+}
+
+.securityCheckboxInput {
+  margin-right: 12px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #b91c1c;
+}
+
+.securityCheckboxLabel {
+  font-size: 15px;
+  color: #374151;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.passwordStrength {
+  margin-top: 8px;
+  height: 4px;
+  background-color: #e5e7eb;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.passwordStrengthBar {
+  height: 100%;
+  transition: all 0.3s ease;
+  border-radius: 2px;
+}
+
+.strengthWeak {
+  background-color: #ef4444;
+  width: 25%;
+}
+
+.strengthFair {
+  background-color: #f59e0b;
+  width: 50%;
+}
+
+.strengthGood {
+  background-color: #10b981;
+  width: 75%;
+}
+
+.strengthStrong {
+  background-color: #059669;
+  width: 100%;
+}
+
+/* User Management specific styles */
+.userSection {
+  margin-bottom: 32px;
+}
+
+.userSectionTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.addUserForm {
+  background: #f9fafb;
+  padding: 24px;
+  border-radius: 8px;
+  border: 1px solid #e5e7eb;
+}
+
+.formRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.usersTable {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  scrollbar-width: thin;
+  overflow-x: auto;
+}
+.tableRow > :last-child,
+.tableHeaderCell:last-child {
+  position: sticky;
+  right: 0;
+  background: white;
+  z-index: 2;
+}
+
+.tableHeader {
+  display: grid;
+  grid-template-columns: 110px 100px 200px 150px 110px 190px 100px 100px 100px; /* added last column */
+  background: #f9fafb;
+  border-bottom: 1px solid #e5e7eb;
+  scrollbar-color: #a5b4fc #f3f4f6;
+}
+
+.tableHeaderCell {
+  padding: 12px 16px;
+  font-weight: 600;
+  color: #3c5137;
+  font-size: 14px;
+  border-right: 1px solid #e5e7eb;
+}
+
+.tableHeaderCell:last-child {
+  border-right: none;
+}
+
+.tableRow {
+  display: grid;
+  grid-template-columns: 110px 100px 200px 150px 110px 190px 100px 100px 100px; /* added last column */
+  border-bottom: 1px solid #e5e7eb;
+}
+
+
+.tableRow:hover {
+  background: #f9fafb;
+}
+
+.tableRow:last-child {
+  border-bottom: none;
+}
+
+.tableCell {
+  padding: 15px 17px;
+  color: #374151;
+  font-size: 14px;
+  border-right: 1px solid #f3f4f6;
+  display: flex;
+  align-items: center;
+}
+
+.tableCell:last-child {
+  border-right: none;
+  justify-content: center;
+}
+
+.roleBadge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.roleadmin {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.roleveterinarian {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.rolestaff {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.roleviewer {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.statusBadge {
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.statusactive {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.statusinactive {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* Mobile Menu Button */
+.mobileMenuBtn {
+  display: none;
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 1001;
+  background: #b91c1c;
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 18px;
+  cursor: pointer;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+.sidebarCloseBtn {
+  display: none;
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 1002;
+  padding: 5px;
+  border-radius: 50%;
+  transition: background-color 0.2s ease;
+}
+
+.sidebarCloseBtn:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.sidebarToggleBtn {
+  display: none;
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #666;
+  padding: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  margin-right: 10px;
+}
+
+/* Logout Modal Styles */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 2000;
+  padding: 20px;
+}
+
+.modalOverlay.active {
+  display: flex;
+}
+
+.logoutModal {
+  background: white;
+  border-radius: 12px;
+  padding: 32px;
+  width: 90%;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.logoutModalIcon {
+  width: 64px;
+  height: 64px;
+  background: #fef3c7;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+}
+
+.logoutModalIcon i {
+  font-size: 28px;
+  color: #f59e0b;
+}
+
+.logoutModal h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 12px;
+}
+
+.logoutModal p {
+  font-size: 16px;
+  color: #6b7280;
+  margin-bottom: 32px;
+  line-height: 1.5;
+}
+
+.logoutModalButtons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.logoutModalBtn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 100px;
+  min-height: 44px;
+}
+
+.logoutModalBtn.cancel {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.logoutModalBtn.cancel:hover {
+  background: #e5e7eb;
+}
+
+.logoutModalBtn.confirm {
+  background: #ef4444;
+  color: white;
+}
+
+.logoutModalBtn.confirm:hover {
+  background: #dc2626;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .sidebars.collapsed {
+    width: 0;
+    overflow: hidden;
+  }
+
+  .sidebars.expanded {
+    width: 250px;
+  }
+
+  .mainContent {
+    margin-left: 0;
+  }
+
+  .headers {
+    margin-left: 60px;
+    padding: 12px 16px;
+  }
+
+  .sidebarToggleBtn {
+    display: none;
+  }
+
+  .mobileMenuBtn {
+    display: block;
+  }
+
+  .sidebars.expanded .sidebarCloseBtn {
+    display: block;
+  }
+
+  .contentArea {
+    padding: 20px;
+  }
+
+  .settingsContainer {
+    max-width: 100%;
+    margin: 0;
+  }
+
+  .settingsItem {
+    padding: 16px 20px;
+  }
+
+  .profileFormContent,
+  .securityFormContent,
+  .userManagementContent {
+    padding: 20px 24px;
+  }
+
+  .formActions {
+    padding: 20px;
+    flex-direction: column;
+  }
+
+  .formRow {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .tableHeader,
+  .tableRow {
+    grid-template-columns: 1fr; /* Single column on mobile */
+    gap: 8px;
+  }
+
+  .tableHeaderCell,
+  .tableCell {
+    border-right: none;
+    border-bottom: 1px solid #f3f4f6;
+    padding: 15px 20px;
+  }
+
+  .tableHeaderCell:before,
+  .tableCell:before {
+    content: attr(data-label);
+    font-weight: 600;
+    margin-right: 8px;
+  }
+}
+
+@media (min-width: 769px) {
+  .sidebars.collapsed {
+    width: 80px;
+  }
+
+  .sidebars.expanded {
+    width: 250px;
+  }
+
+  .mainContent {
+    margin-left: 250px;
+  }
+
+  .sidebars.collapsed ~ .mainContent {
+    margin-left: 80px;
+  }
+
+  .sidebarToggleBtn {
+    display: block;
+  }
+
+  .mobileMenuBtn {
+    display: none;
+  }
+
+  .sidebars.collapsed .navItem span,
+  .sidebars.collapsed .logoutBtn span {
+    display: none;
+  }
+
+  .sidebars.collapsed .navItem,
+  .sidebars.collapsed .logoutBtn {
+    padding: 12px 0;
+    justify-content: center;
+    margin-left: 0;
+    border-radius: 0;
+    width: auto;
+  }
+
+  .sidebar.collapsed .navItem:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 0;
+  }
+
+  .sidebars.collapsed .navItem.active {
+    border-radius: 0;
+    width: auto;
+  }
+
+  .sidebars.collapsed .navIcon,
+  .sidebars.collapsed .logoutIcon {
+    margin-right: 0;
+  }
+
+  .sidebars.collapsed .sidebarsLogo img {
+    width: 60px;
+    height: 60px;
+  }
+
+  .sidebarCloseBtn {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .headers {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-left: 50px;
+  }
+
+  /*Search Icon*/
+
+  .search-containers {
+    flex: 1;
+    max-width: 400px;
+    margin-right: 20px;
+    position: relative;
+    min-width: 200px;
+  }
+
+  .search-input {
+    width: 100%;
+    padding: 8px 16px 8px 40px;
+    border: 2px solid #e5e7eb;
+    border-radius: 8px;
+    font-size: 14px;
+    outline: none;
+    min-height: 40px;
+  }
+
+  .search-input:focus {
+    border-color: #b91c1c;
+  }
+
+  .search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 16px;
+    height: 16px;
+  }
+
+  .search-icon::before {
+    content: "";
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border: 2px solid #6b7280;
+    border-radius: 50%;
+    top: 0;
+    left: 0;
+  }
+
+  .search-icon::after {
+    content: "";
+    position: absolute;
+    width: 2px;
+    height: 5px;
+    background: #6b7280;
+    transform: rotate(45deg);
+    bottom: 1px;
+    right: 1px;
+  }
+
+  .notificationBell {
+    align-self: flex-end;
+    margin-right: 0;
+  }
+
+  .mobileMenuBtn {
+    top: 15px;
+    left: 15px;
+    padding: 10px;
+  }
+
+  .settingsItem {
+    padding: 12px 16px;
+  }
+
+  .profileFormContent,
+  .securityFormContent,
+  .userManagementContent {
+    padding: 16px 20px;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .navItem,
+  .logoutBtn {
+    min-height: 48px;
+  }
+
+  .settingsItem {
+    min-height: 64px;
+  }
+
+  .notificationBell {
+    min-height: 48px;
+    min-width: 48px;
+  }
+}
+
+      `}</style>
+
       {/* ... existing sidebar and header code ... */}
-      <div className="sidebar" id="sidebar" ref={sidebarRef}>
-        <div className="sidebarLogo">
+      <div className="sidebars" id="sidebars" ref={sidebarRef}>
+        <div className="sidebarsLogo">
           <img src="/images/logo.png" alt="CTU Logo" className="logo" />
         </div>
         <nav className="navMenu">
@@ -379,35 +1567,49 @@ const addNewUser = async () => {
             },
             { name: "Directory", iconClass: "fa-solid fa-folder", page: "directory", route: "/CtuDirectory" },
             { name: "Settings", iconClass: "fa-solid fa-cog", page: "settings", route: "/CtuSettings" },
-          ].map((item) => (
-            <a
-              key={item.page}
-              href={item.route}
-              className={`navItem ${activePage === item.page ? "active" : ""}`}
-              onClick={(e) => {
-                e.preventDefault()
-                setActivePage(item.page)
-                if (item.page !== "settings") {
-                  window.location.href = item.route
-                }
-              }}
-            >
-              <i className={`${item.iconClass} navIcon`} />
-              <span>{item.name}</span>
-            </a>
-          ))}
+          ].map((item) => {
+            const getIcon = (iconClass) => {
+              if (iconClass.includes("fa-th-large")) return <LayoutDashboard size={20} className="navIcon" />
+              if (iconClass.includes("fa-user-check")) return <UserCheck size={20} className="navIcon" />
+              if (iconClass.includes("fa-file-alt")) return <FileText size={20} className="navIcon" />
+              if (iconClass.includes("fa-clipboard-list")) return <ClipboardList size={20} className="navIcon" />
+              if (iconClass.includes("fa-chart-bar")) return <BarChart3 size={20} className="navIcon" />
+              if (iconClass.includes("fa-bullhorn")) return <Megaphone size={20} className="navIcon" />
+              if (iconClass.includes("fa-folder")) return <Folder size={20} className="navIcon" />
+              if (iconClass.includes("fa-cog")) return <SettingsIcon size={20} className="navIcon" />
+              return null
+            }
+
+            return (
+              <a
+                key={item.page}
+                href={item.route}
+                className={`navItem ${activePage === item.page ? "active" : ""}`}
+                onClick={(e) => {
+                  e.preventDefault()
+                  setActivePage(item.page)
+                  if (item.page !== "settings") {
+                    window.location.href = item.route
+                  }
+                }}
+              >
+                {getIcon(item.iconClass)}
+                <span>{item.name}</span>
+              </a>
+            )
+          })}
         </nav>
-        <div className="logout">
-          <a href="#" className="logoutBtn" onClick={openLogoutModal}>
-            <i className="fa-solid fa-sign-out-alt logoutIcon" />
+        <div className="logouts">
+          <a href="#" className="logout-btns" onClick={openLogoutModal}>
+            <LogOut size={20} className="logout-icons" />
             <span>Log Out</span>
           </a>
         </div>
       </div>
 
       <div className="mainContent">
-        <header className="header">
-          <div className="search-container">
+        <header className="headers">
+          <div className="search-containers">
             <div className="search-icon"></div>
             <input
               type="text"
@@ -418,7 +1620,7 @@ const addNewUser = async () => {
             />
           </div>
           <div className="notificationBell" ref={notificationBellRef} onClick={toggleNotificationDropdown}>
-            <i className="fa-solid fa-bell" />
+            <Bell size={20} />
             {notifications.filter((n) => !n.read).length > 0 && (
               <div className="notificationCount">{notifications.filter((n) => !n.read).length}</div>
             )}
@@ -436,8 +1638,8 @@ const addNewUser = async () => {
               </div>
               <div id="notificationList">
                 {notifications.length === 0 ? (
-                  <div className="emptyState">
-                    <i className="fa-solid fa-bell-slash" />
+                  <div className="empty-state">
+                    <BellOff size={48} />
                     <h3>No notifications</h3>
                     <p>You're all caught up!</p>
                   </div>
@@ -449,7 +1651,7 @@ const addNewUser = async () => {
                       onClick={() => handleNotificationClick(notification.id)}
                     >
                       <div className="notificationTitle">
-                        <i className="fa-solid fa-bell notificationIcon" />
+                        <Bell size={16} className="notificationIcon" />
                         {notification.title}
                       </div>
                       <div className="notificationMessage">{notification.message}</div>
@@ -473,7 +1675,7 @@ const addNewUser = async () => {
                 <div className="settingsList">
                   <div className="settingsItem" onClick={openProfileSettings}>
                     <div className="settingsIcon">
-                      <i className="fas fa-user-circle"></i>
+                      <UserCircle size={24} />
                     </div>
                     <div className="settingsContent">
                       <div className="settingsItemTitle">Profile</div>
@@ -482,7 +1684,7 @@ const addNewUser = async () => {
                   </div>
                   <div className="settingsItem" onClick={openSecuritySettings}>
                     <div className="settingsIcon">
-                      <i className="fas fa-shield-alt"></i>
+                      <Shield size={24} />
                     </div>
                     <div className="settingsContent">
                       <div className="settingsItemTitle">Security</div>
@@ -491,7 +1693,7 @@ const addNewUser = async () => {
                   </div>
                   <div className="settingsItem" onClick={openUserManagement}>
                     <div className="settingsIcon">
-                      <i className="fas fa-users"></i>
+                      <Users size={24} />
                     </div>
                     <div className="settingsContent">
                       <div className="settingsItemTitle">User Management</div>
@@ -507,7 +1709,7 @@ const addNewUser = async () => {
               <div id="profile-settings" className="profileSettings">
                 <div className="settingsHeader">
                   <button className="backButton" onClick={goBackToSettings}>
-                    <i className="fas fa-arrow-left"></i>
+                    <ArrowLeft size={20} />
                   </button>
                   <h1 className="settingsTitle">Profile Settings</h1>
                 </div>
@@ -608,7 +1810,7 @@ const addNewUser = async () => {
               <div id="security-settings" className="securitySettings">
                 <div className="settingsHeader">
                   <button className="backButton" onClick={goBackToSettings}>
-                    <i className="fas fa-arrow-left"></i>
+                    <ArrowLeft size={20} />
                   </button>
                   <h1 className="settingsTitle">Security Settings</h1>
                 </div>
@@ -644,7 +1846,7 @@ const addNewUser = async () => {
                             }}
                             title={isCurrentPasswordVisible ? "Hide password" : "Show password"}
                           >
-                            <i className={`fas ${isCurrentPasswordVisible ? "fa-eye-slash" : "fa-eye"}`}></i>
+                            {isCurrentPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                           </button>
                         </div>
                       </div>
@@ -677,7 +1879,7 @@ const addNewUser = async () => {
                             }}
                             title={isNewPasswordVisible ? "Hide password" : "Show password"}
                           >
-                            <i className={`fas ${isNewPasswordVisible ? "fa-eye-slash" : "fa-eye"}`}></i>
+                            {isNewPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                           </button>
                         </div>
                         <div className="passwordStrength">
@@ -712,7 +1914,7 @@ const addNewUser = async () => {
                             }}
                             title={isConfirmPasswordVisible ? "Hide password" : "Show password"}
                           >
-                            <i className={`fas ${isConfirmPasswordVisible ? "fa-eye-slash" : "fa-eye"}`}></i>
+                            {isConfirmPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                           </button>
                         </div>
                       </div>
@@ -782,7 +1984,7 @@ const addNewUser = async () => {
               <div id="user-management" className="userManagement">
                 <div className="settingsHeader">
                   <button className="backButton" onClick={goBackToSettings}>
-                    <i className="fas fa-arrow-left"></i>
+                    <ArrowLeft size={20} />
                   </button>
                   <h1 className="settingsTitle">User Management</h1>
                 </div>
@@ -875,13 +2077,13 @@ const addNewUser = async () => {
                               }}
                               title={isPasswordVisible ? "Hide password" : "Show password"}
                             >
-                              <i className={`fas ${isPasswordVisible ? "fa-eye-slash" : "fa-eye"}`}></i>
+                              {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                             </button>
                           </div>
                         </div>
                       </div>
                       <button type="button" className="btn btnPrimary" onClick={addNewUser}>
-                        <i className="fas fa-plus"></i> Add User
+                        <Plus size={16} /> Add User
                       </button>
                     </div>
                   </div>
@@ -890,8 +2092,8 @@ const addNewUser = async () => {
                   <div className="userSection">
                     <h3 className="userSectionTitle">Existing Users</h3>
                     {users.length === 0 ? (
-                      <div className="emptyState">
-                        <i className="fas fa-users"></i>
+                      <div className="empty-state">
+                        <Users size={48} />
                         <h3>No users found</h3>
                         <p>Add your first user to get started</p>
                       </div>
@@ -934,7 +2136,7 @@ const addNewUser = async () => {
                                   }}
                                   title={passwordVisibility[user.id] ? "Hide password" : "Show password"}
                                 >
-                                  <i className={`fas ${passwordVisibility[user.id] ? "fa-eye-slash" : "fa-eye"}`}></i>
+                                  {passwordVisibility[user.id] ? <EyeOff size={16} /> : <Eye size={16} />}
                                 </button>
                               </div>
                             </div>
@@ -947,7 +2149,7 @@ const addNewUser = async () => {
                                 onClick={() => deleteUser(user.id)}
                                 title="Delete user"
                               >
-                                <i className="fas fa-trash"></i>
+                                <Trash2 size={16} />
                               </button>
                             </div>
                           </div>
@@ -976,7 +2178,7 @@ const addNewUser = async () => {
         >
           <div className="logoutModal">
             <div className="logoutModalIcon">
-              <i className="fa-solid fa-sign-out-alt" />
+              <LogOut size={48} />
             </div>
             <h3>Confirm Logout</h3>
             <p>Are you sure you want to log out of your account?</p>
@@ -990,7 +2192,7 @@ const addNewUser = async () => {
             </div>
           </div>
         </div>
-      )}
+      )}  
     </div>
   )
 }
