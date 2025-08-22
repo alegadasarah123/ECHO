@@ -198,32 +198,6 @@ def get_kutsero_data(request):
     data = supabase.table("kutsero_profile").select("*").execute()
     return Response(data.data)
 
-@api_view(['POST'])
-def insert_kutsero_profile(request):
-    payload = {
-        "kutsero_id": request.data.get("kutseroId"),  # UUID from auth.users
-        "kutsero_fname": request.data.get("firstName"),
-        "kutsero_mname": request.data.get("middleName"),
-        "kutsero_lname": request.data.get("lastName"),
-        "kutsero_dob": request.data.get("dob"),
-        "kutsero_sex": request.data.get("sex"),
-        "kutsero_phone_num": request.data.get("phoneNumber"),
-        "kutsero_province": request.data.get("province"),
-        "kutsero_city": request.data.get("city"),
-        "kutsero_municipality": request.data.get("municipality"),  
-        "kutsero_brgy": request.data.get("barangay"),
-        "kutsero_zipcode": request.data.get("zipCode"),
-        "kutsero_email": request.data.get("email"),
-        "kutsero_fb": request.data.get("facebook")   
-    }
-
-    data = supabase.table("kutsero_profile").insert(payload).execute()
-
-    if data.status_code in [200, 201]:
-        return Response({"message": "Kutsero profile created", "data": data.data})
-    else:
-        return Response({"error": "Failed to insert"}, status=400)
-
 
 @api_view(['POST'])
 def signup_mobile(request):
@@ -340,93 +314,6 @@ def signup_mobile(request):
         "message": "User registration completed successfully. Your account is pending approval.",
         "user": auth_json,
         "user_record": user_insert_json,
-        "profile": profile_insert_json
-    }, status=status.HTTP_201_CREATED)
-
-
-
-@api_view(['POST'])
-def signup_alternative(request):
-    """Alternative signup method that skips users table insert"""
-    email = request.data.get("email")
-    password = request.data.get("password")
-
-    if not email or not password:
-        return Response({"error": "Email and password are required"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Create user in Supabase Auth
-    signup_url = f"{SUPABASE_URL}/auth/v1/admin/users"
-    headers = {
-        "apikey": SUPABASE_SERVICE_ROLE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload_auth = {
-        "email": email,
-        "password": password
-    }
-
-    auth_response = requests.post(signup_url, json=payload_auth, headers=headers)
-    auth_json = auth_response.json()
-    print("Supabase Auth response:", auth_response.status_code, auth_json)
-
-    if auth_response.status_code not in [200, 201]:
-        return Response({
-            "error": "Failed to create user in Supabase Auth",
-            "details": auth_json
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    user_id = auth_json.get('id') or auth_json.get('user', {}).get('id')
-    if not user_id:
-        return Response({"error": "Supabase Auth did not return a user ID"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Wait a bit to allow any database triggers to create the user record
-    time.sleep(1)
-
-    # Insert profile info into kutsero_profile
-    profile_payload = {
-        "kutsero_id": user_id,
-        "kutsero_username": request.data.get("username"),  # Add username field
-        "kutsero_fname": request.data.get("firstName"),
-        "kutsero_mname": request.data.get("middleName"),
-        "kutsero_lname": request.data.get("lastName"),
-        "kutsero_dob": request.data.get("dob"),
-        "kutsero_sex": request.data.get("sex"),
-        "kutsero_phone_num": request.data.get("phoneNumber"),
-        "kutsero_province": request.data.get("province"),
-        "kutsero_city": request.data.get("city"),
-        "kutsero_municipality": request.data.get("municipality"),
-        "kutsero_brgy": request.data.get("barangay"),
-        "kutsero_zipcode": request.data.get("zipCode"),
-        "kutsero_email": email,
-        "kutsero_fb": request.data.get("facebook") 
-    }
-
-    insert_profile_url = f"{SUPABASE_URL}/rest/v1/kutsero_profile"
-    insert_headers = {
-        "apikey": SUPABASE_SERVICE_ROLE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"
-    }
-
-    profile_insert_response = requests.post(insert_profile_url, json=profile_payload, headers=insert_headers)
-    profile_insert_json = profile_insert_response.json()
-    print("Supabase kutsero_profile insert response:", profile_insert_response.status_code, profile_insert_json)
-
-    if profile_insert_response.status_code not in [200, 201]:
-        # Delete created Auth user if profile insert fails
-        delete_auth_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
-        requests.delete(delete_auth_url, headers=headers)
-
-        return Response({
-            "error": "Failed to insert profile",
-            "details": profile_insert_json
-        }, status=status.HTTP_400_BAD_REQUEST)
-
-    return Response({
-        "message": "User registration completed successfully. Your account status is pending approval, but you can login and use the app.",
-        "user": auth_json,
         "profile": profile_insert_json
     }, status=status.HTTP_201_CREATED)
 
