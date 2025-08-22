@@ -1535,7 +1535,7 @@ function CtuSettings() {
       {/* ... existing sidebar and header code ... */}
       <div className="sidebars" id="sidebars" ref={sidebarRef}>
         <div className="sidebarsLogo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
         </div>
         <nav className="navMenu">
           {[

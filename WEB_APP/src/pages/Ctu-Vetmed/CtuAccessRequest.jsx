@@ -334,12 +334,12 @@ body {
   color: #b91c1c;
 }
 
-.logout {
-  padding: 20px;
+ .logouts {
+  padding: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.logout-btn {
+.logout-btns {
   display: flex;
   align-items: center;
   color: white;
@@ -347,17 +347,17 @@ body {
   font-size: clamp(13px, 2vw, 15px);
   font-weight: 500;
   cursor: pointer;
-  padding: 14px 20px;
+  padding: 14px 40px;
   border-radius: 25px;
   transition: all 0.3s ease;
   min-height: 44px;
 }
 
-.logout-btn:hover {
+.logout-btns:hover {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-.logout-icon {
+.logout-icons {
   width: 20px;
   height: 20px;
   margin-right: 15px;
@@ -367,6 +367,7 @@ body {
   font-size: 16px;
   flex-shrink: 0;
 }
+
 
 .main-content {
   margin-left: 250px;
@@ -1203,7 +1204,8 @@ body {
 
       <div className="sidebars" id="sidebars" ref={sidebarRef}>
         <div className="sidebars-logo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+         <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
+
         </div>
         <nav className="nav-menu">
           {[
@@ -1229,9 +1231,9 @@ body {
             )
           })}
         </nav>
-        <div className="logout">
-          <a href="#" className="logout-btn" id="logoutBtn" onClick={openLogoutModal}>
-            <LogOut className="logout-icon" size={20} />
+        <div className="logouts">
+          <a href="#" className="logout-btns" id="logoutBtn" onClick={openLogoutModal}>
+            <LogOut className="logout-icons" size={20} />
             Log Out
           </a>
         </div>
