@@ -1,8 +1,14 @@
+from django.shortcuts import render
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from supabase import create_client
 import os, requests
+from django.conf import settings
+
+
+
+
 
 # Environment config
 SUPABASE_URL = os.getenv("SUPABASE_URL", "https://YOUR_PROJECT.supabase.co")
