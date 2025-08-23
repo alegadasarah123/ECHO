@@ -16,7 +16,7 @@ const Sidebar = () => {
 
   const sidebarItems = [
     { icon: BarChart3, label: 'Dashboard', path: '/KutDashboard' },
-    { icon: Users, label: 'User', path: '/KutUserManagement' },
+    { icon: Users, label: 'User Approval', path: '/KutUserManagement' },
   ];
 
   return (

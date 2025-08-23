@@ -5,6 +5,7 @@ import Sidebar from '@/components/KutSidebar';
 const KutseroDashboard = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [users, setUsers] = useState([]);
+  const [pendingVerifications, setPendingVerifications] = useState(0); // ✅ dynamic
   const [searchTerm, setSearchTerm] = useState('');
   const [filterRole, setFilterRole] = useState('All');
   const [hoveredIcon, setHoveredIcon] = useState(null);
@@ -18,7 +19,10 @@ const KutseroDashboard = () => {
         const res = await fetch("http://localhost:8000/api/kutsero_president/get_users/"); 
         if (!res.ok) throw new Error("Failed to fetch users");
         const data = await res.json();
-        setUsers(data);
+
+        // ✅ backend returns { users: [...], pending_count: N }
+        setUsers(data.users || []);
+        setPendingVerifications(data.pending_count || 0);
       } catch (err) {
         console.error("Error fetching users:", err);
       }
@@ -30,12 +34,13 @@ const KutseroDashboard = () => {
   const notifications = 5;
   const messages = 12;
   const totalUsers = users.length;
-  const pendingVerifications = 8;
 
   const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (user.contact_num || "").includes(searchTerm);
+    const matchesSearch =
+      (user.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (user.contact_num || "").includes(searchTerm);
+
     const matchesRole = filterRole === 'All' || user.role === filterRole;
     return matchesSearch && matchesRole;
   });
@@ -175,7 +180,6 @@ const KutseroDashboard = () => {
                     <th style={styles.tableHeaderCell}>Name</th>
                     <th style={styles.tableHeaderCell}>Email</th>
                     <th style={styles.tableHeaderCell}>Contact Number</th>
-                    <th style={styles.tableHeaderCell}>Joined Date</th>
                     <th style={styles.tableHeaderCell}>Role</th>
                   </tr>
                 </thead>
@@ -199,7 +203,6 @@ const KutseroDashboard = () => {
                       </td>
                       <td style={styles.tableCell}>{user.email}</td>
                       <td style={styles.tableCell}>{user.contact_num || "N/A"}</td>
-                      <td style={styles.tableCell}>{formatDate(user.joined_date)}</td>
                       <td style={styles.tableCell}>
                         <span style={{
                           ...styles.roleBadge,
@@ -263,9 +266,9 @@ const styles = {
   tableContainer: { overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse' },
   tableHeaderRow: { backgroundColor: '#f8f9fa' },
-  tableHeaderCell: { padding: '15px 20px', fontSize: '14px', fontWeight: '600', borderBottom: '1px solid #eee' },
+  tableHeaderCell: { padding: '15px 20px', fontSize: '14px', fontWeight: '600', borderBottom: '1px solid #eee', verticalAlign: 'middle', textAlign: 'center' },
   tableRow: { transition: 'background-color 0.2s ease' },
-  tableCell: { padding: '15px 20px', borderBottom: '1px solid #eee' },
+  tableCell: { padding: '15px 20px', borderBottom: '1px solid #eee', verticalAlign: 'middle', textAlign: 'center'    },
   nameCell: { display: 'flex', alignItems: 'center', gap: '12px' },
   avatar: { width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#D2691E', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   userName: { fontWeight: '500' },
