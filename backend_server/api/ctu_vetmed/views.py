@@ -29,8 +29,9 @@ def signup(request):
         last_name = request.data.get("lastName", "").strip()
         phone_number = str(request.data.get("phoneNumber", "")).strip()
         password = request.data.get("password", "").strip()  # 👈 added
+        role = request.data.get("role", "").strip()  # 👈 added
 
-        if not all([email, first_name, last_name, phone_number, password]):
+        if not all([email, first_name, last_name, phone_number, password,role]):
             return Response({"error": "All fields are required"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Admin headers
@@ -83,7 +84,8 @@ def signup(request):
             "ctu_lname": last_name,
             "ctu_email": email,
             "ctu_phonenum": phone_number,
-            "ctu_pass": password   # 👈 added
+            "ctu_pass": password,
+            "role": role      # 👈 added
         }
         profile_res = sr_client.table("ctu_vet_profile").insert(profile_payload).execute()
         if not profile_res.data:
@@ -99,7 +101,8 @@ def signup(request):
                 "email": email,
                 "firstName": first_name,
                 "lastName": last_name,
-                "phoneNumber": phone_number
+                "phoneNumber": phone_number,
+                 "role": role
             }
         }, status=status.HTTP_201_CREATED)
 
@@ -238,3 +241,4 @@ def get_status_counts(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+

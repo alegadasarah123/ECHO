@@ -6,6 +6,7 @@ urlpatterns = [
     # path('api/', include('api.urls')),
 
     # Direct paths to views:
+    path('signup/', views.signup, name='signup'),
     path("get-vet-profiles/", views.get_vet_profiles, name="get_vet_profiles"),
     path('api/update-vet-status/<int:vet_profile_id>/', views.update_vet_status, name='update_vet_status'),
     path("api/recent-activity/", views.get_recent_activity, name="recent-activity"),
