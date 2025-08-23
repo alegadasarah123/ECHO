@@ -5,6 +5,7 @@ from . import views
 urlpatterns = [
     path('api/kutsero/', include('api.kutsero.urls')),
     path('api/horse_operator/', include('api.horse_operator.urls')), 
+    path('', include('api.ctu_vetmed.urls')),
     path('api/login/', views.login, name='login'),  # Add api/ here
     path('api/signup/', views.signup, name='signup'),
     path('api/get_data/', views.get_data, name='get_data'),

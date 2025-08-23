@@ -29,8 +29,9 @@ def signup(request):
         last_name = request.data.get("lastName", "").strip()
         phone_number = str(request.data.get("phoneNumber", "")).strip()
         password = request.data.get("password", "").strip()  # 👈 added
+        role = request.data.get("role", "").strip()  # 👈 added
 
-        if not all([email, first_name, last_name, phone_number, password]):
+        if not all([email, first_name, last_name, phone_number, password,role]):
             return Response({"error": "All fields are required"}, status=status.HTTP_400_BAD_REQUEST)
 
         # Admin headers
@@ -83,7 +84,8 @@ def signup(request):
             "ctu_lname": last_name,
             "ctu_email": email,
             "ctu_phonenum": phone_number,
-            "ctu_pass": password   # 👈 added
+            "ctu_pass": password,
+            "role": role      # 👈 added
         }
         profile_res = sr_client.table("ctu_vet_profile").insert(profile_payload).execute()
         if not profile_res.data:
@@ -99,7 +101,8 @@ def signup(request):
                 "email": email,
                 "firstName": first_name,
                 "lastName": last_name,
-                "phoneNumber": phone_number
+                "phoneNumber": phone_number,
+                 "role": role
             }
         }, status=status.HTTP_201_CREATED)
 
@@ -127,30 +130,115 @@ def get_vet_profiles(request):
 def update_vet_status(request, vet_profile_id):
     try:
         new_status = request.data.get("status")
+        allowed_statuses = ["pending", "approved", "rejected"]
+
         if not new_status:
-            return Response({"error": "Status is required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "Status is required"}, status=400)
 
-        # 1️⃣ Update status in vet_profile table
-        res = sr_client.table("vet_profile") \
-            .update({"status": new_status}) \
-            .eq("id", vet_profile_id) \
+        if new_status not in allowed_statuses:
+            return Response(
+                {"error": f"Invalid status. Allowed values: {allowed_statuses}"},
+                status=400
+            )
+
+        vet_profile_res = (
+            sr_client.table("vet_profile")
+            .select("vet_id")
+            .eq("id", vet_profile_id)
+            .single()
             .execute()
+        )
 
-        if not res.data:
-            return Response({"error": "Vet profile not found"}, status=status.HTTP_404_NOT_FOUND)
+        if not vet_profile_res.data:
+            return Response({"error": "Vet profile not found"}, status=404)
 
-        # 2️⃣ Optionally update users table if needed
-        vet_id_res = sr_client.table("vet_profile").select("vet_id").eq("id", vet_profile_id).single().execute()
-        if vet_id_res.data:
-            vet_id = vet_id_res.data["vet_id"]
-            sr_client.table("users").update({"status": new_status}).eq("id", vet_id).execute()
+        vet_id = vet_profile_res.data["vet_id"]
+
+        user_update_res = (
+            sr_client.table("users")
+            .update({"status": new_status})
+            .eq("id", vet_id)
+            .execute()
+        )
+
+        if not user_update_res.data:
+            return Response({"error": "User not found"}, status=404)
 
         return Response(
-            {"message": f"Vet status updated to {new_status}", "data": res.data[0]},
-            status=status.HTTP_200_OK,
+            {
+                "message": f"Vet status updated to {new_status}",
+                "data": user_update_res.data[0],
+            },
+            status=200,
         )
 
     except Exception as e:
-        print("🔥 ERROR in update_vet_status:", str(e))
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error(f"🔥 ERROR in update_vet_status: {str(e)}")
+        return Response({"error": "Internal server error"}, status=500)
+
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
+@api_view(["GET"])
+def get_recent_activity(request):
+    try:
+        response = (
+            sr_client.table("vet_profile")
+            .select("id, vet_fname, vet_lname, created_at, users(status)")
+            .order("created_at", desc=True)
+            .limit(10)
+            .execute()
+        )
+
+        if not response.data:
+            return Response([], status=200)
+
+        activities = []
+        for row in response.data:
+            user_status = row.get("users", {}).get("status", "unknown")
+            first_name = row.get("vet_fname", "")
+            last_name = row.get("vet_lname", "")
+            full_name = f"{first_name} {last_name}".strip()
+
+            # Initials like "HEC"
+            initials = "".join([w[0] for w in full_name.split() if w]).upper()
+
+            activities.append({
+                "id": row["id"],
+                "title": full_name,
+                "initials": initials,
+                "description": f"User is currently {user_status.capitalize()}",
+                "status": user_status,
+                "date": row.get("created_at"),
+            })
+
+        return Response(activities, status=200)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(["GET"])
+def get_status_counts(request):
+    try:
+        # Query vet_profile and join with users (status)
+        response = (
+            sr_client.table("vet_profile")
+            .select("id, users(status)")
+            .execute()
+        )
+
+        if not response.data:
+            return Response({"pending": 0, "approved": 0, "declined": 0}, status=200)
+
+        counts = {"pending": 0, "approved": 0, "declined": 0}
+        for row in response.data:
+            user_status = row.get("users", {}).get("status", "").lower()
+            if user_status in counts:
+                counts[user_status] += 1
+
+        return Response(counts, status=200)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
 

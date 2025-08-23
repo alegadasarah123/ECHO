@@ -1174,7 +1174,7 @@ body {
 
       <div className={`sidebars ${isSidebarExpanded ? "open" : ""}`} id="sidebars">
         <div className="sidebars-logo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
         </div>
 
         <nav className="nav-menu">

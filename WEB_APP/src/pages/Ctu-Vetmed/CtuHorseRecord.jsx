@@ -16,7 +16,6 @@ import {
   LogOut,
   Megaphone,
   Menu,
-  MessageCircle,
   Printer,
   Search,
   Settings,
@@ -24,7 +23,7 @@ import {
   Syringe,
   UserCheck,
   X,
-  XCircle,
+  XCircle
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
@@ -51,6 +50,11 @@ function CtuHorseRecord() {
   const [selectedHorse, setSelectedHorse] = useState(null)
   const [selectedMedicalRecord, setSelectedMedicalRecord] = useState(null)
   const [selectedTreatmentHistory, setSelectedTreatmentHistory] = useState(null)
+
+   const handleChatButtonClick = () => {
+    console.log("Chat button clicked")
+    navigate("/CtuMessage")
+  }
 
   // Refs for click outside functionality
   const notificationBellRef = useRef(null)
@@ -378,6 +382,11 @@ body {
   flex-shrink: 0;
 }
 
+ .logouts {
+  padding: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .logout-btns {
   display: flex;
   align-items: center;
@@ -406,6 +415,7 @@ body {
   font-size: 16px;
   flex-shrink: 0;
 }
+
 
 
 /* Main Content & Header */
@@ -1546,66 +1556,63 @@ textarea.form-input {
 
 /* Chat Widget Styling - Button Only */
 .chat-widget {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 1000;
-}
+          position: fixed;
+          bottom: 24px;
+          right: 24px;
+          z-index: 1000;
+        }
 
-/* Chat Button - Speech Bubble Design */
-.chat-button {
-  width: 64px;
-  height: 64px;
-  background: #b91c1c;
-  border: none;
-  border-radius: 20px;
-  color: white;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
+        .chat-button {
+          width: 64px;
+          height: 64px;
+          background: #b91c1c;
+          border: none;
+          border-radius: 20px;
+          color: white;
+          cursor: pointer;
+          box-shadow: 0 4px 12px rgba(28, 44, 185, 0.3);
+          transition: all 0.3s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+        }
 
-/* Speech bubble tail */
-.chat-button::after {
-  content: "";
-  position: absolute;
-  bottom: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-top: 10px solid #b91c1c;
-}
+        .chat-button::after {
+          content: "";
+          position: absolute;
+          bottom: -8px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 0;
+          height: 0;
+          border-left: 10px solid transparent;
+          border-right: 10px solid transparent;
+          border-top: 10px solid #b91c1c;
+        }
 
-.chat-button:hover {
-  transform: scale(1.05);
-  box-shadow: 0 6px 16px rgba(185, 28, 28, 0.4);
-}
+        .chat-button:hover {
+          transform: scale(1.05);
+          box-shadow: 0 6px 16px rgba(28, 78, 185, 0.4);
+        }
 
-.chat-button:hover::after {
-  border-top-color: #b91c1c;
-}
+        .chat-button:hover::after {
+          border-top-color: #b91c1c;
+        }
 
-/* Static three dots design */
-.chat-dots {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  justify-content: center;
-}
+        .chat-dots {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          justify-content: center;
+        }
 
-.chat-dot {
-  width: 8px;
-  height: 8px;
-  background: white;
-  border-radius: 50%;
-}
+        .chat-dot {
+          width: 8px;
+          height: 8px;
+          background: white;
+          border-radius: 50%;
+        }
 
 /* Logout Modal Styles */
 .logout-modal {
@@ -1851,11 +1858,10 @@ textarea.form-input {
 @media print {
   .sidebars,
   .main-content,
-  .chat-widget,
-  .modal-overlay:not(.active) {
-    display: none !important;
-  }
-
+    .chat-widget {
+            bottom: 16px;
+            right: 16px;
+          }
   .modal-overlay.active {
     position: static !important;
     background: white !important;
@@ -1982,7 +1988,7 @@ textarea.form-input {
       </button>
       <div className={`sidebars ${isSidebarExpanded ? "open" : ""}`} id="sidebars">
         <div className="sidebars-logo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
         </div>
         <nav className="nav-menu">
           {[
@@ -2167,10 +2173,14 @@ textarea.form-input {
       </div>
       {/* Chat Widget - Button Only */}
       <div className="chat-widget">
-        <button className="chat-button" id="chatButton" onClick={() => navigate("/CtuMessage")}>
-          <MessageCircle size={24} />
+        <button className="chat-button" onClick={handleChatButtonClick}>
+          <div className="chat-dots">
+            <div className="chat-dot" />
+            <div className="chat-dot" />
+            <div className="chat-dot" />
+          </div>
         </button>
-      </div>
+        </div>
       {/* Horse Details Modal */}
       {isHorseModalOpen && selectedHorse && (
         <div className="modal-overlay active" id="horseModal" ref={horseModalRef}>
