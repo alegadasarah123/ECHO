@@ -1737,7 +1737,7 @@ h2 {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  margin-left: 850px;
+  margin-left: 750px;
 }
       `}</style>
 
