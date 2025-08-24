@@ -1399,16 +1399,12 @@ body {
         </button>
       </div>
 
+      {/* Logout Modal */}
       {isLogoutModalOpen && (
-        <div
-          className="modal-overlay active"
-          id="logoutModal"
-          ref={logoutModalRef}
-          onClick={(e) => e.target === logoutModalRef.current && closeLogoutModal()}
-        >
+        <div className="modal-overlay active" ref={logoutModalRef}>
           <div className="logout-modal">
             <div className="logout-modal-icon">
-              <LogOut size={48} />
+              <LogOut size={25} color="#f59e0b" />
             </div>
             <h3>Confirm Logout</h3>
             <p>Are you sure you want to log out of your account?</p>

@@ -3,8 +3,11 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from supabase import create_client
-import os, requests
+import os, requests, logging
 from django.conf import settings
+from uuid import UUID
+
+
 
 
 
@@ -128,6 +131,9 @@ def get_vet_profiles(request):
     
 @api_view(["PATCH"])
 def update_vet_status(request, vet_profile_id):
+    """
+    Update the status of a vet user (pending, approved, declined)
+    """
     try:
         new_status = request.data.get("status")
         allowed_statuses = ["pending", "approved", "declined"]
@@ -141,6 +147,7 @@ def update_vet_status(request, vet_profile_id):
                 status=400
             )
 
+        # Get vet_id from vet_profile table
         vet_profile_res = (
             sr_client.table("vet_profile")
             .select("vet_id")
@@ -154,6 +161,7 @@ def update_vet_status(request, vet_profile_id):
 
         vet_id = vet_profile_res.data["vet_id"]
 
+        # Update user status
         user_update_res = (
             sr_client.table("users")
             .update({"status": new_status})
@@ -175,9 +183,6 @@ def update_vet_status(request, vet_profile_id):
     except Exception as e:
         logger.error(f"🔥 ERROR in update_vet_status: {str(e)}")
         return Response({"error": "Internal server error"}, status=500)
-
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
 
 @api_view(["GET"])
 def get_recent_activity(request):

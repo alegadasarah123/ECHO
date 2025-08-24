@@ -103,9 +103,7 @@ function CtuSettings() {
   }
 
   // Added search input handler
-  const handleSearchInput = (e) => {
-    setSearchTerm(e.target.value.toLowerCase())
-  }
+ 
 
   // Settings navigation functions
   const openProfileSettings = () => {
@@ -1615,11 +1613,7 @@ function CtuSettings() {
           <div className="search-containers">
             <div className="search-icon"></div>
             <input
-              type="text"
-              className="search-input"
-              placeholder="Search......"
-              value={searchTerm}
-              onChange={handleSearchInput}
+              
             />
           </div>
           <div className="notificationBell" ref={notificationBellRef} onClick={toggleNotificationDropdown}>
@@ -2197,7 +2191,7 @@ function CtuSettings() {
         >
           <div className="logoutModal">
             <div className="logoutModalIcon">
-              <LogOut size={48} />
+             <LogOut size={25} color="#f59e0b" />
             </div>
             <h3>Confirm Logout</h3>
             <p>Are you sure you want to log out of your account?</p>

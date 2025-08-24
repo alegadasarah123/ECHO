@@ -2538,23 +2538,26 @@ textarea.form-input {
         </div>
       )}
       ;
-      <div className={`modal-overlay ${isLogoutModalOpen ? "active" : ""}`} id="logoutModal" ref={logoutModalRef}>
-        <div className="logout-modal">
-          <div className="logout-modal-icon">
-            <LogOut size={48} />
-          </div>
-          <h3>Confirm Logout</h3>
-          <p>Are you sure you want to log out of your account?</p>
-          <div className="logout-modal-buttons">
-            <button className={`logout-modal-btn cancel`} onClick={closeLogoutModal}>
-              No
-            </button>
-            <button className={`logout-modal-btn confirm`} onClick={confirmLogout}>
-              Yes
-            </button>
+      {/* Logout Modal */}
+      {isLogoutModalOpen && (
+        <div className="modal-overlay active" ref={logoutModalRef}>
+          <div className="logout-modal">
+            <div className="logout-modal-icon">
+              <LogOut size={25} color="#f59e0b" />
+            </div>
+            <h3>Confirm Logout</h3>
+            <p>Are you sure you want to log out of your account?</p>
+            <div className="logout-modal-buttons">
+              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
+                No
+              </button>
+              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
+                Yes
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

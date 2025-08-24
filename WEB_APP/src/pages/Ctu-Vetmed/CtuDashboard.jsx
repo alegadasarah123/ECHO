@@ -724,7 +724,7 @@ function CtuDashboard() {
           background: #991b1b;
         }
 
-        .stats-container {
+        .stats-containers {
           display: grid;
           grid-template-columns: 1fr 1fr 1fr;
           gap: 24px;
@@ -750,10 +750,14 @@ function CtuDashboard() {
           margin-bottom: 8px;
         }
 
-        .stat-number {
+        .stat-numbers {
           font-size: 36px;
           font-weight: bold;
           color: #b91c1c;
+         
+           display: flex;
+  justify-content: center; /* horizontal */
+  align-items: center;     /* vertical */
         }
 
         .main-grid {
@@ -1319,7 +1323,7 @@ function CtuDashboard() {
           .main-grid {
             grid-template-columns: 1fr;
           }
-          .stats-container {
+          .stats-containers {
             grid-template-columns: 1fr;
             gap: 16px;
           }
@@ -1355,7 +1359,7 @@ function CtuDashboard() {
             grid-template-columns: 1fr;
             gap: 16px;
           }
-          .stats-container {
+          .stats-containers {
             grid-template-columns: 1fr;
             gap: 16px;
           }
@@ -1519,18 +1523,18 @@ function CtuDashboard() {
         </header>
 
         <div className="content-areas">
-          <div className="stats-container">
+          <div className="stats-containers">
             <div className="stat-card">
               <div className="stat-title">Total Pending</div>
-              <div className="stat-number">{recordCount}</div>
+              <div className="stat-numbers">{recordCount}</div>
             </div>
             <div className="stat-card">
               <div className="stat-title">Total Approved</div>
-              <div className="stat-number">{vetCount}</div>
+              <div className="stat-numbers">{vetCount}</div>
             </div>
             <div className="stat-card">
               <div className="stat-title">Total Declined</div>
-              <div className="stat-number">{declinedCount || 0}</div>
+              <div className="stat-numbers">{declinedCount || 0}</div>
             </div>
           </div>
 

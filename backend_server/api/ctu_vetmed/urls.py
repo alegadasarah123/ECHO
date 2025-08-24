@@ -1,5 +1,6 @@
 from django.urls import path  # include needed only if using include()
 from api.ctu_vetmed import views # adjust 'api' to your actual app name
+from uuid import UUID
 
 urlpatterns = [
     # If you want to include all app URLs:
@@ -8,9 +9,11 @@ urlpatterns = [
     # Direct paths to views:
     path('signup/', views.signup, name='signup'),
     path("get-vet-profiles/", views.get_vet_profiles, name="get_vet_profiles"),
-    path('api/update-vet-status/<int:vet_profile_id>/', views.update_vet_status, name='update_vet_status'),
+    path('api/update-vet-status/<uuid:vet_profile_id>/', views.update_vet_status, name='update_vet_status'),
     path("api/recent-activity/", views.get_recent_activity, name="recent-activity"),
     path("api/status-counts/", views.get_status_counts, name="status-counts"),
+    path('api/update-vet-status/<int:vet_profile_id>/', views.update_vet_status, name='update-vet-status'),
+    
     
 ]
 

@@ -180,35 +180,92 @@ const filterRegistrations = useCallback(() => {
   }
 
   // Approve/Decline logic
-  const approveUser = async (userId) => {
-    try {
-      const response = await fetch(`http://127.0.0.1:8000/api/update-vet-status/${userId}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "approved" }),
-      })
-      if (!response.ok) throw new Error(`Failed to approve user: ${response.status}`)
-      setRegistrationData((prev) => prev.map((u) => (u.id === userId ? { ...u, status: "approved" } : u)))
-    } catch (error) {
-      console.error("Error approving user:", error)
-      alert("Failed to approve user. Please try again.")
-    }
+  // Approve user safely
+const approveUser = async (vetProfileId) => {
+  if (!vetProfileId) {
+    console.error("No vetProfileId provided");
+    return;
   }
 
-  const declineUser = async (userId) => {
-    try {
-      const response = await fetch(`http://127.0.0.1:8000/api/update-vet-status/${userId}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "declined" }),
-      })
-      if (!response.ok) throw new Error(`Failed to decline user: ${response.status}`)
-      setRegistrationData((prev) => prev.map((u) => (u.id === userId ? { ...u, status: "declined" } : u)))
-    } catch (error) {
-      console.error("Error declining user:", error)
-      alert("Failed to decline user. Please try again.")
+  const url = `http://127.0.0.1:8000/api/update-vet-status/${vetProfileId}/`;
+  console.log("PATCH URL:", url);
+
+  try {
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "approved" }),
+    });
+
+    if (!response.ok) {
+      let errorMsg = `Failed to approve user: ${response.status}`;
+      const contentType = response.headers.get("content-type");
+      if (contentType?.includes("application/json")) {
+        const errorData = await response.json();
+        errorMsg += ` - ${errorData.error || ""}`;
+      } else {
+        errorMsg += ` - ${await response.text()}`;
+      }
+      throw new Error(errorMsg);
     }
+
+    const updatedUser = await response.json();
+    setRegistrationData((prev) =>
+      prev.map((u) =>
+        u.id === vetProfileId ? { ...u, status: "approved" } : u
+      )
+    );
+
+    console.log("User approved successfully:", updatedUser);
+  } catch (error) {
+    console.error("Error approving user:", error);
+    alert("Failed to approve user. Please try again.");
   }
+};
+
+// Decline user safely
+const declineUser = async (vetProfileId) => {
+  if (!vetProfileId) {
+    console.error("No vetProfileId provided");
+    return;
+  }
+
+  const url = `http://127.0.0.1:8000/api/update-vet-status/${vetProfileId}/`;
+  console.log("PATCH URL:", url);
+
+  try {
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "declined" }),
+    });
+
+    if (!response.ok) {
+      let errorMsg = `Failed to decline user: ${response.status}`;
+      const contentType = response.headers.get("content-type");
+      if (contentType?.includes("application/json")) {
+        const errorData = await response.json();
+        errorMsg += ` - ${errorData.error || ""}`;
+      } else {
+        errorMsg += ` - ${await response.text()}`;
+      }
+      throw new Error(errorMsg);
+    }
+
+    const updatedUser = await response.json();
+    setRegistrationData((prev) =>
+      prev.map((u) =>
+        u.id === vetProfileId ? { ...u, status: "declined" } : u
+      )
+    );
+
+    console.log("User declined successfully:", updatedUser);
+  } catch (error) {
+    console.error("Error declining user:", error);
+    alert("Failed to decline user. Please try again.");
+  }
+};
+
 
   const approveAllPending = async () => {
     if (activeTab !== "pending") return
@@ -1282,74 +1339,81 @@ h2 {
 
 /* Logout Modal */
 .logout-modal {
-  background: white;
-  border-radius: 8px;
-  padding: clamp(20px, 4vw, 30px);
-  text-align: center;
-  max-width: 350px;
-  width: 90%;
-}
+          background: white;
+          border-radius: 12px;
+          padding: 32px;
+          width: 90%;
+          max-width: 400px;
+          text-align: center;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
 
-.logout-modal-icon {
-  margin-bottom: 16px;
-}
+        .logout-modal-icon {
+          width: 64px;
+          height: 64px;
+          background: #fef3c7;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 20px;
+        }
 
-.logout-modal-icon i {
-  font-size: clamp(40px, 8vw, 48px);
-  color: #ef4444;
-}
+        .logout-modal-icon i {
+          font-size: 28px;
+          color: #f59e0b;
+        }
 
-.logout-modal h3 {
-  font-size: clamp(16px, 3vw, 18px);
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 12px;
-}
+        .logout-modal h3 {
+          font-size: 20px;
+          font-weight: 600;
+          color: #111827;
+          margin-bottom: 12px;
+        }
 
-.logout-modal p {
-  font-size: clamp(14px, 2.5vw, 16px);
-  color: #6b7280;
-  margin-bottom: 24px;
-  line-height: 1.4;
-}
+        .logout-modal p {
+          font-size: 16px;
+          color: #6b7280;
+          margin-bottom: 32px;
+          line-height: 1.5;
+        }
 
-.logout-modal-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
+        .logout-modal-buttons {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+          flex-wrap: wrap;
+        }
 
-.logout-modal-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  min-height: 40px;
-  flex: 1;
-  min-width: 80px;
-}
+        .logout-modal-btn {
+          padding: 12px 24px;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+          min-width: 100px;
+          min-height: 44px;
+        }
 
-.logout-modal-btn.cancel {
-  background: #6b7280;
-  color: white;
-}
+        .logout-modal-btn.cancel {
+          background: #f3f4f6;
+          color: #374151;
+        }
 
-.logout-modal-btn.cancel:hover {
-  background: #4b5563;
-}
+        .logout-modal-btn.cancel:hover {
+          background: #e5e7eb;
+        }
 
-.logout-modal-btn.confirm {
-  background: #ef4444;
-  color: white;
-}
+        .logout-modal-btn.confirm {
+          background: #ef4444;
+          color: white;
+        }
 
-.logout-modal-btn.confirm:hover {
-  background: #dc2626;
-}
+        .logout-modal-btn.confirm:hover {
+          background: #dc2626;
+        }
 
 /* Chat Widget */
 .chat-widget {
@@ -1659,7 +1723,22 @@ h2 {
   outline: none;
   box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.4);
 }
+.modal-headers {
+  display: flex;
+  align-items: center;
+  gap: 14px; /* spacing between avatar and user info */
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #fff;
+}
 
+/* User info */
+.modal-user-infos {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: 850px;
+}
       `}</style>
 
       <div className="sidebars" id="sidebasr">
@@ -1895,7 +1974,7 @@ h2 {
               &times;
             </button>
 
-            <div className="modal-header">
+            <div className="modal-headers">
               <div className="modal-avatar-container">
                 <div className="modal-avatar">
                   {selectedUser.vet_fname.charAt(0) + selectedUser.vet_lname.charAt(0)}
@@ -1908,7 +1987,7 @@ h2 {
                 </div>
               </div>
 
-              <div className="modal-user-info">
+              <div className="modal-user-infos">
                 <h3>
                   {selectedUser.vet_fname} {selectedUser.vet_mname} {selectedUser.vet_lname}
                 </h3>
@@ -2076,25 +2155,20 @@ h2 {
         </div>
       )}
 
-      {/* Logout Modal */}
+     {/* Logout Modal */}
       {isLogoutModalOpen && (
-        <div
-          className={`modal-overlay active`}
-          id="logoutModal"
-          ref={logoutModalRef}
-          onClick={(e) => e.target === logoutModalRef.current && closeLogoutModal()}
-        >
+        <div className="modal-overlay active" ref={logoutModalRef}>
           <div className="logout-modal">
             <div className="logout-modal-icon">
-              <LogOut size={48} />
+              <LogOut size={25} color="#f59e0b" />
             </div>
             <h3>Confirm Logout</h3>
             <p>Are you sure you want to log out of your account?</p>
             <div className="logout-modal-buttons">
-              <button className={`logout-modal-btn cancel`} onClick={closeLogoutModal}>
+              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
                 No
               </button>
-              <button className={`logout-modal-btn confirm`} onClick={confirmLogout}>
+              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
                 Yes
               </button>
             </div>
