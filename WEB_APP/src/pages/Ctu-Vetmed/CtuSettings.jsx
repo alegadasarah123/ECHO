@@ -238,6 +238,7 @@ function CtuSettings() {
       lastName: lastname.trim(),
       phoneNumber: phone.trim(),
       password: password.trim(),
+      role: "Ctu-VetMed",
     }
 
     try {
@@ -263,19 +264,17 @@ function CtuSettings() {
 
       // Add the new user to the table
       setUsers((prev) => [
-        ...prev,
-        {
-          id: data.user.id,
-          firstname: data.user.firstName,
-          lastname: data.user.lastName,
-          email: data.user.email,
-          phone: data.user.phoneNumber,
-          password: data.user.password,
-          role: "Ctu-Vet",
-          status: "Active",
-        },
-      ])
-
+  ...prev,
+  {
+    id: data.user.id,
+    firstname: data.user.firstName,
+    lastname: data.user.lastName,
+    email: data.user.email,
+    phone: data.user.phoneNumber,
+    role: data.user.role || "Ctu-VetMed", // use backend role
+    status: "Active",
+  },
+])
       // Reset form
       setNewUser({ firstname: "", lastname: "", email: "", phone: "", password: "" })
 

@@ -228,6 +228,14 @@ const filterRegistrations = useCallback(() => {
     setRecentFilter(e.target.value)
   }
 
+
+  // Remove all approved users from display only
+const deleteAllApprovedLocal = () => {
+  if (!window.confirm("Remove all approved users from the display?")) return;
+  setRegistrationData((prev) => prev.filter((user) => user.users?.status !== "approved"));
+};
+
+
   const openLogoutModal = (e) => {
     e.preventDefault()
     setIsLogoutModalOpen(true)
@@ -1624,6 +1632,34 @@ h2 {
 .modal-status-text.status-declined {
   color: #721c24;
 }
+
+/* Delete All button */
+.delete-all-btn {
+  background-color: #dc3545; /* Bootstrap danger red */
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  margin-left: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 14px;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Hover effect */
+.delete-all-btn:hover {
+  background-color: #b02a37;
+  transform: translateY(-1px);
+}
+
+/* Optional: focus effect */
+.delete-all-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.4);
+}
+
       `}</style>
 
       <div className="sidebars" id="sidebasr">
@@ -1749,90 +1785,97 @@ h2 {
               >
                 Declined
               </button>
+               </div>
             </div>
-          </div>
-          <div className="controls-row">
-            <div className="filter-controls">
-              <select className="filter-select" value={recentFilter} onChange={handleRecentFilterChange}>
-                <option value="all">Most Recent</option>
-                <option value="today">Today</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-              </select>
-            </div>
-            {activeTab === "pending" && (
-              <button className="approve-all-btn" onClick={approveAllPending}>
-                Approve All
-              </button>
-            )}
-          </div>
-          <div className="registration-table" id="registrationTable">
-            {filteredRegistrations.length === 0 ? (
-              <div className="empty-state">
-                {activeTab === "pending" ? (
-                  <Clock size={48} />
-                ) : activeTab === "approved" ? (
-                  <UserCheck size={48} />
-                ) : (
-                  <UserX size={48} />
-                )}
-                <h3>No {activeTab === "pending" ? "pending" : activeTab} registrations</h3>
-                <p>
-                  {activeTab === "pending"
-                    ? "New registration requests will appear here"
-                    : `${activeTab} registrations will appear here`}
-                </p>
+            <div className="controls-row">
+              <div className="filter-controls">
+                <select className="filter-select" value={recentFilter} onChange={handleRecentFilterChange}>
+                  <option value="all">Most Recent</option>
+                  <option value="today">Today</option>
+                  <option value="week">This Week</option>
+                  <option value="month">This Month</option>
+                </select>
               </div>
-            ) : (
-              filteredRegistrations.map((user) => (
-                <div key={user.id} className="registration-item">
-  <div className="user-avatar">
-    {user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}
-  </div>
+              {activeTab === "pending" && (
+                <button className="approve-all-btn" onClick={approveAllPending}>
+                  Approve All
+                </button>
+                  )}
 
-  <div className="user-info">
-    <div className="user-name">
-      {user.vet_fname} {user.vet_mname} {user.vet_lname}
-      <span className={`user-type-badge badge-${user.users?.status}`}>
-        {user.users?.status}
-      </span>
-    </div>
-    <div className="user-email">{user.vet_email}</div>
-    <div className="user-details">
-      {user.vet_city}, {user.vet_province}
-    </div>
-  </div>
+                {/* For Approved Tab */}
+                  {activeTab === "approved" && (
+                    <button className="delete-all-btn" onClick={deleteAllApprovedLocal}>
+                      Delete All
+                    </button>
+                  )}
+            </div>
+              <div className="registration-table" id="registrationTable">
+                      {filteredRegistrations.length === 0 ? (
+                        <div className="empty-state">
+                          {activeTab === "pending" ? (
+                            <Clock size={48} />
+                          ) : activeTab === "approved" ? (
+                            <UserCheck size={48} />
+                          ) : (
+                            <UserX size={48} />
+                          )}
+                          <h3>No {activeTab === "pending" ? "pending" : activeTab} registrations</h3>
+                          <p>
+                            {activeTab === "pending"
+                              ? "New registration requests will appear here"
+                              : `${activeTab} registrations will appear here`}
+                          </p>
+                        </div>
+                      ) : (
+                        filteredRegistrations.map((user) => (
+                          <div key={user.id} className="registration-item">
+                        <div className="user-avatar">
+                          {user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}
+                        </div>
 
-  <div className="action-buttons">
-    <button
-      className="action-btn btn-view"
-      onClick={() => viewDetails(user.id, user.users?.status)}
-    >
-      View Details
-    </button>
+                        <div className="user-info">
+                          <div className="user-name">
+                            {user.vet_fname} {user.vet_mname} {user.vet_lname}
+                            <span className={`user-type-badge badge-${user.users?.status}`}>
+                              {user.users?.status}
+                            </span>
+                          </div>
+                          <div className="user-email">{user.vet_email}</div>
+                          <div className="user-details">
+                            {user.vet_city}, {user.vet_province}
+                          </div>
+                        </div>
 
-    {user.users?.status === "pending" && (
-      <>
-        <button
-          className="action-btn btn-approve"
-          onClick={() => showApproveConfirmation(user.id)}
-        >
-          Approve
-        </button>
-        <button
-          className="action-btn btn-decline"
-          onClick={() => showDeclineConfirmation(user.id)}
-        >
-          Decline
-        </button>
-      </>
-    )}
-  </div>
-</div>
+                      <div className="action-buttons">
+                        <button
+                          className="action-btn btn-view"
+                          onClick={() => viewDetails(user.id, user.users?.status)}
+                        >
+                          View Details
+                        </button>
 
-              ))
-            )}
-          </div>
+                      {user.users?.status === "pending" && (
+                        <>
+                          <button
+                            className="action-btn btn-approve"
+                            onClick={() => showApproveConfirmation(user.id)}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="action-btn btn-decline"
+                            onClick={() => showDeclineConfirmation(user.id)}
+                          >
+                            Decline
+                          </button>
+                        </>
+                      )}
+                    </div>
+                </div>
+
+                ))
+              )}
+            </div>
         </div>
       </div>
        <div className="chat-widget">

@@ -1031,7 +1031,7 @@ function CtuDashboard() {
           border: 1px solid #4ade80;
         }
 
-        .activity-role.decline {
+        .activity-role.declined {
           background: #fee2e2;
           color: #dc2626;
           border: 1px solid #f87171;

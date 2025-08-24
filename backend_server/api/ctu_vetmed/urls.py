@@ -11,7 +11,7 @@ urlpatterns = [
     path('api/update-vet-status/<int:vet_profile_id>/', views.update_vet_status, name='update_vet_status'),
     path("api/recent-activity/", views.get_recent_activity, name="recent-activity"),
     path("api/status-counts/", views.get_status_counts, name="status-counts"),
-
+    
 ]
 
 

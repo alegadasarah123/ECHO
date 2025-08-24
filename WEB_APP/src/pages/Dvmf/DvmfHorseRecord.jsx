@@ -1,7 +1,32 @@
 "use client"
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import "./DvmfHorseRecord.css"; // Import the new CSS file
+import {
+  AlertTriangle,
+  ArrowLeft,
+  BarChart3,
+  Bell,
+  BellOff,
+  Check,
+  CheckCircle,
+  ClipboardList,
+  Eye,
+  FileText,
+  Folder,
+  Info,
+  LayoutDashboard,
+  LogOut,
+  Megaphone,
+  Menu,
+  Printer,
+  Search,
+  Settings,
+  Stethoscope,
+  Syringe,
+  UserCheck,
+  X,
+  XCircle
+} from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { Link, useNavigate } from "react-router-dom"
 
 function DvmfHorseRecord() {
   const navigate = useNavigate()
@@ -26,6 +51,11 @@ function DvmfHorseRecord() {
   const [selectedMedicalRecord, setSelectedMedicalRecord] = useState(null)
   const [selectedTreatmentHistory, setSelectedTreatmentHistory] = useState(null)
 
+   const handleChatButtonClick = () => {
+    console.log("Chat button clicked")
+    navigate("/DvmfMessage")
+  }
+
   // Refs for click outside functionality
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
@@ -46,10 +76,10 @@ function DvmfHorseRecord() {
 
   const getNotificationIconClass = (type) => {
     const icons = {
-      info: "fas fa-info-circle",
-      success: "fas fa-check-circle",
-      warning: "fas fa-exclamation-triangle",
-      error: "fas fa-times-circle",
+      info: Info,
+      success: CheckCircle,
+      warning: AlertTriangle,
+      error: XCircle,
     }
     return icons[type] || icons.info
   }
@@ -164,7 +194,7 @@ function DvmfHorseRecord() {
   const confirmLogout = () => {
     console.log("User logged out")
     // In a real app, clear authentication tokens/session
-    navigate("/CtuLogin") // Assuming this is your login route
+    navigate("/login") // Assuming this is your login route
     closeLogoutModal()
   }
 
@@ -256,52 +286,1750 @@ function DvmfHorseRecord() {
 
   return (
     <div className="bodyWrapper">
-      <button className="mobile-menu-btn" onClick={toggleSidebar}>
-        ☰
-      </button>
+      <style>{`
+        /* General Styles */
+body {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
 
-      <div className={`sidebar ${isSidebarExpanded ? "open" : ""}`} id="sidebar">
-        <div className="sidebar-logo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+.bodyWrapper {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #f5f5f5;
+  display: flex;
+  height: 100vh;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* Sidebar Styles */
+.sidebars {
+  width: 250px;
+  background-color: #0F3D5A;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  height: 100vh;
+  left: 0;
+  top: 0;
+  z-index: 1000;
+  transition: transform 0.3s ease;
+}
+
+.sidebars-logo {
+  padding: 5px;
+  display: flex;
+  justify-content: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.sidebars-logo img {
+  width: 250px;
+  height: 200px;
+  object-fit: contain;
+}
+
+.nav-menu {
+  flex: 1;
+  padding: 20px 0;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 40px;
+  color: white;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  font-size: clamp(13px, 2vw, 15px);
+  font-weight: 500;
+  cursor: pointer;
+  margin: 0px 0px 2px 0;
+  position: relative;
+  margin-left: 10px;
+  min-height: 44px;
+}
+
+.nav-item:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+  border-radius: 25px 0 0 25px;
+}
+
+.nav-item.active {
+  background-color: #f3f4f6;
+  color: #0F3D5A;
+  border-radius: 20px 0 0 20px;
+  font-weight: 500;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  width: 240px;
+  margin-left: 10px;
+}
+
+.nav-item.active .nav-icon {
+  color: #0F3D5A;
+}
+
+.nav-icon {
+  width: 20px;
+  height: 20px;
+  margin-right: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+ .logouts {
+  padding: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.logout-btns {
+  display: flex;
+  align-items: center;
+  color: white;
+  text-decoration: none;
+  font-size: clamp(13px, 2vw, 15px);
+  font-weight: 500;
+  cursor: pointer;
+  padding: 14px 40px;
+  border-radius: 25px;
+  transition: all 0.3s ease;
+  min-height: 44px;
+}
+
+.logout-btns:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.logout-icons {
+  width: 20px;
+  height: 20px;
+  margin-right: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+
+
+/* Main Content & Header */
+.main-content {
+  margin-left: 250px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: calc(100% - 250px);
+}
+
+.headers {
+  background: white;
+  padding: 16px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.search-container {
+  flex: 1;
+  max-width: 400px;
+  margin-right: 20px;
+  position: relative;
+  min-width: 200px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 16px 8px 40px;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: clamp(12px, 2vw, 14px);
+  outline: none;
+  min-height: 40px;
+}
+
+.search-input:focus {
+  border-color: #0F3D5A;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+}
+
+.search-icon::before {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #6b7280;
+  border-radius: 50%;
+  top: 0;
+  left: 0;
+}
+
+.search-icon::after {
+  content: "";
+  position: absolute;
+  width: 2px;
+  height: 5px;
+  background: #6b7280;
+  transform: rotate(45deg);
+  bottom: 1px;
+  right: 1px;
+}
+
+/* Notifications */
+.notification-bell {
+  font-size: clamp(18px, 3vw, 20px);
+  color: #666;
+  cursor: pointer;
+  position: relative;
+  margin-right: 20px;
+  padding: 8px;
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notification-count {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background-color: #0F3D5A;
+  color: white;
+  font-size: 10px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+
+.notification-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  width: min(350px, 90vw);
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 100;
+  display: none;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.notification-dropdown.show {
+  display: block;
+}
+
+.notification-header {
+  padding: 15px 20px;
+  border-bottom: 1px solid #eee;
+  background: #f8f9fa;
+  border-radius: 8px 8px 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.notification-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.mark-all-read {
+  background: none;
+  border: none;
+  color: #0F3D5A;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.notification-item {
+  padding: 15px 20px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  position: relative;
+}
+
+.notification-item:hover {
+  background-color: #f8f9fa;
+}
+
+.notification-item.unread {
+  background-color: #f0f8ff;
+  border-left: 3px solid #0F3D5A;
+}
+
+.notification-item:last-child {
+  border-bottom: none;
+}
+
+.notification-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 5px;
+  color: #333;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notification-message {
+  font-size: 13px;
+  color: #666;
+  margin-bottom: 5px;
+  line-height: 1.4;
+}
+
+.notification-time {
+  font-size: 11px;
+  color: #999;
+}
+
+.notification-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.notification-icon.info {
+  color: #3b82f6;
+}
+
+.notification-icon.success {
+  color: #10b981;
+}
+
+.notification-icon.warning {
+  color: #f59e0b;
+}
+
+.notification-icon.error {
+  color: #ef4444;
+}
+
+.notification-actions {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  display: flex;
+  gap: 5px;
+}
+
+.notification-action {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.notification-action:hover {
+  background: #f0f0f0;
+  color: #666;
+}
+
+/* Content Area & Table */
+.content-areas {
+  flex: 1;
+  padding: clamp(16px, 3vw, 24px);
+  background: #f0f0f0;
+  overflow-y: auto;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.page-title {
+  font-size: clamp(20px, 4vw, 24px);
+  font-weight: 700;
+  color: #111827;
+  margin-bottom: 20px;
+}
+
+.controls-rows {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.filter-controlss {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.filter-select {
+  padding: 8px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  font-size: clamp(12px, 2vw, 14px);
+  background: white;
+  min-width: 140px;
+  min-height: 40px;
+}
+
+.add-record-btn {
+  background-color: #28a745;
+  color: white;
+  padding: 8px 15px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  transition: background-color 0.2s ease;
+}
+
+.add-record-btn:hover {
+  background-color: #16a34a;
+}
+
+.add-horse-btn {
+  background: #0F3D5A;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: clamp(12px, 2vw, 14px);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.add-horse-btn:hover {
+  background: #991b1b;
+}
+
+.horse-table {
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.table-header {
+  background: #f8f9fa;
+  display: grid;
+  grid-template-columns: 80px 1fr 1fr 1fr 100px 80px;
+  padding: 16px 20px;
+  font-weight: 600;
+  color: #374151;
+  font-size: clamp(12px, 2vw, 14px);
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.table-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 1fr 1fr 100px 80px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f3f4f6;
+  transition: background-color 0.2s;
+  align-items: center;
+  min-height: 60px;
+}
+
+.table-row:hover {
+  background: #f9fafb;
+}
+
+.table-row:last-child {
+  border-bottom: none;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: clamp(10px, 1.8vw, 12px);
+  font-weight: 500;
+}
+
+.status-healthy,
+.status-completed,
+.status-successful {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-sick {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+.status-quarantine {
+  background: #fef3c7;
+  color: #f59e0b;
+}
+
+.status-ongoing {
+  background: #bfdbfe;
+  color: #2563eb;
+}
+
+.view-btn {
+  background: #0F3D5A;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  font-size: clamp(10px, 1.8vw, 12px);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 32px;
+}
+
+.view-btn:hover {
+  background: #991b1b;
+}
+
+ .empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center; /* centers horizontally */
+  justify-content: center; /* centers vertically (if parent has height) */
+  text-align: center;
+  padding: 2rem;
+}
+
+.icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.empty-state i {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.empty-state h3 {
+  font-size: 18px;
+  margin-bottom: 8px;
+  color: #374151;
+}
+
+.empty-state p {
+  font-size: 14px;
+}
+
+/* Mobile Menu Button */
+.mobile-menu-btn {
+  display: none;
+  position: fixed;
+  top: 20px;
+  left: 20px;
+  z-index: 1001;
+  background: #0F3D5A;
+  color: white;
+  border: none;
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 18px;
+  cursor: pointer;
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Modals (General) */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-overlay.active {
+  display: flex;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 8px;
+  width: 95%;
+  max-width: none;
+  max-height: 90vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+.modal-header {
+  padding: 20px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-title {
+  font-size: clamp(16px, 3vw, 18px);
+  font-weight: 600;
+  color: #111827;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 4px;
+  line-height: 1;
+  min-height: 32px;
+  min-width: 32px;
+}
+
+.modal-close:hover {
+  color: #374151;
+}
+
+.modal-body {
+  padding: 20px;
+}
+
+/* Horse Details Modal */
+.horse-info-section {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.horse-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.horse-avatar {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: #d1d5db;
+  margin-right: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.horse-basic-info h3 {
+  font-size: clamp(16px, 3vw, 18px);
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.horse-details {
+  font-size: clamp(12px, 2vw, 14px);
+  color: #6b7280;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.info-label {
+  font-size: clamp(10px, 1.8vw, 12px);
+  color: #6b7280;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.info-value {
+  font-size: clamp(12px, 2vw, 14px);
+  color: #111827;
+  font-weight: 500;
+}
+
+.section-title {
+  font-size: clamp(14px, 2.5vw, 16px);
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 16px;
+  display: flex; /* Added for "Add New" button alignment */
+  justify-content: space-between; /* Added for "Add New" button alignment */
+  align-items: center; /* Added for "Add New" button alignment */
+}
+
+.records-table {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.records-header {
+  background: #f8f9fa;
+  display: grid;
+  grid-template-columns: 120px 1fr 150px 100px 80px;
+  padding: 12px 16px;
+  font-weight: 600;
+  color: #374151;
+  font-size: clamp(10px, 1.8vw, 12px);
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.records-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 150px 100px 80px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  align-items: center;
+  font-size: clamp(12px, 2vw, 14px);
+  min-height: 50px;
+}
+
+.records-row:last-child {
+  border-bottom: none;
+}
+
+.treatment-header {
+  background: #f8f9fa;
+  display: grid;
+  grid-template-columns: 120px 1fr 150px 100px 80px;
+  padding: 12px 16px;
+  font-weight: 600;
+  color: #374151;
+  font-size: clamp(10px, 1.8vw, 12px);
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.treatment-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 150px 100px 80px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f3f4f6;
+  align-items: center;
+  font-size: clamp(12px, 2vw, 14px);
+  min-height: 50px;
+}
+
+.download-btn {
+  background: none;
+  border: none;
+  color: #6b7280;
+  cursor: pointer;
+  font-size: 16px;
+  padding: 4px;
+  min-height: 32px;
+  min-width: 32px;
+}
+
+.download-btn:hover {
+  color: #374151;
+}
+
+/* Medical Record Detail Modal Styles */
+.medical-modal-content {
+  width: 95%;
+  max-width: 1400px;
+  height: 95vh;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+}
+
+.medical-modal-header {
+  background: #0F3D5A;
+  color: white;
+  padding: 18px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-radius: 8px 8px 0 0;
+  flex-shrink: 0;
+}
+
+.medical-modal-header h3 {
+  font-size: clamp(16px, 3vw, 18px);
+  font-weight: 600;
+  margin: 0;
+}
+
+.back-btn {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: clamp(11px, 2vw, 13px);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-1px);
+}
+
+.back-btn::before {
+  content: "←";
+  font-size: 14px;
+}
+
+.medical-modal-body {
+  flex: 1;
+  padding: 20px 24px;
+  overflow-y: auto;
+  background: white;
+}
+
+.horse-profile {
+  display: flex;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.profile-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  background: #d1d5db;
+  margin-right: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: #6b7280;
+  flex-shrink: 0;
+}
+
+.profile-info h4 {
+  font-size: clamp(14px, 2.5vw, 16px);
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.completed-badge {
+  background: #22c55e;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: clamp(9px, 1.5vw, 10px);
+  font-weight: 500;
+}
+
+.profile-details {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 20px;
+  margin-bottom: 25px;
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-label {
+  font-size: clamp(10px, 1.8vw, 12px);
+  color: #6b7280;
+  margin-bottom: 2px;
+}
+
+.detail-value {
+  font-size: clamp(12px, 2vw, 14px);
+  color: #111827;
+  font-weight: 500;
+}
+
+.medical-section {
+  margin-bottom: 25px;
+}
+
+.medical-section h5 {
+  font-size: clamp(12px, 2vw, 14px);
+  font-weight: 600;
+  color: #0F3D5A;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 4px;
+}
+
+.medical-record-title {
+  font-size: clamp(14px, 2.5vw, 16px);
+  font-weight: 600;
+  color: #0F3D5A;
+  margin-bottom: 16px;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 6px;
+}
+
+.signalment-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.vital-sign {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+}
+
+.vital-value {
+  font-size: clamp(16px, 3vw, 18px);
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 4px;
+}
+
+.vital-label {
+  font-size: clamp(9px, 1.5vw, 11px);
+  color: #6b7280;
+}
+
+.assessment-text {
+  font-size: clamp(11px, 2vw, 13px);
+  line-height: 1.5;
+  color: #374151;
+  margin-bottom: 8px;
+}
+
+.medication-section {
+  background: #dbeafe;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.medication-title {
+  font-size: clamp(12px, 2vw, 14px);
+  font-weight: 600;
+  color: #0F3D5A;
+  margin-bottom: 12px;
+}
+
+.medication-details {
+  font-size: clamp(11px, 2vw, 13px);
+  color: #374151;
+  line-height: 1.4;
+}
+
+.medication-details div {
+  margin-bottom: 4px;
+}
+
+.remarks-section {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.remarks-title {
+  font-size: clamp(12px, 2vw, 14px);
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.remarks-text {
+  font-size: clamp(11px, 2vw, 13px);
+  color: #374151;
+  line-height: 1.5;
+}
+
+.print-btn {
+  background: #22c55e;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  font-size: clamp(12px, 2vw, 14px);
+  font-weight: 500;
+  cursor: pointer;
+  width: 100%;
+  transition: background-color 0.2s;
+  min-height: 44px;
+}
+
+.print-btn:hover {
+  background: #16a34a;
+}
+
+/* Treatment History Specific Styles */
+.treatment-title {
+  font-size: clamp(16px, 3vw, 18px);
+  font-weight: 600;
+  color: #0F3D5A;
+  margin-bottom: 20px;
+}
+
+.treatment-info-section {
+  background: #dbeafe;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.treatment-info-title {
+  font-size: clamp(12px, 2vw, 14px);
+  font-weight: 600;
+  color: #0F3D5A;
+  margin-bottom: 12px;
+}
+
+.treatment-info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+}
+
+.treatment-info-item {
+  margin-bottom: 8px;
+  font-size: clamp(11px, 2vw, 13px);
+}
+
+.medical-data-section {
+  margin-bottom: 20px;
+}
+
+.medical-data-title {
+  font-size: clamp(12px, 2vw, 14px);
+  font-weight: 600;
+  color: #0F3D5A;
+  margin-bottom: 12px;
+}
+
+.medical-data-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 15px;
+  margin-bottom: 20px;
+}
+
+.medical-data-item {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+}
+
+.pre-vaccination-section {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.pre-vaccination-title {
+  font-size: clamp(12px, 2vw, 14px);
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 12px;
+}
+
+.pre-vaccination-text {
+  font-size: clamp(11px, 2vw, 13px);
+  color: #374151;
+  line-height: 1.5;
+}
+
+.pre-vaccination-item {
+  margin-bottom: 8px;
+}
+
+.next-vaccination-section {
+  background: #f0f9ff;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 20px;
+}
+
+.next-vaccination-title {
+  font-size: clamp(12px, 2vw, 14px);
+  font-weight: 600;
+  color: #0F3D5A;
+  margin-bottom: 12px;
+}
+
+.next-vaccination-text {
+  font-size: clamp(11px, 2vw, 13px);
+  color: #374151;
+  line-height: 1.5;
+}
+
+.next-vaccination-item {
+  margin-bottom: 8px;
+}
+
+/* Add Record Modals (Forms) */
+.add-record-modal-content {
+  max-width: 900px; /* Wider for forms */
+}
+
+.add-record-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.form-groups {
+  display: flex;
+  flex-direction: column;
+  background: white;
+  background-color: white !important;
+}
+
+.form-groups.full-width {
+  grid-column: 1 / -1; /* Spans all columns */
+}
+
+.form-label {
+  font-size: 13px;
+  color: #374151;
+  margin-bottom: 6px;
+  font-weight: 500;
+}
+
+.form-input,
+.form-select {
+  padding: 10px 12px;
+  border: 1px solid #6b7280 !important;
+  border-radius: 6px;
+  font-size: 14px;
+  background-color: white !important; /* Changed to white with !important */
+  color: black !important; /* Changed to black with !important */
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-input:focus,
+.form-select:focus {
+  border-color: #0F3D5A;
+}
+
+.form-input::placeholder,
+.form-select::placeholder {
+  color: black;
+}
+
+.form-input::-webkit-input-placeholder,
+.form-select::-webkit-input-placeholder {
+  color: black;
+}
+
+.form-input::-moz-placeholder,
+.form-select::-moz-placeholder {
+  color: black;
+  opacity: 1; /* Firefox adds opacity to placeholders by default */
+}
+
+.form-input:-ms-input-placeholder,
+.form-select:-ms-input-placeholder {
+  color: black;
+}
+
+.form-input:-moz-placeholder,
+.form-select:-moz-placeholder {
+  color: black;
+  opacity: 1;
+}
+
+textarea.form-input {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.form-section-title {
+  grid-column: 1 / -1; /* Spans all columns */
+  font-size: 16px;
+  font-weight: 600;
+  color: #0F3D5A;
+  margin-top: 20px;
+  margin-bottom: 15px;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 5px;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.cancel-btn,
+.submit-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.cancel-btn {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.cancel-btn:hover {
+  background: #ccc;
+}
+
+.submit-btn {
+  background: #0F3D5A;
+  color: white;
+}
+
+.submit-btn:hover {
+  background: #21587aff;
+}
+
+/* Chat Widget Styling - Button Only */
+.chat-widget {
+          position: fixed;
+          bottom: 24px;
+          right: 24px;
+          z-index: 1000;
+        }
+
+        .chat-button {
+          width: 64px;
+          height: 64px;
+          background: #0F3D5A;
+          border: none;
+          border-radius: 20px;
+          color: white;
+          cursor: pointer;
+          box-shadow: 0 4px 12px rgba(28, 44, 185, 0.3);
+          transition: all 0.3s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+        }
+
+        .chat-button::after {
+          content: "";
+          position: absolute;
+          bottom: -8px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 0;
+          height: 0;
+          border-left: 10px solid transparent;
+          border-right: 10px solid transparent;
+          border-top: 10px solid #0F3D5A;
+        }
+
+        .chat-button:hover {
+          transform: scale(1.05);
+          box-shadow: 0 6px 16px rgba(28, 78, 185, 0.4);
+        }
+
+        .chat-button:hover::after {
+          border-top-color: #0F3D5A;
+        }
+
+        .chat-dots {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .chat-dot {
+          width: 8px;
+          height: 8px;
+          background: white;
+          border-radius: 50%;
+        }
+
+/* Logout Modal Styles */
+.logout-modal {
+  background: white;
+  border-radius: 12px;
+  padding: 32px;
+  width: 90%;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+}
+
+.logout-modal-icon {
+  width: 64px;
+  height: 64px;
+  background: #fef3c7;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
+}
+
+.logout-modal-icon i {
+  font-size: 28px;
+  color: #f59e0b;
+}
+
+.logout-modal h3 {
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 12px;
+}
+
+.logout-modal p {
+  font-size: 16px;
+  color: #6b7280;
+  margin-bottom: 32px;
+  line-height: 1.5;
+}
+
+.logout-modal-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.logout-modal-btn {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-width: 100px;
+  min-height: 44px;
+}
+
+.logout-modal-btn.cancel {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.logout-modal-btn.cancel:hover {
+  background: #e5e7eb;
+}
+
+.logout-modal-btn.confirm {
+  background: #ef4444;
+  color: white;
+}
+
+.logout-modal-btn.confirm:hover {
+  background: #dc2626;
+}
+
+/* Media Queries */
+/* Tablet */
+@media (max-width: 1024px) {
+  .controls-rows {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+
+  .medical-modal-content {
+    width: 98%;
+    max-width: none;
+  }
+
+  .profile-details {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .signalment-grid,
+  .medical-data-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Mobile */
+@media (max-width: 768px) {
+  .mobile-menu-btn {
+    display: block;
+  }
+
+  .sidebars {
+    transform: translateX(-100%);
+    transition: transform 0.3s;
+  }
+
+  .sidebars.open {
+    transform: translateX(0);
+  }
+
+  .main-content {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .headers {
+    margin-left: 60px;
+    padding: 12px 16px;
+  }
+
+  .search-containers {
+    margin-right: 10px;
+    min-width: auto;
+  }
+
+  .content-areas {
+    padding: 16px;
+  }
+
+  .table-header,
+  .table-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    text-align: left;
+  }
+
+  .table-header > div,
+  .table-row > div {
+    padding: 4px 0;
+    word-wrap: break-word;
+  }
+
+  .table-row {
+    border: 1px solid #e5e7eb;
+    margin-bottom: 12px;
+    border-radius: 8px;
+    padding: 16px;
+  }
+
+  .records-header,
+  .records-row,
+  .treatment-header,
+  .treatment-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    text-align: left;
+  }
+
+  .records-row,
+  .treatment-row {
+    border: 1px solid #e5e7eb;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    padding: 12px;
+  }
+
+  .info-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-content {
+    width: 95%;
+    margin: 10px;
+  }
+
+  .medical-modal-content {
+    width: 98%;
+    height: 98vh;
+  }
+
+  .profile-details {
+    grid-template-columns: 1fr;
+  }
+
+  .signalment-grid,
+  .medical-data-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .treatment-info-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Small Mobile */
+@media (max-width: 480px) {
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-left: 50px;
+  }
+
+  .search-containers {
+    margin-right: 0;
+    min-width: auto;
+  }
+
+  .notification-bell {
+    align-self: flex-end;
+    margin-right: 0;
+  }
+
+  .mobile-menu-btn {
+    top: 15px;
+    left: 15px;
+    padding: 10px;
+  }
+}
+
+/* Touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .nav-item,
+  .logout-btn {
+    min-height: 48px;
+  }
+
+  .view-btn {
+    min-height: 40px;
+    padding: 8px 12px;
+  }
+}
+
+/* Print Styles */
+@media print {
+  .sidebars,
+  .main-content,
+    .chat-widget {
+            bottom: 16px;
+            right: 16px;
+          }
+  .modal-overlay.active {
+    position: static !important;
+    background: white !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .modal-content {
+    box-shadow: none !important;
+    border: none !important;
+    max-width: none !important;
+    width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  .medical-modal-header,
+  .back-btn,
+  .print-btn,
+  .modal-header,
+  .modal-close {
+    display: none !important;
+  }
+
+  .medical-modal-body {
+    padding: 20px !important;
+    background: white !important;
+    color: black !important;
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+  }
+
+  .horse-profile {
+    page-break-inside: avoid;
+    margin-bottom: 20px !important;
+  }
+
+  .profile-details {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 15px !important;
+    page-break-inside: avoid;
+  }
+
+  .medical-section {
+    page-break-inside: avoid;
+    margin-bottom: 20px !important;
+  }
+
+  .signalment-grid,
+  .medical-data-grid {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .vital-sign,
+  .medical-data-item {
+    border: 1px solid #ccc !important;
+    padding: 8px !important;
+  }
+
+  .medication-section,
+  .remarks-section,
+  .treatment-info-section,
+  .pre-vaccination-section,
+  .next-vaccination-section {
+    border: 1px solid #ddd !important;
+    margin-bottom: 15px !important;
+    page-break-inside: avoid;
+  }
+
+  * {
+    color: black !important;
+    background: white !important;
+  }
+
+  .medication-section {
+    background: #f0f8ff !important;
+  }
+
+  .remarks-section,
+  .pre-vaccination-section {
+    background: #f8f8f8 !important;
+  }
+
+  .treatment-info-section,
+  .next-vaccination-section {
+    background: #f0f8ff !important;
+  }
+
+  .medical-record-title,
+  .treatment-title,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: #0F3D5A !important;
+    font-weight: bold !important;
+  }
+
+  .treatment-title {
+    font-size: 18px !important;
+    width: 100% !important;
+    max-width: none !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  .treatment-info-section {
+    page-break-before: auto;
+  }
+}
+
+      `}</style>
+      <button className="mobile-menu-btn" onClick={toggleSidebar}>
+        <Menu size={20} />
+      </button>
+      <div className={`sidebars ${isSidebarExpanded ? "open" : ""}`} id="sidebars">
+        <div className="sidebars-logo">
+          <img src="/Images/logo1.png" alt="Dvmf Logo" className="logo" />
         </div>
         <nav className="nav-menu">
           {[
-            { name: "Dashboard", iconClass: "fas fa-th-large", path: "/DvmfDashboard" },
-            { name: "Account Approval", iconClass: "fas fa-user-check", path: "/DvmfAccountApproval" },
-            { name: "Access Requests", iconClass: "fas fa-file-alt", path: "/DvmfAccessRequest" },
-            { name: "Horse Records", iconClass: "fas fa-clipboard-list", path: "/DvmfHorseRecord", active: true },
-            { name: "Health Reports", iconClass: "fas fa-chart-bar", path: "/DvmfHealthReport" },
-            { name: "Announcements", iconClass: "fas fa-bullhorn", path: "/DvmfAnnouncement" },
-            { name: "Directory", iconClass: "fas fa-folder", path: "/DvmfDirectory" },
-            { name: "Settings", iconClass: "fas fa-cog", path: "/DvmfSettings" },
-          ].map((item) => (
-            <Link
-              key={item.name}
-              to={item.path}
-              className={`nav-item ${item.active ? "active" : ""}`}
-              onClick={() => {
-                if (isSidebarExpanded) {
-                  setIsSidebarExpanded(false)
-                }
-              }}
-            >
-              <i className={`nav-icon ${item.iconClass}`}></i>
-              {item.name}
-            </Link>
-          ))}
+            { name: "Dashboard", icon: LayoutDashboard, path: "/DvmfDashboard" },
+            { name: "Account Approval", icon: UserCheck, path: "/DvmfAccountApproval" },
+            { name: "Access Requests", icon: FileText, path: "/DvmfAccessRequest" },
+            { name: "Horse Records", icon: ClipboardList, path: "/DvmfHorseRecord", active: true },
+            { name: "Health Reports", icon: BarChart3, path: "/DvmfHealthReport" },
+            { name: "Announcements", icon: Megaphone, path: "/DvmfAnnouncement" },
+            { name: "Directory", icon: Folder, path: "/DvmfDirectory" },
+            { name: "Settings", icon: Settings, path: "/DvmfSettings" },
+          ].map((item) => {
+            const IconComponent = item.icon
+            return (
+              <Link
+                key={item.name}
+                to={item.path}
+                className={`nav-item ${item.active ? "active" : ""}`}
+                onClick={() => {
+                  if (isSidebarExpanded) {
+                    setIsSidebarExpanded(false)
+                  }
+                }}
+              >
+                <IconComponent className="nav-icon" size={18} />
+                {item.name}
+              </Link>
+            )
+          })}
         </nav>
-        <div className="logout">
-          <a href="#" className="logout-btn" id="logoutBtn" onClick={openLogoutModal}>
-            <i className="logout-icon fas fa-sign-out-alt"></i>
+        <div className="logouts">
+          <a href="#" className="logout-btns" id="logoutBtn" onClick={openLogoutModal}>
+            <LogOut className="logout-icons" size={18} />
             Log Out
           </a>
         </div>
       </div>
-
       <div className="main-content">
-        <header className="header">
-          <div className="search-container">
-            <div className="search-icon"></div>
+        <header className="headers">
+          <div className="search-containers">
+            <Search className="search-icon" size={18} />
             <input
               type="text"
               className="search-input"
@@ -316,7 +2044,7 @@ function DvmfHorseRecord() {
             ref={notificationBellRef}
             onClick={() => setIsNotificationDropdownOpen((prev) => !prev)}
           >
-            <i className="fas fa-bell"></i>
+            <Bell size={20} />
             {unreadNotificationCount > 0 && (
               <div className="notification-count" style={{ display: "flex" }}>
                 {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
@@ -338,54 +2066,53 @@ function DvmfHorseRecord() {
               <div id="notificationList">
                 {notifications.length === 0 ? (
                   <div className="empty-state">
-                    <i className="fas fa-bell-slash"></i>
+                    <BellOff size={48} />
                     <h3>No notifications</h3>
                     <p>You're all caught up!</p>
                   </div>
                 ) : (
-                  notifications.map((notification) => (
-                    <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
-                      <div className="notification-actions">
-                        {!notification.read && (
+                  notifications.map((notification) => {
+                    const NotificationIcon = getNotificationIconClass(notification.type)
+                    return (
+                      <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
+                        <div className="notification-actions">
+                          {!notification.read && (
+                            <button
+                              className="notification-action"
+                              onClick={() => markAsRead(notification.id)}
+                              title="Mark as read"
+                            >
+                              <Check size={14} />
+                            </button>
+                          )}
                           <button
                             className="notification-action"
-                            onClick={() => markAsRead(notification.id)}
-                            title="Mark as read"
+                            onClick={() => deleteNotification(notification.id)}
+                            title="Delete"
                           >
-                            <i className="fas fa-check"></i>
+                            <X size={14} />
                           </button>
-                        )}
-                        <button
-                          className="notification-action"
-                          onClick={() => deleteNotification(notification.id)}
-                          title="Delete"
-                        >
-                          <i className="fas fa-times"></i>
-                        </button>
+                        </div>
+                        <div className="notification-title">
+                          <NotificationIcon className={`notification-icon ${notification.type}`} size={16} />
+                          {notification.title}
+                        </div>
+                        <div className="notification-message">{notification.message}</div>
+                        <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
                       </div>
-                      <div className="notification-title">
-                        <i
-                          className={`notification-icon ${notification.type} ${getNotificationIconClass(
-                            notification.type,
-                          )}`}
-                        ></i>
-                        {notification.title}
-                      </div>
-                      <div className="notification-message">{notification.message}</div>
-                      <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </div>
           </div>
         </header>
 
-        <div className="content-area">
+        <div className="content-areas">
           <div className="page-header">
             <h1 className="page-title">Horse Records</h1>
-            <div className="controls-row">
-              <div className="filter-controls">
+            <div className="controls-rows">
+              <div className="filter-controlss">
                 <select className="filter-select" id="areaFilter" value={areaFilter} onChange={handleAreaFilterChange}>
                   <option value="all">Filter by Area</option>
                   <option value="cebu">Cebu City</option>
@@ -417,7 +2144,7 @@ function DvmfHorseRecord() {
               </div>
               {currentFilteredHorseRecords.length === 0 ? (
                 <div className="empty-state">
-                  <i className="fas fa-clipboard-list"></i>
+                  <ClipboardList size={48} />
                   <h3>No horse records</h3>
                   <p>Horse records will appear here when available</p>
                 </div>
@@ -433,6 +2160,7 @@ function DvmfHorseRecord() {
                     </div>
                     <div>
                       <button className="view-btn" onClick={() => viewHorseDetails(horse.id)}>
+                        <Eye size={16} style={{ marginRight: "4px" }} />
                         View
                       </button>
                     </div>
@@ -443,18 +2171,16 @@ function DvmfHorseRecord() {
           </div>
         </div>
       </div>
-
       {/* Chat Widget - Button Only */}
       <div className="chat-widget">
-        <button className="chat-button" id="chatButton" onClick={() => navigate("/DvmfMessage")}>
+        <button className="chat-button" onClick={handleChatButtonClick}>
           <div className="chat-dots">
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
+            <div className="chat-dot" />
+            <div className="chat-dot" />
+            <div className="chat-dot" />
           </div>
         </button>
-      </div>
-
+        </div>
       {/* Horse Details Modal */}
       {isHorseModalOpen && selectedHorse && (
         <div className="modal-overlay active" id="horseModal" ref={horseModalRef}>
@@ -462,7 +2188,7 @@ function DvmfHorseRecord() {
             <div className="modal-header">
               <h2 className="modal-title">Horse Details</h2>
               <button className="modal-close" onClick={closeHorseModal}>
-                &times;
+                <X size={20} />
               </button>
             </div>
             <div className="modal-body">
@@ -480,6 +2206,7 @@ function DvmfHorseRecord() {
                     </div>
                   </div>
                 </div>
+
                 <div className="info-grid">
                   <div className="info-item">
                     <span className="info-label">Owner</span>
@@ -520,7 +2247,7 @@ function DvmfHorseRecord() {
                 </div>
                 {selectedHorse.medicalRecords?.length === 0 || !selectedHorse.medicalRecords ? (
                   <div className="empty-state">
-                    <i className="fas fa-file-medical"></i>
+                    <Stethoscope size={48} />
                     <h3>No medical records</h3>
                     <p>Medical records will appear here when available</p>
                   </div>
@@ -535,6 +2262,7 @@ function DvmfHorseRecord() {
                       </div>
                       <div>
                         <button className="view-btn" onClick={() => viewMedicalRecord(record)}>
+                          <Eye size={16} style={{ marginRight: "4px" }} />
                           View
                         </button>
                       </div>
@@ -555,7 +2283,7 @@ function DvmfHorseRecord() {
                 </div>
                 {selectedHorse.treatmentHistory?.length === 0 || !selectedHorse.treatmentHistory ? (
                   <div className="empty-state">
-                    <i className="fas fa-syringe"></i>
+                    <Syringe size={48} />
                     <h3>No treatment history</h3>
                     <p>Treatment records will appear here when available</p>
                   </div>
@@ -570,6 +2298,7 @@ function DvmfHorseRecord() {
                       </div>
                       <div>
                         <button className="view-btn" onClick={() => viewTreatmentHistory(record)}>
+                          <Eye size={16} style={{ marginRight: "4px" }} />
                           View
                         </button>
                       </div>
@@ -581,14 +2310,14 @@ function DvmfHorseRecord() {
           </div>
         </div>
       )}
-
       {/* Medical Record Detail Modal */}
       {isMedicalRecordModalOpen && selectedMedicalRecord && (
         <div className="modal-overlay active" id="medicalRecordModal" ref={medicalRecordModalRef}>
           <div className="modal-content medical-modal-content">
             <div className="medical-modal-header">
-              <h3>ECHO: CTU VET-MED</h3>
+              <h3>ECHO: DVMF</h3>
               <button className="back-btn" onClick={closeMedicalRecord}>
+                <ArrowLeft size={16} style={{ marginRight: "4px" }} />
                 Back to Records
               </button>
             </div>
@@ -694,7 +2423,7 @@ function DvmfHorseRecord() {
                   </>
                 ) : (
                   <div className="empty-state">
-                    <i className="fas fa-file-medical"></i>
+                    <Stethoscope size={48} />
                     <h3>No medical record data</h3>
                     <p>Medical record details will appear here when available</p>
                   </div>
@@ -702,20 +2431,21 @@ function DvmfHorseRecord() {
               </div>
               {/* Print Record Button */}
               <button className="print-btn" onClick={printRecord}>
+                <Printer size={16} style={{ marginRight: "4px" }} />
                 Print Record
               </button>
             </div>
           </div>
         </div>
       )}
-
       {/* Treatment History Detail Modal */}
       {isTreatmentHistoryModalOpen && selectedTreatmentHistory && (
         <div className="modal-overlay active" id="treatmentHistoryModal" ref={treatmentHistoryModalRef}>
           <div className="modal-content medical-modal-content">
             <div className="medical-modal-header">
-              <h3>ECHO: CTU VET-MED</h3>
+              <h3>ECHO: DVMF</h3>
               <button className="back-btn" onClick={closeTreatmentHistory}>
+                <ArrowLeft size={16} style={{ marginRight: "4px" }} />
                 Back to Records
               </button>
             </div>
@@ -792,13 +2522,14 @@ function DvmfHorseRecord() {
                   </>
                 ) : (
                   <div className="empty-state">
-                    <i className="fas fa-syringe"></i>
+                    <Syringe size={48} />
                     <h3>No treatment history data</h3>
                     <p>Treatment history details will appear here when available</p>
                   </div>
                 )}
                 {/* Print Record Button */}
                 <button className="print-btn" onClick={printTreatmentRecord}>
+                  <Printer size={16} style={{ marginRight: "4px" }} />
                   Print Record
                 </button>
               </div>
@@ -806,11 +2537,11 @@ function DvmfHorseRecord() {
           </div>
         </div>
       )}
-
+      ;
       <div className={`modal-overlay ${isLogoutModalOpen ? "active" : ""}`} id="logoutModal" ref={logoutModalRef}>
         <div className="logout-modal">
           <div className="logout-modal-icon">
-            <i className="fas fa-sign-out-alt" />
+            <LogOut size={48} />
           </div>
           <h3>Confirm Logout</h3>
           <p>Are you sure you want to log out of your account?</p>

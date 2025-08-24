@@ -130,7 +130,7 @@ def get_vet_profiles(request):
 def update_vet_status(request, vet_profile_id):
     try:
         new_status = request.data.get("status")
-        allowed_statuses = ["pending", "approved", "rejected"]
+        allowed_statuses = ["pending", "approved", "declined"]
 
         if not new_status:
             return Response({"error": "Status is required"}, status=400)
@@ -241,4 +241,5 @@ def get_status_counts(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
 
