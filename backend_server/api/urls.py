@@ -4,6 +4,7 @@ from django.urls import path, include
 from . import views
 
 urlpatterns = [
+    path('api/ctu_vetmed/', include('api.ctu_vetmed.urls')),
     path('api/kutsero/', include('api.kutsero.urls')),
     path('api/horse_operator/', include('api.horse_operator.urls')), 
     path('api/login/', views.login, name='login'),  # Add api/ here
@@ -15,10 +16,12 @@ urlpatterns = [
     path('api/signup_mobile', views.signup_mobile, name='signup_mobile'),
     path('api/login_mobile', views.login_mobile, name='login_mobile'),
     path('api/get_kutsero_data/', views.get_kutsero_data, name='get_kutsero_data'),
-    path('api/get_horse_operator_data/', views.get_horse_operator_data, name='get_horse_operator_data'),
+   # path('api/get_horse_operator_data/', views.get_horse_operator_data, name='get_horse_operator_data'),
     path('api/signup_mobile/', views.signup_mobile, name='signup_mobile'),
     path('api/login_mobile/', views.login_mobile, name='login_mobile'),
-    path('api/update_user_status/', views.update_user_status, name='update_user_status')
+    path('api/update_user_status/', views.update_user_status, name='update_user_status'),
+  
+    
 
 ]
    

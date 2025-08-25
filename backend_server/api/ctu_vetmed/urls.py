@@ -1,21 +1,12 @@
-from django.urls import path  # include needed only if using include()
-from api.ctu_vetmed import views # adjust 'api' to your actual app name
-from uuid import UUID
+from django.urls import path
+from . import views
 
 urlpatterns = [
-    # If you want to include all app URLs:
-    # path('api/', include('api.urls')),
-
-    # Direct paths to views:
     path('signup/', views.signup, name='signup'),
-    path("get-vet-profiles/", views.get_vet_profiles, name="get_vet_profiles"),
-    path('api/update-vet-status/<uuid:vet_profile_id>/', views.update_vet_status, name='update_vet_status'),
-    path("api/recent-activity/", views.get_recent_activity, name="recent-activity"),
-    path("api/status-counts/", views.get_status_counts, name="status-counts"),
-    path('api/update-vet-status/<int:vet_profile_id>/', views.update_vet_status, name='update-vet-status'), 
-    path('api/get-ctu-vet-profiles/', views.get_ctu_vet_profiles, name='get_ctu_vet_profiles'),
-    path('api/get_users/', views.get_users, name='get_users'),
+    path('get-vet-profiles/', views.get_vet_profiles, name='get-vet-profiles'),
+    path('update-vet-status/<uuid:vet_profile_id>/', views.update_vet_status, name='update-vet-status'),
+    path('recent-activity/', views.get_recent_activity, name='recent-activity'),
+    path('status-counts/', views.get_status_counts, name='status-counts'),
+    path('get-ctu-vet-profiles/', views.get_ctu_vet_profiles, name='get-ctu-vet-profiles'),
+    path('get-users/', views.get_users, name='get-users'),
 ]
-
-
-
