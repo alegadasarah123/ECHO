@@ -179,91 +179,32 @@ const filterRegistrations = useCallback(() => {
     closeConfirmation()
   }
 
-  // Approve/Decline logic
-  // Approve user safely
+// Approve
 const approveUser = async (vetProfileId) => {
-  if (!vetProfileId) {
-    console.error("No vetProfileId provided");
-    return;
-  }
-
   const url = `http://127.0.0.1:8000/api/update-vet-status/${vetProfileId}/`;
-  console.log("PATCH URL:", url);
-
-  try {
-    const response = await fetch(url, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "approved" }),
-    });
-
-    if (!response.ok) {
-      let errorMsg = `Failed to approve user: ${response.status}`;
-      const contentType = response.headers.get("content-type");
-      if (contentType?.includes("application/json")) {
-        const errorData = await response.json();
-        errorMsg += ` - ${errorData.error || ""}`;
-      } else {
-        errorMsg += ` - ${await response.text()}`;
-      }
-      throw new Error(errorMsg);
-    }
-
-    const updatedUser = await response.json();
-    setRegistrationData((prev) =>
-      prev.map((u) =>
-        u.id === vetProfileId ? { ...u, status: "approved" } : u
-      )
-    );
-
-    console.log("User approved successfully:", updatedUser);
-  } catch (error) {
-    console.error("Error approving user:", error);
-    alert("Failed to approve user. Please try again.");
-  }
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "approved" }),
+  });
+  const data = await response.json();
+  setRegistrationData(prev =>
+    prev.map(u => u.id === vetProfileId ? { ...u, status: "approved" } : u)
+  );
 };
 
-// Decline user safely
+// Decline
 const declineUser = async (vetProfileId) => {
-  if (!vetProfileId) {
-    console.error("No vetProfileId provided");
-    return;
-  }
-
   const url = `http://127.0.0.1:8000/api/update-vet-status/${vetProfileId}/`;
-  console.log("PATCH URL:", url);
-
-  try {
-    const response = await fetch(url, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "declined" }),
-    });
-
-    if (!response.ok) {
-      let errorMsg = `Failed to decline user: ${response.status}`;
-      const contentType = response.headers.get("content-type");
-      if (contentType?.includes("application/json")) {
-        const errorData = await response.json();
-        errorMsg += ` - ${errorData.error || ""}`;
-      } else {
-        errorMsg += ` - ${await response.text()}`;
-      }
-      throw new Error(errorMsg);
-    }
-
-    const updatedUser = await response.json();
-    setRegistrationData((prev) =>
-      prev.map((u) =>
-        u.id === vetProfileId ? { ...u, status: "declined" } : u
-      )
-    );
-
-    console.log("User declined successfully:", updatedUser);
-  } catch (error) {
-    console.error("Error declining user:", error);
-    alert("Failed to decline user. Please try again.");
-  }
+  const response = await fetch(url, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status: "declined" }),
+  });
+  const data = await response.json();
+  setRegistrationData(prev =>
+    prev.map(u => u.id === vetProfileId ? { ...u, status: "declined" } : u)
+  );
 };
 
 
@@ -313,7 +254,7 @@ const deleteAllApprovedLocal = () => {
   useEffect(() => {
     const loadVetProfiles = async () => {
       try {
-        const response = await fetch("http://127.0.0.1:8000/get-vet-profiles/")
+        const response = await fetch('http://127.0.0.1:8000/api/get-vet-profiles/');
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
         }

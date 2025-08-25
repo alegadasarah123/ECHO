@@ -193,38 +193,20 @@ def signup(request):
 
 #-----------------------------------------------------------------LOGIN MOBILE---------------------------------------------------------------------------------------
 
-# views.py - FIXED VERSION
-
 @api_view(['GET'])
 def get_kutsero_data(request):
     data = supabase.table("kutsero_profile").select("*").execute()
     return Response(data.data)
 
-@api_view(['GET'])
-def get_horse_operator_data(request):
-    data = supabase.table("horse_operator_profile").select("*").execute()
-    return Response(data.data)
-
-# Fixed role mapping dictionary - consistent key-value pairs
-ROLE_MAP = {
-    "kutsero": "Kutsero",  # Keep lowercase for consistency
-    "horse_operator": "Horse Operator"  # Keep underscore format for consistency
-}
 
 @api_view(['POST'])
 def signup_mobile(request):
     email = request.data.get("email")
     password = request.data.get("password")
-    role_key = request.data.get("role", "").lower()   # normalize
+    role = request.data.get("role")   # 👈 kutsero or horse_operator
 
-    if not email or not password or not role_key:
+    if not email or not password or not role:
         return Response({"error": "Email, password, and role are required"}, status=status.HTTP_400_BAD_REQUEST)
-
-    if role_key not in ROLE_MAP:
-        return Response({"error": "Invalid role selected"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Store role consistently as the key itself
-    role_display = ROLE_MAP[role_key]  # This will be "kutsero" or "horse_operator"
 
     # Generate username if not provided
     username = request.data.get("username")
@@ -251,10 +233,10 @@ def signup_mobile(request):
     if not user_id:
         return Response({"error": "Supabase Auth did not return a user ID"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Insert into users table (with chosen role) - FIXED: Store consistent role
+    # Insert into users table (with chosen role)
     user_payload = {
         "id": user_id,
-        "role": role_display,   # Now stored as "kutsero" or "horse_operator"
+        "role": role,      # 👈 kutsero or horse_operator
         "status": "pending",
     }
 
@@ -274,8 +256,8 @@ def signup_mobile(request):
         requests.delete(delete_url, headers=headers)
         return Response({"error": "Failed to insert into users table", "details": user_insert_json}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Insert profile based on role - FIXED: Check against consistent role values
-    if role_key == "kutsero":
+    # Insert profile based on role
+    if role == "kutsero":
         profile_payload = {
             "kutsero_id": user_id,
             "kutsero_username": username,
@@ -295,7 +277,7 @@ def signup_mobile(request):
         }
         insert_profile_url = f"{SUPABASE_URL}/rest/v1/kutsero_profile"
 
-    elif role_key == "horse_operator":
+    elif role == "horse_operator":
         profile_payload = {
             "operator_id": user_id,
             "operator_username": username,
@@ -310,12 +292,13 @@ def signup_mobile(request):
             "operator_municipality": request.data.get("municipality"),
             "operator_brgy": request.data.get("barangay"),
             "operator_zipcode": request.data.get("zipCode"),
-            "operator_house_add": request.data.get("houseAddress"),
             "operator_email": email,
             "operator_fb": request.data.get("facebook"),
-            "operator_image": request.data.get("profileImage"),
         }
         insert_profile_url = f"{SUPABASE_URL}/rest/v1/horse_operator_profile"
+
+    else:
+        return Response({"error": "Invalid role selected"}, status=status.HTTP_400_BAD_REQUEST)
 
     # Insert profile
     profile_insert_response = requests.post(insert_profile_url, json=profile_payload, headers=insert_headers)
@@ -331,8 +314,7 @@ def signup_mobile(request):
         "message": "User registration completed successfully. Your account is pending approval.",
         "user": auth_json,
         "user_record": user_insert_json,
-        "profile": profile_insert_json,
-        "role": role_display  # Include role in response for debugging
+        "profile": profile_insert_json
     }, status=status.HTTP_201_CREATED)
 
 
@@ -356,6 +338,13 @@ def login_mobile(request):
     auth_json = auth_response.json()
     print(f"Supabase Auth login response: {auth_response.status_code}")
     
+    # Log token details (without exposing the actual tokens)
+    if auth_response.status_code == 200:
+        access_token = auth_json.get('access_token')
+        refresh_token = auth_json.get('refresh_token')
+        expires_in = auth_json.get('expires_in', 'unknown')
+        print(f"Token details - expires_in: {expires_in}s, has_access_token: {bool(access_token)}, has_refresh_token: {bool(refresh_token)}")
+
     if auth_response.status_code != 200:
         error_message = auth_json.get('error_description') or auth_json.get('msg') or 'Login failed'
         return Response({"error": error_message, "details": auth_json}, status=status.HTTP_401_UNAUTHORIZED)
@@ -368,42 +357,66 @@ def login_mobile(request):
     if not user or not access_token or not user_id:
         return Response({"error": "Invalid authentication response"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    # 2️⃣ Get user role and status from users table - FIXED: Default to kutsero
-    user_role = "horse_operator"  # Default value
+    # 2️⃣ Get user role and status from users table
+    user_role = None
     user_status = "pending"
     
     try:
         user_data = supabase.table("users").select("role,status").eq("id", user_id).execute()
+        print(f"User query result: found {len(user_data.data)} records")
+        
         if user_data.data:
-            user_role = user_data.data[0].get("role", "kutsero")   # Now stored as "kutsero" or "horse_operator"
-            user_status = user_data.data[0].get("status", "pending")
+            user_role = user_data.data[0].get("role")
+            user_status = user_data.data[0].get("status") or "pending"
             print(f"Found user role: {user_role}, status: {user_status}")
         else:
-            print(f"No user record found for ID: {user_id}, using default role: kutsero")
+            print(f"No user record found for {user_id}, creating default record")
+            # Create missing user record
+            user_payload = {
+                "id": user_id,
+                "role": "kutsero",
+                "status": "pending"
+            }
+            
+            insert_user_url = f"{SUPABASE_URL}/rest/v1/users"
+            insert_headers = {
+                "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=representation"
+            }
+            
+            user_insert_response = requests.post(insert_user_url, json=user_payload, headers=insert_headers)
+            if user_insert_response.status_code in [200, 201]:
+                user_role = "kutsero"
+                user_status = "pending"
+                print(f"Created default user record")
+            else:
+                print(f"Failed to create user record: {user_insert_response.json()}")
+                
     except Exception as e:
-        print(f"Error fetching user role/status: {e}")
-        user_role = "kutsero"
+        print(f"Error with user role/status: {e}")
 
-    # 3️⃣ Get profile info depending on role - FIXED: Check against consistent role values
+    # Default to kutsero if still no role
+    if not user_role:
+        user_role = "kutsero"
+        print(f"Defaulting to kutsero role")
+
+    # 3️⃣ Get profile info
     profile = None
     try:
-        if user_role == "kutsero":
-            profile_data = supabase.table("kutsero_profile").select("*").eq("kutsero_email", email).execute()
-            profile = profile_data.data[0] if profile_data.data else None
-            print(f"Fetched kutsero profile: {profile is not None}")
-        elif user_role == "horse_operator":
-            profile_data = supabase.table("horse_operator_profile").select("*").eq("operator_email", email).execute()
-            profile = profile_data.data[0] if profile_data.data else None
-            print(f"Fetched horse operator profile: {profile is not None}")
+        profile_data = supabase.table("kutsero_profile").select("*").eq("kutsero_email", email).execute()
+        profile = profile_data.data[0] if profile_data.data else None
+        print(f"Profile found: {bool(profile)}")
     except Exception as e:
-        print(f"Error fetching profile for {user_role}: {e}")
+        print(f"Error fetching profile: {e}")
 
-    # 4️⃣ Return response
+    # 4️⃣ Return response with all necessary data
     response_data = {
         "message": "Login successful",
         "user": user,
         "profile": profile,
-        "user_role": user_role,  # This will be "kutsero" or "horse_operator"
+        "user_role": user_role,
         "user_status": user_status,
         "access_token": access_token,
         "refresh_token": refresh_token,
@@ -411,7 +424,7 @@ def login_mobile(request):
         "token_type": auth_json.get('token_type', 'Bearer')
     }
     
-    print(f"Login successful for {email} as {user_role}")
+    print(f"Login successful for user {email} with role {user_role}")
     return Response(response_data, status=status.HTTP_200_OK)
 
 
@@ -424,12 +437,14 @@ def update_user_status(request):
     if not user_id or not new_status:
         return Response({"error": "user_id and status are required"}, status=status.HTTP_400_BAD_REQUEST)
     
+    # Validate status values (optional)
     valid_statuses = ["pending", "approved", "rejected", "suspended", "inactive"]
     if new_status not in valid_statuses:
         return Response({
             "error": f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
         }, status=status.HTTP_400_BAD_REQUEST)
     
+    # Update user status
     try:
         update_url = f"{SUPABASE_URL}/rest/v1/users"
         headers = {
@@ -456,7 +471,7 @@ def update_user_status(request):
             }, status=status.HTTP_400_BAD_REQUEST)
             
     except Exception as e:
-        return Response({
-            "error": "Failed to update user status",
-            "details": str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+       return Response({
+    "error": "Failed to update user status",
+    "details": str(e)
+}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

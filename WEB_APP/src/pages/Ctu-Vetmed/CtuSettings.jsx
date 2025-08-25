@@ -240,7 +240,7 @@ function CtuSettings() {
     }
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/signup/", {
+      const response = await fetch("http://127.0.0.1:8000/api/signup/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -360,6 +360,46 @@ function CtuSettings() {
     window.addEventListener("resize", handleResize)
     return () => window.removeEventListener("resize", handleResize)
   }, [])
+
+
+  const [profile, setProfile] = useState({
+    firstname: "",
+    lastname: "",
+    email: "",
+    phone: "",
+    role: ""
+  });
+
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/get-ctu-vet-profiles/")
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+
+        const data = await response.json()
+        console.log("Fetched profile data:", data)
+
+        // If API returns an array of profiles, pick the first one
+        if (Array.isArray(data) && data.length > 0) {
+          setProfile(data[0])
+        } else {
+          setProfile(null)
+        }
+      } catch (err) {
+        console.error("Error fetching profile:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchUserData()
+  }, [])
+
+
+
+
+  
 
   return (
     <div className="bodyWrapper">
@@ -810,6 +850,14 @@ function CtuSettings() {
   color: #374151;
   margin-bottom: 8px;
 }
+.formLabels {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 8px;
+  margin-left: 150px; /* Centers horizontally */
+}
 
 .formInput {
   width: 100%;
@@ -819,6 +867,25 @@ function CtuSettings() {
   font-size: 14px;
   transition: border-color 0.2s;
   min-height: 44px;
+}
+
+.formInputs {
+ width: 50%;
+  padding: 12px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+  min-height: 44px;
+  display: block; /* Make sure it's block-level */
+  margin: 0 auto; /* Centers horizontally */
+
+}
+
+.formInputs:focus {
+  outline: none;
+  border-color: #b91c1c;
+  box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.1);
 }
 
 .formInput:focus {
@@ -838,6 +905,24 @@ function CtuSettings() {
   min-height: 44px;
 }
 
+.formSelects {
+  width: 55%;
+  padding: 12px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background-color: white;
+  cursor: pointer;
+  min-height: 44px;
+  display: block; /* Make sure it's block-level */
+  margin: 0 auto; /* Centers horizontally */
+
+}
+.formSelects:focus {
+  outline: none;
+  border-color: #b91c1c;
+  box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.1);
+}
 .formSelect:focus {
   outline: none;
   border-color: #b91c1c;
@@ -854,7 +939,15 @@ function CtuSettings() {
   margin-bottom: 12px;
   min-height: 44px;
 }
+.checkboxItems {
+ display: block; /* Make sure it's block-level */
+  margin: 0 auto; /* Centers horizontally */
+  align-items: center;
+  margin-bottom: 12px;
+  min-height: 44px;
+  margin-left: 150px;
 
+}
 .checkboxInput {
   margin-right: 12px;
   width: 18px;
@@ -1713,40 +1806,41 @@ function CtuSettings() {
                 <div className="profileFormContent">
                   <form id="profileForm">
                     <div className="formGroup">
-                      <label className="formLabel" htmlFor="firstname">
+                      <label className="formLabels" htmlFor="firstname" >
                         First Name
                       </label>
-                      <input type="text" id="firstname" className="formInput" placeholder="Enter first name" />
+                      <input type="text" id="firstname" className="formInputs"  value={profile?.ctu_fname || ""}readOnly/>
                     </div>
                     <div className="formGroup">
-                      <label className="formLabel" htmlFor="lastname">
+                      <label className="formLabels" htmlFor="lastname">
                         Last Name
                       </label>
-                      <input type="text" id="lastname" className="formInput" placeholder="Enter last name" />
+                      <input type="text" id="lastname" className="formInputs"  value={profile?.ctu_lname || ""}readOnly />
                     </div>
                     <div className="formGroup">
-                      <label className="formLabel" htmlFor="email">
+                      <label className="formLabels" htmlFor="email">
                         Email Address
                       </label>
-                      <input type="email" id="email" className="formInput" placeholder="Enter email address" />
+                      <input type="email" id="email" className="formInputs"  value={profile?.ctu_email || ""}readOnly />
                     </div>
                     <div className="formGroup">
-                      <label className="formLabel" htmlFor="phone">
+                      <label className="formLabels" htmlFor="phone"   >
                         Phone Number
                       </label>
-                      <input type="tel" id="phone" className="formInput" placeholder="Enter phone number" />
+                      <input type="tel" id="phone" className="formInputs"  value={profile?.ctu_phonenum || ""}readOnly  />
                     </div>
                     <div className="formGroup">
-                      <label className="formLabel" htmlFor="location">
-                        Location
+                      <label className="formLabels" htmlFor="role">
+                        Role
                       </label>
-                      <input type="text" id="location" className="formInput" placeholder="Enter location" />
+                      <input type="text" id="role" className="formInputs"  value={profile?.role || ""}readOnly />
                     </div>
+
                     <div className="formGroup">
-                      <label className="formLabel" htmlFor="language">
+                      <label className="formLabels" htmlFor="language">
                         Language
                       </label>
-                      <select id="language" className="formSelect">
+                      <select id="language" className="formSelects">
                         <option value="">Select language</option>
                         <option value="english">English</option>
                         <option value="filipino">Filipino</option>
@@ -1755,10 +1849,10 @@ function CtuSettings() {
                       </select>
                     </div>
                     <div className="formGroup">
-                      <label className="formLabel" htmlFor="theme">
+                      <label className="formLabels" htmlFor="theme">
                         Interface Theme
                       </label>
-                      <select id="theme" className="formSelect">
+                      <select id="theme" className="formSelects">
                         <option value="">Select theme</option>
                         <option value="default">Default</option>
                         <option value="dark">Dark</option>
@@ -1767,21 +1861,21 @@ function CtuSettings() {
                       </select>
                     </div>
                     <div className="formGroup">
-                      <label className="formLabel">Privacy Settings</label>
+                      <label className="formLabels">Privacy Settings</label>
                       <div className="checkboxGroup">
-                        <div className="checkboxItem">
+                        <div className="checkboxItems">
                           <input type="checkbox" id="shareData" className="checkboxInput" />
                           <label htmlFor="shareData" className="checkboxLabel">
                             Share my data with other system users
                           </label>
                         </div>
-                        <div className="checkboxItem">
+                        <div className="checkboxItems">
                           <input type="checkbox" id="profileVisible" className="checkboxInput" />
                           <label htmlFor="profileVisible" className="checkboxLabel">
                             Make my profile visible in directory
                           </label>
                         </div>
-                        <div className="checkboxItem">
+                        <div className="checkboxItems">
                           <input type="checkbox" id="allowAnalytics" className="checkboxInput" />
                           <label htmlFor="allowAnalytics" className="checkboxLabel">
                             Allow anonymous usage analytics
@@ -2117,10 +2211,10 @@ function CtuSettings() {
                             })
                             .map((user) => (
                               <div key={user.id} className="tableRow">
-                                <div className="tableCell">{user.firstname}</div>
-                                <div className="tableCell">{user.lastname}</div>
-                                <div className="tableCell">{user.email}</div>
-                                <div className="tableCell">{user.phone}</div>
+                                <div className="tableCell">{user.ctu_fname}</div>
+                                <div className="tableCell">{user.ctu_lname}</div>
+                                <div className="tableCell">{user.ctu_email}</div>
+                                <div className="tableCell">{user.ctu_phonenum}</div>
                                 <div className="tableCell">
                                   <span className={`roleBadge role${user.role}`}>{user.role}</span>
                                 </div>
