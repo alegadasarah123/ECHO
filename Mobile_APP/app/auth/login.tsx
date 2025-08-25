@@ -1,3 +1,5 @@
+// login.tsx - FIXED VERSION
+
 "use client"
 
 import { useRouter } from "expo-router"
@@ -31,32 +33,6 @@ const logout = async () => {
   }
 }
 
-// Utility function to capitalize first letter of each word
-const capitalizeRole = (role: string | null | undefined): string => {
-  if (!role) return ""
-  return role
-    .toLowerCase()
-    .split('_')
-    .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ')
-}
-
-// Role-based routing configuration
-const ROLE_ROUTES = {
-  kutsero: "../KUTSERO/dashboard",
-  horse_operator: "../HORSE_OPERATOR/home",
-  admin: "../ADMIN/dashboard", // Add admin route if needed
-} as const
-
-// Role validation
-const validateUserRole = (role: string | null | undefined): keyof typeof ROLE_ROUTES | null => {
-  if (!role) return null
-  const normalizedRole = role.toLowerCase().trim()
-  return Object.keys(ROLE_ROUTES).includes(normalizedRole) 
-    ? normalizedRole as keyof typeof ROLE_ROUTES 
-    : null
-}
-
 const { width, height } = Dimensions.get("window")
 const scale = (size: number) => (width / 375) * size
 const verticalScale = (size: number) => (height / 812) * size
@@ -85,7 +61,6 @@ export default function LoginScreen() {
 
       console.log("Attempting login for:", email.trim().toLowerCase())
 
-<<<<<<< HEAD
       const response = await fetch(
         "http://192.168.101.2:8000/api/login_mobile/",
         {
@@ -99,18 +74,6 @@ export default function LoginScreen() {
           }),
         }
       )
-=======
-      const response = await fetch("http://172.20.10.2:8000/api/kutsero/login/", {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ 
-          email: email.trim().toLowerCase(), 
-          password: password.trim()
-        }),
-      })
->>>>>>> a48615e9b47c1adec476d489063b5a3fc850a2dd
 
       const data = await response.json()
       console.log("Login response status:", response.status)
@@ -131,13 +94,13 @@ export default function LoginScreen() {
           console.log("✅ Access token stored successfully")
         } else {
           console.error("❌ No access token received")
-          Alert.alert("Error", "Authentication failed. No access token received.")
-          return
         }
 
         if (data.refresh_token) {
           await SecureStore.setItemAsync("refresh_token", data.refresh_token)
           console.log("✅ Refresh token stored successfully")
+        } else {
+          console.error("❌ No refresh token received")
         }
 
         // Store user info for later use (including profile data)
@@ -160,9 +123,8 @@ export default function LoginScreen() {
           })
         }
 
-<<<<<<< HEAD
-        // Validate user role
-        const userRole = data.user_role?.toLowerCase()?.trim()
+        // Validate user role - FIXED: Handle exact role values from backend
+        const userRole = data.user_role?.trim()
         console.log("Processing user role:", userRole)
 
         if (!userRole) {
@@ -171,7 +133,7 @@ export default function LoginScreen() {
           return
         }
 
-        // Route based on user role
+        // Route based on user role - FIXED: Check for exact role values
         if (userRole === "kutsero") {
           console.log("✅ Routing to kutsero dashboard")
 
@@ -187,14 +149,12 @@ export default function LoginScreen() {
               {
                 text: "Continue",
                 onPress: () => {
-                  router.replace("/KUTSERO/dashboard") // ✅ fixed path
+                  router.replace("../KUTSERO/dashboard")
                 },
               },
             ]
           )
-        } else if (
-          userRole === "Horse Operator"
-        ) {
+        } else if (userRole === "horse_operator") {  // FIXED: Check for exact match
           console.log("✅ Routing to horse operator home")
 
           const statusMsg =
@@ -209,7 +169,7 @@ export default function LoginScreen() {
               {
                 text: "Continue",
                 onPress: () => {
-                  router.replace("/HORSE_OPERATOR/home") // ✅ fixed path
+                  router.replace("../HORSE_OPERATOR/home")
                 },
               },
             ]
@@ -242,84 +202,12 @@ export default function LoginScreen() {
           errorMessage = "Server error. Please try again later."
         } else if (response.status >= 400) {
           errorMessage = "Invalid request. Please check your input."
-=======
-        // Enhanced role validation and routing
-        const validatedRole = validateUserRole(data.user_role)
-        const capitalizedRole = capitalizeRole(data.user_role)
-        
-        console.log("Processing user role:", data.user_role, "Validated:", validatedRole, "Display as:", capitalizedRole)
-        
-        if (!validatedRole) {
-          console.error("❌ Invalid or unrecognized user role:", data.user_role)
-          Alert.alert(
-            "Access Denied", 
-            `Unrecognized user role: ${capitalizedRole || 'Unknown'}. Please contact support for assistance.`
-          )
-          return
         }
 
-        // Check user status for additional messaging
-        const getStatusMessage = (status: string) => {
-          switch (status?.toLowerCase()) {
-            case "pending":
-              return "\n\nNote: Your account is pending approval but you can still use the app."
-            case "suspended":
-              return "\n\nWarning: Your account is currently suspended. Some features may be limited."
-            case "rejected":
-              return "\n\nYour account has been rejected. Please contact support for more information."
-            case "approved":
-            default:
-              return ""
-          }
-        }
-
-        const statusMessage = getStatusMessage(data.user_status)
-        const targetRoute = ROLE_ROUTES[validatedRole]
-
-        // Show role-specific welcome message and navigate
-        Alert.alert(
-          "Login Successful", 
-          `Welcome ${capitalizedRole} ${data.user?.email || "User"}!${statusMessage}`,
-          [{ 
-            text: "Continue", 
-            onPress: () => {
-              console.log(`✅ Routing ${validatedRole} to ${targetRoute}`)
-              router.replace(targetRoute)
-            }
-          }]
-        )
-
-      } else {
-        // Enhanced error handling
-        console.error("❌ Login failed:", data.message || data.error || "Unknown error")
-        
-        const getErrorMessage = (status: number, data: any) => {
-          if (data.message) return data.message
-          if (data.error) return data.error
-          
-          switch (status) {
-            case 401:
-              return "Invalid email or password. Please check your credentials."
-            case 403:
-              return "Access denied. Your account may be suspended or rejected."
-            case 429:
-              return "Too many login attempts. Please wait a moment and try again."
-            case 500:
-            case 502:
-            case 503:
-              return "Server error. Please try again later."
-            default:
-              return "Login failed. Please check your input and try again."
-          }
->>>>>>> a48615e9b47c1adec476d489063b5a3fc850a2dd
-        }
-
-        const errorMessage = getErrorMessage(response.status, data)
         Alert.alert("Login Error", errorMessage)
       }
     } catch (error) {
       console.error("❌ Login error:", error)
-<<<<<<< HEAD
 
       let errorMessage =
         "Network error. Please check your connection and try again."
@@ -328,29 +216,13 @@ export default function LoginScreen() {
         if (error.message.includes("Network request failed")) {
           errorMessage =
             "Unable to connect to server. Please check your internet connection."
-=======
-      
-      const getNetworkErrorMessage = (error: Error) => {
-        if (error.message.includes("Network request failed")) {
-          return "Unable to connect to server. Please check your internet connection."
->>>>>>> a48615e9b47c1adec476d489063b5a3fc850a2dd
         } else if (error.message.includes("timeout")) {
-          return "Request timed out. Please try again."
-        } else if (error.message.includes("fetch")) {
-          return "Connection error. Please check your network and try again."
+          errorMessage = "Request timed out. Please try again."
         } else {
-          return "An unexpected error occurred. Please try again."
+          errorMessage = error.message
         }
       }
-<<<<<<< HEAD
 
-=======
-      
-      const errorMessage = error instanceof Error 
-        ? getNetworkErrorMessage(error)
-        : "Network error. Please check your connection and try again."
-      
->>>>>>> a48615e9b47c1adec476d489063b5a3fc850a2dd
       Alert.alert("Connection Error", errorMessage)
     } finally {
       setIsLoginLoading(false)
@@ -463,7 +335,7 @@ export default function LoginScreen() {
             Don&#39;t have an account?{" "}
             <Text
               style={styles.signUpText}
-              onPress={() => !isLoginLoading && router.push("/auth/signup")} // ✅ fixed path
+              onPress={() => !isLoginLoading && router.push("/auth/signup")}
             >
               Sign Up
             </Text>
