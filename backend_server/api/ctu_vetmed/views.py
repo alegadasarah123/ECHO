@@ -23,7 +23,7 @@ CONTENT_TYPE_JSON = "application/json"
 sr_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
 
-
+# --------------------ADD NEW USERS IN SETTINGS--------------------
 @api_view(['POST'])
 def signup(request):
     try:
@@ -114,7 +114,7 @@ def signup(request):
 
 
 
-
+# -------------------- GET VET PROFILES --------------------
 @api_view(['GET'])
 def get_vet_profiles(request):
     try:
@@ -128,7 +128,9 @@ def get_vet_profiles(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+
+
+# -------------------- UPDATE STATUS --------------------
 @api_view(["PATCH"])
 def update_vet_status(request, vet_profile_id):
     """
@@ -183,7 +185,8 @@ def update_vet_status(request, vet_profile_id):
     except Exception as e:
         logger.error(f"🔥 ERROR in update_vet_status: {str(e)}")
         return Response({"error": "Internal server error"}, status=500)
-
+    
+# -------------------- DASHBOARD RECENTLY ACTIVITIES --------------------
 @api_view(["GET"])
 def get_recent_activity(request):
     try:
@@ -223,6 +226,7 @@ def get_recent_activity(request):
         return Response({"error": str(e)}, status=500)
 
 
+# -------------------- DASHBOARD TOTAL COUNT --------------------
 @api_view(["GET"])
 def get_status_counts(request):
     try:
@@ -248,3 +252,64 @@ def get_status_counts(request):
         return Response({"error": str(e)}, status=500)
 
 
+
+
+# -------------------- GET PROFILES IN SETTINGS --------------------
+@api_view(['GET'])
+def get_ctu_vet_profiles(request):
+    """
+    Fetch profile for a specific user from ctu_vet_profile table
+    """
+    try:
+        user_id = request.GET.get('user_id')
+        query = sr_client.table("ctu_vet_profile").select("*")
+
+        if user_id:
+            query = query.eq("user_id", user_id)  # Filter by user_id
+
+        response = query.execute()
+
+        if response.data:
+            return Response(response.data, status=status.HTTP_200_OK)
+        else:
+            return Response({"message": "No profiles found"}, status=status.HTTP_404_NOT_FOUND)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+@api_view(['GET'])
+def get_users(request):
+    try:
+        current_user_id = request.GET.get("user_id")
+        current_user_role = request.GET.get("role")
+
+        if not current_user_id:
+            return Response({"error": "Missing user_id"}, status=status.HTTP_400_BAD_REQUEST)
+
+        query = sr_client.table("ctu_vet_profile").select("*")
+
+        if current_user_role != "admin":
+            query = query.eq("ctu_id", current_user_id)
+
+        response = query.execute()
+
+        users_data = [
+            {
+                "id": u.get("id"),
+                "firstname": u.get("ctu_fname"),
+                "lastname": u.get("ctu_lname"),
+                "email": u.get("ctu_email"),
+                "phone": u.get("ctu_phonenum"),
+                "role": u.get("role") or "general",
+                "status": u.get("status") or "pending",
+                "password": u.get("ctu_pass") or ""
+            }
+            for u in response.data or []
+        ]
+
+        return Response(users_data, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

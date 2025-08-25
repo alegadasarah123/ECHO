@@ -12,9 +12,9 @@ urlpatterns = [
     path('api/update-vet-status/<uuid:vet_profile_id>/', views.update_vet_status, name='update_vet_status'),
     path("api/recent-activity/", views.get_recent_activity, name="recent-activity"),
     path("api/status-counts/", views.get_status_counts, name="status-counts"),
-    path('api/update-vet-status/<int:vet_profile_id>/', views.update_vet_status, name='update-vet-status'),
-    
-    
+    path('api/update-vet-status/<int:vet_profile_id>/', views.update_vet_status, name='update-vet-status'), 
+    path('api/get-ctu-vet-profiles/', views.get_ctu_vet_profiles, name='get_ctu_vet_profiles'),
+    path('api/get_users/', views.get_users, name='get_users'),
 ]
 
 

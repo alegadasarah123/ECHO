@@ -476,3 +476,4 @@ def update_user_status(request):
             "details": str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
