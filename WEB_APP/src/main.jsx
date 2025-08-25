@@ -31,6 +31,7 @@ import VetSettings from "./pages/Veterinarian/VetSettings.jsx";
 import VetHealthLog from "./pages/Veterinarian/VetHealthLog.jsx";
 import KutDashboard from "./pages/Kutsero President/KutDashboard.jsx";
 import KutUserManagement from "./pages/Kutsero President/KutUserApproval.jsx";
+import KutUserAccount from "./pages/Kutsero President/KutUserAcc.jsx";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -41,6 +42,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <Route path="/signup" element={<SignUp />} />
         <Route path="/KutDashboard" element={<KutDashboard />} />
         <Route path="/KutUserManagement" element={<KutUserManagement />} />
+        <Route path="/KutUserAccount" element={<KutUserAccount />} />
         <Route path="/VetDashboard" element={<VetDashboard />} />
         <Route path="/VetAppointment" element={<VetAppointment />} />
         <Route path="/VetRequest" element={<VetRequest />} />

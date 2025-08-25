@@ -118,6 +118,25 @@ def get_users(request):
         "pending_count": pending_count
     })
 
+@api_view(["GET"])
+def get_approved_counts(request):
+    """
+    Returns counts of approved KUTSERO and HORSE OPERATOR.
+    """
+    users = fetch_and_merge_users()
+
+    approved_kutsero_count = sum(
+        1 for u in users if u["role"].upper() == "KUTSERO" and u["status"].strip().lower() == "approved"
+    )
+    approved_horse_operator_count = sum(
+        1 for u in users if u["role"].upper() == "HORSE OPERATOR" and u["status"].strip().lower() == "approved"
+    )
+
+    return Response({
+        "approved_kutsero_count": approved_kutsero_count,
+        "approved_horse_operator_count": approved_horse_operator_count,
+    })
+
 
 # -------------------- USER APPROVALS --------------------
 @api_view(["GET"])
@@ -126,7 +145,22 @@ def get_user_approvals(request):
     users = fetch_and_merge_users()
     return Response(users)
 
-
+@api_view(["POST"])
+def approve_all_users(request):
+    """
+    Approve all users that are currently pending.
+    """
+    try:
+        # Update all pending users
+        response = supabase.table("users").update({"status": "approved"}).eq("status", "pending").execute()
+        
+        updated_count = response.count if hasattr(response, "count") else len(response.data)
+        return Response({
+            "message": f"Approved {updated_count} user(s).",
+            "approved_count": updated_count
+        })
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
 
 # -------------------- APPROVE USER --------------------
 @api_view(["POST"])
@@ -148,4 +182,61 @@ def decline_user(request, user_id):
         return Response({"message": "⚠️ User declined successfully", "user_id": user_id})
     return Response({"error": "User not found"}, status=404)
 
+# -------------------- DELETE DECLINED USERS --------------------
 
+@api_view(['DELETE'])
+def delete_declined_users(request):
+    """
+    Deletes declined users from:
+      - kutsero_profile / horse_operator_profile
+      - users (public.users)
+      - supabase auth.users
+    Expects: { "ids": ["uuid1", "uuid2"] }
+    """
+    ids = request.data.get("ids", [])
+
+    if not ids:
+        return Response({"error": "No user IDs provided."})
+
+    deleted_ids = []
+    skipped_ids = []
+
+    for user_id in ids:
+        # 1. Fetch user status + role
+        res = supabase.table("users").select("status, role").eq("id", user_id).execute()
+        if not res.data:
+            skipped_ids.append(user_id)
+            continue
+
+        status_value = res.data[0]["status"]
+        role_value = (res.data[0].get("role") or "").lower()
+
+        if status_value != "declined":
+            skipped_ids.append(user_id)
+            continue
+
+        # 2. Delete from child tables first
+        if role_value == "kutsero":
+            supabase.table("kutsero_profile").delete().eq("kutsero_id", user_id).execute()
+        elif role_value == "horse operator":
+            supabase.table("horse_operator_profile").delete().eq("operator_id", user_id).execute()
+
+        # 3. Delete from users table
+        supabase.table("users").delete().eq("id", user_id).execute()
+
+        # 4. Delete from Supabase Auth
+        auth_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
+        headers = {
+            "apikey": SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SERVICE_ROLE_KEY}"
+        }
+        try:
+            requests.delete(auth_url, headers=headers, timeout=10)
+        except Exception as e:
+            print(f"⚠️ Failed to delete auth user {user_id}: {e}")
+
+        deleted_ids.append(user_id)
+
+    return Response(
+        {"success": True, "deleted": deleted_ids, "skipped": skipped_ids},
+    )

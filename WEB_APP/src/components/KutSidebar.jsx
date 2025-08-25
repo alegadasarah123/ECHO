@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { BarChart3, Users, Heart, LogOut, Menu } from 'lucide-react';
+import { BarChart3, Users, Heart, LogOut, Menu, UserCheck, Settings } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 const Sidebar = () => {
@@ -16,7 +16,9 @@ const Sidebar = () => {
 
   const sidebarItems = [
     { icon: BarChart3, label: 'Dashboard', path: '/KutDashboard' },
-    { icon: Users, label: 'User Approval', path: '/KutUserManagement' },
+    { icon: UserCheck, label: 'User Approval', path: '/KutUserManagement' },
+    { icon: Users, label: 'User Accounts', path: '/KutUserAccount' },
+    { icon: Settings, label: 'Settings'},
   ];
 
   return (
@@ -109,7 +111,7 @@ const Sidebar = () => {
         .logout-modal-cancel:hover { background-color: #f3f4f6; }
         .logout-modal-confirm {
           padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500;
-          color: #fff; background-color: #D2691E;
+          color: #fff; background-color: red;
           border-radius: 0.5rem; border: none; cursor: pointer; transition: background-color 0.2s ease;
         }
         .logout-modal-confirm:hover { background-color: #a0521f; }
