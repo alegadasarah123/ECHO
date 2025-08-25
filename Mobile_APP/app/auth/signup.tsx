@@ -162,11 +162,7 @@ interface ProfilePicture {
 
 // Updated API configuration
 const API_CONFIG = {
-<<<<<<< HEAD
   BASE_URL: 'http://192.168.101.2:8000/api/signup_mobile/',
-=======
-  BASE_URL: 'http://172.20.10.2:8000/api/kutsero/signup/',
->>>>>>> a48615e9b47c1adec476d489063b5a3fc850a2dd
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,
@@ -182,7 +178,7 @@ export default function Signup() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
-  // Form data states with proper typing - now includes role
+  // Form data states with proper typing - FIXED: profilePicture is now ProfilePicture | null
   const [formData, setFormData] = useState({
     // Step 1 - Personal Info
     firstName: "",
@@ -213,7 +209,7 @@ export default function Signup() {
     password: "",
     confirmPassword: "",
 
-    // Step 6 - Profile Picture
+    // Step 6 - Profile Picture - FIXED: Now properly typed
     profilePicture: null as ProfilePicture | null,
   })
 
@@ -270,67 +266,111 @@ export default function Signup() {
     ])
   }
 
-  const openCamera = () => {
-    const options = {
-      mediaType: "photo" as MediaType,
-      quality: 0.8 as PhotoQuality,
-      maxWidth: 800,
-      maxHeight: 800,
-      includeBase64: false,
-      saveToPhotos: false,
-    }
-
-    launchCamera(options, (response: ImagePickerResponse) => {
-      if (response.didCancel || response.errorMessage) {
-        console.log("Camera cancelled or error:", response.errorMessage)
-        return
-      }
-
-      if (response.assets && response.assets[0]) {
-        const imageUri = response.assets[0].uri
-        if (imageUri) {
-          console.log("Camera image selected:", imageUri)
-          setSelectedImage(imageUri)
-          updateFormData("profilePicture", {
-            uri: imageUri,
-            type: response.assets[0].type || "image/jpeg",
-            name: response.assets[0].fileName || "profile_camera.jpg",
-          } as ProfilePicture)
-        }
-      }
-    })
+  // Updated camera function with proper null checks
+const openCamera = () => {
+  const options = {
+    mediaType: "photo" as MediaType,
+    quality: 0.8 as PhotoQuality,
+    maxWidth: 800,
+    maxHeight: 800,
+    includeBase64: false,
+    saveToPhotos: false,
   }
 
-  const openImageLibrary = () => {
-    const options = {
-      mediaType: "photo" as MediaType,
-      quality: 0.8 as PhotoQuality,
-      maxWidth: 800,
-      maxHeight: 800,
-      includeBase64: false,
-      selectionLimit: 1,
+  launchCamera(options, (response: ImagePickerResponse) => {
+    console.log('Camera response:', response)
+    
+    if (response.didCancel) {
+      console.log('User cancelled camera')
+      return
     }
 
-    launchImageLibrary(options, (response: ImagePickerResponse) => {
-      if (response.didCancel || response.errorMessage) {
-        console.log("Image picker cancelled or error:", response.errorMessage)
+    if (response.errorMessage) {
+      console.log('Camera error:', response.errorMessage)
+      Alert.alert('Camera Error', response.errorMessage)
+      return
+    }
+
+    // Add proper null/undefined checks here
+    if (response.assets && response.assets.length > 0) {
+      const asset = response.assets[0]
+      
+      // Check if uri exists before proceeding
+      if (!asset.uri) {
+        Alert.alert('Error', 'No image was captured')
         return
       }
-
-      if (response.assets && response.assets[0]) {
-        const imageUri = response.assets[0].uri
-        if (imageUri) {
-          console.log("Gallery image selected:", imageUri)
-          setSelectedImage(imageUri)
-          updateFormData("profilePicture", {
-            uri: imageUri,
-            type: response.assets[0].type || "image/jpeg",
-            name: response.assets[0].fileName || "profile_gallery.jpg",
-          } as ProfilePicture)
-        }
+      
+      const imageUri = asset.uri
+      
+      console.log('Camera image selected:', imageUri)
+      setSelectedImage(imageUri)
+      
+      const profilePictureData: ProfilePicture = {
+        uri: imageUri, // Now guaranteed to be string
+        type: asset.type || "image/jpeg",
+        name: asset.fileName || "profile_camera.jpg",
       }
-    })
+      
+      updateFormData("profilePicture", profilePictureData)
+    } else {
+      Alert.alert('Error', 'No image was captured')
+    }
+  })
+}
+
+// Updated image library function with proper null checks
+const openImageLibrary = () => {
+  const options = {
+    mediaType: "photo" as MediaType,
+    quality: 0.8 as PhotoQuality,
+    maxWidth: 800,
+    maxHeight: 800,
+    includeBase64: false,
+    selectionLimit: 1,
   }
+
+  launchImageLibrary(options, (response: ImagePickerResponse) => {
+    console.log('Image library response:', response)
+    
+    if (response.didCancel) {
+      console.log('User cancelled image picker')
+      return
+    }
+
+    if (response.errorMessage) {
+      console.log('Image picker error:', response.errorMessage)
+      Alert.alert('Image Picker Error', response.errorMessage)
+      return
+    }
+
+    // Add proper null/undefined checks here
+    if (response.assets && response.assets.length > 0) {
+      const asset = response.assets[0]
+      
+      // Check if uri exists before proceeding
+      if (!asset.uri) {
+        Alert.alert('Error', 'No image was selected')
+        return
+      }
+      
+      const imageUri = asset.uri
+      
+      console.log('Gallery image selected:', imageUri)
+      setSelectedImage(imageUri)
+      
+      const profilePictureData: ProfilePicture = {
+        uri: imageUri, // Now guaranteed to be string
+        type: asset.type || "image/jpeg",
+        name: asset.fileName || "profile_gallery.jpg",
+      }
+      
+      updateFormData("profilePicture", profilePictureData)
+    } else {
+      Alert.alert('Error', 'No image was selected')
+    }
+  })
+}
 
   const handleSignUp = async () => {
     if (isLoading) return
@@ -370,7 +410,7 @@ export default function Signup() {
         dob: formData.dateOfBirth.toISOString().split("T")[0],
         sex: formData.sex,
         phoneNumber: formData.phoneNumber,
-        role: formData.role, // NEW: Include role in the data
+        role: formData.role, // Include role in the data
         province: "Cebu",
         city: formData.city,
         municipality: formData.municipality,
@@ -408,6 +448,7 @@ export default function Signup() {
       }
 
       console.log("Sending request to:", API_CONFIG.BASE_URL)
+      console.log("User selected role:", formData.role)
 
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.TIMEOUT)
@@ -429,6 +470,7 @@ export default function Signup() {
       if (response.ok) {
         const result = await response.json()
         console.log("Signup successful:", result)
+        console.log("Backend returned role:", result.role)
 
         Alert.alert(
           "Success!",
@@ -437,9 +479,11 @@ export default function Signup() {
             {
               text: "OK",
               onPress: () => {
-                // Reset form and navigate based on role
+                // Get the user role to determine navigation
                 const userRole = formData.role
+                console.log("Navigating based on user role:", userRole)
                 
+                // Reset form
                 setFormData({
                   firstName: "",
                   middleName: "",
@@ -448,7 +492,6 @@ export default function Signup() {
                   sex: "",
                   phoneNumber: "",
                   role: "",
-
                   city: "",
                   municipality: "",
                   barangay: "",
@@ -466,13 +509,16 @@ export default function Signup() {
                 setSelectedImage(null)
                 setCurrentStep(1)
                 
-                // Navigate to appropriate dashboard based on role
+                // FIXED: Navigate to appropriate dashboard based on role
                 if (userRole === "horse_operator") {
-                  router.replace("../home")
+                  console.log("✅ Redirecting to Horse Operator dashboard")
+                  router.replace("/HORSE_OPERATOR/home")
                 } else if (userRole === "kutsero") {
-                  router.replace("../dashboard")
+                  console.log("✅ Redirecting to Kutsero dashboard")
+                  router.replace("/KUTSERO/dashboard")
                 } else {
-                  router.replace("../login")
+                  console.log("⚠️ Unknown role, redirecting to login")
+                  router.replace("/auth/login")
                 }
               },
             },
@@ -505,7 +551,7 @@ export default function Signup() {
   }
 
   const handleBackToLogin = () => {
-    router.replace("../login")
+    router.replace("/auth/login")
   }
 
   const DropdownField = ({ label, value, placeholder, options, onSelect, disabled = false }: DropdownFieldProps) => {
@@ -647,7 +693,7 @@ export default function Signup() {
     )
   }
 
-  // NEW: Role Selection Step
+  // Role Selection Step
   const renderStep2 = () => {
     return (
       <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
@@ -836,12 +882,12 @@ export default function Signup() {
       </View>
 
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Facebook</Text>
+        <Text style={styles.inputLabel}>Facebook Link</Text>
         <TextInput
           style={styles.textInput}
           value={formData.facebook}
           onChangeText={(value) => updateFormData("facebook", value)}
-          placeholder="Your Facebook"
+          placeholder="Your Facebook Link"
           placeholderTextColor="#999"
         />
       </View>
@@ -1046,7 +1092,7 @@ export default function Signup() {
       case 1:
         return renderStep1()
       case 2:
-        return renderStep2() // NEW: Role selection step
+        return renderStep2() // Role selection step
       case 3:
         return renderStep3()
       case 4:
@@ -1074,7 +1120,7 @@ export default function Signup() {
           <View style={styles.placeholder} />
         </View>
         
-        {/* Progress Indicator - Updated to show 6 steps */}
+        {/* Progress Indicator - Shows 6 steps */}
         <View style={styles.progressContainer}>
           {[1, 2, 3, 4, 5, 6].map((step) => (
             <View key={step} style={styles.progressStep}>
@@ -1225,7 +1271,7 @@ const styles = StyleSheet.create({
     marginTop: moderateScale(10),
   },
   
-  // NEW: Role selection styles
+  // Role selection styles
   roleSelectionContainer: {
     marginBottom: moderateScale(30),
   },

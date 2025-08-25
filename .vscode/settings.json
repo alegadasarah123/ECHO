@@ -55,6 +55,7 @@
         "Caubian",
         "Compostela",
         "Consolacion",
+        "Cremello",
         "Daanbantayan",
         "Dalaguete",
         "Danao",
@@ -81,18 +82,21 @@
         "Moalboal",
         "Napo",
         "Oslob",
+        "Perlino",
         "Pinamungajan",
         "Poro",
         "Remigio",
         "Samboan",
         "Sibonga",
         "Sogod",
+        "Standardbred",
         "supabase",
         "Tabogon",
         "Tabuelan",
         "Talamban",
         "Talisay",
         "Tuburan",
-        "Tudela"
+        "Tudela",
+        "vetmed"
     ]
 }
