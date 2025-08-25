@@ -1,3 +1,7 @@
+<<<<<<< HEAD
+=======
+
+>>>>>>> a48615e9b47c1adec476d489063b5a3fc850a2dd
 from django.contrib import admin
 from django.urls import path, include
 from . import views
