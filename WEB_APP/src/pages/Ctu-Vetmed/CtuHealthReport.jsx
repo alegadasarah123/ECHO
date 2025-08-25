@@ -125,12 +125,14 @@ function CtuHealthReport() {
     setIsLogoutModalOpen(false)
   }
 
-  const confirmLogout = () => {
-    console.log("User logged out")
-    // In a real app, clear authentication tokens/session
-    navigate("/login") // Assuming this is your login route
-    closeLogoutModal()
-  }
+   const confirmLogout = () => {
+  console.log("User logged out")
+  localStorage.removeItem("currentUser")
+  localStorage.removeItem("loginTime")
+  closeLogoutModal()
+  navigate("/")
+  window.location.reload()
+}
 
   const toggleSidebar = () => {
     setIsSidebarExpanded((prev) => !prev)

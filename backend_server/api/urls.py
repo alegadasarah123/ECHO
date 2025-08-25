@@ -4,7 +4,7 @@ from django.urls import path, include
 from . import views
 
 urlpatterns = [
-    path('ctu_vetmed/', include('api.ctu_vetmed.urls')),
+
     path('api/kutsero/', include('api.kutsero.urls')),
     path('api/horse_operator/', include('api.horse_operator.urls')), 
     path('api/login/', views.login, name='login'),  # Add api/ here

@@ -1311,7 +1311,7 @@ body {
                 className="logout-modal-btn confirm"
                 onClick={() => {
                   console.log("User logged out")
-                  navigate("/login") // Navigate to login page
+                  navigate("/") // Navigate to login page
                   setShowLogoutModal(false)
                 }}
               >

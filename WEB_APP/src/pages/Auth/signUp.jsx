@@ -1,11 +1,11 @@
-import { useState } from "react"
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ArrowLeft, Briefcase, CheckCircle, Eye, EyeOff, Lock, MapPin, Stethoscope, Upload, User } from "lucide-react";
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Eye, EyeOff, Upload, User, MapPin, Briefcase, Lock, Stethoscope, CheckCircle } from "lucide-react"
 
 function SignUp() {
   const navigate = useNavigate();
@@ -141,7 +141,7 @@ const handleSubmit = async (e) => {
   };
 
   try {
-    const response = await fetch("http://127.0.0.1:8000/api/signup/", {
+    const response = await fetch("http://127.0.0.1:8000/api/signups/", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

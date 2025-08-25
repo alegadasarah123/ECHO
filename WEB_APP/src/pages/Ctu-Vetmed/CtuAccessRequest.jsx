@@ -99,13 +99,14 @@ function CtuAccessRequest() {
     setIsLogoutModalOpen(false)
   }
 
-  const confirmLogout = () => {
-    console.log("User logged out")
-    localStorage.removeItem("currentUser")
-    localStorage.removeItem("loginTime")
-    navigate("/login")
-    closeLogoutModal()
-  }
+ const confirmLogout = () => {
+  console.log("User logged out")
+  localStorage.removeItem("currentUser")
+  localStorage.removeItem("loginTime")
+  closeLogoutModal()
+  navigate("/")
+  window.location.reload()
+}
 
   const approveRequest = (requestId) => {
     setCurrentRequestId(requestId)

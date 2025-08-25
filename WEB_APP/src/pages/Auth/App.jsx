@@ -380,7 +380,7 @@ function App() {
           <button style={{ ...styles.button, ...styles.secondaryButton }} onClick={() => setCurrentPage("login")}>
             Sign In
           </button>
-          <button style={{ ...styles.button, ...styles.primaryButton }}>Get Started</button>
+          <button style={{ ...styles.button, ...styles.primaryButton }}onClick={() => setCurrentPage("login")}>Get Started</button>
         </div>
       </header>
 
@@ -400,6 +400,7 @@ function App() {
                 style={{ ...styles.largeButton, ...styles.primaryButton }}
                 onMouseEnter={() => setImageHovered(true)}
                 onMouseLeave={() => setImageHovered(false)}
+                onClick={() => setCurrentPage("login")} // <-- add this
               >
                 Get Started
                 <ArrowRight size={16} />
@@ -601,6 +602,7 @@ function App() {
               style={{ ...styles.largeButton, backgroundColor: "white", color: "#B8763E" }}
               onMouseEnter={() => setImageHovered(true)}
               onMouseLeave={() => setImageHovered(false)}
+              onClick={() => setCurrentPage("login")} // <-- add this
             >
               Get Started Today
             </button>
@@ -816,7 +818,7 @@ function App() {
 
             <button
               style={{ ...styles.largeButton, ...styles.primaryButton, width: "100%", justifyContent: "center" }}
-              onClick={() => setShowLearnMore(false)}
+             onClick={() => setCurrentPage("login")}
             >
               Get Started Now
             </button>

@@ -1,11 +1,11 @@
-from django.shortcuts import render
+
+from uuid import UUID
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from supabase import create_client
 import os, requests, logging
 from django.conf import settings
-from uuid import UUID
 
 
 
@@ -131,60 +131,32 @@ def get_vet_profiles(request):
 
 
 # -------------------- UPDATE STATUS --------------------
-@api_view(["PATCH"])
+@api_view(['PATCH'])
 def update_vet_status(request, vet_profile_id):
     """
     Update the status of a vet user (pending, approved, declined)
     """
-    try:
-        new_status = request.data.get("status")
-        allowed_statuses = ["pending", "approved", "declined"]
+    new_status = request.data.get("status")
+    allowed_statuses = ["pending", "approved", "declined"]
 
-        if not new_status:
-            return Response({"error": "Status is required"}, status=400)
+    if new_status not in allowed_statuses:
+        return Response({"error": f"Invalid status. Allowed: {allowed_statuses}"}, status=400)
 
-        if new_status not in allowed_statuses:
-            return Response(
-                {"error": f"Invalid status. Allowed values: {allowed_statuses}"},
-                status=400
-            )
+    service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-        # Get vet_id from vet_profile table
-        vet_profile_res = (
-            sr_client.table("vet_profile")
-            .select("vet_id")
-            .eq("id", vet_profile_id)
-            .single()
-            .execute()
-        )
+    # Get vet_id from vet_profile
+    vet_profile_res = service_client.table("vet_profile").select("vet_id").eq("id", vet_profile_id).execute()
+    if not vet_profile_res.data:
+        return Response({"error": "Vet profile not found"}, status=404)
+    vet_id = vet_profile_res.data[0]["vet_id"]
 
-        if not vet_profile_res.data:
-            return Response({"error": "Vet profile not found"}, status=404)
+    # Update user status
+    update_res = service_client.table("users").update({"status": new_status}).eq("id", vet_id).execute()
+    if not update_res.data:
+        return Response({"error": "User not found"}, status=404)
 
-        vet_id = vet_profile_res.data["vet_id"]
+    return Response({"message": f"Status updated to {new_status}", "data": update_res.data[0]}, status=200)
 
-        # Update user status
-        user_update_res = (
-            sr_client.table("users")
-            .update({"status": new_status})
-            .eq("id", vet_id)
-            .execute()
-        )
-
-        if not user_update_res.data:
-            return Response({"error": "User not found"}, status=404)
-
-        return Response(
-            {
-                "message": f"Vet status updated to {new_status}",
-                "data": user_update_res.data[0],
-            },
-            status=200,
-        )
-
-    except Exception as e:
-        logger.error(f"🔥 ERROR in update_vet_status: {str(e)}")
-        return Response({"error": "Internal server error"}, status=500)
     
 # -------------------- DASHBOARD RECENTLY ACTIVITIES --------------------
 @api_view(["GET"])
@@ -257,26 +229,29 @@ def get_status_counts(request):
 # -------------------- GET PROFILES IN SETTINGS --------------------
 @api_view(['GET'])
 def get_ctu_vet_profiles(request):
-    """
-    Fetch profile for a specific user from ctu_vet_profile table
-    """
     try:
         user_id = request.GET.get('user_id')
         query = sr_client.table("ctu_vet_profile").select("*")
 
+        # Validate user_id if it exists
         if user_id:
-            query = query.eq("user_id", user_id)  # Filter by user_id
+            try:
+                user_uuid = str(UUID(user_id))  # make sure it's a valid UUID
+                query = query.eq("user_id", user_uuid)
+            except ValueError:
+                return Response({"error": "Invalid user_id format"}, status=status.HTTP_400_BAD_REQUEST)
 
         response = query.execute()
+        print("Supabase response:", response)  # check in console
 
-        if response.data:
+        if hasattr(response, "data") and response.data:
             return Response(response.data, status=status.HTTP_200_OK)
         else:
             return Response({"message": "No profiles found"}, status=status.HTTP_404_NOT_FOUND)
 
     except Exception as e:
+        print("Error in get_ctu_vet_profiles:", str(e))  # see exactly what broke
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 
 @api_view(['GET'])
