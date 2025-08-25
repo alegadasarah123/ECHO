@@ -581,7 +581,7 @@ function CtuAnnouncement() {
       <div className={`post-images ${gridClass}`}>
         {imagesToShow.map((photo, index) => (
           <div className="post-image" key={photo.id} onClick={() => openImageModal(photo.url)}>
-            <img src={photo.url || "/placeholder.svg"} alt={`Post image ${index + 1}`} />
+            <img src={photo.url || "/Images/logo1.png"} alt={`Post image ${index + 1}`} />
             {index === 3 && remainingCount > 0 && <div className="more-images-overlay">{`+${remainingCount}`}</div>}
           </div>
         ))}
@@ -644,7 +644,7 @@ function CtuAnnouncement() {
                 {replyingTo?.commentId === comment.id && (
                   <div className="reply-input-container">
                     <div className="comment-avatar">
-                      <img src="/images/logo.png" alt="Your avatar" />
+                      <img src="/Images/logo1.png" alt="Your avatar" />
                     </div>
                     <div className="reply-input-wrapper">
                       <input
@@ -2765,7 +2765,7 @@ body {
 
       <div className={`sidebars ${isSidebarExpanded ? "open" : ""}`} id="sidebar">
         <div className="sidebars-logo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
         </div>
         <nav className="nav-menu">
           {menuItems.map((item, index) => (
@@ -2868,7 +2868,7 @@ body {
         <div className="content-areas">
           <div className="profile-section">
             <div className="profile-logo">
-              <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+              <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
             </div>
             <div className="profile-details">
               <h1>Cebu City CTU</h1>
@@ -3028,7 +3028,7 @@ body {
                     <div className="photo-preview-container" id="photoPreviewContainer">
                       {selectedPhotos.map((photo) => (
                         <div className="photo-preview" key={photo.id}>
-                          <img src={photo.url || "/placeholder.svg"} alt="Preview" />
+                          <img src={photo.url || "/Images/logo1.png"} alt="Preview" />
                           <button className="photo-remove" onClick={() => removePhoto(photo.id)}>
                             &times;
                           </button>
@@ -3095,7 +3095,7 @@ body {
                       <div className="post-item" key={post.id}>
                         <div className="post-header">
                           <div className="post-avatar">
-                            <img src="/images/logo.png" alt="CTU Logo" />
+                            <img src="/Images/logo1.png" alt="CTU Logo" />
                           </div>
                           <div className="post-info">
                             <div className="post-author">{post.author}</div>
@@ -3142,7 +3142,7 @@ body {
                           <div className="comment-section active" id={`comment-section-${post.id}`}>
                             <div className="comment-form">
                               <div className="comment-avatar">
-                                <img src="/images/logo.png" alt="Your avatar" />
+                                <img src="/Images/logo1.png" alt="Your avatar" />
                               </div>
                               <div className="comment-input-container">
                                 <input
@@ -3199,23 +3199,26 @@ body {
         </button>
       </div>
 
-      <div className={`modal-overlay ${isLogoutModalOpen ? "active" : ""}`} id="logoutModal" ref={logoutModalRef}>
-        <div className="logout-modal">
-          <div className="logout-modal-icon">
-            <LogOut size={48} />
-          </div>
-          <h3>Confirm Logout</h3>
-          <p>Are you sure you want to log out of your account?</p>
-          <div className="logout-modal-buttons">
-            <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
-              No
-            </button>
-            <button className="logout-modal-btn confirm" onClick={confirmLogout}>
-              Yes
-            </button>
+      {/* Logout Modal */}
+      {isLogoutModalOpen && (
+        <div className="modal-overlay active" ref={logoutModalRef}>
+          <div className="logout-modal">
+            <div className="logout-modal-icon">
+              <LogOut size={25} color="#f59e0b" />
+            </div>
+            <h3>Confirm Logout</h3>
+            <p>Are you sure you want to log out of your account?</p>
+            <div className="logout-modal-buttons">
+              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
+                No
+              </button>
+              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
+                Yes
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Image Modal */}
       {isImageModalOpen && (

@@ -1174,7 +1174,7 @@ body {
 
       <div className={`sidebars ${isSidebarExpanded ? "open" : ""}`} id="sidebars">
         <div className="sidebars-logo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
         </div>
 
         <nav className="nav-menu">
@@ -1385,23 +1385,26 @@ body {
         </button>
       </div>
 
-      <div className={`modal-overlay ${isLogoutModalOpen ? "active" : ""}`} id="logoutModal" ref={logoutModalRef}>
-        <div className="logout-modal">
-          <div className="logout-modal-icon">
-            <LogOut size={28} />
-          </div>
-          <h3>Confirm Logout</h3>
-          <p>Are you sure you want to log out of your account?</p>
-          <div className="logout-modal-buttons">
-            <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
-              No
-            </button>
-            <button className="logout-modal-btn confirm" onClick={confirmLogout}>
-              Yes
-            </button>
+      {/* Logout Modal */}
+      {isLogoutModalOpen && (
+        <div className="modal-overlay active" ref={logoutModalRef}>
+          <div className="logout-modal">
+            <div className="logout-modal-icon">
+              <LogOut size={25} color="#f59e0b" />
+            </div>
+            <h3>Confirm Logout</h3>
+            <p>Are you sure you want to log out of your account?</p>
+            <div className="logout-modal-buttons">
+              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
+                No
+              </button>
+              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
+                Yes
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

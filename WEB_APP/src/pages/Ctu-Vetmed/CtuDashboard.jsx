@@ -10,7 +10,6 @@ import {
   LayoutDashboard,
   LogOut,
   Megaphone,
-  Search,
   Settings,
   UserCheck,
 } from "lucide-react"
@@ -26,9 +25,11 @@ function CtuDashboard() {
   const [notifications, setNotifications] = useState([])
   const [recordCount, setrecordCount] = useState(0)
   const [vetCount, setvetCount] = useState(0)
+  const [declinedCount, setDeclinedCount] = useState(0)
   const [recentActivities, setRecentActivities] = useState([])
   const [calendarDate, setCalendarDate] = useState(new Date())
   const [searchQuery, setSearchQuery] = useState("")
+  const [time, setTime] = useState(new Date().toLocaleTimeString())
 
   const sidebarRef = useRef(null)
   const notificationBellRef = useRef(null)
@@ -82,8 +83,18 @@ function CtuDashboard() {
   // Data loading functions
   const loadStats = useCallback(() => {
     console.log("Loading statistics...")
-    setrecordCount(0)
-    setvetCount(0)
+
+    fetch("http://127.0.0.1:8000/api/status-counts/")
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
+        return res.json()
+      })
+      .then((data) => {
+        setrecordCount(data.pending || 0)
+        setvetCount(data.approved || 0)
+        setDeclinedCount(data.declined || 0)
+      })
+      .catch((err) => console.error("Error fetching stats:", err))
   }, [])
 
   const loadRecentActivities = useCallback(() => {
@@ -156,19 +167,27 @@ function CtuDashboard() {
     navigate("/CtuMessage")
   }
 
-  const handleStatsCardClick = (type) => {
-    if (type === "horses") {
-      alert(`Total Record: ${recordCount}\n\nClick to view detailed horse statistics`)
-    } else if (type === "vet") {
-      alert(`Registered Veterinarian: ${vetCount}\n\nClick to view detailed veterinarian statistics`)
-    }
-  }
+  // Fetch from Django backend
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/api/recent-activity/") // adjust if deployed
+      .then((res) => res.json())
+      .then((data) => setRecentActivities(data))
+      .catch((err) => console.error("Error fetching activity:", err))
+  }, [])
 
   // Effects
   useEffect(() => {
     console.log("Veterinary Dashboard initialized")
     loadDashboardData()
   }, [loadDashboardData])
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTime(new Date().toLocaleTimeString())
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -392,6 +411,8 @@ function CtuDashboard() {
   flex-shrink: 0;
 }
 
+
+
         .main-content {
           margin-left: 250px;
           flex: 1;
@@ -407,38 +428,29 @@ function CtuDashboard() {
           justify-content: space-between;
           box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
           flex-wrap: wrap;
-          gap: 16px;
+          gap: 55px;
         }
 
-        .search-containers {
-          flex: 1;
-          max-width: 400px;
-          margin-right: 20px;
-          position: relative;
-          min-width: 200px;
+        .dashboard-container {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 20px;
+          background: transparent;
+          
         }
 
-        .search-input {
-          width: 100%;
-          padding: 8px 16px 8px 40px;
-          border: 2px solid #e5e7eb;
-          border-radius: 8px;
-          font-size: 14px;
-          outline: none;
-          min-height: 40px;
+        .dashboard-title {
+          font-size: 22px;
+          font-weight: bold;
+          color: #da2424ff;
         }
 
-        .search-input:focus {
-          border-color: #b91c1c;
-        }
-
-        .search-icon {
-          position: absolute;
-          left: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          width: 16px;
-          height: 16px;
+        .dashboard-time {
+          font-size: 16px;
+          font-weight: 500;
+          color: #666;
+          margin-left: 20px;
         }
 
         .notification-bell {
@@ -601,21 +613,20 @@ function CtuDashboard() {
         }
 
         .empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center; /* centers horizontally */
-  justify-content: center; /* centers vertically (if parent has height) */
-  text-align: center;
-  padding: 2rem;
-}
+          display: flex;
+          flex-direction: column;
+          align-items: center; /* centers horizontally */
+          justify-content: center; /* centers vertically (if parent has height) */
+          text-align: center;
+          padding: 2rem;
+        }
 
-.icon-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 1rem;
-}
-
+        .icon-wrapper {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 1rem;
+        }
 
         .empty-state i {
           font-size: 48px;
@@ -713,9 +724,9 @@ function CtuDashboard() {
           background: #991b1b;
         }
 
-        .stats-container {
+        .stats-containers {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+          grid-template-columns: 1fr 1fr 1fr;
           gap: 24px;
           margin-bottom: 24px;
         }
@@ -734,15 +745,19 @@ function CtuDashboard() {
         }
 
         .stat-title {
-          color: #6b7280;
+          color: #bd5656ff;
           font-size: 14px;
           margin-bottom: 8px;
         }
 
-        .stat-number {
+        .stat-numbers {
           font-size: 36px;
           font-weight: bold;
-          color: #111827;
+          color: #b91c1c;
+         
+           display: flex;
+  justify-content: center; /* horizontal */
+  align-items: center;     /* vertical */
         }
 
         .main-grid {
@@ -752,99 +767,303 @@ function CtuDashboard() {
         }
 
         .recent-activity {
-          background: white;
-          border-radius: 8px;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          padding: 24px;
+          background: #fff;
+          padding: 20px;
+          border-radius: 12px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+          border: 1px solid #fee2e2;
         }
 
         .activity-header {
-          font-size: 18px;
-          font-weight: 600;
-          margin-bottom: 8px;
-          color: #111827;
+          font-size: 20px;
+          font-weight: bold;
+          margin-bottom: 4px;
+          color: #dc2626;
         }
 
         .activity-subtitle {
-          color: #6b7280;
           font-size: 14px;
+          color: #666;
           margin-bottom: 20px;
         }
 
-        .activity-item {
+        .activity-cards {
           display: flex;
-          align-items: flex-start;
-          margin-bottom: 16px;
-          padding-bottom: 16px;
-          border-bottom: 1px solid #f3f4f6;
-          cursor: pointer;
-          transition: background-color 0.2s;
-          padding: 12px;
-          border-radius: 6px;
-          min-height: 60px;
+          flex-direction: column;
+          gap: 8px;
+          max-height: 300px;
+          overflow-y: auto;
         }
 
-        .activity-item:hover {
-          background: #f9fafb;
+        .activity-card {
+          border-radius: 12px;
+          padding: 10px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          transition: all 0.3s ease;
+          position: relative;
+          overflow: hidden;
         }
 
-        .activity-item:last-child {
-          border-bottom: none;
-          margin-bottom: 0;
+        .activity-card-0 {
+          background: linear-gradient(135deg, #fef2f2 0%, #fff 100%);
+          border: 1px solid #fca5a5;
+        }
+        
+        .activity-card-0::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 3px;
+          background: linear-gradient(to bottom, #dc2626, #ef4444);
+        }
+        
+        .activity-card-0:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 15px rgba(220, 38, 38, 0.15);
+          border-color: #dc2626;
         }
 
-        .activity-icon {
+        .activity-card-1 {
+          background: linear-gradient(135deg, #eff6ff 0%, #fff 100%);
+          border: 1px solid #93c5fd;
+        }
+        
+        .activity-card-1::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 3px;
+          background: linear-gradient(to bottom, #2563eb, #3b82f6);
+        }
+        
+        .activity-card-1:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 15px rgba(37, 99, 235, 0.15);
+          border-color: #2563eb;
+        }
+
+        .activity-card-2 {
+          background: linear-gradient(135deg, #ecfdf5 0%, #fff 100%);
+          border: 1px solid #86efac;
+        }
+        
+        .activity-card-2::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 3px;
+          background: linear-gradient(to bottom, #059669, #10b981);
+        }
+        
+        .activity-card-2:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 15px rgba(5, 150, 105, 0.15);
+          border-color: #059669;
+        }
+
+        .activity-card-3 {
+          background: linear-gradient(135deg, #faf5ff 0%, #fff 100%);
+          border: 1px solid #c4b5fd;
+        }
+        
+        .activity-card-3::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 3px;
+          background: linear-gradient(to bottom, #7c3aed, #8b5cf6);
+        }
+        
+        .activity-card-3:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 15px rgba(124, 58, 237, 0.15);
+          border-color: #7c3aed;
+        }
+
+        .activity-card-4 {
+          background: linear-gradient(135deg, #fff7ed 0%, #fff 100%);
+          border: 1px solid #fdba74;
+        }
+        
+        .activity-card-4::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 3px;
+          background: linear-gradient(to bottom, #ea580c, #f97316);
+        }
+        
+        .activity-card-4:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 15px rgba(234, 88, 12, 0.15);
+          border-color: #ea580c;
+        }
+
+        .activity-card-5 {
+          background: linear-gradient(135deg, #f0f9ff 0%, #fff 100%);
+          border: 1px solid #7dd3fc;
+        }
+        
+        .activity-card-5::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 0;
+          bottom: 0;
+          width: 3px;
+          background: linear-gradient(to bottom, #0891b2, #06b6d4);
+        }
+        
+        .activity-card-5:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 15px rgba(8, 145, 178, 0.15);
+          border-color: #0891b2;
+        }
+
+        .activity-card:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+        }
+
+        .activity-avatar {
+          color: white;
+          font-weight: bold;
+          border-radius: 50%;
           width: 32px;
           height: 32px;
-          border-radius: 50%;
-          background: #111827;
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-right: 12px;
-          flex-shrink: 0;
-          position: relative;
-        }
-
-        .activity-icon::before {
-          content: "";
-          position: absolute;
-          width: 16px;
-          height: 12px;
-          background: white;
-          border-radius: 8px 8px 0 0;
-          top: 8px;
-          left: 8px;
-        }
-
-        .activity-icon::after {
-          content: "";
-          position: absolute;
-          width: 4px;
-          height: 8px;
-          background: white;
-          top: 12px;
-          left: 10px;
-          box-shadow: 8px 0 white;
-        }
-
-        .activity-content {
-          flex: 1;
-          min-width: 0;
-        }
-
-        .activity-title {
-          font-weight: 500;
-          color: #111827;
-          font-size: 14px;
-          margin-bottom: 4px;
-          word-wrap: break-word;
-        }
-
-        .activity-description {
-          color: #6b7280;
           font-size: 12px;
-          word-wrap: break-word;
+          flex-shrink: 0;
+        }
+
+        /* Added different color classes for user avatars */
+        .activity-avatar-0 {
+          background: linear-gradient(135deg, #dc2626, #ef4444);
+          box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+        }
+        
+        .activity-avatar-1 {
+          background: linear-gradient(135deg, #2563eb, #3b82f6);
+          box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+        }
+        
+        .activity-avatar-2 {
+          background: linear-gradient(135deg, #059669, #10b981);
+          box-shadow: 0 2px 8px rgba(5, 150, 105, 0.3);
+        }
+        
+        .activity-avatar-3 {
+          background: linear-gradient(135deg, #7c3aed, #8b5cf6);
+          box-shadow: 0 2px 8px rgba(124, 58, 237, 0.3);
+        }
+        
+        .activity-avatar-4 {
+          background: linear-gradient(135deg, #ea580c, #f97316);
+          box-shadow: 0 2px 8px rgba(234, 88, 12, 0.3);
+        }
+        
+        .activity-avatar-5 {
+          background: linear-gradient(135deg, #0891b2, #06b6d4);
+          box-shadow: 0 2px 8px rgba(8, 145, 178, 0.3);
+        }
+
+        .activity-info {
+          flex: 1;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 3px 10px;
+        }
+
+        .activity-name {
+          font-weight: 600;
+          font-size: 14px;
+          color: #1f2937;
+          grid-column: 1 / -1;
+        }
+
+        .activity-detail {
+          display: flex;
+          flex-direction: column;
+          gap: 1px;
+        }
+
+        .activity-label {
+          font-size: 10px;
+          font-weight: 500;
+          color: #6b7280;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .activity-value {
+          font-size: 12px;
+          color: #374151;
+        }
+
+        .activity-role {
+          padding: 4px 8px;
+          border-radius: 12px;
+          font-size: 10px;
+          font-weight: 600;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+
+        .activity-role.pending {
+          background: #fef3c7;
+          color: #d97706;
+          border: 1px solid #fbbf24;
+        }
+
+        .activity-role.approved {
+          background: #dcfce7;
+          color: #16a34a;
+          border: 1px solid #4ade80;
+        }
+
+        .activity-role.declined {
+          background: #fee2e2;
+          color: #dc2626;
+          border: 1px solid #f87171;
+        }
+
+        .activity-role.kutsero {
+          background: #fef3c7;
+          color: #d97706;
+          border: 1px solid #fbbf24;
+        }
+
+        .activity-role.operator {
+          background: #dbeafe;
+          color: #2563eb;
+          border: 1px solid #60a5fa;
+        }
+
+        .activity-role.admin {
+          background: #f3e8ff;
+          color: #7c3aed;
+          border: 1px solid #a78bfa;
+        }
+
+        .activity-date {
+          font-size: 10px;
+          color: #6b7280;
+          font-weight: 500;
+          white-space: nowrap;
         }
 
         .calendar-widget {
@@ -1104,7 +1323,7 @@ function CtuDashboard() {
           .main-grid {
             grid-template-columns: 1fr;
           }
-          .stats-container {
+          .stats-containers {
             grid-template-columns: 1fr;
             gap: 16px;
           }
@@ -1140,7 +1359,7 @@ function CtuDashboard() {
             grid-template-columns: 1fr;
             gap: 16px;
           }
-          .stats-container {
+          .stats-containers {
             grid-template-columns: 1fr;
             gap: 16px;
           }
@@ -1224,7 +1443,7 @@ function CtuDashboard() {
 
       <div className={`sidebars ${isSidebarOpen ? "open" : ""}`} id="sidebars" ref={sidebarRef}>
         <div className="sidebars-logo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
         </div>
 
         <nav className="nav-menu">
@@ -1254,15 +1473,9 @@ function CtuDashboard() {
 
       <div className="main-content">
         <header className="headers">
-          <div className="search-containers">
-            <Search className="search-icon" size={20} />
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search......"
-              value={searchQuery}
-              onChange={handleSearchInput}
-            />
+          <div className="dashboard-container">
+            <h2 className="dashboard-title">Dashboard</h2>
+            <span className="dashboard-time">{time}</span>
           </div>
           <div className="notification-bell" ref={notificationBellRef} onClick={toggleNotificationDropdown}>
             <Bell size={20} />
@@ -1310,14 +1523,18 @@ function CtuDashboard() {
         </header>
 
         <div className="content-areas">
-          <div className="stats-container">
-            <div className="stat-card" onClick={() => handleStatsCardClick("horses")}>
-              <div className="stat-title">Total Record</div>
-              <div className="stat-number">{recordCount}</div>
+          <div className="stats-containers">
+            <div className="stat-card">
+              <div className="stat-title">Total Pending</div>
+              <div className="stat-numbers">{recordCount}</div>
             </div>
-            <div className="stat-card" onClick={() => handleStatsCardClick("vet")}>
-              <div className="stat-title">Registered Veterinarian</div>
-              <div className="stat-number">{vetCount}</div>
+            <div className="stat-card">
+              <div className="stat-title">Total Approved</div>
+              <div className="stat-numbers">{vetCount}</div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-title">Total Declined</div>
+              <div className="stat-numbers">{declinedCount || 0}</div>
             </div>
           </div>
 
@@ -1328,21 +1545,55 @@ function CtuDashboard() {
 
               {recentActivities.length === 0 ? (
                 <div className="empty-state">
-                  <ClipboardList size={48} />
+                  <ClipboardList size={48} className="empty-icon" />
                   <h3>No recent activity</h3>
                   <p>Activity will appear here when available</p>
                 </div>
               ) : (
-                <div id="activityList">
-                  {recentActivities.map((activity) => (
-                    <div key={activity.id} className="activity-item">
-                      <div className="activity-icon" />
-                      <div className="activity-content">
-                        <div className="activity-title">{activity.title}</div>
-                        <div className="activity-description">{activity.description}</div>
+                <div className="activity-cards">
+                  {recentActivities.map((activity, index) => {
+                    const initials = activity.title
+                      .split(" ")
+                      .map((word) => word[0])
+                      .join("")
+                      .toUpperCase()
+
+                    const colorIndex = activity.title.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % 6
+
+                    const avatarClassName = `activity-avatar activity-avatar-${colorIndex}`
+                    console.log(
+                      `[v0] User: ${activity.title}, Color Index: ${colorIndex}, Full className: "${avatarClassName}"`,
+                    )
+
+                    return (
+                      <div key={activity.id} className={`activity-card activity-card-${colorIndex}`}>
+                        <div className={avatarClassName}>{initials}</div>
+                        <div className="activity-info">
+                          <div className="activity-name">{activity.title}</div>
+                          <div className="activity-detail">
+                            <span className="activity-label">Email</span>
+                            <span className="activity-value">
+                              {activity.email || `${activity.title.toLowerCase().replace(" ", "")}@gmail.com`}
+                            </span>
+                          </div>
+                          <div className="activity-detail">
+                            <span className="activity-label">Description</span>
+                            <span className="activity-value">{activity.description || "System activity update"}</span>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+                          <span className={`activity-role ${activity.status}`}>{activity.status}</span>
+                          <span className="activity-date">
+                            {new Date(activity.date).toLocaleDateString("en-US", {
+                              month: "short",
+                              day: "numeric",
+                              year: "numeric",
+                            })}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -1388,7 +1639,6 @@ function CtuDashboard() {
           <div className="logout-modal">
             <div className="logout-modal-icon">
               <LogOut size={25} color="#f59e0b" />
-
             </div>
             <h3>Confirm Logout</h3>
             <p>Are you sure you want to log out of your account?</p>

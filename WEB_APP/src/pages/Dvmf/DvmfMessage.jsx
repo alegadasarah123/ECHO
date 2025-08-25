@@ -1,8 +1,8 @@
 "use client"
 
+import { ArrowLeft, Circle, Edit3, LogOut, MessageCircle, MoreHorizontal, Search, Send, Users } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import "./DvmfMessage.css"
 
 function DvmfMessage() {
   const navigate = useNavigate()
@@ -44,7 +44,6 @@ function DvmfMessage() {
     document.body.style.overflow = ""
   }
 
-
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
     document.body.style.overflow = ""
@@ -61,7 +60,7 @@ function DvmfMessage() {
     if (window.history.length > 1) {
       window.history.back()
     } else {
-      navigate("/dvmf-dashboard")
+      navigate("/Dvmfdashboard")
     }
   }
 
@@ -209,39 +208,23 @@ function DvmfMessage() {
 
   // Message functionality
   const sendMessage = () => {
-    if (!currentContact) {
-      alert("Please select a contact first.")
-      return
+    if (!messageInput.trim()) return
+
+    const newMessage = {
+      type: "sent",
+      message: messageInput.trim(),
+      time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      avatar: "You",
     }
 
-    const text = messageInput.trim()
-    if (text) {
-      const time = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-
-      const messageObj = {
-        type: "sent",
-        avatar: "D",
-        message: text,
-        time: time,
-      }
-
+    if (currentContact) {
       setChatData((prev) => ({
         ...prev,
-        [currentContact]: [...(prev[currentContact] || []), messageObj],
+        [currentContact]: [...(prev[currentContact] || []), newMessage],
       }))
-
-      setMessageInput("")
-
-      // Update contact preview
-      updateContactPreview(currentContact, text)
-
-      // Scroll to bottom
-      setTimeout(() => {
-        if (messagesContainerRef.current) {
-          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
-        }
-      }, 100)
     }
+
+    setMessageInput("")
   }
 
   // Update contact preview in sidebars
@@ -338,6 +321,724 @@ function DvmfMessage() {
 
   return (
     <div className="bodyWrapper">
+      <style jsx>{`
+       * {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.bodyWrapper {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #ffffff;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.header {
+  background: white;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  z-index: 100;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.backBtn {
+  color: #666;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  min-width: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.backBtn:hover {
+  background-color: #f0f0f0;
+}
+
+.headerTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #000;
+  white-space: nowrap;
+}
+
+.editIcon {
+  color: #666;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  min-width: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.editIcon:hover {
+  background-color: #f0f0f0;
+}
+
+.contactName {
+  font-size: 16px;
+  font-weight: 500;
+  color: #000;
+  margin-left: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.menuDots {
+  color: #666;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  position: relative;
+  min-width: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menuDots:hover {
+  background-color: #f0f0f0;
+}
+
+/* Mobile Menu Toggle */
+.mobileMenuToggle {
+  display: none;
+  color: #0F3D5A;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  min-width: 40px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobileMenuToggle:hover {
+  background-color: #f0f0f0;
+}
+
+/* Dropdown Menu */
+.dropdownMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  min-width: 150px;
+  z-index: 1000;
+  display: none;
+}
+
+.dropdownMenu.show {
+  display: block;
+}
+
+.dropdownItem {
+  padding: 12px 16px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #333;
+  border-bottom: 1px solid #f0f0f0;
+  transition: background-color 0.2s;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.dropdownItem:last-child {
+  border-bottom: none;
+}
+
+.dropdownItem:hover {
+  background-color: #f5f5f5;
+}
+
+.dropdownItem.logout {
+  color: #dc3545;
+}
+
+/* Main Container */
+.mainContainer {
+  display: flex;
+  flex: 1;
+  height: calc(100vh - 60px);
+  position: relative;
+}
+
+/* Sidebars */
+.sidebars {
+  width: 280px;
+  background: #f8f9fa;
+  border-right: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease;
+}
+
+.searchContainer {
+  padding: 12px;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  background: white;
+  min-height: 44px;
+}
+
+.contactsList {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.contactItem {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f0f0;
+  background: white;
+  transition: background-color 0.2s;
+  min-height: 60px;
+}
+
+.contactItem:hover {
+  background: #f5f5f5;
+}
+
+.contactItem.active {
+  background: #e3f2fd;
+  border-left: 3px solid #0F3D5A;
+}
+
+.contactItem.hidden {
+  display: none;
+}
+
+.contactAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: #6b7280;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 13px;
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.contactInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.contactNameText {
+  font-weight: 500;
+  color: #000;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.contactPreview {
+  color: #666;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contactTime {
+  color: #999;
+  font-size: 11px;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+/* Chat Area */
+.chatArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: white;
+  min-width: 0;
+}
+
+.chatDate {
+  text-align: center;
+  padding: 12px;
+  color: #666;
+  font-size: 13px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.messagesContainer {
+  flex: 1;
+  padding: 16px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  max-width: 80%;
+  opacity: 0;
+  animation: fadeIn 0.3s ease-in-out forwards;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message.received {
+  align-self: flex-start;
+}
+
+.message.sent {
+  align-self: flex-end;
+  flex-direction: row-reverse;
+}
+
+.messageAvatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #6b7280;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.messageAvatar.dvmfLogo {
+  background: linear-gradient(135deg, #0F3D5A, #d46b6b);
+  border: 1px solid #ddd;
+}
+
+.messageContent {
+  display: flex;
+  flex-direction: column;
+}
+
+.messageBubble {
+  background: #f1f3f4;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: #000;
+  word-wrap: break-word;
+}
+
+.message.sent .messageBubble {
+  background: #e3f2fd;
+  color: #000;
+}
+
+.messageTime {
+  font-size: 10px;
+  color: #999;
+  margin-top: 2px;
+  align-self: flex-end;
+}
+
+.message.received .messageTime {
+  align-self: flex-start;
+}
+
+/* Message Input */
+.messageInputArea {
+  padding: 12px 16px;
+  border-top: 1px solid #e5e7eb;
+  background: white;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.messageInput {
+  flex: 1;
+  padding: 10px 16px;
+  border: 1px solid #ddd;
+  border-radius: 20px;
+  font-size: 13px;
+  outline: none;
+  background: #f8f9fa;
+  transition: all 0.2s;
+  min-height: 40px;
+  resize: none;
+}
+
+.messageInput:focus {
+  border-color: #007bff;
+  background: white;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+}
+
+.sendBtn {
+  background: #0F3D5A;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 20px;
+}
+
+.sendBtn:hover {
+  background: #991B1B;
+  transform: scale(1.05);
+}
+
+.sendBtn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Typing indicator */
+.typingIndicator {
+  display: none;
+  padding: 8px 16px;
+  color: #666;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.typingIndicator.show {
+  display: block;
+}
+
+/* Empty states */
+.noResults,
+.emptyContacts,
+.emptyMessages {
+  padding: 40px 20px;
+  text-align: center;
+  color: #666;
+  font-size: 14px;
+  display: none;
+}
+
+.noResults.show,
+.emptyContacts.show,
+.emptyMessages.show {
+  display: block;
+}
+
+.emptyStateIcon {
+  font-size: 56px;
+  color: #252222ff;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emptyStateTitle {
+  font-size: 16px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.emptyStateText {
+  font-size: 14px;
+  color: #6b7280;
+  line-height: 1.4;
+}
+
+/* Logout Confirmation Modal */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+  padding: 20px;
+}
+
+.modalOverlay.show {
+  display: flex;
+}
+
+.modal {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  transform: scale(0.95);
+  transition: transform 0.2s;
+}
+
+.modalOverlay.show .modal {
+  transform: scale(1);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.modalIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #fee2e2;
+  color: #dc2626;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 16px;
+  font-size: 24px;
+}
+
+.modalTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.modalText {
+  color: #6b7280;
+  margin-bottom: 24px;
+  line-height: 1.5;
+}
+
+.modalActions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.modalBtn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+  min-height: 40px;
+  min-width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modalBtnCancel {
+  background: #f9fafb;
+  color: #374151;
+  border-color: #d1d5db;
+}
+
+.modalBtnCancel:hover {
+  background: #f3f4f6;
+}
+
+.modalBtnConfirm {
+  background: #dc2626;
+  color: white;
+}
+
+.modalBtnConfirm:hover {
+  background: #0F3D5A;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .mobileMenuToggle {
+    display: flex;
+  }
+
+  .sidebars {
+    position: fixed;
+    top: 60px;
+    left: 0;
+    height: calc(100vh - 60px);
+    z-index: 1000;
+    transform: translateX(-100%);
+    width: 100%;
+    max-width: 320px;
+  }
+
+  .sidebars.show {
+    transform: translateX(0);
+  }
+
+  .chatArea {
+    width: 100%;
+  }
+
+  .headerLeft {
+    gap: 4px;
+  }
+
+  .contactName {
+    display: none;
+  }
+
+  .editIcon {
+    display: none;
+  }
+
+  .message {
+    max-width: 90%;
+  }
+
+  .messageInputArea {
+    padding: 8px 12px;
+  }
+
+  .messagesContainer {
+    padding: 12px;
+  }
+
+  .modal {
+    margin: 20px;
+    max-width: none;
+  }
+
+  .modalActions {
+    flex-direction: column-reverse;
+  }
+
+  .modalBtn {
+    width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .header {
+    padding: 8px 12px;
+  }
+
+  .headerTitle {
+    font-size: 16px;
+  }
+
+  .messageBubble {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  .contactItem {
+    padding: 8px 12px;
+    min-height: 56px;
+  }
+
+  .contactAvatar {
+    width: 32px;
+    height: 32px;
+    font-size: 12px;
+  }
+
+  .searchInput {
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+}
+
+/* Sidebars overlay for mobile */
+.sidebarsOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  display: none;
+}
+
+.sidebarsOverlay.show {
+  display: block;
+}
+
+@media (max-width: 768px) {
+  .sidebarsOverlay.show {
+    display: block;
+  }
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.4;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+      `}</style>
+
       {/* Logout Confirmation Modal */}
       {isLogoutModalOpen && (
         <div
@@ -348,7 +1049,7 @@ function DvmfMessage() {
           <div className="modal">
             <div className="modalHeader">
               <div className="modalIcon">
-                <i className="fas fa-sign-out-alt" />
+                <LogOut />
               </div>
               <div className="modalTitle">Confirm Logout</div>
             </div>
@@ -369,26 +1070,25 @@ function DvmfMessage() {
 
       {/* Sidebars Overlay */}
       {isMobileSidebarOpen && (
-        <div className="sidebarOverlay show" ref={sidebarOverlayRef} onClick={closeMobileSidebar} />
+        <div className="sidebarsOverlay show" ref={sidebarOverlayRef} onClick={closeMobileSidebar} />
       )}
 
       {/* Header */}
       <div className="header">
         <div className="headerLeft">
-          
-          <i className="fas fa-arrow-left backBtn" onClick={goBack} />
+          <ArrowLeft className="backBtn" onClick={goBack} />
           <span className="headerTitle">Messages</span>
-          <i
-            className="fas fa-edit editIcon"
+          <Edit3
+            className="editIcon"
             onClick={toggleEditMode}
             style={{
-              color: isEditMode ? "#B91C1C" : "#666",
+              color: isEditMode ? "#0F3D5A" : "#666",
             }}
           />
           <span className="contactName">{getCurrentContactName()}</span>
         </div>
         <div className="menuDots" onClick={toggleDropdown} ref={dropdownRef}>
-          <i className="fas fa-ellipsis-h" />
+          <MoreHorizontal />
           <div className={`dropdownMenu ${isDropdownOpen ? "show" : ""}`}>
             <div className="dropdownItem" onClick={clearChat}>
               Clear Chat
@@ -424,7 +1124,7 @@ function DvmfMessage() {
             {filteredContacts.length === 0 && !searchQuery && (
               <div className="emptyContacts show">
                 <div className="emptyStateIcon">
-                  <i className="fas fa-users" />
+                  <Users />
                 </div>
                 <div className="emptyStateTitle">No Contacts</div>
                 <div className="emptyStateText">
@@ -436,7 +1136,7 @@ function DvmfMessage() {
             {filteredContacts.length === 0 && searchQuery && (
               <div className="noResults show">
                 <div className="emptyStateIcon">
-                  <i className="fas fa-search" />
+                  <Search />
                 </div>
                 <div className="emptyStateTitle">No Results</div>
                 <div className="emptyStateText">No contacts found matching your search.</div>
@@ -467,7 +1167,7 @@ function DvmfMessage() {
 
           {isTyping && (
             <div className="typingIndicator show">
-              <i className="fas fa-circle" style={{ animation: "pulse 1.5s infinite" }} />
+              <Circle style={{ animation: "pulse 1.5s infinite" }} />
               <span>{typingContact}</span> is typing...
             </div>
           )}
@@ -476,7 +1176,7 @@ function DvmfMessage() {
             {currentMessages.length === 0 && (
               <div className="emptyMessages show">
                 <div className="emptyStateIcon">
-                  <i className="fas fa-comments" />
+                  <MessageCircle />
                 </div>
                 <div className="emptyStateTitle">No Messages</div>
                 <div className="emptyStateText">Select a contact to start messaging or begin a new conversation.</div>
@@ -505,7 +1205,7 @@ function DvmfMessage() {
               onKeyPress={handleKeyPress}
             />
             <button className="sendBtn" onClick={sendMessage} disabled={!messageInput.trim()}>
-              <i className="fas fa-paper-plane" />
+              <Send />
             </button>
           </div>
         </div>

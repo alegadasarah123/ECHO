@@ -74,6 +74,12 @@ function CtuAccountApproval() {
     return <IconComponent className={`notification-icon ${type}`} size={16} />
   }
 
+
+   const handleChatButtonClick = () => {
+    console.log("Chat button clicked")
+    navigate("/CtuMessage")
+  }
+  
   const markAsRead = (notificationId) => {
     setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
   }
@@ -91,26 +97,23 @@ function CtuAccountApproval() {
     console.log("Notifications loaded:", notifications.length)
   }, [notifications.length])
 
-  const filterRegistrations = useCallback(() => {
-    let filtered = registrationData
-    // Filter by tab status
-    filtered = filtered.filter((user) => user.status === activeTab)
-    // Filter by search term
-    if (searchTerm) {
-      filtered = filtered.filter(
-        (user) =>
-          user.vet_fname.toLowerCase().includes(searchTerm) ||
-          user.vet_lname.toLowerCase().includes(searchTerm) ||
-          user.vet_email.toLowerCase().includes(searchTerm),
-      )
-    }
-    // Filter by recent (placeholder logic, as actual date fields are not in dummy data for this)
-    if (recentFilter !== "all") {
-      // This would require actual date fields on registrationData and more complex logic
-      console.log(`Filtering by recent: ${recentFilter} (logic not fully implemented with dummy data)`)
-    }
-    return filtered
-  }, [registrationData, activeTab, searchTerm, recentFilter])
+const filterRegistrations = useCallback(() => {
+  let filtered = registrationData;
+
+  // Correctly filter by nested status
+  filtered = filtered.filter((user) => user.users?.status === activeTab);
+
+  if (searchTerm) {
+    filtered = filtered.filter(
+      (user) =>
+        user.vet_fname.toLowerCase().includes(searchTerm) ||
+        user.vet_lname.toLowerCase().includes(searchTerm) ||
+        user.vet_email.toLowerCase().includes(searchTerm)
+    );
+  }
+
+  return filtered;
+}, [registrationData, activeTab, searchTerm]);
 
   const viewDetails = (userId, status) => {
     const user = registrationData.find((u) => u.id === userId)
@@ -176,27 +179,103 @@ function CtuAccountApproval() {
     closeConfirmation()
   }
 
-  const approveUser = (userId) => {
-    console.log(`User ${userId} has been approved`)
-    setRegistrationData((prev) => prev.map((user) => (user.id === userId ? { ...user, status: "approved" } : user)))
-    // In a real app, send API request to backend
+  // Approve/Decline logic
+  // Approve user safely
+const approveUser = async (vetProfileId) => {
+  if (!vetProfileId) {
+    console.error("No vetProfileId provided");
+    return;
   }
 
-  const declineUser = (userId) => {
-    console.log(`User ${userId} has been declined`)
-    setRegistrationData((prev) => prev.map((user) => (user.id === userId ? { ...user, status: "declined" } : user)))
-    // In a real app, send API request to backend
-  }
+  const url = `http://127.0.0.1:8000/api/update-vet-status/${vetProfileId}/`;
+  console.log("PATCH URL:", url);
 
-  const approveAllPending = () => {
-    if (activeTab === "pending") {
-      console.log("All pending registrations approved")
-      setRegistrationData((prev) =>
-        prev.map((user) => (user.status === "pending" ? { ...user, status: "approved" } : user)),
+  try {
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "approved" }),
+    });
+
+    if (!response.ok) {
+      let errorMsg = `Failed to approve user: ${response.status}`;
+      const contentType = response.headers.get("content-type");
+      if (contentType?.includes("application/json")) {
+        const errorData = await response.json();
+        errorMsg += ` - ${errorData.error || ""}`;
+      } else {
+        errorMsg += ` - ${await response.text()}`;
+      }
+      throw new Error(errorMsg);
+    }
+
+    const updatedUser = await response.json();
+    setRegistrationData((prev) =>
+      prev.map((u) =>
+        u.id === vetProfileId ? { ...u, status: "approved" } : u
       )
-      // In a real app, send API request to backend
+    );
+
+    console.log("User approved successfully:", updatedUser);
+  } catch (error) {
+    console.error("Error approving user:", error);
+    alert("Failed to approve user. Please try again.");
+  }
+};
+
+// Decline user safely
+const declineUser = async (vetProfileId) => {
+  if (!vetProfileId) {
+    console.error("No vetProfileId provided");
+    return;
+  }
+
+  const url = `http://127.0.0.1:8000/api/update-vet-status/${vetProfileId}/`;
+  console.log("PATCH URL:", url);
+
+  try {
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "declined" }),
+    });
+
+    if (!response.ok) {
+      let errorMsg = `Failed to decline user: ${response.status}`;
+      const contentType = response.headers.get("content-type");
+      if (contentType?.includes("application/json")) {
+        const errorData = await response.json();
+        errorMsg += ` - ${errorData.error || ""}`;
+      } else {
+        errorMsg += ` - ${await response.text()}`;
+      }
+      throw new Error(errorMsg);
+    }
+
+    const updatedUser = await response.json();
+    setRegistrationData((prev) =>
+      prev.map((u) =>
+        u.id === vetProfileId ? { ...u, status: "declined" } : u
+      )
+    );
+
+    console.log("User declined successfully:", updatedUser);
+  } catch (error) {
+    console.error("Error declining user:", error);
+    alert("Failed to decline user. Please try again.");
+  }
+};
+
+
+  const approveAllPending = async () => {
+    if (activeTab !== "pending") return
+    const pendingUsers = registrationData.filter((user) => user.status === "pending")
+    for (const user of pendingUsers) {
+      await approveUser(user.id)
     }
   }
+
+
 
   const handleSearchInput = (e) => {
     setSearchTerm(e.target.value.toLowerCase())
@@ -205,6 +284,14 @@ function CtuAccountApproval() {
   const handleRecentFilterChange = (e) => {
     setRecentFilter(e.target.value)
   }
+
+
+  // Remove all approved users from display only
+const deleteAllApprovedLocal = () => {
+  if (!window.confirm("Remove all approved users from the display?")) return;
+  setRegistrationData((prev) => prev.filter((user) => user.users?.status !== "approved"));
+};
+
 
   const openLogoutModal = (e) => {
     e.preventDefault()
@@ -427,12 +514,12 @@ function CtuAccountApproval() {
   color: #b91c1c;
 }
 
-.logout {
-  padding: 20px;
+ .logouts {
+  padding: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.logout-btn {
+.logout-btns {
   display: flex;
   align-items: center;
   color: white;
@@ -440,17 +527,17 @@ function CtuAccountApproval() {
   font-size: clamp(13px, 2vw, 15px);
   font-weight: 500;
   cursor: pointer;
-  padding: 14px 20px;
+  padding: 14px 40px;
   border-radius: 25px;
   transition: all 0.3s ease;
   min-height: 44px;
 }
 
-.logout-btn:hover {
+.logout-btns:hover {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
-.logout-icon {
+.logout-icons {
   width: 20px;
   height: 20px;
   margin-right: 15px;
@@ -460,6 +547,7 @@ function CtuAccountApproval() {
   font-size: 16px;
   flex-shrink: 0;
 }
+
 
 .main-content {
   margin-left: 250px; /* Default margin for expanded sidebar */
@@ -899,7 +987,28 @@ h2 {
   font-size: clamp(9px, 1.5vw, 10px);
   font-weight: 500;
   margin-left: 8px;
+  color: #000; /* Default text color */
 }
+
+/* Approved = Green */
+.user-type-badge.badge-approved {
+  background-color: #539953ff; /* Light green */
+  color: #fff;
+}
+
+/* Pending = Orange */
+.user-type-badge.badge-pending {
+  background-color: #ffa500; /* Orange */
+  color: #fff;
+}
+
+/* Declined = Red */
+.user-type-badge.badge-declined {
+  background-color: #ff4c4c; /* Red */
+  color: #fff;
+}
+
+
 
 .badge-kutsero {
   background: #dbeafe;
@@ -993,16 +1102,17 @@ h2 {
   display: flex;
 }
 
-.modal-content {
+.modal-contents {
   background: white;
   border-radius: 8px;
-  padding: clamp(16px, 4vw, 24px);
+  padding: clamp(20px, 4vw, 32px);
   width: 90%;
-  max-width: 500px;
-  max-height: 80vh;
+  max-width: 1200px; /* allow much wider modal */
+  max-height: 90vh;  /* taller modal */
   overflow-y: auto;
   position: relative;
 }
+
 
 .modal-body {
   margin-bottom: 20px;
@@ -1215,125 +1325,155 @@ h2 {
   background: #dc2626;
 }
 
+.modal-user-badge {
+  background-color: #52e577ff;
+  color: white;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: bold;
+  display: inline-block;
+  text-transform: capitalize;
+}
+
+
 /* Logout Modal */
 .logout-modal {
-  background: white;
-  border-radius: 8px;
-  padding: clamp(20px, 4vw, 30px);
-  text-align: center;
-  max-width: 350px;
-  width: 90%;
-}
+          background: white;
+          border-radius: 12px;
+          padding: 32px;
+          width: 90%;
+          max-width: 400px;
+          text-align: center;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+        }
 
-.logout-modal-icon {
-  margin-bottom: 16px;
-}
+        .logout-modal-icon {
+          width: 64px;
+          height: 64px;
+          background: #fef3c7;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin: 0 auto 20px;
+        }
 
-.logout-modal-icon i {
-  font-size: clamp(40px, 8vw, 48px);
-  color: #ef4444;
-}
+        .logout-modal-icon i {
+          font-size: 28px;
+          color: #f59e0b;
+        }
 
-.logout-modal h3 {
-  font-size: clamp(16px, 3vw, 18px);
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 12px;
-}
+        .logout-modal h3 {
+          font-size: 20px;
+          font-weight: 600;
+          color: #111827;
+          margin-bottom: 12px;
+        }
 
-.logout-modal p {
-  font-size: clamp(14px, 2.5vw, 16px);
-  color: #6b7280;
-  margin-bottom: 24px;
-  line-height: 1.4;
-}
+        .logout-modal p {
+          font-size: 16px;
+          color: #6b7280;
+          margin-bottom: 32px;
+          line-height: 1.5;
+        }
 
-.logout-modal-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
+        .logout-modal-buttons {
+          display: flex;
+          gap: 12px;
+          justify-content: center;
+          flex-wrap: wrap;
+        }
 
-.logout-modal-btn {
-  padding: 8px 16px;
-  border: none;
-  border-radius: 6px;
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  min-height: 40px;
-  flex: 1;
-  min-width: 80px;
-}
+        .logout-modal-btn {
+          padding: 12px 24px;
+          border: none;
+          border-radius: 8px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+          min-width: 100px;
+          min-height: 44px;
+        }
 
-.logout-modal-btn.cancel {
-  background: #6b7280;
-  color: white;
-}
+        .logout-modal-btn.cancel {
+          background: #f3f4f6;
+          color: #374151;
+        }
 
-.logout-modal-btn.cancel:hover {
-  background: #4b5563;
-}
+        .logout-modal-btn.cancel:hover {
+          background: #e5e7eb;
+        }
 
-.logout-modal-btn.confirm {
-  background: #ef4444;
-  color: white;
-}
+        .logout-modal-btn.confirm {
+          background: #ef4444;
+          color: white;
+        }
 
-.logout-modal-btn.confirm:hover {
-  background: #dc2626;
-}
+        .logout-modal-btn.confirm:hover {
+          background: #dc2626;
+        }
 
 /* Chat Widget */
 .chat-widget {
-  position: fixed;
-  bottom: clamp(20px, 4vw, 30px);
-  right: clamp(20px, 4vw, 30px);
-  z-index: 1000;
-}
+          position: fixed;
+          bottom: 24px;
+          right: 24px;
+          z-index: 1000;
+        }
 
-.chat-button {
-  width: clamp(50px, 10vw, 60px);
-  height: clamp(50px, 10vw, 60px);
-  border-radius: 50%;
-  background: #b91c1c;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  transition: all 0.3s ease;
-}
+        .chat-button {
+          width: 64px;
+          height: 64px;
+          background: #b91c1c;
+          border: none;
+          border-radius: 20px;
+          color: white;
+          cursor: pointer;
+          box-shadow: 0 4px 12px rgba(28, 44, 185, 0.3);
+          transition: all 0.3s ease;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          position: relative;
+        }
 
-.chat-button:hover {
-  background: #991b1b;
-  transform: scale(1.05);
-}
+        .chat-button::after {
+          content: "";
+          position: absolute;
+          bottom: -8px;
+          left: 50%;
+          transform: translateX(-50%);
+          width: 0;
+          height: 0;
+          border-left: 10px solid transparent;
+          border-right: 10px solid transparent;
+          border-top: 10px solid #b91c1c;
+        }
 
-.chat-dots {
-  display: flex;
-  gap: clamp(2px, 0.5vw, 3px);
-}
+        .chat-button:hover {
+          transform: scale(1.05);
+          box-shadow: 0 6px 16px rgba(28, 78, 185, 0.4);
+        }
 
-.chat-dot {
-  width: clamp(4px, 1vw, 6px);
-  height: clamp(4px, 1vw, 6px);
-  border-radius: 50%;
-  background: white;
-  animation: pulse 1.5s infinite;
-}
+        .chat-button:hover::after {
+          border-top-color: #b91c1c;
+        }
 
-.chat-dot:nth-child(2) {
-  animation-delay: 0.2s;
-}
+        .chat-dots {
+          display: flex;
+          gap: 6px;
+          align-items: center;
+          justify-content: center;
+        }
 
-.chat-dot:nth-child(3) {
-  animation-delay: 0.4s;
-}
-
+        .chat-dot {
+          width: 8px;
+          height: 8px;
+          background: white;
+          border-radius: 50%;
+        }
 @keyframes pulse {
   0%,
   60%,
@@ -1386,6 +1526,11 @@ h2 {
     font-size: 14px;
   }
 
+  .chat-widget {
+            bottom: 16px;
+            right: 16px;
+          }
+
   .tabs-container {
     margin-bottom: 16px;
   }
@@ -1416,7 +1561,7 @@ h2 {
     justify-content: flex-end;
   }
 
-  .modal-content {
+  .modal-contents {
     width: 95%;
     max-width: none;
     margin: 10px;
@@ -1502,7 +1647,7 @@ h2 {
 
 .modal-btns.close {
   background-color: #73797a;
-  color: black;
+  color: white;
 }
 
 
@@ -1551,11 +1696,54 @@ h2 {
 .modal-status-text.status-declined {
   color: #721c24;
 }
+
+/* Delete All button */
+.delete-all-btn {
+  background-color: #dc3545; /* Bootstrap danger red */
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  margin-left: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 14px;
+  transition: background-color 0.3s ease, transform 0.2s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* Hover effect */
+.delete-all-btn:hover {
+  background-color: #b02a37;
+  transform: translateY(-1px);
+}
+
+/* Optional: focus effect */
+.delete-all-btn:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.4);
+}
+.modal-headers {
+  display: flex;
+  align-items: center;
+  gap: 14px; /* spacing between avatar and user info */
+  padding: 12px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  background-color: #fff;
+}
+
+/* User info */
+.modal-user-infos {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  margin-left: 750px;
+}
       `}</style>
 
       <div className="sidebars" id="sidebasr">
         <div className="sidebars-logo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
         </div>
         <nav className="nav-menu">
           {[
@@ -1578,9 +1766,9 @@ h2 {
             </Link>
           ))}
         </nav>
-        <div className="logout">
-          <a href="#" className="logout-btn" id="logoutBtn" onClick={openLogoutModal}>
-            <LogOut className="logout-icon" size={18} />
+        <div className="logouts">
+          <a href="/login" className="logout-btns" id="logoutBtn" onClick={openLogoutModal}>
+            <LogOut className="logout-icons" size={18} />
             Log Out
           </a>
         </div>
@@ -1676,93 +1864,117 @@ h2 {
               >
                 Declined
               </button>
+               </div>
             </div>
-          </div>
-          <div className="controls-row">
-            <div className="filter-controls">
-              <select className="filter-select" value={recentFilter} onChange={handleRecentFilterChange}>
-                <option value="all">Most Recent</option>
-                <option value="today">Today</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-              </select>
-            </div>
-            {activeTab === "pending" && (
-              <button className="approve-all-btn" onClick={approveAllPending}>
-                Approve All
-              </button>
-            )}
-          </div>
-          <div className="registration-table" id="registrationTable">
-            {filteredRegistrations.length === 0 ? (
-              <div className="empty-state">
-                {activeTab === "pending" ? (
-                  <Clock size={48} />
-                ) : activeTab === "approved" ? (
-                  <UserCheck size={48} />
-                ) : (
-                  <UserX size={48} />
-                )}
-                <h3>No {activeTab === "pending" ? "pending" : activeTab} registrations</h3>
-                <p>
-                  {activeTab === "pending"
-                    ? "New registration requests will appear here"
-                    : `${activeTab} registrations will appear here`}
-                </p>
+            <div className="controls-row">
+              <div className="filter-controls">
+                <select className="filter-select" value={recentFilter} onChange={handleRecentFilterChange}>
+                  <option value="all">Most Recent</option>
+                  <option value="today">Today</option>
+                  <option value="week">This Week</option>
+                  <option value="month">This Month</option>
+                </select>
               </div>
-            ) : (
-              filteredRegistrations.map((user) => (
-                <div key={user.id} className="registration-item">
-                  <div className="user-avatar">{user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}</div>
-                  <div className="user-info">
-                    <div className="user-name">
-                      {user.vet_fname} {user.vet_mname} {user.vet_lname}
-                      <span className={`user-type-badge badge-${user.type}`}>{user.type}</span>
-                    </div>
-                    <div className="user-email">{user.vet_email}</div>
-                    <div className="user-details">
-                      {user.vet_city}, {user.vet_province}
-                    </div>
-                  </div>
-                  <div className="action-buttons">
-                    <button className="action-btn btn-view" onClick={() => viewDetails(user.id, user.status)}>
-                      View Details
+              {activeTab === "pending" && (
+                <button className="approve-all-btn" onClick={approveAllPending}>
+                  Approve All
+                </button>
+                  )}
+
+                {/* For Approved Tab */}
+                  {activeTab === "approved" && (
+                    <button className="delete-all-btn" onClick={deleteAllApprovedLocal}>
+                      Delete All
                     </button>
-                    {user.status === "pending" && (
-                      <>
-                        <button className="action-btn btn-approve" onClick={() => showApproveConfirmation(user.id)}>
-                          Approve
+                  )}
+            </div>
+              <div className="registration-table" id="registrationTable">
+                      {filteredRegistrations.length === 0 ? (
+                        <div className="empty-state">
+                          {activeTab === "pending" ? (
+                            <Clock size={48} />
+                          ) : activeTab === "approved" ? (
+                            <UserCheck size={48} />
+                          ) : (
+                            <UserX size={48} />
+                          )}
+                          <h3>No {activeTab === "pending" ? "pending" : activeTab} registrations</h3>
+                          <p>
+                            {activeTab === "pending"
+                              ? "New registration requests will appear here"
+                              : `${activeTab} registrations will appear here`}
+                          </p>
+                        </div>
+                      ) : (
+                        filteredRegistrations.map((user) => (
+                          <div key={user.id} className="registration-item">
+                        <div className="user-avatar">
+                          {user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}
+                        </div>
+
+                        <div className="user-info">
+                          <div className="user-name">
+                            {user.vet_fname} {user.vet_mname} {user.vet_lname}
+                            <span className={`user-type-badge badge-${user.users?.status}`}>
+                              {user.users?.status}
+                            </span>
+                          </div>
+                          <div className="user-email">{user.vet_email}</div>
+                          <div className="user-details">
+                            {user.vet_city}, {user.vet_province}
+                          </div>
+                        </div>
+
+                      <div className="action-buttons">
+                        <button
+                          className="action-btn btn-view"
+                          onClick={() => viewDetails(user.id, user.users?.status)}
+                        >
+                          View Details
                         </button>
-                        <button className="action-btn btn-decline" onClick={() => showDeclineConfirmation(user.id)}>
-                          Decline
-                        </button>
-                      </>
-                    )}
-                  </div>
+
+                      {user.users?.status === "pending" && (
+                        <>
+                          <button
+                            className="action-btn btn-approve"
+                            onClick={() => showApproveConfirmation(user.id)}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="action-btn btn-decline"
+                            onClick={() => showDeclineConfirmation(user.id)}
+                          >
+                            Decline
+                          </button>
+                        </>
+                      )}
+                    </div>
                 </div>
-              ))
-            )}
-          </div>
+
+                ))
+              )}
+            </div>
         </div>
       </div>
-      <div className="chat-widget">
-        <button className="chat-button" onClick={() => navigate("/CtuMessage")}>
+       <div className="chat-widget">
+        <button className="chat-button" onClick={handleChatButtonClick}>
           <div className="chat-dots">
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
+            <div className="chat-dot" />
+            <div className="chat-dot" />
+            <div className="chat-dot" />
           </div>
         </button>
-      </div>
+        </div>
       {/* View Details Modal */}
       {isViewDetailsModalOpen && selectedUser && (
         <div className="modal-overlay active" ref={viewDetailsModalOverlayRef}>
-          <div className="modal-content">
+          <div className="modal-contents">
             <button className="modal-close" onClick={closeModal}>
               &times;
             </button>
 
-            <div className="modal-header">
+            <div className="modal-headers">
               <div className="modal-avatar-container">
                 <div className="modal-avatar">
                   {selectedUser.vet_fname.charAt(0) + selectedUser.vet_lname.charAt(0)}
@@ -1775,7 +1987,7 @@ h2 {
                 </div>
               </div>
 
-              <div className="modal-user-info">
+              <div className="modal-user-infos">
                 <h3>
                   {selectedUser.vet_fname} {selectedUser.vet_mname} {selectedUser.vet_lname}
                 </h3>
@@ -1895,11 +2107,18 @@ h2 {
               </div>
             </div>
 
-            <div className={`modal-footer ${selectedUser.status !== "pending" ? "close-only" : ""}`}>
-              <button className="modal-btns" onClick={closeModal}>
+            <div
+              className={`modal-footer ${
+                (registrationData.find(u => u.id === selectedUser.id)?.users?.status || selectedUser.users?.status) !== "pending"
+                  ? "close-only"
+                  : ""
+                }`}
+              >
+              <button className="modal-btns close" onClick={closeModal}>
                 Close
               </button>
-              {selectedUser.status === "pending" && (
+
+              {(registrationData.find(u => u.id === selectedUser.id)?.users?.status || selectedUser.users?.status) === "pending" && (
                 <>
                   <button className="modal-btns approve" onClick={showApproveConfirmationFromModal}>
                     Approve
@@ -1908,8 +2127,9 @@ h2 {
                     Decline
                   </button>
                 </>
-              )}
+               )}
             </div>
+
           </div>
         </div>
       )}
@@ -1935,25 +2155,20 @@ h2 {
         </div>
       )}
 
-      {/* Logout Modal */}
+     {/* Logout Modal */}
       {isLogoutModalOpen && (
-        <div
-          className={`modal-overlay active`}
-          id="logoutModal"
-          ref={logoutModalRef}
-          onClick={(e) => e.target === logoutModalRef.current && closeLogoutModal()}
-        >
+        <div className="modal-overlay active" ref={logoutModalRef}>
           <div className="logout-modal">
             <div className="logout-modal-icon">
-              <LogOut size={48} />
+              <LogOut size={25} color="#f59e0b" />
             </div>
             <h3>Confirm Logout</h3>
             <p>Are you sure you want to log out of your account?</p>
             <div className="logout-modal-buttons">
-              <button className={`logout-modal-btn cancel`} onClick={closeLogoutModal}>
+              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
                 No
               </button>
-              <button className={`logout-modal-btn confirm`} onClick={confirmLogout}>
+              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
                 Yes
               </button>
             </div>

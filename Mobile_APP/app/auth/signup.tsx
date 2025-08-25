@@ -162,7 +162,11 @@ interface ProfilePicture {
 
 // Updated API configuration
 const API_CONFIG = {
-  BASE_URL: 'http://10.0.0.79:8000/api/kutsero/signup/',
+<<<<<<< HEAD
+  BASE_URL: 'http://192.168.101.2:8000/api/signup_mobile/',
+=======
+  BASE_URL: 'http://172.20.10.2:8000/api/kutsero/signup/',
+>>>>>>> a48615e9b47c1adec476d489063b5a3fc850a2dd
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,

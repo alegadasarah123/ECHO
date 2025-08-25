@@ -85,7 +85,22 @@ export default function LoginScreen() {
 
       console.log("Attempting login for:", email.trim().toLowerCase())
 
-      const response = await fetch("http://10.0.0.79:8000/api/kutsero/login/", {
+<<<<<<< HEAD
+      const response = await fetch(
+        "http://192.168.101.2:8000/api/login_mobile/",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: email.trim().toLowerCase(),
+            password: password.trim(),
+          }),
+        }
+      )
+=======
+      const response = await fetch("http://172.20.10.2:8000/api/kutsero/login/", {
         method: "POST",
         headers: { 
           "Content-Type": "application/json"
@@ -95,6 +110,7 @@ export default function LoginScreen() {
           password: password.trim()
         }),
       })
+>>>>>>> a48615e9b47c1adec476d489063b5a3fc850a2dd
 
       const data = await response.json()
       console.log("Login response status:", response.status)
@@ -144,10 +160,11 @@ export default function LoginScreen() {
           })
         }
 
+<<<<<<< HEAD
         // Validate user role
         const userRole = data.user_role?.toLowerCase()?.trim()
         console.log("Processing user role:", userRole)
-        
+
         if (!userRole) {
           console.error("❌ No user role received")
           Alert.alert("Error", "No user role found. Please contact support.")
@@ -157,75 +174,166 @@ export default function LoginScreen() {
         // Route based on user role
         if (userRole === "kutsero") {
           console.log("✅ Routing to kutsero dashboard")
-          
-          // Show success message first
-          const statusMsg = data.user_status === "pending" 
-            ? "\n\nNote: Your account is pending approval but you can still use the app." 
-            : ""
-          
+
+          const statusMsg =
+            data.user_status === "pending"
+              ? "\n\nNote: Your account is pending approval but you can still use the app."
+              : ""
+
           Alert.alert(
-            "Login Successful", 
+            "Login Successful",
             `Welcome ${data.user?.email || "User"}!${statusMsg}`,
-            [{ 
-              text: "Continue", 
-              onPress: () => {
-                router.replace("../KUTSERO/dashboard")
-              }
-            }]
+            [
+              {
+                text: "Continue",
+                onPress: () => {
+                  router.replace("/KUTSERO/dashboard") // ✅ fixed path
+                },
+              },
+            ]
           )
-          
-        } else if (userRole === "horse_operator") {
+        } else if (
+          userRole === "Horse Operator"
+        ) {
           console.log("✅ Routing to horse operator home")
-          
-          const statusMsg = data.user_status === "pending" 
-            ? "\n\nNote: Your account is pending approval but you can still use the app." 
-            : ""
-          
+
+          const statusMsg =
+            data.user_status === "pending"
+              ? "\n\nNote: Your account is pending approval but you can still use the app."
+              : ""
+
           Alert.alert(
-            "Login Successful", 
+            "Login Successful",
             `Welcome ${data.user?.email || "User"}!${statusMsg}`,
-            [{ 
-              text: "Continue", 
-              onPress: () => {
-                router.replace("../HORSE_OPERATOR/home")
-              }
-            }]
+            [
+              {
+                text: "Continue",
+                onPress: () => {
+                  router.replace("/HORSE_OPERATOR/home") // ✅ fixed path
+                },
+              },
+            ]
           )
-          
         } else {
           console.log("❌ Unrecognized user role:", userRole)
-          Alert.alert("Error", `Unrecognized user role: ${userRole}. Please contact support.`)
+          Alert.alert(
+            "Error",
+            `Unrecognized user role: ${userRole}. Please contact support.`
+          )
           return
         }
-
       } else {
         // Handle login errors
-        console.error("❌ Login failed:", data.message || data.error || "Unknown error")
-        
+        console.error(
+          "❌ Login failed:",
+          data.message || data.error || "Unknown error"
+        )
+
         let errorMessage = "Login failed. Please try again."
-        
+
         if (data.message) {
           errorMessage = data.message
         } else if (data.error) {
           errorMessage = data.error
         } else if (response.status === 401) {
-          errorMessage = "Invalid email or password. Please check your credentials."
+          errorMessage =
+            "Invalid email or password. Please check your credentials."
         } else if (response.status >= 500) {
           errorMessage = "Server error. Please try again later."
         } else if (response.status >= 400) {
           errorMessage = "Invalid request. Please check your input."
+=======
+        // Enhanced role validation and routing
+        const validatedRole = validateUserRole(data.user_role)
+        const capitalizedRole = capitalizeRole(data.user_role)
+        
+        console.log("Processing user role:", data.user_role, "Validated:", validatedRole, "Display as:", capitalizedRole)
+        
+        if (!validatedRole) {
+          console.error("❌ Invalid or unrecognized user role:", data.user_role)
+          Alert.alert(
+            "Access Denied", 
+            `Unrecognized user role: ${capitalizedRole || 'Unknown'}. Please contact support for assistance.`
+          )
+          return
         }
 
+        // Check user status for additional messaging
+        const getStatusMessage = (status: string) => {
+          switch (status?.toLowerCase()) {
+            case "pending":
+              return "\n\nNote: Your account is pending approval but you can still use the app."
+            case "suspended":
+              return "\n\nWarning: Your account is currently suspended. Some features may be limited."
+            case "rejected":
+              return "\n\nYour account has been rejected. Please contact support for more information."
+            case "approved":
+            default:
+              return ""
+          }
+        }
+
+        const statusMessage = getStatusMessage(data.user_status)
+        const targetRoute = ROLE_ROUTES[validatedRole]
+
+        // Show role-specific welcome message and navigate
+        Alert.alert(
+          "Login Successful", 
+          `Welcome ${capitalizedRole} ${data.user?.email || "User"}!${statusMessage}`,
+          [{ 
+            text: "Continue", 
+            onPress: () => {
+              console.log(`✅ Routing ${validatedRole} to ${targetRoute}`)
+              router.replace(targetRoute)
+            }
+          }]
+        )
+
+      } else {
+        // Enhanced error handling
+        console.error("❌ Login failed:", data.message || data.error || "Unknown error")
+        
+        const getErrorMessage = (status: number, data: any) => {
+          if (data.message) return data.message
+          if (data.error) return data.error
+          
+          switch (status) {
+            case 401:
+              return "Invalid email or password. Please check your credentials."
+            case 403:
+              return "Access denied. Your account may be suspended or rejected."
+            case 429:
+              return "Too many login attempts. Please wait a moment and try again."
+            case 500:
+            case 502:
+            case 503:
+              return "Server error. Please try again later."
+            default:
+              return "Login failed. Please check your input and try again."
+          }
+>>>>>>> a48615e9b47c1adec476d489063b5a3fc850a2dd
+        }
+
+        const errorMessage = getErrorMessage(response.status, data)
         Alert.alert("Login Error", errorMessage)
       }
     } catch (error) {
       console.error("❌ Login error:", error)
-      
-      let errorMessage = "Network error. Please check your connection and try again."
-      
+<<<<<<< HEAD
+
+      let errorMessage =
+        "Network error. Please check your connection and try again."
+
       if (error instanceof Error) {
         if (error.message.includes("Network request failed")) {
-          errorMessage = "Unable to connect to server. Please check your internet connection."
+          errorMessage =
+            "Unable to connect to server. Please check your internet connection."
+=======
+      
+      const getNetworkErrorMessage = (error: Error) => {
+        if (error.message.includes("Network request failed")) {
+          return "Unable to connect to server. Please check your internet connection."
+>>>>>>> a48615e9b47c1adec476d489063b5a3fc850a2dd
         } else if (error.message.includes("timeout")) {
           return "Request timed out. Please try again."
         } else if (error.message.includes("fetch")) {
@@ -234,7 +342,15 @@ export default function LoginScreen() {
           return "An unexpected error occurred. Please try again."
         }
       }
+<<<<<<< HEAD
+
+=======
       
+      const errorMessage = error instanceof Error 
+        ? getNetworkErrorMessage(error)
+        : "Network error. Please check your connection and try again."
+      
+>>>>>>> a48615e9b47c1adec476d489063b5a3fc850a2dd
       Alert.alert("Connection Error", errorMessage)
     } finally {
       setIsLoginLoading(false)

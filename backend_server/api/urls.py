@@ -1,5 +1,7 @@
 <<<<<<< HEAD
 =======
+
+>>>>>>> a48615e9b47c1adec476d489063b5a3fc850a2dd
 from django.contrib import admin
 from django.urls import path, include
 from . import views
@@ -7,6 +9,7 @@ from . import views
 urlpatterns = [
     path('api/kutsero/', include('api.kutsero.urls')),
     path('api/horse_operator/', include('api.horse_operator.urls')), 
+    path('', include('api.ctu_vetmed.urls')),
     path('api/login/', views.login, name='login'),  # Add api/ here
     path('api/signup/', views.signup, name='signup'),
     path('api/get_data/', views.get_data, name='get_data'),

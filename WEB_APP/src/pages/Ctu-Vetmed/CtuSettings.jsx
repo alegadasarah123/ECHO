@@ -83,13 +83,15 @@ function CtuSettings() {
     setIsLogoutModalOpen(false)
   }
 
-  const confirmLogout = () => {
-    console.log("User logged out")
-    localStorage.removeItem("currentUser")
-    localStorage.removeItem("loginTime")
-    navigate("/login")
-    closeLogoutModal()
-  }
+ const confirmLogout = () => {
+  console.log("User logged out")
+  localStorage.removeItem("currentUser")
+  localStorage.removeItem("loginTime")
+  closeLogoutModal()
+  navigate("/")
+  window.location.reload()
+}
+
 
   const markAllNotificationsRead = () => {
     setNotifications(notifications.map((n) => ({ ...n, read: true })))
@@ -101,9 +103,7 @@ function CtuSettings() {
   }
 
   // Added search input handler
-  const handleSearchInput = (e) => {
-    setSearchTerm(e.target.value.toLowerCase())
-  }
+ 
 
   // Settings navigation functions
   const openProfileSettings = () => {
@@ -236,6 +236,7 @@ function CtuSettings() {
       lastName: lastname.trim(),
       phoneNumber: phone.trim(),
       password: password.trim(),
+      role: "Ctu-VetMed",
     }
 
     try {
@@ -261,19 +262,17 @@ function CtuSettings() {
 
       // Add the new user to the table
       setUsers((prev) => [
-        ...prev,
-        {
-          id: data.user.id,
-          firstname: data.user.firstName,
-          lastname: data.user.lastName,
-          email: data.user.email,
-          phone: data.user.phoneNumber,
-          password: data.user.password,
-          role: "Ctu-Vet",
-          status: "Active",
-        },
-      ])
-
+  ...prev,
+  {
+    id: data.user.id,
+    firstname: data.user.firstName,
+    lastname: data.user.lastName,
+    email: data.user.email,
+    phone: data.user.phoneNumber,
+    role: data.user.role || "Ctu-VetMed", // use backend role
+    status: "Active",
+  },
+])
       // Reset form
       setNewUser({ firstname: "", lastname: "", email: "", phone: "", password: "" })
 
@@ -324,6 +323,8 @@ function CtuSettings() {
       strengthBar.classList.add("strengthStrong")
     }
   }
+
+  const currentUser = JSON.parse(localStorage.getItem("currentUser")) || {};
 
   // Effects
   useEffect(() => {
@@ -1535,7 +1536,7 @@ function CtuSettings() {
       {/* ... existing sidebar and header code ... */}
       <div className="sidebars" id="sidebars" ref={sidebarRef}>
         <div className="sidebarsLogo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
         </div>
         <nav className="navMenu">
           {[
@@ -1612,11 +1613,7 @@ function CtuSettings() {
           <div className="search-containers">
             <div className="search-icon"></div>
             <input
-              type="text"
-              className="search-input"
-              placeholder="Search......"
-              value={searchTerm}
-              onChange={handleSearchInput}
+              
             />
           </div>
           <div className="notificationBell" ref={notificationBellRef} onClick={toggleNotificationDropdown}>
@@ -2046,8 +2043,8 @@ function CtuSettings() {
                             onChange={(e) => handleNewUserChange("role", e.target.value)}
                           >
                             <option value="">Select role</option>
-                            <option value="admin">Administrator</option>
-                            <option value="veterinarian">Veterinarian</option>
+                            <option value="admin">Ctu-Vetmed</option>
+                            <option value="veterinarian">Dvmf</option>
                           </select>
                         </div>
                         <div className="formGroup">
@@ -2089,74 +2086,90 @@ function CtuSettings() {
                   </div>
 
                   {/* Users List Section */}
-                  <div className="userSection">
-                    <h3 className="userSectionTitle">Existing Users</h3>
-                    {users.length === 0 ? (
-                      <div className="empty-state">
-                        <Users size={48} />
-                        <h3>No users found</h3>
-                        <p>Add your first user to get started</p>
-                      </div>
-                    ) : (
-                      <div className="usersTable">
-                        <div className="tableHeader">
-                          <div className="tableHeaderCell">First Name</div>
-                          <div className="tableHeaderCell">Last Name</div>
-                          <div className="tableHeaderCell">Email</div>
-                          <div className="tableHeaderCell">Phone</div>
-                          <div className="tableHeaderCell">Role</div>
-                          <div className="tableHeaderCell">Password</div>
-                          <div className="tableHeaderCell">Status</div>
-                          <div className="tableHeaderCell">Actions</div>
+                    <div className="userSection">
+                      <h3 className="userSectionTitle">Existing Users</h3>
+                      {users.length === 0 ? (
+                        <div className="empty-state">
+                          <Users size={48} />
+                          <h3>No users found</h3>
+                          <p>Add your first user to get started</p>
                         </div>
-                        {users.map((user) => (
-                          <div key={user.id} className="tableRow">
-                            <div className="tableCell">{user.firstname}</div>
-                            <div className="tableCell">{user.lastname}</div>
-                            <div className="tableCell">{user.email}</div>
-                            <div className="tableCell">{user.phone}</div>
-                            <div className="tableCell">
-                              <span className={`roleBadge role${user.role}`}>{user.role}</span>
-                            </div>
-                            <div className="tableCell">
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                <span style={{ fontFamily: "monospace", fontSize: "14px" }}>
-                                  {passwordVisibility[user.id] ? user.password : "•".repeat(user.password.length)}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => toggleTablePasswordVisibility(user.id)}
-                                  style={{
-                                    background: "none",
-                                    border: "none",
-                                    cursor: "pointer",
-                                    color: "#666",
-                                    fontSize: "14px",
-                                    padding: "2px",
-                                  }}
-                                  title={passwordVisibility[user.id] ? "Hide password" : "Show password"}
-                                >
-                                  {passwordVisibility[user.id] ? <EyeOff size={16} /> : <Eye size={16} />}
-                                </button>
-                              </div>
-                            </div>
-                            <div className="tableCell">
-                              <span className={`statusBadge status${user.status.toLowerCase()}`}>{user.status}</span>
-                            </div>
-                            <div className="tableCell">
-                              <button
-                                className="btn btnDanger btnSmall"
-                                onClick={() => deleteUser(user.id)}
-                                title="Delete user"
-                              >
-                                <Trash2 size={16} />
-                              </button>
-                            </div>
+                      ) : (
+                        <div className="usersTable">
+                          <div className="tableHeader">
+                            <div className="tableHeaderCell">First Name</div>
+                            <div className="tableHeaderCell">Last Name</div>
+                            <div className="tableHeaderCell">Email</div>
+                            <div className="tableHeaderCell">Phone</div>
+                            <div className="tableHeaderCell">Role</div>
+                            <div className="tableHeaderCell">Password</div>
+                            <div className="tableHeaderCell">Status</div>
+                            <div className="tableHeaderCell">Actions</div>
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
+
+                          {users
+                            .filter((user) => {
+                                // Admin sees all users
+                                if (currentUser.role === "admin") return true;
+
+                                // Non-admin users see only themselves
+                                return user.id === currentUser.id;
+                            })
+                            .map((user) => (
+                              <div key={user.id} className="tableRow">
+                                <div className="tableCell">{user.firstname}</div>
+                                <div className="tableCell">{user.lastname}</div>
+                                <div className="tableCell">{user.email}</div>
+                                <div className="tableCell">{user.phone}</div>
+                                <div className="tableCell">
+                                  <span className={`roleBadge role${user.role}`}>{user.role}</span>
+                                </div>
+                                <div className="tableCell">
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                    <span style={{ fontFamily: "monospace", fontSize: "14px" }}>
+                                      {passwordVisibility[user.id]
+                                        ? user.password
+                                        : "•".repeat(user.password.length)}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleTablePasswordVisibility(user.id)}
+                                      style={{
+                                        background: "none",
+                                        border: "none",
+                                        cursor: "pointer",
+                                        color: "#666",
+                                        fontSize: "14px",
+                                        padding: "2px",
+                                      }}
+                                      title={
+                                        passwordVisibility[user.id] ? "Hide password" : "Show password"
+                                      }
+                                    >
+                                      {passwordVisibility[user.id] ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="tableCell">
+                                  <span className={`statusBadge status${user.status.toLowerCase()}`}>
+                                    {user.status}
+                                  </span>
+                                </div>
+                                <div className="tableCell">
+                                  <button
+                                    className="btn btnDanger btnSmall"
+                                    onClick={() => deleteUser(user.id)}
+                                    title="Delete user"
+                                  >
+                                    <Trash2 size={16} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+
                 </div>
                 <div className="formActions">
                   <button type="button" className="btn btnSecondary" onClick={goBackToSettings}>
@@ -2164,8 +2177,8 @@ function CtuSettings() {
                   </button>
                 </div>
               </div>
-            )}
-          </div>
+              )}
+            </div>
         </div>
       </div>
 
@@ -2178,7 +2191,7 @@ function CtuSettings() {
         >
           <div className="logoutModal">
             <div className="logoutModalIcon">
-              <LogOut size={48} />
+             <LogOut size={25} color="#f59e0b" />
             </div>
             <h3>Confirm Logout</h3>
             <p>Are you sure you want to log out of your account?</p>

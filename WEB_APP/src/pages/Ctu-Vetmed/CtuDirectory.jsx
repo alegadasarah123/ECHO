@@ -1053,7 +1053,7 @@ body {
 
       <div ref={sidebarRef} className={`sidebars ${isSidebarOpen ? "open" : ""}`}>
         <div className="sidebars-logo">
-          <img src="/images/logo.png" alt="CTU Logo" className="logo" />
+           <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
         </div>
 
         <nav className="nav-menu">
