@@ -1,38 +1,27 @@
 "use client"
+import Sidebar from "@/components/CtuSidebar";
 import {
   AlertTriangle,
   ArrowLeft,
-  BarChart3,
-  Bell,
-  BellOff,
-  Check,
   CheckCircle,
   ClipboardList,
   Eye,
-  FileText,
-  Folder,
   Info,
-  LayoutDashboard,
-  LogOut,
-  Megaphone,
-  Menu,
   Printer,
   Search,
-  Settings,
   Stethoscope,
   Syringe,
-  UserCheck,
   X,
   XCircle
-} from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 function CtuHorseRecord() {
   const navigate = useNavigate()
 
   // State for sidebar and modals
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Added state for sidebar open/close
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
   const [isHorseModalOpen, setIsHorseModalOpen] = useState(false)
   const [isMedicalRecordModalOpen, setIsMedicalRecordModalOpen] = useState(false)
@@ -51,7 +40,7 @@ function CtuHorseRecord() {
   const [selectedMedicalRecord, setSelectedMedicalRecord] = useState(null)
   const [selectedTreatmentHistory, setSelectedTreatmentHistory] = useState(null)
 
-   const handleChatButtonClick = () => {
+  const handleChatButtonClick = () => {
     console.log("Chat button clicked")
     navigate("/CtuMessage")
   }
@@ -63,6 +52,7 @@ function CtuHorseRecord() {
   const medicalRecordModalRef = useRef(null)
   const treatmentHistoryModalRef = useRef(null)
   const logoutModalRef = useRef(null)
+  const sidebarRef = useRef(null)
 
   // Helper to format time for notifications
   const formatTimeAgo = useCallback((timestamp) => {
@@ -192,16 +182,16 @@ function CtuHorseRecord() {
   }
 
   const confirmLogout = () => {
-  console.log("User logged out")
-  localStorage.removeItem("currentUser")
-  localStorage.removeItem("loginTime")
-  closeLogoutModal()
-  navigate("/")
-  window.location.reload()
-}
+    console.log("User logged out")
+    localStorage.removeItem("currentUser")
+    localStorage.removeItem("loginTime")
+    closeLogoutModal()
+    navigate("/")
+    window.location.reload()
+  }
 
   const toggleSidebar = () => {
-    setIsSidebarExpanded((prev) => !prev)
+    setIsSidebarOpen((prev) => !prev)
   }
 
   // Effects for click outside and resize
@@ -250,13 +240,13 @@ function CtuHorseRecord() {
       const mobileMenuBtn = document.querySelector(".mobile-menu-btn")
       if (
         window.innerWidth <= 768 &&
-        isSidebarExpanded &&
+        isSidebarOpen &&
         sidebar &&
         !sidebar.contains(event.target) &&
         mobileMenuBtn &&
         !mobileMenuBtn.contains(event.target)
       ) {
-        setIsSidebarExpanded(false)
+        setIsSidebarOpen(false)
       }
     }
 
@@ -270,13 +260,13 @@ function CtuHorseRecord() {
     isMedicalRecordModalOpen,
     isTreatmentHistoryModalOpen,
     isLogoutModalOpen,
-    isSidebarExpanded,
+    isSidebarOpen,
   ])
 
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth > 768) {
-        setIsSidebarExpanded(false)
+        setIsSidebarOpen(false)
       }
     }
     window.addEventListener("resize", handleResize)
@@ -305,124 +295,13 @@ body {
   width: 100%;
 }
 
-/* Sidebar Styles */
-.sidebars {
-  width: 250px;
-  background-color: #b91c1c;
-  color: white;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  height: 100vh;
-  left: 0;
-  top: 0;
-  z-index: 1000;
-  transition: transform 0.3s ease;
-}
 
-.sidebars-logo {
-  padding: 5px;
-  display: flex;
-  justify-content: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.sidebars-logo img {
-  width: 250px;
-  height: 200px;
-  object-fit: contain;
-}
-
-.nav-menu {
-  flex: 1;
-  padding: 20px 0;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 40px;
-  color: white;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  margin: 0px 0px 2px 0;
-  position: relative;
-  margin-left: 10px;
-  min-height: 44px;
-}
-
-.nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 25px 0 0 25px;
-}
-
-.nav-item.active {
-  background-color: #f3f4f6;
-  color: #b91c1c;
-  border-radius: 20px 0 0 20px;
-  font-weight: 500;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  width: 240px;
-  margin-left: 10px;
-}
-
-.nav-item.active .nav-icon {
-  color: #b91c1c;
-}
-
-.nav-icon {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
- .logouts {
-  padding: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.logout-btns {
-  display: flex;
-  align-items: center;
-  color: white;
-  text-decoration: none;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  padding: 14px 40px;
-  border-radius: 25px;
-  transition: all 0.3s ease;
-  min-height: 44px;
-}
-
-.logout-btns:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.logout-icons {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
 
 
 
 /* Main Content & Header */
 .main-content {
-  margin-left: 250px;
+
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -451,11 +330,12 @@ body {
 .search-input {
   width: 100%;
   padding: 8px 16px 8px 40px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid #b91c1c;
   border-radius: 8px;
   font-size: clamp(12px, 2vw, 14px);
   outline: none;
   min-height: 40px;
+  margin-bottom: 10px;
 }
 
 .search-input:focus {
@@ -1616,83 +1496,6 @@ textarea.form-input {
           border-radius: 50%;
         }
 
-/* Logout Modal Styles */
-.logout-modal {
-  background: white;
-  border-radius: 12px;
-  padding: 32px;
-  width: 90%;
-  max-width: 400px;
-  text-align: center;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-}
-
-.logout-modal-icon {
-  width: 64px;
-  height: 64px;
-  background: #fef3c7;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 20px;
-}
-
-.logout-modal-icon i {
-  font-size: 28px;
-  color: #f59e0b;
-}
-
-.logout-modal h3 {
-  font-size: 20px;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 12px;
-}
-
-.logout-modal p {
-  font-size: 16px;
-  color: #6b7280;
-  margin-bottom: 32px;
-  line-height: 1.5;
-}
-
-.logout-modal-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.logout-modal-btn {
-  padding: 12px 24px;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 100px;
-  min-height: 44px;
-}
-
-.logout-modal-btn.cancel {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.logout-modal-btn.cancel:hover {
-  background: #e5e7eb;
-}
-
-.logout-modal-btn.confirm {
-  background: #ef4444;
-  color: white;
-}
-
-.logout-modal-btn.confirm:hover {
-  background: #dc2626;
-}
 
 /* Media Queries */
 /* Tablet */
@@ -1724,14 +1527,7 @@ textarea.form-input {
     display: block;
   }
 
-  .sidebars {
-    transform: translateX(-100%);
-    transition: transform 0.3s;
-  }
-
-  .sidebars.open {
-    transform: translateX(0);
-  }
+ 
 
   .main-content {
     margin-left: 0;
@@ -1846,7 +1642,7 @@ textarea.form-input {
 /* Touch devices */
 @media (hover: none) and (pointer: coarse) {
   .nav-item,
-  .logout-btn {
+ {
     min-height: 48px;
   }
 
@@ -1858,7 +1654,7 @@ textarea.form-input {
 
 /* Print Styles */
 @media print {
-  .sidebars,
+  
   .main-content,
     .chat-widget {
             bottom: 16px;
@@ -1983,136 +1779,31 @@ textarea.form-input {
     page-break-before: auto;
   }
 }
+  .dashboard-title {
+          font-size: 22px;
+          font-weight: bold;
+          color: #da2424ff;
+        }
 
       `}</style>
-      <button className="mobile-menu-btn" onClick={toggleSidebar}>
-        <Menu size={20} />
-      </button>
-      <div className={`sidebars ${isSidebarExpanded ? "open" : ""}`} id="sidebars">
-        <div className="sidebars-logo">
-          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
-        </div>
-        <nav className="nav-menu">
-          {[
-            { name: "Dashboard", icon: LayoutDashboard, path: "/CtuDashboard" },
-            { name: "Account Approval", icon: UserCheck, path: "/CtuAccountApproval" },
-            { name: "Access Requests", icon: FileText, path: "/CtuAccessRequest" },
-            { name: "Horse Records", icon: ClipboardList, path: "/CtuHorseRecord", active: true },
-            { name: "Health Reports", icon: BarChart3, path: "/CtuHealthReport" },
-            { name: "Announcements", icon: Megaphone, path: "/CtuAnnouncement" },
-            { name: "Directory", icon: Folder, path: "/CtuDirectory" },
-            { name: "Settings", icon: Settings, path: "/CtuSettings" },
-          ].map((item) => {
-            const IconComponent = item.icon
-            return (
-              <Link
-                key={item.name}
-                to={item.path}
-                className={`nav-item ${item.active ? "active" : ""}`}
-                onClick={() => {
-                  if (isSidebarExpanded) {
-                    setIsSidebarExpanded(false)
-                  }
-                }}
-              >
-                <IconComponent className="nav-icon" size={18} />
-                {item.name}
-              </Link>
-            )
-          })}
-        </nav>
-        <div className="logouts">
-          <a href="#" className="logout-btns" id="logoutBtn" onClick={openLogoutModal}>
-            <LogOut className="logout-icons" size={18} />
-            Log Out
-          </a>
-        </div>
+      <div className="sidebars" id="sidebars">
+        <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
       </div>
       <div className="main-content">
         <header className="headers">
-          <div className="search-containers">
-            <Search className="search-icon" size={18} />
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search......"
-              id="searchInput"
-              onChange={handleSearchInput}
-            />
+          <div className="dashboard-container">
+            <h2 className="dashboard-title">Horse Records</h2>
+           
           </div>
-          <div
-            className="notification-bell"
-            id="notification-bell"
-            ref={notificationBellRef}
-            onClick={() => setIsNotificationDropdownOpen((prev) => !prev)}
-          >
-            <Bell size={20} />
-            {unreadNotificationCount > 0 && (
-              <div className="notification-count" style={{ display: "flex" }}>
-                {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
-              </div>
-            )}
-            <div
-              className={`notification-dropdown ${isNotificationDropdownOpen ? "show" : ""}`}
-              id="notification-dropdown"
-              ref={notificationDropdownRef}
-            >
-              <div className="notification-header">
-                <h3>Notifications</h3>
-                {unreadNotificationCount > 0 && (
-                  <button className="mark-all-read" onClick={markAllAsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div id="notificationList">
-                {notifications.length === 0 ? (
-                  <div className="empty-state">
-                    <BellOff size={48} />
-                    <h3>No notifications</h3>
-                    <p>You're all caught up!</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => {
-                    const NotificationIcon = getNotificationIconClass(notification.type)
-                    return (
-                      <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
-                        <div className="notification-actions">
-                          {!notification.read && (
-                            <button
-                              className="notification-action"
-                              onClick={() => markAsRead(notification.id)}
-                              title="Mark as read"
-                            >
-                              <Check size={14} />
-                            </button>
-                          )}
-                          <button
-                            className="notification-action"
-                            onClick={() => deleteNotification(notification.id)}
-                            title="Delete"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                        <div className="notification-title">
-                          <NotificationIcon className={`notification-icon ${notification.type}`} size={16} />
-                          {notification.title}
-                        </div>
-                        <div className="notification-message">{notification.message}</div>
-                        <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
-                      </div>
-                    )
-                  })
-                )}
-              </div>
-            </div>
-          </div>
+          
         </header>
 
         <div className="content-areas">
           <div className="page-header">
-            <h1 className="page-title">Horse Records</h1>
+             <div className="search-container">
+            <Search className="search-icon" size={20} />
+            <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
+          </div>
             <div className="controls-rows">
               <div className="filter-controlss">
                 <select className="filter-select" id="areaFilter" value={areaFilter} onChange={handleAreaFilterChange}>
@@ -2182,7 +1873,7 @@ textarea.form-input {
             <div className="chat-dot" />
           </div>
         </button>
-        </div>
+      </div>
       {/* Horse Details Modal */}
       {isHorseModalOpen && selectedHorse && (
         <div className="modal-overlay active" id="horseModal" ref={horseModalRef}>
@@ -2540,26 +2231,6 @@ textarea.form-input {
         </div>
       )}
       ;
-      {/* Logout Modal */}
-      {isLogoutModalOpen && (
-        <div className="modal-overlay active" ref={logoutModalRef}>
-          <div className="logout-modal">
-            <div className="logout-modal-icon">
-              <LogOut size={25} color="#f59e0b" />
-            </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons">
-              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
-                No
-              </button>
-              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

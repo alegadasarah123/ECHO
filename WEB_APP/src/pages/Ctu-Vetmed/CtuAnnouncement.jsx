@@ -1,14 +1,13 @@
 "use client"
-import React, { useCallback, useEffect, useRef, useState } from "react"
+import Sidebar from "@/components/CtuSidebar";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
-import { Link, useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router-dom";
 
 import {
   AlertTriangle,
   Angry,
   BarChart3,
-  Bell,
-  BellOff,
   CheckCircle,
   ClipboardList,
   FileText,
@@ -20,28 +19,28 @@ import {
   LayoutDashboard,
   LogOut,
   Megaphone,
-  Search,
   Settings,
   ThumbsUp,
   Upload,
   UserCheck,
   XCircle,
-  Zap,
-} from "lucide-react"
+  Zap
+} from "lucide-react";
 
 function CtuAnnouncement() {
   const navigate = useNavigate()
 
   // State for sidebar and modals
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
+
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [isImageModalOpen, setIsImageModalOpen] = useState(false)
   const [modalImageSrc, setModalImageSrc] = useState("")
   const [searchTerm, setSearchTerm] = useState("") // Declare setSearchTerm variable
-
+  const [isSidebarsOpen, setIsSidebarsOpen] = useState(false)
   // State for tabs
   const [activeTab, setActiveTab] = useState("information")
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
 
   // State for post creation
   const [postInputText, setPostInputText] = useState("")
@@ -108,9 +107,7 @@ function CtuAnnouncement() {
 
   const loadNotifications = useCallback(() => {
     // Placeholder for fetching notifications from backend
-    setNotifications([
-     
-    ])
+    setNotifications([])
   }, [])
 
   const handleTabChange = (tabName) => {
@@ -403,9 +400,11 @@ function CtuAnnouncement() {
 
   const confirmLogout = () => {
     console.log("User logged out")
-    // In a real app, clear authentication tokens/session
-    navigate("/login") // Assuming this is your login route
+    localStorage.removeItem("currentUser")
+    localStorage.removeItem("loginTime")
     closeLogoutModal()
+    navigate("/")
+    window.location.reload()
   }
 
   const toggleSidebar = () => {
@@ -745,121 +744,9 @@ body {
 }
 
 /* Sidebar Styles */
-.sidebars {
-  width: 250px;
-  background-color:#b91c1c;
-  color: white;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  height: 100vh;
-  left: 0;
-  top: 0;
-  z-index: 1000;
-  transition: transform 0.3s ease;
-}
-
-.sidebars-logo {
-  padding: 5px;
-  display: flex;
-  justify-content: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.sidebars-logo img {
-  width: 250px;
-  height: 200px;
-  object-fit: contain;
-}
-
-.nav-menu {
-  flex: 1;
-  padding: 20px 0;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 40px;
-  color: white;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  margin: 0px 0px 2px 0;
-  position: relative;
-  margin-left: 10px;
-  min-height: 44px;
-}
-
-.nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 25px 0 0 25px;
-}
-
-.nav-item.active {
-  background-color: #f3f4f6;
-  color: #b91c1c;
-  border-radius: 20px 0 0 20px;
-  font-weight: 500;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  width: 240px;
-  margin-left: 10px;
-}
-
-.nav-icon {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.nav-item.active .nav-icon {
-  color: #b91c1c;
-}
-
- .logouts {
-  padding: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.logout-btns {
-  display: flex;
-  align-items: center;
-  color: white;
-  text-decoration: none;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  padding: 14px 40px;
-  border-radius: 25px;
-  transition: all 0.3s ease;
-  min-height: 44px;
-}
-
-.logout-btns:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.logout-icons {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
 
 .main-content {
-  margin-left: 250px;
+
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -2240,21 +2127,12 @@ body {
   .mobile-menu-btn {
     display: block;
   }
-  .sidebars {
-    transform: translateX(-100%);
-    transition: transform 0.3s;
-  }
-  .sidebars.open {
-    transform: translateX(0);
-  }
+ 
   .main-content {
     margin-left: 0;
     width: 100%;
   }
-  .headers {
-    margin-left: 60px;
-    padding: 12px 16px;
-  }
+ 
   .search-containers {
     margin-right: 10px;
     min-width: 150px;
@@ -2311,12 +2189,7 @@ body {
 
 /* Small Mobile */
 @media (max-width: 480px) {
-  .headers {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    margin-left: 50px;
-  }
+  
   .search-containers {
     margin-right: 0;
     min-width: auto;
@@ -2759,111 +2632,11 @@ body {
 
       `}</style>
 
-      <button className="mobile-menu-btn" onClick={toggleSidebar}>
-        ☰
-      </button>
-
-      <div className={`sidebars ${isSidebarExpanded ? "open" : ""}`} id="sidebar">
-        <div className="sidebars-logo">
-          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
-        </div>
-        <nav className="nav-menu">
-          {menuItems.map((item, index) => (
-            <Link key={index} to={item.path} className={`nav-item ${item.active ? "active" : ""}`}>
-              <item.icon className="nav-icon" size={20} />
-              {item.name}
-            </Link>
-          ))}
-        </nav>
-        <div className="logouts">
-          <a href="#" className="logout-btns" id="logoutBtn" onClick={openLogoutModal}>
-            <LogOut className="logout-icons" size={20} />
-            Log Out
-          </a>
-        </div>
+      <div className="sidebars" id="sidebar">
+        <Sidebar isOpen={isSidebarsOpen} />
       </div>
-
       <div className="main-content">
-        <header className="headers">
-          <div className="search-containers">
-            <Search className="search-icon" size={20} />
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search......"
-              id="searchInput"
-              onChange={handleSearchInput}
-            />
-          </div>
-          <div
-            className="notification-bell"
-            id="notification-bell"
-            ref={notificationBellRef}
-            onClick={() => setIsNotificationDropdownOpen((prev) => !prev)}
-          >
-             <Bell size={20} />
-            {unreadNotificationCount > 0 && (
-              <div className="notification-count" style={{ display: "flex" }}>
-                {unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}
-              </div>
-            )}
-            <div
-              className={`notification-dropdown ${isNotificationDropdownOpen ? "show" : ""}`}
-              id="notification-dropdown"
-              ref={notificationDropdownRef}
-            >
-              <div className="notification-header">
-                <h3>Notifications</h3>
-                {unreadNotificationCount > 0 && (
-                  <button className="mark-all-read" onClick={markAllAsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div id="notificationList">
-                {notifications.length === 0 ? (
-                  <div className="empty-state">
-                    <BellOff size={48} />
-                    <h3>No notifications</h3>
-                    <p>You're all caught up!</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => (
-                    <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
-                      <div className="notification-actions">
-                        {!notification.read && (
-                          <button
-                            className="notification-action"
-                            onClick={() => markAsRead(notification.id)}
-                            title="Mark as read"
-                          >
-                            <i className="fas fa-check"></i>
-                          </button>
-                        )}
-                        <button
-                          className="notification-action"
-                          onClick={() => deleteNotification(notification.id)}
-                          title="Delete"
-                        >
-                          <i className="fas fa-times"></i>
-                        </button>
-                      </div>
-                      <div className="notification-title">
-                        {React.createElement(getNotificationIcon(notification.type), {
-                          className: `notification-icon ${notification.type}`,
-                          size: 16,
-                        })}
-                        {notification.title}
-                      </div>
-                      <div className="notification-message">{notification.message}</div>
-                      <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </header>
+        
 
         <div className="content-areas">
           <div className="profile-section">

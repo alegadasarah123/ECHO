@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Users, Users2 } from 'lucide-react';
 import Sidebar from '@/components/KutSidebar';
+import { Users, Users2 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 const KutseroDashboard = () => {
   const [users, setUsers] = useState([]);

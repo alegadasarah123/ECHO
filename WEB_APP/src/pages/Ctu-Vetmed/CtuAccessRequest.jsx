@@ -1,31 +1,24 @@
 "use client"
+import Sidebar from "@/components/CtuSidebar"
 import {
   AlertTriangle,
-  BarChart3,
   Bell,
   BellOff,
   Check,
   CheckCircle,
-  ClipboardList,
   FileText,
-  Folder,
   Info,
-  LayoutDashboard,
   LogOut,
-  Megaphone,
   Search,
-  Settings,
-  UserCheck,
   X,
   XCircle,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
-
+import { useNavigate } from "react-router-dom"
 
 function CtuAccessRequest() {
   const navigate = useNavigate()
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
+  const [isSidebarsOpen, setIsSidebarsOpen] = useState(false)
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
@@ -33,10 +26,10 @@ function CtuAccessRequest() {
   const [actionDetails, setActionDetails] = useState({ title: "", message: "", action: "" })
   const [currentRequestId, setCurrentRequestId] = useState(null)
   const [accessRequests, setAccessRequests] = useState([]) // Placeholder for access request data
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth)
   const [activeFilter, setActiveFilter] = useState("pending") // Changed default from "all" to "pending"
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [deleteRequestId, setDeleteRequestId] = useState(null)
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth)
 
   const sidebarRef = useRef(null)
   const notificationBellRef = useRef(null)
@@ -90,23 +83,22 @@ function CtuAccessRequest() {
     setIsNotificationDropdownOpen((prev) => !prev)
   }
 
-  const openLogoutModal = (e) => {
-    e.preventDefault()
-    setIsLogoutModalOpen(true)
+  const toggleSidebar = () => {
+    setIsSidebarsOpen((prev) => !prev)
   }
 
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
   }
 
- const confirmLogout = () => {
-  console.log("User logged out")
-  localStorage.removeItem("currentUser")
-  localStorage.removeItem("loginTime")
-  closeLogoutModal()
-  navigate("/")
-  window.location.reload()
-}
+  const confirmLogout = () => {
+    console.log("User logged out")
+    localStorage.removeItem("currentUser")
+    localStorage.removeItem("loginTime")
+    closeLogoutModal()
+    navigate("/")
+    window.location.reload()
+  }
 
   const approveRequest = (requestId) => {
     setCurrentRequestId(requestId)
@@ -147,6 +139,11 @@ function CtuAccessRequest() {
       )
     }
     closeActionModal()
+  }
+
+  const handleChatButtonClick = () => {
+    console.log("Chat button clicked")
+    navigate("/CtuMessage")
   }
 
   const handleSearchInput = (e) => {
@@ -256,86 +253,7 @@ body {
   width: 100%;
 }
 
-.sidebars {
-  width: 250px;
-  background-color: #b91c1c;
-  color: white;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  height: 100vh;
-  left: 0;
-  top: 0;
-  z-index: 1000;
-  transition: transform 0.3s ease;
-}
-
-.sidebars-logo {
-  padding: 5px;
-  display: flex;
-  justify-content: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  position: relative; /* Needed for absolute positioning of close button */
-}
-
-.sidebars-logo img {
-  width: 250px;
-  height: 200px;
-  object-fit: contain;
-}
-
-.nav-menu {
-  flex: 1;
-  padding: 20px 0;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 40px;
-  color: white;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  margin: 0px 0px 2px 0;
-  position: relative;
-  margin-left: 10px;
-  min-height: 44px;
-}
-
-.nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 25px 0 0 25px;
-}
-
-.nav-item.active {
-  background-color: #f3f4f6;
-  color: #b91c1c;
-  border-radius: 20px 0 0 20px;
-  font-weight: 500;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  width: 240px;
-  margin-left: 10px;
-}
-
-.nav-icon {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.nav-item.active .nav-icon {
-  color: #b91c1c;
-}
-
- .logouts {
+.logouts {
   padding: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
@@ -369,9 +287,7 @@ body {
   flex-shrink: 0;
 }
 
-
 .main-content {
-  margin-left: 250px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -804,35 +720,14 @@ body {
   min-width: 44px;
 }
 
-/* New Close Button (X) inside sidebar */
-.sidebarsCloseBtn {
-  position: absolute;
-  top: 20px; /* Adjust as needed */
-  right: 20px; /* Adjust as needed */
-  background: none;
-  border: none;
-  color: white;
-  font-size: 24px;
-  cursor: pointer;
-  z-index: 1002; /* Ensure it's above other sidebar content */
-  padding: 5px;
-  border-radius: 50%;
-  transition: background-color 0.2s ease;
-}
-
-.sidebarCloseBtn:hover {
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
 /* Chat Widget Styling - Button Only */
 .chat-widget {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  z-index: 1000;
+  z-index: 999;
 }
 
-/* Chat Button - Speech Bubble Design */
 .chat-button {
   width: 64px;
   height: 64px;
@@ -841,7 +736,7 @@ body {
   border-radius: 20px;
   color: white;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
+  box-shadow: 0 4px 12px rgba(28, 44, 185, 0.3);
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
@@ -849,7 +744,6 @@ body {
   position: relative;
 }
 
-/* Speech bubble tail */
 .chat-button::after {
   content: "";
   position: absolute;
@@ -865,14 +759,13 @@ body {
 
 .chat-button:hover {
   transform: scale(1.05);
-  box-shadow: 0 6px 16px rgba(185, 28, 28, 0.4);
+  box-shadow: 0 6px 16px rgba(28, 78, 185, 0.4);
 }
 
 .chat-button:hover::after {
   border-top-color: #b91c1c;
 }
 
-/* Static three dots design */
 .chat-dots {
   display: flex;
   gap: 6px;
@@ -1076,15 +969,6 @@ body {
     display: block;
   }
 
-  .sidebars {
-    transform: translateX(-100%);
-    transition: transform 0.3s;
-  }
-
-  .sidebars.open {
-    transform: translateX(0);
-  }
-
   .main-content {
     margin-left: 0;
     width: 100%;
@@ -1095,7 +979,7 @@ body {
     padding: 12px 16px;
   }
 
-  .search-containers {
+  .search-container {
     margin-right: 10px;
     min-width: 150px;
   }
@@ -1129,38 +1013,7 @@ body {
     margin-top: 8px;
   }
 
-  .chat-widget {
-    bottom: 16px;
-    right: 16px;
-  }
-
-  .chat-button {
-    width: 56px;
-    height: 56px;
-    border-radius: 18px;
-  }
-
-  .chat-button::after {
-    bottom: -6px;
-    border-left-width: 8px;
-    border-right-width: 8px;
-    border-top-width: 8px;
-  }
-
-  .confirmation-buttons {
-    flex-direction: column;
-  }
-
-  /* Show the internal close button when the sidebar is expanded on mobile */
-  .sidebars.open .sidebarCloseBtn {
-    display: block;
-  }
-
-  /* Hide the mobile menu button when the sidebar is expanded */
-  .sidebars.open ~ .mobile-menu-btn {
-    display: none;
-  }
-}
+  
 
 /* Small Mobile */
 @media (max-width: 480px) {
@@ -1171,7 +1024,7 @@ body {
     margin-left: 50px;
   }
 
-  .search-containers {
+  .search-container {
     margin-right: 0;
     min-width: auto;
   }
@@ -1200,48 +1053,15 @@ body {
     padding: 8px 12px;
   }
 }
-
       `}</style>
 
       <div className="sidebars" id="sidebars" ref={sidebarRef}>
-        <div className="sidebars-logo">
-         <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
-
-        </div>
-        <nav className="nav-menu">
-          {[
-            {
-              name: "Dashboard",
-              icon: LayoutDashboard,
-              path: "/CtuDashboard",
-            },
-            { name: "Account Approval", icon: UserCheck, path: "/CtuAccountApproval" },
-            { name: "Access Requests", icon: FileText, path: "/CtuAccessRequest", active: true },
-            { name: "Horse Records", icon: ClipboardList, path: "/CtuHorseRecord" },
-            { name: "Health Reports", icon: BarChart3, path: "/CtuHealthReport" },
-            { name: "Announcements", icon: Megaphone, path: "/CtuAnnouncement" },
-            { name: "Directory", icon: Folder, path: "/CtuDirectory" },
-            { name: "Settings", icon: Settings, path: "/CtuSettings" },
-          ].map((item) => {
-            const IconComponent = item.icon
-            return (
-              <Link key={item.name} to={item.path} className={`nav-item ${item.active ? "active" : ""}`}>
-                <IconComponent className="nav-icon" size={20} />
-                {item.name}
-              </Link>
-            )
-          })}
-        </nav>
-        <div className="logouts">
-          <a href="#" className="logout-btns" id="logoutBtn" onClick={openLogoutModal}>
-            <LogOut className="logout-icons" size={20} />
-            Log Out
-          </a>
-        </div>
+        <Sidebar isOpen={isSidebarsOpen} />
       </div>
 
       <div className="main-content">
         <header className="headers">
+          
           <div className="search-container">
             <Search className="search-icon" size={20} />
             <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
@@ -1391,11 +1211,11 @@ body {
       </div>
 
       <div className="chat-widget">
-        <button className="chat-button" id="chatButton" onClick={() => navigate("/CtuMessage")}>
+        <button className="chat-button" onClick={handleChatButtonClick}>
           <div className="chat-dots">
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
+            <div className="chat-dot" />
+            <div className="chat-dot" />
+            <div className="chat-dot" />
           </div>
         </button>
       </div>

@@ -1,22 +1,16 @@
 "use client"
 
+import Sidebar from "@/components/CtuSidebar"
 import {
   AlertTriangle,
-  BarChart3,
   Bell,
   BellOff,
   Check,
   CheckCircle,
-  ClipboardList,
-  FileText,
   Folder,
   Info,
-  LayoutDashboard,
   LogOut,
-  Megaphone,
   Search,
-  Settings,
-  UserCheck,
   X,
   XCircle,
 } from "lucide-react"
@@ -43,10 +37,10 @@ function CtuDirectory() {
   const [notifications, setNotifications] = useState(initialNotifications)
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const sidebarRef = useRef(null)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Added state for sidebar open/close
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
+  const sidebarRef = useRef(null) // Added ref for sidebar
 
   // Utility functions
   const formatTimeAgo = useCallback((timestamp) => {
@@ -170,19 +164,7 @@ function CtuDirectory() {
     return () => {
       document.removeEventListener("mousedown", handleOutsideClick)
     }
-  }, [showNotificationDropdown, showLogoutModal, isSidebarOpen])
-
-  // Handle window resize for sidebar
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth > 768) {
-        setIsSidebarOpen(false)
-      }
-    }
-
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
+  }, [isSidebarOpen, showLogoutModal])
 
   // Navigation handler
   const handleNavigation = useCallback(
@@ -212,83 +194,8 @@ body {
   box-sizing: border-box;
 }
 
-.sidebars {
-  width: 250px;
-  background-color: #b91c1c;
-  color: white;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  height: 100vh;
-  left: 0;
-  top: 0;
-  z-index: 1000;
-  transition: transform 0.3s ease;
-}
 
-.sidebars-logo {
-  padding: 5px;
-  display: flex;
-  justify-content: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
 
-.sidebars-logo img {
-  width: 250px;
-  height: 200px;
-  object-fit: contain;
-}
-
-.nav-menu {
-  flex: 1;
-  padding: 20px 0;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 40px;
-  color: white;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  margin: 0px 0px 2px 0;
-  position: relative;
-  margin-left: 10px;
-  min-height: 44px;
-}
-
-.nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 25px 0 0 25px;
-}
-
-.nav-item.active {
-  background-color: #f8f9fa;
-  color: #b91c1c;
-  border-radius: 20px 0 0 20px;
-  font-weight: 500;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  width: 240px;
-  margin-left: 10px;
-}
-
-.nav-icon {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.nav-item.active .nav-icon {
-  color: #b91c1c;
-}
 
  .logouts {
   padding: 10px;
@@ -300,7 +207,7 @@ body {
   align-items: center;
   color: white;
   text-decoration: none;
-  font-size: clamp(13px, 2vw, 15px);
+  font-size: clamp(13px, 2vw, 14px);
   font-weight: 500;
   cursor: pointer;
   padding: 14px 40px;
@@ -325,7 +232,6 @@ body {
 }
 
 .main-content {
-  margin-left: 250px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -941,13 +847,7 @@ body {
   .mobile-menu-btn {
     display: block;
   }
-  .sidebars {
-    transform: translateX(-100%);
-    transition: transform 0.3s;
-  }
-  .sidebars.open {
-    transform: translateX(0);
-  }
+ 
   .main-content {
     margin-left: 0;
     width: 100%;
@@ -1047,59 +947,13 @@ body {
 
       `}</style>
 
-      <button className="mobile-menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-        ☰
-      </button>
-
-      <div ref={sidebarRef} className={`sidebars ${isSidebarOpen ? "open" : ""}`}>
-        <div className="sidebars-logo">
-           <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
-        </div>
-
-        <nav className="nav-menu">
-          {[
-            { name: "Dashboard", IconComponent: LayoutDashboard, page: "dashboard", route: "/CtuDashboard" },
-            {
-              name: "Account Approval",
-              IconComponent: UserCheck,
-              page: "approval",
-              route: "/CtuAccountApproval",
-            },
-            { name: "Access Requests", IconComponent: FileText, page: "requests", route: "/CtuAccessRequest" },
-            { name: "Horse Records", IconComponent: ClipboardList, page: "records", route: "/CtuHorseRecord" },
-            { name: "Health Reports", IconComponent: BarChart3, page: "reports", route: "/CtuHealthReport" },
-            { name: "Announcements", IconComponent: Megaphone, page: "announcements", route: "/CtuAnnouncement" },
-            { name: "Directory", IconComponent: Folder, page: "directory", route: "/CtuDirectory" },
-            { name: "Settings", IconComponent: Settings, page: "settings", route: "/CtuSettings" },
-          ].map((item) => (
-            <a
-              key={item.page}
-              href="#"
-              className={`nav-item ${currentPage === item.page ? "active" : ""}`}
-              onClick={(e) => {
-                e.preventDefault()
-                handleNavigation(item.route, item.page)
-              }}
-            >
-              <item.IconComponent className="nav-icon" size={20} />
-              <span>{item.name}</span>
-            </a>
-          ))}
-        </nav>
-
-        <div className="logouts">
-          <a href="#" className="logout-btns" onClick={() => setShowLogoutModal(true)}>
-            <LogOut className="logout-icons" size={20} />
-            Log Out
-          </a>
-        </div>
-      </div>
+      <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
 
       <div className="main-content">
         <header className="headers">
           <div className="search-containers">
             <div className="search-icons">
-               <Search size={20} />
+              <Search size={20} />
             </div>
             <input
               type="text"

@@ -1,37 +1,25 @@
 "use client"
 
-import {
-  BarChart3,
-  Bell,
-  BellOff,
-  ClipboardList,
-  FileText,
-  Folder,
-  LayoutDashboard,
-  LogOut,
-  Megaphone,
-  Settings,
-  UserCheck,
-} from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
+import Sidebar from "@/components/CtuSidebar";
+import { Bell, BellOff, ClipboardList } from "lucide-react"; // Assuming these icons are used
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 function CtuDashboard() {
   const navigate = useNavigate()
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
-  const [activePage, setActivePage] = useState("dashboard")
+ 
   const [notifications, setNotifications] = useState([])
   const [recordCount, setrecordCount] = useState(0)
   const [vetCount, setvetCount] = useState(0)
   const [declinedCount, setDeclinedCount] = useState(0)
   const [recentActivities, setRecentActivities] = useState([])
   const [calendarDate, setCalendarDate] = useState(new Date())
-  const [searchQuery, setSearchQuery] = useState("")
-  const [time, setTime] = useState(new Date().toLocaleTimeString())
 
-  const sidebarRef = useRef(null)
+  const [time, setTime] = useState(new Date().toLocaleTimeString())
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Added state for sidebar open/close
+
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
   const logoutModalRef = useRef(null)
@@ -116,15 +104,7 @@ function CtuDashboard() {
     console.log(`Notification ${id} clicked.`)
   }
 
-  const handleSearchInput = (e) => {
-    const searchTerm = e.target.value.toLowerCase()
-    setSearchQuery(searchTerm)
-    console.log(`Searching for: ${searchTerm}`)
-
-    if (searchTerm.length > 2) {
-      console.log("Performing search...")
-    }
-  }
+  
 
   const loadDashboardData = useCallback(() => {
     loadStats()
@@ -132,41 +112,24 @@ function CtuDashboard() {
     loadNotifications()
   }, [loadStats, loadRecentActivities, loadNotifications])
 
-  const toggleMobileMenu = () => {
-    setIsSidebarOpen((prev) => !prev)
-  }
-
   const toggleNotificationDropdown = () => {
     setIsNotificationDropdownOpen((prev) => !prev)
   }
 
-  const openLogoutModal = (e) => {
-    e.preventDefault()
-    setIsLogoutModalOpen(true)
-  }
+
 
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
   }
 
-   const confirmLogout = () => {
-  console.log("User logged out")
-  localStorage.removeItem("currentUser")
-  localStorage.removeItem("loginTime")
-  closeLogoutModal()
-  navigate("/")
-  window.location.reload()
-}
-
-  const handleNavItemClick = (page, route) => {
-    setActivePage(page)
-    navigate(route)
-  }
+ 
 
   const handleChatButtonClick = () => {
     console.log("Chat button clicked")
     navigate("/CtuMessage")
   }
+
+  
 
   // Fetch from Django backend
   useEffect(() => {
@@ -202,18 +165,6 @@ function CtuDashboard() {
         setIsNotificationDropdownOpen(false)
       }
 
-      // Close mobile sidebar
-      if (window.innerWidth <= 768) {
-        if (
-          sidebarRef.current &&
-          !sidebarRef.current.contains(event.target) &&
-          !event.target.classList.contains("mobile-menu-btn") &&
-          isSidebarOpen
-        ) {
-          setIsSidebarOpen(false)
-        }
-      }
-
       // Close logout modal
       if (logoutModalRef.current && event.target === logoutModalRef.current) {
         closeLogoutModal()
@@ -224,163 +175,29 @@ function CtuDashboard() {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
     }
-  }, [isSidebarOpen])
-
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth > 768) {
-        setIsSidebarOpen(false)
-      }
-    }
-
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-  const navigationItems = [
-    {
-      name: "Dashboard",
-      IconComponent: LayoutDashboard,
-      page: "dashboard",
-      route: "/CtuDashboard",
-    },
-    {
-      name: "Account Approval",
-      IconComponent: UserCheck,
-      page: "approval",
-      route: "/CtuAccountApproval",
-    },
-    {
-      name: "Access Requests",
-      IconComponent: FileText,
-      page: "requests",
-      route: "/CtuAccessRequest",
-    },
-    {
-      name: "Horse Records",
-      IconComponent: ClipboardList,
-      page: "records",
-      route: "/CtuHorseRecord",
-    },
-    {
-      name: "Health Reports",
-      IconComponent: BarChart3,
-      page: "reports",
-      route: "/CtuHealthReport",
-    },
-    {
-      name: "Announcements",
-      IconComponent: Megaphone,
-      page: "announcements",
-      route: "/CtuAnnouncement",
-    },
-    {
-      name: "Directory",
-      IconComponent: Folder,
-      page: "directory",
-      route: "/CtuDirectory",
-    },
-    {
-      name: "Settings",
-      IconComponent: Settings,
-      page: "settings",
-      route: "/CtuSettings",
-    },
-  ]
+
+  
 
   return (
     <div className="body-wrapper">
       <style>{`
         .body-wrapper {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          background-color: #f5f5f5;
-          display: flex;
-          height: 100vh;
-          overflow-x: hidden;
-          width: 100%;
+         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #f5f5f5;
+  display: flex;
+  height: 100vh;
+  overflow-x: hidden;
+  width: 100%; /* Ensure it takes full width */
         }
+.main-content {
 
-        .sidebars {
-          width: 250px;
-          background-color: #b91c1c;
-          color: white;
-          display: flex;
-          flex-direction: column;
-          position: fixed;
-          height: 100vh;
-          left: 0;
-          top: 0;
-          z-index: 1000;
-          transition: transform 0.3s ease;
-        }
-
-        .sidebars-logo {
-          padding: 5px;
-          display: flex;
-          justify-content: center;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .sidebars-logo img {
-          width: 250px;
-          height: 200px;
-          object-fit: contain;
-        }
-
-        .nav-menu {
-          flex: 1;
-          padding: 20px 0;
-        }
-
-        .nav-item {
-          display: flex;
-          align-items: center;
-          padding: 12px 40px;
-          color: white;
-          text-decoration: none;
-          transition: all 0.3s ease;
-          font-size: 15px;
-          font-weight: 500;
-          cursor: pointer;
-          margin: 0px 0px 2px 0;
-          position: relative;
-          margin-left: 10px;
-          min-height: 44px;
-        }
-
-        .nav-item:hover {
-          background-color: rgba(255, 255, 255, 0.1);
-          border-radius: 25px 0 0 25px;
-        }
-
-        .nav-item.active {
-          background-color: #f3f4f6;
-          color: #b91c1c;
-          border-radius: 20px 0 0 20px;
-          font-weight: 500;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-          width: 240px;
-          margin-left: 10px;
-        }
-
-        .nav-icon {
-          width: 20px;
-          height: 20px;
-          margin-right: 15px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 16px;
-          flex-shrink: 0;
-        }
-
-        .nav-item.active .nav-icon {
-          color: #b91c1c;
-        }
-
-       .logouts {
-  padding: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: calc(100% - 250px);
+  transition: margin-left 0.3s ease; /* Add transition for margin */
 }
 
 .logout-btns {
@@ -414,12 +231,7 @@ function CtuDashboard() {
 
 
 
-        .main-content {
-          margin-left: 250px;
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-        }
+        
 
         .headers {
           background: white;
@@ -1335,16 +1147,7 @@ function CtuDashboard() {
           .mobile-menu-btn {
             display: block;
           }
-          .sidebars {
-            transform: translateX(-100%);
-            transition: transform 0.3s;
-          }
-          .sidebars.open {
-            transform: translateX(0);
-          }
-          .main-content {
-            margin-left: 0;
-          }
+          
           .header {
             margin-left: 60px;
             padding: 12px 16px;
@@ -1436,46 +1239,18 @@ function CtuDashboard() {
             min-height: 40px;
           }
         }
+        
       `}</style>
 
-      <button className="mobile-menu-btn" onClick={toggleMobileMenu}>
-        ☰
-      </button>
+    
 
-      <div className={`sidebars ${isSidebarOpen ? "open" : ""}`} id="sidebars" ref={sidebarRef}>
-        <div className="sidebars-logo">
-          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
-        </div>
-
-        <nav className="nav-menu">
-          {navigationItems.map((item) => (
-            <a
-              key={item.page}
-              href={item.route}
-              className={`nav-item ${activePage === item.page ? "active" : ""}`}
-              onClick={(e) => {
-                e.preventDefault()
-                handleNavItemClick(item.page, item.route)
-              }}
-            >
-              <item.IconComponent className="nav-icon" size={20} />
-              {item.name}
-            </a>
-          ))}
-        </nav>
-
-        <div className="logouts">
-          <a href="#" className="logout-btns" onClick={openLogoutModal}>
-            <LogOut className="logout-icons" size={20} />
-            Log Out
-          </a>
-        </div>
-      </div>
+      <Sidebar isOpen={isSidebarOpen} />
+      
 
       <div className="main-content">
         <header className="headers">
           <div className="dashboard-container">
-            <h2 className="dashboard-title">Dashboard</h2>
+            <h2 className="dashboard-title">Ctu-VetMed Dashboard</h2>
             <span className="dashboard-time">{time}</span>
           </div>
           <div className="notification-bell" ref={notificationBellRef} onClick={toggleNotificationDropdown}>
@@ -1634,26 +1409,7 @@ function CtuDashboard() {
         </button>
       </div>
 
-      {/* Logout Modal */}
-      {isLogoutModalOpen && (
-        <div className="modal-overlay active" ref={logoutModalRef}>
-          <div className="logout-modal">
-            <div className="logout-modal-icon">
-              <LogOut size={25} color="#f59e0b" />
-            </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons">
-              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
-                No
-              </button>
-              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      
     </div>
   )
 }

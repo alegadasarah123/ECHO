@@ -1,32 +1,26 @@
 "use client"
+import Sidebar from "@/components/CtuSidebar";
 import {
   AlertTriangle,
-  BarChart3,
   Bell,
   BellOff,
   Check,
   CheckCircle,
-  ClipboardList,
   Clock,
   CreditCard,
-  FileText,
-  Folder,
   Info,
-  LayoutDashboard,
   LogOut,
   MapPin,
-  Megaphone,
   Search,
-  Settings,
   Stethoscope,
   User,
   UserCheck,
   UserX,
   X,
   XCircle,
-} from "lucide-react"
-import { useCallback, useEffect, useRef, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 function CtuAccountApproval() {
   const navigate = useNavigate()
@@ -50,8 +44,7 @@ function CtuAccountApproval() {
   const confirmationOverlayRef = useRef(null)
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const logoutModalRef = useRef(null)
-  // Renamed from isMobileMenuOpen to isSidebarExpanded for consistency with Dashboard
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
+  const [isSidebarsOpen, setIsSidebarsOpen] = useState(false)
 
   // Helper to format time for notifications
   const formatTimeAgo = useCallback((timestamp) => {
@@ -74,12 +67,11 @@ function CtuAccountApproval() {
     return <IconComponent className={`notification-icon ${type}`} size={16} />
   }
 
-
-   const handleChatButtonClick = () => {
+  const handleChatButtonClick = () => {
     console.log("Chat button clicked")
     navigate("/CtuMessage")
   }
-  
+
   const markAsRead = (notificationId) => {
     setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
   }
@@ -97,23 +89,23 @@ function CtuAccountApproval() {
     console.log("Notifications loaded:", notifications.length)
   }, [notifications.length])
 
-const filterRegistrations = useCallback(() => {
-  let filtered = registrationData;
+  const filterRegistrations = useCallback(() => {
+    let filtered = registrationData
 
-  // Correctly filter by nested status
-  filtered = filtered.filter((user) => user.users?.status === activeTab);
+    // Correctly filter by nested status
+    filtered = filtered.filter((user) => user.users?.status === activeTab)
 
-  if (searchTerm) {
-    filtered = filtered.filter(
-      (user) =>
-        user.vet_fname.toLowerCase().includes(searchTerm) ||
-        user.vet_lname.toLowerCase().includes(searchTerm) ||
-        user.vet_email.toLowerCase().includes(searchTerm)
-    );
-  }
+    if (searchTerm) {
+      filtered = filtered.filter(
+        (user) =>
+          user.vet_fname.toLowerCase().includes(searchTerm) ||
+          user.vet_lname.toLowerCase().includes(searchTerm) ||
+          user.vet_email.toLowerCase().includes(searchTerm),
+      )
+    }
 
-  return filtered;
-}, [registrationData, activeTab, searchTerm]);
+    return filtered
+  }, [registrationData, activeTab, searchTerm])
 
   const viewDetails = (userId, status) => {
     const user = registrationData.find((u) => u.id === userId)
@@ -179,34 +171,29 @@ const filterRegistrations = useCallback(() => {
     closeConfirmation()
   }
 
-// Approve
-const approveUser = async (vetProfileId) => {
-  const url = `http://127.0.0.1:8000/api/update-vet-status/${vetProfileId}/`;
-  const response = await fetch(url, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "approved" }),
-  });
-  const data = await response.json();
-  setRegistrationData(prev =>
-    prev.map(u => u.id === vetProfileId ? { ...u, status: "approved" } : u)
-  );
-};
+  // Approve
+  const approveUser = async (vetProfileId) => {
+    const url = `http://127.0.0.1:8000/api/update-vet-status/${vetProfileId}/`
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "approved" }),
+    })
+    const data = await response.json()
+    setRegistrationData((prev) => prev.map((u) => (u.id === vetProfileId ? { ...u, status: "approved" } : u)))
+  }
 
-// Decline
-const declineUser = async (vetProfileId) => {
-  const url = `http://127.0.0.1:8000/api/update-vet-status/${vetProfileId}/`;
-  const response = await fetch(url, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ status: "declined" }),
-  });
-  const data = await response.json();
-  setRegistrationData(prev =>
-    prev.map(u => u.id === vetProfileId ? { ...u, status: "declined" } : u)
-  );
-};
-
+  // Decline
+  const declineUser = async (vetProfileId) => {
+    const url = `http://127.0.0.1:8000/api/update-vet-status/${vetProfileId}/`
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "declined" }),
+    })
+    const data = await response.json()
+    setRegistrationData((prev) => prev.map((u) => (u.id === vetProfileId ? { ...u, status: "declined" } : u)))
+  }
 
   const approveAllPending = async () => {
     if (activeTab !== "pending") return
@@ -216,8 +203,6 @@ const declineUser = async (vetProfileId) => {
     }
   }
 
-
-
   const handleSearchInput = (e) => {
     setSearchTerm(e.target.value.toLowerCase())
   }
@@ -226,13 +211,11 @@ const declineUser = async (vetProfileId) => {
     setRecentFilter(e.target.value)
   }
 
-
   // Remove all approved users from display only
-const deleteAllApprovedLocal = () => {
-  if (!window.confirm("Remove all approved users from the display?")) return;
-  setRegistrationData((prev) => prev.filter((user) => user.users?.status !== "approved"));
-};
-
+  const deleteAllApprovedLocal = () => {
+    if (!window.confirm("Remove all approved users from the display?")) return
+    setRegistrationData((prev) => prev.filter((user) => user.users?.status !== "approved"))
+  }
 
   const openLogoutModal = (e) => {
     e.preventDefault()
@@ -254,7 +237,7 @@ const deleteAllApprovedLocal = () => {
   useEffect(() => {
     const loadVetProfiles = async () => {
       try {
-        const response = await fetch('http://127.0.0.1:8000/api/get-vet-profiles/');
+        const response = await fetch("http://127.0.0.1:8000/api/get-vet-profiles/")
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`)
         }
@@ -335,23 +318,6 @@ const deleteAllApprovedLocal = () => {
     }
   }, [isNotificationDropdownOpen, isViewDetailsModalOpen, isConfirmationModalOpen])
 
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth > 768) {
-        setIsSidebarExpanded(false)
-      }
-    }
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
-
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth)
-  useEffect(() => {
-    const handleResize = () => setWindowWidth(window.innerWidth)
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
-
   const filteredRegistrations = filterRegistrations()
 
   return (
@@ -367,93 +333,6 @@ const deleteAllApprovedLocal = () => {
   width: 100%; /* Ensure it takes full width */
 }
 
-.sidebars {
-  width: 250px; /* Default expanded width */
-  background-color: #b91c1c;
-  color: white;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  height: 100vh;
-  left: 0;
-  top: 0;
-  z-index: 1000;
-  transition: transform 0.3s ease, width 0.3s ease; /* Add width to transition */
-}
-
-.sidebars-logo {
-  padding: 5px;
-  display: flex;
-  flex-direction: column; /* Stack logo and text vertically */
-  justify-content: center;
-  align-items: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  position: relative; /* Needed for absolute positioning of close button */
-}
-
-.sidebars-logo img {
-  width: 250px;
-  height: 200px;
-  object-fit: contain;
-}
-
-.sidebarsLogoText {
-  font-size: 1.2rem;
-  font-weight: 600;
-  margin-top: 10px;
-  text-align: center;
-}
-
-.nav-menu {
-  flex: 1;
-  padding: 20px 0;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 40px;
-  color: white;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  margin: 0px 0px 2px 0;
-  position: relative;
-  margin-left: 10px;
-  min-height: 44px;
-}
-
-.nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 25px 0 0 25px;
-}
-
-.nav-item.active {
-  background-color: #f3f4f6;
-  color: #b91c1c;
-  border-radius: 20px 0 0 20px;
-  font-weight: 500;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  width: 240px;
-  margin-left: 10px;
-}
-
-.nav-icon {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.nav-item.active .nav-icon {
-  color: #b91c1c;
-}
 
  .logouts {
   padding: 10px;
@@ -491,7 +370,7 @@ const deleteAllApprovedLocal = () => {
 
 
 .main-content {
-  margin-left: 250px; /* Default margin for expanded sidebar */
+ 
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -1428,15 +1307,7 @@ h2 {
 
 /* Responsive Design */
 @media (max-width: 768px) {
-  .sidebars {
-    transform: translateX(-100%);
-    transition: transform 0.3s ease;
-  }
-
-  .sidebars.expanded {
-    transform: translateX(0);
-  }
-
+ 
   .main-content {
     margin-left: 0;
     width: 100%;
@@ -1683,36 +1554,7 @@ h2 {
       `}</style>
 
       <div className="sidebars" id="sidebasr">
-        <div className="sidebars-logo">
-          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
-        </div>
-        <nav className="nav-menu">
-          {[
-            {
-              name: "Dashboard",
-              icon: LayoutDashboard, // Replaced iconClass with Lucide icon component
-              path: "/CtuDashboard",
-            },
-            { name: "Account Approval", icon: UserCheck, path: "/CtuAccountApproval", active: true },
-            { name: "Access Requests", icon: FileText, path: "/CtuAccessRequest" },
-            { name: "Horse Records", icon: ClipboardList, path: "/CtuHorseRecord" },
-            { name: "Health Reports", icon: BarChart3, path: "/CtuHealthReport" },
-            { name: "Announcements", icon: Megaphone, path: "/CtuAnnouncement" },
-            { name: "Directory", icon: Folder, path: "/CtuDirectory" },
-            { name: "Settings", icon: Settings, path: "/CtuSettings" },
-          ].map((item) => (
-            <Link key={item.name} to={item.path} className={`nav-item ${item.active ? "active" : ""}`}>
-              <item.icon className="nav-icon" size={18} />
-              {item.name}
-            </Link>
-          ))}
-        </nav>
-        <div className="logouts">
-          <a href="/login" className="logout-btns" id="logoutBtn" onClick={openLogoutModal}>
-            <LogOut className="logout-icons" size={18} />
-            Log Out
-          </a>
-        </div>
+        <Sidebar isOpen={isSidebarsOpen} />
       </div>
       <div className="main-content">
         <header className="headers">
@@ -1805,100 +1647,86 @@ h2 {
               >
                 Declined
               </button>
-               </div>
             </div>
-            <div className="controls-row">
-              <div className="filter-controls">
-                <select className="filter-select" value={recentFilter} onChange={handleRecentFilterChange}>
-                  <option value="all">Most Recent</option>
-                  <option value="today">Today</option>
-                  <option value="week">This Week</option>
-                  <option value="month">This Month</option>
-                </select>
+          </div>
+          <div className="controls-row">
+            <div className="filter-controls">
+              <select className="filter-select" value={recentFilter} onChange={handleRecentFilterChange}>
+                <option value="all">Most Recent</option>
+                <option value="today">Today</option>
+                <option value="week">This Week</option>
+                <option value="month">This Month</option>
+              </select>
+            </div>
+            {activeTab === "pending" && (
+              <button className="approve-all-btn" onClick={approveAllPending}>
+                Approve All
+              </button>
+            )}
+
+            {/* For Approved Tab */}
+            {activeTab === "approved" && (
+              <button className="delete-all-btn" onClick={deleteAllApprovedLocal}>
+                Delete All
+              </button>
+            )}
+          </div>
+          <div className="registration-table" id="registrationTable">
+            {filteredRegistrations.length === 0 ? (
+              <div className="empty-state">
+                {activeTab === "pending" ? (
+                  <Clock size={48} />
+                ) : activeTab === "approved" ? (
+                  <UserCheck size={48} />
+                ) : (
+                  <UserX size={48} />
+                )}
+                <h3>No {activeTab === "pending" ? "pending" : activeTab} registrations</h3>
+                <p>
+                  {activeTab === "pending"
+                    ? "New registration requests will appear here"
+                    : `${activeTab} registrations will appear here`}
+                </p>
               </div>
-              {activeTab === "pending" && (
-                <button className="approve-all-btn" onClick={approveAllPending}>
-                  Approve All
-                </button>
-                  )}
+            ) : (
+              filteredRegistrations.map((user) => (
+                <div key={user.id} className="registration-item">
+                  <div className="user-avatar">{user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}</div>
 
-                {/* For Approved Tab */}
-                  {activeTab === "approved" && (
-                    <button className="delete-all-btn" onClick={deleteAllApprovedLocal}>
-                      Delete All
-                    </button>
-                  )}
-            </div>
-              <div className="registration-table" id="registrationTable">
-                      {filteredRegistrations.length === 0 ? (
-                        <div className="empty-state">
-                          {activeTab === "pending" ? (
-                            <Clock size={48} />
-                          ) : activeTab === "approved" ? (
-                            <UserCheck size={48} />
-                          ) : (
-                            <UserX size={48} />
-                          )}
-                          <h3>No {activeTab === "pending" ? "pending" : activeTab} registrations</h3>
-                          <p>
-                            {activeTab === "pending"
-                              ? "New registration requests will appear here"
-                              : `${activeTab} registrations will appear here`}
-                          </p>
-                        </div>
-                      ) : (
-                        filteredRegistrations.map((user) => (
-                          <div key={user.id} className="registration-item">
-                        <div className="user-avatar">
-                          {user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}
-                        </div>
-
-                        <div className="user-info">
-                          <div className="user-name">
-                            {user.vet_fname} {user.vet_mname} {user.vet_lname}
-                            <span className={`user-type-badge badge-${user.users?.status}`}>
-                              {user.users?.status}
-                            </span>
-                          </div>
-                          <div className="user-email">{user.vet_email}</div>
-                          <div className="user-details">
-                            {user.vet_city}, {user.vet_province}
-                          </div>
-                        </div>
-
-                      <div className="action-buttons">
-                        <button
-                          className="action-btn btn-view"
-                          onClick={() => viewDetails(user.id, user.users?.status)}
-                        >
-                          View Details
-                        </button>
-
-                      {user.users?.status === "pending" && (
-                        <>
-                          <button
-                            className="action-btn btn-approve"
-                            onClick={() => showApproveConfirmation(user.id)}
-                          >
-                            Approve
-                          </button>
-                          <button
-                            className="action-btn btn-decline"
-                            onClick={() => showDeclineConfirmation(user.id)}
-                          >
-                            Decline
-                          </button>
-                        </>
-                      )}
+                  <div className="user-info">
+                    <div className="user-name">
+                      {user.vet_fname} {user.vet_mname} {user.vet_lname}
+                      <span className={`user-type-badge badge-${user.users?.status}`}>{user.users?.status}</span>
                     </div>
-                </div>
+                    <div className="user-email">{user.vet_email}</div>
+                    <div className="user-details">
+                      {user.vet_city}, {user.vet_province}
+                    </div>
+                  </div>
 
-                ))
-              )}
-            </div>
+                  <div className="action-buttons">
+                    <button className="action-btn btn-view" onClick={() => viewDetails(user.id, user.users?.status)}>
+                      View Details
+                    </button>
+
+                    {user.users?.status === "pending" && (
+                      <>
+                        <button className="action-btn btn-approve" onClick={() => showApproveConfirmation(user.id)}>
+                          Approve
+                        </button>
+                        <button className="action-btn btn-decline" onClick={() => showDeclineConfirmation(user.id)}>
+                          Decline
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
-       <div className="chat-widget">
+      <div className="chat-widget">
         <button className="chat-button" onClick={handleChatButtonClick}>
           <div className="chat-dots">
             <div className="chat-dot" />
@@ -1906,7 +1734,7 @@ h2 {
             <div className="chat-dot" />
           </div>
         </button>
-        </div>
+      </div>
       {/* View Details Modal */}
       {isViewDetailsModalOpen && selectedUser && (
         <div className="modal-overlay active" ref={viewDetailsModalOverlayRef}>
@@ -2050,16 +1878,19 @@ h2 {
 
             <div
               className={`modal-footer ${
-                (registrationData.find(u => u.id === selectedUser.id)?.users?.status || selectedUser.users?.status) !== "pending"
+                (
+                  registrationData.find((u) => u.id === selectedUser.id)?.users?.status || selectedUser.users?.status
+                ) !== "pending"
                   ? "close-only"
                   : ""
-                }`}
-              >
+              }`}
+            >
               <button className="modal-btns close" onClick={closeModal}>
                 Close
               </button>
 
-              {(registrationData.find(u => u.id === selectedUser.id)?.users?.status || selectedUser.users?.status) === "pending" && (
+              {(registrationData.find((u) => u.id === selectedUser.id)?.users?.status || selectedUser.users?.status) ===
+                "pending" && (
                 <>
                   <button className="modal-btns approve" onClick={showApproveConfirmationFromModal}>
                     Approve
@@ -2068,9 +1899,8 @@ h2 {
                     Decline
                   </button>
                 </>
-               )}
+              )}
             </div>
-
           </div>
         </div>
       )}
@@ -2096,7 +1926,7 @@ h2 {
         </div>
       )}
 
-     {/* Logout Modal */}
+      {/* Logout Modal */}
       {isLogoutModalOpen && (
         <div className="modal-overlay active" ref={logoutModalRef}>
           <div className="logout-modal">

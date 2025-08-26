@@ -2,31 +2,12 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
-import {
-  ArrowLeft,
-  BarChart3,
-  Bell,
-  BellOff,
-  ClipboardList,
-  Eye,
-  EyeOff,
-  FileText,
-  Folder,
-  LayoutDashboard,
-  LogOut,
-  Megaphone,
-  Plus,
-  SettingsIcon,
-  Shield,
-  Trash2,
-  UserCheck,
-  UserCircle,
-  Users,
-} from "lucide-react"
+import Sidebar from "@/components/CtuSidebar"
+import { ArrowLeft, Eye, EyeOff, Plus, Shield, Trash2, UserCircle, Users } from "lucide-react"
 
 function CtuSettings() {
   const navigate = useNavigate()
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [activePage, setActivePage] = useState("settings")
@@ -47,6 +28,8 @@ function CtuSettings() {
   const [isNewPasswordVisible, setIsNewPasswordVisible] = useState(false) // For new password
   const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false) // For confirm password
   const [passwordVisibility, setPasswordVisibility] = useState({}) // For table password visibility
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   const sidebarRef = useRef(null)
   const notificationBellRef = useRef(null)
@@ -83,15 +66,18 @@ function CtuSettings() {
     setIsLogoutModalOpen(false)
   }
 
- const confirmLogout = () => {
-  console.log("User logged out")
-  localStorage.removeItem("currentUser")
-  localStorage.removeItem("loginTime")
-  closeLogoutModal()
-  navigate("/")
-  window.location.reload()
-}
+  const confirmLogout = () => {
+    console.log("User logged out")
+    localStorage.removeItem("currentUser")
+    localStorage.removeItem("loginTime")
+    closeLogoutModal()
+    navigate("/")
+    window.location.reload()
+  }
 
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen)
+  }
 
   const markAllNotificationsRead = () => {
     setNotifications(notifications.map((n) => ({ ...n, read: true })))
@@ -103,7 +89,6 @@ function CtuSettings() {
   }
 
   // Added search input handler
- 
 
   // Settings navigation functions
   const openProfileSettings = () => {
@@ -262,17 +247,17 @@ function CtuSettings() {
 
       // Add the new user to the table
       setUsers((prev) => [
-  ...prev,
-  {
-    id: data.user.id,
-    firstname: data.user.firstName,
-    lastname: data.user.lastName,
-    email: data.user.email,
-    phone: data.user.phoneNumber,
-    role: data.user.role || "Ctu-VetMed", // use backend role
-    status: "Active",
-  },
-])
+        ...prev,
+        {
+          id: data.user.id,
+          firstname: data.user.firstName,
+          lastname: data.user.lastName,
+          email: data.user.email,
+          phone: data.user.phoneNumber,
+          role: data.user.role || "Ctu-VetMed", // use backend role
+          status: "Active",
+        },
+      ])
       // Reset form
       setNewUser({ firstname: "", lastname: "", email: "", phone: "", password: "" })
 
@@ -324,7 +309,7 @@ function CtuSettings() {
     }
   }
 
-  const currentUser = JSON.parse(localStorage.getItem("currentUser")) || {};
+  const currentUser = JSON.parse(localStorage.getItem("currentUser")) || {}
 
   // Effects
   useEffect(() => {
@@ -361,15 +346,13 @@ function CtuSettings() {
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-
   const [profile, setProfile] = useState({
     firstname: "",
     lastname: "",
     email: "",
     phone: "",
-    role: ""
-  });
-
+    role: "",
+  })
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -396,11 +379,6 @@ function CtuSettings() {
     fetchUserData()
   }, [])
 
-
-
-
-  
-
   return (
     <div className="bodyWrapper">
       <style>{`
@@ -414,137 +392,16 @@ function CtuSettings() {
   width: 100%;
 }
 
-.sidebars {
-  width: 250px;
-  background-color: #b91c1c;
-  color: white;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  height: 100vh;
-  left: 0;
-  top: 0;
-  z-index: 1000;
-  transition: transform 0.3s ease, width 0.3s ease;
-}
 
-.sidebarsLogo {
-  padding: 5px;
-  display: flex;
-  justify-content: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  position: relative;
-}
-
-.sidebarsLogo img {
-  width: 250px;
-  height: 200px;
-  object-fit: contain;
-}
-
-.navMenu {
-  flex: 1;
-  padding: 20px 0;
-}
-
-.navItem {
-  display: flex;
-  align-items: center;
-  padding: 12px 40px;
-  color: white;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  margin: 0px 0px 2px 0;
-  position: relative;
-  margin-left: 10px;
-  min-height: 44px;
-}
-
-.navItem:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 25px 0 0 25px;
-}
-
-.navItem.active {
-  background-color: #f3f4f6;
-  color: #b91c1c;
-  border-radius: 20px 0 0 20px;
-  font-weight: 500;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  width: 240px;
-  margin-left: 10px;
-}
-
-.navIcon {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.navItem.active .navIcon {
-  color: #b91c1c;
-}
-
- .logouts {
-  padding: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.logout-btns {
-  display: flex;
-  align-items: center;
-  color: white;
-  text-decoration: none;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  padding: 14px 40px;
-  border-radius: 25px;
-  transition: all 0.3s ease;
-  min-height: 44px;
-}
-
-.logout-btns:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.logout-icons {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
 
 .mainContent {
-  margin-left: 250px;
   flex: 1;
   display: flex;
   flex-direction: column;
   transition: margin-left 0.3s ease;
 }
 
-.headers {
-  background: white;
-  padding: 16px 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  flex-wrap: wrap;
-  gap: 16px;
-}
+
 
 .searchContainer {
   flex: 1;
@@ -1392,10 +1249,7 @@ function CtuSettings() {
     margin-left: 0;
   }
 
-  .headers {
-    margin-left: 60px;
-    padding: 12px 16px;
-  }
+  
 
   .sidebarToggleBtn {
     display: none;
@@ -1460,21 +1314,10 @@ function CtuSettings() {
 }
 
 @media (min-width: 769px) {
-  .sidebars.collapsed {
-    width: 80px;
-  }
 
-  .sidebars.expanded {
-    width: 250px;
-  }
 
-  .mainContent {
-    margin-left: 250px;
-  }
-
-  .sidebars.collapsed ~ .mainContent {
-    margin-left: 80px;
-  }
+  
+  
 
   .sidebarToggleBtn {
     display: block;
@@ -1524,12 +1367,7 @@ function CtuSettings() {
 }
 
 @media (max-width: 480px) {
-  .headers {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    margin-left: 50px;
-  }
+  
 
   /*Search Icon*/
 
@@ -1626,133 +1464,12 @@ function CtuSettings() {
 
       `}</style>
 
-      {/* ... existing sidebar and header code ... */}
-      <div className="sidebars" id="sidebars" ref={sidebarRef}>
-        <div className="sidebarsLogo">
-          <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
-        </div>
-        <nav className="navMenu">
-          {[
-            { name: "Dashboard", iconClass: "fas fa-th-large", page: "dashboard", route: "/CtuDashboard" },
-            {
-              name: "Account Approval",
-              iconClass: "fa-solid fa-user-check",
-              page: "approval",
-              route: "/CtuAccountApproval",
-            },
-            {
-              name: "Access Requests",
-              iconClass: "fa-solid fa-file-alt",
-              page: "requests",
-              route: "/CtuAccessRequest",
-            },
-            {
-              name: "Horse Records",
-              iconClass: "fa-solid fa-clipboard-list",
-              page: "records",
-              route: "/CtuHorseRecord",
-            },
-            { name: "Health Reports", iconClass: "fa-solid fa-chart-bar", page: "reports", route: "/CtuHealthReport" },
-            {
-              name: "Announcements",
-              iconClass: "fa-solid fa-bullhorn",
-              page: "announcements",
-              route: "/CtuAnnouncement",
-            },
-            { name: "Directory", iconClass: "fa-solid fa-folder", page: "directory", route: "/CtuDirectory" },
-            { name: "Settings", iconClass: "fa-solid fa-cog", page: "settings", route: "/CtuSettings" },
-          ].map((item) => {
-            const getIcon = (iconClass) => {
-              if (iconClass.includes("fa-th-large")) return <LayoutDashboard size={20} className="navIcon" />
-              if (iconClass.includes("fa-user-check")) return <UserCheck size={20} className="navIcon" />
-              if (iconClass.includes("fa-file-alt")) return <FileText size={20} className="navIcon" />
-              if (iconClass.includes("fa-clipboard-list")) return <ClipboardList size={20} className="navIcon" />
-              if (iconClass.includes("fa-chart-bar")) return <BarChart3 size={20} className="navIcon" />
-              if (iconClass.includes("fa-bullhorn")) return <Megaphone size={20} className="navIcon" />
-              if (iconClass.includes("fa-folder")) return <Folder size={20} className="navIcon" />
-              if (iconClass.includes("fa-cog")) return <SettingsIcon size={20} className="navIcon" />
-              return null
-            }
-
-            return (
-              <a
-                key={item.page}
-                href={item.route}
-                className={`navItem ${activePage === item.page ? "active" : ""}`}
-                onClick={(e) => {
-                  e.preventDefault()
-                  setActivePage(item.page)
-                  if (item.page !== "settings") {
-                    window.location.href = item.route
-                  }
-                }}
-              >
-                {getIcon(item.iconClass)}
-                <span>{item.name}</span>
-              </a>
-            )
-          })}
-        </nav>
-        <div className="logouts">
-          <a href="#" className="logout-btns" onClick={openLogoutModal}>
-            <LogOut size={20} className="logout-icons" />
-            <span>Log Out</span>
-          </a>
-        </div>
+      <div className="sidebars" id="sidebars">
+        <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
       </div>
 
       <div className="mainContent">
-        <header className="headers">
-          <div className="search-containers">
-            <div className="search-icon"></div>
-            <input
-              
-            />
-          </div>
-          <div className="notificationBell" ref={notificationBellRef} onClick={toggleNotificationDropdown}>
-            <Bell size={20} />
-            {notifications.filter((n) => !n.read).length > 0 && (
-              <div className="notificationCount">{notifications.filter((n) => !n.read).length}</div>
-            )}
-            <div
-              className={`notificationDropdown ${isNotificationDropdownOpen ? "show" : ""}`}
-              ref={notificationDropdownRef}
-            >
-              <div className="notificationHeader">
-                <h3>Notifications</h3>
-                {notifications.filter((n) => !n.read).length > 0 && (
-                  <button className="markAllRead" onClick={markAllNotificationsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div id="notificationList">
-                {notifications.length === 0 ? (
-                  <div className="empty-state">
-                    <BellOff size={48} />
-                    <h3>No notifications</h3>
-                    <p>You're all caught up!</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`notificationItem ${!notification.read ? "unread" : ""}`}
-                      onClick={() => handleNotificationClick(notification.id)}
-                    >
-                      <div className="notificationTitle">
-                        <Bell size={16} className="notificationIcon" />
-                        {notification.title}
-                      </div>
-                      <div className="notificationMessage">{notification.message}</div>
-                      <div className="notificationTime">{notification.time}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </header>
+        
 
         <div className="contentArea">
           <div className="settingsContainer">
@@ -1806,34 +1523,52 @@ function CtuSettings() {
                 <div className="profileFormContent">
                   <form id="profileForm">
                     <div className="formGroup">
-                      <label className="formLabels" htmlFor="firstname" >
+                      <label className="formLabels" htmlFor="firstname">
                         First Name
                       </label>
-                      <input type="text" id="firstname" className="formInputs"  value={profile?.ctu_fname || ""}readOnly/>
+                      <input
+                        type="text"
+                        id="firstname"
+                        className="formInputs"
+                        value={profile?.ctu_fname || ""}
+                        readOnly
+                      />
                     </div>
                     <div className="formGroup">
                       <label className="formLabels" htmlFor="lastname">
                         Last Name
                       </label>
-                      <input type="text" id="lastname" className="formInputs"  value={profile?.ctu_lname || ""}readOnly />
+                      <input
+                        type="text"
+                        id="lastname"
+                        className="formInputs"
+                        value={profile?.ctu_lname || ""}
+                        readOnly
+                      />
                     </div>
                     <div className="formGroup">
                       <label className="formLabels" htmlFor="email">
                         Email Address
                       </label>
-                      <input type="email" id="email" className="formInputs"  value={profile?.ctu_email || ""}readOnly />
+                      <input type="email" id="email" className="formInputs" value={profile?.ctu_email || ""} readOnly />
                     </div>
                     <div className="formGroup">
-                      <label className="formLabels" htmlFor="phone"   >
+                      <label className="formLabels" htmlFor="phone">
                         Phone Number
                       </label>
-                      <input type="tel" id="phone" className="formInputs"  value={profile?.ctu_phonenum || ""}readOnly  />
+                      <input
+                        type="tel"
+                        id="phone"
+                        className="formInputs"
+                        value={profile?.ctu_phonenum || ""}
+                        readOnly
+                      />
                     </div>
                     <div className="formGroup">
                       <label className="formLabels" htmlFor="role">
                         Role
                       </label>
-                      <input type="text" id="role" className="formInputs"  value={profile?.role || ""}readOnly />
+                      <input type="text" id="role" className="formInputs" value={profile?.role || ""} readOnly />
                     </div>
 
                     <div className="formGroup">
@@ -2180,90 +1915,83 @@ function CtuSettings() {
                   </div>
 
                   {/* Users List Section */}
-                    <div className="userSection">
-                      <h3 className="userSectionTitle">Existing Users</h3>
-                      {users.length === 0 ? (
-                        <div className="empty-state">
-                          <Users size={48} />
-                          <h3>No users found</h3>
-                          <p>Add your first user to get started</p>
+                  <div className="userSection">
+                    <h3 className="userSectionTitle">Existing Users</h3>
+                    {users.length === 0 ? (
+                      <div className="empty-state">
+                        <Users size={48} />
+                        <h3>No users found</h3>
+                        <p>Add your first user to get started</p>
+                      </div>
+                    ) : (
+                      <div className="usersTable">
+                        <div className="tableHeader">
+                          <div className="tableHeaderCell">First Name</div>
+                          <div className="tableHeaderCell">Last Name</div>
+                          <div className="tableHeaderCell">Email</div>
+                          <div className="tableHeaderCell">Phone</div>
+                          <div className="tableHeaderCell">Role</div>
+                          <div className="tableHeaderCell">Password</div>
+                          <div className="tableHeaderCell">Status</div>
+                          <div className="tableHeaderCell">Actions</div>
                         </div>
-                      ) : (
-                        <div className="usersTable">
-                          <div className="tableHeader">
-                            <div className="tableHeaderCell">First Name</div>
-                            <div className="tableHeaderCell">Last Name</div>
-                            <div className="tableHeaderCell">Email</div>
-                            <div className="tableHeaderCell">Phone</div>
-                            <div className="tableHeaderCell">Role</div>
-                            <div className="tableHeaderCell">Password</div>
-                            <div className="tableHeaderCell">Status</div>
-                            <div className="tableHeaderCell">Actions</div>
-                          </div>
 
-                          {users
-                            .filter((user) => {
-                                // Admin sees all users
-                                if (currentUser.role === "admin") return true;
+                        {users
+                          .filter((user) => {
+                            // Admin sees all users
+                            if (currentUser.role === "admin") return true
 
-                                // Non-admin users see only themselves
-                                return user.id === currentUser.id;
-                            })
-                            .map((user) => (
-                              <div key={user.id} className="tableRow">
-                                <div className="tableCell">{user.ctu_fname}</div>
-                                <div className="tableCell">{user.ctu_lname}</div>
-                                <div className="tableCell">{user.ctu_email}</div>
-                                <div className="tableCell">{user.ctu_phonenum}</div>
-                                <div className="tableCell">
-                                  <span className={`roleBadge role${user.role}`}>{user.role}</span>
-                                </div>
-                                <div className="tableCell">
-                                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                    <span style={{ fontFamily: "monospace", fontSize: "14px" }}>
-                                      {passwordVisibility[user.id]
-                                        ? user.password
-                                        : "•".repeat(user.password.length)}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleTablePasswordVisibility(user.id)}
-                                      style={{
-                                        background: "none",
-                                        border: "none",
-                                        cursor: "pointer",
-                                        color: "#666",
-                                        fontSize: "14px",
-                                        padding: "2px",
-                                      }}
-                                      title={
-                                        passwordVisibility[user.id] ? "Hide password" : "Show password"
-                                      }
-                                    >
-                                      {passwordVisibility[user.id] ? <EyeOff size={16} /> : <Eye size={16} />}
-                                    </button>
-                                  </div>
-                                </div>
-                                <div className="tableCell">
-                                  <span className={`statusBadge status${user.status.toLowerCase()}`}>
-                                    {user.status}
+                            // Non-admin users see only themselves
+                            return user.id === currentUser.id
+                          })
+                          .map((user) => (
+                            <div key={user.id} className="tableRow">
+                              <div className="tableCell">{user.ctu_fname}</div>
+                              <div className="tableCell">{user.ctu_lname}</div>
+                              <div className="tableCell">{user.ctu_email}</div>
+                              <div className="tableCell">{user.ctu_phonenum}</div>
+                              <div className="tableCell">
+                                <span className={`roleBadge role${user.role}`}>{user.role}</span>
+                              </div>
+                              <div className="tableCell">
+                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                  <span style={{ fontFamily: "monospace", fontSize: "14px" }}>
+                                    {passwordVisibility[user.id] ? user.password : "•".repeat(user.password.length)}
                                   </span>
-                                </div>
-                                <div className="tableCell">
                                   <button
-                                    className="btn btnDanger btnSmall"
-                                    onClick={() => deleteUser(user.id)}
-                                    title="Delete user"
+                                    type="button"
+                                    onClick={() => toggleTablePasswordVisibility(user.id)}
+                                    style={{
+                                      background: "none",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      color: "#666",
+                                      fontSize: "14px",
+                                      padding: "2px",
+                                    }}
+                                    title={passwordVisibility[user.id] ? "Hide password" : "Show password"}
                                   >
-                                    <Trash2 size={16} />
+                                    {passwordVisibility[user.id] ? <EyeOff size={16} /> : <Eye size={16} />}
                                   </button>
                                 </div>
                               </div>
-                            ))}
-                        </div>
-                      )}
-                    </div>
-
+                              <div className="tableCell">
+                                <span className={`statusBadge status${user.status.toLowerCase()}`}>{user.status}</span>
+                              </div>
+                              <div className="tableCell">
+                                <button
+                                  className="btn btnDanger btnSmall"
+                                  onClick={() => deleteUser(user.id)}
+                                  title="Delete user"
+                                >
+                                  <Trash2 size={16} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="formActions">
                   <button type="button" className="btn btnSecondary" onClick={goBackToSettings}>
@@ -2271,35 +1999,12 @@ function CtuSettings() {
                   </button>
                 </div>
               </div>
-              )}
-            </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Logout Modal */}
-      {isLogoutModalOpen && (
-        <div
-          className="modalOverlay active"
-          ref={logoutModalRef}
-          onClick={(e) => e.target === logoutModalRef.current && closeLogoutModal()}
-        >
-          <div className="logoutModal">
-            <div className="logoutModalIcon">
-             <LogOut size={25} color="#f59e0b" />
-            </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logoutModalButtons">
-              <button className="logoutModalBtn cancel" onClick={closeLogoutModal}>
-                No
-              </button>
-              <button className="logoutModalBtn confirm" onClick={confirmLogout}>
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}  
+      
     </div>
   )
 }
