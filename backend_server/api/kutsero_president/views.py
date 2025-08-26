@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from supabase import create_client, Client
 from django.conf import settings
 import requests
+import datetime
 
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
 
@@ -240,3 +241,63 @@ def delete_declined_users(request):
     return Response(
         {"success": True, "deleted": deleted_ids, "skipped": skipped_ids},
     )
+
+# -------------------- NOTIFICATIONS --------------------
+@api_view(["GET"])
+def get_notifications(request):
+    """
+    Fetch notifications for Kutsero President.
+    Inserts new ones for pending users if not already saved.
+    Returns full notification history.
+    """
+    users = fetch_and_merge_users()
+    pending_users = [u for u in users if u["status"] == "pending"]
+
+    # Get existing notifications (by user id)
+    existing = supabase.table("notification").select("id").execute()
+    existing_ids = {row["id"] for row in existing.data} if existing.data else set()
+
+    # Manila timezone offset
+    manila_offset = datetime.timedelta(hours=8)
+    manila_tz = datetime.timezone(manila_offset)
+
+    # Insert new notifications only for pending users not in table
+    for u in pending_users:
+        if u["id"] not in existing_ids:
+            notif_message = f"New {u['role']} registered: {u['name']}"
+
+            # Fetch created_at from Supabase Auth
+            created_at = u.get("created_at")
+            if created_at:
+                # Parse UTC timestamp
+                dt = datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                # Convert to Manila time
+                dt_ph = dt.astimezone(manila_tz)
+            else:
+                dt_ph = datetime.datetime.now(manila_tz)
+
+            notif_date = dt_ph.strftime("%Y-%m-%d")
+            notif_time = dt_ph.strftime("%H:%M:%S")
+
+            supabase.table("notification").insert({
+                "id": u["id"],
+                "notif_message": notif_message,
+                "notif_date": notif_date,
+                "notif_time": notif_time,
+            }).execute()
+
+    # Fetch all notifications
+    result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
+
+    notifications = []
+    if result.data:
+        for row in result.data:
+            # Combine date + time with PH timezone for frontend
+            date_iso = f"{row['notif_date']}T{row['notif_time']}+08:00"
+            notifications.append({
+                "id": row["notif_id"],
+                "message": row["notif_message"],
+                "date": date_iso,
+            })
+
+    return Response(notifications)

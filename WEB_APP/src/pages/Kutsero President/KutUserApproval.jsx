@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { Filter } from "lucide-react";
+import { Bell } from "lucide-react";
 import Sidebar from "@/components/KutSidebar";
+import NotificationModal from './KutNotif';
 
 const UserApprovalPage = () => {
   const [filter, setFilter] = useState("all");
@@ -13,6 +14,7 @@ const UserApprovalPage = () => {
   const [selectedIds, setSelectedIds] = useState([]);
   const [selectAll, setSelectAll] = useState(false);
   const [roleFilter, setRoleFilter] = useState("all");
+  const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -212,15 +214,41 @@ const handleDeleteClick = async () => {
     );
   };
 
+    // ✅ count pending users for badge
+    const pendingUsers = users.filter(u => u.status === "pending");
+
   return (
-    <div style={styles.layout}>
-      <Sidebar />
-      <div style={styles.dashboard}>
-        <div style={styles.header}>
-          <div style={styles.headerLeft}>
+        <div style={styles.layout}>
+        <Sidebar />
+        <div style={styles.dashboard}>
+          
+          {/* Header */}
+          <div style={styles.header}>
             <h1 style={styles.title}>User Approval</h1>
+
+            {/* Notification Icon */}
+            <div style={{ position: "relative" }}>
+              <button
+                style={styles.notificationBtn}
+                onClick={() => setNotifOpen(!notifOpen)}
+              >
+                <Bell size={24} color="#374151" />
+                {pendingUsers.length > 0 && (
+                  <span style={styles.badge}>{pendingUsers.length}</span>
+                )}
+              </button>
+
+              {/* Notification Modal */}
+              <NotificationModal
+                isOpen={notifOpen}
+                onClose={() => setNotifOpen(false)}
+                notifications={pendingUsers.map(u => ({
+                  message: `${u.name} (${u.role}) is pending approval`,
+                  date: u.created_at !== "N/A" ? new Date(u.created_at) : new Date()
+                }))}
+              />
+            </div>
           </div>
-        </div>
 
         <div style={styles.scrollContent}>
           {/* Search + Role Filter */}
@@ -539,7 +567,7 @@ const handleDeleteClick = async () => {
 const styles = {
   layout: { display: "flex", minHeight: "100vh", backgroundColor: "#f5f5f5" },
   dashboard: { flex: 1, fontFamily: "'Segoe UI', Tahoma", display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" },
-  header: { display: "flex", alignItems: "center", backgroundColor: "#fff", padding: "20px 30px", borderBottom: "1px solid #eee", boxShadow: "0 2px 10px rgba(0,0,0,0.1)", position: "sticky", top: 0, zIndex: 10 },
+  header: { display: "flex", alignItems: "center", backgroundColor: "#fff", padding: "20px 30px", borderBottom: "1px solid #eee", boxShadow: "0 2px 10px rgba(0,0,0,0.1)", position: "sticky", top: 0, zIndex: 10,  justifyContent: "space-between", },
   headerLeft: { display: "flex", flexDirection: "column" },
   title: { fontSize: "28px", fontWeight: "bold", color: "#D2691E" },
   scrollContent: { flex: 1, padding: "20px", display: "flex", flexDirection: "column", overflow: "hidden" },
@@ -586,7 +614,11 @@ const styles = {
   declineBtn: { padding: "10px 20px", backgroundColor: "#ef4444", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", transition: "0.2s" },
   approveBtn: { padding: "10px 20px", backgroundColor: "#16a34a", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", transition: "0.2s" },
   deleteBtn: {display: "flex",alignItems: "center",gap: "6px",padding: "8px 14px",backgroundColor: "#ef4444",color: "#fff",border: "none",borderRadius: "6px",cursor: "pointer",fontSize: "14px",fontWeight: "600"},
-  cancelBtn: {display: "flex",alignItems: "center",gap: "6px",padding: "8px 14px", backgroundColor: "#9ca3af",border: "none",borderRadius: "6px",cursor: "pointer",fontSize: "14px",fontWeight: "600"}
+  cancelBtn: {display: "flex",alignItems: "center",gap: "6px",padding: "8px 14px", backgroundColor: "#9ca3af",border: "none",borderRadius: "6px",cursor: "pointer",fontSize: "14px",fontWeight: "600"},
+
+  notificationBtn: { position: "relative", background: "transparent", border: "none", cursor: "pointer", padding: "8px", borderRadius: "50%" },
+  badge: { position: "absolute", top: "2px", right: "2px", backgroundColor: "#ef4444", color: "#fff", borderRadius: "50%", padding: "2px 6px", fontSize: "12px", fontWeight: "bold" },
+
 };
 
 export default UserApprovalPage;
