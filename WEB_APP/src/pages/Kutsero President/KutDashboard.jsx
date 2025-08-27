@@ -10,7 +10,7 @@ const KutseroDashboard = () => {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/kutsero_president/get_users/");
+        const res = await fetch("/api/kutsero_president/get_users/");
         const data = await res.json();
         const formatted = data.users.map(u => ({
           id: u.id,
