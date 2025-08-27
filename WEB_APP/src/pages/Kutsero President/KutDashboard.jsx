@@ -1,9 +1,6 @@
 import Sidebar from '@/components/KutSidebar';
-import { Users, Users2 } from 'lucide-react';
+import { Bell, Calendar, Clock, User, UserPlus, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import React, { useState, useEffect } from 'react';
-import { Users, Clock, Bell, UserPlus, Calendar, User } from 'lucide-react';
-import Sidebar from '@/components/KutSidebar';
 import NotificationModal from './KutNotif';
 
 const KutseroDashboard = () => {
