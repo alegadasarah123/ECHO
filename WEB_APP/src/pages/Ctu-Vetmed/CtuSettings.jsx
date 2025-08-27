@@ -1571,53 +1571,7 @@ function CtuSettings() {
                       <input type="text" id="role" className="formInputs" value={profile?.role || ""} readOnly />
                     </div>
 
-                    <div className="formGroup">
-                      <label className="formLabels" htmlFor="language">
-                        Language
-                      </label>
-                      <select id="language" className="formSelects">
-                        <option value="">Select language</option>
-                        <option value="english">English</option>
-                        <option value="filipino">Filipino</option>
-                        <option value="cebuano">Cebuano</option>
-                        <option value="spanish">Spanish</option>
-                      </select>
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabels" htmlFor="theme">
-                        Interface Theme
-                      </label>
-                      <select id="theme" className="formSelects">
-                        <option value="">Select theme</option>
-                        <option value="default">Default</option>
-                        <option value="dark">Dark</option>
-                        <option value="light">Light</option>
-                        <option value="auto">Auto</option>
-                      </select>
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabels">Privacy Settings</label>
-                      <div className="checkboxGroup">
-                        <div className="checkboxItems">
-                          <input type="checkbox" id="shareData" className="checkboxInput" />
-                          <label htmlFor="shareData" className="checkboxLabel">
-                            Share my data with other system users
-                          </label>
-                        </div>
-                        <div className="checkboxItems">
-                          <input type="checkbox" id="profileVisible" className="checkboxInput" />
-                          <label htmlFor="profileVisible" className="checkboxLabel">
-                            Make my profile visible in directory
-                          </label>
-                        </div>
-                        <div className="checkboxItems">
-                          <input type="checkbox" id="allowAnalytics" className="checkboxInput" />
-                          <label htmlFor="allowAnalytics" className="checkboxLabel">
-                            Allow anonymous usage analytics
-                          </label>
-                        </div>
-                      </div>
-                    </div>
+                    
                   </form>
                 </div>
                 <div className="formActions">
@@ -1745,53 +1699,8 @@ function CtuSettings() {
                         </div>
                       </div>
                     </div>
-                    <div className="securitySection">
-                      <h3 className="securitySectionTitle">Two-Factor Authentication</h3>
-                      <div className="securityCheckboxGroup">
-                        <div className="securityCheckboxItem">
-                          <input type="checkbox" id="enable2FA" className="securityCheckboxInput" />
-                          <label htmlFor="enable2FA" className="securityCheckboxLabel">
-                            Enable two-factor authentication
-                          </label>
-                        </div>
-                        <div className="securityCheckboxItem">
-                          <input type="checkbox" id="smsAuth" className="securityCheckboxInput" />
-                          <label htmlFor="smsAuth" className="securityCheckboxLabel">
-                            SMS authentication
-                          </label>
-                        </div>
-                        <div className="securityCheckboxItem">
-                          <input type="checkbox" id="emailAuth" className="securityCheckboxInput" />
-                          <label htmlFor="emailAuth" className="securityCheckboxLabel">
-                            Email authentication
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="securitySection">
-                      <h3 className="securitySectionTitle">Session Management</h3>
-                      <div className="formGroup">
-                        <label className="formLabel" htmlFor="sessionTimeout">
-                          Session Timeout
-                        </label>
-                        <select id="sessionTimeout" className="formSelect">
-                          <option value="">Select timeout</option>
-                          <option value="15">15 minutes</option>
-                          <option value="30">30 minutes</option>
-                          <option value="60">1 hour</option>
-                          <option value="120">2 hours</option>
-                          <option value="480">8 hours</option>
-                        </select>
-                      </div>
-                      <div className="securityCheckboxGroup">
-                        <div className="securityCheckboxItem">
-                          <input type="checkbox" id="logoutAllDevices" className="securityCheckboxInput" />
-                          <label htmlFor="logoutAllDevices" className="securityCheckboxLabel">
-                            Log out from all other devices
-                          </label>
-                        </div>
-                      </div>
-                    </div>
+                    
+                    
                   </form>
                 </div>
                 <div className="formActions">

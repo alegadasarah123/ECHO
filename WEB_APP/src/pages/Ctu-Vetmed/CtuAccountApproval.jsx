@@ -1,5 +1,5 @@
 "use client"
-import Sidebar from "@/components/CtuSidebar";
+import Sidebar from "@/components/CtuSidebar"
 import {
   AlertTriangle,
   Bell,
@@ -8,6 +8,7 @@ import {
   CheckCircle,
   Clock,
   CreditCard,
+  FileText,
   Info,
   LogOut,
   MapPin,
@@ -18,9 +19,9 @@ import {
   UserX,
   X,
   XCircle,
-} from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+} from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
 
 function CtuAccountApproval() {
   const navigate = useNavigate()
@@ -45,6 +46,7 @@ function CtuAccountApproval() {
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const logoutModalRef = useRef(null)
   const [isSidebarsOpen, setIsSidebarsOpen] = useState(false)
+  const [modalActiveTab, setModalActiveTab] = useState("personal")
 
   // Helper to format time for notifications
   const formatTimeAgo = useCallback((timestamp) => {
@@ -112,6 +114,7 @@ function CtuAccountApproval() {
     if (user) {
       setSelectedUser({ ...user, status }) // Pass status to modal for conditional buttons
       setIsViewDetailsModalOpen(true)
+      setModalActiveTab("personal")
     } else {
       console.log("User data not found")
     }
@@ -415,6 +418,7 @@ function CtuAccountApproval() {
   margin-right: 20px;
   position: relative;
   min-width: 200px;
+  margin-bottom:10px;
 }
 
 .search-input {
@@ -659,6 +663,7 @@ h2 {
   font-size: clamp(14px, 2.5vw, 16px);
   font-weight: 500;
   color: #6b7280;
+  margin-top:25px;
   margin-bottom: 16px;
   line-height: 1.4;
 }
@@ -985,7 +990,11 @@ h2 {
 }
 
 .modal-field {
+  display: flex;
+  justify-content: flex-start;
+  align-items: flex-start;
   margin-bottom: 12px;
+  gap: 4px;
 }
 
 .modal-field.full-width {
@@ -993,10 +1002,10 @@ h2 {
 }
 
 .modal-label {
-  display: block;
   font-size: clamp(10px, 1.8vw, 12px);
   color: #6b7280;
-  margin-bottom: 4px;
+  flex-shrink: 0;
+  min-width: 120px;
 }
 
 .modal-value {
@@ -1004,6 +1013,8 @@ h2 {
   font-weight: 500;
   color: #111827;
   word-wrap: break-word;
+  flex-shrink: 0;
+  margin-right:100%;
 }
 
 .modal-close {
@@ -1105,6 +1116,7 @@ h2 {
   justify-content: center;
   flex-wrap: wrap;
 }
+
 
 .confirmation-btn {
   padding: 8px 16px;
@@ -1535,22 +1547,173 @@ h2 {
   outline: none;
   box-shadow: 0 0 0 3px rgba(220, 53, 69, 0.4);
 }
+/* Updated modal headers and added new profile section styles */
 .modal-headers {
   display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 14px; /* spacing between avatar and user info */
-  padding: 12px 16px;
+  padding: 32px 16px;
   border-bottom: 1px solid #e5e7eb;
   background-color: #fff;
 }
 
-/* User info */
-.modal-user-infos {
+.profile-section {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  margin-left: 750px;
+  align-items: center;
+  text-align: center;
+  gap: 16px;
 }
+
+.profile-avatar-container {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.profile-avatar-circle {
+  width: 120px;
+  height: 120px;
+  border: 2px solid #e5e7eb;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #fff;
+}
+
+.profile-text {
+  font-size: 16px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.profile-name {
+  font-size: 20px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.profile-role {
+  font-size: 16px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.profile-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.status-label {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 500;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.status-badge.status-pending {
+  background-color: #fef3c7;
+  color: #d97706;
+}
+
+.status-badge.status-approved {
+  background-color: #d1fae5;
+  color: #059669;
+}
+
+.status-badge.status-declined {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+/* Removed old modal-user-infos styles as they're no longer needed */
+
+.modal-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.tab-button {
+  padding: 12px 24px;
+  background: none;
+  border: none;
+  font-size: clamp(12px, 2vw, 14px);
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+  white-space: nowrap;
+  min-height: 44px;
+}
+
+.tab-button.active {
+  color: #b91c1c;
+  border-bottom-color: #b91c1c;
+}
+
+.tab-button:hover {
+  color: #374151;
+}
+
+.documents-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  border: 1px dashed #ccc;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.document-image-container {
+  position: relative;
+  width: 100%;
+  max-width: 400px; /* Adjust as needed */
+}
+
+.document-image {
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+  display: block;
+}
+
+.document-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: #999;
+}
+
+.document-placeholder svg {
+  margin-bottom: 10px;
+}
+  .account-title {
+          font-size: 25px;
+          font-weight: bold;
+          color: #da2424ff;
+        }
       `}</style>
 
       <div className="sidebars" id="sidebasr">
@@ -1558,10 +1721,8 @@ h2 {
       </div>
       <div className="main-content">
         <header className="headers">
-          <div className="search-containers">
-            <Search className="search-icon" size={18} />
-            <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
-          </div>
+           <h1 className="account-title">Account Approval</h1>
+            
           <div
             className="notification-bell"
             id="notification-bell"
@@ -1626,8 +1787,12 @@ h2 {
         </header>
         <div className="content-area">
           <div className="page-header">
-            <h1>Account Approval</h1>
-            <h2>Manage registration requests from Veterinarians</h2>
+           
+            <div className="search-containers">
+            <Search className="search-icon" size={18} />
+            <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
+          </div>
+              <h2>Manage registration requests from Veterinarians</h2>
             <div className="tabs-container">
               <button
                 className={`tab ${activeTab === "pending" ? "active" : ""}`}
@@ -1744,136 +1909,192 @@ h2 {
             </button>
 
             <div className="modal-headers">
-              <div className="modal-avatar-container">
-                <div className="modal-avatar">
-                  {selectedUser.vet_fname.charAt(0) + selectedUser.vet_lname.charAt(0)}
-                  <div className="modal-status-wrapper">
-                    <span className={`modal-status-circle status-${selectedUser.users?.status}`}></span>
-                    <span className={`modal-status-text status-${selectedUser.users?.status}`}>
+              <div className="profile-section">
+                <div className="profile-avatar-container">
+                  <div className="profile-avatar-circle">
+                    <span className="profile-text">Profile</span>
+                  </div>
+                </div>
+
+                <div className="profile-info">
+                  <h3 className="profile-name">
+                    {selectedUser.vet_fname} {selectedUser.vet_mname} {selectedUser.vet_lname}
+                  </h3>
+                  <p className="profile-role">{selectedUser.type}</p>
+                  <div className="profile-status">
+                    <span className="status-label">Current Status:</span>
+                    <span className={`status-badge status-${selectedUser.users?.status}`}>
                       {selectedUser.users?.status.charAt(0).toUpperCase() + selectedUser.users?.status.slice(1)}
                     </span>
                   </div>
                 </div>
               </div>
+            </div>
 
-              <div className="modal-user-infos">
-                <h3>
-                  {selectedUser.vet_fname} {selectedUser.vet_mname} {selectedUser.vet_lname}
-                </h3>
-                <div className="modal-user-meta">
-                  <span className={`modal-user-badge badge-${selectedUser.type}`}>{selectedUser.type}</span>
-                </div>
-              </div>
+            <div className="modal-tabs">
+              <button
+                className={`tab-button ${modalActiveTab === "personal" ? "active" : ""}`}
+                onClick={() => setModalActiveTab("personal")}
+              >
+                Personal Information
+              </button>
+              <button
+                className={`tab-button ${modalActiveTab === "professional" ? "active" : ""}`}
+                onClick={() => setModalActiveTab("professional")}
+              >
+                Professional Info
+              </button>
+              <button
+                className={`tab-button ${modalActiveTab === "documents" ? "active" : ""}`}
+                onClick={() => setModalActiveTab("documents")}
+              >
+                Documents
+              </button>
             </div>
 
             <div className="modal-body">
-              <div className="modal-section-box">
-                <div className="section-header">
-                  <User className="section-icon" size={20} />
-                  <h4>Name Information</h4>
-                </div>
-                <div className="modal-grid">
-                  <div className="modal-field">
-                    <span className="modal-label">First Name:</span>
-                    <div className="modal-value">{selectedUser.vet_fname}</div>
+              {modalActiveTab === "personal" && (
+                <>
+                  <div className="modal-section-box">
+                    <div className="section-header">
+                      <User className="section-icon" size={20} />
+                      <h4>Name Information</h4>
+                    </div>
+                    <div className="modal-grid">
+                      <div className="modal-field">
+                        <span className="modal-label">First Name:</span>
+                        <div className="modal-value">{selectedUser.vet_fname}</div>
+                      </div>
+                      <div className="modal-field">
+                        <span className="modal-label">Middle Name:</span>
+                        <div className="modal-value">{selectedUser.vet_mname}</div>
+                      </div>
+                      <div className="modal-field">
+                        <span className="modal-label">Last Name:</span>
+                        <div className="modal-value">{selectedUser.vet_lname}</div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="modal-field">
-                    <span className="modal-label">Middle Name:</span>
-                    <div className="modal-value">{selectedUser.vet_mname}</div>
-                  </div>
-                  <div className="modal-field">
-                    <span className="modal-label">Last Name:</span>
-                    <div className="modal-value">{selectedUser.vet_lname}</div>
-                  </div>
-                </div>
-              </div>
 
-              <div className="modal-section-box">
-                <div className="section-header">
-                  <CreditCard className="section-icon" size={20} />
-                  <h4>Personal Information</h4>
-                </div>
-                <div className="modal-grid">
-                  <div className="modal-field">
-                    <span className="modal-label">Date of Birth:</span>
-                    <div className="modal-value">{selectedUser.vet_dob}</div>
+                  <div className="modal-section-box">
+                    <div className="section-header">
+                      <CreditCard className="section-icon" size={20} />
+                      <h4>Personal Information</h4>
+                    </div>
+                    <div className="modal-grid">
+                      <div className="modal-field">
+                        <span className="modal-label">Date of Birth:</span>
+                        <div className="modal-value">{selectedUser.vet_dob}</div>
+                      </div>
+                      <div className="modal-field">
+                        <span className="modal-label">Sex:</span>
+                        <div className="modal-value">{selectedUser.vet_sex || "Not specified"}</div>
+                      </div>
+                      <div className="modal-field full-width">
+                        <span className="modal-label">Phone Number:</span>
+                        <div className="modal-value">{selectedUser.vet_phone_num}</div>
+                      </div>
+                      <div className="modal-field full-width">
+                        <span className="modal-label">Email:</span>
+                        <div className="modal-value">{selectedUser.vet_email}</div>
+                      </div>
+                      <div className="modal-field full-width">
+                        <span className="modal-label">Facebook:</span>
+                        <div className="modal-value">{selectedUser.facebook}</div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="modal-field">
-                    <span className="modal-label">Sex:</span>
-                    <div className="modal-value">{selectedUser.vet_sex || "Not specified"}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Phone Number:</span>
-                    <div className="modal-value">{selectedUser.vet_phone_num}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Email:</span>
-                    <div className="modal-value">{selectedUser.vet_email}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Facebook:</span>
-                    <div className="modal-value">{selectedUser.facebook}</div>
-                  </div>
-                </div>
-              </div>
 
-              <div className="modal-section-box">
-                <div className="section-header">
-                  <MapPin className="section-icon" size={20} />
-                  <h4>Address Information</h4>
-                </div>
-                <div className="modal-grid">
-                  <div className="modal-field">
-                    <span className="modal-label">Province:</span>
-                    <div className="modal-value">{selectedUser.vet_province}</div>
+                  <div className="modal-section-box">
+                    <div className="section-header">
+                      <MapPin className="section-icon" size={20} />
+                      <h4>Address Information</h4>
+                    </div>
+                    <div className="modal-grid">
+                      <div className="modal-field">
+                        <span className="modal-label">Province:</span>
+                        <div className="modal-value">{selectedUser.vet_province}</div>
+                      </div>
+                      <div className="modal-field">
+                        <span className="modal-label">City:</span>
+                        <div className="modal-value">{selectedUser.vet_city}</div>
+                      </div>
+                      <div className="modal-field">
+                        <span className="modal-label">Barangay:</span>
+                        <div className="modal-value">{selectedUser.vet_brgy}</div>
+                      </div>
+                      <div className="modal-field">
+                        <span className="modal-label">Zip Code:</span>
+                        <div className="modal-value">{selectedUser.vet_zipcode}</div>
+                      </div>
+                      <div className="modal-field full-width">
+                        <span className="modal-label">Complete Address:</span>
+                        <div className="modal-value">{`${selectedUser.vet_brgy}, ${selectedUser.vet_city}, ${selectedUser.vet_province}`}</div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="modal-field">
-                    <span className="modal-label">City:</span>
-                    <div className="modal-value">{selectedUser.vet_city}</div>
-                  </div>
-                  <div className="modal-field">
-                    <span className="modal-label">Barangay:</span>
-                    <div className="modal-value">{selectedUser.vet_brgy}</div>
-                  </div>
-                  <div className="modal-field">
-                    <span className="modal-label">Zip Code:</span>
-                    <div className="modal-value">{selectedUser.vet_zipcode}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Complete Address/Street Name:</span>
-                    <div className="modal-value">{selectedUser.address}</div>
-                  </div>
-                </div>
-              </div>
+                </>
+              )}
 
-              <div className="modal-section-box">
-                <div className="section-header">
-                  <Stethoscope className="section-icon" size={20} />
-                  <h4>Professional Information</h4>
-                </div>
-                <div className="modal-grid">
-                  <div className="modal-field">
-                    <span className="modal-label">License Number:</span>
-                    <div className="modal-value">{selectedUser.vet_license_num || "Not provided"}</div>
+              {modalActiveTab === "professional" && (
+                <div className="modal-section-box">
+                  <div className="section-header">
+                    <Stethoscope className="section-icon" size={20} />
+                    <h4>Professional Information</h4>
                   </div>
-                  <div className="modal-field">
-                    <span className="modal-label">Experience Years:</span>
-                    <div className="modal-value">{selectedUser.vet_exp_yr || "Not specified"}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Specialization:</span>
-                    <div className="modal-value">{selectedUser.vet_specialization || "Not specified"}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Organization:</span>
-                    <div className="modal-value">{selectedUser.vet_org || "Not specified"}</div>
-                  </div>
-                  <div className="modal-field full-width">
-                    <span className="modal-label">Document Image:</span>
-                    <div className="modal-value">{selectedUser.vet_doc_image || "Not provided"}</div>
+                  <div className="modal-grid">
+                    <div className="modal-field">
+                      <span className="modal-label">License Number:</span>
+                      <div className="modal-value">{selectedUser.vet_license_num || "Not provided"}</div>
+                    </div>
+                    <div className="modal-field">
+                      <span className="modal-label">Experience Years:</span>
+                      <div className="modal-value">{selectedUser.vet_exp_yr || "Not specified"}</div>
+                    </div>
+                    <div className="modal-field full-width">
+                      <span className="modal-label">Specialization:</span>
+                      <div className="modal-value">{selectedUser.vet_specialization || "Not specified"}</div>
+                    </div>
+                    <div className="modal-field full-width">
+                      <span className="modal-label">Organization:</span>
+                      <div className="modal-value">{selectedUser.vet_org || "Not specified"}</div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {modalActiveTab === "documents" && (
+                <div className="modal-section-box">
+                  <div className="section-header">
+                    <FileText className="section-icon" size={20} />
+                    <h4>Documents</h4>
+                  </div>
+                  <div className="documents-container">
+                    {selectedUser.vet_doc_image ? (
+                      <div className="document-image-container">
+                        <img
+                          src={selectedUser.vet_doc_image || "/placeholder.svg"}
+                          alt="Veterinarian License Document"
+                          className="document-image"
+                          onError={(e) => {
+                            e.target.style.display = "none"
+                            e.target.nextSibling.style.display = "block"
+                          }}
+                        />
+                        <div className="document-placeholder" style={{ display: "none" }}>
+                          <FileText size={48} />
+                          <p>Document image not available</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="document-placeholder">
+                        <FileText size={48} />
+                        <p>No document provided</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div

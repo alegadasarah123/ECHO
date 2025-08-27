@@ -6,7 +6,9 @@ from rest_framework import status
 from supabase import create_client
 import os, requests, logging
 from django.conf import settings
-
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+import datetime
 
 
 
@@ -288,3 +290,65 @@ def get_users(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+
+
+
+@api_view(["GET"])
+def get_vetnotifications(request):
+    """
+    Fetch notifications:
+    1. New pending veterinarians.
+    2. Veterinarian activities (updates/requests).
+    """
+    try:
+        manila_tz = datetime.timezone(datetime.timedelta(hours=8))
+
+        # --- Get pending veterinarians ---
+        pending_vets_query = sr_client.table("users") \
+            .select("id, status, role, created_at, vet_profile(vet_fname, vet_lname)") \
+            .eq("role", "veterinarian") \
+            .eq("status", "pending") \
+            .execute()
+        pending_vets = pending_vets_query.data or []
+
+        # --- Fetch existing notifications (to prevent duplicates) ---
+        existing = sr_client.table("notification").select("id").execute()
+        existing_ids = {row["id"] for row in (existing.data or [])}
+
+        # --- Insert notifications for pending vets ---
+        for vet in pending_vets:
+            user_id = vet.get("id")
+            if user_id and user_id not in existing_ids:
+                vet_profile = vet.get("vet_profile") or {}
+                vet_name = f"{vet_profile.get('vet_fname', 'Unknown')} {vet_profile.get('vet_lname', '')}".strip()
+
+                notif_message = f"New veterinarian registered: Dr. {vet_name}. Please accept the request."
+                created_at = vet.get("created_at")
+                dt_ph = (
+                    datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00")).astimezone(manila_tz)
+                    if created_at else datetime.datetime.now(manila_tz)
+                )
+
+                sr_client.table("notification").insert({
+                    "id": user_id,
+                    "notif_message": notif_message,
+                    "notif_date": dt_ph.strftime("%Y-%m-%d"),
+                    "notif_time": dt_ph.strftime("%H:%M:%S"),
+                }).execute()
+
+        # --- Fetch all notifications ---
+        result = sr_client.table("notification").select("*").order("notif_date", desc=True).execute()
+        notifications = [
+            {
+                "id": row["notif_id"],
+                "message": row["notif_message"],
+                "date": f"{row['notif_date']}T{row['notif_time']}+08:00",
+            }
+            for row in (result.data or [])
+        ]
+
+        return Response(notifications, status=200)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
