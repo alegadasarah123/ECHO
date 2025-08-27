@@ -1,11 +1,7 @@
-import Sidebar from '@/components/KutSidebar';
-import { Users, Users2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import React, { useState, useEffect } from 'react';
-import { Users, Clock, Bell, UserPlus, Calendar, User } from 'lucide-react';
+import { Users, Users2, Clock, Bell, UserPlus, Calendar, User } from 'lucide-react';
 import Sidebar from '@/components/KutSidebar';
 import NotificationModal from './KutNotif';
-
 const KutseroDashboard = () => {
   const [users, setUsers] = useState([]);
   const [approvedCounts, setApprovedCounts] = useState({ approved_kutsero_count: 0, approved_horse_operator_count: 0 });
