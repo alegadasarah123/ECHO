@@ -1,8 +1,13 @@
+<<<<<<< HEAD
 import Sidebar from '@/components/KutSidebar';
 import { Bell, Calendar, Clock, User, UserPlus, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
+=======
+import React, { useState, useEffect } from 'react';
+import { Users, Users2, Clock, Bell, UserPlus, Calendar, User } from 'lucide-react';
+import Sidebar from '@/components/KutSidebar';
+>>>>>>> 9421ea3a801c3871129134957fbcad01d7d60f9e
 import NotificationModal from './KutNotif';
-
 const KutseroDashboard = () => {
   const [users, setUsers] = useState([]);
   const [approvedCounts, setApprovedCounts] = useState({ approved_kutsero_count: 0, approved_horse_operator_count: 0 });
@@ -11,7 +16,7 @@ const KutseroDashboard = () => {
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/kutsero_president/get_users/");
+        const res = await fetch("/api/kutsero_president/get_users/");
         const data = await res.json();
         const formatted = data.users.map(u => ({
           id: u.id,
