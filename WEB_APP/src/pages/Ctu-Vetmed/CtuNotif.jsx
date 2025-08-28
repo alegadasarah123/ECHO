@@ -5,8 +5,8 @@ import { useEffect, useState } from "react"
 const NotificationsModal = ({ isOpen }) => {
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(false)
-  
-  // ✅ Format ISO timestamp in Philippine Time
+
+  // Format date in PH timezone
   const formatDate = (dateStr) => {
     if (!dateStr) return ""
     return new Date(dateStr).toLocaleString("en-PH", {
@@ -21,32 +21,28 @@ const NotificationsModal = ({ isOpen }) => {
     })
   }
 
-useEffect(() => {
-  if (isOpen) {
-    setLoading(true)
-    fetch("http://localhost:8000/api/ctu-vetmed/get_vetnotifications/")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch notifications")
-        return res.json()
-      })
-      .then((data) => {
-        const formatted = data.map((notif) => ({
-          id: notif.id,
-          title: "Notification",
-          message: notif.message,
-          time: new Date(notif.date).toLocaleString("en-PH", {
-            timeZone: "Asia/Manila",
-          }),
-          read: false,
-        }))
-        setNotifications(formatted)
-      })
-      .catch((err) => console.error("Failed to fetch notifications:", err))
-      .finally(() => setLoading(false))
-  }
-}, [isOpen])
-
-
+  useEffect(() => {
+    if (isOpen) {
+      setLoading(true)
+      fetch("http://localhost:8000/api/get_vetnotifications/")
+        .then((res) => {
+          if (!res.ok) throw new Error("Failed to fetch notifications")
+          return res.json()
+        })
+        .then((data) => {
+          const formatted = data
+            .filter((n) => n.message) // Only keep messages
+            .map((notif) => ({
+              id: notif.id,
+              message: notif.message,
+              date: notif.date || new Date().toISOString(), // fallback to current time
+            }))
+          setNotifications(formatted)
+        })
+        .catch((err) => console.error("Failed to fetch notifications:", err))
+        .finally(() => setLoading(false))
+    }
+  }, [isOpen])
 
   if (!isOpen) return null
 
@@ -62,8 +58,8 @@ useEffect(() => {
         {loading ? (
           <p style={{ textAlign: "center", color: "#6b7280" }}>Loading...</p>
         ) : notifications.length > 0 ? (
-          notifications.map((n, i) => (
-            <div key={i} style={styles.notification}>
+          notifications.map((n) => (
+            <div key={n.id} style={styles.notification}>
               <p style={styles.message}>{n.message}</p>
               <span style={styles.date}>{formatDate(n.date)}</span>
             </div>
@@ -89,27 +85,16 @@ useEffect(() => {
         )}
       </div>
 
-      {/* Footer with CLEAR button when notifications exist */}
+      {/* Footer CLEAR button */}
       {notifications.length > 0 && (
         <div
           style={{
             padding: "10px 14px",
             borderTop: "1px solid #eee",
             display: "flex",
-            justifyContent: "space-between",
+            justifyContent: "flex-end",
           }}
         >
-          <button
-            style={{
-              background: "none",
-              border: "none",
-              color: "#b91c1c",
-              fontSize: "12px",
-              cursor: "pointer",
-            }}
-          >
-            Mark all as read
-          </button>
           <button
             style={{
               background: "none",
@@ -155,7 +140,6 @@ const styles = {
   message: {
     fontSize: "14px",
     fontWeight: "500",
-    marginBottom: "4px",
     color: "#333",
   },
   date: { fontSize: "12px", color: "#888" },
