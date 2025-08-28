@@ -1,15 +1,19 @@
 "use client"
 
 import Sidebar from "@/components/CtuSidebar";
-import { Bell, BellOff, ClipboardList } from "lucide-react"; // Assuming these icons are used
+import { Bell, ClipboardList } from "lucide-react"; // Assuming these icons are used
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import NotificationModal from "./CtuNotif";
 
 function CtuDashboard() {
   const navigate = useNavigate()
 
+  const [notifsOpen, setNotifsOpen] = useState(false)
+  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false) // Declared the variable here
+
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
- 
+
   const [notifications, setNotifications] = useState([])
   const [recordCount, setrecordCount] = useState(0)
   const [vetCount, setvetCount] = useState(0)
@@ -104,8 +108,6 @@ function CtuDashboard() {
     console.log(`Notification ${id} clicked.`)
   }
 
-  
-
   const loadDashboardData = useCallback(() => {
     loadStats()
     loadRecentActivities()
@@ -116,20 +118,14 @@ function CtuDashboard() {
     setIsNotificationDropdownOpen((prev) => !prev)
   }
 
-
-
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
   }
-
- 
 
   const handleChatButtonClick = () => {
     console.log("Chat button clicked")
     navigate("/CtuMessage")
   }
-
-  
 
   // Fetch from Django backend
   useEffect(() => {
@@ -177,8 +173,28 @@ function CtuDashboard() {
     }
   }, [])
 
-
-  
+  // Define the styles object at the top of your file or before the return
+  const styles = {
+    notificationBtn: {
+      position: "relative",
+      background: "transparent",
+      border: "none",
+      cursor: "pointer",
+      padding: "8px",
+      borderRadius: "50%",
+    },
+    badge: {
+      position: "absolute",
+      top: "2px",
+      right: "2px",
+      backgroundColor: "#ef4444",
+      color: "#fff",
+      borderRadius: "50%",
+      padding: "2px 6px",
+      fontSize: "12px",
+      fontWeight: "bold",
+    },
+  }
 
   return (
     <div className="body-wrapper">
@@ -254,7 +270,7 @@ function CtuDashboard() {
         }
 
         .dashboard-title {
-          font-size: 22px;
+          font-size: 25px;
           font-weight: bold;
           color: #da2424ff;
         }
@@ -1239,63 +1255,30 @@ function CtuDashboard() {
             min-height: 40px;
           }
         }
-        
       `}</style>
 
-    
-
       <Sidebar isOpen={isSidebarOpen} />
-      
 
       <div className="main-content">
         <header className="headers">
           <div className="dashboard-container">
-            <h2 className="dashboard-title">Ctu-VetMed Dashboard</h2>
+            <h2 className="dashboard-title">Dashboard</h2>
             <span className="dashboard-time">{time}</span>
           </div>
-          <div className="notification-bell" ref={notificationBellRef} onClick={toggleNotificationDropdown}>
-            <Bell size={20} />
-            {notifications.filter((n) => !n.read).length > 0 && (
-              <div className="notification-count">{notifications.filter((n) => !n.read).length}</div>
-            )}
-            <div
-              className={`notification-dropdown ${isNotificationDropdownOpen ? "show" : ""}`}
-              ref={notificationDropdownRef}
-            >
-              <div className="notification-header">
-                <h3>Notifications</h3>
-                {notifications.filter((n) => !n.read).length > 0 && (
-                  <button className="mark-all-read" onClick={markAllNotificationsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div id="notificationList">
-                {notifications.length === 0 ? (
-                  <div className="empty-state">
-                    <BellOff size={48} />
-                    <h3>No notifications</h3>
-                    <p>You're all caught up!</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`notification-item ${!notification.read ? "unread" : ""}`}
-                      onClick={() => handleNotificationClick(notification.id)}
-                    >
-                      <div className="notification-title">
-                        <i className={`notification-icon ${notification.type || "info"}`} />
-                        {notification.title}
-                      </div>
-                      <div className="notification-message">{notification.message}</div>
-                      <div className="notification-time">{notification.time}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
+            <Bell size={24} color="#374151" />
+            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
+          </button>
+
+          {/* Notification Modal */}
+          <NotificationModal
+            isOpen={notifsOpen}
+            onClose={() => setNotifsOpen(false)}
+            notifications={notifications.map((n) => ({
+              message: n.message,
+              date: n.date,
+            }))}
+          />
         </header>
 
         <div className="content-areas">
@@ -1408,8 +1391,6 @@ function CtuDashboard() {
           </div>
         </button>
       </div>
-
-      
     </div>
   )
 }

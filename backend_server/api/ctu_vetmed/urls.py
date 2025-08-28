@@ -10,5 +10,8 @@ urlpatterns = [
     path('api/status-counts/', views.get_status_counts, name='status-counts'),
     path('api/get-ctu-vet-profiles/', views.get_ctu_vet_profiles, name='get-ctu-vet-profiles'),
     path('api/get-users/', views.get_users, name='get-users'),
+    path('get_vetnotifications/', views.get_vetnotifications, name='get_vetnotifications'),
+    path('api/update-vet-status/<str:vet_profile_id>/', views.update_vet_status)
+
     
 ]

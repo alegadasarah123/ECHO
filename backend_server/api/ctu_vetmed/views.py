@@ -6,7 +6,9 @@ from rest_framework import status
 from supabase import create_client
 import os, requests, logging
 from django.conf import settings
-
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+import datetime
 
 
 
@@ -288,3 +290,145 @@ def get_users(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+
+
+
+
+
+
+
+
+@api_view(['PATCH'])
+def update_vet_status(request, vet_profile_id):
+    """
+    Update the status of a vet user (pending, approved, declined)
+    """
+    new_status = request.data.get("status")
+    allowed_statuses = ["pending", "approved", "declined"]
+
+    if new_status not in allowed_statuses:
+        return Response({"error": f"Invalid status. Allowed: {allowed_statuses}"}, status=400)
+
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        # Get vet_id from vet_profile
+        vet_profile_res = service_client.table("vet_profile").select("vet_id").eq("id", vet_profile_id).execute()
+        if not vet_profile_res.data:
+            return Response({"error": f"Vet profile with id {vet_profile_id} not found"}, status=404)
+
+        vet_id = vet_profile_res.data[0].get("vet_id")
+        if not vet_id:
+            return Response({"error": "Vet ID not found in profile"}, status=404)
+
+        # Update user status
+        update_res = service_client.table("users").update({"status": new_status}).eq("id", vet_id).execute()
+        if not update_res.data:
+            return Response({"error": f"User with id {vet_id} not found"}, status=404)
+
+        return Response({"message": f"Status updated to {new_status}", "data": update_res.data[0]}, status=200)
+
+    except Exception as e:
+        # Catch all unexpected errors
+        logging.exception("Failed to update vet status")
+        return Response({"error": "Internal server error", "details": str(e)}, status=500)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+@api_view(["GET"])
+def get_vetnotifications(request):
+    """
+    Fetch pending veterinarians only, insert notifications in Supabase, 
+    and return all notifications.
+    """
+    try:
+        manila_tz = datetime.timezone(datetime.timedelta(hours=8))
+
+        # 1️⃣ Fetch all vet profiles joined with users (status + role)
+        vets_res = sr_client.table("vet_profile") \
+            .select("vet_id, vet_fname, vet_lname, created_at, users(status, role)") \
+            .execute()
+
+        # ✅ Filter only pending veterinarians
+        pending_vets = [
+            v for v in (vets_res.data or [])
+            if v.get("users", {}).get("status", "").lower() == "pending" and
+               v.get("users", {}).get("role", "").lower() == "veterinarian"
+        ]
+
+        # 2️⃣ Get existing notifications to avoid duplicates
+        existing_res = sr_client.table("notification").select("id").execute()
+        existing_ids = {row["id"] for row in (existing_res.data or [])}
+
+        # 3️⃣ Insert notifications for pending veterinarians only
+        for vet in pending_vets:
+            vet_id = str(vet.get("vet_id"))
+            if vet_id in existing_ids:
+                continue
+
+            vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
+            created_at = vet.get("created_at")
+            dt_ph = (datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                     .astimezone(manila_tz)) if created_at else datetime.datetime.now(manila_tz)
+
+            notif_payload = {
+                "id": vet_id,
+                "notif_message": f"New veterinarian registered: Dr. {vet_name}.",
+                "notif_date": dt_ph.strftime("%Y-%m-%d"),
+                "notif_time": dt_ph.strftime("%H:%M:%S"),
+            }
+
+            sr_client.table("notification").insert(notif_payload).execute()
+
+        # 4️⃣ Fetch all notifications (latest first)
+        all_notifs_res = sr_client.table("notification") \
+            .select("*") \
+            .order("notif_date", desc=True) \
+            .order("notif_time", desc=True) \
+            .execute()
+
+        notifications = []
+        for row in (all_notifs_res.data or []):
+            # Only include veterinarians in response
+            notif_msg = row.get("notif_message", "")
+            if "veterinarian" not in notif_msg.lower():
+                continue
+
+            date_iso = f"{row['notif_date']}T{row['notif_time']}+08:00"
+            notifications.append({
+                "id": row["id"],
+                "message": notif_msg,
+                "date": date_iso,
+            })
+
+        return Response(notifications, status=200)
+
+    except Exception as e:
+        print("Error in get_vetnotifications:", e)
+        return Response({"error": str(e)}, status=500)

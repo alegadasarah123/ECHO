@@ -1,12 +1,11 @@
 "use client"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
 
-import Sidebar from "@/components/CtuSidebar"
 import { ArrowLeft, Eye, EyeOff, Plus, Shield, Trash2, UserCircle, Users } from "lucide-react"
 
+import Sidebar from "@/components/CtuSidebar"
+
 function CtuSettings() {
-  const navigate = useNavigate()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
@@ -30,6 +29,18 @@ function CtuSettings() {
   const [passwordVisibility, setPasswordVisibility] = useState({}) // For table password visibility
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [activeUserTab, setActiveUserTab] = useState("add") // 'add' or 'existing'
+  const [currentView, setCurrentView] = useState("settings")
+  const [showPassword, setShowPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [formData, setFormData] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+    role: "user",
+  })
 
   const sidebarRef = useRef(null)
   const notificationBellRef = useRef(null)
@@ -42,6 +53,8 @@ function CtuSettings() {
     security: {},
     userManagement: {},
   })
+
+  const [activeTab, setActiveTab] = useState("addNew")
 
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
@@ -71,7 +84,6 @@ function CtuSettings() {
     localStorage.removeItem("currentUser")
     localStorage.removeItem("loginTime")
     closeLogoutModal()
-    navigate("/")
     window.location.reload()
   }
 
@@ -91,7 +103,7 @@ function CtuSettings() {
   // Added search input handler
 
   // Settings navigation functions
-  const openProfileSettings = () => {
+  const openProfileSettingsMain = () => {
     setActiveSettingsView("profile")
     loadProfileData()
   }
@@ -101,12 +113,12 @@ function CtuSettings() {
     loadSecurityData()
   }
 
-  const openUserManagement = () => {
+  const openUserManagementMain = () => {
     setActiveSettingsView("userManagement")
     loadUsers()
   }
 
-  const goBackToSettings = () => {
+  const goBackToSettingsMain = () => {
     setActiveSettingsView("main")
   }
 
@@ -146,7 +158,7 @@ function CtuSettings() {
     setSettingsData((prev) => ({ ...prev, profile: formData }))
     console.log("Saving profile settings:", formData)
     alert("Profile settings saved successfully!")
-    goBackToSettings()
+    goBackToSettingsMain()
   }
 
   const saveSecuritySettings = () => {
@@ -173,7 +185,7 @@ function CtuSettings() {
     setSettingsData((prev) => ({ ...prev, security: securityData }))
     console.log("Saving security settings:", securityData)
     alert("Security settings saved successfully!")
-    goBackToSettings()
+    goBackToSettingsMain()
   }
 
   // User management functions
@@ -378,6 +390,19 @@ function CtuSettings() {
 
     fetchUserData()
   }, [])
+
+  // Settings navigation functions
+  const openProfileSettings = () => {
+    setCurrentView("profile")
+  }
+
+  const openUserManagement = () => {
+    setCurrentView("users")
+  }
+
+  const goBackToSettings = () => {
+    setCurrentView("settings")
+  }
 
   return (
     <div className="bodyWrapper">
@@ -691,9 +716,103 @@ function CtuSettings() {
 .profileFormContent,
 .securityFormContent,
 .userManagementContent {
-  padding: 32px 48px;
-  max-width: 950px;
+  padding: 3px 48px;
+  max-width: 1200px;
   margin: 0 auto;
+}
+
+/* New profile layout styles to match the image design */
+.profileContainer {
+  display: flex;
+  gap: 48px;
+  padding: 32px 48px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.profileLeftSection {
+  flex: 0 0 300px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.profilePicture {
+  width: 150px;
+  height: 150px;
+  border-radius: 50%;
+  border: 3px solid #e5e7eb;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #9ca3af;
+  background-color: #f9fafb;
+  margin-bottom: 24px;
+}
+
+.profileName {
+  font-size: 24px;
+  font-weight: 600;
+  color: #111827;
+  margin-bottom: 8px;
+}
+
+.profileUsername {
+  font-size: 16px;
+  color: #6b7280;
+  margin-bottom: 16px;
+}
+
+.profileStatus {
+  display: inline-block;
+  padding: 4px 12px;
+  background-color: #fef3c7;
+  color: #92400e;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.profileRightSection {
+  flex: 1;
+}
+
+.infoSection {
+  margin-bottom: 32px;
+}
+
+.sectionTitle {
+  font-size: 18px;
+  font-weight: 600;
+  color: #ea580c;
+  margin-bottom: 40px;
+  border-bottom: 2px solid #ea580c;
+  padding-bottom: 8px;
+}
+
+.infoGrid {
+  display: grid;
+  gap: 16px;
+}
+
+.infoItem {
+  display: flex;
+  align-items: center;
+}
+
+.infoLabel {
+  font-weight: 600;
+  color: #374151;
+  min-width: 140px;
+  margin-right: 16px;
+}
+
+.infoValue {
+  color: #6b7280;
+  flex: 1;
 }
 
 .formGroup {
@@ -840,6 +959,21 @@ function CtuSettings() {
   min-height: 44px;
   min-width: 80px;
 }
+.button {
+  padding: 10px 10px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  min-height: 45px;
+  min-width: 100px;
+  display: inline-flex;        /* use inline-flex for icon + text alignment */
+  align-items: center;         /* vertically center the icon and text */
+  justify-content: flex-start; /* align content to the left */
+  gap: 6px;                    /* space between icon and text */
+}
 
 .btnSecondary {
   background-color: #f3f4f6;
@@ -850,12 +984,12 @@ function CtuSettings() {
   background-color: #e5e7eb;
 }
 
-.btnPrimary {
+.btnPrimarys {
   background-color: #b91c1c;
   color: white;
 }
 
-.btnPrimary:hover {
+.btnPrimarys:hover {
   background-color: #991b1b;
 }
 
@@ -967,7 +1101,7 @@ function CtuSettings() {
 
 .addUserForm {
   background: #f9fafb;
-  padding: 24px;
+  padding: 10px;
   border-radius: 8px;
   border: 1px solid #e5e7eb;
 }
@@ -1469,8 +1603,6 @@ function CtuSettings() {
       </div>
 
       <div className="mainContent">
-        
-
         <div className="contentArea">
           <div className="settingsContainer">
             {/* Main Settings View */}
@@ -1480,7 +1612,7 @@ function CtuSettings() {
                   <h1 className="settingsTitle">Settings</h1>
                 </div>
                 <div className="settingsList">
-                  <div className="settingsItem" onClick={openProfileSettings}>
+                  <div className="settingsItem" onClick={openProfileSettingsMain}>
                     <div className="settingsIcon">
                       <UserCircle size={24} />
                     </div>
@@ -1498,7 +1630,7 @@ function CtuSettings() {
                       <div className="settingsItemDescription">Manage passwords and account protection</div>
                     </div>
                   </div>
-                  <div className="settingsItem" onClick={openUserManagement}>
+                  <div className="settingsItem" onClick={openUserManagementMain}>
                     <div className="settingsIcon">
                       <Users size={24} />
                     </div>
@@ -1515,118 +1647,44 @@ function CtuSettings() {
             {activeSettingsView === "profile" && (
               <div id="profile-settings" className="profileSettings">
                 <div className="settingsHeader">
-                  <button className="backButton" onClick={goBackToSettings}>
+                  <button className="backButton" onClick={goBackToSettingsMain}>
                     <ArrowLeft size={20} />
                   </button>
                   <h1 className="settingsTitle">Profile Settings</h1>
                 </div>
-                <div className="profileFormContent">
-                  <form id="profileForm">
-                    <div className="formGroup">
-                      <label className="formLabels" htmlFor="firstname">
-                        First Name
-                      </label>
-                      <input
-                        type="text"
-                        id="firstname"
-                        className="formInputs"
-                        value={profile?.ctu_fname || ""}
-                        readOnly
-                      />
+                <div className="profileContainer">
+                  <div className="profileLeftSection">
+                    <div className="profilePicture">
+                      {profile?.ctu_fname?.charAt(0)?.toUpperCase()}
+                      {profile?.ctu_lname?.charAt(0)?.toUpperCase()}
                     </div>
-                    <div className="formGroup">
-                      <label className="formLabels" htmlFor="lastname">
-                        Last Name
-                      </label>
-                      <input
-                        type="text"
-                        id="lastname"
-                        className="formInputs"
-                        value={profile?.ctu_lname || ""}
-                        readOnly
-                      />
+                    <div className="profileName">
+                      {profile?.ctu_fname} {profile?.ctu_lname}
                     </div>
-                    <div className="formGroup">
-                      <label className="formLabels" htmlFor="email">
-                        Email Address
-                      </label>
-                      <input type="email" id="email" className="formInputs" value={profile?.ctu_email || ""} readOnly />
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabels" htmlFor="phone">
-                        Phone Number
-                      </label>
-                      <input
-                        type="tel"
-                        id="phone"
-                        className="formInputs"
-                        value={profile?.ctu_phonenum || ""}
-                        readOnly
-                      />
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabels" htmlFor="role">
-                        Role
-                      </label>
-                      <input type="text" id="role" className="formInputs" value={profile?.role || ""} readOnly />
-                    </div>
+                    <div className="profileUsername">{profile?.ctu_email?.split("@")[0] || "username"}</div>
+                  </div>
 
-                    <div className="formGroup">
-                      <label className="formLabels" htmlFor="language">
-                        Language
-                      </label>
-                      <select id="language" className="formSelects">
-                        <option value="">Select language</option>
-                        <option value="english">English</option>
-                        <option value="filipino">Filipino</option>
-                        <option value="cebuano">Cebuano</option>
-                        <option value="spanish">Spanish</option>
-                      </select>
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabels" htmlFor="theme">
-                        Interface Theme
-                      </label>
-                      <select id="theme" className="formSelects">
-                        <option value="">Select theme</option>
-                        <option value="default">Default</option>
-                        <option value="dark">Dark</option>
-                        <option value="light">Light</option>
-                        <option value="auto">Auto</option>
-                      </select>
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabels">Privacy Settings</label>
-                      <div className="checkboxGroup">
-                        <div className="checkboxItems">
-                          <input type="checkbox" id="shareData" className="checkboxInput" />
-                          <label htmlFor="shareData" className="checkboxLabel">
-                            Share my data with other system users
-                          </label>
+                  <div className="profileRightSection">
+                    <div className="infoSection">
+                      <h3 className="sectionTitle">Personal Information</h3>
+                      <div className="infoGrid">
+                        <div className="infoItem">
+                          <span className="infoLabel">Full Name:</span>
+                          <span className="infoValue">
+                            {profile?.ctu_fname} {profile?.ctu_lname}
+                          </span>
                         </div>
-                        <div className="checkboxItems">
-                          <input type="checkbox" id="profileVisible" className="checkboxInput" />
-                          <label htmlFor="profileVisible" className="checkboxLabel">
-                            Make my profile visible in directory
-                          </label>
+                        <div className="infoItem">
+                          <span className="infoLabel">Email Address:</span>
+                          <span className="infoValue">{profile?.ctu_email || ""}</span>
                         </div>
-                        <div className="checkboxItems">
-                          <input type="checkbox" id="allowAnalytics" className="checkboxInput" />
-                          <label htmlFor="allowAnalytics" className="checkboxLabel">
-                            Allow anonymous usage analytics
-                          </label>
+                        <div className="infoItem">
+                          <span className="infoLabel">Phone Number:</span>
+                          <span className="infoValue">{profile?.ctu_phonenum || ""}</span>
                         </div>
                       </div>
                     </div>
-                  </form>
-                </div>
-                <div className="formActions">
-                  <button type="button" className="btn btnSecondary" onClick={goBackToSettings}>
-                    Cancel
-                  </button>
-                  <button type="button" className="btn btnPrimary" onClick={saveProfileSettings}>
-                    Save Changes
-                  </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -1635,7 +1693,7 @@ function CtuSettings() {
             {activeSettingsView === "security" && (
               <div id="security-settings" className="securitySettings">
                 <div className="settingsHeader">
-                  <button className="backButton" onClick={goBackToSettings}>
+                  <button className="backButton" onClick={goBackToSettingsMain}>
                     <ArrowLeft size={20} />
                   </button>
                   <h1 className="settingsTitle">Security Settings</h1>
@@ -1745,57 +1803,10 @@ function CtuSettings() {
                         </div>
                       </div>
                     </div>
-                    <div className="securitySection">
-                      <h3 className="securitySectionTitle">Two-Factor Authentication</h3>
-                      <div className="securityCheckboxGroup">
-                        <div className="securityCheckboxItem">
-                          <input type="checkbox" id="enable2FA" className="securityCheckboxInput" />
-                          <label htmlFor="enable2FA" className="securityCheckboxLabel">
-                            Enable two-factor authentication
-                          </label>
-                        </div>
-                        <div className="securityCheckboxItem">
-                          <input type="checkbox" id="smsAuth" className="securityCheckboxInput" />
-                          <label htmlFor="smsAuth" className="securityCheckboxLabel">
-                            SMS authentication
-                          </label>
-                        </div>
-                        <div className="securityCheckboxItem">
-                          <input type="checkbox" id="emailAuth" className="securityCheckboxInput" />
-                          <label htmlFor="emailAuth" className="securityCheckboxLabel">
-                            Email authentication
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="securitySection">
-                      <h3 className="securitySectionTitle">Session Management</h3>
-                      <div className="formGroup">
-                        <label className="formLabel" htmlFor="sessionTimeout">
-                          Session Timeout
-                        </label>
-                        <select id="sessionTimeout" className="formSelect">
-                          <option value="">Select timeout</option>
-                          <option value="15">15 minutes</option>
-                          <option value="30">30 minutes</option>
-                          <option value="60">1 hour</option>
-                          <option value="120">2 hours</option>
-                          <option value="480">8 hours</option>
-                        </select>
-                      </div>
-                      <div className="securityCheckboxGroup">
-                        <div className="securityCheckboxItem">
-                          <input type="checkbox" id="logoutAllDevices" className="securityCheckboxInput" />
-                          <label htmlFor="logoutAllDevices" className="securityCheckboxLabel">
-                            Log out from all other devices
-                          </label>
-                        </div>
-                      </div>
-                    </div>
                   </form>
                 </div>
                 <div className="formActions">
-                  <button type="button" className="btn btnSecondary" onClick={goBackToSettings}>
+                  <button type="button" className="btn btnSecondary" onClick={goBackToSettingsMain}>
                     Cancel
                   </button>
                   <button type="button" className="btn btnPrimary" onClick={saveSecuritySettings}>
@@ -1809,202 +1820,505 @@ function CtuSettings() {
             {activeSettingsView === "userManagement" && (
               <div id="user-management" className="userManagement">
                 <div className="settingsHeader">
-                  <button className="backButton" onClick={goBackToSettings}>
+                  <button className="backButton" onClick={goBackToSettingsMain}>
                     <ArrowLeft size={20} />
                   </button>
                   <h1 className="settingsTitle">User Management</h1>
                 </div>
+
+                <div className="flex border-b border-gray-200 mb-6">
+                  <button
+                    className={`px-6 py-3 font-medium text-sm transition-all duration-200 border-b-2 ${
+                      activeTab === "addNew"
+                        ? "text-[#b91c1c] border-[#b91c1c] bg-[#fee2e2]" // active tab
+                        : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
+                    }`}
+                    onClick={() => setActiveTab("addNew")}
+                  >
+                    Add New User
+                  </button>
+                  <button
+                    className={`px-6 py-3 font-medium text-sm transition-all duration-200 border-b-2 ${
+                      activeTab === "existing"
+                        ? "text-[#b91c1c] border-[#b91c1c] bg-[#fee2e2]" // active tab
+                        : "text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300"
+                    }`}
+                    onClick={() => setActiveTab("existing")}
+                  >
+                    Existing Users
+                  </button>
+                </div>
+
                 <div className="userManagementContent">
-                  {/* Add New User Section */}
-                  <div className="userSection">
-                    <h3 className="userSectionTitle">Add New User</h3>
-                    <div className="addUserForm">
-                      <div className="formRow">
-                        <div className="formGroup">
-                          <label className="formLabel">First Name</label>
-                          <input
-                            type="text"
-                            className="formInput"
-                            placeholder="Enter first name"
-                            value={newUser.firstname}
-                            onChange={(e) => handleNewUserChange("firstname", e.target.value)}
-                          />
-                        </div>
-                        <div className="formGroup">
-                          <label className="formLabel">Last Name</label>
-                          <input
-                            type="text"
-                            className="formInput"
-                            placeholder="Enter last name"
-                            value={newUser.lastname}
-                            onChange={(e) => handleNewUserChange("lastname", e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <div className="formRow">
-                        <div className="formGroup">
-                          <label className="formLabel">Email</label>
-                          <input
-                            type="email"
-                            className="formInput"
-                            placeholder="Enter email"
-                            value={newUser.email}
-                            onChange={(e) => handleNewUserChange("email", e.target.value)}
-                          />
-                        </div>
-                        <div className="formGroup">
-                          <label className="formLabel">Phone Number</label>
-                          <input
-                            type="tel"
-                            className="formInput"
-                            placeholder="Enter phone number"
-                            value={newUser.phone}
-                            onChange={(e) => handleNewUserChange("phone", e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <div className="formRow">
-                        <div className="formGroup">
-                          <label className="formLabel">Role</label>
-                          <select
-                            className="formSelect"
-                            value={newUser.role}
-                            onChange={(e) => handleNewUserChange("role", e.target.value)}
-                          >
-                            <option value="">Select role</option>
-                            <option value="admin">Ctu-Vetmed</option>
-                            <option value="veterinarian">Dvmf</option>
-                          </select>
-                        </div>
-                        <div className="formGroup">
-                          <label className="formLabel">Password</label>
-                          <div className="passwordInputContainer" style={{ position: "relative" }}>
+                  {activeTab === "addNew" && (
+                    <div className="userSection">
+                      <div className="addUserForm">
+                        <div className="formRow">
+                          <div className="formGroup">
+                            <label className="formLabel">First Name</label>
                             <input
-                              type={isPasswordVisible ? "text" : "password"}
+                              type="text"
                               className="formInput"
-                              placeholder="Enter password"
-                              value={newUser.password}
-                              onChange={(e) => handleNewUserChange("password", e.target.value)}
-                              style={{ paddingRight: "40px" }}
+                              placeholder="Enter first name"
+                              value={newUser.firstname}
+                              onChange={(e) => handleNewUserChange("firstname", e.target.value)}
                             />
-                            <button
-                              type="button"
-                              onClick={togglePasswordVisibility}
-                              style={{
-                                position: "absolute",
-                                right: "10px",
-                                top: "50%",
-                                transform: "translateY(-50%)",
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                                color: "#666",
-                                fontSize: "16px",
-                              }}
-                              title={isPasswordVisible ? "Hide password" : "Show password"}
-                            >
-                              {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
+                          </div>
+                          <div className="formGroup">
+                            <label className="formLabel">Last Name</label>
+                            <input
+                              type="text"
+                              className="formInput"
+                              placeholder="Enter last name"
+                              value={newUser.lastname}
+                              onChange={(e) => handleNewUserChange("lastname", e.target.value)}
+                            />
                           </div>
                         </div>
-                      </div>
-                      <button type="button" className="btn btnPrimary" onClick={addNewUser}>
-                        <Plus size={16} /> Add User
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Users List Section */}
-                  <div className="userSection">
-                    <h3 className="userSectionTitle">Existing Users</h3>
-                    {users.length === 0 ? (
-                      <div className="empty-state">
-                        <Users size={48} />
-                        <h3>No users found</h3>
-                        <p>Add your first user to get started</p>
-                      </div>
-                    ) : (
-                      <div className="usersTable">
-                        <div className="tableHeader">
-                          <div className="tableHeaderCell">First Name</div>
-                          <div className="tableHeaderCell">Last Name</div>
-                          <div className="tableHeaderCell">Email</div>
-                          <div className="tableHeaderCell">Phone</div>
-                          <div className="tableHeaderCell">Role</div>
-                          <div className="tableHeaderCell">Password</div>
-                          <div className="tableHeaderCell">Status</div>
-                          <div className="tableHeaderCell">Actions</div>
+                        <div className="formRow">
+                          <div className="formGroup">
+                            <label className="formLabel">Email</label>
+                            <input
+                              type="email"
+                              className="formInput"
+                              placeholder="Enter email"
+                              value={newUser.email}
+                              onChange={(e) => handleNewUserChange("email", e.target.value)}
+                            />
+                          </div>
+                          <div className="formGroup">
+                            <label className="formLabel">Phone Number</label>
+                            <input
+                              type="tel"
+                              className="formInput"
+                              placeholder="Enter phone number"
+                              value={newUser.phone}
+                              onChange={(e) => handleNewUserChange("phone", e.target.value)}
+                            />
+                          </div>
                         </div>
+                        <div className="formRow">
+                          <div className="formGroup">
+                            <label className="formLabel">Role</label>
+                            <select
+                              className="formSelect"
+                              value={newUser.role}
+                              onChange={(e) => handleNewUserChange("role", e.target.value)}
+                            >
+                              <option value="">Select role</option>
+                              <option value="admin">Ctu-Vetmed</option>
+                              <option value="veterinarian">Dvmf</option>
+                            </select>
+                          </div>
+                          <div className="formGroup">
+                            <label className="formLabel">Password</label>
+                            <div className="passwordInputContainer" style={{ position: "relative" }}>
+                              <input
+                                type={isPasswordVisible ? "text" : "password"}
+                                className="formInput"
+                                placeholder="Enter password"
+                                value={newUser.password}
+                                onChange={(e) => handleNewUserChange("password", e.target.value)}
+                                style={{ paddingRight: "40px" }}
+                              />
+                              <button
+                                type="button"
+                                onClick={togglePasswordVisibility}
+                                style={{
+                                  position: "absolute",
+                                  right: "10px",
+                                  top: "50%",
+                                  transform: "translateY(-50%)",
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  color: "#666",
+                                  fontSize: "16px",
+                                }}
+                                title={isPasswordVisible ? "Hide password" : "Show password"}
+                              >
+                                {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                        <button type="button" className="button btnPrimarys" onClick={addNewUser}>
+                          <Plus size={16} /> Add User
+                        </button>
 
-                        {users
-                          .filter((user) => {
-                            // Admin sees all users
-                            if (currentUser.role === "admin") return true
+                      </div>
+                    </div>
+                  )}
 
-                            // Non-admin users see only themselves
-                            return user.id === currentUser.id
-                          })
-                          .map((user) => (
-                            <div key={user.id} className="tableRow">
-                              <div className="tableCell">{user.ctu_fname}</div>
-                              <div className="tableCell">{user.ctu_lname}</div>
-                              <div className="tableCell">{user.ctu_email}</div>
-                              <div className="tableCell">{user.ctu_phonenum}</div>
-                              <div className="tableCell">
-                                <span className={`roleBadge role${user.role}`}>{user.role}</span>
-                              </div>
-                              <div className="tableCell">
-                                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                  <span style={{ fontFamily: "monospace", fontSize: "14px" }}>
-                                    {passwordVisibility[user.id] ? user.password : "•".repeat(user.password.length)}
+                  {activeTab === "existing" && (
+                    <div className="userSection">
+                      {users.length === 0 ? (
+                        <div className="empty-state">
+                          <Users size={48} />
+                          <h3>No users found</h3>
+                          <p>Add your first user to get started</p>
+                        </div>
+                      ) : (
+                        <div className="usersTable">
+                          <div className="tableHeader">
+                            <div className="tableHeaderCell">First Name</div>
+                            <div className="tableHeaderCell">Last Name</div>
+                            <div className="tableHeaderCell">Email</div>
+                            <div className="tableHeaderCell">Phone</div>
+                            <div className="tableHeaderCell">Role</div>
+                            <div className="tableHeaderCell">Password</div>
+                            <div className="tableHeaderCell">Status</div>
+                            <div className="tableHeaderCell">Actions</div>
+                          </div>
+
+                          {users
+                            .filter((user) => {
+                              // Admin sees all users
+                              if (currentUser.role === "admin") return true
+
+                              // Non-admin users see only themselves
+                              return user.id === currentUser.id
+                            })
+                            .map((user) => (
+                              <div key={user.id} className="tableRow">
+                                <div className="tableCell">{user.ctu_fname}</div>
+                                <div className="tableCell">{user.ctu_lname}</div>
+                                <div className="tableCell">{user.ctu_email}</div>
+                                <div className="tableCell">{user.ctu_phonenum}</div>
+                                <div className="tableCell">
+                                  <span className={`roleBadge role${user.role}`}>{user.role}</span>
+                                </div>
+                                <div className="tableCell">
+                                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                                    <span style={{ fontFamily: "monospace", fontSize: "14px" }}>
+                                      {passwordVisibility[user.id] ? user.password : "•".repeat(user.password.length)}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleTablePasswordVisibility(user.id)}
+                                      style={{
+                                        background: "none",
+                                        border: "none",
+                                        cursor: "pointer",
+                                        color: "#666",
+                                        fontSize: "14px",
+                                        padding: "2px",
+                                      }}
+                                      title={passwordVisibility[user.id] ? "Hide password" : "Show password"}
+                                    >
+                                      {passwordVisibility[user.id] ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="tableCell">
+                                  <span className={`statusBadge status${user.status.toLowerCase()}`}>
+                                    {user.status}
                                   </span>
+                                </div>
+                                <div className="tableCell">
                                   <button
-                                    type="button"
-                                    onClick={() => toggleTablePasswordVisibility(user.id)}
-                                    style={{
-                                      background: "none",
-                                      border: "none",
-                                      cursor: "pointer",
-                                      color: "#666",
-                                      fontSize: "14px",
-                                      padding: "2px",
-                                    }}
-                                    title={passwordVisibility[user.id] ? "Hide password" : "Show password"}
+                                    className="btn btnDanger btnSmall"
+                                    onClick={() => deleteUser(user.id)}
+                                    title="Delete user"
                                   >
-                                    {passwordVisibility[user.id] ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    <Trash2 size={16} />
                                   </button>
                                 </div>
                               </div>
-                              <div className="tableCell">
-                                <span className={`statusBadge status${user.status.toLowerCase()}`}>{user.status}</span>
-                              </div>
-                              <div className="tableCell">
-                                <button
-                                  className="btn btnDanger btnSmall"
-                                  onClick={() => deleteUser(user.id)}
-                                  title="Delete user"
-                                >
-                                  <Trash2 size={16} />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="formActions">
-                  <button type="button" className="btn btnSecondary" onClick={goBackToSettings}>
-                    Back
-                  </button>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
           </div>
         </div>
       </div>
+      {/* Profile Settings View */}
+      {currentView === "profile" && (
+        <div className="ctuSettingsContainer">
+          <Sidebar isOpen={isSidebarOpen} />
+          <div className="ctuSettingsContent">
+            <div className="ctuSettingsHeader">
+              <button className="backButton" onClick={goBackToSettings}>
+                <ArrowLeft size={20} />
+                Back to Settings
+              </button>
+              <h1>Profile Settings</h1>
+            </div>
 
-      
+            <div className="profileContainer">
+              <div className="profileLeft">
+                <div className="profilePicture">
+                  <div className="avatarContainer">
+                    <div className="avatarCircle">
+                      <span className="avatarText">MJ</span>
+                    </div>
+                    <div className="avatarGlow"></div>
+                  </div>
+                </div>
+                <h2 className="profileName">Maxine Alicaway Judilla</h2>
+                <p className="profileUsername">kutsero</p>
+                <div className="profileStatus">
+                  <span className="statusBadge pending">PENDING</span>
+                </div>
+              </div>
+
+              <div className="profileRight">
+                <div className="infoSection">
+                  <h3 className="sectionTitle">Personal Information</h3>
+                  <div className="infoGrid">
+                    <div className="infoItem">
+                      <label>Full Name:</label>
+                      <span>Maxine Alicaway Judilla</span>
+                    </div>
+                    <div className="infoItem">
+                      <label>Date of Birth:</label>
+                      <span>2025-08-28</span>
+                    </div>
+                    <div className="infoItem">
+                      <label>Gender:</label>
+                      <span>Female</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="infoSection">
+                  <h3 className="sectionTitle">Contact Information</h3>
+                  <div className="infoGrid">
+                    <div className="infoItem">
+                      <label>Email Address:</label>
+                      <span>maxine@gmail.com</span>
+                    </div>
+                    <div className="infoItem">
+                      <label>Phone Number:</label>
+                      <span>09457361245</span>
+                    </div>
+                    <div className="infoItem">
+                      <label>Home Address:</label>
+                      <span>Tugbongan, Consolacion, Cebu, 6001</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <style jsx>{`
+            /* Enhanced avatar styling with gradient and glow effects */
+            .avatarContainer {
+              position: relative;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+            }
+
+            .avatarCircle {
+              width: 120px;
+              height: 120px;
+              border-radius: 50%;
+              background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              position: relative;
+              z-index: 2;
+              box-shadow: 0 8px 32px rgba(255, 107, 107, 0.3);
+              border: 3px solid white;
+            }
+
+            .avatarText {
+              font-size: 36px;
+              font-weight: 700;
+              color: white;
+              text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+            }
+
+            .avatarGlow {
+              position: absolute;
+              top: -10px;
+              left: -10px;
+              right: -10px;
+              bottom: -10px;
+              border-radius: 50%;
+              background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+              opacity: 0.2;
+              z-index: 1;
+              animation: pulse 2s ease-in-out infinite;
+            }
+
+            @keyframes pulse {
+              0%,
+              100% {
+                transform: scale(1);
+                opacity: 0.2;
+              }
+              50% {
+                transform: scale(1.05);
+                opacity: 0.3;
+              }
+            }
+
+            .profileContainer {
+              display: flex;
+              gap: 40px;
+              max-width: 1200px;
+              margin: 0 auto;
+              padding: 20px;
+            }
+
+            .profileLeft {
+              flex: 0 0 300px;
+              text-align: center;
+              padding: 30px;
+              background: white;
+              border-radius: 12px;
+              box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+              height: fit-content;
+            }
+
+            .profileRight {
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+              gap: 30px;
+            }
+
+            .infoSection {
+              background: white;
+              padding: 30px;
+              border-radius: 12px;
+              box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+            }
+
+            .sectionTitle {
+              color: #e74c3c;
+              font-size: 20px;
+              font-weight: 600;
+              margin-bottom: 20px;
+              border-bottom: 2px solid #e74c3c;
+              padding-bottom: 10px;
+            }
+
+            .infoGrid {
+              display: grid;
+              gap: 16px;
+            }
+
+            .infoItem {
+              display: grid;
+              grid-template-columns: 140px 1fr;
+              gap: 16px;
+              align-items: center;
+            }
+
+            .infoItem label {
+              font-weight: 600;
+              color: #2c3e50;
+            }
+
+            .infoItem span {
+              color: #7f8c8d;
+              padding: 8px 0;
+            }
+
+            .profileName {
+              font-size: 24px;
+              font-weight: 700;
+              color: #2c3e50;
+              margin: 20px 0 8px 0;
+            }
+
+            .profileUsername {
+              color: #7f8c8d;
+              font-size: 16px;
+              margin-bottom: 16px;
+            }
+
+            .statusBadge {
+              display: inline-block;
+              padding: 6px 16px;
+              border-radius: 20px;
+              font-size: 12px;
+              font-weight: 600;
+              text-transform: uppercase;
+            }
+
+            .statusBadge.pending {
+              background-color: #f39c12;
+              color: white;
+            }
+
+            .ctuSettingsContainer {
+              display: flex;
+              min-height: 100vh;
+              background-color: #f8f9fa;
+            }
+
+            .ctuSettingsContent {
+              flex: 1;
+              margin-left: 250px;
+              padding: 20px;
+            }
+
+            .ctuSettingsHeader {
+              display: flex;
+              align-items: center;
+              gap: 20px;
+              margin-bottom: 30px;
+              padding: 20px 0;
+              border-bottom: 1px solid #e9ecef;
+            }
+
+            .backButton {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              padding: 10px 16px;
+              background: #e74c3c;
+              color: white;
+              border: none;
+              border-radius: 8px;
+              cursor: pointer;
+              font-weight: 500;
+              transition: background-color 0.2s;
+            }
+
+            .backButton:hover {
+              background: #c0392b;
+            }
+
+            .ctuSettingsHeader h1 {
+              font-size: 28px;
+              font-weight: 700;
+              color: #2c3e50;
+              margin: 0;
+            }
+
+            @media (max-width: 768px) {
+              .profileContainer {
+                flex-direction: column;
+                gap: 20px;
+              }
+
+              .profileLeft {
+                flex: none;
+              }
+
+              .infoItem {
+                grid-template-columns: 1fr;
+                gap: 8px;
+              }
+
+              .ctuSettingsContent {
+                margin-left: 0;
+              }
+            }
+          `}</style>
+        </div>
+      )}
     </div>
   )
 }

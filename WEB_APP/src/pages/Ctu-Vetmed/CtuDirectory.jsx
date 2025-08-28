@@ -1051,13 +1051,6 @@ body {
                 All
               </div>
               <div
-                className={`tab-item ${currentTab === "horses" ? "active" : ""}`}
-                onClick={() => setCurrentTab("horses")}
-                data-tab="horses"
-              >
-                Horses
-              </div>
-              <div
                 className={`tab-item ${currentTab === "veterinarian" ? "active" : ""}`}
                 onClick={() => setCurrentTab("veterinarian")}
                 data-tab="veterinarian"
@@ -1069,7 +1062,7 @@ body {
                 onClick={() => setCurrentTab("horses-per-owner")}
                 data-tab="horses-per-owner"
               >
-                Horses per owner
+                Horses Operator
               </div>
               <div
                 className={`tab-item ${currentTab === "kutsero" ? "active" : ""}`}
