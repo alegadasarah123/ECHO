@@ -1,13 +1,10 @@
-
+import React, { useState, useEffect } from 'react';
+import { Users, Users2 } from 'lucide-react';
 import Sidebar from '@/components/KutSidebar';
-import { Bell, Calendar, Clock, User, UserPlus, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
-import NotificationModal from './KutNotif';
+
 const KutseroDashboard = () => {
   const [users, setUsers] = useState([]);
   const [approvedCounts, setApprovedCounts] = useState({ approved_kutsero_count: 0, approved_horse_operator_count: 0 });
-  const [notifOpen, setNotifOpen] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     const fetchUsers = async () => {
@@ -21,7 +18,7 @@ const KutseroDashboard = () => {
           email: u.email || "N/A",
           created_at: u.created_at ? new Date(u.created_at).toLocaleDateString() : "N/A",
           role: u.role,
-          status: u.status || "N/A"
+          status: u.status?.toLowerCase() || "pending"
         }));
 
         setUsers(formatted);
@@ -47,6 +44,8 @@ const KutseroDashboard = () => {
     fetchApprovedCounts();
   }, []);
 
+  // ✅ Only approved users
+  const approvedUsers = users.filter(u => u.status === "approved");
   const pendingUsers = users.filter(u => u.status === "pending");
 
   const todayDate = new Date().toLocaleDateString();
@@ -83,48 +82,25 @@ const KutseroDashboard = () => {
         {/* Header */}
         <div style={styles.header}>
           <h1 style={styles.title}>Kutsero Dashboard</h1>
-          <div style={{ position: "relative" }}>
-            <button
-              style={styles.notificationBtn}
-              onClick={() => setNotifOpen(!notifOpen)}
-            >
-              <Bell size={24} color="#374151" />
-              {pendingCount > 0 && (
-                <span style={styles.badge}>{pendingCount}</span>
-              )}
-
-            </button>
-
-            {/* Notification Modal */}
-            <NotificationModal
-              isOpen={notifOpen}
-              onClose={() => setNotifOpen(false)}
-              notifications={pendingUsers.map(u => ({
-                message: `${u.name} (${u.role}) is pending approval`,
-                date: u.created_at !== "N/A" ? new Date(u.created_at) : new Date()
-              }))}
-            />
-          </div>
         </div>
 
         <div style={styles.scrollContent}>
           
           {/* Updated Stats Cards */}
           <div style={styles.statsSection}>
+            {/* ✅ Approved Users only */}
             <div style={styles.statCard}>
               <div style={styles.statContent}>
                 <Users size={28} color="#16a34a" />
-                <p style={styles.statValue}>
-                  {approvedCounts.approved_kutsero_count + approvedCounts.approved_horse_operator_count}
-                </p>
+                <p style={styles.statValue}>{approvedCounts.approved_kutsero_count}</p>
               </div>
               <h3 style={styles.statLabel}>Total Users</h3>
             </div>
 
             <div style={styles.statCard}>
               <div style={styles.statContent}>
-                <Clock size={28} color="#ef4444" />
-                <p style={styles.statValue}>{pendingCount}</p>
+                <Users2 size={28} color="#3b82f6" />
+                <p style={styles.statValue}>{approvedCounts.approved_horse_operator_count}</p>
               </div>
               <h3 style={styles.statLabel}>Pending Verifications</h3>
             </div>
@@ -171,81 +147,15 @@ const KutseroDashboard = () => {
                           >
                             {getRoleDisplayName(u.role)}
                           </span>
-                        </div>
-                        <div style={styles.activityMeta}>
-                          <Calendar size={12} color="#9ca3af" />
-                          <span style={styles.dateText}>{u.created_at}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div style={styles.emptyState}>
-                    <p style={styles.emptyText}>No registrations today</p>
-                    <span style={styles.emptySubtext}>New users will appear here</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-
-            {/* Users per Role (smaller) */}
-            <div style={{ ...styles.pendingCard, flex: 1 }}>
-              <div style={styles.activityHeader}>
-                <div style={styles.headerTitle}>
-                  <Users size={24} color="#16a34a" />
-                  <h2 style={styles.sectionHeader}>Users per Role</h2>
-                </div>
-              </div>
-
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                {/* Kutsero */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Kutsero</span>
-                    <span style={{ fontWeight: "600" }}>
-                      {approvedCounts.approved_kutsero_count} users
-                    </span>
-                  </div>
-                  <div style={{ background: "#e5e7eb", borderRadius: "8px", height: "10px", overflow: "hidden" }}>
-                    <div
-                      style={{
-                        width: `${
-                          (approvedCounts.approved_kutsero_count /
-                            (approvedCounts.approved_kutsero_count + approvedCounts.approved_horse_operator_count || 1)) *
-                          100
-                        }%`,
-                        background: "#16a34a",
-                        height: "100%",
-                        borderRadius: "8px"
-                      }}
-                    />
-                  </div>
-                </div>
-
-                {/* Horse Operator */}
-                <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Horse Operator</span>
-                    <span style={{ fontWeight: "600" }}>
-                      {approvedCounts.approved_horse_operator_count} users
-                    </span>
-                  </div>
-                  <div style={{ background: "#e5e7eb", borderRadius: "8px", height: "10px", overflow: "hidden" }}>
-                    <div
-                      style={{
-                        width: `${
-                          (approvedCounts.approved_horse_operator_count /
-                            (approvedCounts.approved_kutsero_count + approvedCounts.approved_horse_operator_count || 1)) *
-                          100
-                        }%`,
-                        background: "#3b82f6",
-                        height: "100%",
-                        borderRadius: "8px"
-                      }}
-                    />
-                  </div>
-                </div>
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan="5" style={styles.noResults}>No pending users.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -271,29 +181,17 @@ const styles = {
   statContent: { display: "flex", alignItems: "center", gap: "8px" },
   statValue: { fontSize: "28px", fontWeight: "bold", color: "#000", margin: 0 },
   statLabel: { fontSize: "16px", fontWeight: "600", color: "#6b7280", margin: 0 },
-
-  pendingCard: { backgroundColor: "#fff", borderRadius: "16px", boxShadow: "0 4px 20px rgba(0,0,0,0.08)", padding: "24px", display: "flex", flexDirection: "column", gap: "20px", border: "1px solid #f1f5f9" },
-  activityHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "16px", borderBottom: "2px solid #f1f5f9" },
-  headerTitle: { display: "flex", alignItems: "center", gap: "12px" },
-  sectionHeader: { fontSize: "22px", fontWeight: "700", color: "#1f2937", margin: 0 },
-  activityCount: { backgroundColor: "#f3f4f6", color: "#6b7280", padding: "4px 12px", borderRadius: "20px", fontSize: "14px", fontWeight: "500" },
-
-  activitiesListScrollable: {display: "flex",flexDirection: "column",gap: "16px", maxHeight: "300px", height: "250px", overflowY: "auto",paddingRight: "8px" },
-  activitiesList: { display: "flex", flexDirection: "column", gap: "16px" },
-  activityItem: { display: "flex", alignItems: "flex-start", gap: "16px", padding: "16px", borderRadius: "12px", backgroundColor: "#fafafa", border: "1px solid #f0f0f0" },
-  activityIcon: { flexShrink: 0 },
-  iconCircle: { width: "40px", height: "40px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", border: "2px solid #f1f5f9" },
-  activityContent: { flex: 1, display: "flex", flexDirection: "column", gap: "8px" },
-  activityMain: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" },
-  userName: { fontWeight: "600", color: "#1f2937", fontSize: "15px" },
-  actionText: { color: "#6b7280", fontSize: "14px" },
-  roleBadge: { padding: "4px 10px", borderRadius: "16px", fontSize: "12px", fontWeight: "600" },
-  activityMeta: { display: "flex", alignItems: "center", gap: "6px" },
-  dateText: { color: "#9ca3af", fontSize: "13px" },
-
-  emptyState: { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 20px", gap: "12px" },
-  emptyText: { color: "#6b7280", fontSize: "16px", fontWeight: "500", margin: 0 },
-  emptySubtext: { color: "#9ca3af", fontSize: "14px" }
+  pendingCard: {backgroundColor: "#fff",borderRadius: "12px",boxShadow: "0 2px 10px rgba(0,0,0,0.1)",padding: "20px",display: "flex",flexDirection: "column",gap: "20px",marginBottom: "20px"},
+  sectionHeader: { fontSize: "20px", fontWeight: "600", color: "#D2691E", margin: "20px 0 10px 0" },
+  tableSection: { backgroundColor: "#fff", borderRadius: "12px", boxShadow: "0 2px 10px rgba(0,0,0,0.1)", flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
+  tableContainer: { overflowY: "auto", flex: 1, maxHeight: "250px" },
+  table: { width: "100%", borderCollapse: "collapse" },
+  tableHeaderRow: { backgroundColor: "#f8f9fa" },
+  tableHeaderCell: { padding: "15px", fontSize: "14px", fontWeight: "600", textAlign: "center", position: "sticky", top: 0, backgroundColor: "#f8f9fa", verticalAlign: "middle", height: "48px" },
+  tableRow: { borderBottom: "1px solid #eee", height: "48px" },
+  tableCell: { padding: "15px", textAlign: "center", verticalAlign: "middle"},
+  noResults: { padding: "50px 20px", textAlign: "center", color: "#666" },
+  statusBadge: { display: "inline-block", padding: "4px 10px", borderRadius: "9999px", fontSize: "12px", fontWeight: "600"},
 };
 
 export default KutseroDashboard;

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bell, Search } from "lucide-react";
+import { Filter } from "lucide-react";
 import Sidebar from "@/components/KutSidebar";
 import NotificationModal from './KutNotif';
 
