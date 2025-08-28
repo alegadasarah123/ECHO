@@ -92,4 +92,4 @@ const styles = {
   date: { fontSize: "12px", color: "#888" },
 };
 
-export default NotificationModal;
+export default NotificationModal; 

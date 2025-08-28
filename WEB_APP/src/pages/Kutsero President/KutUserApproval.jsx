@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Bell } from "lucide-react";
+import { Bell, Search } from "lucide-react";
 import Sidebar from "@/components/KutSidebar";
 import NotificationModal from './KutNotif';
 
@@ -57,19 +57,15 @@ const filteredCounts = {
 };
 
 const filteredUsers = users
-  // Filter by status tab (all, pending, approved, declined)
   .filter((u) => filter === "all" || u.status.toLowerCase() === filter.toLowerCase())
-  // Filter by role dropdown (all, kutsero, horse operator)
   .filter((u) => 
     roleFilter === "all" || (u.role && u.role.toLowerCase() === roleFilter.toLowerCase())
   )
-  // Filter by search input
   .filter(
     (u) =>
       u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       u.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
-
 
   const handleViewUser = (user) => {
     setSelectedUser(user);
@@ -251,62 +247,53 @@ const handleDeleteClick = async () => {
           </div>
 
         <div style={styles.scrollContent}>
-          {/* Search + Role Filter */}
-            <div style={{ display: "flex", gap: "10px", marginBottom: "20px", maxWidth: "500px" }}>
-              <input
-                style={styles.searchInput}
-                type="text"
-                placeholder="Search by name or email..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          <div style={styles.searchContainer}>
+            <Search size={16} color="#000" style={styles.searchIcon} />
+            <input
+              style={styles.searchInput}
+              type="text"
+              placeholder="Search by name or email..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
 
-            <select
-              style={{ padding: "12px 15px", borderRadius: "8px", border: "1px solid #ddd", fontSize: "14px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-            >
-              <option value="all">All Roles</option>
-              <option value="kutsero">KUTSERO</option>
-              <option value="horse operator">HORSE OPERATOR</option>
-            </select>
+          <div style={styles.filterRow}>
+            <div style={styles.statusPillContainer}>
+              {["all", "pending", "approved", "declined"].map((f) => (
+                <button
+                  key={f}
+                  style={{ ...styles.statusPillBtn, ...(filter === f ? styles.statusPillBtnActive : {}) }}
+                  onClick={() => { setFilter(f); setDeleteMode(false); setSelectedIds([]); }}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)} {/* Capitalize first letter only */}
+                  <span
+                    style={{
+                      ...styles.statusPillBadge,
+                      backgroundColor:
+                        f === "approved"
+                          ? "#16a34a"
+                          : f === "pending"
+                          ? "#f59e0b"
+                          : f === "declined"
+                          ? "#ef4444"
+                          : "#6b7280",
+                    }}
+                  >
+                    {filteredCounts[f]}
+                  </span>
+                </button>
+              ))}
             </div>
 
 
-          {/* Filter Tabs */}
-          <div style={styles.filterTabs}>
-            {["all", "pending", "approved", "declined"].map((f) => (
-              <button
-                key={f}
-                style={{
-                  ...styles.filterBtn,
-                  ...(filter === f ? styles.filterBtnActive : {}),
-                }}
-                onClick={() => {
-                  setFilter(f);
-                  setDeleteMode(false);
-                  setSelectedIds([]);
-                }}
-              >
-                {f.toUpperCase()}
-               <span
-                  style={{
-                    ...styles.countBadge,
-                    backgroundColor:
-                      f === "approved"
-                        ? "#16a34a"
-                        : f === "pending"
-                        ? "#f59e0b"
-                        : f === "declined"
-                        ? "#ef4444"
-                        : "#6b7280",
-                  }}
-                >
-                  {filteredCounts[f]}
-                </span>
-              </button>
-            ))}
-          </div>
+
+          <select style={styles.roleDropdown} value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+            <option value="all">All Roles</option>
+            <option value="kutsero">KUTSERO</option>
+            <option value="horse operator">HORSE OPERATOR</option>
+          </select>
+        </div>
 
          {/* Show Delete + Cancel buttons only if Declined tab has users */}
           {filter === "declined" && filteredUsers.length > 0 && (
@@ -357,83 +344,124 @@ const handleDeleteClick = async () => {
             </div>
           )}
 
-          {/* Table */}
-          <div style={styles.tableSection}>
-            <div style={styles.tableContainer}>
-              {loading ? (
-                <p style={{ textAlign: "center", padding: "1rem" }}>Loading...</p>
-              ) : (
-                <table style={styles.table}>
-                  <thead>
-                    <tr style={styles.tableHeaderRow}>
-                      <th style={styles.tableHeaderCell}>Name</th>
-                      <th style={styles.tableHeaderCell}>Email</th>
-                      <th style={styles.tableHeaderCell}>Registration Date</th>
-                      <th style={styles.tableHeaderCell}>Status</th>
-                      <th style={styles.tableHeaderCell}>
-                        {deleteMode ? (
-                          <input type="checkbox" checked={selectAll} onChange={toggleSelectAll} />
-                        ) : (
-                          "Action"
-                        )}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredUsers.length > 0 ? (
-                      filteredUsers.map((user) => (
-                        <tr key={user.id} style={styles.tableRow}>
-                          <td style={styles.tableCell}>{user.name}</td>
-                          <td style={styles.tableCell}>{user.email}</td>
-                          <td style={styles.tableCell}>{user.date}</td>
-                          <td style={styles.tableCell}>
-                            <span
-                              style={{
-                                ...styles.statusBadge,
-                                backgroundColor:
-                                  user.status === "approved"
-                                    ? "#d1fae5"
-                                    : user.status === "pending"
-                                    ? "#fef3c7"
-                                    : "#fee2e2",
-                                color:
-                                  user.status === "approved"
-                                    ? "#16a34a"
-                                    : user.status === "pending"
-                                    ? "#f59e0b"
-                                    : "#ef4444",
-                              }}
-                            >
-                              {user.status.toUpperCase()}
-                            </span>
-                          </td>
-                          <td style={{ ...styles.tableCell, ...styles.actionsCell }}>
-                            {deleteMode ? (
-                              <input
-                                type="checkbox"
-                                checked={selectedIds.includes(user.id)}
-                                onChange={() => toggleCheckbox(user.id)}
-                              />
-                            ) : (
-                              <button style={styles.viewBtn} onClick={() => handleViewUser(user)}>
-                                View
-                              </button>
-                            )}
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan="5" style={styles.noResults}>
-                          No users found
+        {/* Table Section */}
+        <div style={styles.tableSection}>
+          <div
+            style={{ ...styles.tableContainer, overflowY: "auto", maxHeight: "400px" }}
+            className="scrollable-table"
+          >
+            {loading ? (
+              <p style={{ textAlign: "center", padding: "1rem" }}>Loading...</p>
+            ) : (
+              <table style={styles.table}>
+                <thead>
+                  <tr style={styles.tableHeaderRow}>
+                    <th style={{ ...styles.tableHeaderCell, ...styles.tableHeaderCellName }}>Name</th>
+                    <th style={{ ...styles.tableHeaderCell, ...styles.tableHeaderCellEmail }}>Email</th>
+                    <th style={{ ...styles.tableHeaderCell, ...styles.tableHeaderCellDate }}>Registration Date</th>
+                    <th style={{ ...styles.tableHeaderCell, ...styles.tableHeaderCellStatus }}>Status</th>
+                    <th style={{ ...styles.tableHeaderCell, ...styles.tableHeaderCellAction }}>
+                      {deleteMode ? (
+                        <input type="checkbox" checked={selectAll} onChange={toggleSelectAll} />
+                      ) : (
+                        "Action"
+                      )}
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.length > 0 ? (
+                    filteredUsers.map((user) => (
+                      <tr
+                        key={user.id}
+                        style={styles.tableRow}
+                        onMouseEnter={(e) => Object.assign(e.currentTarget.style, styles.tableRowHover)}
+                        onMouseLeave={(e) =>
+                          Object.assign(e.currentTarget.style, { backgroundColor: "transparent", transform: "scale(1)" })
+                        }
+                      >
+                        <td style={styles.tableCell}>{user.name}</td>
+                        <td style={styles.tableCell}>{user.email}</td>
+                        <td style={styles.tableCell}>{user.date}</td>
+                        <td style={styles.tableCell}>
+                          <span
+                            style={{
+                              ...styles.statusBadge,
+                              backgroundColor:
+                                user.status === "approved"
+                                  ? "#d1fae5"
+                                  : user.status === "pending"
+                                  ? "#fef3c7"
+                                  : "#fee2e2",
+                              color:
+                                user.status === "approved"
+                                  ? "#16a34a"
+                                  : user.status === "pending"
+                                  ? "#f59e0b"
+                                  : "#ef4444",
+                            }}
+                          >
+                            {user.status.toUpperCase()}
+                          </span>
                         </td>
+                       <td style={{ ...styles.tableCell, ...styles.actionsCell }}>
+                        {deleteMode ? (
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.includes(user.id)}
+                            onChange={() => toggleCheckbox(user.id)}
+                          />
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+                            <button style={styles.viewBtn} onClick={() => handleViewUser(user)}>
+                              View
+                            </button>
+                          </div>
+                        )}
+                      </td>
+
                       </tr>
-                    )}
-                  </tbody>
-                </table>
-              )}
-            </div>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="5" style={styles.noResults}>
+                        No users found
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
+
+          {/* Scrollbar Styling */}
+          <style>
+            {`
+              .scrollable-table::-webkit-scrollbar {
+                width: 10px;
+              }
+              .scrollable-table::-webkit-scrollbar-track {
+                background: #f3f4f6;
+                border-radius: 10px;
+              }
+              .scrollable-table::-webkit-scrollbar-thumb {
+                background-color: #cbd5e1;
+                border-radius: 10px;
+                border: 2px solid #f3f4f6;
+              }
+              .scrollable-table::-webkit-scrollbar-thumb:hover {
+                background-color: #94a3b8;
+              }
+
+              /* Firefox */
+              .scrollable-table {
+                scrollbar-width: thin;
+                scrollbar-color: #cbd5e1 #f3f4f6;
+              }
+            `}
+          </style>
+        </div>
+
         </div>
       </div>
 
@@ -571,25 +599,40 @@ const styles = {
   headerLeft: { display: "flex", flexDirection: "column" },
   title: { fontSize: "28px", fontWeight: "bold", color: "#D2691E" },
   scrollContent: { flex: 1, padding: "20px", display: "flex", flexDirection: "column", overflow: "hidden" },
-  searchContainer: { marginBottom: "20px", maxWidth: "400px" },
-  searchInput: { width: "100%", padding: "12px 15px", borderRadius: "8px", border: "1px solid #ddd", fontSize: "14px", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" },
-  filterTabs: { display: "flex", gap: "15px", marginBottom: "20px" },
-  filterBtn: { padding: "10px 20px", borderRadius: "8px", border: "1px solid #ddd", background: "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", transition: "all 0.2s ease" },
-  filterBtnActive: { backgroundColor: "#D2691E", color: "#fff", border: "1px solid #D2691E" },
-  countBadge: { fontWeight: "600", color: "#fff", borderRadius: "12px", padding: "2px 6px", fontSize: "12px" },
-  tableSection: { backgroundColor: "#fff", borderRadius: "12px", boxShadow: "0 2px 10px rgba(0,0,0,0.1)", flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" },
-  tableContainer: { overflowY: "auto", flex: 1, maxHeight: "400px" },
-  table: { width: "100%", borderCollapse: "collapse" },
-  tableHeaderRow: { backgroundColor: "#f8f9fa" },
-  tableHeaderCell: { padding: "15px", fontSize: "14px", fontWeight: "600", textAlign: "center", position: "sticky", top: 0, backgroundColor: "#f8f9fa", verticalAlign: "middle", height: "48px" },
-  tableRow: { borderBottom: "1px solid #eee", height: "48px" },
-  tableCell: { padding: "15px", textAlign: "center", verticalAlign: "middle"},
-  actionsCell: { display: "flex", justifyContent: 'center', gap: "10px", alignItems: "center" },
-  viewBtn: { padding: "6px 12px", backgroundColor: "#3b82f6", color: "#fff", borderRadius: "6px", border: "none", cursor: "pointer", transition: "background 0.2s"},
-  noResults: { padding: "50px 20px", textAlign: "center", color: "#666" },
-  statusBadge: { display: "inline-block", padding: "4px 10px", borderRadius: "9999px", fontSize: "12px", fontWeight: "600"},
+  searchContainer: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "20px", maxWidth: "400px", backgroundColor: "#fff", borderRadius: "12px", padding: "8px 12px", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" },
+  searchIcon: { flexShrink: 0 },
+  searchInput: { flex: 1, border: "none", outline: "none", fontSize: "14px", color: "#000", backgroundColor: "transparent" },
+  
+  // Container for Status Tabs + Role Dropdown
+  filterRow: { display: "flex", alignItems: "center", gap: "15px", marginBottom: "20px" },
+  roleDropdown: { padding: "10px 18px", borderRadius: "12px", border: "1px solid #d1d5db", fontSize: "14px", backgroundColor: "#fff", color: "#374151", boxShadow: "0 2px 6px rgba(0,0,0,0.1)", cursor: "pointer", outline: "none", transition: "all 0.2s ease", minWidth: "160px" },
 
-  // Modal
+  // Status Tab
+  statusPillContainer: { display: "flex", borderRadius: "9999px", backgroundColor: "#e5e7eb", padding: "4px", gap: "4px", width: "fit-content", alignItems: "center" },
+  statusPillBtn: { padding: "6px 12px", borderRadius: "9999px", border: "none", cursor: "pointer", fontSize: "14px", fontWeight: 600, display: "flex", alignItems: "center", gap: "6px", transition: "all 0.2s ease", backgroundColor: "transparent", color: "#374151" },
+  statusPillBtnActive: { backgroundColor: "#fff", color: "#D2691E", boxShadow: "0 2px 6px rgba(0,0,0,0.1)" },
+  statusPillBadge: { borderRadius: "9999px", padding: "4px 8px", fontSize: "12px", fontWeight: 600, color: "#fff" },
+
+  // Table
+  tableSection: { backgroundColor: "#fff", borderRadius: "12px", boxShadow: "0 2px 10px rgba(0,0,0,0.1)", display: "flex", flexDirection: "column", overflow: "hidden" },
+  tableContainer: { overflowY: "hidden", maxHeight: "300px" }, 
+  table: { width: "100%", borderCollapse: "collapse", tableLayout: "fixed" },
+  tableHeaderRow: { backgroundColor: "#f8f9fa" },
+  tableHeaderCell: { padding: "10px", fontSize: "15px", fontWeight: "600", textAlign: "center", position: "sticky", top: 0, backgroundColor: "#f8f9fa", zIndex: 5, borderBottom: "1px solid #ddd", whiteSpace: "nowrap" },
+  tableRow: { borderBottom: "1px solid #eee", height: "55px", transition: "background 0.2s", cursor: "pointer" },
+  tableRowHover: { backgroundColor: "#f1f5f9" },
+  tableCell: { padding: "6px 8px", textAlign: "center", verticalAlign: "middle", wordWrap: "break-word", overflow: "hidden" },
+  actionsCell: { display: "flex", justifyContent: "center", gap: "6px", alignItems: "center" ,  height: "55px",},
+  statusBadge: { padding: "2px 8px", borderRadius: "9999px", fontSize: "12px", fontWeight: 600 },
+  noResults: { padding: "20px", textAlign: "center", color: "#666" },
+  viewBtn: { padding: "6px 12px", backgroundColor: "#3b82f6", color: "#fff", borderRadius: "6px", border: "none", fontSize: "13px", fontWeight: 600, cursor: "pointer", transition: "all 0.2s ease", boxShadow: "0 2px 6px rgba(0,0,0,0.15)", alignItems: "center", justifyContent: "center" },
+  tableHeaderCellName: { width: "28%" },
+  tableHeaderCellEmail: { width: "28%" },
+  tableHeaderCellDate: { width: "20%" },
+  tableHeaderCellStatus: { width: "12%" },
+  tableHeaderCellAction: { width: "12%" },
+  
+  // Modal 
   modalOverlay: { position: "fixed", top: 0, left: 0, width: "100%", height: "100%", backgroundColor: "rgba(0, 0, 0, 0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, backdropFilter: "blur(4px)" },
   modalContent: { backgroundColor: "#fff", borderRadius: "16px", width: "95%", maxWidth: "900px", boxShadow: "0 25px 50px rgba(0,0,0,0.25)", animation: "fadeIn 0.3s ease" },
   modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px", borderBottom: "1px solid #eee", backgroundColor: "#fafafa" },

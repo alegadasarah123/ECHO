@@ -113,11 +113,17 @@ def fetch_and_merge_users():
 @api_view(["GET"])
 def get_users(request):
     users = fetch_and_merge_users()
-    pending_count = sum(1 for u in users if u["status"] == "pending")
+    
+    pending_count = sum(
+        1 for u in users 
+        if u["status"].strip().lower() == "pending" and u["role"] in ["Kutsero", "Horse Operator"]
+    )
+    
     return Response({
         "users": users,
         "pending_count": pending_count
     })
+
 
 @api_view(["GET"])
 def get_approved_counts(request):
@@ -246,58 +252,62 @@ def delete_declined_users(request):
 @api_view(["GET"])
 def get_notifications(request):
     """
-    Fetch notifications for Kutsero President.
-    Inserts new ones for pending users if not already saved.
-    Returns full notification history.
+    Fetch notifications only for Kutsero and Horse Operator.
+    Insert missing notifications for pending users if not already saved.
     """
+
+    # 1️⃣ Fetch all users
     users = fetch_and_merge_users()
-    pending_users = [u for u in users if u["status"] == "pending"]
+    if not users:
+        return Response([])
 
-    # Get existing notifications (by user id)
-    existing = supabase.table("notification").select("id").execute()
-    existing_ids = {row["id"] for row in existing.data} if existing.data else set()
+    # Build a mapping of user_id -> role
+    user_roles = {u["id"]: u["role"] for u in users}
 
-    # Manila timezone offset
-    manila_offset = datetime.timedelta(hours=8)
-    manila_tz = datetime.timezone(manila_offset)
-
-    # Insert new notifications only for pending users not in table
-    for u in pending_users:
-        if u["id"] not in existing_ids:
-            notif_message = f"New {u['role']} registered: {u['name']}"
-
-            # Fetch created_at from Supabase Auth
-            created_at = u.get("created_at")
-            if created_at:
-                # Parse UTC timestamp
-                dt = datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                # Convert to Manila time
-                dt_ph = dt.astimezone(manila_tz)
-            else:
-                dt_ph = datetime.datetime.now(manila_tz)
-
-            notif_date = dt_ph.strftime("%Y-%m-%d")
-            notif_time = dt_ph.strftime("%H:%M:%S")
-
-            supabase.table("notification").insert({
-                "id": u["id"],
-                "notif_message": notif_message,
-                "notif_date": notif_date,
-                "notif_time": notif_time,
-            }).execute()
-
-    # Fetch all notifications
+    # 2️⃣ Fetch existing notifications
     result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
+    notifications_raw = result.data if result.data else []
 
-    notifications = []
-    if result.data:
-        for row in result.data:
-            # Combine date + time with PH timezone for frontend
-            date_iso = f"{row['notif_date']}T{row['notif_time']}+08:00"
-            notifications.append({
-                "id": row["notif_id"],
-                "message": row["notif_message"],
+    # 3️⃣ Manila timezone
+    manila_tz = datetime.timezone(datetime.timedelta(hours=8))
+
+    # 4️⃣ Insert missing notifications for pending users
+    existing_ids = {n["id"] for n in notifications_raw}
+    for u in users:
+        if u["status"] == "pending" and u["role"] in ["Kutsero", "Horse Operator"] and u["id"] not in existing_ids:
+            dt_ph = datetime.datetime.fromisoformat(u["created_at"].replace("Z", "+00:00")).astimezone(manila_tz) if u.get("created_at") else datetime.datetime.now(manila_tz)
+            try:
+                supabase.table("notification").insert({
+                    "id": u["id"],
+                    "notif_message": f"New {u['role']} registered: {u['name']}",
+                    "notif_date": dt_ph.date().isoformat(),         # ✅ Convert date to string
+                    "notif_time": dt_ph.time().strftime("%H:%M:%S") # ✅ Convert time to string
+                }).execute()
+            except Exception as e:
+                print(f"Failed to insert notification for user {u['id']}: {e}")
+
+    # 5️⃣ Re-fetch notifications after insert
+    result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
+    notifications_raw = result.data if result.data else []
+
+    # 6️⃣ Filter notifications: only Kutsero or Horse Operator
+    notifications_filtered = []
+    for n in notifications_raw:
+        role = user_roles.get(n["id"])
+        if role in ["Kutsero", "Horse Operator"]:
+            # Ensure date/time are strings for JSON
+            notif_date_str = str(n['notif_date'])
+            notif_time_str = str(n['notif_time'])
+            date_iso = f"{notif_date_str}T{notif_time_str}+08:00"
+
+            notifications_filtered.append({
+                "id": n["notif_id"],
+                "message": n["notif_message"],
                 "date": date_iso,
             })
 
-    return Response(notifications)
+    # 7️⃣ Sort newest first
+    notifications_filtered.sort(key=lambda x: x["id"] or 0, reverse=True)
+
+    return Response(notifications_filtered)
+

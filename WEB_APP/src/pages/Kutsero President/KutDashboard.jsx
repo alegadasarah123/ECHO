@@ -6,21 +6,27 @@ const KutseroDashboard = () => {
   const [users, setUsers] = useState([]);
   const [approvedCounts, setApprovedCounts] = useState({ approved_kutsero_count: 0, approved_horse_operator_count: 0 });
   const [notifOpen, setNotifOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch("/api/kutsero_president/get_users/");
+        const res = await fetch("http://localhost:8000/api/kutsero_president/get_users/");
         const data = await res.json();
+
         const formatted = data.users.map(u => ({
           id: u.id,
           name: u.name || "N/A",
           email: u.email || "N/A",
           created_at: u.created_at ? new Date(u.created_at).toLocaleDateString() : "N/A",
           role: u.role,
-          status: u.status || "N/A"   // ✅ ensure status is included
+          status: u.status || "N/A"
         }));
+
         setUsers(formatted);
+
+        setPendingCount(data.pending_count || 0);
+
       } catch (err) {
         console.error(err);
       }
@@ -40,8 +46,6 @@ const KutseroDashboard = () => {
     fetchApprovedCounts();
   }, []);
 
-  // ✅ Only approved users
-  const approvedUsers = users.filter(u => u.status === "approved");
   const pendingUsers = users.filter(u => u.status === "pending");
 
   const todayDate = new Date().toLocaleDateString();
@@ -84,9 +88,10 @@ const KutseroDashboard = () => {
               onClick={() => setNotifOpen(!notifOpen)}
             >
               <Bell size={24} color="#374151" />
-              {pendingUsers.length > 0 && (
-                <span style={styles.badge}>{pendingUsers.length}</span>
+              {pendingCount > 0 && (
+                <span style={styles.badge}>{pendingCount}</span>
               )}
+
             </button>
 
             {/* Notification Modal */}
@@ -105,18 +110,20 @@ const KutseroDashboard = () => {
           
           {/* Updated Stats Cards */}
           <div style={styles.statsSection}>
-            {/* ✅ Approved Users only */}
             <div style={styles.statCard}>
               <div style={styles.statContent}>
                 <Users size={28} color="#16a34a" />
-                <p style={styles.statValue}>{approvedUsers.length}</p>
+                <p style={styles.statValue}>
+                  {approvedCounts.approved_kutsero_count + approvedCounts.approved_horse_operator_count}
+                </p>
               </div>
               <h3 style={styles.statLabel}>Total Users</h3>
             </div>
+
             <div style={styles.statCard}>
               <div style={styles.statContent}>
                 <Clock size={28} color="#ef4444" />
-                <p style={styles.statValue}>{pendingUsers.length}</p>
+                <p style={styles.statValue}>{pendingCount}</p>
               </div>
               <h3 style={styles.statLabel}>Pending Verifications</h3>
             </div>
@@ -173,7 +180,6 @@ const KutseroDashboard = () => {
                   ))
                 ) : (
                   <div style={styles.emptyState}>
-                    <UserPlus size={48} color="#d1d5db" />
                     <p style={styles.emptyText}>No registrations today</p>
                     <span style={styles.emptySubtext}>New users will appear here</span>
                   </div>
@@ -271,8 +277,7 @@ const styles = {
   sectionHeader: { fontSize: "22px", fontWeight: "700", color: "#1f2937", margin: 0 },
   activityCount: { backgroundColor: "#f3f4f6", color: "#6b7280", padding: "4px 12px", borderRadius: "20px", fontSize: "14px", fontWeight: "500" },
 
-  
-  activitiesListScrollable: {display: "flex",flexDirection: "column",gap: "16px",maxHeight: "350px",   overflowY: "auto",paddingRight: "8px" },
+  activitiesListScrollable: {display: "flex",flexDirection: "column",gap: "16px", maxHeight: "300px", height: "250px", overflowY: "auto",paddingRight: "8px" },
   activitiesList: { display: "flex", flexDirection: "column", gap: "16px" },
   activityItem: { display: "flex", alignItems: "flex-start", gap: "16px", padding: "16px", borderRadius: "12px", backgroundColor: "#fafafa", border: "1px solid #f0f0f0" },
   activityIcon: { flexShrink: 0 },
