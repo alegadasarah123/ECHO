@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import { Filter, Bell, Search } from "lucide-react";
 import Sidebar from "@/components/KutSidebar";
 import NotificationModal from './KutNotif';
+import FloatingMessages from './KutMessages';
+
+const API_BASE = "http://localhost:8000/api/kutsero_president";
 
 const UserApprovalPage = () => {
   const [filter, setFilter] = useState("all");
@@ -17,36 +20,40 @@ const UserApprovalPage = () => {
   const [notifOpen, setNotifOpen] = useState(false);
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        const res = await fetch("http://localhost:8000/api/kutsero_president/get_user_approvals/");
-        const data = await res.json();
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/get_user_approvals/`, {
+        method: "GET",
+        credentials: "include",
+      });
 
-        const formatted = data.map((u) => ({
-          id: u.id,
-          name: u.name || "N/A",
-          email: u.email || "N/A",
-          date: u.created_at ? new Date(u.created_at).toISOString().split("T")[0] : "N/A",
-          status: (u.status || "pending").toLowerCase(),
-          role: u.role || "N/A",
-          profilePicture: u.profilePicture,
-          dateOfBirth: u.dateOfBirth,
-          sex: u.sex,
-          phoneNumber: u.phoneNumber,
-          address: u.address,
-          facebook: u.facebook,
-        }));
+      const data = await res.json();
 
-        setUsers(formatted);
-      } catch (err) {
-        console.error("❌ Error fetching users:", err);
-      } finally {
-        setLoading(false);
-      }
-    };
+      const formatted = data.map((u) => ({
+        id: u.id,
+        name: u.name || "N/A",
+        email: u.email || "N/A",
+        date: u.created_at ? new Date(u.created_at).toISOString().split("T")[0] : "N/A",
+        status: (u.status || "pending").toLowerCase(),
+        role: u.role || "N/A",
+        profilePicture: u.profilePicture,
+        dateOfBirth: u.dateOfBirth,
+        sex: u.sex,
+        phoneNumber: u.phoneNumber,
+        address: u.address,
+        facebook: u.facebook,
+      }));
 
-    fetchUsers();
-  }, []);
+      setUsers(formatted);
+    } catch (err) {
+      console.error("❌ Error fetching users:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchUsers();
+}, []);
 
   // Count users based on the selected role filter
   const filteredCounts = {
@@ -81,8 +88,8 @@ const UserApprovalPage = () => {
   const handleApprove = async (userId) => {
     try {
       const res = await fetch(
-        `http://localhost:8000/api/kutsero_president/approve_user/${userId}/`,
-        { method: "POST" }
+        `${API_BASE}/approve_user/${userId}/`,
+        { method: "POST", credentials: "include" }
       );
 
       if (res.ok) {
@@ -108,9 +115,10 @@ const handleApproveAll = async () => {
 
   try {
     const res = await fetch(
-      "http://localhost:8000/api/kutsero_president/approve_all_users/",
+      `${API_BASE}/approve_all_users/`,
       {
         method: "POST",
+        credentials: "include", 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ids: pendingUsers.map(u => u.id) }),
       }
@@ -137,8 +145,8 @@ const handleApproveAll = async () => {
   const handleDecline = async (userId) => {
     try {
       const res = await fetch(
-        `http://localhost:8000/api/kutsero_president/decline_user/${userId}/`,
-        { method: "POST" }
+        `${API_BASE}/decline_user/${userId}/`,
+        { method: "POST", credentials: "include"}
       );
 
       if (res.ok) {
@@ -163,8 +171,9 @@ const handleDeleteClick = async () => {
 
     if (window.confirm("Are you sure you want to permanently delete selected users?")) {
       try {
-        const res = await fetch("http://localhost:8000/api/kutsero_president/delete_declined_users/", {
+        const res = await fetch(`${API_BASE}/delete_declined_users/`, {
           method: "DELETE",
+          credentials: "include", 
           headers: {
             "Content-Type": "application/json",
           },
@@ -246,7 +255,7 @@ const handleDeleteClick = async () => {
               />
             </div>
           </div>
-
+          
         <div style={styles.scrollContent}>
           <div style={styles.searchContainer}>
             <Search size={16} color="#000" style={styles.searchIcon} />
@@ -589,6 +598,7 @@ const handleDeleteClick = async () => {
           </div>
         </div>
       )}
+     <FloatingMessages />
     </div>
   );
 };
@@ -597,13 +607,14 @@ const styles = {
   layout: { display: "flex", minHeight: "100vh", backgroundColor: "#f5f5f5" },
   dashboard: { flex: 1, fontFamily: "'Segoe UI', Tahoma", display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" },
   header: { display: "flex", alignItems: "center", backgroundColor: "#fff", padding: "20px 30px", borderBottom: "1px solid #eee", boxShadow: "0 2px 10px rgba(0,0,0,0.1)", position: "sticky", top: 0, zIndex: 10,  justifyContent: "space-between", },
-  headerLeft: { display: "flex", flexDirection: "column" },
   title: { fontSize: "28px", fontWeight: "bold", color: "#D2691E" },
   scrollContent: { flex: 1, padding: "20px", display: "flex", flexDirection: "column", overflow: "hidden" },
   searchContainer: { display: "flex", alignItems: "center", gap: "8px", marginBottom: "20px", maxWidth: "400px", backgroundColor: "#fff", borderRadius: "12px", padding: "8px 12px", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" },
   searchIcon: { flexShrink: 0 },
   searchInput: { flex: 1, border: "none", outline: "none", fontSize: "14px", color: "#000", backgroundColor: "transparent" },
-  
+  notificationBtn: { position: "relative", background: "transparent", border: "none", cursor: "pointer", padding: "8px", borderRadius: "50%" },
+  badge: { position: "absolute", top: "2px", right: "2px", backgroundColor: "#ef4444", color: "#fff", borderRadius: "50%", padding: "2px 6px", fontSize: "12px", fontWeight: "bold" },
+
   // Container for Status Tabs + Role Dropdown
   filterRow: { display: "flex", alignItems: "center", gap: "15px", marginBottom: "20px" },
   roleDropdown: { padding: "10px 18px", borderRadius: "12px", border: "1px solid #d1d5db", fontSize: "14px", backgroundColor: "#fff", color: "#374151", boxShadow: "0 2px 6px rgba(0,0,0,0.1)", cursor: "pointer", outline: "none", transition: "all 0.2s ease", minWidth: "160px" },
@@ -659,9 +670,6 @@ const styles = {
   approveBtn: { padding: "10px 20px", backgroundColor: "#16a34a", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", transition: "0.2s" },
   deleteBtn: {display: "flex",alignItems: "center",gap: "6px",padding: "8px 14px",backgroundColor: "#ef4444",color: "#fff",border: "none",borderRadius: "6px",cursor: "pointer",fontSize: "14px",fontWeight: "600"},
   cancelBtn: {display: "flex",alignItems: "center",gap: "6px",padding: "8px 14px", backgroundColor: "#9ca3af",border: "none",borderRadius: "6px",cursor: "pointer",fontSize: "14px",fontWeight: "600"},
-
-  notificationBtn: { position: "relative", background: "transparent", border: "none", cursor: "pointer", padding: "8px", borderRadius: "50%" },
-  badge: { position: "absolute", top: "2px", right: "2px", backgroundColor: "#ef4444", color: "#fff", borderRadius: "50%", padding: "2px 6px", fontSize: "12px", fontWeight: "bold" },
 
 };
 

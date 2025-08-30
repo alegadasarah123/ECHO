@@ -1,19 +1,51 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Users2, UserPlus, User } from 'lucide-react';
+import { useNavigate } from "react-router-dom";   
+import { Users, Users2, UserPlus, User, Bell } from 'lucide-react';
 import Sidebar from '@/components/KutSidebar';
+import FloatingMessages from './KutMessages';
+import NotificationModal from './KutNotif';
+
+const API_BASE = "http://localhost:8000/api/kutsero_president";
 
 const KutseroDashboard = () => {
+  const navigate = useNavigate(); 
+  const [loading, setLoading] = useState(true);
+  const [authorized, setAuthorized] = useState(false);
   const [users, setUsers] = useState([]);
   const [pendingCount, setPendingCount] = useState(0);
   const [approvedCounts, setApprovedCounts] = useState({
     approved_kutsero_count: 0,
     approved_horse_operator_count: 0,
   });
+  const [notifOpen, setNotifOpen] = useState(false);
+  const pendingUsers = users.filter(u => u.status === "pending");
+  
+    // ---------------- AUTH CHECK ----------------
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/test_cookie/`, {
+          credentials: "include", 
+        });
+        const data = await res.json();
+        if (!data.token_present) {
+          navigate("/login");
+        }
+      } catch (err) {
+        console.error("Auth check failed:", err);
+        navigate("/login");
+      }
+    };
+    checkAuth();
+  }, []);
 
   useEffect(() => {
     const fetchUsers = async () => {
       try {
-        const res = await fetch("http://localhost:8000/api/kutsero_president/get_users/");
+        const res = await fetch(`${API_BASE}/get_users/`, {
+          method: "GET",
+          credentials: "include", 
+        });
         const data = await res.json();
         const formatted = data.users.map(u => ({
           id: u.id,
@@ -24,25 +56,28 @@ const KutseroDashboard = () => {
           status: u.status?.toLowerCase() || "pending"
         }));
         setUsers(formatted);
-        setPendingCount(data.pending_count); // ✅ Set pending count here
+        setPendingCount(data.pending_count);
       } catch (err) {
         console.error(err);
       }
     };
 
-    const fetchApprovedCounts = async () => {
-      try {
-        const res = await fetch("http://localhost:8000/api/kutsero_president/get_approved_counts/");
-        const data = await res.json();
-        setApprovedCounts(data);
-      } catch (err) {
-        console.error(err);
-      }
-    };
+  const fetchApprovedCounts = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/get_approved_counts/`, {
+        method: "GET",
+        credentials: "include", 
+      });
+      const data = await res.json();
+      setApprovedCounts(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
-    fetchUsers();
-    fetchApprovedCounts();
-  }, []);
+  fetchUsers();
+  fetchApprovedCounts();
+}, []);
 
   const todayDate = new Date().toLocaleDateString();
   const todayRegistrations = users.filter(u => u.created_at === todayDate);
@@ -67,10 +102,33 @@ const KutseroDashboard = () => {
     <div style={styles.layout}>
       <Sidebar />
       <div style={styles.dashboard}>
-        {/* Header */}
-        <div style={styles.header}>
-          <h1 style={styles.title}>Kutsero Dashboard</h1>
-        </div>
+          {/* Header */}
+          <div style={styles.header}>
+            <h1 style={styles.title}>User Approval</h1>
+
+            {/* Notification Icon */}
+            <div style={{ position: "relative" }}>
+              <button
+                style={styles.notificationBtn}
+                onClick={() => setNotifOpen(!notifOpen)}
+              >
+                <Bell size={24} color="#374151" />
+                {pendingUsers.length > 0 && (
+                  <span style={styles.badge}>{pendingUsers.length}</span>
+                )}
+              </button>
+
+              {/* Notification Modal */}
+              <NotificationModal
+                isOpen={notifOpen}
+                onClose={() => setNotifOpen(false)}
+                notifications={pendingUsers.map(u => ({
+                  message: `${u.name} (${u.role}) is pending approval`,
+                  date: u.created_at !== "N/A" ? new Date(u.created_at) : new Date()
+                }))}
+              />
+            </div>
+          </div>
 
         <div style={styles.scrollContent}>
           {/* Stats Cards */}
@@ -88,7 +146,7 @@ const KutseroDashboard = () => {
             <div style={styles.statCard}>
               <div style={styles.statContent}>
                 <Users2 size={28} color="#3b82f6" />
-                <p style={styles.statValue}>{pendingCount}</p> {/* ✅ Fixed */}
+                <p style={styles.statValue}>{pendingCount}</p> 
               </div>
               <h3 style={styles.statLabel}>Pending Verifications</h3>
             </div>
@@ -176,6 +234,7 @@ const KutseroDashboard = () => {
           </div>
         </div>
       </div>
+      <FloatingMessages />
     </div>
   );
 };
@@ -201,7 +260,10 @@ const styles = {
   noResults: { padding: "50px 20px", textAlign: "center", color: "#666" },
   todayCountPill: { backgroundColor: "#D2691E", color: "#fff", padding: "2px 10px", borderRadius: "9999px", fontSize: "12px", fontWeight: "600" },
   statusBadge: { backgroundColor: "#f0f0f0", color: "#666", padding: "2px 8px", borderRadius: "9999px", fontSize: "12px", fontWeight: "600" },
-  roleBadge: { borderRadius: "9999px", padding: "4px 10px", fontSize: "12px", fontWeight: "500", display: "inline-block", minWidth: "80px", textAlign: "center" }
+  roleBadge: { borderRadius: "9999px", padding: "4px 10px", fontSize: "12px", fontWeight: "500", display: "inline-block", minWidth: "80px", textAlign: "center" },
+  notificationBtn: { position: "relative", background: "transparent", border: "none", cursor: "pointer", padding: "8px", borderRadius: "50%" },
+  badge: { position: "absolute", top: "2px", right: "2px", backgroundColor: "#ef4444", color: "#fff", borderRadius: "50%", padding: "2px 6px", fontSize: "12px", fontWeight: "bold" },
+
 };
 
 export default KutseroDashboard;

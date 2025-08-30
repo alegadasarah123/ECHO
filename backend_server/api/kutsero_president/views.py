@@ -4,11 +4,34 @@ from supabase import create_client, Client
 from django.conf import settings
 import requests
 import datetime
+from functools import wraps
+import jwt
+from django.utils import timezone
 
 # -------------------- SUPABASE CLIENT --------------------
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
 SUPABASE_URL = settings.SUPABASE_URL
 SERVICE_ROLE_KEY = settings.SUPABASE_SERVICE_ROLE_KEY
+
+# -------------------- AUTH HELPERS --------------------
+def get_token_from_cookie(request):
+    """Return the JWT or access token from the HttpOnly cookie"""
+    return request.COOKIES.get("access_token")
+
+def login_required(func):
+    @wraps(func)
+    def wrapper(request, *args, **kwargs):
+        token = get_token_from_cookie(request)
+        if not token:
+            return Response({"error": "Authentication required"}, status=401)
+        # Optional: verify token with Supabase here
+        return func(request, *args, **kwargs)
+    return wrapper
+
+@api_view(["GET"])
+def test_cookie(request):
+    token = request.COOKIES.get("access_token")
+    return Response({"token_present": bool(token)})
 
 # -------------------- CORE REUSABLE FUNCTION --------------------
 def fetch_and_merge_users():
@@ -107,6 +130,7 @@ def fetch_and_merge_users():
 
 # -------------------- DASHBOARD USERS --------------------
 @api_view(["GET"])
+@login_required
 def get_users(request):
     users = fetch_and_merge_users()
     pending_count = sum(
@@ -115,6 +139,7 @@ def get_users(request):
     return Response({"users": users, "pending_count": pending_count})
 
 @api_view(["GET"])
+@login_required
 def get_approved_counts(request):
     users = fetch_and_merge_users()
     approved_kutsero_count = sum(
@@ -129,11 +154,13 @@ def get_approved_counts(request):
     })
 
 @api_view(["GET"])
+@login_required
 def get_user_approvals(request):
     users = fetch_and_merge_users()
     return Response(users)
 
 @api_view(["POST"])
+@login_required
 def approve_all_users(request):
     try:
         response = supabase.table("users").update({"status": "approved"}).eq("status", "pending").execute()
@@ -145,8 +172,8 @@ def approve_all_users(request):
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
-#------------------------- APPROVED USERS ---------------------
 @api_view(["POST"])
+@login_required
 def approve_user(request, user_id):
     ph_time = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
     res = supabase.table("users").update({
@@ -158,6 +185,7 @@ def approve_user(request, user_id):
     return Response({"error": "User not found"}, status=404)
 
 @api_view(["GET"])
+@login_required
 def get_approved_users(request):
     users = fetch_and_merge_users()
     approved_users = [
@@ -168,8 +196,8 @@ def get_approved_users(request):
         u["approved_date"] = u.pop("created_at", "N/A")
     return Response({"users": approved_users})
 
-#----------------- DECLINE USER ------------------------
 @api_view(["POST"])
+@login_required
 def decline_user(request, user_id):
     res = supabase.table("users").update({"status": "declined"}).eq("id", user_id).execute()
     if res.data:
@@ -177,6 +205,7 @@ def decline_user(request, user_id):
     return Response({"error": "User not found"}, status=404)
 
 @api_view(['DELETE'])
+@login_required
 def delete_declined_users(request):
     ids = request.data.get("ids", [])
     if not ids:
@@ -210,8 +239,8 @@ def delete_declined_users(request):
 
     return Response({"success": True, "deleted": deleted_ids, "skipped": skipped_ids})
 
-# -------------------- NOTIFICATIONS --------------------
 @api_view(["GET"])
+@login_required
 def get_notifications(request):
     """Fetch notifications for Kutsero and Horse Operator and insert missing for pending users."""
     users = fetch_and_merge_users()
@@ -260,8 +289,8 @@ def get_notifications(request):
     notifications_filtered.sort(key=lambda x: x["id"] or 0, reverse=True)
     return Response(notifications_filtered)
 
-# -------------------- DEACTIVATE USER --------------------
 @api_view(["POST"])
+@login_required
 def deactivate_user(request, user_id):
     """Set user status to deactivated in public.users"""
     res = supabase.table("users").update({"status": "deactivated"}).eq("id", user_id).execute()
@@ -270,9 +299,8 @@ def deactivate_user(request, user_id):
         return Response({"message": "User deactivated successfully", "user_id": user_id})
     return Response({"error": "User not found"}, status=404)
 
-
-# -------------------- DELETE USER (soft delete) --------------------
 @api_view(["POST"])
+@login_required
 def delete_user(request, user_id):
     """Set user status to deleted in public.users"""
     res = supabase.table("users").update({"status": "deleted"}).eq("id", user_id).execute()
@@ -281,8 +309,8 @@ def delete_user(request, user_id):
         return Response({"message": "User deleted successfully", "user_id": user_id})
     return Response({"error": "User not found"}, status=404)
 
-# -------------------- REACTIVATE USER --------------------
 @api_view(["POST"])
+@login_required
 def reactivate_user(request, user_id):
     """Set user status to approved in public.users"""
     res = supabase.table("users").update({"status": "approved"}).eq("id", user_id).execute()
@@ -291,52 +319,268 @@ def reactivate_user(request, user_id):
         return Response({"message": "User reactivated successfully", "user_id": user_id})
     return Response({"error": "User not found"}, status=404)
 
-
-# ------------------------- FETCH PRESIDENT PROFILE -----------------------
+# ------------------------- SETTINGS ------------------------------------
 @api_view(["GET"])
+@login_required
 def get_president_profile(request):
-    user_id = request.query_params.get("user_id")  # frontend sends it
-
-    if not user_id:
-        return Response({"error": "user_id is required"}, status=400)
-
-    res = supabase.table("kutsero_pres_profile").select("*").eq("user_id", user_id).execute()
-
-    if not res.data:
-        return Response({"error": "Profile not found"}, status=404)
-
-    profile = res.data[0]
-    return Response({
-        "pres_id": profile.get("pres_id"),
-        "user_id": user_id,
-        "pres_email": profile.get("pres_email"),
-        "pres_fname": profile.get("pres_fname", ""),
-        "pres_lname": profile.get("pres_lname", ""),
-        "pres_phonenum": profile.get("pres_phonenum", "")
-    })
-
-
-# ------------------------- UPDATE PRESIDENT PROFILE -----------------------
-@api_view(["POST"])
-def update_president_profile(request):
-    """Kutsero President updates only fname, lname, phone"""
-    user_id = request.data.get("user_id")  # frontend must send this
-
-    if not user_id:
-        return Response({"error": "user_id is required"}, status=400)
-
-    data = {
-        "user_id": user_id,
-        "pres_fname": request.data.get("pres_fname"),
-        "pres_lname": request.data.get("pres_lname"),
-        "pres_phonenum": request.data.get("pres_phonenum"),
-    }
-
     try:
-        res = supabase.table("kutsero_pres_profile").upsert(data).execute()
+        # 1️⃣ Get token from cookie (adjust your cookie name!)
+        token = request.COOKIES.get("access_token")  # exact cookie name set by login
+        if not token:
+            return Response({"error": "Authentication required"}, status=401)
+
+        # 2️⃣ Decode JWT to get Supabase user_id
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")  # this is the UUID
+        if not user_id:
+            return Response({"error": "Invalid token"}, status=401)
+
+        # 3️⃣ Query Supabase for the profile
+        res = supabase.table("kutsero_pres_profile").select("*").eq("user_id", user_id).execute()
+        if not res.data:
+            return Response({"error": "Profile not found"}, status=404)
+
+        profile = res.data[0]
+        return Response({
+            "pres_id": profile.get("pres_id"),
+            "user_id": user_id,
+            "pres_email": profile.get("pres_email"),
+            "pres_fname": profile.get("pres_fname", ""),
+            "pres_lname": profile.get("pres_lname", ""),
+            "pres_phonenum": profile.get("pres_phonenum", "")
+        })
+
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
-    if res.data:
+@api_view(["POST"])
+@login_required
+def save_president_profile(request):
+    """Kutsero President updates only fname, lname, phone"""
+    try:
+        # 1️⃣ Get token and decode user_id
+        token = request.COOKIES.get("access_token")
+        if not token:
+            return Response({"error": "Authentication required"}, status=401)
+
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        if not user_id:
+            return Response({"error": "Invalid token"}, status=401)
+
+        # 2️⃣ Get input values
+        pres_fname = request.data.get("pres_fname", "").strip()
+        pres_lname = request.data.get("pres_lname", "").strip()
+        pres_phonenum = request.data.get("pres_phonenum", "").strip()
+
+        # 3️⃣ Validate required fields
+        errors = {}
+        if not pres_fname:
+            errors["pres_fname"] = "First name is required."
+        if not pres_lname:
+            errors["pres_lname"] = "Last name is required."
+        if not pres_phonenum:
+            errors["pres_phonenum"] = "Phone number is required."
+        if errors:
+            return Response({"errors": errors}, status=400)
+
+        # 4️⃣ Fetch existing profile to get email
+        existing = supabase.table("kutsero_pres_profile").select("pres_email").eq("user_id", user_id).execute()
+        if not existing.data:
+            return Response({"error": "Profile not found; email must exist in DB"}, status=400)
+
+        pres_email = existing.data[0]["pres_email"]
+
+        # 5️⃣ Upsert (insert if not exists, update if exists)
+        data = {
+            "user_id": user_id,
+            "pres_fname": pres_fname,
+            "pres_lname": pres_lname,
+            "pres_phonenum": pres_phonenum,
+            "pres_email": pres_email,  # must include existing email
+        }
+
+        res = supabase.table("kutsero_pres_profile").upsert(
+            data, on_conflict="user_id"
+        ).execute()
+
+        if res.data:
+            return Response({"message": "Profile saved successfully"})
+        return Response({"error": "Failed to save profile"}, status=400)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+
+@api_view(["POST"])
+@login_required
+def update_president_profile(request):
+    """
+    Update Kutsero President profile:
+    - fname, lname, phone, email
+    - Updates both Supabase Auth email and kutsero_pres_profile
+    """
+    try:
+        # 1️⃣ Get token from cookie
+        token = request.COOKIES.get("access_token")
+        if not token:
+            return Response({"error": "Authentication required"}, status=401)
+
+        # 2️⃣ Decode JWT to get user_id
+        try:
+            payload = jwt.decode(token, options={"verify_signature": False})
+            user_id = payload.get("sub")
+            if not user_id:
+                return Response({"error": "Invalid token: no user_id"}, status=401)
+        except Exception as e:
+            return Response({"error": f"JWT decode error: {str(e)}"}, status=401)
+
+        # 3️⃣ Get input values
+        pres_fname = request.data.get("pres_fname", "").strip()
+        pres_lname = request.data.get("pres_lname", "").strip()
+        pres_email = request.data.get("pres_email", "").strip()
+        pres_phonenum = request.data.get("pres_phonenum", "").strip()
+
+        # 4️⃣ Validate required fields
+        errors = {}
+        if not pres_fname:
+            errors["pres_fname"] = "First name is required."
+        if not pres_lname:
+            errors["pres_lname"] = "Last name is required."
+        if not pres_email:
+            errors["pres_email"] = "Email is required."
+        if not pres_phonenum:
+            errors["pres_phonenum"] = "Phone number is required."
+
+        if errors:
+            return Response({"errors": errors}, status=400)
+
+        # 5️⃣ Update Supabase Auth email
+        try:
+            supabase.auth.admin.update_user_by_id(
+                user_id,
+                {"email": pres_email}
+            )
+        except Exception as e:
+            return Response({"error": f"Supabase auth update failed: {str(e)}"}, status=500)
+
+        # 6️⃣ Upsert profile
+        data = {
+            "user_id": user_id,
+            "pres_fname": pres_fname,
+            "pres_lname": pres_lname,
+            "pres_email": pres_email,
+            "pres_phonenum": pres_phonenum,
+        }
+
+        supabase.table("kutsero_pres_profile").upsert(
+            data, on_conflict="user_id"
+        ).execute()
+
         return Response({"message": "Profile updated successfully"})
-    return Response({"error": "Failed to update profile"}, status=400)
+
+    except Exception as e:
+        return Response({"error": f"Unexpected server error: {str(e)}"}, status=500)
+
+
+@api_view(["POST"])
+@login_required
+def change_password(request):
+    """
+    Change the password for the logged-in Kutsero President
+    """
+    try:
+        token = request.COOKIES.get("access_token")
+        if not token:
+            return Response({"error": "Authentication required"}, status=401)
+
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        if not user_id:
+            return Response({"error": "Invalid token: no user_id"}, status=401)
+
+        current_password = request.data.get("current_password", "").strip()
+        new_password = request.data.get("new_password", "").strip()
+        pres_email = request.data.get("email", "").strip()  # frontend just sends email
+
+        errors = {}
+        if not current_password:
+            errors["current_password"] = "Current password is required."
+        if not new_password:
+            errors["new_password"] = "New password is required."
+        if not pres_email:
+            errors["email"] = "Email is required."
+        if errors:
+            return Response({"errors": errors}, status=400)
+
+        # ✅ Verify current password via Supabase REST endpoint
+        resp = requests.post(
+            f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
+            headers={"apikey": SERVICE_ROLE_KEY},
+            json={"email": pres_email, "password": current_password}
+        )
+        verify_data = resp.json()
+        if resp.status_code != 200 or "access_token" not in verify_data:
+            return Response({"errors": {"current_password": "Incorrect current password"}}, status=400)
+
+        # ✅ Update password using Admin API
+        supabase.auth.admin.update_user_by_id(user_id, {"password": new_password})
+        return Response({"message": "Password updated successfully"})
+
+    except Exception as e:
+        return Response({"error": f"Unexpected server error: {str(e)}"}, status=500)
+
+
+# -------------------- MESSAGES ------------------------------
+# GET messages between two users
+@api_view(["GET"])
+@login_required
+def get_messages(request, user_id, receiver_id):
+    """Fetch all messages between two users"""
+    res = supabase.table("messages").select("*").or_(
+        f"(user_id.eq.{user_id},receiver_id.eq.{receiver_id}),"
+        f"(user_id.eq.{receiver_id},receiver_id.eq.{user_id})"
+    ).order("mes_date", desc=False).execute()
+    
+    return Response(res.data or [])
+
+# POST new message
+@api_view(["POST"])
+@login_required
+def send_message(request):
+    """Send a new message"""
+    user_id = request.data.get("user_id")
+    receiver_id = request.data.get("receiver_id")
+    mes_content = request.data.get("mes_content", "").strip()
+
+    if not mes_content:
+        return Response({"error": "Message content cannot be empty"}, status=400)
+
+    res = supabase.table("messages").insert({
+        "user_id": user_id,
+        "receiver_id": receiver_id,
+        "mes_content": mes_content,
+        "mes_date": timezone.now(),
+        "is_read": False
+    }).execute()
+
+    if res.data:
+        return Response(res.data[0])
+    return Response({"error": "Failed to send message"}, status=500)
+
+# SEARCH users
+@api_view(["GET"])
+@login_required
+def search_users(request):
+    query = request.GET.get("q", "").strip().lower()
+    all_users = fetch_and_merge_users()  # returns [{id, name, email, ...}]
+
+    if query:
+        filtered_users = [
+            u for u in all_users
+            if query in (u.get("name") or "").lower() or query in (u.get("email") or "").lower()
+        ]
+    else:
+        filtered_users = all_users
+
+    return Response({"users": filtered_users})

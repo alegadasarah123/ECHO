@@ -33,6 +33,7 @@ import KutDashboard from "./pages/Kutsero President/KutDashboard.jsx";
 import KutUserManagement from "./pages/Kutsero President/KutUserApproval.jsx";
 import KutUserAccount from "./pages/Kutsero President/KutUserAcc.jsx";
 import KutSettings from "./pages/Kutsero President/KutSettings.jsx"
+import KutMessages from "./pages/Kutsero President/KutMessages.jsx"
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -45,6 +46,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <Route path="/KutUserManagement" element={<KutUserManagement />} />
         <Route path="/KutUserAccount" element={<KutUserAccount />} />
         <Route path="/KutSettings" element={<KutSettings />} />
+        <Route path="/KutMessages" element={<KutMessages />} />
         <Route path="/VetDashboard" element={<VetDashboard />} />
         <Route path="/VetAppointment" element={<VetAppointment />} />
         <Route path="/VetRequest" element={<VetRequest />} />
