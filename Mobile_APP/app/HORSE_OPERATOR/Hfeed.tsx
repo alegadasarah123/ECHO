@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 type Meal = {
   id: string;
@@ -41,6 +41,8 @@ type FeedLogEntry = {
   action: 'completed' | 'edited';
   timestamp: string;
 };
+
+const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
 
 const FeedScreen = () => {
   const router = useRouter();
@@ -91,12 +93,18 @@ const FeedScreen = () => {
     { id: '4', name: 'Magnesium', amount: '' },
   ]);
 
+  // Load user ID from SecureStore
   const getCurrentUser = async () => {
     try {
-      const user = await AsyncStorage.getItem('current_user');
-      if (user) {
-        setCurrentUser(user);
-        return user;
+      const storedUser = await SecureStore.getItemAsync("user_data");
+      if (storedUser) {
+        const parsed = JSON.parse(storedUser);
+        const id = parsed.user_id || parsed.id;
+        if (id) {
+          console.log("🔑 Loaded user_id from storage:", id);
+          setCurrentUser(id);
+          return id;
+        }
       }
     } catch (error) {
       console.error('Error getting current user:', error);
@@ -104,103 +112,227 @@ const FeedScreen = () => {
     return null;
   };
 
-  // Load feeding schedule from AsyncStorage with user and horse-specific key
-  const loadFeedingSchedule = useCallback(async (user: string) => {
+  // Load feeding schedule from backend
+  const loadFeedingSchedule = useCallback(async (userId: string) => {
+    if (!userId || !horseId) return;
+
     try {
-      const key = `feedingSchedule_${user}_${horseId}`;
-      const savedSchedule = await AsyncStorage.getItem(key);
-      if (savedSchedule) {
-        setFeedingSchedule(JSON.parse(savedSchedule));
+      const url = `${API_BASE_URL}/get_feeding_schedule/?user_id=${encodeURIComponent(userId)}&horse_id=${encodeURIComponent(horseId)}`;
+      console.log("📡 Fetching feeding schedule:", url);
+
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        console.log("✅ Feeding schedule loaded:", data);
+        
+        if (data && data.length > 0) {
+          // Map backend data to frontend format
+          const mappedSchedule = data.map((item: any) => ({
+            id: item.meal_id,
+            meal: item.meal,
+            food: item.food,
+            amount: item.amount,
+            time: item.time,
+            completed: item.completed || false,
+            completedAt: item.completed_at,
+          }));
+          setFeedingSchedule(mappedSchedule);
+        }
+      } else {
+        console.log("No existing feeding schedule found, using default");
       }
     } catch (error) {
       console.error('Error loading feeding schedule:', error);
     }
   }, [horseId]);
 
-  // Load data on component mount
-  useEffect(() => {
-    const initializeData = async () => {
-      const user = await getCurrentUser();
-      if (user && horseId) {
-        loadFeedingSchedule(user);
-      }
-    };
-    initializeData();
-  }, [horseId, loadFeedingSchedule]);
-
-  // Save feeding schedule to AsyncStorage with user and horse-specific key
-  const saveFeedingSchedule = async (schedule: Meal[], user?: string) => {
+  // Save feeding schedule to backend
+  const saveFeedingSchedule = async (schedule: Meal[], userId?: string) => {
     try {
-      const currentUserToUse = user || currentUser;
-      if (!currentUserToUse) return;
-      const key = `feedingSchedule_${currentUserToUse}_${horseId}`;
-      await AsyncStorage.setItem(key, JSON.stringify(schedule));
+      const userIdToUse = userId || currentUser;
+      if (!userIdToUse || !horseId) {
+        console.error("Missing user_id or horse_id");
+        return;
+      }
+
+      const payload = {
+        user_id: userIdToUse,
+        horse_id: horseId,
+        schedule: schedule.map(meal => ({
+          id: meal.id,
+          meal: meal.meal,
+          food: meal.food,
+          amount: meal.amount,
+          time: meal.time,
+          completed: meal.completed || false,
+          completedAt: meal.completedAt,
+        }))
+      };
+
+      const response = await fetch(`${API_BASE_URL}/save_feeding_schedule/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to save feeding schedule');
+      }
+
+      console.log("✅ Feeding schedule saved successfully");
     } catch (error) {
       console.error('Error saving feeding schedule:', error);
+      Alert.alert('Error', 'Failed to save feeding schedule');
     }
   };
 
-  // Add entry to user-specific feed log
+  // Add entry to backend feed log
   const addToFeedLog = async (entry: Omit<FeedLogEntry, 'id'>) => {
     try {
       if (!currentUser) return;
-      const userFeedLogsKey = `feedLogs_${currentUser}`;
-      const existingLogs = await AsyncStorage.getItem(userFeedLogsKey);
-      const logs: FeedLogEntry[] = existingLogs ? JSON.parse(existingLogs) : [];
-                
-      const newEntry: FeedLogEntry = {
-        ...entry,
-        id: Date.now().toString(),
+
+      const payload = {
+        user_id: currentUser,
+        date: entry.date,
+        meal: entry.meal,
+        horse: entry.horse,
+        time: entry.time,
+        food: entry.food,
+        amount: entry.amount,
+        status: entry.status,
+        action: entry.action,
+        timestamp: entry.timestamp,
       };
-                
-      logs.unshift(newEntry); // Add to beginning of array
-      await AsyncStorage.setItem(userFeedLogsKey, JSON.stringify(logs));
+
+      const response = await fetch(`${API_BASE_URL}/add_feed_log_entry/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add feed log entry');
+      }
+
+      console.log("✅ Feed log entry added successfully");
     } catch (error) {
       console.error('Error adding to feed log:', error);
     }
   };
 
+  // Load data on component mount
+  useEffect(() => {
+    const initializeData = async () => {
+      const userId = await getCurrentUser();
+      if (userId && horseId) {
+        loadFeedingSchedule(userId);
+      }
+    };
+    initializeData();
+  }, [horseId, loadFeedingSchedule]);
+
   // Mark meal as fed
   const handleMarkAsFed = async (meal: Meal) => {
-    const now = new Date();
-    const completedAt = now.toLocaleString();
+    if (!currentUser) {
+      Alert.alert('Error', 'User not found');
+      return;
+    }
+
+    try {
+      const now = new Date();
+      const completedAt = now.toLocaleString();
+
+      // Call backend API to mark meal as fed
+      const response = await fetch(`${API_BASE_URL}/mark_meal_fed/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: currentUser,
+          horse_id: horseId,
+          meal_id: meal.id,
+          completed_at: completedAt,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to mark meal as fed');
+      }
           
-    // Update feeding schedule
-    const updatedSchedule = feedingSchedule.map(m =>
-      m.id === meal.id 
-        ? { ...m, completed: true, completedAt }
-        : m
-    );
+      // Update local state
+      const updatedSchedule = feedingSchedule.map(m =>
+        m.id === meal.id 
+          ? { ...m, completed: true, completedAt }
+          : m
+      );
           
-    setFeedingSchedule(updatedSchedule);
-    await saveFeedingSchedule(updatedSchedule);
+      setFeedingSchedule(updatedSchedule);
           
-    // Add to user-specific feed log
-    await addToFeedLog({
-      date: now.toISOString().split('T')[0],
-      meal: meal.meal,
-      horse: horseName,
-      time: completedAt.split(', ')[1],
-      food: meal.food,
-      amount: meal.amount,
-      status: 'Completed',
-      action: 'completed',
-      timestamp: now.toISOString(),
-    });
+      // Add to feed log
+      await addToFeedLog({
+        date: now.toISOString().split('T')[0],
+        meal: meal.meal,
+        horse: horseName,
+        time: completedAt.split(', ')[1],
+        food: meal.food,
+        amount: meal.amount,
+        status: 'Completed',
+        action: 'completed',
+        timestamp: now.toISOString(),
+      });
           
-    Alert.alert('Success', `${meal.meal} marked as fed for ${horseName}!`);
+      Alert.alert('Success', `${meal.meal} marked as fed for ${horseName}!`);
+    } catch (error: any) {
+      console.error('Error marking meal as fed:', error);
+      Alert.alert('Error', error.message || 'Failed to mark meal as fed');
+    }
   };
 
   // Reset daily completion status
   const resetDailyFeeds = async () => {
-    const resetSchedule = feedingSchedule.map(meal => ({
-      ...meal,
-      completed: false,
-      completedAt: undefined,
-    }));
+    if (!currentUser) {
+      Alert.alert('Error', 'User not found');
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/reset_daily_feeds/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: currentUser,
+          horse_id: horseId,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to reset daily feeds');
+      }
+
+      // Update local state
+      const resetSchedule = feedingSchedule.map(meal => ({
+        ...meal,
+        completed: false,
+        completedAt: undefined,
+      }));
           
-    setFeedingSchedule(resetSchedule);
-    await saveFeedingSchedule(resetSchedule);
+      setFeedingSchedule(resetSchedule);
+      Alert.alert('Success', 'Daily feeds reset successfully');
+    } catch (error: any) {
+      console.error('Error resetting daily feeds:', error);
+      Alert.alert('Error', error.message || 'Failed to reset daily feeds');
+    }
   };
 
   const handleEdit = (meal: Meal) => {
@@ -226,7 +358,7 @@ const FeedScreen = () => {
   };
 
   const handleFeedLog = () => {
-    router.push('/feedlog');
+    router.push('/HORSE_OPERATOR/Hfeedlog');
   };
 
   const handleTimeChange = (field: 'hour' | 'minute' | 'period', value: string) => {
@@ -274,48 +406,55 @@ const FeedScreen = () => {
       return;
     }
           
-    if (!editingMeal) return;
+    if (!editingMeal || !currentUser) return;
 
-    // Update the feeding schedule
-    const updatedTime = `${feedingTime.hour}:${feedingTime.minute} ${feedingTime.period}`;
-    const activeFeed = feedTypes.find(feed => feed.amount.trim() !== '');
+    try {
+      // Update the feeding schedule
+      const updatedTime = `${feedingTime.hour}:${feedingTime.minute} ${feedingTime.period}`;
+      const activeFeed = feedTypes.find(feed => feed.amount.trim() !== '');
           
-    if (!activeFeed) {
-      Alert.alert('Error', 'Please specify at least one feed type with an amount.');
-      return;
+      if (!activeFeed) {
+        Alert.alert('Error', 'Please specify at least one feed type with an amount.');
+        return;
+      }
+
+      const updatedSchedule = feedingSchedule.map(meal =>
+        meal.id === editingMeal.id
+          ? {
+              ...meal,
+              time: updatedTime,
+              food: activeFeed.name,
+              amount: activeFeed.amount,
+              completed: false, // Reset completion status when edited
+            }
+          : meal
+      );
+          
+      setFeedingSchedule(updatedSchedule);
+      
+      // Save to backend
+      await saveFeedingSchedule(updatedSchedule);
+
+      // Add edit action to feed log
+      const now = new Date();
+      await addToFeedLog({
+        date: now.toISOString().split('T')[0],
+        meal: editingMeal.meal,
+        horse: horseName,
+        time: updatedTime,
+        food: activeFeed.name,
+        amount: activeFeed.amount,
+        status: 'Edited',
+        action: 'edited',
+        timestamp: now.toISOString(),
+      });
+
+      setShowEditView(false);
+      Alert.alert('Success', `Feeding schedule updated successfully for ${horseName}!`);
+    } catch (error) {
+      console.error('Error saving changes:', error);
+      Alert.alert('Error', 'Failed to save changes');
     }
-
-    const updatedSchedule = feedingSchedule.map(meal =>
-      meal.id === editingMeal.id
-        ? {
-            ...meal,
-            time: updatedTime,
-            food: activeFeed.name,
-            amount: activeFeed.amount,
-            completed: false, // Reset completion status when edited
-          }
-        : meal
-    );
-          
-    setFeedingSchedule(updatedSchedule);
-    await saveFeedingSchedule(updatedSchedule);
-
-    // Add edit action to user-specific feed log
-    const now = new Date();
-    await addToFeedLog({
-      date: now.toISOString().split('T')[0],
-      meal: editingMeal.meal,
-      horse: horseName,
-      time: updatedTime,
-      food: activeFeed.name,
-      amount: activeFeed.amount,
-      status: 'Edited',
-      action: 'edited',
-      timestamp: now.toISOString(),
-    });
-
-    setShowEditView(false);
-    Alert.alert('Success', `Feeding schedule updated successfully for ${horseName}!`);
   };
 
   const handleCancel = () => {
@@ -414,7 +553,7 @@ const FeedScreen = () => {
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push('/horse')} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.push('/HORSE_OPERATOR/horse')} style={styles.backButton}>
           <FontAwesome5 name="arrow-left" size={20} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
@@ -428,9 +567,10 @@ const FeedScreen = () => {
 
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          {/* {currentUser && (
+          {/* Display user info for debugging - can be removed */}
+          {currentUser && (
             <Text style={styles.userInfo}>User: {currentUser}</Text>
-          )} */}
+          )}
                   
           {feedingSchedule.map((meal) => (
             <View key={meal.id} style={styles.mealSection}>

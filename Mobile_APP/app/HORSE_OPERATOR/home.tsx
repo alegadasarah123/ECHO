@@ -73,7 +73,6 @@ const REACTIONS: Reaction[] = [
 const HorseOperatorHome = () => {
   const [searchText, setSearchText] = useState('');
   const [userData, setUserData] = useState<UserData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState('Horse Operator');
   
   // Reaction states
@@ -122,7 +121,6 @@ const HorseOperatorHome = () => {
 
   // Load user data from SecureStore
   const loadUserData = useCallback(async () => {
-    setIsLoading(true);
     try {
       // Get the stored authentication data from SecureStore
       const storedUserData = await SecureStore.getItemAsync('user_data');
@@ -216,10 +214,8 @@ const HorseOperatorHome = () => {
           }
         ]
       );
-    } finally {
-      setIsLoading(false);
     }
-  }, [router]); // Empty dependency array since it doesn't depend on any props or state
+  }, [router]);
 
   // Load user data on component mount
   useEffect(() => {
@@ -376,15 +372,6 @@ const HorseOperatorHome = () => {
     );
   };
 
-  // Show loading screen while data is being loaded
-  if (isLoading) {
-    return (
-      <SafeAreaView style={[styles.safeArea, styles.loadingContainer]}>
-        <Text style={styles.loadingText}>Loading...</Text>
-      </SafeAreaView>
-    );
-  }
-
   const topReactions = getTopReactions();
   const totalReactions = getTotalReactionCount();
   const currentUserReactionObj = userReaction ? REACTIONS.find(r => r.type === userReaction) : null;
@@ -463,13 +450,6 @@ const HorseOperatorHome = () => {
                     <Text style={styles.healthCheck}>Last Check: March 28, 2025</Text>
                     <Text style={styles.nextCheck}>Next Check: April 15, 2025</Text>
                   </View>
-                  <TouchableOpacity 
-                    style={styles.quickActionButton}
-                    onPress={() => router.push('../HORSE_OPERATOR/addhorse' as any)}
-                  >
-                    <FontAwesome5 name="plus" size={20} color="#fff" />
-                    <Text style={styles.quickActionText}>Add Horse</Text>
-                  </TouchableOpacity>
                 </View>
               </View>
 
@@ -477,7 +457,7 @@ const HorseOperatorHome = () => {
                 <View style={styles.divider} />
               </View>
 
-              {/* Recent Business Activities */}
+              {/* Recent Activities */}
               <View style={styles.activitiesSection}>
                 <Text style={styles.sectionTitle}>Recent Activities</Text>
                 
@@ -494,11 +474,11 @@ const HorseOperatorHome = () => {
                     </View>
                   </View>
                   <Text style={styles.activityDescription}>
-                    Your horse &ldquo;Thunder&rdquo; has been booked for a tourist ride from Colon Street to IT Park. 
+                    Your horse &quot;Thunder&quot; has been booked for a tourist ride from Colon Street to IT Park. 
                     The ride is scheduled for tomorrow at 2:00 PM.
                   </Text>
                   <Text style={styles.activityDetails}>
-                    {'• Duration: 2 hours\n'}
+                    {'• Duration: 2 hours\n'} 
                     {'• Payment: ₱800.00\n'}
                     {'• Customer: Maria Santos\n'}
                     • Contact: +63 912 345 6789
@@ -568,20 +548,20 @@ const HorseOperatorHome = () => {
                     </View>
                     <View style={styles.activityInfo}>
                       <Text style={styles.activityTitle}>
-                        Health Check Completed - Horse &ldquo;Blaze&rdquo;
+                        Health Check Completed - Horse &quot;Blaze&quot;
                       </Text>
                       <Text style={styles.activityTime}>3h</Text>
                     </View>
                   </View>
                   <Text style={styles.activityDescription}>
-                    Dr. Rodriguez completed the monthly health checkup for your horse &ldquo;Blaze&rdquo;. 
+                    Dr. Rodriguez completed the monthly health checkup for your horse &quot;Blaze&quot;. 
                     All vitals are normal and the horse is cleared for service.
                   </Text>
                   <Text style={styles.activityDetails}>
                     {'• Weight: 450kg (Normal)\n'}
                     {'• Temperature: 37.8°C\n'}
                     {'• Heart Rate: 32 BPM\n'}
-                    • Overall Status: &ldquo;Healthy&rdquo;
+                    • Overall Status: &quot;Healthy&quot;
                   </Text>
                   <View style={styles.activityFooter}>
                     <View style={styles.activityActions}>
@@ -715,15 +695,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#CD853F',
-  },
-  loadingContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '500',
   },
   brownBackground: {
     flex: 1,
