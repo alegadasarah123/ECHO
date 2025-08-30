@@ -511,10 +511,10 @@ const openImageLibrary = () => {
                 
                 // FIXED: Navigate to appropriate dashboard based on role
                 if (userRole === "horse_operator") {
-                  console.log("✅ Redirecting to Horse Operator dashboard")
-                  router.replace("/HORSE_OPERATOR/home")
+                  console.log("✅ Redirecting to Login")
+                  router.replace("/auth/login")
                 } else if (userRole === "kutsero") {
-                  console.log("✅ Redirecting to Kutsero dashboard")
+                  console.log("✅ Redirecting to Login")
                   router.replace("/KUTSERO/dashboard")
                 } else {
                   console.log("⚠️ Unknown role, redirecting to login")

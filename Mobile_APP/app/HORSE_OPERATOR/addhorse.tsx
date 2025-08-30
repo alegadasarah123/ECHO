@@ -70,7 +70,12 @@ const AddHorseScreen = () => {
   const getCurrentUser = async () => {
     try {
       const userData = await SecureStore.getItemAsync("user_data");
-      return userData ? JSON.parse(userData) : null;
+      if (userData) {
+        const parsed = JSON.parse(userData);
+        console.log("🔑 Current user data:", parsed);
+        return parsed;
+      }
+      return null;
     } catch (error) {
       console.error("Error getting current user:", error);
       return null;
@@ -123,6 +128,19 @@ const AddHorseScreen = () => {
 
   const saveHorseToBackend = async (newHorse: Horse, userId: string) => {
     try {
+      console.log("🐴 Sending horse data to backend:", {
+        user_id: userId,
+        name: newHorse.name,
+        age: newHorse.age,
+        dateOfBirth: newHorse.dateOfBirth,
+        sex: newHorse.sex,
+        breed: newHorse.breed,
+        color: newHorse.color,
+        height: newHorse.height,
+        weight: newHorse.weight,
+        image: newHorse.image,
+      });
+
       const response = await fetch(`${API_URL}/add_horse/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -139,10 +157,18 @@ const AddHorseScreen = () => {
           image: newHorse.image,
         }),
       });
-      return await response.json();
+
+      const responseData = await response.json();
+      console.log("📡 Backend response:", responseData);
+
+      if (!response.ok) {
+        throw new Error(responseData.error || `HTTP ${response.status}`);
+      }
+
+      return responseData;
     } catch (error) {
-      console.error("Error saving horse to backend:", error);
-      return null;
+      console.error("❌ Error saving horse to backend:", error);
+      throw error;
     }
   };
 
@@ -160,6 +186,16 @@ const AddHorseScreen = () => {
         return;
       }
 
+      // ✅ Try both user_id and id properties
+      const userId = currentUser.user_id || currentUser.id;
+      if (!userId) {
+        Alert.alert("Error", "User ID not found. Please log in again.");
+        router.replace("/auth/login");
+        return;
+      }
+
+      console.log("👤 Using user_id:", userId);
+
       const newHorse: Horse = {
         id: Date.now().toString(),
         name: formData.name,
@@ -173,19 +209,16 @@ const AddHorseScreen = () => {
         image: imageUri || null,
       };
 
-      const backendRes = await saveHorseToBackend(newHorse, currentUser.id);
+      const backendRes = await saveHorseToBackend(newHorse, userId);
+      console.log("✅ Horse saved successfully:", backendRes);
 
-      if (backendRes?.error) {
-        console.error("Backend error:", backendRes.error);
-        Alert.alert("Error", "Failed to save horse to backend.");
-      } else {
-        Alert.alert("Success", `Horse ${formData.name} added successfully!`, [
-          { text: "OK", onPress: () => router.back() },
-        ]);
-      }
-    } catch (error) {
-      console.error("Error in handleAddHorse:", error);
-      Alert.alert("Error", "Failed to save horse. Please try again.");
+      Alert.alert("Success", `Horse ${formData.name} added successfully!`, [
+        { text: "OK", onPress: () => router.back() },
+      ]);
+
+    } catch (error: any) {
+      console.error("❌ Error in handleAddHorse:", error);
+      Alert.alert("Error", error.message || "Failed to save horse. Please try again.");
     }
   };
 
@@ -327,7 +360,6 @@ const AddHorseScreen = () => {
   );
 };
 
-// styles unchanged...
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: "#CD853F" },
   header: {

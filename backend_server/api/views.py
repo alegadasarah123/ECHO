@@ -193,11 +193,11 @@ def signup(request):
 
 #-----------------------------------------------------------------LOGIN MOBILE---------------------------------------------------------------------------------------
 
-@api_view(['GET'])
-def get_kutsero_data(request):
-    data = supabase.table("kutsero_profile").select("*").execute()
-    return Response(data.data)
-
+# Fixed role mapping dictionary - consistent key-value pairs
+ROLE_MAP = {
+    "kutsero": "Kutsero",  # Keep lowercase for consistency
+    "horse_operator": "Horse Operator"  # Keep underscore format for consistency
+}
 
 @api_view(['POST'])
 def signup_mobile(request):
@@ -358,7 +358,7 @@ def login_mobile(request):
         return Response({"error": "Invalid authentication response"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     # 2️⃣ Get user role and status from users table
-    user_role = None
+    user_role = "horse_operator"
     user_status = "pending"
     
     try:
