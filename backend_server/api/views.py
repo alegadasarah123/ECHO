@@ -32,7 +32,6 @@ def login(request):
     payload = {"email": email, "password": password}
 
     auth_response = requests.post(login_url, json=payload, headers=headers)
-
     if auth_response.status_code != 200:
         try:
             error_details = auth_response.json()
@@ -44,27 +43,36 @@ def login(request):
         }, status=status.HTTP_401_UNAUTHORIZED)
 
     auth_data = auth_response.json()
+    access_token = auth_data.get("access_token")
     user_id = auth_data.get("user", {}).get("id")
-    if not user_id:
-        return Response({"error": "Login failed: missing user id"}, status=status.HTTP_400_BAD_REQUEST)
+    if not access_token or not user_id:
+        return Response({"error": "Login failed: missing token or user id"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # 2️⃣ Fetch role from public.users using the service role key
+    # 2️⃣ Fetch role from public.users using service role key
     service_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
-
-    # Make sure you use the correct column name: often it's "id" or "user_id"
     user_query = service_client.table("users").select("role").eq("id", user_id).execute()
     role_info = user_query.data[0] if user_query.data else None
     user_role = (role_info.get("role", "general") if role_info else "general").strip()
 
     print(f"[LOGIN] User ID: {user_id}, Role: {user_role}")
 
-    # ✅ Return auth info + role for frontend
-    return Response({
+    # 3️⃣ Set HttpOnly cookie
+    response = Response({
         "message": "Login successful",
-        "auth_data": auth_data,  
-        "role": user_role       
+        "role": user_role
     }, status=status.HTTP_200_OK)
 
+    # Cookie expires in 1 day
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=False,     
+        samesite="Lax",
+        max_age=86400   
+    )
+
+    return response
 
 # ------- GET VET PROFILE DATA ----------
 @api_view(['GET'])

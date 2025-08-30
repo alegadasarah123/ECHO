@@ -1,264 +1,323 @@
-import React, { useEffect } from "react";
-import Sidebar from "./KutSidebar";
+import { useState, useEffect } from "react";
+import Sidebar from "@/components/KutSidebar";
+import { Bell } from "lucide-react";
+import NotificationModal from "./KutNotif";
 
-const Settings = () => {
-  const toggleSidebar = () => {
-    const sidebar = document.querySelector(".sidebar");
-    const main = document.querySelector(".main-content");
-    if (sidebar.style.display === "none" || !sidebar.style.display) {
-      sidebar.style.display = "block";
-      main.style.marginLeft = "250px";
-    } else {
-      sidebar.style.display = "none";
-      main.style.marginLeft = "80px";
+const API_BASE = "http://localhost:8000/api/kutsero_president";
+
+const SettingsPage = () => {
+  const [activeTab, setActiveTab] = useState("profile");
+  const [notifOpen, setNotifOpen] = useState(false);
+
+  const [profile, setProfile] = useState({
+    pres_fname: "",
+    pres_lname: "",
+    pres_email: "",
+    pres_phonenum: "",
+  });
+
+useEffect(() => {
+  const fetchProfile = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/get_president_profile/`);
+      const data = await res.json();
+      if (res.ok) {
+        setProfile({
+          pres_fname: data.pres_fname,
+          pres_lname: data.pres_lname,
+          pres_email: data.pres_email,
+          pres_phonenum: data.pres_phonenum,
+          user_id: data.user_id, // ✅ store user_id
+        });
+      } else {
+        console.error("Failed to fetch profile:", data.error);
+      }
+    } catch (err) {
+      console.error("Error fetching profile:", err);
+    }
+  };
+  fetchProfile();
+}, []);
+
+  // ✅ handle input changes
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setProfile((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${API_BASE}/update_president_profile/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: profile.user_id, // ✅ send user_id
+          pres_fname: profile.pres_fname,
+          pres_lname: profile.pres_lname,
+          pres_phonenum: profile.pres_phonenum,
+        }),      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert("Profile updated successfully!");
+      } else {
+        alert(data.error || "Failed to update profile");
+      }
+    } catch (error) {
+      console.error("Error saving profile:", error);
+      alert("Something went wrong.");
     }
   };
 
-  const switchTab = (tabId) => {
-    document.querySelectorAll(".tab").forEach((tab) => {
-      tab.classList.remove("active");
-    });
-    document.querySelectorAll(".settings-box").forEach((box) => {
-      box.classList.remove("active");
-    });
-    document.querySelector(`.tab[data-tab="${tabId}"]`).classList.add("active");
-    document.getElementById(tabId).classList.add("active");
-  };
-
   return (
-    <div>
-      <style>{`
-        body {
-          font-family: Arial, sans-serif;
-          background-color: #f3f3f3;
-          margin: 0;
-          padding: 0;
-        }
-        .settings-container {
-          display: flex;
-          min-height: 100vh;
-        }
-        .menu-toggle {
-          display: none;
-          background: #D2691E;
-          color: white;
-          border: none;
-          width: 50px;
-          height: 50px;
-          border-radius: 50%;
-          cursor: pointer;
-          position: fixed;
-          top: 1rem;
-          left: 1rem;
-          z-index: 1002;
-        }
-        @media (max-width: 768px) {
-          .menu-toggle {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-          }
-        }
-        .main-content {
-          flex: 1;
-          margin-left: 80px;
-          padding: 1rem;
-          transition: margin-left 0.3s ease;
-        }
-        .header {
-          background: white;
-          padding: 1rem 2rem;
-          border-radius: 12px;
-          box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-          margin-bottom: 2rem;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-        .header h1 {
-          margin: 0;
-          font-size: 1.8rem;
-        }
-        .header p {
-          margin: 0.3rem 0 0;
-          color: #777;
-        }
-        .notification-btn {
-          background: #f8f9fa;
-          border: none;
-          border-radius: 50%;
-          width: 50px;
-          height: 50px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-        }
-        .notification-btn:hover {
-          background: #e9ecef;
-          transform: scale(1.05);
-        }
-        .tabs {
-          display: flex;
-          gap: 10px;
-          margin-bottom: 20px;
-        }
-        .tab {
-          padding: 10px 20px;
-          background-color: white;
-          border-radius: 8px;
-          border: 1px solid #ccc;
-          cursor: pointer;
-        }
-        .tab.active {
-          background-color: #eee;
-          font-weight: bold;
-          border-bottom: 2px solid black;
-        }
-        .settings-box {
-          display: none;
-          background-color: white;
-          border: 1px solid #ccc;
-          border-radius: 8px;
-          padding: 20px;
-        }
-        .settings-box.active {
-          display: block;
-        }
-        .settings-box h2 {
-          margin-top: 0;
-          margin-bottom: 5px;
-        }
-        .settings-box p {
-          color: #666;
-          margin-bottom: 20px;
-        }
-        .form-group {
-          margin-bottom: 15px;
-        }
-        .form-group label {
-          display: block;
-          margin-bottom: 5px;
-          font-weight: 500;
-        }
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-          width: 100%;
-          padding: 10px;
-          border-radius: 6px;
-          border: 1px solid #aaa;
-          font-size: 14px;
-        }
-        .save-btn {
-          margin-top: 20px;
-          padding: 10px 20px;
-          background-color: #2e7d32;
-          color: white;
-          border: none;
-          border-radius: 20px;
-          font-weight: bold;
-          cursor: pointer;
-          float: right;
-        }
-        .save-btn:hover {
-          background-color: #1e5e23;
-        }
-      `}</style>
-
-      <div className="settings-container">
-        <button className="menu-toggle" onClick={toggleSidebar}>☰</button>
+    <div style={styles.layout}>
       <Sidebar />
-
-        <div className="main-content">
-          <div className="header">
-            <div>
-              <h1>User Settings</h1>
-              <p>Manage your preferences and account</p>
-            </div>
-            <button className="notification-btn">
-              <img src="Images/notification.png" alt="Notif" style={{ width: 24 }} />
+      <div style={styles.dashboard}>
+        {/* Header */}
+        <div style={styles.header}>
+          <h1 style={styles.title}>Settings</h1>
+          <div style={{ position: "relative" }}>
+            <button
+              style={styles.notificationBtn}
+              onClick={() => setNotifOpen(!notifOpen)}
+            >
+              <Bell size={24} color="#374151" />
+              <span style={styles.badge}>3</span>
             </button>
           </div>
+        </div>
 
-          <div className="tabs">
-            {['security', 'notifications', 'support', 'language'].map((tab) => (
-              <div
-                key={tab}
-                className={`tab ${tab === 'security' ? 'active' : ''}`}
-                data-tab={tab}
-                onClick={() => switchTab(tab)}
-              >
-                {tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </div>
-            ))}
-          </div>
+        {/* Tabs */}
+        <div style={styles.tabs}>
+          {["profile", "security", "support"].map((tab) => (
+            <button
+              key={tab}
+              style={{
+                ...styles.tab,
+                ...(activeTab === tab ? styles.tabActive : {}),
+              }}
+              onClick={() => setActiveTab(tab)} // ✅ FIXED
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
+        </div>
 
-          <div id="security" className="settings-box active">
-            <h2>Security Settings</h2>
-            <p>Change your password</p>
-            <form>
-              <div className="form-group">
-                <label htmlFor="current-password">Current Password</label>
-                <input type="password" id="current-password" name="current-password" />
-              </div>
-              <div className="form-group">
-                <label htmlFor="new-password">New Password</label>
-                <input type="password" id="new-password" name="new-password" />
-              </div>
-              <div className="form-group">
-                <label htmlFor="confirm-password">Confirm New Password</label>
-                <input type="password" id="confirm-password" name="confirm-password" />
-              </div>
-              <button type="submit" className="save-btn">Save Changes</button>
-            </form>
-          </div>
+        {/* Content */}
+        <div style={styles.content}>
+          {activeTab === "profile" && (
+            <div style={styles.box}>
+              <h2 style={styles.boxTitle}>Profile</h2>
+              <form onSubmit={handleSave}>
+                {/* First Name */}
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>First Name</label>
+                  <input
+                    type="text"
+                    name="pres_fname"
+                    value={profile.pres_fname}
+                    onChange={handleChange}
+                    style={styles.input}
+                  />
+                </div>
 
-          <div id="notifications" className="settings-box">
-            <h2>Notification Settings</h2>
-            <p>Manage notification preferences</p>
-            <form>
-              <div className="form-group">
-                <label><input type="checkbox" defaultChecked /> Email notifications</label>
-              </div>
-              <div className="form-group">
-                <label><input type="checkbox" /> SMS alerts</label>
-              </div>
-              <button type="submit" className="save-btn">Save Changes</button>
-            </form>
-          </div>
+                {/* Last Name */}
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Last Name</label>
+                  <input
+                    type="text"
+                    name="pres_lname"
+                    value={profile.pres_lname}
+                    onChange={handleChange}
+                    style={styles.input}
+                  />
+                </div>
 
-          <div id="support" className="settings-box">
-            <h2>Contact Support</h2>
-            <p>If you need help, contact our support team</p>
-            <form>
-              <div className="form-group">
-                <label htmlFor="support-message">Your Message</label>
-                <textarea id="support-message" name="support-message" rows="5" placeholder="Describe your issue..."></textarea>
-              </div>
-              <button type="submit" className="save-btn">Send Message</button>
-            </form>
-          </div>
+                {/* Email (Read-only) */}
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Email</label>
+                  <input
+                    type="email"
+                    name="pres_email"
+                    value={profile.pres_email}
+                    readOnly
+                    style={{
+                      ...styles.input,
+                      backgroundColor: "#f0f0f0",
+                      cursor: "not-allowed",
+                    }}
+                  />
+                </div>
 
-          <div id="language" className="settings-box">
-            <h2>Language Preferences</h2>
-            <p>Select your preferred language</p>
-            <form>
-              <div className="form-group">
-                <label htmlFor="language-select">Choose Language</label>
-                <select id="language-select">
-                  <option value="en">English</option>
-                  <option value="ceb">Cebuano</option>
-                  <option value="fil">Filipino</option>
-                </select>
-              </div>
-              <button type="submit" className="save-btn">Save Changes</button>
-            </form>
-          </div>
+                {/* Contact Number */}
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Contact Number</label>
+                  <input
+                    type="text"
+                    name="pres_phonenum"
+                    value={profile.pres_phonenum}
+                    onChange={handleChange}
+                    style={styles.input}
+                  />
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                  <button type="submit" style={styles.saveBtn}>
+                    Save Changes
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+
+          {activeTab === "security" && (
+            <div style={styles.box}>
+              <h2 style={styles.boxTitle}>Security Settings</h2>
+              <p style={styles.boxText}>Change your password</p>
+              {["Current Password", "New Password", "Confirm New Password"].map(
+                (label) => (
+                  <div style={styles.formGroup} key={label}>
+                    <label style={styles.label}>{label}</label>
+                    <input type="password" style={styles.input} />
+                  </div>
+                )
+              )}
+              <button type="submit" style={styles.saveBtn}>
+                Save Changes
+              </button>
+            </div>
+          )}
+
+          {activeTab === "support" && (
+            <div style={styles.box}>
+              <h2 style={styles.boxTitle}>Contact Support</h2>
+              <form>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Your Message</label>
+                  <textarea
+                    rows={5}
+                    placeholder="Describe your issue..."
+                    style={{ ...styles.input, resize: "vertical" }}
+                  />
+                </div>
+                <button type="submit" style={styles.saveBtn}>
+                  Send Message
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </div>
     </div>
   );
 };
 
-export default Settings;
+const styles = {
+  layout: { display: "flex", minHeight: "100vh", backgroundColor: "#f5f5f5" },
+  dashboard: {
+    flex: 1,
+    fontFamily: "'Segoe UI', Tahoma",
+    display: "flex",
+    flexDirection: "column",
+    height: "100vh",
+    overflow: "hidden",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    padding: "20px 30px",
+    borderBottom: "1px solid #eee",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+    position: "sticky",
+    top: 0,
+    zIndex: 10,
+    justifyContent: "space-between",
+  },
+  title: { fontSize: "28px", fontWeight: "bold", color: "#D2691E" },
+  notificationBtn: {
+    position: "relative",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    padding: "8px",
+  },
+  badge: {
+    position: "absolute",
+    top: "0",
+    right: "0",
+    backgroundColor: "#ef4444",
+    color: "#fff",
+    borderRadius: "50%",
+    padding: "2px 6px",
+    fontSize: "12px",
+    fontWeight: "bold",
+  },
+  tabs: {
+    display: "flex",
+    gap: "25px",
+    marginBottom: "25px",
+    marginTop: "20px",
+    marginLeft: "20px",
+  },
+  tab: {
+    padding: "6px 0",
+    backgroundColor: "transparent",
+    border: "none",
+    cursor: "pointer",
+    fontSize: "16px",
+    color: "#555",
+  },
+  tabActive: {
+    fontWeight: "bold",
+    borderBottom: "3px solid #2e7d32",
+    transform: "scale(1.05)",
+    color: "#2e7d32",
+  },
+  content: {},
+  box: {
+    backgroundColor: "#fff",
+    borderRadius: "12px",
+    padding: "20px 20px",
+    marginBottom: "20px",
+    boxShadow: "0 3px 10px rgba(0,0,0,0.05)",
+    marginLeft: "20px",
+    width: "calc(100% - 40px)",
+    maxWidth: "none",
+  },
+  boxTitle: { fontSize: "20px", fontWeight: "600", marginBottom: "10px" },
+  boxText: { color: "#555", marginBottom: "10px" },
+  formGroup: {
+    marginBottom: "12px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    maxWidth: "400px",
+  },
+  label: { fontWeight: "500", marginBottom: "3px" },
+  input: {
+    padding: "8px 12px",
+    border: "1px solid #ccc",
+    borderRadius: "6px",
+    fontSize: "14px",
+    outline: "none",
+    transition: "all 0.2s ease",
+  },
+  saveBtn: {
+    padding: "8px 15px",
+    backgroundColor: "#2e7d32",
+    color: "#fff",
+    border: "none",
+    borderRadius: "20px",
+    fontWeight: "bold",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    alignSelf: "flex-start",
+  },
+};
+
+export default SettingsPage;

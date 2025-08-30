@@ -225,6 +225,7 @@ function LogIn({ onBack }) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ email, password }),
+      credentials: "include"
     });
 
     const data = await response.json();
@@ -246,8 +247,6 @@ function LogIn({ onBack }) {
     } else {
       navigate("/KutDashboard");
     }
-
-    // optional callback
     if (onBack) onBack(role);
 
   } catch (err) {

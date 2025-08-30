@@ -5,16 +5,14 @@ from django.conf import settings
 import requests
 import datetime
 
+# -------------------- SUPABASE CLIENT --------------------
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
-
 SUPABASE_URL = settings.SUPABASE_URL
 SERVICE_ROLE_KEY = settings.SUPABASE_SERVICE_ROLE_KEY
-
 
 # -------------------- CORE REUSABLE FUNCTION --------------------
 def fetch_and_merge_users():
     """Fetch users from Supabase auth + db and merge profiles with details"""
-    # 1. Fetch users from auth.users
     auth_url = f"{SUPABASE_URL}/auth/v1/admin/users"
     headers = {
         "apikey": SERVICE_ROLE_KEY,
@@ -23,19 +21,15 @@ def fetch_and_merge_users():
     auth_res = requests.get(auth_url, headers=headers)
     auth_users = auth_res.json().get("users", [])
 
-    # 2. Fetch base users table
     db_res = supabase.table("users").select("*").execute()
     db_users = {u["id"]: u for u in db_res.data or []}
 
-    # 3. Fetch kutsero profiles
     kutsero_res = supabase.table("kutsero_profile").select("*").execute()
     kutsero_profiles = {kp["kutsero_id"]: kp for kp in kutsero_res.data or []}
 
-    # 4. Fetch horse operator profiles
     ho_res = supabase.table("horse_operator_profile").select("*").execute()
     ho_profiles = {hp["operator_id"]: hp for hp in ho_res.data or []}
 
-    # 5. Merge
     allowed_roles = {"kutsero", "horse operator"}
     merged = []
 
@@ -54,10 +48,12 @@ def fetch_and_merge_users():
 
                 if role == "kutsero" and user_id in kutsero_profiles:
                     kp = kutsero_profiles[user_id]
-                    full_name = " ".join(filter(None, [kp.get("kutsero_fname"), kp.get("kutsero_mname"), kp.get("kutsero_lname")]))
+                    full_name = " ".join(filter(None, [
+                        kp.get("kutsero_fname"),
+                        kp.get("kutsero_mname"),
+                        kp.get("kutsero_lname")
+                    ]))
                     contact_num = kp.get("kutsero_phone_num", "")
-                    
-                    # extra fields
                     profile = {
                         "dateOfBirth": kp.get("kutsero_dob"),
                         "sex": kp.get("kutsero_sex"),
@@ -70,15 +66,16 @@ def fetch_and_merge_users():
                             kp.get("kutsero_zipcode"),
                         ])),
                         "facebook": kp.get("kutsero_fb"),
-                        # If you have profile picture column, use it, otherwise fallback
                         "profilePicture": kp.get("profile_picture", "https://via.placeholder.com/120x120?text=Profile")
                     }
-
                 elif role == "horse operator" and user_id in ho_profiles:
                     hp = ho_profiles[user_id]
-                    full_name = " ".join(filter(None, [hp.get("operator_fname"), hp.get("operator_mname"), hp.get("operator_lname")]))
+                    full_name = " ".join(filter(None, [
+                        hp.get("operator_fname"),
+                        hp.get("operator_mname"),
+                        hp.get("operator_lname")
+                    ]))
                     contact_num = hp.get("operator_phone_num", "")
-
                     profile = {
                         "dateOfBirth": str(hp.get("operator_dob")),
                         "sex": hp.get("operator_sex"),
@@ -103,64 +100,43 @@ def fetch_and_merge_users():
                     "contact_num": contact_num,
                     "role": role_raw,
                     "status": status,
-                    **profile 
+                    **profile
                 })
 
     return merged
-
 
 # -------------------- DASHBOARD USERS --------------------
 @api_view(["GET"])
 def get_users(request):
     users = fetch_and_merge_users()
-    
     pending_count = sum(
-        1 for u in users 
-        if u["status"].strip().lower() == "pending" and u["role"] in ["Kutsero", "Horse Operator"]
+        1 for u in users if u["status"].strip().lower() == "pending" and u["role"] in ["Kutsero", "Horse Operator"]
     )
-    
-    return Response({
-        "users": users,
-        "pending_count": pending_count
-    })
-
+    return Response({"users": users, "pending_count": pending_count})
 
 @api_view(["GET"])
 def get_approved_counts(request):
-    """
-    Returns counts of approved KUTSERO and HORSE OPERATOR.
-    """
     users = fetch_and_merge_users()
-
     approved_kutsero_count = sum(
-        1 for u in users if u["role"].upper() == "KUTSERO" and u["status"].strip().lower() == "approved"
+        1 for u in users if u.get("role", "").strip().lower() == "kutsero" and u.get("status", "").strip().lower() == "approved"
     )
     approved_horse_operator_count = sum(
-        1 for u in users if u["role"].upper() == "HORSE OPERATOR" and u["status"].strip().lower() == "approved"
+        1 for u in users if u.get("role", "").strip().lower() == "horse operator" and u.get("status", "").strip().lower() == "approved"
     )
-
     return Response({
         "approved_kutsero_count": approved_kutsero_count,
         "approved_horse_operator_count": approved_horse_operator_count,
     })
 
-
-# -------------------- USER APPROVALS --------------------
 @api_view(["GET"])
 def get_user_approvals(request):
-    """Return ALL users (pending, approved, declined)"""
     users = fetch_and_merge_users()
     return Response(users)
 
 @api_view(["POST"])
 def approve_all_users(request):
-    """
-    Approve all users that are currently pending.
-    """
     try:
-        # Update all pending users
         response = supabase.table("users").update({"status": "approved"}).eq("status", "pending").execute()
-        
         updated_count = response.count if hasattr(response, "count") else len(response.data)
         return Response({
             "message": f"Approved {updated_count} user(s).",
@@ -169,39 +145,40 @@ def approve_all_users(request):
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
-# -------------------- APPROVE USER --------------------
+#------------------------- APPROVED USERS ---------------------
 @api_view(["POST"])
 def approve_user(request, user_id):
-    """Set user status to approved in public.users"""
-    res = supabase.table("users").update({"status": "approved"}).eq("id", user_id).execute()
-    
+    ph_time = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
+    res = supabase.table("users").update({
+        "status": "approved",
+        "created_at": ph_time.isoformat()
+    }).eq("id", user_id).execute()
     if res.data:
         return Response({"message": "✅ User approved successfully", "user_id": user_id})
     return Response({"error": "User not found"}, status=404)
 
-# -------------------- DECLINE USER --------------------
+@api_view(["GET"])
+def get_approved_users(request):
+    users = fetch_and_merge_users()
+    approved_users = [
+        u for u in users
+        if u.get("status", "").strip().lower() == "approved" and u.get("role", "").strip().lower() in ["kutsero", "horse operator"]
+    ]
+    for u in approved_users:
+        u["approved_date"] = u.pop("created_at", "N/A")
+    return Response({"users": approved_users})
+
+#----------------- DECLINE USER ------------------------
 @api_view(["POST"])
 def decline_user(request, user_id):
-    """Set user status to declined in public.users"""
     res = supabase.table("users").update({"status": "declined"}).eq("id", user_id).execute()
-    
     if res.data:
         return Response({"message": "⚠️ User declined successfully", "user_id": user_id})
     return Response({"error": "User not found"}, status=404)
 
-# -------------------- DELETE DECLINED USERS --------------------
-
 @api_view(['DELETE'])
 def delete_declined_users(request):
-    """
-    Deletes declined users from:
-      - kutsero_profile / horse_operator_profile
-      - users (public.users)
-      - supabase auth.users
-    Expects: { "ids": ["uuid1", "uuid2"] }
-    """
     ids = request.data.get("ids", [])
-
     if not ids:
         return Response({"error": "No user IDs provided."})
 
@@ -209,165 +186,157 @@ def delete_declined_users(request):
     skipped_ids = []
 
     for user_id in ids:
-        # 1. Fetch user status + role
         res = supabase.table("users").select("status, role").eq("id", user_id).execute()
         if not res.data:
             skipped_ids.append(user_id)
             continue
-
         status_value = res.data[0]["status"]
         role_value = (res.data[0].get("role") or "").lower()
-
         if status_value != "declined":
             skipped_ids.append(user_id)
             continue
-
-        # 2. Delete from child tables first
         if role_value == "kutsero":
             supabase.table("kutsero_profile").delete().eq("kutsero_id", user_id).execute()
         elif role_value == "horse operator":
             supabase.table("horse_operator_profile").delete().eq("operator_id", user_id).execute()
-
-        # 3. Delete from users table
         supabase.table("users").delete().eq("id", user_id).execute()
-
-        # 4. Delete from Supabase Auth
         auth_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
-        headers = {
-            "apikey": SERVICE_ROLE_KEY,
-            "Authorization": f"Bearer {SERVICE_ROLE_KEY}"
-        }
+        headers = {"apikey": SERVICE_ROLE_KEY, "Authorization": f"Bearer {SERVICE_ROLE_KEY}"}
         try:
             requests.delete(auth_url, headers=headers, timeout=10)
         except Exception as e:
             print(f"⚠️ Failed to delete auth user {user_id}: {e}")
-
         deleted_ids.append(user_id)
 
-    return Response(
-        {"success": True, "deleted": deleted_ids, "skipped": skipped_ids},
-    )
+    return Response({"success": True, "deleted": deleted_ids, "skipped": skipped_ids})
 
 # -------------------- NOTIFICATIONS --------------------
 @api_view(["GET"])
 def get_notifications(request):
-    """
-    Fetch notifications only for Kutsero and Horse Operator.
-    Insert missing notifications for pending users if not already saved.
-    """
-
-    # 1️⃣ Fetch all users
+    """Fetch notifications for Kutsero and Horse Operator and insert missing for pending users."""
     users = fetch_and_merge_users()
     if not users:
         return Response([])
 
-    # Build a mapping of user_id -> role
     user_roles = {u["id"]: u["role"] for u in users}
 
-    # 2️⃣ Fetch existing notifications
     result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
     notifications_raw = result.data if result.data else []
 
-    # 3️⃣ Manila timezone
     manila_tz = datetime.timezone(datetime.timedelta(hours=8))
 
-    # 4️⃣ Insert missing notifications for pending users
     existing_ids = {n["id"] for n in notifications_raw}
     for u in users:
         if u["status"] == "pending" and u["role"] in ["Kutsero", "Horse Operator"] and u["id"] not in existing_ids:
-            dt_ph = datetime.datetime.fromisoformat(u["created_at"].replace("Z", "+00:00")).astimezone(manila_tz) if u.get("created_at") else datetime.datetime.now(manila_tz)
+            dt_ph = datetime.datetime.fromisoformat(u["created_at"].replace("Z", "+00:00")).astimezone(manila_tz) \
+                if u.get("created_at") else datetime.datetime.now(manila_tz)
             try:
                 supabase.table("notification").insert({
                     "id": u["id"],
                     "notif_message": f"New {u['role']} registered: {u['name']}",
-                    "notif_date": dt_ph.date().isoformat(),         # ✅ Convert date to string
-                    "notif_time": dt_ph.time().strftime("%H:%M:%S") # ✅ Convert time to string
+                    "notif_date": dt_ph.date().isoformat(),
+                    "notif_time": dt_ph.time().strftime("%H:%M:%S")
                 }).execute()
             except Exception as e:
                 print(f"Failed to insert notification for user {u['id']}: {e}")
 
-    # 5️⃣ Re-fetch notifications after insert
+    # Re-fetch notifications
     result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
     notifications_raw = result.data if result.data else []
 
-    # 6️⃣ Filter notifications: only Kutsero or Horse Operator
     notifications_filtered = []
     for n in notifications_raw:
         role = user_roles.get(n["id"])
         if role in ["Kutsero", "Horse Operator"]:
-            # Ensure date/time are strings for JSON
             notif_date_str = str(n['notif_date'])
             notif_time_str = str(n['notif_time'])
             date_iso = f"{notif_date_str}T{notif_time_str}+08:00"
-
             notifications_filtered.append({
                 "id": n["notif_id"],
                 "message": n["notif_message"],
                 "date": date_iso,
             })
 
-    # 7️⃣ Sort newest first
     notifications_filtered.sort(key=lambda x: x["id"] or 0, reverse=True)
-
     return Response(notifications_filtered)
 
+# -------------------- DEACTIVATE USER --------------------
+@api_view(["POST"])
+def deactivate_user(request, user_id):
+    """Set user status to deactivated in public.users"""
+    res = supabase.table("users").update({"status": "deactivated"}).eq("id", user_id).execute()
+    
+    if res.data:
+        return Response({"message": "User deactivated successfully", "user_id": user_id})
+    return Response({"error": "User not found"}, status=404)
 
-# -------------------- NOTIFICATIONS --------------------
+
+# -------------------- DELETE USER (soft delete) --------------------
+@api_view(["POST"])
+def delete_user(request, user_id):
+    """Set user status to deleted in public.users"""
+    res = supabase.table("users").update({"status": "deleted"}).eq("id", user_id).execute()
+    
+    if res.data:
+        return Response({"message": "User deleted successfully", "user_id": user_id})
+    return Response({"error": "User not found"}, status=404)
+
+# -------------------- REACTIVATE USER --------------------
+@api_view(["POST"])
+def reactivate_user(request, user_id):
+    """Set user status to approved in public.users"""
+    res = supabase.table("users").update({"status": "approved"}).eq("id", user_id).execute()
+    
+    if res.data:
+        return Response({"message": "User reactivated successfully", "user_id": user_id})
+    return Response({"error": "User not found"}, status=404)
+
+
+# ------------------------- FETCH PRESIDENT PROFILE -----------------------
 @api_view(["GET"])
-def get_notifications(request):
-    """
-    Fetch notifications for Kutsero President.
-    Inserts new ones for pending users if not already saved.
-    Returns full notification history.
-    """
-    users = fetch_and_merge_users()
-    pending_users = [u for u in users if u["status"] == "pending"]
+def get_president_profile(request):
+    user_id = request.query_params.get("user_id")  # frontend sends it
 
-    # Get existing notifications (by user id)
-    existing = supabase.table("notification").select("id").execute()
-    existing_ids = {row["id"] for row in existing.data} if existing.data else set()
+    if not user_id:
+        return Response({"error": "user_id is required"}, status=400)
 
-    # Manila timezone offset
-    manila_offset = datetime.timedelta(hours=8)
-    manila_tz = datetime.timezone(manila_offset)
+    res = supabase.table("kutsero_pres_profile").select("*").eq("user_id", user_id).execute()
 
-    # Insert new notifications only for pending users not in table
-    for u in pending_users:
-        if u["id"] not in existing_ids:
-            notif_message = f"New {u['role']} registered: {u['name']}"
+    if not res.data:
+        return Response({"error": "Profile not found"}, status=404)
 
-            # Fetch created_at from Supabase Auth
-            created_at = u.get("created_at")
-            if created_at:
-                # Parse UTC timestamp
-                dt = datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                # Convert to Manila time
-                dt_ph = dt.astimezone(manila_tz)
-            else:
-                dt_ph = datetime.datetime.now(manila_tz)
+    profile = res.data[0]
+    return Response({
+        "pres_id": profile.get("pres_id"),
+        "user_id": user_id,
+        "pres_email": profile.get("pres_email"),
+        "pres_fname": profile.get("pres_fname", ""),
+        "pres_lname": profile.get("pres_lname", ""),
+        "pres_phonenum": profile.get("pres_phonenum", "")
+    })
 
-            notif_date = dt_ph.strftime("%Y-%m-%d")
-            notif_time = dt_ph.strftime("%H:%M:%S")
 
-            supabase.table("notification").insert({
-                "id": u["id"],
-                "notif_message": notif_message,
-                "notif_date": notif_date,
-                "notif_time": notif_time,
-            }).execute()
+# ------------------------- UPDATE PRESIDENT PROFILE -----------------------
+@api_view(["POST"])
+def update_president_profile(request):
+    """Kutsero President updates only fname, lname, phone"""
+    user_id = request.data.get("user_id")  # frontend must send this
 
-    # Fetch all notifications
-    result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
+    if not user_id:
+        return Response({"error": "user_id is required"}, status=400)
 
-    notifications = []
-    if result.data:
-        for row in result.data:
-            # Combine date + time with PH timezone for frontend
-            date_iso = f"{row['notif_date']}T{row['notif_time']}+08:00"
-            notifications.append({
-                "id": row["notif_id"],
-                "message": row["notif_message"],
-                "date": date_iso,
-            })
+    data = {
+        "user_id": user_id,
+        "pres_fname": request.data.get("pres_fname"),
+        "pres_lname": request.data.get("pres_lname"),
+        "pres_phonenum": request.data.get("pres_phonenum"),
+    }
 
-    return Response(notifications)
+    try:
+        res = supabase.table("kutsero_pres_profile").upsert(data).execute()
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+    if res.data:
+        return Response({"message": "Profile updated successfully"})
+    return Response({"error": "Failed to update profile"}, status=400)

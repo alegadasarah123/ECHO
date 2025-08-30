@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Filter } from "lucide-react";
+import { Filter, Bell, Search } from "lucide-react";
 import Sidebar from "@/components/KutSidebar";
 import NotificationModal from './KutNotif';
 
@@ -48,24 +48,25 @@ const UserApprovalPage = () => {
     fetchUsers();
   }, []);
 
-// Count users based on the selected role filter
-const filteredCounts = {
-  all: users.filter(u => roleFilter === "all" || u.role.toLowerCase() === roleFilter.toLowerCase()).length,
-  pending: users.filter(u => (roleFilter === "all" || u.role.toLowerCase() === roleFilter.toLowerCase()) && u.status === "pending").length,
-  approved: users.filter(u => (roleFilter === "all" || u.role.toLowerCase() === roleFilter.toLowerCase()) && u.status === "approved").length,
-  declined: users.filter(u => (roleFilter === "all" || u.role.toLowerCase() === roleFilter.toLowerCase()) && u.status === "declined").length,
-};
+  // Count users based on the selected role filter
+  const filteredCounts = {
+    all: users.filter(u => u.status !== "deleted" && u.status !== "deactivated" && (roleFilter === "all" || u.role.toLowerCase() === roleFilter.toLowerCase())).length,
+    pending: users.filter(u => u.status !== "deleted" && u.status !== "deactivated" && (roleFilter === "all" || u.role.toLowerCase() === roleFilter.toLowerCase()) && u.status === "pending").length,
+    approved: users.filter(u => u.status !== "deleted" && u.status !== "deactivated" && (roleFilter === "all" || u.role.toLowerCase() === roleFilter.toLowerCase()) && u.status === "approved").length,
+    declined: users.filter(u => u.status !== "deleted" && u.status !== "deactivated" && (roleFilter === "all" || u.role.toLowerCase() === roleFilter.toLowerCase()) && u.status === "declined").length,
+  };
 
-const filteredUsers = users
-  .filter((u) => filter === "all" || u.status.toLowerCase() === filter.toLowerCase())
-  .filter((u) => 
-    roleFilter === "all" || (u.role && u.role.toLowerCase() === roleFilter.toLowerCase())
-  )
-  .filter(
-    (u) =>
-      u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+
+  const filteredUsers = users
+    .filter(u => u.status !== "deleted" && u.status !== "deactivated") // <-- ignore deleted & deactivated
+    .filter((u) => filter === "all" || u.status.toLowerCase() === filter.toLowerCase())
+    .filter((u) => roleFilter === "all" || (u.role && u.role.toLowerCase() === roleFilter.toLowerCase()))
+    .filter(
+      (u) =>
+        u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        u.email.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
 
   const handleViewUser = (user) => {
     setSelectedUser(user);
@@ -211,7 +212,7 @@ const handleDeleteClick = async () => {
   };
 
     // ✅ count pending users for badge
-    const pendingUsers = users.filter(u => u.status === "pending");
+  const pendingUsers = users.filter(u => u.status === "pending" && u.status !== "deleted" && u.status !== "deactivated");
 
   return (
         <div style={styles.layout}>
@@ -266,7 +267,7 @@ const handleDeleteClick = async () => {
                   style={{ ...styles.statusPillBtn, ...(filter === f ? styles.statusPillBtnActive : {}) }}
                   onClick={() => { setFilter(f); setDeleteMode(false); setSelectedIds([]); }}
                 >
-                  {f.charAt(0).toUpperCase() + f.slice(1)} {/* Capitalize first letter only */}
+                  {f.charAt(0).toUpperCase() + f.slice(1)} 
                   <span
                     style={{
                       ...styles.statusPillBadge,

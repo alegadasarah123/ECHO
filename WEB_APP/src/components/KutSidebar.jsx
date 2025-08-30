@@ -18,7 +18,7 @@ const Sidebar = () => {
     { icon: BarChart3, label: 'Dashboard', path: '/KutDashboard' },
     { icon: UserCheck, label: 'User Approval', path: '/KutUserManagement' },
     { icon: Users, label: 'User Accounts', path: '/KutUserAccount' },
-    { icon: Settings, label: 'Settings'},
+    { icon: Settings, label: 'Settings', path: '/KutSettings' },
   ];
 
   return (
