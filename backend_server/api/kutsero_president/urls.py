@@ -15,5 +15,11 @@ urlpatterns = [
     path("delete_user/<str:user_id>/", views.delete_user, name="delete_user"),
     path("reactivate_user/<str:user_id>/", views.reactivate_user, name="reactivate_user"),
     path("get_president_profile/", views.get_president_profile, name="get_president_profile"),
+    path("save_president_profile/", views.save_president_profile, name="save_president_profile"),
+    path("test_cookie/", views.test_cookie, name="test_cookie"),
     path("update_president_profile/", views.update_president_profile, name="update_president_profile"),
+    path("change_password/", views.change_password, name="change_password"),
+    path("get_messages/<str:user_id>/<str:receiver_id>/", views.get_messages, name="get_messages"),
+    path("send_message/", views.send_message, name="send_message"),
+    path("search_users/", views.search_users, name="search_users")
 ]

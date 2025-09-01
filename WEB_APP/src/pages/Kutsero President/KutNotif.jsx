@@ -19,16 +19,19 @@ const NotificationModal = ({ isOpen }) => {
     });
   };
 
-  useEffect(() => {
-    if (isOpen) {
-      setLoading(true);
-      fetch("http://localhost:8000/api/kutsero_president/get_notifications/") // Django API endpoint
-        .then((res) => res.json())
-        .then((data) => setNotifications(data))
-        .catch((err) => console.error("Failed to fetch notifications:", err))
-        .finally(() => setLoading(false));
-    }
-  }, [isOpen]);
+useEffect(() => {
+  if (isOpen) {
+    setLoading(true);
+    fetch("http://localhost:8000/api/kutsero_president/get_notifications/", {
+      method: "GET",
+      credentials: "include", // ✅ send cookie automatically
+    })
+      .then((res) => res.json())
+      .then((data) => setNotifications(data))
+      .catch((err) => console.error("Failed to fetch notifications:", err))
+      .finally(() => setLoading(false));
+  }
+}, [isOpen]);
 
   if (!isOpen) return null;
 
