@@ -64,13 +64,13 @@ def login(request):
 
     # Cookie expires in 1 day
     response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=False,     
-        samesite="Lax",
-        max_age=86400   
-    )
+   key="access_token",
+   value=access_token,
+   httponly=True,
+   secure=False,
+   samesite="Lax",
+   max_age=86400
+)
 
     return response
 

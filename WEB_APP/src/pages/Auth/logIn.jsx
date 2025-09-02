@@ -237,17 +237,20 @@ function LogIn({ onBack }) {
 
     console.log("Login successful:", data);
 
-    const role = data.role;
-    if (role === "Veterinarian") {
-      navigate("/VetDashboard");
-    }else if (role === "ctu_vetmed" || role === "Ctu-VetMed") {
-      navigate("/CtuDashboard");
-    } else if (role === "Dvmf") {
-      navigate("/DvmfDashboard");
-    } else {
-      navigate("/KutDashboard");
-    }
-    if (onBack) onBack(role);
+    const role = data.role.trim().toLowerCase(); // normalize
+
+if (role === "veterinarian") {
+  navigate("/VetDashboard");
+} else if (role === "ctu-vetmed") {
+  navigate("/CtuDashboard");
+} else if (role === "dvmf") {
+  navigate("/DvmfDashboard");
+} else {
+  navigate("/KutDashboard");
+}
+
+if (onBack) onBack(role);
+
 
   } catch (err) {
     console.error("Login error:", err);
