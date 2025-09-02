@@ -1,3 +1,4 @@
+
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from "react"
@@ -11,7 +12,10 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    Alert,
+    ActivityIndicator,
 } from "react-native"
+import * as SecureStore from "expo-secure-store"
 import FeedPage from "./feedpage"
 import NotificationsPage from "./notifications"
 import SOSEmergencyScreen from "./sos"
@@ -56,41 +60,227 @@ const getSafeAreaPadding = () => {
   }
 }
 
+interface Horse {
+  id: string
+  name: string
+  healthStatus: "Healthy" | "Under Care" | "Recovering"
+  status: string
+  image: any
+  breed?: string
+  age?: number
+  color?: string
+  operatorName?: string
+  assignmentStatus?: 'available' | 'assigned'
+  currentAssignmentId?: string
+  lastCheckup?: string
+  nextCheckup?: string
+}
+
+interface UserData {
+  id: string
+  email: string
+  profile?: {
+    kutsero_id: string
+    kutsero_fname?: string
+    kutsero_lname?: string
+    kutsero_mname?: string
+    kutsero_username?: string
+    kutsero_phone_num?: string
+    kutsero_email?: string
+    [key: string]: any
+  }
+  access_token: string
+  refresh_token?: string
+  user_status?: string
+}
+
+interface CareActivity {
+  id: string
+  type: 'feed' | 'water' | 'checkup' | 'grooming'
+  timestamp: string
+  horseId: string
+  horseName: string
+  notes?: string
+  completed: boolean
+}
+
+// Backend API configuration
+const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
+
 export default function HorseCareScreen() {
   const router = useRouter()
   const [searchText, setSearchText] = useState("")
   const [showFeedPage, setShowFeedPage] = useState(false)
   const [feedType, setFeedType] = useState<"feed" | "water">("feed")
-  const [selectedHorseName] = useState("Oscar") // You can make this dynamic based on selected horse
   const [showNotifications, setShowNotifications] = useState(false)
   const [showSOSEmergency, setShowSOSEmergency] = useState(false)
+  
+  // Enhanced user and horse state management
   const [currentUser, setCurrentUser] = useState("User")
+  const [userData, setUserData] = useState<UserData | null>(null)
+  const [selectedHorse, setSelectedHorse] = useState<Horse>({
+    id: "default",
+    name: "No Horse Assigned",
+    healthStatus: "Healthy",
+    status: "Please select a horse",
+    image: require("../../assets/images/horse.png"),
+    breed: "N/A",
+    age: 0,
+    operatorName: "N/A",
+    lastCheckup: "N/A",
+    nextCheckup: "N/A",
+  })
+  
+  // Care activities state
+  const [recentActivities, setRecentActivities] = useState<CareActivity[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [isCheckedIn, setIsCheckedIn] = useState(false)
+  const [checkInTime, setCheckInTime] = useState<string | null>(null)
 
   const safeArea = getSafeAreaPadding()
 
-  // Load user data from AsyncStorage
+  // Load user data and horse information
   const loadUserData = async () => {
+    setIsLoading(true)
     try {
-      const savedUser = await AsyncStorage.getItem('currentUser')
-      if (savedUser) {
-        setCurrentUser(savedUser)
+      // Get stored user data
+      const storedUserData = await SecureStore.getItemAsync('user_data')
+      const storedAccessToken = await SecureStore.getItemAsync('access_token')
+      
+      if (storedUserData && storedAccessToken) {
+        const parsedUserData = JSON.parse(storedUserData)
+        
+        const unifiedUserData: UserData = {
+          id: parsedUserData.id,
+          email: parsedUserData.email,
+          profile: parsedUserData.profile,
+          access_token: storedAccessToken,
+          user_status: parsedUserData.user_status || 'pending'
+        }
+
+        setUserData(unifiedUserData)
+        
+        // Set display name
+        let displayName = "User"
+        if (parsedUserData.profile) {
+          const { kutsero_fname, kutsero_lname, kutsero_username } = parsedUserData.profile
+          if (kutsero_fname && kutsero_lname) {
+            displayName = `${kutsero_fname} ${kutsero_lname}`
+          } else if (kutsero_username) {
+            displayName = kutsero_username
+          } else if (kutsero_fname) {
+            displayName = kutsero_fname
+          }
+        }
+        setCurrentUser(displayName)
+        
+        // Load selected horse from SecureStore (shared with dashboard)
+        await loadSelectedHorse()
+        
+        // Load care activities
+        await loadCareActivities()
+        
+        // Load check-in status
+        await loadCheckInStatus()
+        
+      } else {
+        Alert.alert(
+          "Session Expired", 
+          "Please log in again to continue.",
+          [{ text: "OK", onPress: () => router.replace('../../pages/auth/login') }]
+        )
       }
     } catch (error) {
-      console.log('Error loading user data:', error)
+      console.error('Error loading user data:', error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  // Load user data on component mount
-  useEffect(() => {
-    loadUserData()
-  }, [])
+  // Load selected horse from SecureStore (synced with dashboard)
+  const loadSelectedHorse = async () => {
+    try {
+      const storedHorseData = await SecureStore.getItemAsync('selectedHorseData')
+      if (storedHorseData) {
+        const horse: Horse = JSON.parse(storedHorseData)
+        setSelectedHorse(horse)
+        console.log('Loaded horse from storage:', horse.name)
+      }
+    } catch (error) {
+      console.error('Error loading selected horse:', error)
+    }
+  }
 
-  // Load user data when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      loadUserData()
-    }, [])
-  )
+  // Load care activities for the selected horse
+  const loadCareActivities = async () => {
+    try {
+      // Load from local storage first
+      const storedActivities = await SecureStore.getItemAsync('careActivities')
+      if (storedActivities) {
+        const activities: CareActivity[] = JSON.parse(storedActivities)
+        // Filter activities for current horse and sort by timestamp
+        const horseActivities = activities
+          .filter(activity => activity.horseId === selectedHorse.id)
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .slice(0, 10) // Show only last 10 activities
+        
+        setRecentActivities(horseActivities)
+      }
+    } catch (error) {
+      console.error('Error loading care activities:', error)
+    }
+  }
+
+  // Load check-in status
+  const loadCheckInStatus = async () => {
+    try {
+      const checkInData = await SecureStore.getItemAsync('checkInData')
+      if (checkInData) {
+        const data = JSON.parse(checkInData)
+        if (data.horseId === selectedHorse.id) {
+          setIsCheckedIn(true)
+          setCheckInTime(data.checkInTime)
+        }
+      }
+    } catch (error) {
+      console.log('Error loading check-in status:', error)
+    }
+  }
+
+  // Save care activity (synced with dashboard)
+  const saveCareActivity = async (type: 'feed' | 'water', notes?: string) => {
+    try {
+      const activity: CareActivity = {
+        id: Date.now().toString(),
+        type: type,
+        timestamp: new Date().toISOString(),
+        horseId: selectedHorse.id,
+        horseName: selectedHorse.name,
+        notes: notes,
+        completed: true
+      }
+
+      // Load existing activities
+      const storedActivities = await SecureStore.getItemAsync('careActivities')
+      let activities: CareActivity[] = storedActivities ? JSON.parse(storedActivities) : []
+      
+      // Add new activity
+      activities.unshift(activity)
+      
+      // Keep only last 100 activities to prevent storage bloat
+      activities = activities.slice(0, 100)
+      
+      // Save back to storage
+      await SecureStore.setItemAsync('careActivities', JSON.stringify(activities))
+      
+      // Update local state
+      setRecentActivities(prev => [activity, ...prev.slice(0, 9)])
+      
+      console.log(`${type} activity saved for ${selectedHorse.name}`)
+    } catch (error) {
+      console.error('Error saving care activity:', error)
+    }
+  }
 
   // Dashboard/Home Icon Component
   const DashboardIcon = ({ color }: { color: string }) => (
@@ -114,60 +304,62 @@ export default function HorseCareScreen() {
     </View>
   )
 
-  const TabButton = ({
-    iconSource,
-    label,
-    tabKey,
-    isActive,
-    onPress,
-  }: {
-    iconSource: any
-    label: string
-    tabKey: string
-    isActive: boolean
-    onPress?: () => void
-  }) => (
-    <TouchableOpacity
-      style={styles.tabButton}
-      onPress={() => {
-        if (onPress) {
-          onPress()
-        } else {
-          // Navigate directly without updating local state
-          if (tabKey === "home") {
-            router.push('/(tabs)/dashboard')
-          } else if (tabKey === "horse") {
-            // Stay on horse care - already here
-          } else if (tabKey === "chat") {
-            router.push('/(tabs)/messages')
-          } else if (tabKey === "calendar") {
-            router.push('/(tabs)/calendar')
-          } else if (tabKey === "history") {
-            router.push('/(tabs)/history')
-          } else if (tabKey === "profile") {
-            router.push('/(tabs)/profile')
-          }
+  // In the HorseCareScreen component, replace the TabButton onPress logic with this:
+
+const TabButton = ({
+  iconSource,
+  label,
+  tabKey,
+  isActive,
+  onPress,
+}: {
+  iconSource: any
+  label: string
+  tabKey: string
+  isActive: boolean
+  onPress?: () => void
+}) => (
+  <TouchableOpacity
+    style={styles.tabButton}
+    onPress={() => {
+      if (onPress) {
+        onPress()
+      } else {
+        // Navigate directly without updating local state
+        if (tabKey === "home") {
+          router.push('./dashboard') // Navigate to dashboard in same folder
+        } else if (tabKey === "horse") {
+          // Stay on horse care - already here
+        } else if (tabKey === "chat") {
+          router.push('./messages')
+        } else if (tabKey === "calendar") {
+          router.push('./calendar')
+        } else if (tabKey === "history") {
+          router.push('./history')
+        } else if (tabKey === "profile") {
+          router.push('./profile')
         }
-      }}
-    >
-      <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
-        {iconSource ? (
-          <Image
-            source={iconSource}
-            style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
-            resizeMode="contain"
-          />
-        ) : tabKey === "home" ? (
-          <DashboardIcon color={isActive ? "white" : "#666"} />
-        ) : tabKey === "profile" ? (
-          <ProfileIcon color={isActive ? "white" : "#666"} />
-        ) : (
-          <View style={styles.fallbackIcon} />
-        )}
-      </View>
-      <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
-    </TouchableOpacity>
-  )
+      }
+    }}
+  >
+    <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
+      {iconSource ? (
+        <Image
+          source={iconSource}
+          style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
+          resizeMode="contain"
+        />
+      ) : tabKey === "home" ? (
+        <DashboardIcon color={isActive ? "white" : "#666"} />
+      ) : tabKey === "profile" ? (
+        <ProfileIcon color={isActive ? "white" : "#666"} />
+      ) : (
+        <View style={styles.fallbackIcon} />
+      )}
+    </View>
+    <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
+  </TouchableOpacity>
+)
 
   const MenuIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
@@ -177,23 +369,106 @@ export default function HorseCareScreen() {
     </View>
   )
 
-  const handleFeedPress = () => {
+  const handleFeedPress = async () => {
+    if (selectedHorse.id === "default") {
+      Alert.alert("No Horse Assigned", "Please select a horse first before feeding.")
+      return
+    }
+    
     setFeedType("feed")
     setShowFeedPage(true)
+    
+    // Save activity when feed is initiated
+    await saveCareActivity('feed', 'Feed session initiated')
   }
 
-  const handleWaterPress = () => {
+  const handleWaterPress = async () => {
+    if (selectedHorse.id === "default") {
+      Alert.alert("No Horse Assigned", "Please select a horse first before providing water.")
+      return
+    }
+    
     setFeedType("water")
     setShowFeedPage(true)
+    
+    // Save activity when water is provided
+    await saveCareActivity('water', 'Water session initiated')
+  }
+
+  // Format activity time for display
+  const formatActivityTime = (timestamp: string) => {
+    const now = new Date()
+    const activityTime = new Date(timestamp)
+    const diffInHours = Math.floor((now.getTime() - activityTime.getTime()) / (1000 * 60 * 60))
+    
+    if (diffInHours < 1) {
+      const diffInMinutes = Math.floor((now.getTime() - activityTime.getTime()) / (1000 * 60))
+      return diffInMinutes < 1 ? 'Just now' : `${diffInMinutes} minutes ago`
+    } else if (diffInHours < 24) {
+      return `${diffInHours} hours ago`
+    } else {
+      const diffInDays = Math.floor(diffInHours / 24)
+      return `${diffInDays} days ago`
+    }
+  }
+
+  // Get activity icon
+  const getActivityIcon = (type: string) => {
+    switch (type) {
+      case 'feed':
+        return '🥕'
+      case 'water':
+        return '💧'
+      case 'checkup':
+        return '🩺'
+      case 'grooming':
+        return '🧼'
+      default:
+        return '📝'
+    }
+  }
+
+  // Load data on focus and mount
+  useEffect(() => {
+    loadUserData()
+  }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUserData()
+    }, [])
+  )
+
+  // Reload activities when selected horse changes
+  useEffect(() => {
+    if (selectedHorse.id !== "default") {
+      loadCareActivities()
+      loadCheckInStatus()
+    }
+  }, [selectedHorse.id])
+
+  // Show loading screen
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+        <ActivityIndicator size="large" color="white" />
+        <Text style={styles.loadingText}>Loading horse care...</Text>
+      </View>
+    )
   }
 
   // Show FeedPage when user clicks Feed or Water buttons
   if (showFeedPage) {
     return (
       <FeedPage
-        onBack={() => setShowFeedPage(false)}
+        onBack={() => {
+          setShowFeedPage(false)
+          // Reload activities after returning from feed page
+          loadCareActivities()
+        }}
         feedType={feedType}
-        horseName={selectedHorseName}
+        horseName={selectedHorse.name}
       />
     )
   }
@@ -213,9 +488,23 @@ export default function HorseCareScreen() {
     return <SOSEmergencyScreen onBack={() => setShowSOSEmergency(false)} />
   }
 
+  const getHealthStatusColor = (status: Horse["healthStatus"]) => {
+    switch (status) {
+      case "Healthy":
+        return "#4CAF50"
+      case "Under Care":
+        return "#FF9800"
+      case "Recovering":
+        return "#2196F3"
+      default:
+        return "#666"
+    }
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+      
       {/* Header Section */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
         <View style={styles.headerTop}>
@@ -240,11 +529,15 @@ export default function HorseCareScreen() {
             >
               <Image source={require("../../assets/images/sos.png")} style={styles.sosIcon} resizeMode="contain" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton}>
+            <TouchableOpacity 
+              style={styles.headerButton}
+              onPress={() => router.push('./dashboard')}
+            >
               <MenuIcon color="white" />
             </TouchableOpacity>
           </View>
         </View>
+        
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <TextInput
@@ -274,6 +567,9 @@ export default function HorseCareScreen() {
           {/* Page Title */}
           <View style={styles.titleSection}>
             <Text style={styles.pageTitle}>Horse Care</Text>
+            {isCheckedIn && checkInTime && (
+              <Text style={styles.checkInStatus}>✓ Checked in at {checkInTime}</Text>
+            )}
           </View>
 
           {/* Horse Profile Section */}
@@ -291,68 +587,119 @@ export default function HorseCareScreen() {
               <View style={styles.horseInfo}>
                 <Text style={styles.horseNameText}>
                   <Text style={styles.horseLabel}>Name: </Text>
-                  <Text style={styles.horseValue}>{selectedHorseName}</Text>
+                  <Text style={styles.horseValue}>{selectedHorse.name}</Text>
                 </Text>
+                {selectedHorse.breed && selectedHorse.breed !== "N/A" && (
+                  <Text style={styles.horseBreedText}>
+                    <Text style={styles.horseLabel}>Breed: </Text>
+                    <Text style={styles.horseValue}>{selectedHorse.breed}</Text>
+                  </Text>
+                )}
                 <View style={styles.healthRow}>
-                  <View style={styles.healthDot} />
-                  <Text style={styles.healthText}>Healthy</Text>
+                  <View style={[styles.healthDot, { backgroundColor: getHealthStatusColor(selectedHorse.healthStatus) }]} />
+                  <Text style={[styles.healthText, { color: getHealthStatusColor(selectedHorse.healthStatus) }]}>
+                    {selectedHorse.healthStatus}
+                  </Text>
                 </View>
-                <Text style={styles.checkupText}>Next check-up: Checked</Text>
+                <Text style={styles.checkupText}>
+                  Next check-up: {selectedHorse.nextCheckup || "Not scheduled"}
+                </Text>
               </View>
             </View>
+            
             {/* Action Buttons */}
             <View style={styles.actionButtonsContainer}>
               <TouchableOpacity 
-                style={styles.feedButton}
+                style={[styles.feedButton, selectedHorse.id === "default" && styles.disabledButton]}
                 onPress={handleFeedPress}
                 activeOpacity={0.7}
+                disabled={selectedHorse.id === "default"}
               >
-                <Text style={styles.actionButtonText}>Feed</Text>
+                <Text style={[styles.actionButtonText, selectedHorse.id === "default" && styles.disabledButtonText]}>
+                  Feed
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity 
-                style={styles.waterButton}
+                style={[styles.waterButton, selectedHorse.id === "default" && styles.disabledButton]}
                 onPress={handleWaterPress}
                 activeOpacity={0.7}
+                disabled={selectedHorse.id === "default"}
               >
-                <Text style={styles.actionButtonText}>Water</Text>
+                <Text style={[styles.actionButtonText, selectedHorse.id === "default" && styles.disabledButtonText]}>
+                  Water
+                </Text>
               </TouchableOpacity>
             </View>
+
+            {/* Change Horse Button */}
+            {selectedHorse.id === "default" && (
+              <TouchableOpacity
+                style={styles.selectHorseButton}
+                onPress={() => router.push('./horseselection')}
+              >
+                <Text style={styles.selectHorseButtonText}>Select a Horse</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Health Check-up Reminders Section */}
           <View style={styles.remindersSection}>
             <Text style={styles.sectionTitle}>Health Check-up Reminders</Text>
-            <View style={styles.reminderCard}>
-              <View style={styles.reminderDate}>
-                <Text style={styles.reminderDateText}>May 30, 2025</Text>
+            {selectedHorse.id !== "default" ? (
+              <View style={styles.reminderCard}>
+                <View style={styles.reminderDate}>
+                  <Text style={styles.reminderDateText}>
+                    {selectedHorse.nextCheckup || "May 30, 2025"}
+                  </Text>
+                </View>
+                <View style={styles.reminderContent}>
+                  <Text style={styles.reminderTitle}>{selectedHorse.name} - Vaccination due</Text>
+                </View>
               </View>
-              <View style={styles.reminderContent}>
-                <Text style={styles.reminderTitle}>{selectedHorseName} - Vaccination due</Text>
+            ) : (
+              <View style={styles.reminderCard}>
+                <Text style={styles.noReminderText}>Select a horse to see health reminders</Text>
               </View>
-            </View>
+            )}
           </View>
 
-          {/* Additional Care Activities Section */}
+          {/* Recent Care Activities Section */}
           <View style={styles.activitiesSection}>
-            <Text style={styles.sectionTitle}>Recent Care Activities</Text>
-            <View style={styles.activityItem}>
-              <View style={styles.activityIcon}>
-                <View style={styles.activityDot} />
-              </View>
-              <View style={styles.activityContent}>
-                <Text style={styles.activityTitle}>Morning Feed - Completed</Text>
-                <Text style={styles.activityTime}>2 hours ago</Text>
-              </View>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Recent Care Activities</Text>
+              <TouchableOpacity onPress={loadCareActivities}>
+                <Text style={styles.refreshText}>Refresh</Text>
+              </TouchableOpacity>
             </View>
-            <View style={styles.activityItem}>
-              <View style={styles.activityIcon}>
-                <View style={styles.activityDot} />
+            
+            {recentActivities.length > 0 ? (
+              recentActivities.map((activity) => (
+                <View key={activity.id} style={styles.activityItem}>
+                  <View style={styles.activityIcon}>
+                    <Text style={styles.activityEmoji}>{getActivityIcon(activity.type)}</Text>
+                  </View>
+                  <View style={styles.activityContent}>
+                    <Text style={styles.activityTitle}>
+                      {activity.type.charAt(0).toUpperCase() + activity.type.slice(1)} - Completed
+                    </Text>
+                    <Text style={styles.activityHorse}>{activity.horseName}</Text>
+                    <Text style={styles.activityTime}>{formatActivityTime(activity.timestamp)}</Text>
+                    {activity.notes && (
+                      <Text style={styles.activityNotes}>{activity.notes}</Text>
+                    )}
+                  </View>
+                </View>
+              ))
+            ) : (
+              <View style={styles.noActivitiesContainer}>
+                <Text style={styles.noActivitiesText}>
+                  {selectedHorse.id === "default" 
+                    ? "Select a horse to see care activities"
+                    : "No care activities recorded yet"
+                  }
+                </Text>
               </View>
-              <View style={styles.activityContent}>
-                <Text style={styles.activityTitle}>Water Refill - Completed</Text>
-                <Text style={styles.activityTime}>4 hours ago</Text>
-              </View>
-            </View>
+            )}
           </View>
         </ScrollView>
 
@@ -404,6 +751,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#C17A47",
+  },
+  loadingContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    color: "white",
+    fontSize: moderateScale(16),
+    fontWeight: "500",
+    marginTop: verticalScale(10),
   },
   header: {
     backgroundColor: "#C17A47",
@@ -502,12 +859,29 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#333",
   },
+  checkInStatus: {
+    fontSize: moderateScale(12),
+    color: "#4CAF50",
+    fontWeight: "500",
+    marginTop: verticalScale(4),
+  },
   horseSection: {
     backgroundColor: "white",
     marginHorizontal: scale(16),
     marginTop: dynamicSpacing(8),
     borderRadius: scale(12),
     padding: scale(16),
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: verticalScale(12),
+  },
+  refreshText: {
+    fontSize: moderateScale(12),
+    color: "#C17A47",
+    fontWeight: "500",
   },
   horseCard: {
     flexDirection: "row",
@@ -534,6 +908,10 @@ const styles = StyleSheet.create({
   },
   horseNameText: {
     fontSize: moderateScale(14),
+    marginBottom: verticalScale(6),
+  },
+  horseBreedText: {
+    fontSize: moderateScale(12),
     marginBottom: verticalScale(6),
   },
   horseLabel: {
@@ -568,6 +946,7 @@ const styles = StyleSheet.create({
   actionButtonsContainer: {
     flexDirection: "row",
     gap: scale(10),
+    marginBottom: verticalScale(12),
   },
   feedButton: {
     flex: 1,
@@ -601,7 +980,27 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
+  disabledButton: {
+    backgroundColor: "#CCCCCC",
+    elevation: 0,
+    shadowOpacity: 0,
+  },
   actionButtonText: {
+    color: "white",
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+  },
+  disabledButtonText: {
+    color: "#999",
+  },
+  selectHorseButton: {
+    backgroundColor: "#C17A47",
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(8),
+    alignItems: "center",
+    minHeight: 44,
+  },
+  selectHorseButtonText: {
     color: "white",
     fontSize: moderateScale(14),
     fontWeight: "600",
@@ -636,6 +1035,11 @@ const styles = StyleSheet.create({
     color: "#333",
     fontWeight: "500",
   },
+  noReminderText: {
+    fontSize: moderateScale(12),
+    color: "#999",
+    fontStyle: "italic",
+  },
   activitiesSection: {
     backgroundColor: "white",
     marginHorizontal: scale(16),
@@ -645,7 +1049,7 @@ const styles = StyleSheet.create({
   },
   activityItem: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     paddingVertical: verticalScale(8),
     borderBottomWidth: 1,
     borderBottomColor: "#F0F0F0",
@@ -659,11 +1063,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: scale(12),
   },
-  activityDot: {
-    width: scale(8),
-    height: scale(8),
-    borderRadius: scale(4),
-    backgroundColor: "#4CAF50",
+  activityEmoji: {
+    fontSize: moderateScale(16),
   },
   activityContent: {
     flex: 1,
@@ -674,9 +1075,66 @@ const styles = StyleSheet.create({
     color: "#333",
     marginBottom: verticalScale(2),
   },
+  activityHorse: {
+    fontSize: moderateScale(11),
+    color: "#666",
+    marginBottom: verticalScale(1),
+  },
   activityTime: {
     fontSize: moderateScale(11),
     color: "#999",
+    marginBottom: verticalScale(2),
+  },
+  activityNotes: {
+    fontSize: moderateScale(10),
+    color: "#777",
+    fontStyle: "italic",
+  },
+  noActivitiesContainer: {
+    padding: scale(20),
+    alignItems: "center",
+  },
+  noActivitiesText: {
+    fontSize: moderateScale(12),
+    color: "#999",
+    textAlign: "center",
+    fontStyle: "italic",
+  },
+  quickActionsSection: {
+    backgroundColor: "white",
+    marginHorizontal: scale(16),
+    marginTop: dynamicSpacing(16),
+    borderRadius: scale(12),
+    padding: scale(16),
+  },
+  quickActionsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+    gap: scale(12),
+  },
+  quickActionItem: {
+    width: (width - scale(64)) / 2,
+    backgroundColor: "#F8F9FA",
+    padding: scale(12),
+    borderRadius: scale(8),
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E9ECEF",
+  },
+  quickActionIcon: {
+    marginBottom: verticalScale(8),
+  },
+  quickActionIconImage: {
+    width: scale(24),
+    height: scale(24),
+    marginBottom: verticalScale(8),
+  },
+  quickActionText: {
+    fontSize: moderateScale(11),
+    color: "#333",
+    fontWeight: "500",
+    textAlign: "center",
   },
   tabBar: {
     flexDirection: "row",

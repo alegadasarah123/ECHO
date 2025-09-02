@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   TouchableWithoutFeedback,
   View,
+  ActivityIndicator,
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
 import NotificationsPage from "./notifications"
@@ -74,6 +75,10 @@ interface Horse {
   image: any
   breed?: string
   age?: number
+  color?: string
+  operatorName?: string
+  assignmentStatus?: 'available' | 'assigned'
+  currentAssignmentId?: string
   lastCheckup?: string
   nextCheckup?: string
 }
@@ -120,7 +125,7 @@ const REACTIONS: Reaction[] = [
 ]
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
 
 export default function DashboardScreen() {
   const router = useRouter()
@@ -132,18 +137,22 @@ export default function DashboardScreen() {
   const [currentUser, setCurrentUser] = useState("User") // Default fallback
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingHorse, setIsLoadingHorse] = useState(false)
   
+  // Default horse - will be replaced by backend data
   const [selectedHorse, setSelectedHorse] = useState<Horse>({
-    id: "1",
-    name: "Oscar",
+    id: "default",
+    name: "No Horse Assigned",
     healthStatus: "Healthy",
-    status: "Ready for work",
+    status: "Please select a horse",
     image: require("../../assets/images/horse.png"),
-    breed: "Arabian",
-    age: 8,
-    lastCheckup: "2 days ago",
-    nextCheckup: "May 30, 2025",
+    breed: "N/A",
+    age: 0,
+    operatorName: "N/A",
+    lastCheckup: "N/A",
+    nextCheckup: "N/A",
   })
+  
   const [isCheckedIn, setIsCheckedIn] = useState(false)
   const [checkInTime, setCheckInTime] = useState<string | null>(null)
   const [showNotifications, setShowNotifications] = useState(false)
@@ -191,40 +200,67 @@ export default function DashboardScreen() {
     }
   }
 
-  // API call to get user profile data
-  const fetchUserProfile = async (userId: string, token: string): Promise<any> => {
+  // Load current horse assignment from backend
+  const loadCurrentAssignment = async (kutserroId: string) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/profile/${userId}`, {
+      setIsLoadingHorse(true)
+      
+      const response = await fetch(`${API_BASE_URL}/current_assignment/?kutsero_id=${kutserroId}`, {
         method: 'GET',
         headers: {
-          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json',
         },
       })
 
       if (response.ok) {
         const data = await response.json()
-        return data
+        if (data.assignment && data.assignment.horse) {
+          // Transform the horse data to match our interface
+          const horse: Horse = {
+            id: data.assignment.horse.id,
+            name: data.assignment.horse.name,
+            healthStatus: data.assignment.horse.healthStatus as Horse["healthStatus"],
+            status: data.assignment.horse.status,
+            image: require("../../assets/images/horse.png"), // Default image
+            breed: data.assignment.horse.breed,
+            age: data.assignment.horse.age,
+            color: data.assignment.horse.color,
+            operatorName: data.assignment.horse.operatorName,
+            assignmentStatus: 'assigned',
+            currentAssignmentId: data.assignment.assignmentId,
+            lastCheckup: data.assignment.horse.lastCheckup,
+            nextCheckup: data.assignment.horse.nextCheckup,
+          }
+          
+          setSelectedHorse(horse)
+          
+          // Also save to SecureStore
+          await SecureStore.setItemAsync('selectedHorseData', JSON.stringify(horse))
+          
+          console.log('Loaded current horse assignment:', horse.name)
+        } else {
+          console.log('No current horse assignment found')
+          // Keep default "No Horse Assigned" state
+        }
       } else {
-        throw new Error('Failed to fetch profile')
+        console.log('Failed to fetch current assignment')
       }
     } catch (error) {
-      console.error('Error fetching profile:', error)
-      throw error
+      console.error('Error loading current assignment:', error)
+    } finally {
+      setIsLoadingHorse(false)
     }
   }
 
   // Load user data and selected horse from SecureStore
   useEffect(() => {
     loadUserData()
-    loadSelectedHorse()
   }, [])
 
   // Use useFocusEffect to reload data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       loadUserData()
-      loadSelectedHorse()
     }, [])
   )
 
@@ -279,6 +315,10 @@ export default function DashboardScreen() {
         
         setCurrentUser(displayName)
         
+        // Load current horse assignment from backend
+        const kutserroId = parsedUserData.profile?.kutsero_id || parsedUserData.id
+        await loadCurrentAssignment(kutserroId)
+        
         console.log('Successfully loaded user data:', {
           userId: parsedUserData.id,
           email: parsedUserData.email,
@@ -313,18 +353,6 @@ export default function DashboardScreen() {
       )
     } finally {
       setIsLoading(false)
-    }
-  }
-
-  const loadSelectedHorse = async () => {
-    try {
-      const savedHorseData = await SecureStore.getItemAsync('selectedHorseData')
-      if (savedHorseData) {
-        const horse = JSON.parse(savedHorseData)
-        setSelectedHorse(horse)
-      }
-    } catch (error) {
-      console.log('Error loading selected horse:', error)
     }
   }
 
@@ -444,6 +472,11 @@ export default function DashboardScreen() {
   }
 
   const handleCheckIn = async () => {
+    if (selectedHorse.id === "default") {
+      Alert.alert("No Horse Assigned", "Please select a horse first before checking in.")
+      return
+    }
+
     try {
       const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       
@@ -508,7 +541,9 @@ export default function DashboardScreen() {
       }
     }
 
-    loadCheckInStatus()
+    if (selectedHorse.id !== "default") {
+      loadCheckInStatus()
+    }
   }, [selectedHorse.id])
 
   // Dashboard/Home Icon Component
@@ -641,7 +676,8 @@ export default function DashboardScreen() {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
         <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <ActivityIndicator size="large" color="white" />
+        <Text style={styles.loadingText}>Loading dashboard...</Text>
       </View>
     )
   }
@@ -731,7 +767,10 @@ export default function DashboardScreen() {
           {/* Horse Selection Section */}
           <View style={styles.horseSection}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Horse Selected for Today</Text>
+              <Text style={styles.sectionTitle}>Horse Assignment</Text>
+              {isLoadingHorse && (
+                <ActivityIndicator size="small" color="#C17A47" />
+              )}
             </View>
             <View style={styles.horseCard}>
               <View style={styles.horseImageContainer}>
@@ -746,6 +785,12 @@ export default function DashboardScreen() {
                   <Text style={styles.horseLabel}>Breed: </Text>
                   <Text style={styles.horseValue}>{selectedHorse.breed}</Text>
                 </Text>
+                {selectedHorse.operatorName && selectedHorse.operatorName !== "N/A" && (
+                  <Text style={styles.horseOperatorText}>
+                    <Text style={styles.horseLabel}>Owner: </Text>
+                    <Text style={styles.horseValue}>{selectedHorse.operatorName}</Text>
+                  </Text>
+                )}
                 <View style={styles.healthRow}>
                   <Text style={styles.horseLabel}>Health Status: </Text>
                   <View
@@ -759,32 +804,40 @@ export default function DashboardScreen() {
               </View>
             </View>
             <View style={styles.reminderSection}>
-              <Text style={styles.reminderText}>Remember to check-out your horse at the end of the day</Text>
-              
-              {/* Check In/Out Buttons */}
-              <View style={styles.checkInOutContainer}>
-                {!isCheckedIn ? (
-                  <TouchableOpacity style={styles.checkInButton} onPress={handleCheckIn}>
-                    <Text style={styles.checkInButtonText}>Check In</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <View style={styles.checkedInContainer}>
-                    <View style={styles.checkedInInfo}>
-                      <Text style={styles.checkedInText}>✓ Checked in at {checkInTime}</Text>
-                    </View>
-                    <TouchableOpacity style={styles.checkOutButton} onPress={handleCheckOut}>
-                      <Text style={styles.checkOutButtonText}>Check Out</Text>
-                    </TouchableOpacity>
+              {selectedHorse.id !== "default" ? (
+                <>
+                  <Text style={styles.reminderText}>Remember to check-out your horse at the end of the day</Text>
+                  
+                  {/* Check In/Out Buttons */}
+                  <View style={styles.checkInOutContainer}>
+                    {!isCheckedIn ? (
+                      <TouchableOpacity style={styles.checkInButton} onPress={handleCheckIn}>
+                        <Text style={styles.checkInButtonText}>Check In</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.checkedInContainer}>
+                        <View style={styles.checkedInInfo}>
+                          <Text style={styles.checkedInText}>✓ Checked in at {checkInTime}</Text>
+                        </View>
+                        <TouchableOpacity style={styles.checkOutButton} onPress={handleCheckOut}>
+                          <Text style={styles.checkOutButtonText}>Check Out</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
-                )}
-              </View>
+                </>
+              ) : (
+                <Text style={styles.reminderText}>Select a horse to start working</Text>
+              )}
               
-              {/* Change Horse Button - Moved below check in/out buttons */}
+              {/* Change/Select Horse Button */}
               <TouchableOpacity
                 style={styles.changeHorseButton}
                 onPress={() => router.push('./horseselection')}
               >
-                <Text style={styles.changeHorseButtonText}>Change Horse</Text>
+                <Text style={styles.changeHorseButtonText}>
+                  {selectedHorse.id === "default" ? "Select Horse" : "Change Horse"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -867,7 +920,7 @@ export default function DashboardScreen() {
           </View>
         </ScrollView>
 
-        {/* Bottom Tab Navigation - Swapped Profile and History positions */}
+        {/* Bottom Tab Navigation */}
         <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
           <TabButton iconSource={null} label="Home" tabKey="home" isActive={true} />
           <TabButton
@@ -976,6 +1029,7 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: moderateScale(16),
     fontWeight: "500",
+    marginTop: verticalScale(10),
   },
   header: {
     backgroundColor: "#C17A47",
@@ -1146,6 +1200,10 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(4),
   },
   horseBreedText: {
+    fontSize: moderateScale(12),
+    marginBottom: verticalScale(4),
+  },
+  horseOperatorText: {
     fontSize: moderateScale(12),
     marginBottom: verticalScale(4),
   },
