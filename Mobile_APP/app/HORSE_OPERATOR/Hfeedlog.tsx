@@ -45,7 +45,7 @@ interface Horse {
   horse_image: string | null;
 }
 
-const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator";
+const API_BASE_URL = "http://172.20.10.2:8000/api/horse_operator";
 
 const FeedLogScreen = () => {
   const router = useRouter()

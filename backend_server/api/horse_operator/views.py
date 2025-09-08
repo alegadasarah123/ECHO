@@ -4,25 +4,17 @@ from rest_framework.response import Response
 from rest_framework import status
 from supabase import create_client, Client
 from django.conf import settings
-<<<<<<< Updated upstream
 import uuid
 from datetime import datetime
 from datetime import datetime, timedelta
 import logging
+from django.utils import timezone
+
 
 # Set up logging
 logger = logging.getLogger(__name__)
-=======
 import requests
 import time
-from datetime import datetime, timezone
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
 
 # Initialize Supabase client
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
@@ -46,16 +38,12 @@ def get_horse_operator_data(request):
 
 @api_view(['POST'])
 def add_horse(request):
-<<<<<<< Updated upstream
     op_id = request.data.get("user_id")
     if not op_id:
-=======
-    """
-    Insert a new horse record for the current user
-    """
-    user_id = request.data.get("user_id")
+
+        user_id = request.data.get("user_id")
     if not user_id:
->>>>>>> Stashed changes
+
         return Response({"error": "User ID is required"}, status=status.HTTP_400_BAD_REQUEST)
 
     payload = {
@@ -94,57 +82,12 @@ def add_horse(request):
 
 @api_view(['GET'])
 def get_horses(request):
-<<<<<<< Updated upstream
-    op_id = request.GET.get("user_id")
-    if not op_id:
-        return Response({"error": "User ID is required"}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        data = supabase.table("horse_profile").select("*").eq("op_id", op_id).execute()
-        return Response(data.data, status=status.HTTP_200_OK)
-    except Exception as e:
-        logger.error(f"Error fetching horses: {e}")
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['DELETE'])
-def delete_horse(request, horse_id):
-    try:
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        data = service_client.table("horse_profile").delete().eq("horse_id", horse_id).execute()
-        if data.data:
-            return Response({"message": "Horse deleted successfully"}, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Horse not found"}, status=status.HTTP_404_NOT_FOUND)
-    except Exception as e:
-        logger.error(f"Error deleting horse: {e}")
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-# ------------------------------------------------ FEEDING SCHEDULE API ------------------------------------------------
-
-@api_view(['GET'])
-def get_feeding_schedule(request):
-    user_id = request.GET.get("user_id")
-    horse_id = request.GET.get("horse_id")
-    if not user_id or not horse_id:
-        return Response({"error": "Both user_id and horse_id are required"}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        data = supabase.table("feed_detail") \
-            .select("*") \
-            .eq("user_id", user_id) \
-            .eq("horse_id", horse_id) \
-            .order("fd_time", desc=False) \
-            .execute()
-        return Response(data.data, status=status.HTTP_200_OK)
-=======
     """
-    Fetch all horses for a given user or all available horses for selection
-    Example: /api/horses?user_id=123 or /api/horses (for all available horses)
+    Fetch all horses for a given user
+    Example: /api/horses?user_id=123
     """
     user_id = request.GET.get("user_id")
-    
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
+
     try:
         if user_id:
             # Get horses owned by specific user
@@ -248,7 +191,6 @@ def update_horse(request, horse_id):
         else:
             return Response({"error": "Horse not found"}, status=status.HTTP_404_NOT_FOUND)
             
->>>>>>> Stashed changes
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -395,251 +337,10 @@ def get_feed_logs(request):
     user_id = request.GET.get("user_id")
     if not user_id:
         return Response({"error": "User ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+
     try:
-        data = supabase.table("feed_log").select("*").eq("user_id", user_id).order("created_at", desc=True).execute()
-        
-        # Transform data to match frontend expectations
-        transformed_data = []
-        for log in data.data:
-            # Get horse name
-            horse_data = supabase.table("horse_profile") \
-                .select("horse_name") \
-                .eq("horse_id", log["horse_id"]).execute()
-            horse_name = "Unknown Horse"
-            if horse_data.data:
-                horse_name = horse_data.data[0].get("horse_name", "Unknown Horse")
-            
-            transformed_data.append({
-                "log_id": log["log_id"],
-                "date": log["log_date"],
-                "horse": horse_name,
-                "horse_id": log["horse_id"],
-                "timestamp": log["created_at"],
-                "user_full_name": log["log_user_full_name"],
-                "meal": log["log_meal"],
-                "time": log["log_time"],
-                "food": log["log_food"],
-                "amount": log["log_amount"],
-                "status": log["log_status"],
-                "action": log["log_action"].lower()
-            })
-        
-        return Response(transformed_data, status=status.HTTP_200_OK)
-    except Exception as e:
-        logger.error(f"Error fetching feed logs: {e}")
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['POST'])
-def clear_feed_logs(request):
-    user_id = request.data.get("user_id")
-    if not user_id:
-        return Response({"error": "User ID is required"}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        service_client.table("feed_log").delete().eq("user_id", user_id).execute()
-        return Response({"message": "All feed logs cleared successfully"}, status=status.HTTP_200_OK)
-=======
-    try:
-=======
-    try:
->>>>>>> Stashed changes
-        if user_id:
-            # Get horses owned by specific user
-            data = supabase.table("horse_profile").select("*").eq("operator_id", user_id).execute()
-        else:
-            # Get all available horses for selection
-            data = supabase.table("horse_profile").select("*").execute()
-        
-        # Transform data to match frontend format
-        horses = []
-        for horse in data.data:
-            horse_data = {
-                "id": str(horse.get("id")),
-                "name": horse.get("horse_name"),
-                "healthStatus": horse.get("health_status", "Healthy"),
-                "status": horse.get("status", "Ready for work"),
-                "breed": horse.get("horse_breed"),
-                "age": horse.get("horse_age"),
-                "lastCheckup": horse.get("last_checkup"),
-                "nextCheckup": horse.get("next_checkup"),
-                "image": horse.get("horse_image"),
-                "color": horse.get("horse_color"),
-                "height": horse.get("horse_height"),
-                "weight": horse.get("horse_weight"),
-                "sex": horse.get("horse_sex"),
-                "dob": horse.get("horse_dob")
-            }
-            horses.append(horse_data)
-            
-        return Response(horses, status=status.HTTP_200_OK)
-<<<<<<< Updated upstream
-=======
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['GET'])
-def get_horse_by_id(request, horse_id):
-    """
-    Fetch a specific horse by ID
-    Example: /api/horses/123
-    """
-    try:
-        data = supabase.table("horse_profile").select("*").eq("id", horse_id).execute()
-        
-        if not data.data:
-            return Response({"error": "Horse not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        horse = data.data[0]
-        horse_data = {
-            "id": str(horse.get("id")),
-            "name": horse.get("horse_name"),
-            "healthStatus": horse.get("health_status", "Healthy"),
-            "status": horse.get("status", "Ready for work"),
-            "breed": horse.get("horse_breed"),
-            "age": horse.get("horse_age"),
-            "lastCheckup": horse.get("last_checkup"),
-            "nextCheckup": horse.get("next_checkup"),
-            "image": horse.get("horse_image"),
-            "color": horse.get("horse_color"),
-            "height": horse.get("horse_height"),
-            "weight": horse.get("horse_weight"),
-            "sex": horse.get("horse_sex"),
-            "dob": horse.get("horse_dob")
-        }
-        
-        return Response(horse_data, status=status.HTTP_200_OK)
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['PUT'])
-def update_horse(request, horse_id):
-    """
-    Update horse information
-    """
-    try:
-        payload = {}
-        
-        # Only update fields that are provided
-        if request.data.get("name"):
-            payload["horse_name"] = request.data.get("name")
-        if request.data.get("age"):
-            payload["horse_age"] = request.data.get("age")
-        if request.data.get("breed"):
-            payload["horse_breed"] = request.data.get("breed")
-        if request.data.get("health_status"):
-            payload["health_status"] = request.data.get("health_status")
-        if request.data.get("status"):
-            payload["status"] = request.data.get("status")
-        if request.data.get("last_checkup"):
-            payload["last_checkup"] = request.data.get("last_checkup")
-        if request.data.get("next_checkup"):
-            payload["next_checkup"] = request.data.get("next_checkup")
-        
-        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
-        
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        data = service_client.table("horse_profile").update(payload).eq("id", horse_id).execute()
-        
-        if data.data:
-            return Response({"message": "Horse updated successfully", "data": data.data}, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Horse not found"}, status=status.HTTP_404_NOT_FOUND)
-            
->>>>>>> Stashed changes
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['GET'])
-def get_horse_by_id(request, horse_id):
-    """
-    Fetch a specific horse by ID
-    Example: /api/horses/123
-    """
-    try:
-        data = supabase.table("horse_profile").select("*").eq("id", horse_id).execute()
-        
-        if not data.data:
-            return Response({"error": "Horse not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        horse = data.data[0]
-        horse_data = {
-            "id": str(horse.get("id")),
-            "name": horse.get("horse_name"),
-            "healthStatus": horse.get("health_status", "Healthy"),
-            "status": horse.get("status", "Ready for work"),
-            "breed": horse.get("horse_breed"),
-            "age": horse.get("horse_age"),
-            "lastCheckup": horse.get("last_checkup"),
-            "nextCheckup": horse.get("next_checkup"),
-            "image": horse.get("horse_image"),
-            "color": horse.get("horse_color"),
-            "height": horse.get("horse_height"),
-            "weight": horse.get("horse_weight"),
-            "sex": horse.get("horse_sex"),
-            "dob": horse.get("horse_dob")
-        }
-        
-        return Response(horse_data, status=status.HTTP_200_OK)
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['PUT'])
-def update_horse(request, horse_id):
-    """
-    Update horse information
-    """
-    try:
-        payload = {}
-        
-        # Only update fields that are provided
-        if request.data.get("name"):
-            payload["horse_name"] = request.data.get("name")
-        if request.data.get("age"):
-            payload["horse_age"] = request.data.get("age")
-        if request.data.get("breed"):
-            payload["horse_breed"] = request.data.get("breed")
-        if request.data.get("health_status"):
-            payload["health_status"] = request.data.get("health_status")
-        if request.data.get("status"):
-            payload["status"] = request.data.get("status")
-        if request.data.get("last_checkup"):
-            payload["last_checkup"] = request.data.get("last_checkup")
-        if request.data.get("next_checkup"):
-            payload["next_checkup"] = request.data.get("next_checkup")
-        
-        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
-        
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        data = service_client.table("horse_profile").update(payload).eq("id", horse_id).execute()
-        
-        if data.data:
-            return Response({"message": "Horse updated successfully", "data": data.data}, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Horse not found"}, status=status.HTTP_404_NOT_FOUND)
-            
->>>>>>> Stashed changes
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['POST'])
-def reset_daily_feeds(request):
-    user_id = request.data.get("user_id")
-    horse_id = request.data.get("horse_id")
-    if not user_id or not horse_id:
-        return Response({"error": "Both user_id and horse_id are required"}, status=status.HTTP_400_BAD_REQUEST)
-    try:
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        service_client.table("feed_detail").update({
-            "completed": False,
-            "completed_at": None
-        }).eq("user_id", user_id).eq("horse_id", horse_id).execute()
-        return Response({"message": "Daily feeds reset successfully"}, status=status.HTTP_200_OK)
+        data = supabase.table("horse_profile").select("*").eq("operator_id", user_id).execute()
+        return Response(data.data, status=status.HTTP_200_OK)
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

@@ -162,7 +162,7 @@ interface ProfilePicture {
 
 // Updated API configuration
 const API_CONFIG = {
-  BASE_URL: 'http://192.168.1.7:8000/api/signup_mobile/',
+  BASE_URL: 'http://172.20.10.2:8000/api/signup_mobile/',
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,
@@ -517,11 +517,10 @@ export default function Signup() {
                 setSelectedImage(null)
                 setCurrentStep(1)
                 
-<<<<<<< Updated upstream
                 // Navigate to login page - let users log in with email/password
                 console.log("✅ Redirecting to Login")
                 router.replace("/auth/login")
-=======
+
                 // FIXED: Navigate to appropriate dashboard based on role
                 if (userRole === "Horse Oerator") {
                   console.log("✅ Redirecting to Horse Operator dashboard")
@@ -533,7 +532,6 @@ export default function Signup() {
                   console.log("⚠️ Unknown role, redirecting to login")
                   router.replace("/auth/login")
                 }
->>>>>>> Stashed changes
               },
             },
           ],

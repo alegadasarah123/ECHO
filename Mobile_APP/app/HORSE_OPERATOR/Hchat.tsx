@@ -29,7 +29,7 @@ interface Horse {
   horse_color: string;
 }
 
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
+const API_BASE_URL = "http://172.20.10.2:8000/api/horse_operator";
 
 // Helper to get the current logged-in user
 const getCurrentUser = async () => {

@@ -3,9 +3,6 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
     # Test connection
     path('test/', views.test_connection, name='test_connection'),
     
@@ -41,11 +38,7 @@ urlpatterns = [
     
     # Search kutsero profiles
     path('profiles/search/', views.search_kutsero_profiles, name='search_kutsero_profiles'),
-=======
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
+
     # Horse Assignment URLs
     path('assignments/assign/', views.assign_horse, name='assign_horse'),
     path('assignments/kutsero/<str:kutsero_id>/', views.get_user_assignments, name='get_user_assignments'),
@@ -58,11 +51,6 @@ urlpatterns = [
     # Check-in/Check-out URLs
     path('assignments/checkin/', views.check_in_horse, name='check_in_horse'),
     path('assignments/checkout/', views.check_out_horse, name='check_out_horse'),
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
+
+    path("announcements/", views.get_announcements, name="get_announcements"),
 ]

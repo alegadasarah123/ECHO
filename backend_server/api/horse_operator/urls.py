@@ -4,14 +4,10 @@ from . import views    # <- don't forget this
 urlpatterns = [
     path('get_horse_operator_data/', views.get_horse_operator_data, name='get_horse_operator_data'),
     path('add_horse/', views.add_horse, name='add_horse'),
-    path('get_horses/', views.get_horses, name='get_horses'),
-    path('delete_horse/<str:horse_id>/', views.delete_horse, name='delete_horse'),  
-    path('get_feeding_schedule/', views.get_feeding_schedule, name='get_feeding_schedule'),
+    path('get_horses/', views.get_horses, name='get_horses'), 
     path('save_feeding_schedule/', views.save_feeding_schedule, name='save_feeding_schedule'),
     path('mark_meal_fed/', views.mark_meal_fed, name='mark_meal_fed'),
     path('get_feed_logs/', views.get_feed_logs, name='get_feed_logs'),
-    path('clear_feed_logs/', views.clear_feed_logs, name='clear_feed_logs'),  # Added missing URL
-    path('reset_daily_feeds/', views.reset_daily_feeds, name='reset_daily_feeds'),
     path('get_veterinarians/', views.get_veterinarians, name='get_veterinarians'),
     path('get_chat_messages/', views.get_chat_messages, name='get_chat_messages'),
     path('send_chat_message/', views.send_chat_message, name='send_chat_message'),
