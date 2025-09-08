@@ -1,19 +1,15 @@
 "use client"
 import Sidebar from "@/components/CtuSidebar";
 import {
-  AlertTriangle,
   ArrowLeft,
   Bell,
-  CheckCircle,
   ClipboardList,
   Eye,
-  Info,
   Printer,
   Search,
   Stethoscope,
   Syringe,
-  X,
-  XCircle,
+  X
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -68,31 +64,38 @@ function CtuHorseRecord() {
     return `${Math.floor(diffInMinutes / 1440)}d ago`
   }, [])
 
-  const getNotificationIconClass = (type) => {
-    const icons = {
-      info: Info,
-      success: CheckCircle,
-      warning: AlertTriangle,
-      error: XCircle,
-    }
-    return icons[type] || icons.info
-  }
 
-  const markAsRead = (notificationId) => {
-    setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
-  }
-
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-  }
-
-  const deleteNotification = (notificationId) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
-  }
-
+ // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
-    setNotifications([]) // Initialize as empty
+    console.log("Loading notifications...")
+
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch notifications")
+        return res.json()
+      })
+      .then((data) => {
+        const formatted = data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+        }))
+        setNotifications(formatted)
+      })
+      .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
+
+  // ✅ Auto-refresh every 30s
+  useEffect(() => {
+    loadNotifications() // load once
+
+    const interval = setInterval(() => {
+      loadNotifications()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [loadNotifications])
+  
 
   const filteredHorseRecords = useCallback(() => {
     let filtered = horseRecords

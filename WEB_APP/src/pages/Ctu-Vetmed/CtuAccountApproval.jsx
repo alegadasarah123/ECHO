@@ -9,7 +9,6 @@ import {
   Eye,
   FileText,
   Info,
-  LogOut,
   MapPin,
   Search,
   SquareX,
@@ -18,7 +17,7 @@ import {
   User,
   UserCheck,
   UserX,
-  XCircle,
+  XCircle
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -32,6 +31,7 @@ function CtuAccountApproval() {
   const navigate = useNavigate()
 
   const [registrationData, setRegistrationData] = useState([])
+  const [message, setMessage] = useState("") // For showing confirmation messages
   const [vetProfiles, setVetProfiles] = useState([])
 
   const [activeTab, setActiveTab] = useState("pending")
@@ -86,7 +86,7 @@ function CtuAccountApproval() {
   useEffect(() => {
     const fetchCounts = async () => {
       try {
-        const response = await fetch(`${API_BASE}/get-account-counts/`)
+        const response = await  fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-account-counts/")
         if (!response.ok) throw new Error("Failed to fetch data")
         const data = await response.json()
         setCounts(data)
@@ -132,54 +132,62 @@ function CtuAccountApproval() {
     setSelectedUser(null)
   }
 
-  const showApproveConfirmation = (userId) => {
-    setSelectedUser((prev) => ({ ...prev, id: userId })) // Ensure userId is set for confirmation
-    setConfirmationDetails({
-      title: "Confirm Approval",
-      message: "Are you sure you want to approve this registration?",
-      action: "approve",
-    })
-    setIsConfirmationModalOpen(true)
+ const showApproveConfirmation = (vetId) => {
+  setSelectedUser({ vet_id: vetId });
+  setConfirmationDetails({
+    title: "Confirm Approval",
+    message: "Are you sure you want to approve this registration?",
+    action: "approve",
+  });
+  setIsConfirmationModalOpen(true);
+};
+
+
+const showDeclineConfirmation = (vetId) => {
+  setSelectedUser({ vet_id: vetId });
+  setConfirmationDetails({
+    title: "Confirm Decline",
+    message: "Are you sure you want to decline this registration?",
+    action: "decline",
+  });
+  setIsConfirmationModalOpen(true);
+};
+const showDeleteConfirmation = (vetId) => {
+  console.log("Deleting vet with ID:", vetId); // Check here!
+  if (!vetId) {
+    alert("Vet ID is invalid.");
+    return;
   }
 
-  const showDeclineConfirmation = (userId) => {
-    setSelectedUser((prev) => ({ ...prev, id: userId })) // Ensure userId is set for confirmation
-    setConfirmationDetails({
-      title: "Confirm Decline",
-      message: "Are you sure you want to decline this registration?",
-      action: "decline",
-    })
-    setIsConfirmationModalOpen(true)
-  }
+  setSelectedUser({ vet_id: vetId });
+  setConfirmationDetails({
+    title: "Confirm Delete",
+    message: "Are you sure you want to delete this vet profile? This action cannot be undone.",
+    action: "delete",
+  });
+  setIsConfirmationModalOpen(true);
+};
 
-  const showDeleteConfirmation = (userId) => {
-    setSelectedUser((prev) => ({ ...prev, id: userId }))
-    setConfirmationDetails({
-      title: "Confirm Delete",
-      message: "Are you sure you want to delete this user? This action cannot be undone.",
-      action: "delete",
-    })
-    setIsConfirmationModalOpen(true)
-  }
+
 
   const showApproveConfirmationFromModal = () => {
     if (selectedUser && selectedUser.status === "pending") {
       closeModal()
-      showApproveConfirmation(selectedUser.id)
+      showApproveConfirmation(selectedUser.vet_id)
     }
   }
 
   const showDeclineConfirmationFromModal = () => {
     if (selectedUser && selectedUser.status === "pending") {
       closeModal()
-      showDeclineConfirmation(selectedUser.id)
+      showDeclineConfirmation(selectedUser.vet_id)
     }
   }
 
   const showDeleteConfirmationFromModal = () => {
     if (selectedUser) {
       closeModal()
-      showDeleteConfirmation(selectedUser.id)
+      showDeleteConfirmation(selectedUser.vet_id)
     }
   }
 
@@ -190,82 +198,147 @@ function CtuAccountApproval() {
   }
 
   
-  const deleteVetProfile = async (vetId) => {
-    try {
-      const response = await fetch(`${API_BASE}/delete-vet-profile/${vetId}/`, {
-        method: "DELETE",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-        },
-      })
-
-      let data = {}
-      try {
-        data = await response.json() // parse only if JSON exists
-      } catch {
-        data = {}
-      }
-
-      if (!response.ok) {
-        alert(data.error || "Failed to delete profile")
-        return
-      }
-
-      alert(data.message || "Vet profile deleted successfully")
-
-      // Update list in real-time without full page refresh
-      setVetProfiles((prevProfiles) => prevProfiles.filter((profile) => profile.id !== vetId))
-    } catch (err) {
-      console.error("Delete error:", err)
-      alert("Error deleting vet profile")
-    }
+// -------------------- Delete a single vet profile --------------------
+const deleteVetProfile = async (vetId) => {
+  if (!vetId) {
+    alert("Vet ID is invalid.");
+    return;
   }
+
+  const confirmDelete = window.confirm(
+    "Are you sure you want to delete this vet profile?"
+  );
+  if (!confirmDelete) return;
+
+  try {
+    const response = await fetch(`${API_BASE}/delete-vet-profile/${vetId}/`, {
+      method: "DELETE",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      alert(data.error || "Failed to delete profile");
+      return;
+    }
+
+    alert(data.message || "Vet profile deleted successfully");
+
+    setRegistrationData((prev) =>
+      prev.filter((user) => user.vet_id !== vetId)
+    );
+  } catch (err) {
+    console.error("Delete error:", err);
+    alert("Error deleting vet profile");
+  }
+};
+
+
 
   const confirmAction = () => {
     if (confirmationDetails.action === "approve" && selectedUser) {
-      approveUser(selectedUser.id)
+      approveUser(selectedUser.vet_id)
     } else if (confirmationDetails.action === "decline" && selectedUser) {
-      declineUser(selectedUser.id)
+      declineUser(selectedUser.vet_id)
     } else if (confirmationDetails.action === "delete" && selectedUser) {
-      deleteVetProfile(selectedUser.id)
+      deleteVetProfile(selectedUser.vet_id)
     }
     closeConfirmation()
   }
 
-  // Approve
-  const approveUser = async (vetProfileId) => {
-    const url = `${API_BASE}/update-vet-status/${vetProfileId}/`
-    const response = await fetch(url, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "approved" }),
-    })
-    const data = await response.json()
-    setRegistrationData((prev) => prev.map((u) => (u.id === vetProfileId ? { ...u, status: "approved" } : u)))
-  }
+// -------------------- Approve a single user --------------------
+const approveUser = async (vetId) => {
+  try {
+    // Optimistically update the UI first
+    setRegistrationData((prev) =>
+      prev.map((u) => (u.vet_id === vetId ? { ...u, status: "approved" } : u))
+    );
+    setMessage(`Approving user ${vetId}...`);
 
-  // Decline
-  const declineUser = async (vetProfileId) => {
-    const url =`${API_BASE}/update-vet-status/${vetProfileId}/`
-    const response = await fetch(url, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "declined" }),
-    })
-    const data = await response.json()
-    setRegistrationData((prev) => prev.map((u) => (u.id === vetProfileId ? { ...u, status: "declined" } : u)))
-  }
+    const response = await fetch(
+      `http://127.0.0.1:8000/api/ctu_vetmed/update-vet-status/${vetId}/`,
+      {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "approved" }),
+      }
+    );
 
-  const approveAllPending = async () => {
-    if (activeTab !== "pending") return
-    const pendingUsers = registrationData.filter((user) => user.status === "pending")
-    for (const user of pendingUsers) {
-      await approveUser(user.id)
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Failed to approve user: ${text}`);
     }
+
+    const data = await response.json();
+    setMessage(`User ${vetId} approved successfully!`);
+    console.log("User approved:", data);
+  } catch (err) {
+    console.error(err);
+    // Rollback UI if failed
+    setRegistrationData((prev) =>
+      prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u))
+    );
+    setMessage(`Error: ${err.message}`);
   }
+};
+
+// -------------------- Decline a single user --------------------
+const declineUser = async (vetId) => {
+  try {
+    // Optimistically update the UI first
+    setRegistrationData((prev) =>
+      prev.map((u) => (u.vet_id === vetId ? { ...u, status: "declined" } : u))
+    );
+    setMessage(`Declining user ${vetId}...`);
+
+    const response = await fetch(
+      `http://127.0.0.1:8000/api/ctu_vetmed/update-vet-status/${vetId}/`,
+      {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "declined" }),
+      }
+    );
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`Failed to decline user: ${text}`);
+    }
+
+    const data = await response.json();
+    setMessage(`User ${vetId} declined successfully!`);
+    console.log("User declined:", data);
+  } catch (err) {
+    console.error(err);
+    // Rollback UI if failed
+    setRegistrationData((prev) =>
+      prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u))
+    );
+    setMessage(`Error: ${err.message}`);
+  }
+};
+
+// -------------------- Approve all pending users --------------------
+const approveAllPending = async () => {
+  if (activeTab !== "pending") return;
+
+  const pendingUsers = registrationData.filter((user) => user.status === "pending");
+  if (pendingUsers.length === 0) return;
+
+  setMessage("Approving all pending users...");
+
+  for (const user of pendingUsers) {
+    await approveUser(user.vet_id);
+  }
+
+  setMessage("All pending users approved successfully!");
+};
+
+
 
   const handleSearchInput = (e) => {
     setSearchTerm(e.target.value.toLowerCase())
@@ -275,16 +348,8 @@ function CtuAccountApproval() {
     setRecentFilter(e.target.value)
   }
 
-  // Remove all approved users from display only
-  const deleteAllApprovedLocal = () => {
-    if (!window.confirm("Remove all approved users from the display?")) return
-    setRegistrationData((prev) => prev.filter((user) => user.users?.status !== "approved"))
-  }
+ 
 
-  const openLogoutModal = (e) => {
-    e.preventDefault()
-    setIsLogoutModalOpen(true)
-  }
 
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
@@ -300,10 +365,38 @@ function CtuAccountApproval() {
     // In a real app, this would fetch recent activities
   }, [])
 
+  // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
-    setNotifications([])
+
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch notifications")
+        return res.json()
+      })
+      .then((data) => {
+        const formatted = data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+        }))
+        setNotifications(formatted)
+      })
+      .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
+
+  // ✅ Auto-refresh every 30s
+  useEffect(() => {
+    loadNotifications() // load once
+
+    const interval = setInterval(() => {
+      loadNotifications()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [loadNotifications])
+
+
 
   const loadDashboardData = useCallback(() => {
     loadStats()
@@ -319,50 +412,53 @@ function CtuAccountApproval() {
     closeLogoutModal()
   }
 
-  useEffect(() => {
-    const loadVetProfiles = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/get-vet-profiles/`)
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
-        const data = await response.json()
-        console.log("Fetched vet profiles:", data)
-
-        console.log("[v0] Raw backend data:", data)
-        data.forEach((item, index) => {
-          console.log(`[v0] Item ${index}:`, {
-            id: item.id,
-            name: `${item.vet_fname} ${item.vet_lname}`,
-            status: item.status,
-            statusType: typeof item.status,
-            allFields: Object.keys(item),
-          })
-        })
-
-        setRegistrationData(
-          data.map((item) => ({
-            ...item,
-            status: item.status || "pending", // Use actual status from backend, fallback to "pending"
-            type: item.type || "Veterinarian", // ensure type exists for badge
-          })),
-        )
-
-        console.log(
-          "[v0] Processed registration data:",
-          data.map((item) => ({
-            id: item.id,
-            name: `${item.vet_fname} ${item.vet_lname}`,
-            finalStatus: item.status || "pending",
-          })),
-        )
-      } catch (error) {
-        console.error("Failed to fetch vet profiles:", error)
+useEffect(() => {
+  const loadVetProfiles = async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-vet-profiles/");
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
       }
-    }
 
-    loadVetProfiles()
-  }, [])
+      const data = await response.json();
+      console.log("Fetched vet profiles:", data);
+
+      // Process each item safely
+      const processedData = data.map((item, index) => {
+        // Safely access joined 'status' field
+        let statusValue = item.status;
+        // If backend join returned nested object, try to get it
+        if (!statusValue && item.vet && item.vet.status) {
+          statusValue = item.vet.status;
+        }
+
+        return {
+          ...item,
+          status: statusValue || "pending", // fallback if still undefined
+          type: item.type || "Veterinarian",
+        };
+      });
+
+      // Log processed items
+      processedData.forEach((item, index) => {
+        console.log(`[Processed Item ${index}]`, {
+          id: item.vet_id,
+          name: `${item.vet_fname} ${item.vet_lname}`,
+          status: item.status,
+          type: item.type,
+          allFields: Object.keys(item),
+        });
+      });
+
+      setRegistrationData(processedData);
+
+    } catch (error) {
+      console.error("Failed to fetch vet profiles:", error);
+    }
+  };
+
+  loadVetProfiles();
+}, []);
 
   // Effects
   useEffect(() => {
@@ -407,23 +503,23 @@ function CtuAccountApproval() {
 
   const styles = {
     notificationBtn: {
-      position: "relative",
-      background: "transparent",
-      border: "none",
-      cursor: "pointer",
-      padding: "8px",
-      borderRadius: "50%",
+        position: "relative",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    padding: "8px",
+    borderRadius: "50%",
     },
     notificationBadge: {
       position: "absolute",
-      top: "2px",
-      right: "2px",
-      backgroundColor: "#ef4444",
-      color: "#fff",
-      borderRadius: "50%",
-      padding: "2px 6px",
-      fontSize: "12px",
-      fontWeight: "bold",
+    top: "2px",
+    right: "2px",
+    backgroundColor: "#ef4444",
+    color: "#fff",
+    borderRadius: "50%",
+    padding: "2px 6px",
+    fontSize: "12px",
+    fontWeight: "bold",
     },
     bodyWrapper: {
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -803,11 +899,11 @@ function CtuAccountApproval() {
       backgroundColor: "#16a34a",
     },
     btnDecline: {
-      backgroundColor: "#facc15",
+      backgroundColor: "#fa1d15ff",
       color: "#000",
     },
     btnDeclineHover: {
-      backgroundColor: "#eab308",
+      backgroundColor: "rgba(232, 44, 44, 1)ff",
     },
     mobileMenuBtn: {
       display: "none",
@@ -1301,11 +1397,13 @@ function CtuAccountApproval() {
     },
     tabButtonActive: {
       color: "#b91c1c",
-      borderBottomColor: "#b91c1c",
+      borderBottom: "none",
     },
     tabButtonHover: {
-      color: "#374151",
-    },
+  backgroundColor: "transparent",
+  color: "inherit", // keeps the original text color
+  },
+
     documentsContainer: {
       display: "flex",
       flexDirection: "column",
@@ -1357,20 +1455,26 @@ function CtuAccountApproval() {
             Account Approval
           </h1>
 
-          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
-            <Bell size={24} color="#374151" />
-            {notifications.length > 0 && <span style={styles.notificationBadge}>{notifications.length}</span>}
-          </button>
+          {/* 🔔 Notification Bell */}
+            <button
+              style={styles.notificationBtn}
+              onClick={() => setNotifsOpen(!notifsOpen)}
+            >
+              <Bell size={24} color="#374151" />
+              {notifications.length > 0 && (
+                <span style={styles.notificationBadge}>{notifications.length}</span>
+              )}
+            </button>
 
-          {/* Notification Modal */}
-          <NotificationModal
-            isOpen={notifsOpen}
-            onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
-          />
+            {/* 📩 Notification Modal */}
+            <NotificationModal
+              isOpen={notifsOpen}
+              onClose={() => setNotifsOpen(false)}
+              notifications={notifications.map((n) => ({
+                message: n.message,
+                date: n.date,
+              }))}
+            />
         </header>
         <div className="content-area" style={styles.contentArea}>
           <div className="page-header" style={styles.pageHeader}>
@@ -1488,7 +1592,7 @@ function CtuAccountApproval() {
               </div>
             ) : (
               filteredRegistrations.map((user) => (
-                <div key={user.id} className="registration-item" style={styles.registrationItem}>
+                <div key={user.vet_id} className="registration-item" style={styles.registrationItem}>
                   <div className="user-avatar" style={styles.userAvatar}>
                     {user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}
                   </div>
@@ -1530,7 +1634,7 @@ function CtuAccountApproval() {
                       <>
                         <button
                           className="action-btn btn-approve"
-                          onClick={() => showApproveConfirmation(user.id)}
+                          onClick={() => showApproveConfirmation(user.vet_id)}
                           style={{ ...styles.actionBtn, ...styles.btnApprove }}
                         >
                           <CheckCircle size={16} style={{ marginRight: "6px" }} />
@@ -1538,7 +1642,7 @@ function CtuAccountApproval() {
                         </button>
                         <button
                           className="action-btn btn-decline"
-                          onClick={() => showDeclineConfirmation(user.id)}
+                          onClick={() => showDeclineConfirmation(user.vet_id)}
                           style={{ ...styles.actionBtn, ...styles.btnDecline }}
                         >
                           <XCircle size={16} style={{ marginRight: "6px" }} />
@@ -1550,7 +1654,7 @@ function CtuAccountApproval() {
                     {(user.users?.status === "approved" || user.users?.status === "declined") && (
                       <button
                         className="action-btn btn-delete"
-                        onClick={() => showDeleteConfirmation(user.id)}
+                        onClick={() => showDeleteConfirmation(user.vet_id)}
                         style={{ ...styles.actionBtn, ...styles.btnDelete }}
                       >
                         <Trash2 size={16} style={{ marginRight: "6px" }} />
@@ -1969,38 +2073,7 @@ function CtuAccountApproval() {
         </div>
       )}
 
-      {/* Logout Modal */}
-      {isLogoutModalOpen && (
-        <div
-          className="modal-overlay active"
-          ref={logoutModalRef}
-          style={{ ...styles.modalOverlay, ...styles.modalOverlayActive }}
-        >
-          <div className="logout-modal" style={styles.logoutModal}>
-            <div className="logout-modal-icon" style={styles.logoutModalIcon}>
-              <LogOut size={25} color="#f59e0b" style={styles.logoutModalIconI} />
-            </div>
-            <h3 style={styles.logoutModalH3}>Confirm Logout</h3>
-            <p style={styles.logoutModalP}>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons" style={styles.logoutModalButtons}>
-              <button
-                className="logout-modal-btn cancel"
-                onClick={closeLogoutModal}
-                style={{ ...styles.logoutModalBtn, ...styles.logoutModalBtnCancel }}
-              >
-                No
-              </button>
-              <button
-                className="logout-modal-btn confirm"
-                onClick={confirmLogout}
-                style={{ ...styles.logoutModalBtn, ...styles.logoutModalBtnConfirm }}
-              >
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      
     </div>
   )
 }

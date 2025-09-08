@@ -5,35 +5,30 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 
 import {
-  AlertTriangle,
-  BarChart3,
   Bell,
-  CheckCircle,
-  ClipboardList,
-  FileText,
-  Folder,
-  Info,
-  LayoutDashboard,
-  LogOut,
+  Edit,
   Mail,
   MapPin,
-  Megaphone,
+  MessageCircle,
+  MoreVertical,
   Phone,
-  Settings,
+  Pin,
+  Send, Trash,
+
   Upload,
-  UserCheck,
-  XCircle,
 } from "lucide-react"
 import NotificationModal from "./CtuNotif"
 
-function CtuAnnouncement() {
+const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
+
+const CTUAnnouncement = () => {
   const navigate = useNavigate()
 
   // State for sidebar and modals
 
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
-  const [isImageModalOpen, setIsImageModalOpen] = useState(false)
+  const [isImageModalOpen, setIsImageModalOpen] = useState("")
   const [modalImageSrc, setModalImageSrc] = useState("")
   const [searchTerm, setSearchTerm] = useState("") // Declare setSearchTerm variable
   const [isSidebarsOpen, setIsSidebarsOpen] = useState(false)
@@ -62,6 +57,13 @@ function CtuAnnouncement() {
   const photoUploadAreaRef = useRef(null)
   const photoInputRef = useRef(null)
   const postInputRef = useRef(null) // Ref for the post textarea
+
+  const [commentInputs, setCommentInputs] = useState({}) // { [postId]: text }
+  const [replyInputs, setReplyInputs] = useState({}) // { [commentId]: text }
+  const [showDropdown, setShowDropdown] = useState({})
+  const [isEditingPost, setIsEditingPost] = useState(null)
+
+  const [expandedPosts, setExpandedPosts] = useState(new Set())
 
   const styles = {
     container: {
@@ -148,8 +150,8 @@ function CtuAnnouncement() {
       marginBottom: "15px",
     },
     postAvatar: {
-      width: "40px",
-      height: "40px",
+      width: "65px",
+      height: "60px",
       borderRadius: "50%",
       marginRight: "12px",
     },
@@ -176,10 +178,26 @@ function CtuAnnouncement() {
     },
     postActions: {
       display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      paddingTop: "15px",
+      justifyContent: "space-around",
+      padding: "8px 16px",
       borderTop: "1px solid #e4e6ea",
+      borderBottom: "1px solid #e4e6ea",
+    },
+    actionButton: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      background: "none",
+      border: "none",
+      padding: "8px 16px",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "15px",
+      fontWeight: "600",
+      color: "#65676b",
+      transition: "background-color 0.2s",
+      flex: 1,
+      justifyContent: "center",
     },
     actionBtn: {
       display: "flex",
@@ -257,8 +275,8 @@ function CtuAnnouncement() {
       marginBottom: "10px",
     },
     commentAvatar: {
-      width: "32px",
-      height: "32px",
+      width: "55px",
+      height: "50px",
       borderRadius: "50%",
     },
     commentContent: {
@@ -285,11 +303,20 @@ function CtuAnnouncement() {
       position: "relative",
       background: "transparent",
       border: "none",
+      cursor: "pointer",
       padding: "8px",
       borderRadius: "50%",
-      cursor: "pointer",
-      fontSize: "18px",
-      color: "#333",
+    },
+    badge: {
+      position: "absolute",
+      top: "2px",
+      right: "2px",
+      backgroundColor: "#ef4444",
+      color: "#fff",
+      borderRadius: "50%",
+      padding: "2px 6px",
+      fontSize: "12px",
+      fontWeight: "bold",
     },
   }
 
@@ -303,32 +330,36 @@ function CtuAnnouncement() {
     return `${Math.floor(diffInMinutes / 1440)}d ago`
   }, [])
 
-  const getNotificationIcon = (type) => {
-    const icons = {
-      info: Info,
-      success: CheckCircle,
-      warning: AlertTriangle,
-      error: XCircle,
-    }
-    return icons[type] || icons.info
-  }
-
-  const markAsRead = (notificationId) => {
-    setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
-  }
-
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-  }
-
-  const deleteNotification = (notificationId) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
-  }
-
+  // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
-    // Placeholder for fetching notifications from backend
-    setNotifications([])
+    console.log("Loading notifications...")
+
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch notifications")
+        return res.json()
+      })
+      .then((data) => {
+        const formatted = data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+        }))
+        setNotifications(formatted)
+      })
+      .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
+
+  // ✅ Auto-refresh every 30s
+  useEffect(() => {
+    loadNotifications() // load once
+
+    const interval = setInterval(() => {
+      loadNotifications()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [loadNotifications])
 
   const handleTabChange = (tabName) => {
     setActiveTab(tabName)
@@ -361,6 +392,8 @@ function CtuAnnouncement() {
     [selectedPhotos],
   )
 
+  const [pinnedPosts, setPinnedPosts] = useState(new Set());
+
   const removePhoto = useCallback((photoId) => {
     setSelectedPhotos((prev) => prev.filter((photo) => photo.id !== photoId))
   }, [])
@@ -382,39 +415,94 @@ function CtuAnnouncement() {
     }
   }, [])
 
-  const createPost = useCallback(() => {
-    const postText = postInputText.trim()
+  const createPost = useCallback(async () => {
+    const postText = postInputText?.trim() || ""
+
     if (!postText && selectedPhotos.length === 0) {
       showError("Please enter some text or add photos for your announcement")
       return
     }
 
-    const now = new Date()
-    const newPost = {
-      id: Date.now(),
-      content: postText,
-      photos: [...selectedPhotos],
-      author: "CTU VET-MED",
-      date: now.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      }),
-      timestamp: now,
+    try {
+      // Only include the image if selected
+      const bodyData = {
+        announce_title: "CTU Announcement",
+        announce_content: postText,
+      }
+      if (selectedPhotos.length > 0) {
+        bodyData.announce_img = selectedPhotos[0].url
+      }
 
-      comments: [],
-      commentCount: 0,
+      const res = await fetch("http://localhost:8000/api/ctu_vetmed/create-post/", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(bodyData),
+      })
+
+      const result = await res.json()
+      if (!res.ok) throw new Error(result.error || "Failed to create post")
+
+      // ✅ Add new post locally
+      const now = new Date()
+      const newPost = {
+        id: result?.post?.announce_id || `temp-${now.getTime()}`,
+        title: result?.post?.announce_title || "CTU Announcement",
+        content: result?.post?.announce_content || "",
+        photos: result?.post?.announce_img ? [{ id: `photo-${now.getTime()}`, url: result.post.announce_img }] : [],
+        author: "CTU VET-MED",
+        date: now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
+        timestamp: now,
+        comments: [],
+        commentCount: 0,
+      }
+
+      setPosts((prev) => [newPost, ...prev])
+      setPostInputText("")
+      setSelectedPhotos([])
+      hideError()
+    } catch (error) {
+      console.error("Error creating post:", error)
+      showError(error.message || "Failed to create post. Please try again.")
     }
+  }, [postInputText, selectedPhotos, setPosts, showError, hideError])
 
-    setPosts((prev) => [newPost, ...prev]) // Add to beginning of array
-    setPostInputText("")
-    setSelectedPhotos([])
-    hideError()
-    console.log("Post created:", newPost)
-  }, [postInputText, selectedPhotos, showError, hideError])
+  const loadAnnouncements = useCallback(async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/ctu_vetmed/announcements/", {
+        credentials: "include",
+      })
+      const result = await response.json()
+
+      console.log("Raw announcements:", result)
+
+      if (response.ok && result.data) {
+        const formattedPosts = result.data.map((announcement) => ({
+          id: announcement.announce_id,
+          content: announcement.announce_content,
+          photos: announcement.announce_img ? [{ id: 1, url: announcement.announce_img }] : [],
+          author: "CTU VET-MED",
+          timestamp: new Date(announcement.announce_date),
+          date: new Date(announcement.announce_date).toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "long",
+            day: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            hour12: true,
+          }),
+          comments: [],
+          commentCount: 0,
+        }))
+
+        setPosts(formattedPosts)
+      }
+    } catch (error) {
+      console.error("[v0] Error loading announcements:", error)
+    }
+  }, [])
 
   const openImageModal = useCallback((imageSrc) => {
     setModalImageSrc(imageSrc)
@@ -426,10 +514,17 @@ function CtuAnnouncement() {
     setModalImageSrc("")
   }, [])
 
+  //===== Toggle comments with auto-focus =====
   const toggleComments = useCallback((postId) => {
     setPosts((prevPosts) =>
       prevPosts.map((post) => (post.id === postId ? { ...post, isCommentsOpen: !post.isCommentsOpen } : post)),
     )
+
+    // Auto-focus comment input after rendering
+    setTimeout(() => {
+      const input = document.querySelector(`#comment-input-${postId}`)
+      if (input) input.focus()
+    }, 0)
   }, [])
 
   const addComment = useCallback((postId, commentText) => {
@@ -439,7 +534,7 @@ function CtuAnnouncement() {
         if (post.id === postId) {
           const newComment = {
             id: Date.now(),
-            author: "You", // Placeholder for current user
+            author: "You", // Placeholder
             text: commentText,
             timestamp: new Date(),
             replies: [],
@@ -484,10 +579,16 @@ function CtuAnnouncement() {
     setReplyingTo(null) // Close reply input
   }, [])
 
-  // NEW: Function to toggle reply input
+  // ===== Toggle reply input with auto-focus =====
   const toggleReply = useCallback(
     (postId, commentId) => {
       setReplyingTo(replyingTo?.commentId === commentId ? null : { postId, commentId })
+
+      // Auto-focus reply input
+      setTimeout(() => {
+        const input = document.querySelector(`#reply-input-${commentId}`)
+        if (input) input.focus()
+      }, 0)
     },
     [replyingTo],
   )
@@ -497,16 +598,6 @@ function CtuAnnouncement() {
       prevPosts.map((post) => (post.id === postId ? { ...post, commentsDisplayLimit: post.comments.length } : post)),
     )
   }, [])
-
-  const handleSearchInput = (e) => {
-    setSearchTerm(e.target.value.toLowerCase())
-    // Implement search logic here for posts and information if needed
-  }
-
-  const openLogoutModal = (e) => {
-    e.preventDefault()
-    setIsLogoutModalOpen(true)
-  }
 
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
@@ -528,69 +619,8 @@ function CtuAnnouncement() {
   // Effects for initial data loading
   useEffect(() => {
     loadNotifications()
-    // Dummy posts for initial render
-    setPosts([
-      {
-        id: 1,
-        content: "Important announcement regarding horse health checks next week. Please prepare your horses.",
-        photos: [
-          { id: 1, url: "/placeholder.svg?height=200&width=300" },
-          { id: 2, url: "/placeholder.svg?height=200&width=300" },
-        ],
-        author: "CTU VET-MED",
-        date: "November 15, 2023, 10:30 AM",
-        timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-        likes: [{ userId: "user1", type: "like" }],
-        comments: [
-          {
-            id: 1,
-            author: "John Doe",
-            text: "Understood, thank you for the update!",
-            timestamp: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000),
-            likes: [],
-            replies: [],
-          },
-          {
-            id: 2,
-            author: "Jane Smith",
-            text: "Will prepare my horses.",
-            timestamp: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000),
-            likes: [{ userId: "current-user", timestamp: new Date() }],
-            replies: [
-              {
-                id: 21,
-                author: "You",
-                text: "Great! Let me know if you need any help.",
-                timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-                likes: [],
-              },
-            ],
-          },
-        ],
-        commentCount: 2,
-        isCommentsOpen: false,
-        isReactionPopupOpen: false,
-        commentsDisplayLimit: 3,
-      },
-      {
-        id: 2,
-        content: "Reminder: Annual vaccination drive for all registered horses is scheduled for December.",
-        photos: [{ id: 3, url: "/placeholder.svg?height=200&width=400" }],
-        author: "CTU VET-MED",
-        date: "November 10, 2023, 02:00 PM",
-        timestamp: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000),
-        likes: [
-          { userId: "user2", type: "love" },
-          { userId: "user3", type: "like" },
-        ],
-        comments: [],
-        commentCount: 0,
-        isCommentsOpen: false,
-        isReactionPopupOpen: false,
-        commentsDisplayLimit: 3,
-      },
-    ])
-  }, [loadNotifications])
+    loadAnnouncements()
+  }, [loadAnnouncements])
 
   // Effects for click outside and resize
   useEffect(() => {
@@ -627,6 +657,19 @@ function CtuAnnouncement() {
         !mobileMenuBtn.contains(event.target)
       ) {
         setIsSidebarExpanded(false)
+      }
+
+      const postDropdowns = document.querySelectorAll("[data-post-dropdown]")
+      let clickedInsideDropdown = false
+
+      postDropdowns.forEach((dropdown) => {
+        if (dropdown.contains(event.target)) {
+          clickedInsideDropdown = true
+        }
+      })
+
+      if (!clickedInsideDropdown) {
+        setPosts((prevPosts) => prevPosts.map((post) => ({ ...post, showDropdown: false })))
       }
 
       // Close reaction popups
@@ -700,6 +743,7 @@ function CtuAnnouncement() {
 
     return (
       <div style={styles.commentsSection}>
+        {/* Comment Input */}
         <div style={styles.commentForm}>
           <div style={styles.commentAvatar}>
             <img
@@ -708,72 +752,201 @@ function CtuAnnouncement() {
               style={{ width: "100%", height: "100%", borderRadius: "50%" }}
             />
           </div>
-          <div style={styles.commentInputContainer}>
-            <input
-              type="text"
-              style={styles.commentInput}
-              placeholder="Write a comment..."
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  addComment(post.id, e.target.value)
-                  e.target.value = ""
-                }
-              }}
-            />
-            <div style={styles.commentIcons}>
-              <i className="fas fa-smile" style={styles.commentIcon} title="Add emoji"></i>
-              <i className="fas fa-camera" style={styles.commentIcon} title="Add photo"></i>
-              <i className="fas fa-paperclip" style={styles.commentIcon} title="Attach file"></i>
-            </div>
-            <button
-              style={styles.commentSubmit}
-              onClick={(e) => {
-                const inputElement = e.currentTarget.parentElement.querySelector("input")
-                addComment(post.id, inputElement.value)
-                inputElement.value = ""
-              }}
-            >
-              <i className="fas fa-paper-plane"></i>
-            </button>
-          </div>
+<div style={{ ...styles.commentInputContainer, position: "relative" }}>
+  <input
+    id={`comment-input-${post.id}`}
+    type="text"
+    value={commentInputs[post.id] || ""}
+    onChange={(e) =>
+      setCommentInputs((prev) => ({ ...prev, [post.id]: e.target.value }))
+    }
+    onKeyDown={(e) => {
+      if (e.key === "Enter") {
+        addComment(post.id, commentInputs[post.id] || "");
+        setCommentInputs((prev) => ({ ...prev, [post.id]: "" }));
+      }
+    }}
+    style={{
+      width: "calc(100% - 44px)", // leaves space for the Send button
+      padding: "8px 12px",
+      borderRadius: "18px",
+      border: "1px solid #ddd",
+      fontSize: "14px",
+      boxSizing: "border-box",
+    }}
+  />
+
+  <button
+    style={{
+      position: "absolute",
+      right: "4px",
+      top: "50%",
+      transform: "translateY(-50%)",
+      background: "none",
+      border: "none",
+      cursor: "pointer",
+      color: "#1877f2",
+      width: "36px",
+      height: "36px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+    }}
+    onClick={() => {
+      addComment(post.id, commentInputs[post.id] || "");
+      setCommentInputs((prev) => ({ ...prev, [post.id]: "" }));
+    }}
+  >
+    <Send size={20} /> {/* increase icon size for better visibility */}
+  </button>
+</div>
+
+
         </div>
 
-        {/* Comments list */}
-        {post.comments.map((comment) => {
-          const userLiked = comment.likes?.includes("currentUser") || false
-          const likeCount = comment.likes?.length || 0
-
-          return (
-            <div key={comment.id} style={styles.commentItem}>
-              <div style={styles.commentAvatar}>
-                <img
-                  src={`/ceholder-svg-key-xcfob-key-is66r-height-32-width-3.png?key=xcfob&key=is66r&height=32&width=32&text=${comment.author.charAt(0)}`}
-                  alt={`${comment.author} avatar`}
-                  style={{ width: "100%", height: "100%", borderRadius: "50%" }}
-                />
-              </div>
-              <div style={styles.commentContent}>
-                <div style={styles.commentAuthor}>{comment.author}</div>
-                <div style={styles.commentText}>{comment.text}</div>
-                <div style={styles.commentDate}>{formatTimeAgo(comment.timestamp)}</div>
-              </div>
+        {/* Comments List */}
+        {post.comments.map((comment) => (
+          <div key={comment.id} style={styles.commentItem}>
+            <div style={styles.commentAvatar}>
+              <img
+                src={`/ceholder-svg-key-xcfob-key-is66r-height-32-width-3.png?key=xcfob&key=is66r&height=32&width=32&text=${comment.author.charAt(0)}`}
+                alt={`${comment.author} avatar`}
+                style={{ width: "100%", height: "100%", borderRadius: "50%" }}
+              />
             </div>
-          )
-        })}
+            <div style={styles.commentContent}>
+              <div style={styles.commentAuthor}>{comment.author}</div>
+              <div style={styles.commentText}>{comment.text}</div>
+              <div style={styles.commentDate}>{formatTimeAgo(comment.timestamp)}</div>
+
+              {/* Reply Button */}
+              <button
+                style={{
+                  marginTop: "8px",
+                  background: "none",
+                  border: "none",
+                  color: "#65676b",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                  padding: "4px 8px",
+                  borderRadius: "4px",
+                  fontWeight: "600",
+                }}
+                onClick={() => toggleReply(post.id, comment.id)}
+              >
+                Reply
+              </button>
+
+              {/* Reply Input */}
+              {replyingTo?.postId === post.id && replyingTo?.commentId === comment.id && (
+                <div
+                  style={{
+                    display: "flex",
+                    marginTop: "10px",
+                    gap: "8px",
+                    alignItems: "center",
+                    paddingLeft: "12px",
+                  }}
+                >
+                  <div style={styles.commentInputContainer}>
+                    <input
+                      id={`reply-input-${comment.id}`}
+                      type="text"
+                      placeholder="Write a reply..."
+                      style={styles.commentInput}
+                      value={replyInputs[comment.id] || ""}
+                      onChange={(e) => setReplyInputs((prev) => ({ ...prev, [comment.id]: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault()
+                          const text = e.target.value
+                          addComment(post.id, text)
+                          setCommentInputs((prev) => ({ ...prev, [post.id]: "" }))
+                        }
+                      }}
+                    />
+                    <button
+                      style={{
+                        position: "absolute",
+                        right: "8px",
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        background: "none",
+                        border: "none",
+                        color: "#4267B2",
+                        cursor: "pointer",
+                        padding: "4px",
+                        borderRadius: "50%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                      onClick={() => {
+                        addReply(post.id, comment.id, replyInputs[comment.id] || "")
+                        setReplyInputs((prev) => ({ ...prev, [comment.id]: "" }))
+                      }}
+                    >
+                      <Send size={16} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {comment.replies?.map((reply) => (
+                <div
+                  key={reply.id}
+                  style={{
+                    marginLeft: "40px",
+                    marginTop: "8px",
+                    borderLeft: "2px solid #e4e6ea",
+                    paddingLeft: "12px",
+                  }}
+                >
+                  <div style={styles.commentAuthor}>{reply.author}</div>
+                  <div style={styles.commentText}>{reply.text}</div>
+                  <div style={styles.commentDate}>{formatTimeAgo(reply.timestamp)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     )
   }
 
-  const menuItems = [
-    { name: "Dashboard", icon: LayoutDashboard, path: "/CtuDashboard" },
-    { name: "Account Approval", icon: UserCheck, path: "/CtuAccountApproval" },
-    { name: "Access Requests", icon: FileText, path: "/CtuAccessRequest" },
-    { name: "Horse Records", icon: ClipboardList, path: "/CtuHorseRecord" },
-    { name: "Health Reports", icon: BarChart3, path: "/CtuHealthReport" },
-    { name: "Announcements", icon: Megaphone, path: "/CtuAnnouncement", active: true },
-    { name: "Directory", icon: Folder, path: "/CtuDirectory" },
-    { name: "Settings", icon: Settings, path: "/CtuSettings" },
-  ]
+  const toggleDropdown = (postId) => {
+    setShowDropdown((prev) => ({
+      ...prev,
+      [postId]: !prev[postId],
+    }))
+  }
+
+  const toggleEdit = (postId) => {
+    setIsEditingPost(postId)
+  }
+
+  const togglePostExpansion = useCallback((postId) => {
+    setExpandedPosts((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(postId)) {
+        newSet.delete(postId)
+      } else {
+        newSet.add(postId)
+      }
+      return newSet
+    })
+  }, [])
+
+  const toggleLike = (postId) => {
+    setPosts((prevPosts) =>
+      prevPosts.map((post) => {
+        if (post.id === postId) {
+          return { ...post, isLiked: !post.isLiked, likes: post.isLiked ? post.likes - 1 : post.likes + 1 }
+        }
+        return post
+      }),
+    )
+  }
 
   return (
     <div className="bodyWrapper">
@@ -2380,9 +2553,9 @@ flex: 1;
   height: 24px;
 }
 
-.reply-submit:hover {
+/*.reply-submit:hover {
   background-color: rgba(24, 119, 242, 0.1);
-}
+}*/
 
 .reply-submit:disabled {
   color: #bcc0c4;
@@ -2714,12 +2887,13 @@ flex: 1;
           <div className="dashboard-container">
             <h2 className="announcement-title">Announcement</h2>
           </div>
+          {/* 🔔 Notification Bell */}
           <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
             <Bell size={24} color="#374151" />
             {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
           </button>
 
-          {/* Notification Modal */}
+          {/* 📩 Notification Modal */}
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
@@ -2848,7 +3022,7 @@ flex: 1;
                   <textarea
                     className={`post-input ${postErrorMessage ? "error" : ""}`}
                     placeholder="What's on your mind?"
-                    rows="3"
+                    rows={3}
                     value={postInputText}
                     onChange={(e) => setPostInputText(e.target.value)}
                     onKeyDown={(e) => {
@@ -2858,11 +3032,11 @@ flex: 1;
                       }
                     }}
                     ref={postInputRef}
-                  ></textarea>
+                  />
                   {postErrorMessage && <div className="error-message">{postErrorMessage}</div>}
+
                   <div
                     className="photo-upload-area"
-                    id="photoUploadArea"
                     ref={photoUploadAreaRef}
                     onClick={() => photoInputRef.current?.click()}
                     onDragOver={(e) => {
@@ -2876,16 +3050,14 @@ flex: 1;
                     onDrop={(e) => {
                       e.preventDefault()
                       photoUploadAreaRef.current?.classList.remove("dragover")
-                      const files = Array.from(e.dataTransfer.files).filter((file) => file.type.startsWith("image/"))
-                      handlePhotoSelection(files)
+                      handlePhotoSelection(Array.from(e.dataTransfer.files))
                     }}
                   >
-                    <Upload className="upload-icon" size={24} />
+                    <Upload size={24} className="upload-icon" />
                     <div className="upload-text">Click to upload photos or drag and drop</div>
                     <div className="upload-subtext">PNG, JPG, GIF up to 10MB each</div>
                     <input
                       type="file"
-                      id="photoInput"
                       multiple
                       accept="image/*"
                       style={{ display: "none" }}
@@ -2893,25 +3065,31 @@ flex: 1;
                       ref={photoInputRef}
                     />
                   </div>
+
                   {selectedPhotos.length > 0 && (
-                    <div className="photo-preview-container" id="photoPreviewContainer">
+                    <div className="photo-preview-container">
                       {selectedPhotos.map((photo) => (
                         <div className="photo-preview" key={photo.id}>
                           <img src={photo.url || "/Images/logo1.png"} alt="Preview" />
-                          <button className="photo-remove" onClick={() => removePhoto(photo.id)}>
+                          <button
+                            className="photo-remove"
+                            onClick={() => removePhoto(photo.id)}
+                            aria-label="Remove photo"
+                          >
                             &times;
                           </button>
                         </div>
                       ))}
                     </div>
                   )}
+
                   <div className="post-actions-bar">
                     <div className="post-media-controls">
-                      <button className="media-btn" id="photoBtn" onClick={() => photoInputRef.current?.click()}>
-                        <i className="fas fa-image"></i> Photo
+                      <button className="media-btn" onClick={() => photoInputRef.current?.click()}>
+                        <Upload size={16} /> Photo
                       </button>
                     </div>
-                    <button className="post-btn" id="createPostBtn" onClick={createPost}>
+                    <button className="post-btn" onClick={createPost}>
                       Post
                     </button>
                   </div>
@@ -2924,63 +3102,292 @@ flex: 1;
                   <h3>No announcements yet</h3>
                   <p>Create your first announcement to get started</p>
                 </div>
-              ) : (
+                  ) : (
                 <div id="postsContainer">
-                  {posts.map((post) => {
-                    return (
-                      <div key={post.id} style={styles.postCard}>
-                        <div style={styles.postHeader}>
-                          <img src={post.avatar || "/placeholder.svg"} alt={post.author} style={styles.postAvatar} />
-                          <div>
-                            <div style={styles.postAuthor}>{post.author}</div>
-                            <div style={styles.postDate}>{formatTimeAgo(post.timestamp)}</div>
-                          </div>
+                  {posts.map((post) => (
+                    <div key={post.id} style={styles.postCard}>
+                      {/* Post Header */}
+                      <div style={styles.postHeader}>
+                        <img src={post.avatar || "/Images/logo1.png"} alt={post.author} style={styles.postAvatar} />
+                        <div style={{ flex: 1 }}>
+                          <div style={styles.postAuthor}>{post.author}</div>
+                          <div style={styles.postDate}>{formatTimeAgo(post.timestamp)}</div>
                         </div>
-                        <div style={styles.postContent}>{post.content}</div>
-                        {post.image && (
-                          <img src={post.image || "/placeholder.svg"} alt="Post content" style={styles.postImage} />
-                        )}
 
-                        <div style={styles.postActions}>
-                          <button style={styles.actionBtn} onClick={() => toggleComments(post.id)}>
-                            <i className="fas fa-comment"></i>
-                            Comment ({post.commentCount})
+                        {/* Dropdown menu */}
+                        <div style={{ position: "relative" }}>
+                          <button
+                            onClick={() => toggleDropdown(post.id)}
+                            style={{
+                              background: "none",
+                              border: "none",
+                              cursor: "pointer",
+                              padding: "6px",
+                              borderRadius: "50%",
+                              color: "#65676b",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              width: "36px",
+                              height: "36px",
+                            }}
+                          >
+                            <MoreVertical size={20} />
                           </button>
-                        </div>
 
-                        {renderComments(post)}
+                          {showDropdown[post.id] && (
+  <div
+    style={{
+      position: "absolute",
+      top: "100%",
+      right: "0",
+      backgroundColor: "white",
+      border: "1px solid #ddd",
+      borderRadius: "8px",
+      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+      zIndex: 1000,
+      minWidth: "220px",
+      padding: "8px 0",
+    }}
+  >
+    {/* Pin Post */}
+    <div
+  style={{
+    padding: "12px 16px",
+    fontSize: "14px",
+    color: pinnedPosts.has(post.id) ? "#1877f2" : "#65676b",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+  }}
+  onClick={() => {
+    setPinnedPosts((prev) => {
+      const updated = new Set(prev);
+      if (updated.has(post.id)) {
+        updated.delete(post.id);
+      } else {
+        updated.add(post.id);
+      }
+      return updated;
+    });
+    setShowDropdown((prev) => ({ ...prev, [post.id]: false })); // close dropdown
+  }}
+  onMouseEnter={(e) => (e.target.style.backgroundColor = "#f2f2f2")}
+  onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+>
+  <Pin size={18} />
+  {pinnedPosts.has(post.id) ? "Unpin post" : "Pin post"}
+</div>
+
+    {/* Edit Post */}
+    <div
+      style={{
+        padding: "12px 16px",
+        fontSize: "14px",
+        color: "#65676b",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+      }}
+      onClick={() => {
+        toggleEdit(post.id)
+        setShowDropdown((prev) => ({ ...prev, [post.id]: false }))
+      }}
+      onMouseEnter={(e) => (e.target.style.backgroundColor = "#f2f2f2")}
+      onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+    >
+      <Edit size={18} />
+      Edit post
+    </div>
+
+    {/* Delete Post */}
+    <div
+      style={{
+        padding: "12px 16px",
+        fontSize: "14px",
+        color: "#e53935",
+        cursor: "pointer",
+        display: "flex",
+        alignItems: "center",
+        gap: "10px",
+      }}
+      onClick={async () => {
+        if (window.confirm("Are you sure you want to delete this post?")) {
+          try {
+            const res = await fetch(
+              `http://localhost:8000/api/ctu_vetmed/delete-post/${post.id}/`,
+              {
+                method: "DELETE",
+                credentials: "include",
+              }
+            );
+            if (!res.ok) throw new Error("Failed to delete post");
+            setPosts((prev) => prev.filter((p) => p.id !== post.id));
+          } catch (err) {
+            console.error(err);
+            alert("Failed to delete post. Try again.");
+          }
+        }
+      }}
+      onMouseEnter={(e) => (e.target.style.backgroundColor = "#fceaea")}
+      onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+    >
+      <Trash size={18} />
+      Delete post
+    </div>
+  </div>
+)}
+
+                        </div>
                       </div>
-                    )
-                  })}
+
+                      {/* Content */}
+                        <div style={styles.postContent}>
+                        {isEditingPost === post.id ? (
+                          <div>
+                            <textarea
+                              value={post.content}
+                              onChange={(e) => {
+                                const updatedPosts = posts.map((p) =>
+                                  p.id === post.id ? { ...p, content: e.target.value } : p,
+                                )
+                                setPosts(updatedPosts)
+                              }}
+                              style={{
+                                width: "100%",
+                                minHeight: "80px",
+                                padding: "12px",
+                                border: "1px solid #ddd",
+                                borderRadius: "8px",
+                                fontSize: "14px",
+                                fontFamily: "inherit",
+                                resize: "vertical",
+                              }}
+                            />
+                            <div style={{ marginTop: "12px", display: "flex", gap: "8px" }}>
+                              <button
+                                style={{
+                                  ...styles.actionBtn,
+                                  backgroundColor: "#1877f2",
+                                  color: "white",
+                                  fontWeight: "600",
+                                }}
+                                onClick={async () => {
+                                  try {
+                                    const res = await fetch(
+                                      `http://localhost:8000/api/ctu_vetmed/edit-post/${post.id}/`,
+                                      {
+                                        method: "PATCH",
+                                        credentials: "include",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ announce_content: post.content }),
+                                      },
+                                    )
+                                    if (!res.ok) throw new Error("Failed to save post")
+                                    const updatedPosts = posts.map((p) =>
+                                      p.id === post.id ? { ...p, isEditing: false } : p,
+                                    )
+                                    setPosts(updatedPosts)
+                                    setIsEditingPost(null)
+                                  } catch (err) {
+                                    console.error(err)
+                                    alert("Failed to save post. Try again.")
+                                  }
+                                }}
+                              >
+                                Save
+                              </button>
+                              <button
+                                style={{
+                                  ...styles.actionBtn,
+                                  backgroundColor: "#f0f2f5",
+                                  color: "#65676b",
+                                }}
+                                onClick={() => setIsEditingPost(null)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div>
+                            <div
+                              style={{
+                                lineHeight: "1.5",
+                                whiteSpace: "pre-wrap",
+                                wordBreak: "break-word",
+                                fontSize: "15px",
+                                color: "#050505",
+                              }}
+                            >
+                              {(() => {
+                                const isExpanded = expandedPosts.has(post.id)
+                                const shouldTruncate = post.content.length > 300
+
+                                if (!shouldTruncate || isExpanded) {
+                                  return post.content
+                                }
+
+                                return post.content.substring(0, 300) + "..."
+                              })()}
+                            </div>
+
+                            {post.content.length > 300 && (
+                              <button
+                                onClick={() => togglePostExpansion(post.id)}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: "#1877f2",
+                                  cursor: "pointer",
+                                  fontSize: "14px",
+                                  fontWeight: "600",
+                                  marginTop: "8px",
+                                  padding: "4px 0",
+                                }}
+                              >
+                                {expandedPosts.has(post.id) ? "See less" : "See more"}
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Post Actions */}
+                        <div style={styles.postActions}>
+                        
+
+                        <button
+                          style={{
+                            ...styles.actionButton,
+                            color: post.isCommentsOpen ? "#1877f2" : "#65676b",
+                          }}
+                          onClick={() => toggleComments(post.id)}
+                        >
+                          <MessageCircle size={16} />
+                          <span>Comment</span>
+                          {post.comments && post.comments.length > 0 && <span>({post.comments.length})</span>}
+                        </button>
+
+                      </div>
+
+                      {/* Images */}
+                      {renderPostImages(post.photos)}
+
+                      {/* Comments */}
+                      {renderComments(post)}
+                    </div>
+                    ))}
+                   </div>
+                  )}
                 </div>
               )}
-            </div>
-          )}
         </div>
-      </div>
+    </div>
 
       <FloatingMessages />
-
-      {/* Logout Modal */}
-      {isLogoutModalOpen && (
-        <div className="modal-overlay active" ref={logoutModalRef}>
-          <div className="logout-modal">
-            <div className="logout-modal-icon">
-              <LogOut size={25} color="#f59e0b" />
-            </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons">
-              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
-                No
-              </button>
-              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Image Modal */}
       {isImageModalOpen && (
@@ -2995,4 +3402,4 @@ flex: 1;
   )
 }
 
-export default CtuAnnouncement
+export default CTUAnnouncement

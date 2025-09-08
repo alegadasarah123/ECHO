@@ -58,18 +58,36 @@ function CtuDirectory() {
     return icons[type] || icons.info
   }, [])
 
-  // Notification handlers
-  const markAsRead = useCallback((notificationId) => {
-    setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
+  // ✅ Fetch notifications from backend
+  const loadNotifications = useCallback(() => {
+    console.log("Loading notifications...")
+
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch notifications")
+        return res.json()
+      })
+      .then((data) => {
+        const formatted = data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+        }))
+        setNotifications(formatted)
+      })
+      .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
-  const markAllAsRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-  }, [])
+  // ✅ Auto-refresh every 30s
+  useEffect(() => {
+    loadNotifications() // load once
 
-  const deleteNotification = useCallback((notificationId) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
-  }, [])
+    const interval = setInterval(() => {
+      loadNotifications()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [loadNotifications])
 
   // Apply all filters and search
   const applyFiltersAndSearch = useCallback(() => {
@@ -169,19 +187,34 @@ function CtuDirectory() {
     [navigate],
   )
 
-  // Delete handler (frontend + backend)
-  const handleDelete = (email) => {
-    if (!window.confirm("Are you sure you want to delete this entry?")) return
+const handleDelete = async (email) => {
+  if (!email) return;
 
-    // Optimistic update on frontend
-    setDirectoryData((prev) => prev.filter((item) => item.email !== email))
+  const confirmDelete = window.confirm(`Are you sure you want to delete ${email}?`);
+  if (!confirmDelete) return;
 
-    // Call backend to delete
-    fetch(`${API_BASE}/directory/${email}`, {
+  try {
+    const response = await fetch(`http://127.0.0.1:8000/api/ctu_vetmed/directory/${email}/`, {
       method: "DELETE",
       credentials: "include",
-    }).catch((err) => console.error("Error deleting item:", err))
+    });
+
+    const result = await response.json();
+    if (response.ok) {
+      alert(result.message);  // Show approved deletion message
+      loadDirectoryData();     // Refresh list
+    } else {
+      alert(result.error);
+      console.error("Error deleting user:", result);
+    }
+  } catch (err) {
+    alert("Unexpected error occurred while deleting user.");
+    console.error("Error deleting user:", err);
   }
+};
+
+
+
 
   const handleSearchInput = (e) => {
     const searchTerm = e.target.value.toLowerCase()
@@ -202,48 +235,48 @@ function CtuDirectory() {
   }
 
   // Load data from backend
-  const loadDirectoryData = async () => {
-    try {
-      const response = await fetch(`${API_BASE}/get_directory_profiles/`, {
-        method: "GET",
-        credentials: "include", // Added to send cookies/session data
-      })
+const loadDirectoryData = async () => {
+  try {
+    const response = await fetch(
+      "http://127.0.0.1:8000/api/ctu_vetmed/get_directory_profiles/",
+      { method: "GET", credentials: "include" }
+    );
 
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${response.statusText}`)
-      }
-
-      const data = await response.json()
-
-      // Combine all types into one array
-      const combinedData = [
-        ...data.vets.map((vet) => ({
-          name: `${vet.vet_fname} ${vet.vet_lname}`,
-          type: "Veterinarian",
-          email: vet.vet_email || "N/A",
-          status: vet.users?.status || "Unknown",
-        })),
-        ...data.kutseros.map((k) => ({
-          name: `${k.kutsero_fname} ${k.kutsero_lname}`,
-          type: "Kutsero",
-          email: k.kutsero_email || "N/A",
-          status: k.users?.status || "Unknown",
-        })),
-        ...data.horse_operators.map((h) => ({
-          name: `${h.operator_fname} ${h.operator_lname}`,
-          type: "Horse Operator",
-          email: h.operator_email || "N/A",
-          status: h.users?.status || "Unknown",
-        })),
-      ]
-
-      setDirectoryData(combinedData)
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
+    if (!response.ok) {
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
     }
+
+    const data = await response.json();
+
+    const combinedData = [
+      ...data.vets.map((vet) => ({
+        name: `${vet.vet_fname} ${vet.vet_lname}`,
+        type: "Veterinarian",
+        email: vet.vet_email || "N/A",
+        status: vet.users?.status || "Unknown",
+      })),
+      ...data.kutseros.map((k) => ({
+        name: `${k.kutsero_fname} ${k.kutsero_lname}`,
+        type: "Kutsero",
+        email: k.kutsero_email || "N/A",
+        status: k.users?.status || "Unknown",
+      })),
+      ...data.horse_operators.map((h) => ({
+        name: `${h.op_fname} ${h.op_lname}`,
+        type: "Horse Operator",
+        email: h.op_email || "N/A",
+        status: h.users?.status || "Unknown",
+      })),
+    ];
+
+    setDirectoryData(combinedData);
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setLoading(false);
   }
+};
+
 
   // Define the styles object at the top of your file or before the return
   const styles = {
@@ -620,7 +653,10 @@ flex: 1;
   background: #fef2f2;
   color: #dc2626;
 }
-
+.status-deactivated {
+  background: #fef2f2;
+  color: #4e0920ff;
+}
 .status-available {
   background: #d1fae5;
   color: #065f46;

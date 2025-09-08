@@ -236,18 +236,19 @@ function LogIn({ onBack }) {
     }
 
     console.log("Login successful:", data);
+const role = data.role.trim(); // keep original case from DB
 
-    const role = data.role.trim().toLowerCase(); // normalize
-
-if (role === "veterinarian") {
+if (role === "Veterinarian") {
   navigate("/VetDashboard");
-} else if (role === "ctu-vetmed") {
+} else if (role === "Ctu-Vetmed" || role === "Ctu-Admin") {
   navigate("/CtuDashboard");
-} else if (role === "dvmf") {
+} else if (role === "Dvmf") {
   navigate("/DvmfDashboard");
 } else {
   navigate("/KutDashboard");
 }
+
+
 
 if (onBack) onBack(role);
 

@@ -1,31 +1,17 @@
 "use client"
-import {
-  AlertTriangle,
-  BarChart3,
-  Bell,
-  BellOff,
-  Check,
-  CheckCircle,
-  ClipboardList,
-  FileText,
-  Folder,
-  Info,
-  LayoutDashboard,
-  LogOut,
-  Megaphone,
-  Search,
-  Settings,
-  UserCheck,
-  X,
-  XCircle,
-} from "lucide-react"
+import Sidebar from "@/components/DvmfSidebar"
+import { AlertTriangle, Bell, CheckCircle, FileText, Info, LogOut, Search, XCircle } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { useNavigate } from "react-router-dom"
+import FloatingMessages from './DvmfMessage'
+import NotificationModal from "./DvmfNotif"
+
+const API_BASE = "http://127.0.0.1:8000/api/dvmf";
 
 
 function DvmfAccessRequest() {
   const navigate = useNavigate()
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
+  const [isSidebarsOpen, setIsSidebarsOpen] = useState(false)
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
@@ -33,16 +19,17 @@ function DvmfAccessRequest() {
   const [actionDetails, setActionDetails] = useState({ title: "", message: "", action: "" })
   const [currentRequestId, setCurrentRequestId] = useState(null)
   const [accessRequests, setAccessRequests] = useState([]) // Placeholder for access request data
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth)
-  const [activeFilter, setActiveFilter] = useState("pending") // Changed default from "all" to "pending"
+  const [activeTab, setActiveTab] = useState("pending") // Changed default from "all" to "pending"
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [deleteRequestId, setDeleteRequestId] = useState(null)
+  const [windowWidth, setWindowWidth] = useState(window.innerWidth)
 
   const sidebarRef = useRef(null)
-  const notificationBellRef = useRef(null)
-  const notificationDropdownRef = useRef(null)
+  const [notifsOpen, setNotifsOpen] = useState(false)
   const logoutModalRef = useRef(null)
   const actionModalRef = useRef(null)
+  const notificationBellRef = useRef(null)
+  const notificationDropdownRef = useRef(null)
 
   // Helper to format time for notifications
   const formatTimeAgo = useCallback((timestamp) => {
@@ -76,10 +63,37 @@ function DvmfAccessRequest() {
     setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
   }
 
+  // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
-    setNotifications([])
+
+    fetch("http://127.0.0.1:8000/api/dvmf/get_vetnotifications/")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch notifications")
+        return res.json()
+      })
+      .then((data) => {
+        const formatted = data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+        }))
+        setNotifications(formatted)
+      })
+      .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
+
+ // ✅ Auto-refresh every 30s
+  useEffect(() => {
+    loadNotifications() // load once
+
+    const interval = setInterval(() => {
+      loadNotifications()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [loadNotifications])
+
 
   const loadAccessRequests = useCallback(() => {
     console.log("Loading access requests...")
@@ -90,9 +104,8 @@ function DvmfAccessRequest() {
     setIsNotificationDropdownOpen((prev) => !prev)
   }
 
-  const openLogoutModal = (e) => {
-    e.preventDefault()
-    setIsLogoutModalOpen(true)
+  const toggleSidebar = () => {
+    setIsSidebarsOpen((prev) => !prev)
   }
 
   const closeLogoutModal = () => {
@@ -103,8 +116,9 @@ function DvmfAccessRequest() {
     console.log("User logged out")
     localStorage.removeItem("currentUser")
     localStorage.removeItem("loginTime")
-    navigate("/login")
     closeLogoutModal()
+    navigate("/")
+    window.location.reload()
   }
 
   const approveRequest = (requestId) => {
@@ -148,6 +162,8 @@ function DvmfAccessRequest() {
     closeActionModal()
   }
 
+ 
+
   const handleSearchInput = (e) => {
     const searchTerm = e.target.value.toLowerCase()
     console.log(`Searching for: ${searchTerm}`)
@@ -174,7 +190,7 @@ function DvmfAccessRequest() {
   const getFilteredAndSortedRequests = () => {
     let filtered = accessRequests
 
-    filtered = filtered.filter((request) => request.status === activeFilter)
+    filtered = filtered.filter((request) => request.status === activeTab)
 
     // Sort by most recent (dateRequested descending)
     return filtered.sort((a, b) => new Date(b.dateRequested) - new Date(a.dateRequested))
@@ -234,6 +250,34 @@ function DvmfAccessRequest() {
   const filteredRequests = getFilteredAndSortedRequests()
   const filterCounts = getFilterCounts()
 
+  // Define the styles object at the top of your file or before the return
+  const styles = {
+     notificationBtn: {
+    position: "relative",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    padding: "8px",
+    borderRadius: "50%",
+  },
+  badge: {
+    position: "absolute",
+    top: "2px",
+    right: "2px",
+    backgroundColor: "#ef4444",
+    color: "#fff",
+    borderRadius: "50%",
+    padding: "2px 6px",
+    fontSize: "12px",
+    fontWeight: "bold",
+  },
+    titleStyle: {
+      fontSize: "25px",
+      fontWeight: "bold",
+      color: "#da2424ff",
+    },
+  }
+
   return (
     <div className="bodyWrapper">
       {/* Internal CSS here */}
@@ -255,86 +299,7 @@ body {
   width: 100%;
 }
 
-.sidebars {
-  width: 250px;
-  background-color: #0F3D5A;
-  color: white;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  height: 100vh;
-  left: 0;
-  top: 0;
-  z-index: 1000;
-  transition: transform 0.3s ease;
-}
-
-.sidebars-logo {
-  padding: 5px;
-  display: flex;
-  justify-content: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  position: relative; /* Needed for absolute positioning of close button */
-}
-
-.sidebars-logo img {
-  width: 250px;
-  height: 200px;
-  object-fit: contain;
-}
-
-.nav-menu {
-  flex: 1;
-  padding: 20px 0;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 40px;
-  color: white;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  margin: 0px 0px 2px 0;
-  position: relative;
-  margin-left: 10px;
-  min-height: 44px;
-}
-
-.nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 25px 0 0 25px;
-}
-
-.nav-item.active {
-  background-color: #f3f4f6;
-  color: #0F3D5A;
-  border-radius: 20px 0 0 20px;
-  font-weight: 500;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  width: 240px;
-  margin-left: 10px;
-}
-
-.nav-icon {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.nav-item.active .nav-icon {
-  color: #0F3D5A;
-}
-
- .logouts {
+.logouts {
   padding: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
@@ -368,9 +333,7 @@ body {
   flex-shrink: 0;
 }
 
-
 .main-content {
-  margin-left: 250px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -379,7 +342,7 @@ body {
 
 .headers {
   background: white;
-  padding: 16px 24px;
+  padding: 18px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -419,16 +382,14 @@ body {
 .search-input {
   width: 100%;
   padding: 8px 16px 8px 40px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid #fff;
   border-radius: 8px;
   font-size: clamp(12px, 2vw, 14px);
   outline: none;
-  min-height: 40px;
+  min-height: 50px;
+  background: #fff;
 }
 
-.search-input:focus {
-  border-color: #0F3D5A;
-}
 
 .search-icon {
   position: absolute;
@@ -457,7 +418,7 @@ body {
   position: absolute;
   top: 2px;
   right: 2px;
-  background-color: #0F3D5A;
+  background-color: #b91c1c;
   color: white;
   font-size: 10px;
   width: 15px;
@@ -507,7 +468,7 @@ body {
 .mark-all-read {
   background: none;
   border: none;
-  color: #0F3D5A;
+  color: #b91c1c;
   font-size: 12px;
   cursor: pointer;
   text-decoration: underline;
@@ -527,7 +488,7 @@ body {
 
 .notification-item.unread {
   background-color: #f0f8ff;
-  border-left: 3px solid #0F3D5A;
+  border-left: 3px solid #b91c1c;
 }
 
 .notification-item:last-child {
@@ -634,10 +595,10 @@ body {
 }
 
 .content-areas {
-  flex: 1;
-  padding: clamp(16px, 3vw, 24px);
-  background: #f0f0f0;
-  overflow-y: auto;
+flex: 1;
+          padding: 24px;
+          background: #f5f5f5;
+          overflow-y: auto;
 }
 
 .page-headers {
@@ -659,37 +620,72 @@ body {
 }
 
 /* Added styles for status filter tabs */
-.status-filter-tabs {
+.tabs-container {
   display: flex;
-  gap: 0;
-  margin-bottom: 20px;
-  border-bottom: 2px solid #e5e7eb;
-  overflow-x: auto;
+  gap: 16px;
+  background: #e5e2e2ff;
+  padding: 0 8px; /* remove vertical padding so tabs fill height */
+  border-radius: 24px;
+  height: 48px;
+  width: 370px;
+  align-items: center; /* center tabs vertically */
+  margin-top:20px;
+  margin-bottom:20px;
 }
 
-.filter-tab {
+.tab {
+        
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%; /* match container height */
+  padding: 0 12px;
   background: none;
   border: none;
-  padding: 12px 20px;
   font-size: 14px;
   font-weight: 500;
-  color: #6b7280;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
-  white-space: nowrap;
-  min-height: 44px;
-}
-
-.filter-tab:hover {
   color: #374151;
-  background: #f9fafb;
+  cursor: pointer;
+  position: relative;
+  border-radius: 24px; /* pill shape */
+  transition: all 0.2s ease;
 }
 
-.filter-tab.active {
-  color: #0F3D5A;
-  border-bottom-color: #0F3D5A;
-  background: #fef2f2;
+.tab:hover {
+  background-color: #ffffff;
+  color: #111827;
+}
+
+
+
+.tab.active {
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.badge-pending {
+  background-color: #f59e0b; /* orange */
+}
+
+.badge-approved {
+  background-color: #22c55e; /* green */
+}
+
+.badge-declined {
+  background-color: #ef4444; /* red */
 }
 
 .table-headerss {
@@ -792,7 +788,7 @@ body {
   top: 20px;
   left: 20px;
   z-index: 1001;
-  background: #0F3D5A;
+  background: #b91c1c;
   color: white;
   border: none;
   padding: 12px;
@@ -803,44 +799,23 @@ body {
   min-width: 44px;
 }
 
-/* New Close Button (X) inside sidebar */
-.sidebarsCloseBtn {
-  position: absolute;
-  top: 20px; /* Adjust as needed */
-  right: 20px; /* Adjust as needed */
-  background: none;
-  border: none;
-  color: white;
-  font-size: 24px;
-  cursor: pointer;
-  z-index: 1002; /* Ensure it's above other sidebar content */
-  padding: 5px;
-  border-radius: 50%;
-  transition: background-color 0.2s ease;
-}
-
-.sidebarCloseBtn:hover {
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
 /* Chat Widget Styling - Button Only */
 .chat-widget {
   position: fixed;
   bottom: 24px;
   right: 24px;
-  z-index: 1000;
+  z-index: 999;
 }
 
-/* Chat Button - Speech Bubble Design */
 .chat-button {
   width: 64px;
   height: 64px;
-  background: #0F3D5A;
+  background: #b91c1c;
   border: none;
   border-radius: 20px;
   color: white;
   cursor: pointer;
-  box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
+  box-shadow: 0 4px 12px rgba(28, 44, 185, 0.3);
   transition: all 0.3s ease;
   display: flex;
   align-items: center;
@@ -848,7 +823,6 @@ body {
   position: relative;
 }
 
-/* Speech bubble tail */
 .chat-button::after {
   content: "";
   position: absolute;
@@ -859,19 +833,18 @@ body {
   height: 0;
   border-left: 10px solid transparent;
   border-right: 10px solid transparent;
-  border-top: 10px solid #0F3D5A;
+  border-top: 10px solid #b91c1c;
 }
 
 .chat-button:hover {
   transform: scale(1.05);
-  box-shadow: 0 6px 16px rgba(28, 41, 185, 0.4);
+  box-shadow: 0 6px 16px rgba(28, 78, 185, 0.4);
 }
 
 .chat-button:hover::after {
-  border-top-color: #0F3D5A;
+  border-top-color: #b91c1c;
 }
 
-/* Static three dots design */
 .chat-dots {
   display: flex;
   gap: 6px;
@@ -1059,9 +1032,7 @@ body {
     gap: 8px;
   }
 
-  .status-filter-tabs {
-    margin-bottom: 16px;
-  }
+  
 
   .filter-tab {
     padding: 10px 16px;
@@ -1075,15 +1046,6 @@ body {
     display: block;
   }
 
-  .sidebars {
-    transform: translateX(-100%);
-    transition: transform 0.3s;
-  }
-
-  .sidebars.open {
-    transform: translateX(0);
-  }
-
   .main-content {
     margin-left: 0;
     width: 100%;
@@ -1094,9 +1056,9 @@ body {
     padding: 12px 16px;
   }
 
-  .search-containers {
+  .search-container {
     margin-right: 10px;
-    min-width: 150px;
+    min-width: auto;
   }
 
   .content-areas {
@@ -1108,12 +1070,6 @@ body {
     grid-template-columns: 1fr;
     gap: 8px;
     text-align: left;
-  }
-
-  .table-headers > div,
-  .table-rows > div {
-    padding: 4px 0;
-    word-wrap: break-word;
   }
 
   .table-rows {
@@ -1128,38 +1084,7 @@ body {
     margin-top: 8px;
   }
 
-  .chat-widget {
-    bottom: 16px;
-    right: 16px;
-  }
-
-  .chat-button {
-    width: 56px;
-    height: 56px;
-    border-radius: 18px;
-  }
-
-  .chat-button::after {
-    bottom: -6px;
-    border-left-width: 8px;
-    border-right-width: 8px;
-    border-top-width: 8px;
-  }
-
-  .confirmation-buttons {
-    flex-direction: column;
-  }
-
-  /* Show the internal close button when the sidebar is expanded on mobile */
-  .sidebars.open .sidebarCloseBtn {
-    display: block;
-  }
-
-  /* Hide the mobile menu button when the sidebar is expanded */
-  .sidebars.open ~ .mobile-menu-btn {
-    display: none;
-  }
-}
+  
 
 /* Small Mobile */
 @media (max-width: 480px) {
@@ -1170,7 +1095,7 @@ body {
     margin-left: 50px;
   }
 
-  .search-containers {
+  .search-container {
     margin-right: 0;
     min-width: auto;
   }
@@ -1200,141 +1125,92 @@ body {
   }
 }
 
+.search-container {
+  flex: 1;
+  max-width: 400px;
+  margin-right: 20px;
+  position: relative;
+  min-width: 200px;
+  margin-bottom: 10px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 16px 8px 40px;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  font-size: clamp(12px, 2vw, 14px);
+  outline: none;
+  min-height: 50px;
+  background: #fff;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: #6b7280;
+}
+
       `}</style>
 
       <div className="sidebars" id="sidebars" ref={sidebarRef}>
-        <div className="sidebars-logo">
-         <img src="/Images/logo1.png" alt="Dvmf Logo" className="logo" />
-
-        </div>
-        <nav className="nav-menu">
-          {[
-            {
-              name: "Dashboard",
-              icon: LayoutDashboard,
-              path: "/DvmfDashboard",
-            },
-            { name: "Account Approval", icon: UserCheck, path: "/DvmfAccountApproval" },
-            { name: "Access Requests", icon: FileText, path: "/DvmfAccessRequest", active: true },
-            { name: "Horse Records", icon: ClipboardList, path: "/DvmfHorseRecord" },
-            { name: "Health Reports", icon: BarChart3, path: "/DvmfHealthReport" },
-            { name: "Announcements", icon: Megaphone, path: "/DvmfAnnouncement" },
-            { name: "Directory", icon: Folder, path: "/DvmfDirectory" },
-            { name: "Settings", icon: Settings, path: "/DvmfSettings" },
-          ].map((item) => {
-            const IconComponent = item.icon
-            return (
-              <Link key={item.name} to={item.path} className={`nav-item ${item.active ? "active" : ""}`}>
-                <IconComponent className="nav-icon" size={20} />
-                {item.name}
-              </Link>
-            )
-          })}
-        </nav>
-        <div className="logouts">
-          <a href="#" className="logout-btns" id="logoutBtn" onClick={openLogoutModal}>
-            <LogOut className="logout-icons" size={20} />
-            Log Out
-          </a>
-        </div>
+        <Sidebar isOpen={isSidebarsOpen} />
       </div>
 
       <div className="main-content">
         <header className="headers">
-          <div className="search-container">
-            <Search className="search-icon" size={20} />
-            <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
-          </div>
-          <div
-            className="notification-bell"
-            id="notification-bell"
-            ref={notificationBellRef}
-            onClick={toggleNotificationDropdown}
-          >
-            <Bell size={20} />
-            {notifications.filter((n) => !n.read).length > 0 && (
-              <div className="notification-count" style={{ display: "flex" }}>
-                {notifications.filter((n) => !n.read).length > 9 ? "9+" : notifications.filter((n) => !n.read).length}
-              </div>
-            )}
-            <div
-              className={`notification-dropdown ${isNotificationDropdownOpen ? "show" : ""}`}
-              ref={notificationDropdownRef}
+          <h1 style={styles.titleStyle}>Access Request</h1>
+
+          {/* 🔔 Notification Bell */}
+            <button
+              style={styles.notificationBtn}
+              onClick={() => setNotifsOpen(!notifsOpen)}
             >
-              <div className="notification-header">
-                <h3>Notifications</h3>
-                {notifications.filter((n) => !n.read).length > 0 && (
-                  <button className="mark-all-read" onClick={markAllAsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div id="notificationList">
-                {notifications.length === 0 ? (
-                  <div className="empty-state">
-                    <BellOff size={48} />
-                    <h3>No notifications</h3>
-                    <p>You're all caught up!</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => {
-                    const NotificationIcon = getNotificationIcon(notification.type)
-                    return (
-                      <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
-                        <div className="notification-actions">
-                          {!notification.read && (
-                            <button
-                              className="notification-action"
-                              onClick={() => markAsRead(notification.id)}
-                              title="Mark as read"
-                            >
-                              <Check size={16} />
-                            </button>
-                          )}
-                          <button
-                            className="notification-action"
-                            onClick={() => deleteNotification(notification.id)}
-                            title="Delete"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                        <div className="notification-title">
-                          <NotificationIcon className={`notification-icon ${notification.type}`} size={16} />
-                          {notification.title}
-                        </div>
-                        <div className="notification-message">{notification.message}</div>
-                        <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
-                      </div>
-                    )
-                  })
-                )}
-              </div>
-            </div>
-          </div>
+              <Bell size={24} color="#374151" />
+              {notifications.length > 0 && (
+                <span style={styles.badge}>{notifications.length}</span>
+              )}
+            </button>
+
+            {/* 📩 Notification Modal */}
+            <NotificationModal
+              isOpen={notifsOpen}
+              onClose={() => setNotifsOpen(false)}
+              notifications={notifications.map((n) => ({
+                message: n.message,
+                date: n.date,
+              }))}
+            />
         </header>
 
         <div className="content-areas">
           <div className="page-headers">
-            <h1 className="page-title">Access Request</h1>
-            <div className="status-filter-tabs">
+            <div className="search-container">
+              <Search className="search-icon" size={18} />
+              <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
+            </div>
+            <div className="tabs-container">
               <button
-                className={`filter-tab ${activeFilter === "pending" ? "active" : ""}`}
-                onClick={() => setActiveFilter("pending")}
+                className={`tab ${activeTab === "pending" ? "active" : ""}`}
+                onClick={() => setActiveTab("pending")}
               >
-                Pending ({filterCounts.pending})
+                Pending <span className="badge badge-pending">{filterCounts.pending}</span>
               </button>
               <button
-                className={`filter-tab ${activeFilter === "approved" ? "active" : ""}`}
-                onClick={() => setActiveFilter("approved")}
+                className={`tab ${activeTab === "approved" ? "active" : ""}`}
+                onClick={() => setActiveTab("approved")}
               >
-                Approved ({filterCounts.approved})
+                Approved <span className="badge badge-approved">{filterCounts.approved}</span>
               </button>
               <button
-                className={`filter-tab ${activeFilter === "declined" ? "active" : ""}`}
-                onClick={() => setActiveFilter("declined")}
+                className={`tab ${activeTab === "declined" ? "active" : ""}`}
+                onClick={() => setActiveTab("declined")}
               >
-                Declined ({filterCounts.declined})
+                Declined <span className="badge badge-declined">{filterCounts.declined}</span>
               </button>
             </div>
             <div className="access-table">
@@ -1351,7 +1227,7 @@ body {
                 <div className="empty-state">
                   <FileText size={48} />
                   <h3>No access requests</h3>
-                  <p>No {activeFilter} requests found</p>
+                  <p>No {activeTab} requests found</p>
                 </div>
               ) : (
                 filteredRequests.map((request) => (
@@ -1389,26 +1265,14 @@ body {
         </div>
       </div>
 
-      <div className="chat-widget">
-        <button className="chat-button" id="chatButton" onClick={() => navigate("/DvmfMessage")}>
-          <div className="chat-dots">
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-          </div>
-        </button>
-      </div>
+      <FloatingMessages />
 
+      {/* Logout Modal */}
       {isLogoutModalOpen && (
-        <div
-          className="modal-overlay active"
-          id="logoutModal"
-          ref={logoutModalRef}
-          onClick={(e) => e.target === logoutModalRef.current && closeLogoutModal()}
-        >
+        <div className="modal-overlay active" ref={logoutModalRef}>
           <div className="logout-modal">
             <div className="logout-modal-icon">
-              <LogOut size={48} />
+              <LogOut size={25} color="#f59e0b" />
             </div>
             <h3>Confirm Logout</h3>
             <p>Are you sure you want to log out of your account?</p>

@@ -6,7 +6,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from './CtuMessage'
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
+const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed";
 
 
 function CtuAccessRequest() {
@@ -63,10 +63,37 @@ function CtuAccessRequest() {
     setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
   }
 
+  // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
-    setNotifications([])
+
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch notifications")
+        return res.json()
+      })
+      .then((data) => {
+        const formatted = data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+        }))
+        setNotifications(formatted)
+      })
+      .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
+
+ // ✅ Auto-refresh every 30s
+  useEffect(() => {
+    loadNotifications() // load once
+
+    const interval = setInterval(() => {
+      loadNotifications()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [loadNotifications])
+
 
   const loadAccessRequests = useCallback(() => {
     console.log("Loading access requests...")
@@ -225,25 +252,25 @@ function CtuAccessRequest() {
 
   // Define the styles object at the top of your file or before the return
   const styles = {
-    notificationBtn: {
-      position: "relative",
-      background: "transparent",
-      border: "none",
-      cursor: "pointer",
-      padding: "8px",
-      borderRadius: "50%",
-    },
-    badge: {
-      position: "absolute",
-      top: "2px",
-      right: "2px",
-      backgroundColor: "#ef4444",
-      color: "#fff",
-      borderRadius: "50%",
-      padding: "2px 6px",
-      fontSize: "12px",
-      fontWeight: "bold",
-    },
+     notificationBtn: {
+    position: "relative",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    padding: "8px",
+    borderRadius: "50%",
+  },
+  badge: {
+    position: "absolute",
+    top: "2px",
+    right: "2px",
+    backgroundColor: "#ef4444",
+    color: "#fff",
+    borderRadius: "50%",
+    padding: "2px 6px",
+    fontSize: "12px",
+    fontWeight: "bold",
+  },
     titleStyle: {
       fontSize: "25px",
       fontWeight: "bold",
@@ -1138,21 +1165,26 @@ flex: 1;
         <header className="headers">
           <h1 style={styles.titleStyle}>Access Request</h1>
 
-          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)} ref={notificationBellRef}>
-            <Bell size={24} color="#374151" />
-            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
-          </button>
+          {/* 🔔 Notification Bell */}
+            <button
+              style={styles.notificationBtn}
+              onClick={() => setNotifsOpen(!notifsOpen)}
+            >
+              <Bell size={24} color="#374151" />
+              {notifications.length > 0 && (
+                <span style={styles.badge}>{notifications.length}</span>
+              )}
+            </button>
 
-          {/* Notification Modal */}
-          <NotificationModal
-            isOpen={notifsOpen}
-            onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
-            ref={notificationDropdownRef}
-          />
+            {/* 📩 Notification Modal */}
+            <NotificationModal
+              isOpen={notifsOpen}
+              onClose={() => setNotifsOpen(false)}
+              notifications={notifications.map((n) => ({
+                message: n.message,
+                date: n.date,
+              }))}
+            />
         </header>
 
         <div className="content-areas">

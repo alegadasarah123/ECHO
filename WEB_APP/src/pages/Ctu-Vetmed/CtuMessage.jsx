@@ -3,7 +3,7 @@
 import { ArrowLeft, Maximize2, MessageCircle, MoreVertical, Phone, Search, Send, Video, X } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
-const API_BASE = "http://localhost:8000/api/kutsero_president"
+const API_BASE = "http://localhost:8000/api/ctu_vetmed"
 
 const FloatingMessages = () => {
   const [viewState, setViewState] = useState("closed")
@@ -32,87 +32,102 @@ const FloatingMessages = () => {
     }
   }, [selectedConversation?.messages])
 
-  // Fetch conversations
-  useEffect(() => {
-    fetchConversations("")
-  }, [])
+  // Fetch conversations (vets only)
+const fetchConversations = async (query) => {
+  try {
+    const res = await fetch(`${API_BASE}/search_vets/?q=${encodeURIComponent(query)}`, {
+      credentials: "include",
+    });
 
-  const fetchConversations = async (query) => {
-    try {
-      const res = await fetch(`${API_BASE}/search_users/?q=${encodeURIComponent(query)}`, {
-        credentials: "include",
-      })
-      const data = await res.json()
-      const users = data.users || []
-      const mapped = users.map((u) => ({
-        id: u.id,
-        name: u.name || u.email,
-        avatar: (u.name || u.email).slice(0, 2).toUpperCase(),
-        lastMessage: "",
-        timestamp: "",
-        unread: 0,
-        online: false,
-        messages: [],
-      }))
-      setConversations(mapped)
-      const unreadSum = mapped.reduce((sum, c) => sum + (c.unread || 0), 0)
-      setTotalUnread(unreadSum)
-    } catch (err) {
-      console.error(err)
+    if (!res.ok) {
+      throw new Error(`HTTP error! status: ${res.status}`);
     }
+
+    const data = await res.json();
+    const vets = data.users || [];
+
+    // Map vets to conversation structure
+    const mapped = vets.map((v) => ({
+      id: v.id,
+      name: v.name || v.email,
+      avatar: (v.name || v.email).slice(0, 2).toUpperCase(),
+      lastMessage: "",
+      timestamp: "",
+      unread: 0,
+      online: false,
+      messages: [],
+    }));
+
+    setConversations(mapped);
+
+    // Calculate total unread
+    const unreadSum = mapped.reduce((sum, c) => sum + (c.unread || 0), 0);
+    setTotalUnread(unreadSum);
+  } catch (err) {
+    console.error("Error fetching vets:", err);
   }
+};
 
-  const handleSearch = (term) => {
-    setSearchTerm(term)
-    fetchConversations(term)
-  }
+ const handleSearch = (term) => {
+    setSearchTerm(term);
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation) return
+    // Clear previous timeout
+    if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    try {
-      const res = await fetch(`${API_BASE}/send_message/`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: "CURRENT_USER_ID", // replace with actual logged-in user id
-          receiver_id: selectedConversation.id,
-          mes_content: newMessage,
-        }),
-      })
+    // Set new timeout
+    debounceRef.current = setTimeout(() => {
+      fetchConversations(term); // Call the API after 300ms of inactivity
+    }, 300);
+  };
 
-      const data = await res.json()
+  // Send a message
+const handleSendMessage = async () => {
+  if (!newMessage.trim() || !selectedConversation) return;
 
-      if (res.ok) {
-        setConversations((prev) =>
-          prev.map((conv) =>
-            conv.id === selectedConversation.id
-              ? {
-                  ...conv,
-                  messages: [
-                    ...conv.messages,
-                    {
-                      content: data.mes_content || newMessage,
-                      timestamp: new Date(data.mes_date || Date.now()).toLocaleTimeString(),
-                      isOwn: true,
-                    },
-                  ],
-                }
-              : conv,
-          ),
+  try {
+    const res = await fetch(`${API_BASE}/send_vet_message/`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: "CURRENT_USER_ID", // replace with actual logged-in user id
+        receiver_id: selectedConversation.id,
+        mes_content: newMessage,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv.id === selectedConversation.id
+            ? {
+                ...conv,
+                messages: [
+                  ...conv.messages,
+                  {
+                    content: data.mes_content || newMessage,
+                    timestamp: new Date(data.mes_date || Date.now()).toLocaleTimeString(),
+                    isOwn: true,
+                  },
+                ],
+              }
+            : conv
         )
-        setNewMessage("")
-        if (textareaRef.current) {
-          textareaRef.current.style.height = "20px"
-        }
-      } else {
-        console.error("Failed to send message:", data)
+      );
+
+      setNewMessage("");
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "20px";
       }
-    } catch (err) {
-      console.error("Error sending message:", err)
+    } else {
+      console.error("Failed to send message:", data);
     }
+  } catch (err) {
+    console.error("Error sending message:", err);
   }
+};
 
   const ConversationList = () => (
     <div style={styles.conversationList}>
@@ -405,7 +420,7 @@ const styles = {
     cursor: "pointer",
     transition: "background 0.2s",
   },
-  icon: { width: "16px", height: "16px", color: "#4b5563" },
+  icon: { width: "16px", height: "16px", color: "#c6ccd5ff" },
   messagesContainer: {
     flex: 1,
     overflowY: "auto",

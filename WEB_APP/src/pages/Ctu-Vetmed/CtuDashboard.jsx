@@ -112,6 +112,7 @@ const styles = {
     fontSize: "12px",
     fontWeight: "bold",
   },
+ 
   contentAreas: {
     flex: 1,
     padding: "24px",
@@ -159,6 +160,8 @@ const styles = {
     borderRadius: "12px",
     boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
     border: "1px solid #fee2e2",
+    maxHeight: "400px",      // fixed height for scrollable area
+  overflowY: "auto",       // vertical scroll when content exceeds height
   },
   activityHeader: {
     fontSize: "20px",
@@ -494,10 +497,11 @@ function CtuDashboard() {
   }
 
   // Data loading functions
+  // 🔹 define loadStats inside the component
   const loadStats = useCallback(() => {
     console.log("Loading statistics...")
 
-    fetch(`${API_BASE}/status-counts/`, {
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/status-counts/", {
       method: "GET",
       credentials: "include",
     })
@@ -513,15 +517,36 @@ function CtuDashboard() {
       .catch((err) => console.error("Error fetching stats:", err))
   }, [])
 
+  // 🔹 call loadStats when component mounts
+  useEffect(() => {
+    loadStats()
+  }, [loadStats])
+
   const loadRecentActivities = useCallback(() => {
     console.log("Loading recent activities...")
     setRecentActivities([])
   }, [])
 
+ // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
-    setNotifications([])
+
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch notifications")
+        return res.json()
+      })
+      .then((data) => {
+        const formatted = data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+        }))
+        setNotifications(formatted)
+      })
+      .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
+
 
   const loadDashboardData = useCallback(() => {
     loadStats()
@@ -532,22 +557,32 @@ function CtuDashboard() {
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
   }
+  // ✅ Auto-refresh every 30s
+  useEffect(() => {
+    loadNotifications() // load once
 
+    const interval = setInterval(() => {
+      loadNotifications()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [loadNotifications])
 
 
   // Fetch from Django backend
-  useEffect(() => {
-    fetch(`${API_BASE}/recent-activity/`, {
-      method: "GET",
-      credentials: "include",
+useEffect(() => {
+  fetch("http://127.0.0.1:8000/api/ctu_vetmed/recent-activity/", {
+    method: "GET",
+    credentials: "include",
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+      return res.json();
     })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
-        return res.json()
-      })
-      .then((data) => setRecentActivities(data))
-      .catch((err) => console.error("Error fetching activity:", err))
-  }, [])
+    .then((data) => setRecentActivities(data))
+    .catch((err) => console.error("Error fetching activity:", err));
+}, []);
+
 
   // Effects
   useEffect(() => {
@@ -597,20 +632,25 @@ function CtuDashboard() {
             <h2 style={styles.dashboardTitle}>Dashboard</h2>
             <span style={styles.dashboardTime}>{time}</span>
           </div>
-          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
-            <Bell size={24} color="#374151" />
-            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
-          </button>
+            <button
+              style={styles.notificationBtn}
+              onClick={() => setNotifsOpen(!notifsOpen)}
+            >
+              <Bell size={24} color="#374151" />
+              {notifications.length > 0 && (
+                <span style={styles.badge}>{notifications.length}</span>
+              )}
+            </button>
 
-          {/* Notification Modal */}
-          <NotificationModal
-            isOpen={notifsOpen}
-            onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
-          />
+          {/* 📩 Notification Modal */}
+            <NotificationModal
+              isOpen={notifsOpen}
+              onClose={() => setNotifsOpen(false)}
+              notifications={notifications.map((n) => ({
+                message: n.message,
+                date: n.date,
+              }))}
+            />
         </header>
 
         <div style={styles.contentAreas}>

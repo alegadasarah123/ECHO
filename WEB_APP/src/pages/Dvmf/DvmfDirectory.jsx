@@ -1,33 +1,20 @@
 "use client"
 
-import {
-  AlertTriangle,
-  BarChart3,
-  Bell,
-  BellOff,
-  Check,
-  CheckCircle,
-  ClipboardList,
-  FileText,
-  Folder,
-  Info,
-  LayoutDashboard,
-  LogOut,
-  Megaphone,
-  Search,
-  Settings,
-  UserCheck,
-  X,
-  XCircle,
-} from "lucide-react"
-import React, { useCallback, useEffect, useRef, useState } from "react"
+import Sidebar from "@/components/DvmfSidebar"
+import { AlertTriangle, Bell, CheckCircle, Folder, Info, LogOut, Search, Trash2, XCircle } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import FloatingMessages from './DvmfMessage'
+import NotificationModal from "./DvmfNotif"
 
 const initialDirectoryData = []
 const initialNotifications = []
 
+const API_BASE = "http://127.0.0.1:8000/api/dvmf";
+
 function DvmfDirectory() {
   const navigate = useNavigate()
+  const [notifsOpen, setNotifsOpen] = useState(false)
   const [directoryData, setDirectoryData] = useState(initialDirectoryData)
   const [filteredDirectoryData, setFilteredDirectoryData] = useState(initialDirectoryData)
 
@@ -43,10 +30,13 @@ function DvmfDirectory() {
   const [notifications, setNotifications] = useState(initialNotifications)
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
-  const sidebarRef = useRef(null)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Added state for sidebar open/close
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
+  const sidebarRef = useRef(null) // Added ref for sidebar
+  const [directory, setDirectory] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
 
   // Utility functions
   const formatTimeAgo = useCallback((timestamp) => {
@@ -68,18 +58,36 @@ function DvmfDirectory() {
     return icons[type] || icons.info
   }, [])
 
-  // Notification handlers
-  const markAsRead = useCallback((notificationId) => {
-    setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
+  // ✅ Fetch notifications from backend
+  const loadNotifications = useCallback(() => {
+    console.log("Loading notifications...")
+
+    fetch("http://127.0.0.1:8000/api/dvmf/get_vetnotifications/")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch notifications")
+        return res.json()
+      })
+      .then((data) => {
+        const formatted = data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+        }))
+        setNotifications(formatted)
+      })
+      .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
-  const markAllAsRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-  }, [])
+  // ✅ Auto-refresh every 30s
+  useEffect(() => {
+    loadNotifications() // load once
 
-  const deleteNotification = useCallback((notificationId) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
-  }, [])
+    const interval = setInterval(() => {
+      loadNotifications()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [loadNotifications])
 
   // Apply all filters and search
   const applyFiltersAndSearch = useCallback(() => {
@@ -87,18 +95,15 @@ function DvmfDirectory() {
 
     // Apply tab filter
     switch (currentTab) {
-      case "horses":
-        filtered = filtered.filter((item) => item.type?.toLowerCase() === "horse")
-        break
       case "veterinarian":
         filtered = filtered.filter((item) => item.type?.toLowerCase() === "veterinarian")
         break
       case "kutsero":
         filtered = filtered.filter((item) => item.type?.toLowerCase() === "kutsero")
         break
-      case "horses-per-owner":
+      case "horses-operator":
         // This would require special handling for grouping horses by owner
-        filtered = [] // For now, show empty for this tab
+        filtered = filtered.filter((item) => item.type?.toLowerCase() === "horse operator")
         break
       default:
         // 'all' tab
@@ -170,19 +175,7 @@ function DvmfDirectory() {
     return () => {
       document.removeEventListener("mousedown", handleOutsideClick)
     }
-  }, [showNotificationDropdown, showLogoutModal, isSidebarOpen])
-
-  // Handle window resize for sidebar
-  useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth > 768) {
-        setIsSidebarOpen(false)
-      }
-    }
-
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
+  }, [isSidebarOpen, showLogoutModal])
 
   // Navigation handler
   const handleNavigation = useCallback(
@@ -193,6 +186,124 @@ function DvmfDirectory() {
     },
     [navigate],
   )
+
+const handleDelete = async (email) => {
+  if (!email) return;
+
+  const confirmDelete = window.confirm(`Are you sure you want to delete ${email}?`);
+  if (!confirmDelete) return;
+
+  try {
+    const response = await fetch(`http://127.0.0.1:8000/api/dvmf/directory/${email}/`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+
+    const result = await response.json();
+    if (response.ok) {
+      alert(result.message);  // Show approved deletion message
+      loadDirectoryData();     // Refresh list
+    } else {
+      alert(result.error);
+      console.error("Error deleting user:", result);
+    }
+  } catch (err) {
+    alert("Unexpected error occurred while deleting user.");
+    console.error("Error deleting user:", err);
+  }
+};
+
+
+
+
+  const handleSearchInput = (e) => {
+    const searchTerm = e.target.value.toLowerCase()
+    setSearchTerm(searchTerm)
+
+    // Filter directory items based on search term
+    if (searchTerm === "") {
+      setFilteredDirectoryData(directoryData)
+    } else {
+      const filtered = directoryData.filter(
+        (item) =>
+          item.name.toLowerCase().includes(searchTerm) ||
+          item.type.toLowerCase().includes(searchTerm) ||
+          (item.description && item.description.toLowerCase().includes(searchTerm)),
+      )
+      setFilteredDirectoryData(filtered)
+    }
+  }
+
+  // Load data from backend
+const loadDirectoryData = async () => {
+  try {
+    const response = await fetch(
+      "http://127.0.0.1:8000/api/dvmf/get_directory_profiles/",
+      { method: "GET", credentials: "include" }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Error ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    const combinedData = [
+      ...data.vets.map((vet) => ({
+        name: `${vet.vet_fname} ${vet.vet_lname}`,
+        type: "Veterinarian",
+        email: vet.vet_email || "N/A",
+        status: vet.users?.status || "Unknown",
+      })),
+      ...data.kutseros.map((k) => ({
+        name: `${k.kutsero_fname} ${k.kutsero_lname}`,
+        type: "Kutsero",
+        email: k.kutsero_email || "N/A",
+        status: k.users?.status || "Unknown",
+      })),
+      ...data.horse_operators.map((h) => ({
+        name: `${h.op_fname} ${h.op_lname}`,
+        type: "Horse Operator",
+        email: h.op_email || "N/A",
+        status: h.users?.status || "Unknown",
+      })),
+    ];
+
+    setDirectoryData(combinedData);
+  } catch (err) {
+    setError(err.message);
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+  // Define the styles object at the top of your file or before the return
+  const styles = {
+    notificationBtn: {
+      position: "relative",
+      background: "transparent",
+      border: "none",
+      cursor: "pointer",
+      padding: "8px",
+      borderRadius: "50%",
+    },
+    badge: {
+      position: "absolute",
+      top: "2px",
+      right: "2px",
+      backgroundColor: "#ef4444",
+      color: "#fff",
+      borderRadius: "50%",
+      padding: "2px 6px",
+      fontSize: "12px",
+      fontWeight: "bold",
+    },
+  }
+
+  useEffect(() => {
+    loadDirectoryData()
+  }, [])
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -212,84 +323,6 @@ body {
   box-sizing: border-box;
 }
 
-.sidebars {
-  width: 250px;
-  background-color: #0F3D5A;
-  color: white;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  height: 100vh;
-  left: 0;
-  top: 0;
-  z-index: 1000;
-  transition: transform 0.3s ease;
-}
-
-.sidebars-logo {
-  padding: 5px;
-  display: flex;
-  justify-content: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.sidebars-logo img {
-  width: 250px;
-  height: 200px;
-  object-fit: contain;
-}
-
-.nav-menu {
-  flex: 1;
-  padding: 20px 0;
-}
-
-.nav-item {
-  display: flex;
-  align-items: center;
-  padding: 12px 40px;
-  color: white;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  margin: 0px 0px 2px 0;
-  position: relative;
-  margin-left: 10px;
-  min-height: 44px;
-}
-
-.nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 25px 0 0 25px;
-}
-
-.nav-item.active {
-  background-color: #f8f9fa;
-  color: #0F3D5A;
-  border-radius: 20px 0 0 20px;
-  font-weight: 500;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  width: 240px;
-  margin-left: 10px;
-}
-
-.nav-icon {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.nav-item.active .nav-icon {
-  color: #0F3D5A;
-}
-
  .logouts {
   padding: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
@@ -300,7 +333,7 @@ body {
   align-items: center;
   color: white;
   text-decoration: none;
-  font-size: clamp(13px, 2vw, 15px);
+  font-size: clamp(13px, 2vw, 14px);
   font-weight: 500;
   cursor: pointer;
   padding: 14px 40px;
@@ -325,7 +358,6 @@ body {
 }
 
 .main-content {
-  margin-left: 250px;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -334,7 +366,7 @@ body {
 
 .headers {
   background: #ffffff;
-  padding: 16px 24px;
+  padding: 8px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -343,36 +375,7 @@ body {
   gap: 16px;
 }
 
-.search-containers {
-  flex: 1;
-  max-width: 400px;
-  margin-right: 20px;
-  position: relative;
-  min-width: 200px;
-}
 
-.search-input {
-  width: 100%;
-  padding: 8px 16px 8px 40px;
-  border: 2px solid #e5e7eb;
-  border-radius: 8px;
-  font-size: clamp(12px, 2vw, 14px);
-  outline: none;
-  min-height: 40px;
-}
-
-.search-input:focus {
-  border-color: #0F3D5A;
-}
-
-.search-icons {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
-}
 
 .notification-bell {
   font-size: clamp(18px, 3vw, 20px);
@@ -392,7 +395,7 @@ body {
   position: absolute;
   top: 2px;
   right: 2px;
-  background-color: #0F3D5A;
+  background-color: #b91c1c;
   color: white;
   font-size: 10px;
   width: 15px;
@@ -442,7 +445,7 @@ body {
 .mark-all-read {
   background: none;
   border: none;
-  color: #0F3D5A;
+  color:#b91c1c;
   font-size: 12px;
   cursor: pointer;
   text-decoration: underline;
@@ -462,7 +465,7 @@ body {
 
 .notification-item.unread {
   background-color: #f0f8ff;
-  border-left: 3px solid #0F3D5A;
+  border-left: 3px solid #b91c1c;
 }
 
 .notification-item:last-child {
@@ -534,10 +537,10 @@ body {
 }
 
 .content-area {
-  flex: 1;
-  padding: clamp(16px, 3vw, 24px);
-  background: #f0f0f0;
-  overflow-y: auto;
+flex: 1;
+          padding: 24px;
+          background: #f5f5f5;
+          overflow-y: auto;
 }
 
 .directory-container {
@@ -571,7 +574,7 @@ body {
 .tab-item.active {
   color: #111827;
   background: #e5e7eb;
-  border-bottom-color:#0F3D5A;
+  border-bottom-color:#b91c1c;
 }
 
 .tab-item:hover:not(.active) {
@@ -583,23 +586,10 @@ body {
   padding: clamp(16px, 3vw, 20px);
 }
 
-.filter-row {
-  display: flex;
-  gap: 12px;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-}
 
-.filter-select {
-  padding: 8px 12px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: clamp(12px, 2vw, 14px);
-  background: #ffffff;
-  min-width: 140px;
-  color: #6b7280;
-  min-height: 40px;
-}
+
+
+
 
 .directory-table {
   width: 100%;
@@ -649,7 +639,7 @@ body {
   white-space: nowrap;
 }
 
-.status-healthy {
+.status-approved {
   background: #dcfce7;
   color: #166534;
 }
@@ -659,9 +649,91 @@ body {
   color: #1d4ed8;
 }
 
-.status-inactive {
+.status-declined {
   background: #fef2f2;
   color: #dc2626;
+}
+.status-deactivated {
+  background: #fef2f2;
+  color: #4e0920ff;
+}
+.status-available {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.status-pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.status-offline {
+  background: #f3f4f6;
+  color: #374151;
+}
+
+.status-on-duty {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.status-off-duty {
+  background: #fce7f3;
+  color: #be185d;
+}
+
+.status-unknown {
+  background: #f9fafb;
+  color: #6b7280;
+  border: 1px solid #d1d5db;
+}
+
+/* Added role-based color styling */
+.role-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: clamp(10px, 1.8vw, 12px);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.role-veterinarian {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.role-kutsero {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.role-horse-operator {
+  background: #fef7ed;
+  color: #c2410c;
+  border: 1px solid #fed7aa;
+}
+
+/* Improved delete button styling and positioning */
+.delete-button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  background: #fee2e2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: clamp(10px, 1.8vw, 12px);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.delete-button:hover {
+  background: #fecaca;
+  border-color: #f87171;
 }
 
 /* Empty State */
@@ -704,7 +776,7 @@ body {
   top: 20px;
   left: 20px;
   z-index: 1001;
-  background: #0F3D5A;
+  background: #b91c1c;
   color: white;
   border: none;
   padding: 12px;
@@ -726,7 +798,7 @@ body {
 .chat-button {
   width: 64px;
   height: 64px;
-  background: #0F3D5A;
+  background: #b91c1c;
   border: none;
   border-radius: 20px;
   color: white;
@@ -749,7 +821,7 @@ body {
   height: 0;
   border-left: 10px solid transparent;
   border-right: 10px solid transparent;
-  border-top: 10px solid #0F3D5A;
+  border-top: 10px solid #b91c1c;
 }
 
 .chat-button:hover {
@@ -758,7 +830,7 @@ body {
 }
 
 .chat-button:hover::after {
-  border-top-color: #0F3D5A;
+  border-top-color: #b91c1c;
 }
 
 .chat-dots {
@@ -928,265 +1000,109 @@ body {
 
 /* Tablet */
 @media (max-width: 1024px) {
-  .filter-row {
-    flex-direction: column;
-  }
+  
   .filter-select {
     min-width: auto;
   }
 }
 
-/* Mobile */
-@media (max-width: 768px) {
-  .mobile-menu-btn {
-    display: block;
-  }
-  .sidebars {
-    transform: translateX(-100%);
-    transition: transform 0.3s;
-  }
-  .sidebars.open {
-    transform: translateX(0);
-  }
-  .main-content {
-    margin-left: 0;
-    width: 100%;
-  }
-  .headers {
-    margin-left: 60px;
-    padding: 12px 16px;
-  }
-  .search-containers {
-    margin-right: 10px;
-    min-width: 150px;
-  }
-  .tab-navigation {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-  }
-  .tab-item {
-    padding: 8px 16px;
-    font-size: 12px;
-    min-width: max-content;
-  }
-  .filter-row {
-    flex-direction: column;
-  }
-  .directory-table {
-    font-size: 12px;
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
-  }
-  .table-header th,
-  .table-row td {
-    padding: 8px;
-    min-width: 80px;
-  }
-  .chat-widget {
-    bottom: 16px;
-    right: 16px;
-  }
-  .chat-button {
-    width: 56px;
-    height: 56px;
-    border-radius: 18px;
-  }
-  .chat-button::after {
-    bottom: -6px;
-    border-left-width: 8px;
-    border-right-width: 8px;
-    border-top-width: 8px;
-  }
-  .confirmation-buttons {
-    flex-direction: column;
-  }
+
+
+.dashboard-container {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 20px;
+          background: transparent;
+          
+        }
+
+        .dashboard-title {
+          font-size: 25px;
+          font-weight: bold;
+          color: #da2424ff;
+        }
+.search-containers {
+  flex: 1;
+  max-width: 400px;
+  margin-right: 20px;
+  position: relative;
+  min-width: 200px;
+  margin-bottom:10px;
 }
 
-/* Small Mobile */
-@media (max-width: 480px) {
-  .headers {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    margin-left: 50px;
-  }
-  .search-containers {
-    margin-right: 0;
-    min-width: auto;
-  }
-  .notification-bell {
-    align-self: flex-end;
-    margin-right: 0;
-  }
-  .mobile-menu-btn {
-    top: 15px;
-    left: 15px;
-    padding: 10px;
-  }
-  .directory-table {
-    font-size: 11px;
-  }
-  .table-header th,
-  .table-row td {
-    padding: 6px;
-    min-width: 70px;
-  }
+.search-input {
+  width: 100%;
+  padding: 8px 16px 8px 40px;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  font-size: clamp(12px, 2vw, 14px);
+  outline: none;
+  min-height: 50px;
+  background: #fff;
 }
 
-/* Touch devices */
-@media (hover: none) and (pointer: coarse) {
-  .nav-item,
-  .logout-btn {
-    min-height: 48px;
-  }
-  .tab-item {
-    min-height: 48px;
-  }
-}
 
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: #6b7280;
+}
+  .dashboard-container {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 20px;
+          background: transparent;
+          
+        }
+
+        .directory-title {
+          font-size: 25px;
+          font-weight: bold;
+          color: #da2424ff;
+        }
       `}</style>
 
-      <button className="mobile-menu-btn" onClick={() => setIsSidebarOpen(!isSidebarOpen)}>
-        ☰
-      </button>
-
-      <div ref={sidebarRef} className={`sidebars ${isSidebarOpen ? "open" : ""}`}>
-        <div className="sidebars-logo">
-           <img src="/Images/logo1.png" alt="Dvmf Logo" className="logo" />
-        </div>
-
-        <nav className="nav-menu">
-          {[
-            { name: "Dashboard", IconComponent: LayoutDashboard, page: "dashboard", route: "/DvmfDashboard" },
-            {
-              name: "Account Approval",
-              IconComponent: UserCheck,
-              page: "approval",
-              route: "/DvmfAccountApproval",
-            },
-            { name: "Access Requests", IconComponent: FileText, page: "requests", route: "/DvmfAccessRequest" },
-            { name: "Horse Records", IconComponent: ClipboardList, page: "records", route: "/DvmfHorseRecord" },
-            { name: "Health Reports", IconComponent: BarChart3, page: "reports", route: "/DvmfHealthReport" },
-            { name: "Announcements", IconComponent: Megaphone, page: "announcements", route: "/DvmfAnnouncement" },
-            { name: "Directory", IconComponent: Folder, page: "directory", route: "/DvmfDirectory" },
-            { name: "Settings", IconComponent: Settings, page: "settings", route: "/DvmfSettings" },
-          ].map((item) => (
-            <a
-              key={item.page}
-              href="#"
-              className={`nav-item ${currentPage === item.page ? "active" : ""}`}
-              onClick={(e) => {
-                e.preventDefault()
-                handleNavigation(item.route, item.page)
-              }}
-            >
-              <item.IconComponent className="nav-icon" size={20} />
-              <span>{item.name}</span>
-            </a>
-          ))}
-        </nav>
-
-        <div className="logouts">
-          <a href="#" className="logout-btns" onClick={() => setShowLogoutModal(true)}>
-            <LogOut className="logout-icons" size={20} />
-            Log Out
-          </a>
-        </div>
-      </div>
+      <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
 
       <div className="main-content">
         <header className="headers">
-          <div className="search-containers">
-            <div className="search-icons">
-               <Search size={20} />
-            </div>
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search......"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="dashboard-container">
+            <h2 className="directory-title">Directory</h2>
           </div>
+          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
+            <Bell size={24} color="#374151" />
+            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
+          </button>
 
-          <div
-            className="notification-bell"
-            ref={notificationBellRef}
-            onClick={() => setShowNotificationDropdown(!showNotificationDropdown)}
-          >
-            <Bell size={20} />
-            {notifications.filter((n) => !n.read).length > 0 && (
-              <div className="notification-count">
-                {notifications.filter((n) => !n.read).length > 9 ? "9+" : notifications.filter((n) => !n.read).length}
-              </div>
-            )}
-
-            <div
-              ref={notificationDropdownRef}
-              className={`notification-dropdown ${showNotificationDropdown ? "show" : ""}`}
-            >
-              <div className="notification-header">
-                <h3>Notifications</h3>
-                {notifications.filter((n) => !n.read).length > 0 && (
-                  <button className="mark-all-read" onClick={markAllAsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-
-              <div id="notificationList">
-                {notifications.length === 0 ? (
-                  <div className="empty-state">
-                    <BellOff size={48} />
-                    <h3>No notifications</h3>
-                    <p>You're all caught up!</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => (
-                    <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
-                      <div className="notification-actions">
-                        {!notification.read && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              markAsRead(notification.id)
-                            }}
-                            className="mark-read-btn"
-                            title="Mark as read"
-                          >
-                            <Check size={14} />
-                          </button>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            deleteNotification(notification.id)
-                          }}
-                          className="remove-btn"
-                          title="Remove notification"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                      <div className="notification-title">
-                        {React.createElement(getNotificationIcon(notification.type), {
-                          className: `notification-icon ${notification.type}`,
-                          size: 16,
-                        })}
-                        {notification.title}
-                      </div>
-                      <div className="notification-message">{notification.message}</div>
-                      <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
+          {/* Notification Modal */}
+          <NotificationModal
+            isOpen={notifsOpen}
+            onClose={() => setNotifsOpen(false)}
+            notifications={notifications.map((n) => ({
+              message: n.message,
+              date: n.date,
+            }))}
+          />
         </header>
 
         <div className="content-area">
+          <div className="search-containers">
+            <Search className="search-icon" size={18} />
+            <input
+              type="text"
+              className="search-input"
+              placeholder="Search directory..."
+              onChange={handleSearchInput}
+              value={searchTerm}
+            />
+          </div>
           <div className="directory-container">
             <div className="tab-navigation">
               <div
@@ -1197,13 +1113,6 @@ body {
                 All
               </div>
               <div
-                className={`tab-item ${currentTab === "horses" ? "active" : ""}`}
-                onClick={() => setCurrentTab("horses")}
-                data-tab="horses"
-              >
-                Horses
-              </div>
-              <div
                 className={`tab-item ${currentTab === "veterinarian" ? "active" : ""}`}
                 onClick={() => setCurrentTab("veterinarian")}
                 data-tab="veterinarian"
@@ -1211,11 +1120,11 @@ body {
                 Veterinarian
               </div>
               <div
-                className={`tab-item ${currentTab === "horses-per-owner" ? "active" : ""}`}
-                onClick={() => setCurrentTab("horses-per-owner")}
-                data-tab="horses-per-owner"
+                className={`tab-item ${currentTab === "horses-operator" ? "active" : ""}`}
+                onClick={() => setCurrentTab("horses-operator")}
+                data-tab="horses-operator"
               >
-                Horses per owner
+                Horses Operator
               </div>
               <div
                 className={`tab-item ${currentTab === "kutsero" ? "active" : ""}`}
@@ -1227,25 +1136,6 @@ body {
             </div>
 
             <div className="directory-content">
-              <div className="filter-row">
-                <select className="filter-select" value={areaFilter} onChange={(e) => setAreaFilter(e.target.value)}>
-                  <option value="">Filter by Area</option>
-                  <option value="cebu">Cebu City</option>
-                  <option value="manila">Manila</option>
-                  <option value="davao">Davao</option>
-                </select>
-                <select
-                  className="filter-select"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                >
-                  <option value="">All Statuses</option>
-                  <option value="healthy">Healthy</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </div>
-
               {filteredDirectoryData.length === 0 ? (
                 <div className="empty-state">
                   <Folder size={48} />
@@ -1256,22 +1146,30 @@ body {
                 <table className="directory-table">
                   <thead className="table-header">
                     <tr>
-                      <th>ID</th>
                       <th>Name</th>
-                      <th>Type</th>
-                      <th>Location</th>
+                      <th>Role</th>
+                      <th>Email</th>
                       <th>Status</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredDirectoryData.map((item) => (
-                      <tr key={item.id} className="table-row">
-                        <td>{item.id}</td>
-                        <td>{item.name}</td>
-                        <td>{item.type}</td>
-                        <td>{item.location}</td>
+                    {filteredDirectoryData.map((person) => (
+                      <tr key={person.email} className="table-row">
+                        <td>{person.name}</td>
                         <td>
-                          <span className={`status-badge status-${item.status?.toLowerCase()}`}>{item.status}</span>
+                          <span className={`role-badge role-${person.type?.toLowerCase().replace(/\s+/g, "-")}`}>
+                            {person.type}
+                          </span>
+                        </td>
+                        <td>{person.email}</td>
+                        <td>
+                          <span className={`status-badge status-${person.status?.toLowerCase()}`}>{person.status}</span>
+                        </td>
+                        <td>
+                          <button className="delete-button" onClick={() => handleDelete(person.email)}>
+                            <Trash2 size={16} /> Delete
+                          </button>
                         </td>
                       </tr>
                     ))}
@@ -1283,16 +1181,7 @@ body {
         </div>
       </div>
 
-      {/* Chat Widget */}
-      <div className="chat-widget">
-        <button className="chat-button" onClick={() => handleNavigation("/DvmfMessage", "message")}>
-          <div className="chat-dots">
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-          </div>
-        </button>
-      </div>
+      <FloatingMessages />
 
       {/* Logout Confirmation Modal */}
       {showLogoutModal && (
@@ -1311,7 +1200,7 @@ body {
                 className="logout-modal-btn confirm"
                 onClick={() => {
                   console.log("User logged out")
-                  navigate("/login") // Navigate to login page
+                  navigate("/") // Navigate to login page
                   setShowLogoutModal(false)
                 }}
               >
