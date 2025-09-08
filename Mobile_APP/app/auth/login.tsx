@@ -1,4 +1,4 @@
-// login.tsx - FIXED VERSION
+// login.tsx - WITH DECLINED ACCOUNT HANDLING
 
 "use client"
 
@@ -55,7 +55,7 @@ export default function LoginScreen() {
     setIsLoginLoading(true)
 
     try {
-      // Clear any existing tokens first to ensure fresh login
+      // Clear any existing tokens first
       console.log("Clearing existing tokens...")
       await logout()
 
@@ -77,6 +77,7 @@ export default function LoginScreen() {
 
       const data = await response.json()
       console.log("Login response status:", response.status)
+<<<<<<< Updated upstream
       console.log("Raw server response:", data)
       console.log("Login response data:", {
         message: data.message,
@@ -203,31 +204,90 @@ export default function LoginScreen() {
         } else if (response.status === 401) {
           errorMessage =
             "Invalid email or password. Please check your credentials."
+=======
+      console.log("Login response data:", data)
+
+      if (!response.ok) {
+        let errorMessage = data.message || data.error || "Login failed"
+        if (response.status === 401) {
+          errorMessage = "Invalid email or password. Please check your credentials."
+>>>>>>> Stashed changes
         } else if (response.status >= 500) {
           errorMessage = "Server error. Please try again later."
-        } else if (response.status >= 400) {
-          errorMessage = "Invalid request. Please check your input."
         }
-
         Alert.alert("Login Error", errorMessage)
+        return
       }
+
+      // Get role and status from response
+      const userRole = data.user_role?.trim().toLowerCase() // This should be "kutsero" or "horse_operator"
+      const userStatus = data.user_status || "pending"
+
+      // Backend now handles all status checks, so if we reach here, user is approved
+      if (!userRole) {
+        Alert.alert("Error", "No user role found. Please contact support.")
+        return
+      }
+
+      console.log("✅ Backend approved user - Role:", userRole, "Status:", userStatus)
+
+      // Store tokens only if account is not declined
+      if (data.access_token) {
+        await SecureStore.setItemAsync("access_token", data.access_token)
+        console.log("✅ Access token stored successfully")
+      }
+      if (data.refresh_token) {
+        await SecureStore.setItemAsync("refresh_token", data.refresh_token)
+        console.log("✅ Refresh token stored successfully")
+      }
+
+      // Store user info + profile
+      if (data.user) {
+        const userDataToStore = {
+          ...data.user,
+          user_role: data.user_role,
+          user_status: data.user_status,
+          profile: data.profile,
+        }
+        await SecureStore.setItemAsync("user_data", JSON.stringify(userDataToStore))
+        console.log("✅ User data stored successfully")
+      }
+
+      // Role display mapping
+      const ROLE_DISPLAY: Record<string, string> = {
+        kutsero: "Kutsero",
+        horse_operator: "Horse Operator",
+      }
+
+      const STATUS_MSG = "" // No status messages needed since only approved users reach this point
+
+      const displayRole = ROLE_DISPLAY[userRole] || userRole
+
+      // Route based on normalized role from backend
+      if (userRole === "kutsero") {
+        Alert.alert(
+          "Login Successful",
+          `Welcome ${displayRole}!${STATUS_MSG}`,
+          [{ text: "Continue", onPress: () => router.replace("../KUTSERO/dashboard") }]
+        )
+      } else if (userRole === "horse_operator") {
+        Alert.alert(
+          "Login Successful",
+          `Welcome ${displayRole}!${STATUS_MSG}`,
+          [{ text: "Continue", onPress: () => router.replace("../HORSE_OPERATOR/home") }]
+        )
+      } else {
+        Alert.alert(
+          "Error",
+          `Unrecognized user role: ${userRole}. Please contact support.`
+        )
+        console.error("Unrecognized user role:", userRole)
+      }
+
     } catch (error) {
       console.error("❌ Login error:", error)
-
       let errorMessage =
-        "Network error. Please check your connection and try again."
-
-      if (error instanceof Error) {
-        if (error.message.includes("Network request failed")) {
-          errorMessage =
-            "Unable to connect to server. Please check your internet connection."
-        } else if (error.message.includes("timeout")) {
-          errorMessage = "Request timed out. Please try again."
-        } else {
-          errorMessage = error.message
-        }
-      }
-
+        error instanceof Error ? error.message : "Network error. Please try again."
       Alert.alert("Connection Error", errorMessage)
     } finally {
       setIsLoginLoading(false)

@@ -17,6 +17,9 @@ import {
 
 const { width, height } = Dimensions.get("window")
 
+// Add API base URL
+const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero" // Replace with your actual API URL
+
 // Enhanced responsive scaling functions
 const scale = (size: number) => {
   const scaleFactor = width / 375
@@ -111,651 +114,150 @@ export default function HorseSelectionScreen() {
   const router = useRouter()
   const [searchText, setSearchText] = useState("")
   const [selectedHorse, setSelectedHorse] = useState<Horse | null>(null)
-  const [availableHorses, setAvailableHorses] = useState<Horse[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [isAssigning, setIsAssigning] = useState(false)
-  const [userData, setUserData] = useState<UserData | null>(null)
-  const [statsData, setStatsData] = useState({
-    total: 0,
-    healthy: 0,
-    underCare: 0,
-    recovering: 0
-  })
   const safeArea = getSafeAreaPadding()
 
-  // Load user data and horses
+  // Available horses for selection
+  const availableHorses: Horse[] = [
+    {
+      id: "1",
+      name: "Oscar",
+      healthStatus: "Healthy",
+      status: "Ready for work",
+      image: require("../../assets/images/horse.png"),
+      breed: "Arabian",
+      age: 8,
+      lastCheckup: "2 days ago",
+      nextCheckup: "May 30, 2025",
+    },
+    {
+      id: "2",
+      name: "Thunder",
+      healthStatus: "Under Care",
+      status: "Recovering from injury",
+      image: require("../../assets/images/horse.png"),
+      breed: "Thoroughbred",
+      age: 6,
+      lastCheckup: "1 day ago",
+      nextCheckup: "June 5, 2025",
+    },
+    {
+      id: "3",
+      name: "Spirit",
+      healthStatus: "Healthy",
+      status: "Ready for work",
+      image: require("../../assets/images/horse.png"),
+      breed: "Quarter Horse",
+      age: 10,
+      lastCheckup: "3 days ago",
+      nextCheckup: "June 15, 2025",
+    },
+    {
+      id: "4",
+      name: "Blaze",
+      healthStatus: "Recovering",
+      status: "Post-surgery care",
+      image: require("../../assets/images/horse.png"),
+      breed: "Mustang",
+      age: 7,
+      lastCheckup: "Today",
+      nextCheckup: "May 28, 2025",
+    },
+    {
+      id: "5",
+      name: "Star",
+      healthStatus: "Healthy",
+      status: "Ready for work",
+      image: require("../../assets/images/horse.png"),
+      breed: "Paint Horse",
+      age: 5,
+      lastCheckup: "4 days ago",
+      nextCheckup: "June 10, 2025",
+    },
+    {
+      id: "6",
+      name: "Midnight",
+      healthStatus: "Healthy",
+      status: "Ready for work",
+      image: require("../../assets/images/horse.png"),
+      breed: "Friesian",
+      age: 9,
+      lastCheckup: "1 week ago",
+      nextCheckup: "June 20, 2025",
+    },
+    {
+      id: "7",
+      name: "Storm",
+      healthStatus: "Under Care",
+      status: "Routine checkup",
+      image: require("../../assets/images/horse.png"),
+      breed: "Clydesdale",
+      age: 12,
+      lastCheckup: "Yesterday",
+      nextCheckup: "June 1, 2025",
+    },
+    {
+      id: "8",
+      name: "Luna",
+      healthStatus: "Healthy",
+      status: "Ready for work",
+      image: require("../../assets/images/horse.png"),
+      breed: "Andalusian",
+      age: 4,
+      lastCheckup: "5 days ago",
+      nextCheckup: "June 25, 2025",
+    },
+  ]
+
+  // Filter horses based on search
+  const filteredHorses = availableHorses.filter(horse =>
+    horse.name.toLowerCase().includes(searchText.toLowerCase()) ||
+    horse.breed?.toLowerCase().includes(searchText.toLowerCase())
+  )
+
+  // Load currently selected horse on component mount
   useEffect(() => {
-    loadUserDataAndHorses()
+    loadSelectedHorse()
   }, [])
 
-  // Add screen focus listener to refresh data when returning to screen
-  useEffect(() => {
-    const handleFocus = () => {
-      console.log('Screen focused, refreshing data...')
-      if (userData) {
-        refreshData()
-      }
-    }
-
-    // Since expo-router might not have addListener, we'll use a different approach
-    // This will be called whenever the component mounts/remounts
-    return () => {
-      console.log('Screen unfocused')
-    }
-  }, [userData])
-
-  const loadUserDataAndHorses = async () => {
+  const loadSelectedHorse = async () => {
     try {
-      setIsLoading(true)
-      
-      // Test API connection first
-      console.log('🔗 Testing backend connection...')
-      const isConnected = await testAPIConnection()
-      if (!isConnected) {
-        Alert.alert("Connection Error", "Cannot connect to the backend server. Please check if the server is running.")
-        return
-      }
-      
-      // Load user data from SecureStore
-      const storedUserData = await SecureStore.getItemAsync('user_data')
-      const storedAccessToken = await SecureStore.getItemAsync('access_token')
-      
-      if (storedUserData && storedAccessToken) {
-        const parsedUserData = JSON.parse(storedUserData)
-        const unifiedUserData: UserData = {
-          id: parsedUserData.id,
-          email: parsedUserData.email,
-          profile: parsedUserData.profile,
-          access_token: storedAccessToken,
-        }
-        setUserData(unifiedUserData)
-        console.log('User data loaded:', unifiedUserData)
-        
-        // FIX: Load horses FIRST, then current assignment with a delay
-        console.log('🐴 Starting horse loading sequence...')
-        await loadAvailableHorses()
-        
-        // Add a delay to ensure horses are loaded before updating assignments
-        setTimeout(async () => {
-          console.log('⏱️ Loading current assignment after delay...')
-          await loadCurrentAssignment(unifiedUserData.profile?.kutsero_id || unifiedUserData.id)
-        }, 200)
-      } else {
-        Alert.alert("Error", "User session not found. Please login again.")
-      }
-    } catch (error) {
-      console.error('Error loading user data and horses:', error)
-      Alert.alert("Error", "Failed to load data. Please try again.")
-    } finally {
-      // Delay setting loading to false to ensure all async operations complete
-      setTimeout(() => {
-        setIsLoading(false)
-      }, 300)
-    }
-  }
-
-  // Updated loadCurrentAssignment function with safety checks
-  const loadCurrentAssignment = async (kutserroId: string) => {
-    try {
-      console.log('📋 Loading current assignment for kutsero ID:', kutserroId)
-      const response = await fetch(`${API_BASE_URL}/current_assignment/?kutsero_id=${kutserroId}`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-
-      console.log('📋 Current assignment response status:', response.status)
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log('📋 Current assignment data:', data)
-        
-        if (data.assignment && data.assignment.horse) {
-          const horse: Horse = {
-            id: data.assignment.horse.id,
-            name: data.assignment.horse.name,
-            healthStatus: data.assignment.horse.healthStatus as Horse["healthStatus"],
-            status: data.assignment.horse.status,
-            image: require("../../assets/images/horse.png"),
-            breed: data.assignment.horse.breed,
-            age: data.assignment.horse.age,
-            color: data.assignment.horse.color,
-            operatorName: data.assignment.horse.operatorName || data.assignment.horse.opName || data.assignment.horse.ownerName,
-            ownerName: data.assignment.horse.ownerName || data.assignment.horse.opName || data.assignment.horse.operatorName,
-            opName: data.assignment.horse.opName,
-            assignmentStatus: 'assigned', // Fixed: explicit type assertion
-            currentAssignmentId: data.assignment.assignmentId,
-            lastCheckup: data.assignment.horse.lastCheckup,
-            nextCheckup: data.assignment.horse.nextCheckup,
-          }
-          
-          console.log('✅ Setting selected horse:', horse.name)
+      const savedHorseId = await AsyncStorage.getItem('selectedHorseId')
+      if (savedHorseId) {
+        const horse = availableHorses.find(h => h.id === savedHorseId)
+        if (horse) {
           setSelectedHorse(horse)
-          
-          // FIX: Only update availableHorses if they exist and have data
-          setAvailableHorses(prevHorses => {
-            if (prevHorses.length === 0) {
-              console.log('⚠️ No horses loaded yet, skipping assignment status update')
-              return prevHorses
-            }
-            
-            console.log('🔄 Updating horse assignment status in list')
-            const updatedHorses = prevHorses.map(h => 
-              h.id === horse.id 
-                ? { ...h, assignmentStatus: 'assigned' as const, currentAssignmentId: data.assignment.assignmentId }
-                : h
-            )
-            
-            console.log('✅ Horse assignment status updated')
-            return updatedHorses
-          })
-          
-          // Save to SecureStore
-          await SecureStore.setItemAsync('selectedHorseData', JSON.stringify(horse))
-          await SecureStore.setItemAsync('currentAssignmentId', data.assignment.assignmentId)
-          
-          console.log('💾 Current assignment saved to SecureStore:', horse.name)
-        } else {
-          // No current assignment
-          console.log('📋 No current assignment found')
-          setSelectedHorse(null)
-          
-          // Clear SecureStore
-          try {
-            await SecureStore.deleteItemAsync('selectedHorseData')
-            await SecureStore.deleteItemAsync('currentAssignmentId')
-            console.log('🗑️ Cleared SecureStore data')
-          } catch (clearError) {
-            console.log('ℹ️ No data to clear from SecureStore')
-          }
-        }
-      } else {
-        console.log('⚠️ No current assignment found or error:', response.status)
-        setSelectedHorse(null)
-        try {
-          await SecureStore.deleteItemAsync('selectedHorseData')
-          await SecureStore.deleteItemAsync('currentAssignmentId')
-        } catch (clearError) {
-          console.log('ℹ️ No data to clear from SecureStore')
         }
       }
     } catch (error) {
-      console.error('❌ Error loading current assignment:', error)
+      console.log('Error loading selected horse:', error)
     }
   }
 
-  const loadAvailableHorses = async () => {
+  const saveSelectedHorse = async (horse: Horse) => {
     try {
-      console.log('🐴 Loading available horses...')
-      console.log('🌐 Fetching from:', `${API_BASE_URL}/available_horses/`)
-      
-      const response = await fetch(`${API_BASE_URL}/available_horses/`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-
-      console.log('📡 Response status:', response.status)
-      console.log('✅ Response ok:', response.ok)
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log('📊 Received horses data - count:', data.horses?.length || 0)
-        
-        // Transform horses data with proper owner name mapping
-        const horses: Horse[] = data.horses.map((horse: any) => ({
-          id: horse.id,
-          name: horse.name,
-          healthStatus: horse.healthStatus as Horse["healthStatus"],
-          status: horse.status,
-          image: require("../../assets/images/horse.png"), // Default image for now
-          breed: horse.breed,
-          age: horse.age,
-          color: horse.color,
-          // Fix: Map all possible owner name fields
-          operatorName: horse.operatorName || horse.opName || horse.ownerName || 'Unknown Owner',
-          ownerName: horse.ownerName || horse.opName || horse.operatorName || 'Unknown Owner',
-          opName: horse.opName,
-          assignmentStatus: horse.assignmentStatus as 'available' | 'assigned', // Fixed: explicit type assertion
-          currentAssignmentId: horse.currentAssignmentId,
-          lastCheckup: horse.lastCheckup,
-          nextCheckup: horse.nextCheckup,
-        }))
-        
-        console.log('🔧 Processed horses:', horses.map(h => `${h.name} (${h.assignmentStatus})`))
-        console.log('📝 Setting available horses in state...')
-        setAvailableHorses(horses)
-        
-        // Update stats
-        const newStats = {
-          total: data.total_count || horses.length,
-          healthy: horses.filter(h => h.healthStatus === 'Healthy').length,
-          underCare: horses.filter(h => h.healthStatus === 'Under Care').length,
-          recovering: horses.filter(h => h.healthStatus === 'Recovering').length,
-        }
-        console.log('📊 Updating stats:', newStats)
-        setStatsData(newStats)
-        
-        console.log('✅ Horses loaded successfully')
-      } else {
-        // Get more detailed error information
-        let errorMessage = 'Failed to fetch horses'
-        try {
-          const errorData = await response.json()
-          errorMessage = errorData.error || errorMessage
-          console.error('❌ Server error response:', errorData)
-        } catch (e) {
-          console.error('❌ Could not parse error response:', response.status, response.statusText)
-          errorMessage = `HTTP ${response.status}: ${response.statusText}`
-        }
-        throw new Error(errorMessage)
-      }
+      await AsyncStorage.setItem('selectedHorseId', horse.id)
+      await AsyncStorage.setItem('selectedHorseData', JSON.stringify(horse))
     } catch (error) {
-      console.error('❌ Error loading horses:', error)
-      
-      // Provide more specific error messages
-      let userMessage = 'Failed to load horses. Please try again.'
-      
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        userMessage = 'Cannot connect to server. Please check your internet connection and make sure the backend server is running.'
-      } else if (error instanceof Error) {
-        userMessage = error.message
-      }
-      
-      Alert.alert("Error", userMessage)
+      console.log('Error saving selected horse:', error)
     }
   }
 
-  // Updated refresh function with proper sequencing
-  const refreshData = async () => {
-    console.log('🔄 Starting data refresh...')
-    setIsLoading(true)
-    try {
-      const kutserroId = userData?.profile?.kutsero_id || userData?.id
-      if (kutserroId) {
-        console.log('🐴 Refreshing horses...')
-        await loadAvailableHorses()
-        
-        // Add delay to ensure horses are loaded first
-        console.log('⏱️ Adding delay before loading assignment...')
-        setTimeout(async () => {
-          console.log('📋 Loading assignment after refresh...')
-          await loadCurrentAssignment(kutserroId)
-          console.log('✅ Refresh complete')
-        }, 200)
-      }
-    } catch (error) {
-      console.error('❌ Error refreshing data:', error)
-    } finally {
-      setTimeout(() => {
-        setIsLoading(false)
-      }, 300)
-    }
-  }
-
-  // NEW: Unassign functionality
-  const handleUnassignHorse = async () => {
-    if (!selectedHorse || !selectedHorse.currentAssignmentId) {
-      Alert.alert("Error", "No active assignment to unassign")
-      return
-    }
-
+  const handleHorseSelection = (horse: Horse) => {
+    setSelectedHorse(horse)
+    saveSelectedHorse(horse)
     Alert.alert(
-      "Unassign Horse",
-      `Are you sure you want to unassign ${selectedHorse.name}? This will end your current assignment and make the horse available for other kutseros.`,
+      "Horse Selected",
+       `${horse.name} has been selected for today's work.`,
       [
-        { text: "Cancel", style: "cancel" },
         {
-          text: "Unassign",
-          style: "destructive",
-          onPress: () => performUnassignment()
+          text: "OK",
+          onPress: () => {
+            // Navigate back to dashboard
+            router.back()
+          }
         }
       ]
     )
-  }
-
-  const performUnassignment = async () => {
-    if (!selectedHorse) {
-      Alert.alert("Error", "No horse selected for unassignment")
-      return
-    }
-
-    console.log('🔓 Starting unassignment process for:', selectedHorse.name)
-    setIsAssigning(true)
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}/unassign_horse/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          assignment_id: selectedHorse.currentAssignmentId,
-          kutsero_id: userData?.profile?.kutsero_id || userData?.id,
-          horse_id: selectedHorse.id
-        }),
-      })
-
-      console.log('📨 Unassignment response status:', response.status)
-
-      if (response.ok) {
-        const result = await response.json()
-        console.log('✅ Unassignment successful:', result)
-        
-        // Store previous horse ID for updating the list
-        const previousHorseId = selectedHorse.id
-        const previousHorseName = selectedHorse.name
-        
-        // Clear selected horse
-        setSelectedHorse(null)
-        
-        // Update horse in available list to show as available
-        setAvailableHorses(prevHorses => {
-          return prevHorses.map(horse => 
-            horse.id === previousHorseId 
-              ? { ...horse, assignmentStatus: 'available' as const, currentAssignmentId: undefined }
-              : horse
-          )
-        })
-        
-        // Clear from SecureStore
-        try {
-          await SecureStore.deleteItemAsync('selectedHorseData')
-          await SecureStore.deleteItemAsync('currentAssignmentId')
-        } catch (clearError) {
-          console.log('ℹ️ Nothing to clear from SecureStore')
-        }
-        
-        Alert.alert(
-          "Horse Unassigned Successfully",
-          `${previousHorseName} has been unassigned successfully. The horse is now available for other kutseros.`,
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                console.log('🔄 Refreshing data after successful unassignment')
-                refreshData()
-              }
-            }
-          ]
-        )
-      } else {
-        const errorData = await response.json()
-        console.error('❌ Unassignment failed:', errorData)
-        Alert.alert("Unassignment Failed", errorData.error || "Failed to unassign horse")
-      }
-    } catch (error) {
-      console.error('❌ Error during unassignment:', error)
-      Alert.alert("Error", "Failed to unassign horse. Please check your connection and try again.")
-    } finally {
-      setIsAssigning(false)
-    }
-  }
-
-  // DEPRECATED: Old checkout functionality (kept for backward compatibility)
-  const handleCheckout = async () => {
-    if (!selectedHorse || !selectedHorse.currentAssignmentId) {
-      Alert.alert("Error", "No active assignment to check out from")
-      return
-    }
-
-    Alert.alert(
-      "Check Out",
-      `Are you sure you want to check out from ${selectedHorse.name}? This will end your current assignment and make the horse available for other kutseros.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Check Out",
-          style: "destructive",
-          onPress: () => performCheckout()
-        }
-      ]
-    )
-  }
-
-  const performCheckout = async () => {
-    if (!selectedHorse) {
-      Alert.alert("Error", "No horse selected for checkout")
-      return
-    }
-
-    console.log('🏁 Starting checkout process for:', selectedHorse.name)
-    setIsAssigning(true)
-    
-    try {
-      const response = await fetch(`${API_BASE_URL}/checkout/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          assignment_id: selectedHorse.currentAssignmentId,
-          kutsero_id: userData?.profile?.kutsero_id || userData?.id
-        }),
-      })
-
-      console.log('📨 Checkout response status:', response.status)
-
-      if (response.ok) {
-        const result = await response.json()
-        console.log('✅ Checkout successful:', result)
-        
-        // Store previous horse ID for updating the list
-        const previousHorseId = selectedHorse.id
-        const previousHorseName = selectedHorse.name
-        
-        // Clear selected horse
-        setSelectedHorse(null)
-        
-        // Update horse in available list to show as available
-        setAvailableHorses(prevHorses => {
-          return prevHorses.map(horse => 
-            horse.id === previousHorseId 
-              ? { ...horse, assignmentStatus: 'available' as const, currentAssignmentId: undefined }
-              : horse
-          )
-        })
-        
-        // Clear from SecureStore
-        try {
-          await SecureStore.deleteItemAsync('selectedHorseData')
-          await SecureStore.deleteItemAsync('currentAssignmentId')
-        } catch (clearError) {
-          console.log('ℹ️ Nothing to clear from SecureStore')
-        }
-        
-        Alert.alert(
-          "Checked Out Successfully",
-          `You have successfully checked out from ${previousHorseName}. The horse is now available for other kutseros.`,
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                console.log('🏃 Navigating back after successful checkout')
-                router.back()
-              }
-            }
-          ]
-        )
-      } else {
-        const errorData = await response.json()
-        console.error('❌ Checkout failed:', errorData)
-        Alert.alert("Checkout Failed", errorData.error || "Failed to check out")
-      }
-    } catch (error) {
-      console.error('❌ Error during checkout:', error)
-      Alert.alert("Error", "Failed to check out. Please check your connection and try again.")
-    } finally {
-      setIsAssigning(false)
-    }
-  }
-
-  // Updated filtering logic - show ALL horses but handle assignment status in the UI
-  const filteredHorses = availableHorses.filter(horse => {
-    const searchLower = searchText.toLowerCase()
-    const matchesSearch = (
-      horse.name.toLowerCase().includes(searchLower) ||
-      horse.breed?.toLowerCase().includes(searchLower) ||
-      horse.operatorName?.toLowerCase().includes(searchLower) ||
-      horse.ownerName?.toLowerCase().includes(searchLower) ||
-      horse.opName?.toLowerCase().includes(searchLower)
-    )
-    
-    return matchesSearch
-  })
-
-  const handleHorseSelection = async (horse: Horse) => {
-    console.log('🎯 Horse selection initiated:', horse.name)
-    
-    if (!userData?.profile?.kutsero_id && !userData?.id) {
-      Alert.alert("Error", "User information not available")
-      return
-    }
-
-    // Check if this horse is already assigned to someone else (not the current user)
-    if (horse.assignmentStatus === 'assigned' && selectedHorse?.id !== horse.id) {
-      console.log('⚠️ Horse already assigned to someone else')
-      Alert.alert("Horse Unavailable", "This horse is currently assigned to another kutsero. Please select a different horse.")
-      return
-    }
-
-    // If user already has a horse assigned and it's different from the selected one
-    if (selectedHorse && selectedHorse.id !== horse.id) {
-      console.log('🔄 Switch horse confirmation needed')
-      Alert.alert(
-        "Switch Horse Assignment",
-        `You currently have ${selectedHorse.name} assigned. Selecting ${horse.name} will automatically end your current assignment and start a new one. Do you want to continue?`,
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Switch Horse", onPress: () => performHorseAssignment(horse) }
-        ]
-      )
-    } else if (selectedHorse && selectedHorse.id === horse.id) {
-      // User clicked on their currently assigned horse - no action needed
-      console.log('ℹ️ Same horse already assigned')
-      Alert.alert("Already Assigned", `${horse.name} is already assigned to you.`)
-    } else {
-      // No current assignment, proceed directly
-      console.log('✅ Proceeding with horse assignment')
-      performHorseAssignment(horse)
-    }
-  }
-
-  // FIXED: Updated performHorseAssignment with better state management
-  const performHorseAssignment = async (horse: Horse) => {
-    console.log('🚀 Starting horse assignment process:', horse.name)
-    setIsAssigning(true)
-    
-    try {
-      const kutserroId = userData?.profile?.kutsero_id || userData?.id
-      console.log('👤 Assigning horse:', horse.name, 'to kutsero:', kutserroId)
-      
-      // Store the previous horse ID before assignment
-      const previousHorseId = selectedHorse?.id
-      console.log('🔄 Previous horse ID:', previousHorseId)
-      
-      const assignmentData = {
-        kutsero_id: kutserroId,
-        horse_id: horse.id,
-        date_start: new Date().toISOString().split('T')[0],
-        force_switch: true
-      }
-
-      console.log('📤 Creating assignment with data:', assignmentData)
-
-      const response = await fetch(`${API_BASE_URL}/assign_horse/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(assignmentData),
-      })
-
-      console.log('📨 Assignment response status:', response.status)
-
-      if (response.ok) {
-        const result = await response.json()
-        console.log('✅ Assignment successful:', result)
-        
-        // Create the updated horse object with assignment info
-        const updatedHorse: Horse = {
-          ...horse,
-          assignmentStatus: 'assigned',
-          currentAssignmentId: result.assignment.assign_id,
-        }
-        
-        console.log('🎯 Setting selected horse to:', updatedHorse.name)
-        // IMPORTANT: Update selected horse immediately
-        setSelectedHorse(updatedHorse)
-        
-        // FIX: Use functional update to ensure we have latest state
-        console.log('📝 Updating available horses list...')
-        setAvailableHorses(prevHorses => {
-          console.log('🔍 Current horses in state:', prevHorses.length)
-          
-          if (prevHorses.length === 0) {
-            console.log('⚠️ No horses in state to update')
-            return prevHorses
-          }
-          
-          const updatedHorses = prevHorses.map(h => {
-            if (h.id === horse.id) {
-              console.log('✅ Marking horse as assigned:', h.name)
-              return { ...h, assignmentStatus: 'assigned' as const, currentAssignmentId: result.assignment.assign_id }
-            } else if (previousHorseId && h.id === previousHorseId) {
-              console.log('🔄 Marking previous horse as available:', h.name)
-              return { ...h, assignmentStatus: 'available' as const, currentAssignmentId: undefined }
-            }
-            return h
-          })
-          
-          console.log('📊 Updated horses count:', updatedHorses.length)
-          console.log('🔧 Updated horses status:', updatedHorses.map(h => `${h.name} (${h.assignmentStatus})`))
-          return updatedHorses
-        })
-        
-        // Save to SecureStore
-        console.log('💾 Saving assignment to SecureStore...')
-        await SecureStore.setItemAsync('selectedHorseData', JSON.stringify(updatedHorse))
-        await SecureStore.setItemAsync('currentAssignmentId', result.assignment.assign_id)
-        
-        console.log('✅ Horse assignment saved to SecureStore:', updatedHorse.name)
-        
-        const switchMessage = result.previous_assignments_ended > 0 
-          ? `Your previous assignment has been ended automatically. ${horse.name} is now assigned to you for work.`
-          : `${horse.name} has been assigned to you for work.`
-        
-        Alert.alert(
-          "Horse Assigned Successfully",
-          switchMessage,
-          [
-            {
-              text: "OK",
-              onPress: () => {
-                console.log('🏃 Navigating back after successful assignment')
-                router.back()
-              }
-            }
-          ]
-        )
-      } else {
-        const errorData = await response.json()
-        console.error('❌ Assignment failed:', errorData)
-        
-        if (errorData.error?.includes("already assigned to another kutsero")) {
-          Alert.alert("Assignment Failed", "This horse is currently assigned to another kutsero. Please select a different horse.")
-        } else {
-          Alert.alert("Assignment Failed", errorData.error || "Failed to assign horse")
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error assigning horse:', error)
-      Alert.alert("Error", "Failed to assign horse. Please check your connection and try again.")
-    } finally {
-      setIsAssigning(false)
-    }
   }
 
   const getHealthStatusColor = (status: Horse["healthStatus"]) => {
@@ -782,6 +284,16 @@ export default function HorseSelectionScreen() {
         <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
         <ActivityIndicator size="large" color="white" />
         <Text style={styles.loadingText}>Loading horses...</Text>
+      </View>
+    )
+  }
+
+  // Show loading screen
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+        <Text style={{ color: '#C17A47', fontSize: 16 }}>Loading horses...</Text>
       </View>
     )
   }

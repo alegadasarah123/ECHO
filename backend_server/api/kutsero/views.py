@@ -4,7 +4,13 @@ from rest_framework.response import Response
 from rest_framework import status
 from supabase import create_client, Client
 from django.conf import settings
+<<<<<<< Updated upstream
 from datetime import datetime, date
+=======
+import requests
+import time
+from datetime import datetime, timezone
+>>>>>>> Stashed changes
 
 # Initialize Supabase client
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
@@ -15,6 +21,7 @@ SUPABASE_ANON_KEY = settings.SUPABASE_ANON_KEY
 
 # ------------------------------------------------ HORSE ASSIGNMENT API ------------------------------------------------
 
+<<<<<<< Updated upstream
 @api_view(['GET'])
 def available_horses(request):
     """
@@ -506,10 +513,58 @@ def current_assignment(request):
         print(f"Error getting kutsero assignment: {e}")
         import traceback
         print(f"Full traceback: {traceback.format_exc()}")
+=======
+@api_view(['POST'])
+def assign_horse(request):
+    """
+    Assign a horse to a kutsero for a specific date
+    """
+    kutsero_id = request.data.get("kutsero_id")
+    horse_id = request.data.get("horse_id")
+    date_start = request.data.get("date_start")
+    date_end = request.data.get("date_end")
+    
+    if not all([kutsero_id, horse_id, date_start]):
+        return Response({
+            "error": "kutsero_id, horse_id, and date_start are required"
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Check if horse is already assigned for the same date range
+        existing_assignment = supabase.table("horse_assignment").select("*").eq("horse_id", horse_id).eq("date_start", date_start).execute()
+        
+        if existing_assignment.data:
+            return Response({
+                "error": "Horse is already assigned for this date"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        payload = {
+            "kutsero_id": kutsero_id,
+            "horse_id": horse_id,
+            "date_start": date_start,
+            "date_end": date_end or date_start,  # Default to same day if no end date
+            "status": "active",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        data = service_client.table("horse_assignment").insert(payload).execute()
+        
+        if data.data:
+            return Response({
+                "message": "Horse assigned successfully", 
+                "data": data.data[0]
+            }, status=status.HTTP_201_CREATED)
+        else:
+            return Response({"error": str(data.error)}, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+>>>>>>> Stashed changes
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
+<<<<<<< Updated upstream
 def get_assignment_history(request):
     """
     Get assignment history for a kutsero with check-in/check-out details
@@ -617,10 +672,62 @@ def get_assignment_history(request):
         print(f"Error getting assignment history: {e}")
         import traceback
         print(f"Full traceback: {traceback.format_exc()}")
+=======
+def get_user_assignments(request, kutsero_id):
+    """
+    Get all horse assignments for a specific kutsero
+    Example: /api/assignments/kutsero/123
+    """
+    try:
+        # Get assignments with horse details
+        data = supabase.table("horse_assignment").select("""
+            *,
+            horse_profile:horse_id (
+                id,
+                horse_name,
+                horse_breed,
+                horse_age,
+                health_status,
+                status,
+                last_checkup,
+                next_checkup,
+                horse_image
+            )
+        """).eq("kutsero_id", kutsero_id).order("created_at", desc=True).execute()
+        
+        # Transform data for frontend
+        assignments = []
+        for assignment in data.data:
+            horse = assignment.get("horse_profile")
+            if horse:
+                assignment_data = {
+                    "assign_id": assignment.get("assign_id"),
+                    "date_start": assignment.get("date_start"),
+                    "date_end": assignment.get("date_end"),
+                    "status": assignment.get("status"),
+                    "horse": {
+                        "id": str(horse.get("id")),
+                        "name": horse.get("horse_name"),
+                        "breed": horse.get("horse_breed"),
+                        "age": horse.get("horse_age"),
+                        "healthStatus": horse.get("health_status", "Healthy"),
+                        "status": horse.get("status", "Ready for work"),
+                        "lastCheckup": horse.get("last_checkup"),
+                        "nextCheckup": horse.get("next_checkup"),
+                        "image": horse.get("horse_image")
+                    }
+                }
+                assignments.append(assignment_data)
+        
+        return Response(assignments, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+>>>>>>> Stashed changes
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
+<<<<<<< Updated upstream
 def test_connection(request):
     return Response({"message": "Kutsero API is working"}, status=status.HTTP_200_OK)
 
@@ -1460,3 +1567,420 @@ def search_kutsero_profiles(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # ------------------------------------------------ ANNOUNCEMENT ------------------------------------------------
+=======
+def get_current_assignment(request, kutsero_id):
+    """
+    Get current active horse assignment for a kutsero
+    Example: /api/assignments/kutsero/123/current
+    """
+    try:
+        today = datetime.now().date().isoformat()
+        
+        # Get current assignment
+        data = supabase.table("horse_assignment").select("""
+            *,
+            horse_profile:horse_id (
+                id,
+                horse_name,
+                horse_breed,
+                horse_age,
+                health_status,
+                status,
+                last_checkup,
+                next_checkup,
+                horse_image
+            )
+        """).eq("kutsero_id", kutsero_id).eq("date_start", today).eq("status", "active").execute()
+        
+        if not data.data:
+            return Response({"error": "No current assignment found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        assignment = data.data[0]
+        horse = assignment.get("horse_profile")
+        
+        if not horse:
+            return Response({"error": "Horse data not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        response_data = {
+            "assign_id": assignment.get("assign_id"),
+            "date_start": assignment.get("date_start"),
+            "date_end": assignment.get("date_end"),
+            "status": assignment.get("status"),
+            "horse": {
+                "id": str(horse.get("id")),
+                "name": horse.get("horse_name"),
+                "breed": horse.get("horse_breed"),
+                "age": horse.get("horse_age"),
+                "healthStatus": horse.get("health_status", "Healthy"),
+                "status": horse.get("status", "Ready for work"),
+                "lastCheckup": horse.get("last_checkup"),
+                "nextCheckup": horse.get("next_checkup"),
+                "image": horse.get("horse_image")
+            }
+        }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT'])
+def update_assignment_status(request, assign_id):
+    """
+    Update assignment status (e.g., complete assignment)
+    """
+    new_status = request.data.get("status")
+    
+    if not new_status:
+        return Response({"error": "Status is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        payload = {
+            "status": new_status,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        data = service_client.table("horse_assignment").update(payload).eq("assign_id", assign_id).execute()
+        
+        if data.data:
+            return Response({
+                "message": "Assignment status updated successfully", 
+                "data": data.data[0]
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND)
+            
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['DELETE'])
+def cancel_assignment(request, assign_id):
+    """
+    Cancel/delete an assignment
+    """
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        data = service_client.table("horse_assignment").delete().eq("assign_id", assign_id).execute()
+        
+        if data.data:
+            return Response({"message": "Assignment cancelled successfully"}, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND)
+            
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_available_horses(request):
+    """
+    Get horses that are available for assignment on a specific date
+    Example: /api/horses/available?date=2024-05-30
+    """
+    date = request.GET.get("date")
+    
+    if not date:
+        return Response({"error": "Date parameter is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        # Get all horses
+        all_horses = supabase.table("horse_profile").select("*").execute()
+        
+        # Get assigned horses for the specific date
+        assigned_horses = supabase.table("horse_assignment").select("horse_id").eq("date_start", date).eq("status", "active").execute()
+        
+        assigned_horse_ids = [assignment["horse_id"] for assignment in assigned_horses.data]
+        
+        # Filter available horses
+        available_horses = []
+        for horse in all_horses.data:
+            if horse["id"] not in assigned_horse_ids:
+                horse_data = {
+                    "id": str(horse.get("id")),
+                    "name": horse.get("horse_name"),
+                    "healthStatus": horse.get("health_status", "Healthy"),
+                    "status": horse.get("status", "Ready for work"),
+                    "breed": horse.get("horse_breed"),
+                    "age": horse.get("horse_age"),
+                    "lastCheckup": horse.get("last_checkup"),
+                    "nextCheckup": horse.get("next_checkup"),
+                    "image": horse.get("horse_image")
+                }
+                available_horses.append(horse_data)
+        
+        return Response(available_horses, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+# Additional API endpoints for complete horse management
+
+@api_view(['POST'])
+def check_in_horse(request):
+    """
+    Check in with an assigned horse
+    """
+    kutsero_id = request.data.get("kutsero_id")
+    horse_id = request.data.get("horse_id")
+    check_in_time = request.data.get("check_in_time")
+    
+    if not all([kutsero_id, horse_id, check_in_time]):
+        return Response({
+            "error": "kutsero_id, horse_id, and check_in_time are required"
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        today = datetime.now().date().isoformat()
+        
+        # Find the assignment
+        assignment_data = supabase.table("horse_assignment").select("*").eq(
+            "kutsero_id", kutsero_id
+        ).eq("horse_id", horse_id).eq("date_start", today).eq("status", "active").execute()
+        
+        if not assignment_data.data:
+            return Response({
+                "error": "No active assignment found for today"
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Update assignment with check-in time
+        payload = {
+            "check_in_time": check_in_time,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        data = service_client.table("horse_assignment").update(payload).eq(
+            "assign_id", assignment_data.data[0]["assign_id"]
+        ).execute()
+        
+        if data.data:
+            return Response({
+                "message": "Checked in successfully",
+                "data": data.data[0]
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Failed to update check-in"}, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def check_out_horse(request):
+    """
+    Check out from an assigned horse
+    """
+    kutsero_id = request.data.get("kutsero_id")
+    horse_id = request.data.get("horse_id")
+    check_out_time = request.data.get("check_out_time")
+    
+    if not all([kutsero_id, horse_id, check_out_time]):
+        return Response({
+            "error": "kutsero_id, horse_id, and check_out_time are required"
+        }, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        today = datetime.now().date().isoformat()
+        
+        # Find the assignment
+        assignment_data = supabase.table("horse_assignment").select("*").eq(
+            "kutsero_id", kutsero_id
+        ).eq("horse_id", horse_id).eq("date_start", today).eq("status", "active").execute()
+        
+        if not assignment_data.data:
+            return Response({
+                "error": "No active assignment found for today"
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Update assignment with check-out time and complete status
+        payload = {
+            "check_out_time": check_out_time,
+            "status": "completed",
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        data = service_client.table("horse_assignment").update(payload).eq(
+            "assign_id", assignment_data.data[0]["assign_id"]
+        ).execute()
+        
+        if data.data:
+            return Response({
+                "message": "Checked out successfully",
+                "data": data.data[0]
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Failed to update check-out"}, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_horse_assignment_history(request, kutsero_id):
+    """
+    Get assignment history for a kutsero with pagination
+    Example: /api/assignments/kutsero/123/history?page=1&limit=10
+    """
+    try:
+        page = int(request.GET.get('page', 1))
+        limit = int(request.GET.get('limit', 10))
+        offset = (page - 1) * limit
+        
+        # Get total count
+        count_data = supabase.table("horse_assignment").select(
+            "assign_id", count="exact"
+        ).eq("kutsero_id", kutsero_id).execute()
+        
+        total_count = count_data.count if count_data.count else 0
+        
+        # Get paginated data
+        data = supabase.table("horse_assignment").select("""
+            *,
+            horse_profile:horse_id (
+                id,
+                horse_name,
+                horse_breed,
+                horse_age,
+                health_status,
+                horse_image
+            )
+        """).eq("kutsero_id", kutsero_id).order(
+            "created_at", desc=True
+        ).range(offset, offset + limit - 1).execute()
+        
+        # Transform data
+        assignments = []
+        for assignment in data.data:
+            horse = assignment.get("horse_profile")
+            if horse:
+                assignment_data = {
+                    "assign_id": assignment.get("assign_id"),
+                    "date_start": assignment.get("date_start"),
+                    "date_end": assignment.get("date_end"),
+                    "status": assignment.get("status"),
+                    "check_in_time": assignment.get("check_in_time"),
+                    "check_out_time": assignment.get("check_out_time"),
+                    "created_at": assignment.get("created_at"),
+                    "horse": {
+                        "id": str(horse.get("id")),
+                        "name": horse.get("horse_name"),
+                        "breed": horse.get("horse_breed"),
+                        "age": horse.get("horse_age"),
+                        "healthStatus": horse.get("health_status", "Healthy"),
+                        "image": horse.get("horse_image")
+                    }
+                }
+                assignments.append(assignment_data)
+        
+        return Response({
+            "assignments": assignments,
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total": total_count,
+                "pages": (total_count + limit - 1) // limit
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_assignment_statistics(request, kutsero_id):
+    """
+    Get assignment statistics for a kutsero
+    Example: /api/assignments/kutsero/123/statistics
+    """
+    try:
+        # Get all assignments for the kutsero
+        data = supabase.table("horse_assignment").select("*").eq("kutsero_id", kutsero_id).execute()
+        
+        assignments = data.data
+        total_assignments = len(assignments)
+        completed_assignments = len([a for a in assignments if a["status"] == "completed"])
+        active_assignments = len([a for a in assignments if a["status"] == "active"])
+        cancelled_assignments = len([a for a in assignments if a["status"] == "cancelled"])
+        
+        # Get unique horses worked with
+        unique_horses = len(set([a["horse_id"] for a in assignments]))
+        
+        # Get current month statistics
+        current_month = datetime.now().strftime("%Y-%m")
+        current_month_assignments = [
+            a for a in assignments 
+            if a["date_start"] and a["date_start"].startswith(current_month)
+        ]
+        
+        statistics = {
+            "total_assignments": total_assignments,
+            "completed_assignments": completed_assignments,
+            "active_assignments": active_assignments,
+            "cancelled_assignments": cancelled_assignments,
+            "unique_horses_worked": unique_horses,
+            "current_month_assignments": len(current_month_assignments),
+            "completion_rate": round((completed_assignments / total_assignments * 100), 2) if total_assignments > 0 else 0
+        }
+        
+        return Response(statistics, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_horses_with_assignment_status(request):
+    """
+    Get all horses with their current assignment status
+    Example: /api/horses/with-status?date=2024-12-01
+    """
+    date = request.GET.get("date", datetime.now().date().isoformat())
+    
+    try:
+        # Get all horses
+        horses_data = supabase.table("horse_profile").select("*").execute()
+        
+        # Get assignments for the specified date
+        assignments_data = supabase.table("horse_assignment").select("""
+            horse_id,
+            kutsero_id,
+            status,
+            check_in_time,
+            check_out_time
+        """).eq("date_start", date).execute()
+        
+        # Create assignment lookup
+        assignments_lookup = {a["horse_id"]: a for a in assignments_data.data}
+        
+        # Transform data
+        horses_with_status = []
+        for horse in horses_data.data:
+            assignment = assignments_lookup.get(horse["id"])
+            
+            horse_data = {
+                "id": str(horse.get("id")),
+                "name": horse.get("horse_name"),
+                "healthStatus": horse.get("health_status", "Healthy"),
+                "status": horse.get("status", "Ready for work"),
+                "breed": horse.get("horse_breed"),
+                "age": horse.get("horse_age"),
+                "image": horse.get("horse_image"),
+                "assignmentStatus": {
+                    "isAssigned": assignment is not None,
+                    "assignedTo": assignment.get("kutsero_id") if assignment else None,
+                    "assignmentStatus": assignment.get("status") if assignment else None,
+                    "checkInTime": assignment.get("check_in_time") if assignment else None,
+                    "checkOutTime": assignment.get("check_out_time") if assignment else None,
+                }
+            }
+            horses_with_status.append(horse_data)
+        
+        return Response(horses_with_status, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+>>>>>>> Stashed changes

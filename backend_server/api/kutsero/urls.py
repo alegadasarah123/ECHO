@@ -3,6 +3,7 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
+<<<<<<< Updated upstream
     # Test connection
     path('test/', views.test_connection, name='test_connection'),
     
@@ -38,4 +39,18 @@ urlpatterns = [
     
     # Search kutsero profiles
     path('profiles/search/', views.search_kutsero_profiles, name='search_kutsero_profiles'),
+=======
+    # Horse Assignment URLs
+    path('assignments/assign/', views.assign_horse, name='assign_horse'),
+    path('assignments/kutsero/<str:kutsero_id>/', views.get_user_assignments, name='get_user_assignments'),
+    path('assignments/kutsero/<str:kutsero_id>/current/', views.get_current_assignment, name='get_current_assignment'),
+    path('assignments/kutsero/<str:kutsero_id>/history/', views.get_horse_assignment_history, name='get_assignment_history'),
+    path('assignments/kutsero/<str:kutsero_id>/statistics/', views.get_assignment_statistics, name='get_assignment_statistics'),
+    path('assignments/<int:assign_id>/status/', views.update_assignment_status, name='update_assignment_status'),
+    path('assignments/<int:assign_id>/cancel/', views.cancel_assignment, name='cancel_assignment'),
+    
+    # Check-in/Check-out URLs
+    path('assignments/checkin/', views.check_in_horse, name='check_in_horse'),
+    path('assignments/checkout/', views.check_out_horse, name='check_out_horse'),
+>>>>>>> Stashed changes
 ]

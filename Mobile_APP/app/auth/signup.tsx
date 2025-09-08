@@ -112,13 +112,13 @@ const sexOptions = ["Male", "Female", "Other", "Prefer not to say"]
 // Role options for the signup
 const roleOptions = [
   {
-    value: "kutsero",
+    value: "Kutsero",
     label: "Kutsero",
     description: "Driver of horse-drawn vehicle",
     icon: "🐴",
   },
   {
-    value: "horse_operator", 
+    value: "Horse Operator", 
     label: "Horse Operator",
     description: "Owner/operator of horse business",
     icon: "🏇",
@@ -517,9 +517,23 @@ export default function Signup() {
                 setSelectedImage(null)
                 setCurrentStep(1)
                 
+<<<<<<< Updated upstream
                 // Navigate to login page - let users log in with email/password
                 console.log("✅ Redirecting to Login")
                 router.replace("/auth/login")
+=======
+                // FIXED: Navigate to appropriate dashboard based on role
+                if (userRole === "Horse Oerator") {
+                  console.log("✅ Redirecting to Horse Operator dashboard")
+                  router.replace("/HORSE_OPERATOR/home")
+                } else if (userRole === "Kutsero") {
+                  console.log("✅ Redirecting to Kutsero dashboard")
+                  router.replace("/KUTSERO/dashboard")
+                } else {
+                  console.log("⚠️ Unknown role, redirecting to login")
+                  router.replace("/auth/login")
+                }
+>>>>>>> Stashed changes
               },
             },
           ],
