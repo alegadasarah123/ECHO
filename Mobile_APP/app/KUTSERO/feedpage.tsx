@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
     Alert,
     Dimensions,
@@ -10,11 +10,15 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View
+    View,
+    ActivityIndicator
 } from "react-native"
 import FeedLogPage from "./FeedLogPage"
 
 const { width, height } = Dimensions.get("window")
+
+// API Configuration - Update these URLs to match your backend
+const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero" // Replace with your actual backend URL
 
 // Enhanced responsive scaling functions with better mobile optimization
 const scale = (size: number) => {
@@ -55,6 +59,19 @@ const getSafeAreaPadding = () => {
 }
 
 interface FeedItem {
+  feed_id: string
+  user_id: string
+  horse_id: string
+  food: string
+  amount: string
+  time: string
+  completed: boolean
+  completed_at?: string
+  created_at?: string
+  updated_at?: string
+}
+
+interface LocalFeedItem {
   id: string
   name: string
   chaff?: string
@@ -67,9 +84,17 @@ interface FeedPageProps {
   onBack: () => void
   feedType: "feed" | "water"
   horseName?: string
+  userId?: string // Add userId prop
+  horseId?: string // Add horseId prop
 }
 
-export default function FeedPage({ onBack, feedType, horseName = "Oscar" }: FeedPageProps) {
+export default function FeedPage({ 
+  onBack, 
+  feedType, 
+  horseName = "Oscar", 
+  userId = "default_user", 
+  horseId = "default_horse" 
+}: FeedPageProps) {
   const [showEditModal, setShowEditModal] = useState(false)
   const [showFeedLog, setShowFeedLog] = useState(false)
   const [editingMeal, setEditingMeal] = useState<"breakfast" | "lunch" | "dinner" | null>(null)
@@ -78,34 +103,385 @@ export default function FeedPage({ onBack, feedType, horseName = "Oscar" }: Feed
   const [newRestone, setNewRestone] = useState("")
   const [newDynamy, setNewDynamy] = useState("")
   const [newMagnesium, setNewMagnesium] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [debugMode, setDebugMode] = useState(true) // Set to false in production
   
   const safeArea = getSafeAreaPadding()
 
-  const [breakfastFeeds, setBreakfastFeeds] = useState<FeedItem[]>([
-    {
-      id: "1",
-      name: horseName,
-      chaff: "3 scoops",
-      restone: "1 scoop",
-      dynamy: "",
-    }
-  ])
+  // API-fetched feeds organized by meal type
+  const [apiFeeds, setApiFeeds] = useState<FeedItem[]>([])
+  
+  // Local feeds for display (transformed from API data)
+  const [breakfastFeeds, setBreakfastFeeds] = useState<LocalFeedItem[]>([])
+  const [lunchFeeds, setLunchFeeds] = useState<LocalFeedItem[]>([])
+  const [dinnerFeeds, setDinnerFeeds] = useState<LocalFeedItem[]>([])
 
-  const [lunchFeeds, setLunchFeeds] = useState<FeedItem[]>([])
-
-  const [dinnerFeeds, setDinnerFeeds] = useState<FeedItem[]>([
-    {
-      id: "2", 
-      name: horseName,
-      chaff: "",
-      magnesium: "",
-      dynamy: "",
+  // Enhanced API Functions with Better Error Handling
+  const fetchFeeds = async () => {
+    try {
+      setRefreshing(true)
+      const url = `${API_BASE_URL}/feeds/${userId}/${horseId}/`
+      console.log('Fetching feeds from:', url)
+      
+      const response = await fetch(url)
+      console.log('Response status:', response.status)
+      console.log('Response ok:', response.ok)
+      console.log('Response headers:', JSON.stringify([...response.headers.entries()]))
+      
+      // Log the raw response text to see what's actually returned
+      const responseText = await response.text()
+      console.log('Raw response length:', responseText.length)
+      console.log('Raw response preview:', responseText.substring(0, 500))
+      
+      // Check if response is HTML (starts with <)
+      if (responseText.trim().startsWith('<')) {
+        console.error('Received HTML instead of JSON')
+        Alert.alert("Server Error", "Server returned HTML instead of JSON. Check server logs and ensure the API endpoint exists.")
+        return
+      }
+      
+      // Check for empty response
+      if (!responseText.trim()) {
+        console.error('Received empty response')
+        Alert.alert("Server Error", "Server returned empty response")
+        return
+      }
+      
+      // Try to parse as JSON
+      let data
+      try {
+        data = JSON.parse(responseText)
+        console.log('Parsed data:', data)
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError)
+        console.error('Response text that failed to parse:', responseText)
+        Alert.alert("Parse Error", "Failed to parse server response as JSON. Check server response format.")
+        return
+      }
+      
+      if (data && data.success) {
+        setApiFeeds(data.feeds || [])
+        transformApiToLocalFeeds(data.feeds || [])
+        console.log('Successfully loaded feeds:', data.feeds?.length || 0)
+      } else {
+        console.error('API returned error:', data)
+        Alert.alert("API Error", data?.error || "Failed to fetch feeds")
+      }
+    } catch (error) {
+      console.error("Network error fetching feeds:", error)
+      // Check if it's a network connectivity issue
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      if (errorMessage.includes('Network request failed')) {
+        Alert.alert("Network Error", "Cannot connect to server. Check your network connection and ensure server is running.")
+      } else if (errorMessage.includes('timeout')) {
+        Alert.alert("Timeout Error", "Server request timed out. Server may be slow or not responding.")
+      } else {
+        Alert.alert("Error", `Failed to connect to server: ${errorMessage}`)
+      }
+    } finally {
+      setRefreshing(false)
     }
-  ])
+  }
+
+  const createMultipleFeeds = async (mealType: string, feedsData: any[]) => {
+    try {
+      setLoading(true)
+      console.log('Creating feeds:', { mealType, feedsData, userId, horseId })
+      
+      const requestBody = {
+        user_id: userId,
+        horse_id: horseId,
+        meal_type: mealType,
+        feeds: feedsData
+      }
+      
+      console.log('Request body:', JSON.stringify(requestBody, null, 2))
+      
+      const url = `${API_BASE_URL}/feeds/create-multiple/`
+      console.log('POST to:', url)
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody)
+      })
+      
+      console.log('Create feeds response status:', response.status)
+      console.log('Create feeds response ok:', response.ok)
+      
+      const responseText = await response.text()
+      console.log('Create feeds raw response:', responseText)
+      
+      if (responseText.trim().startsWith('<')) {
+        console.error('Received HTML instead of JSON:', responseText.substring(0, 200))
+        Alert.alert("Server Error", "Server returned HTML instead of JSON. Check API endpoint exists.")
+        return
+      }
+      
+      if (!responseText.trim()) {
+        console.error('Received empty response')
+        Alert.alert("Server Error", "Server returned empty response")
+        return
+      }
+      
+      let data
+      try {
+        data = JSON.parse(responseText)
+        console.log('Create feeds parsed data:', data)
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError)
+        Alert.alert("Parse Error", "Failed to parse server response")
+        return
+      }
+      
+      if (data && data.success) {
+        Alert.alert("Success", data.message || "Feeds created successfully")
+        await fetchFeeds() // Refresh the feeds
+      } else {
+        console.error('Create feeds API error:', data)
+        Alert.alert("Error", data?.error || "Failed to create feeds")
+      }
+    } catch (error) {
+      console.error("Error creating feeds:", error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      if (errorMessage.includes('Network request failed')) {
+        Alert.alert("Network Error", "Cannot connect to server. Check your network connection and server status.")
+      } else if (errorMessage.includes('timeout')) {
+        Alert.alert("Timeout Error", "Server request timed out")
+      } else {
+        Alert.alert("Error", `Failed to connect to server: ${errorMessage}`)
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const markFeedCompleted = async (feedId: string) => {
+    try {
+      console.log('Marking feed completed:', feedId)
+      
+      const url = `${API_BASE_URL}/feeds/${feedId}/complete/`
+      console.log('PUT to:', url)
+      
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+      
+      console.log('Complete feed response status:', response.status)
+      console.log('Complete feed response ok:', response.ok)
+      
+      const responseText = await response.text()
+      console.log('Complete feed raw response:', responseText)
+      
+      if (responseText.trim().startsWith('<')) {
+        console.error('Received HTML instead of JSON:', responseText.substring(0, 200))
+        Alert.alert("Server Error", "Server returned HTML instead of JSON")
+        return
+      }
+      
+      if (!responseText.trim()) {
+        console.error('Received empty response')
+        Alert.alert("Server Error", "Server returned empty response")
+        return
+      }
+      
+      let data
+      try {
+        data = JSON.parse(responseText)
+        console.log('Complete feed parsed data:', data)
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError)
+        Alert.alert("Parse Error", "Failed to parse server response")
+        return
+      }
+      
+      if (data && data.success) {
+        Alert.alert("Success", "Feed marked as completed")
+        await fetchFeeds() // Refresh the feeds
+      } else {
+        console.error('Complete feed API error:', data)
+        Alert.alert("Error", data?.error || "Failed to mark feed as completed")
+      }
+    } catch (error) {
+      console.error("Error marking feed as completed:", error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      if (errorMessage.includes('Network request failed')) {
+        Alert.alert("Network Error", "Cannot connect to server")
+      } else {
+        Alert.alert("Error", `Failed to connect to server: ${errorMessage}`)
+      }
+    }
+  }
+
+  const clearMealFeeds = async (mealType: string) => {
+    try {
+      const url = `${API_BASE_URL}/feeds/${userId}/${horseId}/${mealType}/clear/`
+      console.log('DELETE to:', url)
+      
+      const response = await fetch(url, {
+        method: 'DELETE',
+      })
+      
+      console.log('Clear feeds response status:', response.status)
+      
+      const responseText = await response.text()
+      console.log('Clear feeds raw response:', responseText)
+      
+      if (responseText.trim().startsWith('<')) {
+        console.error('Received HTML instead of JSON:', responseText.substring(0, 200))
+        Alert.alert("Server Error", "Server returned HTML instead of JSON")
+        return
+      }
+      
+      let data
+      try {
+        data = JSON.parse(responseText)
+        console.log('Clear feeds parsed data:', data)
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError)
+        Alert.alert("Parse Error", "Failed to parse server response")
+        return
+      }
+      
+      if (data && data.success) {
+        Alert.alert("Success", data.message || "Feeds cleared successfully")
+        await fetchFeeds() // Refresh the feeds
+      } else {
+        console.error('Clear feeds API error:', data)
+        Alert.alert("Error", data?.error || "Failed to clear feeds")
+      }
+    } catch (error) {
+      console.error("Error clearing feeds:", error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      if (errorMessage.includes('Network request failed')) {
+        Alert.alert("Network Error", "Cannot connect to server")
+      } else {
+        Alert.alert("Error", `Failed to connect to server: ${errorMessage}`)
+      }
+    }
+  }
+
+  // Test connection function
+  const testConnection = async () => {
+    try {
+      console.log('Testing connection to:', `${API_BASE_URL}/health/`)
+      const response = await fetch(`${API_BASE_URL}/health/`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+      
+      console.log('Health check status:', response.status)
+      console.log('Health check ok:', response.ok)
+      
+      const responseText = await response.text()
+      console.log('Health check response:', responseText)
+      
+      if (response.ok) {
+        Alert.alert("Connection Test", "✅ Server connection successful!")
+      } else {
+        Alert.alert("Connection Test", `❌ Server responded with status: ${response.status}\n\nResponse: ${responseText.substring(0, 200)}`)
+      }
+    } catch (error) {
+      console.error('Connection test failed:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      Alert.alert("Connection Test", `❌ Connection failed: ${errorMessage}`)
+    }
+  }
+
+  // Test basic API endpoint
+  const testBasicEndpoint = async () => {
+    try {
+      console.log('Testing basic endpoint:', API_BASE_URL)
+      const response = await fetch(API_BASE_URL, {
+        method: 'GET',
+      })
+      
+      console.log('Basic endpoint status:', response.status)
+      const responseText = await response.text()
+      console.log('Basic endpoint response preview:', responseText.substring(0, 300))
+      
+      if (response.ok) {
+        Alert.alert("Basic Test", "✅ Basic endpoint accessible!")
+      } else {
+        Alert.alert("Basic Test", `❌ Status: ${response.status}\n\nCheck if server is running on ${API_BASE_URL}`)
+      }
+    } catch (error) {
+      console.error('Basic endpoint test failed:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      Alert.alert("Basic Test", `❌ Failed: ${errorMessage}`)
+    }
+  }
+
+  // Transform API feeds to local format
+  const transformApiToLocalFeeds = (feeds: FeedItem[]) => {
+    console.log('Transforming feeds:', feeds)
+    const breakfast: LocalFeedItem[] = []
+    const lunch: LocalFeedItem[] = []
+    const dinner: LocalFeedItem[] = []
+
+    feeds.forEach(feed => {
+      console.log('Processing feed:', feed)
+      // Parse the food string to extract components
+      const foodComponents = feed.food.split(', ')
+      const feedItem: LocalFeedItem = {
+        id: feed.feed_id,
+        name: horseName,
+        chaff: '',
+        restone: '',
+        dynamy: '',
+        magnesium: ''
+      }
+
+      // Extract components from food string
+      foodComponents.forEach(component => {
+        if (component.includes('Chaff:')) {
+          feedItem.chaff = component.split(':')[1]?.trim() || ''
+        } else if (component.includes('Restone:')) {
+          feedItem.restone = component.split(':')[1]?.trim() || ''
+        } else if (component.includes('Dynamy:')) {
+          feedItem.dynamy = component.split(':')[1]?.trim() || ''
+        } else if (component.includes('Magnesium:')) {
+          feedItem.magnesium = component.split(':')[1]?.trim() || ''
+        }
+      })
+
+      // Group by meal type
+      if (feed.time === 'breakfast') {
+        breakfast.push(feedItem)
+      } else if (feed.time === 'lunch') {
+        lunch.push(feedItem)
+      } else if (feed.time === 'dinner') {
+        dinner.push(feedItem)
+      }
+    })
+
+    console.log('Transformed feeds - Breakfast:', breakfast.length, 'Lunch:', lunch.length, 'Dinner:', dinner.length)
+    
+    setBreakfastFeeds(breakfast)
+    setLunchFeeds(lunch)
+    setDinnerFeeds(dinner)
+  }
+
+  // Load feeds on component mount
+  useEffect(() => {
+    console.log('Component mounted, fetching feeds for:', { userId, horseId })
+    fetchFeeds()
+  }, [userId, horseId])
 
   // Show feed log page
   if (showFeedLog) {
-    return <FeedLogPage onBack={() => setShowFeedLog(false)} feedType={feedType} />
+    return <FeedLogPage 
+      onBack={() => setShowFeedLog(false)} 
+      feedType={feedType} 
+    />
   }
 
   const handleEdit = (meal: "breakfast" | "lunch" | "dinner") => {
@@ -119,14 +495,14 @@ export default function FeedPage({ onBack, feedType, horseName = "Oscar" }: Feed
     setNewMagnesium("")
   }
 
-  const handleSaveFeed = () => {
+  const handleSaveFeed = async () => {
     if (!newFeedName.trim()) {
       Alert.alert("Error", "Please enter a feed name")
       return
     }
 
-    const newFeed: FeedItem = {
-      id: Date.now().toString(),
+    // Prepare feed data for API
+    const feedData = {
       name: newFeedName.trim(),
       chaff: newChaff.trim(),
       restone: newRestone.trim(),
@@ -134,16 +510,22 @@ export default function FeedPage({ onBack, feedType, horseName = "Oscar" }: Feed
       magnesium: newMagnesium.trim(),
     }
 
-    if (editingMeal === "breakfast") {
-      setBreakfastFeeds(prev => [...prev, newFeed])
-    } else if (editingMeal === "lunch") {
-      setLunchFeeds(prev => [...prev, newFeed])
-    } else if (editingMeal === "dinner") {
-      setDinnerFeeds(prev => [...prev, newFeed])
-    }
-
+    console.log('Saving feed data:', feedData)
+    
+    // Create feed via API
+    await createMultipleFeeds(editingMeal!, [feedData])
     setShowEditModal(false)
-    Alert.alert("Success", "Feed added successfully!")
+  }
+
+  const handleClearMeal = (mealType: "breakfast" | "lunch" | "dinner") => {
+    Alert.alert(
+      "Clear Feeds",
+      `Are you sure you want to clear all ${mealType} feeds?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Clear", style: "destructive", onPress: () => clearMealFeeds(mealType) }
+      ]
+    )
   }
 
   const FeedIcon = () => (
@@ -167,7 +549,7 @@ export default function FeedPage({ onBack, feedType, horseName = "Oscar" }: Feed
     </View>
   )
 
-  const renderFeedTable = (feeds: FeedItem[], mealType: "breakfast" | "lunch" | "dinner") => {
+  const renderFeedTable = (feeds: LocalFeedItem[], mealType: "breakfast" | "lunch" | "dinner") => {
     if (feeds.length === 0) {
       return (
         <View style={styles.noFeedsContainer}>
@@ -187,19 +569,47 @@ export default function FeedPage({ onBack, feedType, horseName = "Oscar" }: Feed
           {showMagnesium && <Text style={styles.tableHeaderCell}>Magnesium</Text>}
           <Text style={styles.tableHeaderCell}>Dynamy</Text>
         </View>
-        {feeds.map((feed) => (
-          <View key={feed.id} style={styles.tableRow}>
-            <View style={styles.horseNameContainer}>
-              <Text style={styles.horseName}>{feed.name}</Text>
+        {feeds.map((feed) => {
+          // Find the corresponding API feed to check completion status
+          const apiFeed = apiFeeds.find(af => af.feed_id === feed.id)
+          const isCompleted = apiFeed?.completed || false
+          
+          return (
+            <View key={feed.id} style={styles.tableRow}>
+              <View style={[styles.horseNameContainer, isCompleted && styles.completedRow]}>
+                <Text style={[styles.horseName, isCompleted && styles.completedText]}>
+                  {feed.name} {isCompleted && "✓"}
+                </Text>
+                {!isCompleted && (
+                  <TouchableOpacity 
+                    style={styles.completeButton}
+                    onPress={() => markFeedCompleted(feed.id)}
+                  >
+                    <Text style={styles.completeButtonText}>Complete</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={styles.tableCells}>
+                <Text style={[styles.tableCell, isCompleted && styles.completedText]}>
+                  {feed.chaff}
+                </Text>
+                {showRestone && (
+                  <Text style={[styles.tableCell, isCompleted && styles.completedText]}>
+                    {feed.restone}
+                  </Text>
+                )}
+                {showMagnesium && (
+                  <Text style={[styles.tableCell, isCompleted && styles.completedText]}>
+                    {feed.magnesium}
+                  </Text>
+                )}
+                <Text style={[styles.tableCell, isCompleted && styles.completedText]}>
+                  {feed.dynamy}
+                </Text>
+              </View>
             </View>
-            <View style={styles.tableCells}>
-              <Text style={styles.tableCell}>{feed.chaff}</Text>
-              {showRestone && <Text style={styles.tableCell}>{feed.restone}</Text>}
-              {showMagnesium && <Text style={styles.tableCell}>{feed.magnesium}</Text>}
-              <Text style={styles.tableCell}>{feed.dynamy}</Text>
-            </View>
-          </View>
-        ))}
+          )
+        })}
       </View>
     )
   }
@@ -227,6 +637,68 @@ export default function FeedPage({ onBack, feedType, horseName = "Oscar" }: Feed
         </TouchableOpacity>
       </View>
 
+      {/* Debug Info Section - Remove in production */}
+      {debugMode && (
+        <View style={styles.debugContainer}>
+          <View style={styles.debugHeader}>
+            <Text style={styles.debugTitle}>Debug Information</Text>
+            <TouchableOpacity 
+              onPress={() => setDebugMode(false)}
+              style={styles.hideDebugButton}
+            >
+              <Text style={styles.hideDebugText}>Hide</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.debugText}>API Base URL: {API_BASE_URL}</Text>
+          <Text style={styles.debugText}>User ID: {userId}</Text>
+          <Text style={styles.debugText}>Horse ID: {horseId}</Text>
+          <Text style={styles.debugText}>Horse Name: {horseName}</Text>
+          <Text style={styles.debugText}>Loaded Feeds: {apiFeeds.length}</Text>
+          <View style={styles.debugButtonContainer}>
+            <TouchableOpacity style={styles.debugButton} onPress={testBasicEndpoint}>
+              <Text style={styles.debugButtonText}>Test Base URL</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.debugButton} onPress={testConnection}>
+              <Text style={styles.debugButtonText}>Test Health</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.debugButton} onPress={fetchFeeds}>
+              <Text style={styles.debugButtonText}>Test Fetch</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
+
+      {/* Loading indicator */}
+      {(loading || refreshing) && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#C17A47" />
+          <Text style={styles.loadingText}>
+            {refreshing ? "Refreshing feeds..." : "Processing..."}
+          </Text>
+        </View>
+      )}
+
+      {/* Refresh button */}
+      <View style={styles.refreshContainer}>
+        <TouchableOpacity 
+          style={styles.refreshButton}
+          onPress={fetchFeeds}
+          disabled={refreshing}
+        >
+          <Text style={styles.refreshButtonText}>
+            {refreshing ? "Refreshing..." : "Refresh Feeds"}
+          </Text>
+        </TouchableOpacity>
+        {!debugMode && (
+          <TouchableOpacity 
+            style={styles.showDebugButton}
+            onPress={() => setDebugMode(true)}
+          >
+            <Text style={styles.showDebugText}>Debug</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       {/* Content */}
       <ScrollView 
         style={styles.content} 
@@ -237,12 +709,20 @@ export default function FeedPage({ onBack, feedType, horseName = "Oscar" }: Feed
         <View style={styles.mealSection}>
           <View style={styles.mealHeader}>
             <Text style={styles.mealTitle}>Breakfast</Text>
-            <TouchableOpacity 
-              style={styles.editButton}
-              onPress={() => handleEdit("breakfast")}
-            >
-              <Text style={styles.editButtonText}>Edit</Text>
-            </TouchableOpacity>
+            <View style={styles.mealActions}>
+              <TouchableOpacity 
+                style={styles.clearButton}
+                onPress={() => handleClearMeal("breakfast")}
+              >
+                <Text style={styles.clearButtonText}>Clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.editButton}
+                onPress={() => handleEdit("breakfast")}
+              >
+                <Text style={styles.editButtonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           {renderFeedTable(breakfastFeeds, "breakfast")}
         </View>
@@ -251,12 +731,20 @@ export default function FeedPage({ onBack, feedType, horseName = "Oscar" }: Feed
         <View style={styles.mealSection}>
           <View style={styles.mealHeader}>
             <Text style={styles.mealTitle}>Lunch</Text>
-            <TouchableOpacity 
-              style={styles.editButton}
-              onPress={() => handleEdit("lunch")}
-            >
-              <Text style={styles.editButtonText}>Edit</Text>
-            </TouchableOpacity>
+            <View style={styles.mealActions}>
+              <TouchableOpacity 
+                style={styles.clearButton}
+                onPress={() => handleClearMeal("lunch")}
+              >
+                <Text style={styles.clearButtonText}>Clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.editButton}
+                onPress={() => handleEdit("lunch")}
+              >
+                <Text style={styles.editButtonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           {renderFeedTable(lunchFeeds, "lunch")}
         </View>
@@ -265,12 +753,20 @@ export default function FeedPage({ onBack, feedType, horseName = "Oscar" }: Feed
         <View style={styles.mealSection}>
           <View style={styles.mealHeader}>
             <Text style={styles.mealTitle}>Dinner</Text>
-            <TouchableOpacity 
-              style={styles.editButton}
-              onPress={() => handleEdit("dinner")}
-            >
-              <Text style={styles.editButtonText}>Edit</Text>
-            </TouchableOpacity>
+            <View style={styles.mealActions}>
+              <TouchableOpacity 
+                style={styles.clearButton}
+                onPress={() => handleClearMeal("dinner")}
+              >
+                <Text style={styles.clearButtonText}>Clear</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.editButton}
+                onPress={() => handleEdit("dinner")}
+              >
+                <Text style={styles.editButtonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
           </View>
           {renderFeedTable(dinnerFeeds, "dinner")}
         </View>
@@ -369,8 +865,11 @@ export default function FeedPage({ onBack, feedType, horseName = "Oscar" }: Feed
               <TouchableOpacity 
                 style={styles.saveButton}
                 onPress={handleSaveFeed}
+                disabled={loading}
               >
-                <Text style={styles.saveButtonText}>Save</Text>
+                <Text style={styles.saveButtonText}>
+                  {loading ? "Saving..." : "Save"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -470,6 +969,105 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderRadius: scale(1),
   },
+  // Debug Styles
+  debugContainer: {
+    backgroundColor: "#FFF3CD",
+    margin: scale(16),
+    padding: scale(12),
+    borderRadius: scale(8),
+    borderWidth: 1,
+    borderColor: "#FFEAA7",
+  },
+  debugHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: scale(8),
+  },
+  debugTitle: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "#856404",
+  },
+  hideDebugButton: {
+    backgroundColor: "#856404",
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+    borderRadius: scale(4),
+  },
+  hideDebugText: {
+    color: "white",
+    fontSize: moderateScale(10),
+    fontWeight: "500",
+  },
+  debugText: {
+    fontSize: moderateScale(12),
+    color: "#856404",
+    marginBottom: scale(4),
+  },
+  debugButtonContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: scale(8),
+    marginTop: scale(8),
+  },
+  debugButton: {
+    backgroundColor: "#007AFF",
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(6),
+    borderRadius: scale(6),
+    alignItems: "center",
+  },
+  debugButtonText: {
+    color: "white",
+    fontSize: moderateScale(10),
+    fontWeight: "500",
+  },
+  showDebugButton: {
+    backgroundColor: "#FFC107",
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
+    borderRadius: scale(8),
+    alignItems: "center",
+    marginLeft: scale(8),
+  },
+  showDebugText: {
+    color: "#212529",
+    fontSize: moderateScale(12),
+    fontWeight: "500",
+  },
+  loadingContainer: {
+    padding: scale(20),
+    alignItems: "center",
+    backgroundColor: "white",
+    marginHorizontal: scale(16),
+    marginTop: scale(10),
+    borderRadius: scale(8),
+  },
+  loadingText: {
+    marginTop: scale(10),
+    fontSize: moderateScale(14),
+    color: "#666",
+  },
+  refreshContainer: {
+    paddingHorizontal: scale(16),
+    paddingTop: scale(10),
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  refreshButton: {
+    backgroundColor: "#007AFF",
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(8),
+    borderRadius: scale(8),
+    alignItems: "center",
+    flex: 1,
+  },
+  refreshButtonText: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "500",
+  },
   content: {
     flex: 1,
   },
@@ -503,6 +1101,10 @@ const styles = StyleSheet.create({
     color: "#333",
     flex: 1,
   },
+  mealActions: {
+    flexDirection: "row",
+    gap: scale(8),
+  },
   editButton: {
     backgroundColor: "#007AFF",
     paddingHorizontal: scale(12),
@@ -512,6 +1114,19 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   editButtonText: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "500",
+  },
+  clearButton: {
+    backgroundColor: "#FF3B30",
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
+    borderRadius: scale(12),
+    minWidth: scale(60),
+    alignItems: "center",
+  },
+  clearButtonText: {
     color: "white",
     fontSize: moderateScale(12),
     fontWeight: "500",
@@ -554,11 +1169,33 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(12),
     borderBottomWidth: 1,
     borderBottomColor: "#E0E0E0",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  completedRow: {
+    backgroundColor: "#E8F5E8",
   },
   horseName: {
     fontSize: moderateScale(14),
     fontWeight: "600",
     color: "#333",
+    flex: 1,
+  },
+  completedText: {
+    color: "#4CAF50",
+    textDecorationLine: "line-through",
+  },
+  completeButton: {
+    backgroundColor: "#4CAF50",
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+    borderRadius: scale(6),
+  },
+  completeButtonText: {
+    color: "white",
+    fontSize: moderateScale(10),
+    fontWeight: "500",
   },
   tableCells: {
     flexDirection: "row",
