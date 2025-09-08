@@ -13,6 +13,6 @@
   "include": [
     "src/**/*.js",
     "src/**/*.jsx"
-, "src/main.jsx"  ],
+, "src/main.jsx", "src/pages/Veterinarian/VetAppRequest.jsx"  ],
   "exclude": ["node_modules", "dist"]
 }
