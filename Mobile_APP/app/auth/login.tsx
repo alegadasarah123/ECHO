@@ -62,7 +62,7 @@ export default function LoginScreen() {
       console.log("Attempting login for:", email.trim().toLowerCase())
 
       const response = await fetch(
-        "http://192.168.101.2:8000/api/login_mobile/",
+        "http://192.168.1.7:8000/api/login_mobile/",
         {
           method: "POST",
           headers: {
@@ -77,14 +77,18 @@ export default function LoginScreen() {
 
       const data = await response.json()
       console.log("Login response status:", response.status)
+      console.log("Raw server response:", data)
       console.log("Login response data:", {
         message: data.message,
-        user_role: data.user_role,
-        user_status: data.user_status,
+        role: data.role,                    // Original role from database
+        user_role: data.user_role,          // Formatted role for frontend
+        status: data.status,                // Original status
+        user_status: data.user_status,      // Status for frontend
         has_access_token: !!data.access_token,
         has_refresh_token: !!data.refresh_token,
         expires_in: data.expires_in,
         user_email: data.user?.email,
+        has_profile: !!data.profile,
       })
 
       if (response.ok) {
@@ -107,8 +111,8 @@ export default function LoginScreen() {
         if (data.user) {
           const userDataToStore = {
             ...data.user,
-            user_role: data.user_role,
-            user_status: data.user_status,
+            user_role: data.user_role,      // Use formatted role from backend
+            user_status: data.user_status,  // Use status from backend
             profile: data.profile,
           }
 
@@ -118,23 +122,24 @@ export default function LoginScreen() {
           )
           console.log("✅ User data stored successfully:", {
             hasProfile: !!data.profile,
-            userRole: data.user_role,
-            userStatus: data.user_status,
+            user_role: data.user_role,
+            user_status: data.user_status,
           })
         }
 
-        // Validate user role - FIXED: Handle exact role values from backend
+        // Validate user role - Use the formatted user_role from backend
         const userRole = data.user_role?.trim()
         console.log("Processing user role:", userRole)
 
         if (!userRole) {
           console.error("❌ No user role received")
+          console.log("Available data keys:", Object.keys(data))
           Alert.alert("Error", "No user role found. Please contact support.")
           return
         }
 
-        // Route based on user role - FIXED: Check for exact role values
-        if (userRole === "kutsero") {
+        // Route based on user role - Check for exact database values
+        if (userRole === "Kutsero") {
           console.log("✅ Routing to kutsero dashboard")
 
           const statusMsg =
@@ -154,7 +159,7 @@ export default function LoginScreen() {
               },
             ]
           )
-        } else if (userRole === "horse_operator") {  // FIXED: Check for exact match
+        } else if (userRole === "Horse Operator") {
           console.log("✅ Routing to horse operator home")
 
           const statusMsg =

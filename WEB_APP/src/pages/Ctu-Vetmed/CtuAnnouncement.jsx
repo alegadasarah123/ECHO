@@ -1,31 +1,30 @@
 "use client"
-import Sidebar from "@/components/CtuSidebar";
-import React, { useCallback, useEffect, useRef, useState } from "react";
-
-import { useNavigate } from "react-router-dom";
+import Sidebar from "@/components/CtuSidebar"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
+import FloatingMessages from "./CtuMessage"
 
 import {
   AlertTriangle,
-  Angry,
   BarChart3,
+  Bell,
   CheckCircle,
   ClipboardList,
   FileText,
   Folder,
-  Frown,
-  Heart,
   Info,
-  Laugh,
   LayoutDashboard,
   LogOut,
+  Mail,
+  MapPin,
   Megaphone,
+  Phone,
   Settings,
-  ThumbsUp,
   Upload,
   UserCheck,
   XCircle,
-  Zap
-} from "lucide-react";
+} from "lucide-react"
+import NotificationModal from "./CtuNotif"
 
 function CtuAnnouncement() {
   const navigate = useNavigate()
@@ -38,6 +37,7 @@ function CtuAnnouncement() {
   const [modalImageSrc, setModalImageSrc] = useState("")
   const [searchTerm, setSearchTerm] = useState("") // Declare setSearchTerm variable
   const [isSidebarsOpen, setIsSidebarsOpen] = useState(false)
+  const [notifsOpen, setNotifsOpen] = useState(false)
   // State for tabs
   const [activeTab, setActiveTab] = useState("information")
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
@@ -63,15 +63,235 @@ function CtuAnnouncement() {
   const photoInputRef = useRef(null)
   const postInputRef = useRef(null) // Ref for the post textarea
 
-  // Reaction emojis data
-  const reactions = [
-    { name: "like", emoji: "👍🏻", label: "Like" },
-    { name: "love", emoji: "❤️", label: "Love" },
-    { name: "haha", emoji: "😂", label: "Haha" },
-    { name: "wow", emoji: "😮", label: "Wow" },
-    { name: "sad", emoji: "😢", label: "Sad" },
-    { name: "angry", emoji: "😡", label: "Angry" },
-  ]
+  const styles = {
+    container: {
+      display: "flex",
+      height: "100vh",
+      backgroundColor: "#f5f5f5",
+    },
+    sidebar: {
+      width: "250px",
+      backgroundColor: "#fff",
+      borderRight: "1px solid #e0e0e0",
+      display: "flex",
+      flexDirection: "column",
+    },
+    logo: {
+      padding: "20px",
+      borderBottom: "1px solid #e0e0e0",
+      textAlign: "center",
+    },
+    logoImg: {
+      width: "120px",
+      height: "auto",
+    },
+    nav: {
+      flex: "1",
+      padding: "20px 0",
+    },
+    navItem: {
+      display: "flex",
+      alignItems: "center",
+      padding: "12px 20px",
+      color: "#333",
+      textDecoration: "none",
+      transition: "background-color 0.2s",
+      cursor: "pointer",
+    },
+    navItemActive: {
+      backgroundColor: "#e3f2fd",
+      color: "#1976d2",
+      borderRight: "3px solid #1976d2",
+    },
+    navIcon: {
+      marginRight: "12px",
+      fontSize: "18px",
+    },
+    mainContent: {
+      flex: "1",
+      display: "flex",
+      flexDirection: "column",
+    },
+    header: {
+      backgroundColor: "#fff",
+      padding: "12px 28px",
+      borderBottom: "1px solid #e0e0e0",
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+    },
+    headerTitle: {
+      fontSize: "24px",
+      fontWeight: "bold",
+      color: "#333",
+    },
+    headerActions: {
+      display: "flex",
+      alignItems: "center",
+      gap: "15px",
+    },
+    content: {
+      flex: "1",
+      padding: "30px",
+      overflowY: "auto",
+    },
+    postCard: {
+      backgroundColor: "#fff",
+      borderRadius: "8px",
+      padding: "20px",
+      marginBottom: "20px",
+      boxShadow: "0 2px 4px rgba(0,0,0,0.1)",
+    },
+    postHeader: {
+      display: "flex",
+      alignItems: "center",
+      marginBottom: "15px",
+    },
+    postAvatar: {
+      width: "40px",
+      height: "40px",
+      borderRadius: "50%",
+      marginRight: "12px",
+    },
+    postAuthor: {
+      fontWeight: "bold",
+      fontSize: "16px",
+      color: "#333",
+    },
+    postDate: {
+      fontSize: "14px",
+      color: "#666",
+      marginTop: "2px",
+    },
+    postContent: {
+      fontSize: "16px",
+      lineHeight: "1.5",
+      color: "#333",
+      marginBottom: "15px",
+    },
+    postImage: {
+      width: "100%",
+      borderRadius: "8px",
+      marginBottom: "15px",
+    },
+    postActions: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingTop: "15px",
+      borderTop: "1px solid #e4e6ea",
+    },
+    actionBtn: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      padding: "8px 16px",
+      backgroundColor: "transparent",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "14px",
+      color: "#65676b",
+      transition: "background-color 0.2s",
+    },
+    commentBtn: {
+      ":hover": {
+        backgroundColor: "#f0f2f5",
+      },
+    },
+    commentsSection: {
+      marginTop: "15px",
+      paddingTop: "15px",
+      borderTop: "1px solid #e4e6ea",
+    },
+    commentForm: {
+      display: "flex",
+      gap: "10px",
+      marginBottom: "15px",
+      alignItems: "center",
+    },
+    commentInputContainer: {
+      flex: "1",
+      position: "relative",
+      display: "flex",
+      alignItems: "center",
+      backgroundColor: "#f0f2f5",
+      borderRadius: "20px",
+      padding: "8px 12px",
+      border: "1px solid #e4e6ea",
+    },
+    commentInput: {
+      flex: "1",
+      border: "none",
+      backgroundColor: "transparent",
+      fontSize: "14px",
+      outline: "none",
+      padding: "4px 8px",
+    },
+    commentIcons: {
+      display: "flex",
+      alignItems: "center",
+      gap: "8px",
+      marginRight: "8px",
+    },
+    commentIcon: {
+      color: "#65676b",
+      cursor: "pointer",
+      fontSize: "16px",
+      padding: "4px",
+      borderRadius: "50%",
+      transition: "background-color 0.2s",
+    },
+    commentSubmit: {
+      padding: "8px 16px",
+      backgroundColor: "#4267B2",
+      color: "white",
+      border: "none",
+      borderRadius: "6px",
+      cursor: "pointer",
+      fontSize: "14px",
+    },
+    commentItem: {
+      display: "flex",
+      gap: "10px",
+      marginBottom: "10px",
+    },
+    commentAvatar: {
+      width: "32px",
+      height: "32px",
+      borderRadius: "50%",
+    },
+    commentContent: {
+      flex: "1",
+      backgroundColor: "#f0f2f5",
+      padding: "8px 12px",
+      borderRadius: "16px",
+    },
+    commentAuthor: {
+      fontWeight: "bold",
+      fontSize: "13px",
+      marginBottom: "2px",
+    },
+    commentText: {
+      fontSize: "14px",
+      color: "#1c1e21",
+    },
+    commentDate: {
+      fontSize: "12px",
+      color: "#65676b",
+      marginTop: "5px",
+    },
+    notificationBtn: {
+      position: "relative",
+      background: "transparent",
+      border: "none",
+      padding: "8px",
+      borderRadius: "50%",
+      cursor: "pointer",
+      fontSize: "18px",
+      color: "#333",
+    },
+  }
 
   // Helper to format time for notifications and comments
   const formatTimeAgo = useCallback((timestamp) => {
@@ -184,7 +404,7 @@ function CtuAnnouncement() {
         hour12: true,
       }),
       timestamp: now,
-      likes: [],
+
       comments: [],
       commentCount: 0,
     }
@@ -196,25 +416,6 @@ function CtuAnnouncement() {
     console.log("Post created:", newPost)
   }, [postInputText, selectedPhotos, showError, hideError])
 
-  const getReactionIcon = (type) => {
-    switch (type) {
-      case "like":
-        return ThumbsUp
-      case "love":
-        return Heart
-      case "haha":
-        return Laugh
-      case "wow":
-        return Zap
-      case "sad":
-        return Frown
-      case "angry":
-        return Angry
-      default:
-        return ThumbsUp
-    }
-  }
-
   const openImageModal = useCallback((imageSrc) => {
     setModalImageSrc(imageSrc)
     setIsImageModalOpen(true)
@@ -223,63 +424,6 @@ function CtuAnnouncement() {
   const closeImageModal = useCallback(() => {
     setIsImageModalOpen(false)
     setModalImageSrc("")
-  }, [])
-
-  const toggleReactionPopup = useCallback((postId) => {
-    setPosts((prevPosts) =>
-      prevPosts.map((post) => ({
-        ...post,
-        isReactionPopupOpen: post.id === postId ? !post.isReactionPopupOpen : false,
-      })),
-    )
-  }, [])
-
-  const closeReactionPopups = useCallback(
-    (event) => {
-      // Check if the click is outside any reaction popup or its trigger button
-      if (
-        !event.target.closest(".reaction-popup") &&
-        !event.target.closest(".like-btn") &&
-        posts.some((p) => p.isReactionPopupOpen)
-      ) {
-        setPosts((prevPosts) =>
-          prevPosts.map((post) => ({
-            ...post,
-            isReactionPopupOpen: false,
-          })),
-        )
-      }
-    },
-    [posts],
-  )
-
-  const reactToPost = useCallback((postId, reactionType, event) => {
-    event.stopPropagation() // Prevent triggering parent click handlers
-    setPosts((prevPosts) =>
-      prevPosts.map((post) => {
-        if (post.id === postId) {
-          const existingReactionIndex = post.likes.findIndex((like) => like.userId === "current-user")
-          if (existingReactionIndex !== -1) {
-            // If same reaction, remove it
-            if (post.likes[existingReactionIndex].type === reactionType) {
-              post.likes.splice(existingReactionIndex, 1)
-            } else {
-              // Change reaction type
-              post.likes[existingReactionIndex].type = reactionType
-            }
-          } else {
-            // Add new reaction
-            post.likes.push({
-              userId: "current-user",
-              type: reactionType,
-              timestamp: new Date(),
-            })
-          }
-          return { ...post, isReactionPopupOpen: false } // Close popup after reacting
-        }
-        return post
-      }),
-    )
   }, [])
 
   const toggleComments = useCallback((postId) => {
@@ -298,7 +442,6 @@ function CtuAnnouncement() {
             author: "You", // Placeholder for current user
             text: commentText,
             timestamp: new Date(),
-            likes: [],
             replies: [],
           }
           return {
@@ -306,34 +449,6 @@ function CtuAnnouncement() {
             comments: [...post.comments, newComment],
             commentCount: post.commentCount + 1,
           }
-        }
-        return post
-      }),
-    )
-  }, [])
-
-  // NEW: Function to like/unlike a comment
-  const toggleCommentLike = useCallback((postId, commentId) => {
-    setPosts((prevPosts) =>
-      prevPosts.map((post) => {
-        if (post.id === postId) {
-          const updatedComments = post.comments.map((comment) => {
-            if (comment.id === commentId) {
-              const existingLikeIndex = comment.likes.findIndex((like) => like.userId === "current-user")
-              if (existingLikeIndex !== -1) {
-                // Remove like
-                comment.likes.splice(existingLikeIndex, 1)
-              } else {
-                // Add like
-                comment.likes.push({
-                  userId: "current-user",
-                  timestamp: new Date(),
-                })
-              }
-            }
-            return comment
-          })
-          return { ...post, comments: updatedComments }
         }
         return post
       }),
@@ -353,7 +468,6 @@ function CtuAnnouncement() {
                 author: "You",
                 text: replyText,
                 timestamp: new Date(),
-                likes: [],
               }
               return {
                 ...comment,
@@ -516,21 +630,13 @@ function CtuAnnouncement() {
       }
 
       // Close reaction popups
-      closeReactionPopups(event)
     }
 
     document.addEventListener("mousedown", handleClickOutside)
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
     }
-  }, [
-    isNotificationDropdownOpen,
-    isLogoutModalOpen,
-    isImageModalOpen,
-    isSidebarExpanded,
-    closeImageModal,
-    closeReactionPopups,
-  ])
+  }, [isNotificationDropdownOpen, isLogoutModalOpen, isImageModalOpen, isSidebarExpanded, closeImageModal])
 
   useEffect(() => {
     const handleResize = () => {
@@ -589,120 +695,67 @@ function CtuAnnouncement() {
   }
 
   // UPDATED: Helper to render comments with working like and reply functionality
-  const renderComments = (comments, limit = 3) => {
-    if (!comments || comments.length === 0) return null
-
-    const sortedComments = [...comments].sort((a, b) => b.timestamp - a.timestamp)
-    const displayComments = sortedComments.slice(0, limit)
+  const renderComments = (post) => {
+    if (!post.isCommentsOpen) return null
 
     return (
-      <div className="comments-list">
-        {displayComments.map((comment) => {
-          const userLiked = comment.likes.some((like) => like.userId === "current-user")
-          const likeCount = comment.likes.length
+      <div style={styles.commentsSection}>
+        <div style={styles.commentForm}>
+          <div style={styles.commentAvatar}>
+            <img
+              src="/Images/logo1.png"
+              alt="Your avatar"
+              style={{ width: "100%", height: "100%", borderRadius: "50%" }}
+            />
+          </div>
+          <div style={styles.commentInputContainer}>
+            <input
+              type="text"
+              style={styles.commentInput}
+              placeholder="Write a comment..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  addComment(post.id, e.target.value)
+                  e.target.value = ""
+                }
+              }}
+            />
+            <div style={styles.commentIcons}>
+              <i className="fas fa-smile" style={styles.commentIcon} title="Add emoji"></i>
+              <i className="fas fa-camera" style={styles.commentIcon} title="Add photo"></i>
+              <i className="fas fa-paperclip" style={styles.commentIcon} title="Attach file"></i>
+            </div>
+            <button
+              style={styles.commentSubmit}
+              onClick={(e) => {
+                const inputElement = e.currentTarget.parentElement.querySelector("input")
+                addComment(post.id, inputElement.value)
+                inputElement.value = ""
+              }}
+            >
+              <i className="fas fa-paper-plane"></i>
+            </button>
+          </div>
+        </div>
+
+        {/* Comments list */}
+        {post.comments.map((comment) => {
+          const userLiked = comment.likes?.includes("currentUser") || false
+          const likeCount = comment.likes?.length || 0
 
           return (
-            <div className="comment-item" key={comment.id}>
-              <div className="comment-avatar">
+            <div key={comment.id} style={styles.commentItem}>
+              <div style={styles.commentAvatar}>
                 <img
-                  src={`/placeholder-32x32.png?key=4yf41&height=32&width=32&text=${comment.author.charAt(0)}`}
+                  src={`/ceholder-svg-key-xcfob-key-is66r-height-32-width-3.png?key=xcfob&key=is66r&height=32&width=32&text=${comment.author.charAt(0)}`}
                   alt={`${comment.author} avatar`}
+                  style={{ width: "100%", height: "100%", borderRadius: "50%" }}
                 />
               </div>
-              <div className="comment-content">
-                <div className="comment-bubble">
-                  <div className="comment-author">{comment.author}</div>
-                  <div className="comment-text">{comment.text}</div>
-                </div>
-                <div className="comment-actions">
-                  <button
-                    className={`comment-action ${userLiked ? "liked" : ""}`}
-                    onClick={() =>
-                      toggleCommentLike(
-                        comment.postId || posts.find((p) => p.comments.includes(comment))?.id,
-                        comment.id,
-                      )
-                    }
-                  >
-                    <i className={userLiked ? "fas fa-thumbs-up" : "far fa-thumbs-up"}></i>
-                    Like {likeCount > 0 && `(${likeCount})`}
-                  </button>
-                  <button
-                    className="comment-action"
-                    onClick={() =>
-                      toggleReply(comment.postId || posts.find((p) => p.comments.includes(comment))?.id, comment.id)
-                    }
-                  >
-                    <i className="fas fa-reply"></i>
-                    Reply
-                  </button>
-                  <span className="comment-time">{formatTimeAgo(comment.timestamp)}</span>
-                </div>
-
-                {/* Reply input */}
-                {replyingTo?.commentId === comment.id && (
-                  <div className="reply-input-container">
-                    <div className="comment-avatar">
-                      <img src="/Images/logo1.png" alt="Your avatar" />
-                    </div>
-                    <div className="reply-input-wrapper">
-                      <input
-                        type="text"
-                        className="reply-input"
-                        placeholder={`Reply to ${comment.author}...`}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            addReply(replyingTo.postId, comment.id, e.target.value)
-                            e.target.value = ""
-                          }
-                          if (e.key === "Escape") {
-                            setReplyingTo(null)
-                          }
-                        }}
-                        autoFocus
-                      />
-                      <button
-                        className="reply-submit"
-                        onClick={(e) => {
-                          const inputElement = e.currentTarget.previousElementSibling
-                          addReply(replyingTo.postId, comment.id, inputElement.value)
-                          inputElement.value = ""
-                        }}
-                      >
-                        <i className="fas fa-paper-plane"></i>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Render replies */}
-                {comment.replies && comment.replies.length > 0 && (
-                  <div className="replies-container">
-                    {comment.replies.map((reply) => (
-                      <div className="reply-item" key={reply.id}>
-                        <div className="comment-avatar">
-                          <img
-                            src={`/placeholder_nfpe5.png?key=nfpe5&height=28&width=28&text=${reply.author.charAt(0)}`}
-                            alt={`${reply.author} avatar`}
-                          />
-                        </div>
-                        <div className="comment-content">
-                          <div className="comment-bubble">
-                            <div className="comment-author">{reply.author}</div>
-                            <div className="comment-text">{reply.text}</div>
-                          </div>
-                          <div className="comment-actions">
-                            <button className="comment-action">
-                              <i className="far fa-thumbs-up"></i>
-                              Like
-                            </button>
-                            <span className="comment-time">{formatTimeAgo(reply.timestamp)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+              <div style={styles.commentContent}>
+                <div style={styles.commentAuthor}>{comment.author}</div>
+                <div style={styles.commentText}>{comment.text}</div>
+                <div style={styles.commentDate}>{formatTimeAgo(comment.timestamp)}</div>
               </div>
             </div>
           )
@@ -755,7 +808,7 @@ body {
 
 .headers {
   background: white;
-  padding: 16px 24px;
+  padding: 10px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -977,9 +1030,10 @@ body {
 }
 
 .content-areas {
-  flex: 1;
-  background: #e5e7eb;
-  overflow-y: auto;
+flex: 1;
+          padding: 24px;
+          background: #f5f5f5;
+          overflow-y: auto;
 }
 
 .profile-section {
@@ -1035,7 +1089,7 @@ body {
 }
 
 .tabs-section {
-  background: white;
+  background: #f5f5f5;
   border-top: 1px solid #e5e7eb;
   display: flex;
   overflow-x: auto;
@@ -1763,6 +1817,13 @@ body {
   cursor: pointer;
   padding: 2px 0;
 }
+  .detail-item {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
 
 .comment-action:hover {
   color: #374151;
@@ -2629,6 +2690,19 @@ body {
   border-left: none;
   margin-left: 10px;
 }
+.dashboard-container {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 20px;
+          background: transparent;
+          
+        }
+.announcement-title {
+          font-size: 22px;
+          font-weight: bold;
+          color: #da2424ff;
+        }
 
       `}</style>
 
@@ -2636,25 +2710,47 @@ body {
         <Sidebar isOpen={isSidebarsOpen} />
       </div>
       <div className="main-content">
-        
+        <header className="headers">
+          <div className="dashboard-container">
+            <h2 className="announcement-title">Announcement</h2>
+          </div>
+          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
+            <Bell size={24} color="#374151" />
+            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
+          </button>
+
+          {/* Notification Modal */}
+          <NotificationModal
+            isOpen={notifsOpen}
+            onClose={() => setNotifsOpen(false)}
+            notifications={notifications.map((n) => ({
+              message: n.message,
+              date: n.date,
+            }))}
+          />
+        </header>
 
         <div className="content-areas">
           <div className="profile-section">
             <div className="profile-logo">
               <img src="/Images/logo1.png" alt="CTU Logo" className="logo" />
             </div>
+
             <div className="profile-details">
               <h1>Cebu City CTU</h1>
+
               <div className="detail-item">
-                <i className="fas fa-map-marker-alt"></i>
+                <MapPin size={18} style={{ marginRight: "8px" }} />
                 <span>M. J. Cuenco Ave, Cebu City</span>
               </div>
+
               <div className="detail-item">
-                <i className="fas fa-phone"></i>
+                <Phone size={18} style={{ marginRight: "8px" }} />
                 <span>(032) 256-1234</span>
               </div>
+
               <div className="detail-item">
-                <i className="fas fa-envelope"></i>
+                <Mail size={18} style={{ marginRight: "8px" }} />
                 <span>ctu.city@ctu.edu.ph</span>
               </div>
             </div>
@@ -2831,126 +2927,28 @@ body {
               ) : (
                 <div id="postsContainer">
                   {posts.map((post) => {
-                    const totalReactions = post.likes.length
-                    const userReaction = post.likes.find((like) => like.userId === "current-user")
-                    const userReactionClass = userReaction ? `liked-${userReaction.type}` : ""
-
-                    const reactionCounts = {}
-                    reactions.forEach((reaction) => {
-                      reactionCounts[reaction.name] = post.likes.filter((like) => like.type === reaction.name).length
-                    })
-
-                    let reactionDisplay = null
-                    if (totalReactions > 0) {
-                      const topReactions = Object.entries(reactionCounts)
-                        .filter(([_, count]) => count > 0)
-                        .sort((a, b) => b[1] - a[1])
-                        .slice(0, 3)
-
-                      const reactionIcons = topReactions.map(([type, _]) => {
-                        const reaction = reactions.find((r) => r.name === type)
-                        return (
-                          <div className="reaction-icon" key={type}>
-                            {reaction.emoji}
-                          </div>
-                        )
-                      })
-
-                      reactionDisplay = (
-                        <div className="reaction-count">
-                          {reactionIcons}
-                          <span className="reaction-text">{totalReactions}</span>
-                        </div>
-                      )
-                    }
-
                     return (
-                      <div className="post-item" key={post.id}>
-                        <div className="post-header">
-                          <div className="post-avatar">
-                            <img src="/Images/logo1.png" alt="CTU Logo" />
-                          </div>
-                          <div className="post-info">
-                            <div className="post-author">{post.author}</div>
-                            <div className="post-date">{post.date}</div>
+                      <div key={post.id} style={styles.postCard}>
+                        <div style={styles.postHeader}>
+                          <img src={post.avatar || "/placeholder.svg"} alt={post.author} style={styles.postAvatar} />
+                          <div>
+                            <div style={styles.postAuthor}>{post.author}</div>
+                            <div style={styles.postDate}>{formatTimeAgo(post.timestamp)}</div>
                           </div>
                         </div>
-                        <div className="post-content">
-                          {post.content && <p>{post.content}</p>}
-                          {renderPostImages(post.photos)}
-                        </div>
-                        {reactionDisplay}
-                        <div className="post-actions">
-                          <button
-                            className={`action-btn like-btn ${userReactionClass}`}
-                            onClick={() => toggleReactionPopup(post.id)}
-                          >
-                            {React.createElement(getReactionIcon(userReaction ? userReaction.type : "like"), {
-                              size: 16,
-                            })}
-                            {userReaction
-                              ? userReaction.type.charAt(0).toUpperCase() + userReaction.type.slice(1)
-                              : "Like"}
-                            {post.isReactionPopupOpen && (
-                              <div className="reaction-popup active" id={`reaction-popup-${post.id}`}>
-                                {reactions.map((reaction) => (
-                                  <button
-                                    className="reaction-btn"
-                                    key={reaction.name}
-                                    onClick={(e) => reactToPost(post.id, reaction.name, e)}
-                                  >
-                                    <span>{reaction.emoji}</span>
-                                    <span className="reaction-label">{reaction.label}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </button>
-                          <button className="action-btn comment-btn" onClick={() => toggleComments(post.id)}>
-                            <i className="fas fa-commentt"></i>
-                            Comment {post.commentCount > 0 ? `(${post.commentCount})` : ""}
-                          </button>
-                        </div>
-                        {post.isCommentsOpen && (
-                          <div className="comment-section active" id={`comment-section-${post.id}`}>
-                            <div className="comment-form">
-                              <div className="comment-avatar">
-                                <img src="/Images/logo1.png" alt="Your avatar" />
-                              </div>
-                              <div className="comment-input-container">
-                                <input
-                                  type="text"
-                                  className="comment-input"
-                                  placeholder="Write a comment..."
-                                  onKeyDown={(e) => {
-                                    if (e.key === "Enter") {
-                                      addComment(post.id, e.target.value)
-                                      e.target.value = ""
-                                    }
-                                  }}
-                                />
-                                <button
-                                  className="comment-submit"
-                                  onClick={(e) => {
-                                    const inputElement = e.currentTarget.previousElementSibling
-                                    addComment(post.id, inputElement.value)
-                                    inputElement.value = ""
-                                  }}
-                                >
-                                  <i className="fas fa-paper-plane"></i>
-                                </button>
-                              </div>
-                            </div>
-                            {renderComments(post.comments, post.commentsDisplayLimit)}
-                            {post.comments.length > (post.commentsDisplayLimit || 3) && (
-                              <div className="comments-more">
-                                <button className="comments-more-btn" onClick={() => showMoreComments(post.id)}>
-                                  View more comments
-                                </button>
-                              </div>
-                            )}
-                          </div>
+                        <div style={styles.postContent}>{post.content}</div>
+                        {post.image && (
+                          <img src={post.image || "/placeholder.svg"} alt="Post content" style={styles.postImage} />
                         )}
+
+                        <div style={styles.postActions}>
+                          <button style={styles.actionBtn} onClick={() => toggleComments(post.id)}>
+                            <i className="fas fa-comment"></i>
+                            Comment ({post.commentCount})
+                          </button>
+                        </div>
+
+                        {renderComments(post)}
                       </div>
                     )
                   })}
@@ -2961,16 +2959,7 @@ body {
         </div>
       </div>
 
-      {/* Chat Widget - Button Only */}
-      <div className="chat-widget">
-        <button className="chat-button" id="chatButton" onClick={() => navigate("/CtuMessage")}>
-          <div className="chat-dots">
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-          </div>
-        </button>
-      </div>
+      <FloatingMessages />
 
       {/* Logout Modal */}
       {isLogoutModalOpen && (

@@ -64,13 +64,13 @@ def login(request):
 
     # Cookie expires in 1 day
     response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=False,     
-        samesite="Lax",
-        max_age=86400   
-    )
+   key="access_token",
+   value=access_token,
+   httponly=True,
+   secure=False,
+   samesite="Lax",
+   max_age=86400
+)
 
     return response
 
@@ -171,12 +171,6 @@ def signup_vet(request):
 \
 #-----------------------------------------------------------------LOGIN MOBILE---------------------------------------------------------------------------------------
 
-# Fixed role mapping dictionary - consistent key-value pairs
-ROLE_MAP = {
-    "kutsero": "Kutsero",  # Keep lowercase for consistency
-    "horse_operator": "Horse Operator"  # Keep underscore format for consistency
-}
-
 @api_view(['POST'])
 def signup_mobile(request):
     email = request.data.get("email")
@@ -211,10 +205,13 @@ def signup_mobile(request):
     if not user_id:
         return Response({"error": "Supabase Auth did not return a user ID"}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Convert role to proper format for database
+    db_role = "Kutsero" if role == "kutsero" else "Horse Operator" if role == "horse_operator" else role
+
     # Insert into users table (with chosen role)
     user_payload = {
         "id": user_id,
-        "role": role,      # 👈 kutsero or horse_operator
+        "role": db_role,      # 👈 "Kutsero" or "Horse Operator"
         "status": "pending",
     }
 
@@ -298,111 +295,97 @@ def signup_mobile(request):
 
 @api_view(['POST'])
 def login_mobile(request):
-    email = request.data.get("email")
-    password = request.data.get("password")
+    email = request.data.get("email", "").strip()
+    password = request.data.get("password", "").strip()
 
     if not email or not password:
         return Response({"error": "Email and password are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # 1️⃣ Login via Supabase Auth
+    # 1️⃣ Authenticate with Supabase Auth
     login_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
     headers = {
-        "apikey": settings.SUPABASE_ANON_KEY,
+        "apikey": SUPABASE_ANON_KEY,
+        "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
         "Content-Type": "application/json"
     }
     payload = {"email": email, "password": password}
 
     auth_response = requests.post(login_url, json=payload, headers=headers)
-    auth_json = auth_response.json()
-    print(f"Supabase Auth login response: {auth_response.status_code}")
-    
-    # Log token details (without exposing the actual tokens)
-    if auth_response.status_code == 200:
-        access_token = auth_json.get('access_token')
-        refresh_token = auth_json.get('refresh_token')
-        expires_in = auth_json.get('expires_in', 'unknown')
-        print(f"Token details - expires_in: {expires_in}s, has_access_token: {bool(access_token)}, has_refresh_token: {bool(refresh_token)}")
-
     if auth_response.status_code != 200:
-        error_message = auth_json.get('error_description') or auth_json.get('msg') or 'Login failed'
-        return Response({"error": error_message, "details": auth_json}, status=status.HTTP_401_UNAUTHORIZED)
+        try:
+            error_details = auth_response.json()
+        except ValueError:
+            error_details = {"message": auth_response.text}
+        return Response({
+            "error": "Invalid login credentials",
+            "details": error_details
+        }, status=status.HTTP_401_UNAUTHORIZED)
 
-    user = auth_json.get('user', {})
-    access_token = auth_json.get('access_token')
-    refresh_token = auth_json.get('refresh_token')
-    user_id = user.get('id')
+    auth_data = auth_response.json()
+    access_token = auth_data.get("access_token")
+    refresh_token = auth_data.get("refresh_token")
+    user = auth_data.get("user", {})
+    user_id = user.get("id")
 
-    if not user or not access_token or not user_id:
-        return Response({"error": "Invalid authentication response"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    if not access_token or not user_id:
+        return Response({"error": "Login failed: missing token or user id"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # 2️⃣ Get user role and status from users table
-    user_role = "horse_operator"
-    user_status = "pending"
+    # 2️⃣ Fetch role and status from public.users using service role key
+    service_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+    user_query = service_client.table("users").select("role, status").eq("id", user_id).execute()
     
-    try:
-        user_data = supabase.table("users").select("role,status").eq("id", user_id).execute()
-        print(f"User query result: found {len(user_data.data)} records")
-        
-        if user_data.data:
-            user_role = user_data.data[0].get("role")
-            user_status = user_data.data[0].get("status") or "pending"
-            print(f"Found user role: {user_role}, status: {user_status}")
-        else:
-            print(f"No user record found for {user_id}, creating default record")
-            # Create missing user record
-            user_payload = {
-                "id": user_id,
-                "role": "kutsero",
-                "status": "pending"
-            }
-            
-            insert_user_url = f"{SUPABASE_URL}/rest/v1/users"
-            insert_headers = {
-                "apikey": SUPABASE_SERVICE_ROLE_KEY,
-                "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-                "Content-Type": "application/json",
-                "Prefer": "return=representation"
-            }
-            
-            user_insert_response = requests.post(insert_user_url, json=user_payload, headers=insert_headers)
-            if user_insert_response.status_code in [200, 201]:
-                user_role = "kutsero"
-                user_status = "pending"
-                print(f"Created default user record")
-            else:
-                print(f"Failed to create user record: {user_insert_response.json()}")
-                
-    except Exception as e:
-        print(f"Error with user role/status: {e}")
+    if not user_query.data:
+        return Response({"error": "User record not found in database"}, status=status.HTTP_404_NOT_FOUND)
+    
+    user_info = user_query.data[0]
+    user_role = user_info.get("role", "").strip()
+    user_status = user_info.get("status", "pending").strip()
 
-    # Default to kutsero if still no role
-    if not user_role:
-        user_role = "kutsero"
-        print(f"Defaulting to kutsero role")
+    print(f"[MOBILE LOGIN] User ID: {user_id}, Role: {user_role}, Status: {user_status}")
 
-    # 3️⃣ Get profile info
+    # 3️⃣ Verify this is a mobile user (Kutsero or Horse Operator only)
+    if user_role not in ["Kutsero", "Horse Operator"]:
+        return Response({
+            "error": "This login is only for mobile users (Kutsero or Horse Operator)"
+        }, status=status.HTTP_403_FORBIDDEN)
+
+    # 4️⃣ Check if user is approved
+    if user_status != "approved":
+        return Response({
+            "error": f"Account is {user_status}. Please wait for admin approval.",
+            "user_status": user_status
+        }, status=status.HTTP_403_FORBIDDEN)
+
+    # 5️⃣ Fetch profile based on role
     profile = None
     try:
-        profile_data = supabase.table("kutsero_profile").select("*").eq("kutsero_email", email).execute()
-        profile = profile_data.data[0] if profile_data.data else None
-        print(f"Profile found: {bool(profile)}")
+        if user_role == "Kutsero":
+            profile_data = service_client.table("kutsero_profile").select("*").eq("kutsero_id", user_id).execute()
+            profile = profile_data.data[0] if profile_data.data else None
+            
+        elif user_role == "Horse Operator":
+            profile_data = service_client.table("horse_operator_profile").select("*").eq("operator_id", user_id).execute()
+            profile = profile_data.data[0] if profile_data.data else None
+            
     except Exception as e:
         print(f"Error fetching profile: {e}")
 
-    # 4️⃣ Return response with all necessary data
+    # 6️⃣ Return successful response - MUST include user_role and user_status keys
     response_data = {
         "message": "Login successful",
         "user": user,
         "profile": profile,
-        "user_role": user_role,
-        "user_status": user_status,
+        "role": user_role,                    # Exact value from database
+        "user_role": user_role,               # Frontend expects this key
+        "status": user_status,                # Exact value from database  
+        "user_status": user_status,           # Frontend expects this key
         "access_token": access_token,
         "refresh_token": refresh_token,
-        "expires_in": auth_json.get('expires_in'),
-        "token_type": auth_json.get('token_type', 'Bearer')
+        "expires_in": auth_data.get('expires_in'),
+        "token_type": auth_data.get('token_type', 'Bearer')
     }
     
-    print(f"Login successful for user {email} with role {user_role}")
+    print(f"Mobile login successful for user {email} with role {user_role}")
     return Response(response_data, status=status.HTTP_200_OK)
 
 

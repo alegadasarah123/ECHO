@@ -1,20 +1,13 @@
 "use client"
 import Sidebar from "@/components/CtuSidebar"
-import {
-  AlertTriangle,
-  Bell,
-  BellOff,
-  Check,
-  CheckCircle,
-  FileText,
-  Info,
-  LogOut,
-  Search,
-  X,
-  XCircle,
-} from "lucide-react"
+import { AlertTriangle, Bell, CheckCircle, FileText, Info, LogOut, Search, XCircle } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
+import FloatingMessages from './CtuMessage'
+import NotificationModal from "./CtuNotif"
+
+const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
+
 
 function CtuAccessRequest() {
   const navigate = useNavigate()
@@ -26,16 +19,17 @@ function CtuAccessRequest() {
   const [actionDetails, setActionDetails] = useState({ title: "", message: "", action: "" })
   const [currentRequestId, setCurrentRequestId] = useState(null)
   const [accessRequests, setAccessRequests] = useState([]) // Placeholder for access request data
-  const [activeFilter, setActiveFilter] = useState("pending") // Changed default from "all" to "pending"
+  const [activeTab, setActiveTab] = useState("pending") // Changed default from "all" to "pending"
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [deleteRequestId, setDeleteRequestId] = useState(null)
   const [windowWidth, setWindowWidth] = useState(window.innerWidth)
 
   const sidebarRef = useRef(null)
-  const notificationBellRef = useRef(null)
-  const notificationDropdownRef = useRef(null)
+  const [notifsOpen, setNotifsOpen] = useState(false)
   const logoutModalRef = useRef(null)
   const actionModalRef = useRef(null)
+  const notificationBellRef = useRef(null)
+  const notificationDropdownRef = useRef(null)
 
   // Helper to format time for notifications
   const formatTimeAgo = useCallback((timestamp) => {
@@ -141,10 +135,7 @@ function CtuAccessRequest() {
     closeActionModal()
   }
 
-  const handleChatButtonClick = () => {
-    console.log("Chat button clicked")
-    navigate("/CtuMessage")
-  }
+ 
 
   const handleSearchInput = (e) => {
     const searchTerm = e.target.value.toLowerCase()
@@ -172,7 +163,7 @@ function CtuAccessRequest() {
   const getFilteredAndSortedRequests = () => {
     let filtered = accessRequests
 
-    filtered = filtered.filter((request) => request.status === activeFilter)
+    filtered = filtered.filter((request) => request.status === activeTab)
 
     // Sort by most recent (dateRequested descending)
     return filtered.sort((a, b) => new Date(b.dateRequested) - new Date(a.dateRequested))
@@ -231,6 +222,34 @@ function CtuAccessRequest() {
 
   const filteredRequests = getFilteredAndSortedRequests()
   const filterCounts = getFilterCounts()
+
+  // Define the styles object at the top of your file or before the return
+  const styles = {
+    notificationBtn: {
+      position: "relative",
+      background: "transparent",
+      border: "none",
+      cursor: "pointer",
+      padding: "8px",
+      borderRadius: "50%",
+    },
+    badge: {
+      position: "absolute",
+      top: "2px",
+      right: "2px",
+      backgroundColor: "#ef4444",
+      color: "#fff",
+      borderRadius: "50%",
+      padding: "2px 6px",
+      fontSize: "12px",
+      fontWeight: "bold",
+    },
+    titleStyle: {
+      fontSize: "25px",
+      fontWeight: "bold",
+      color: "#da2424ff",
+    },
+  }
 
   return (
     <div className="bodyWrapper">
@@ -296,7 +315,7 @@ body {
 
 .headers {
   background: white;
-  padding: 16px 24px;
+  padding: 18px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -336,16 +355,14 @@ body {
 .search-input {
   width: 100%;
   padding: 8px 16px 8px 40px;
-  border: 2px solid #e5e7eb;
+  border: 2px solid #fff;
   border-radius: 8px;
   font-size: clamp(12px, 2vw, 14px);
   outline: none;
-  min-height: 40px;
+  min-height: 50px;
+  background: #fff;
 }
 
-.search-input:focus {
-  border-color: #b91c1c;
-}
 
 .search-icon {
   position: absolute;
@@ -551,10 +568,10 @@ body {
 }
 
 .content-areas {
-  flex: 1;
-  padding: clamp(16px, 3vw, 24px);
-  background: #f0f0f0;
-  overflow-y: auto;
+flex: 1;
+          padding: 24px;
+          background: #f5f5f5;
+          overflow-y: auto;
 }
 
 .page-headers {
@@ -576,37 +593,72 @@ body {
 }
 
 /* Added styles for status filter tabs */
-.status-filter-tabs {
+.tabs-container {
   display: flex;
-  gap: 0;
-  margin-bottom: 20px;
-  border-bottom: 2px solid #e5e7eb;
-  overflow-x: auto;
+  gap: 16px;
+  background: #e5e2e2ff;
+  padding: 0 8px; /* remove vertical padding so tabs fill height */
+  border-radius: 24px;
+  height: 48px;
+  width: 370px;
+  align-items: center; /* center tabs vertically */
+  margin-top:20px;
+  margin-bottom:20px;
 }
 
-.filter-tab {
+.tab {
+        
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%; /* match container height */
+  padding: 0 12px;
   background: none;
   border: none;
-  padding: 12px 20px;
   font-size: 14px;
   font-weight: 500;
-  color: #6b7280;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-  transition: all 0.2s;
-  white-space: nowrap;
-  min-height: 44px;
-}
-
-.filter-tab:hover {
   color: #374151;
-  background: #f9fafb;
+  cursor: pointer;
+  position: relative;
+  border-radius: 24px; /* pill shape */
+  transition: all 0.2s ease;
 }
 
-.filter-tab.active {
-  color: #b91c1c;
-  border-bottom-color: #b91c1c;
-  background: #fef2f2;
+.tab:hover {
+  background-color: #ffffff;
+  color: #111827;
+}
+
+
+
+.tab.active {
+  font-weight: 600;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.badge-pending {
+  background-color: #f59e0b; /* orange */
+}
+
+.badge-approved {
+  background-color: #22c55e; /* green */
+}
+
+.badge-declined {
+  background-color: #ef4444; /* red */
 }
 
 .table-headerss {
@@ -953,9 +1005,7 @@ body {
     gap: 8px;
   }
 
-  .status-filter-tabs {
-    margin-bottom: 16px;
-  }
+  
 
   .filter-tab {
     padding: 10px 16px;
@@ -981,7 +1031,7 @@ body {
 
   .search-container {
     margin-right: 10px;
-    min-width: 150px;
+    min-width: auto;
   }
 
   .content-areas {
@@ -993,12 +1043,6 @@ body {
     grid-template-columns: 1fr;
     gap: 8px;
     text-align: left;
-  }
-
-  .table-headers > div,
-  .table-rows > div {
-    padding: 4px 0;
-    word-wrap: break-word;
   }
 
   .table-rows {
@@ -1053,6 +1097,37 @@ body {
     padding: 8px 12px;
   }
 }
+
+.search-container {
+  flex: 1;
+  max-width: 400px;
+  margin-right: 20px;
+  position: relative;
+  min-width: 200px;
+  margin-bottom: 10px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 8px 16px 8px 40px;
+  border: 2px solid #fff;
+  border-radius: 8px;
+  font-size: clamp(12px, 2vw, 14px);
+  outline: none;
+  min-height: 50px;
+  background: #fff;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  color: #6b7280;
+}
+
       `}</style>
 
       <div className="sidebars" id="sidebars" ref={sidebarRef}>
@@ -1061,101 +1136,49 @@ body {
 
       <div className="main-content">
         <header className="headers">
-          
-          <div className="search-container">
-            <Search className="search-icon" size={20} />
-            <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
-          </div>
-          <div
-            className="notification-bell"
-            id="notification-bell"
-            ref={notificationBellRef}
-            onClick={toggleNotificationDropdown}
-          >
-            <Bell size={20} />
-            {notifications.filter((n) => !n.read).length > 0 && (
-              <div className="notification-count" style={{ display: "flex" }}>
-                {notifications.filter((n) => !n.read).length > 9 ? "9+" : notifications.filter((n) => !n.read).length}
-              </div>
-            )}
-            <div
-              className={`notification-dropdown ${isNotificationDropdownOpen ? "show" : ""}`}
-              ref={notificationDropdownRef}
-            >
-              <div className="notification-header">
-                <h3>Notifications</h3>
-                {notifications.filter((n) => !n.read).length > 0 && (
-                  <button className="mark-all-read" onClick={markAllAsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div id="notificationList">
-                {notifications.length === 0 ? (
-                  <div className="empty-state">
-                    <BellOff size={48} />
-                    <h3>No notifications</h3>
-                    <p>You're all caught up!</p>
-                  </div>
-                ) : (
-                  notifications.map((notification) => {
-                    const NotificationIcon = getNotificationIcon(notification.type)
-                    return (
-                      <div key={notification.id} className={`notification-item ${!notification.read ? "unread" : ""}`}>
-                        <div className="notification-actions">
-                          {!notification.read && (
-                            <button
-                              className="notification-action"
-                              onClick={() => markAsRead(notification.id)}
-                              title="Mark as read"
-                            >
-                              <Check size={16} />
-                            </button>
-                          )}
-                          <button
-                            className="notification-action"
-                            onClick={() => deleteNotification(notification.id)}
-                            title="Delete"
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                        <div className="notification-title">
-                          <NotificationIcon className={`notification-icon ${notification.type}`} size={16} />
-                          {notification.title}
-                        </div>
-                        <div className="notification-message">{notification.message}</div>
-                        <div className="notification-time">{formatTimeAgo(notification.timestamp)}</div>
-                      </div>
-                    )
-                  })
-                )}
-              </div>
-            </div>
-          </div>
+          <h1 style={styles.titleStyle}>Access Request</h1>
+
+          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)} ref={notificationBellRef}>
+            <Bell size={24} color="#374151" />
+            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
+          </button>
+
+          {/* Notification Modal */}
+          <NotificationModal
+            isOpen={notifsOpen}
+            onClose={() => setNotifsOpen(false)}
+            notifications={notifications.map((n) => ({
+              message: n.message,
+              date: n.date,
+            }))}
+            ref={notificationDropdownRef}
+          />
         </header>
 
         <div className="content-areas">
           <div className="page-headers">
-            <h1 className="page-title">Access Request</h1>
-            <div className="status-filter-tabs">
+            <div className="search-container">
+              <Search className="search-icon" size={18} />
+              <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
+            </div>
+            <div className="tabs-container">
               <button
-                className={`filter-tab ${activeFilter === "pending" ? "active" : ""}`}
-                onClick={() => setActiveFilter("pending")}
+                className={`tab ${activeTab === "pending" ? "active" : ""}`}
+                onClick={() => setActiveTab("pending")}
               >
-                Pending ({filterCounts.pending})
+                Pending <span className="badge badge-pending">{filterCounts.pending}</span>
               </button>
               <button
-                className={`filter-tab ${activeFilter === "approved" ? "active" : ""}`}
-                onClick={() => setActiveFilter("approved")}
+                className={`tab ${activeTab === "approved" ? "active" : ""}`}
+                onClick={() => setActiveTab("approved")}
               >
-                Approved ({filterCounts.approved})
+                Approved <span className="badge badge-approved">{filterCounts.approved}</span>
               </button>
               <button
-                className={`filter-tab ${activeFilter === "declined" ? "active" : ""}`}
-                onClick={() => setActiveFilter("declined")}
+                className={`tab ${activeTab === "declined" ? "active" : ""}`}
+                onClick={() => setActiveTab("declined")}
               >
-                Declined ({filterCounts.declined})
+                Declined <span className="badge badge-declined">{filterCounts.declined}</span>
               </button>
             </div>
             <div className="access-table">
@@ -1172,7 +1195,7 @@ body {
                 <div className="empty-state">
                   <FileText size={48} />
                   <h3>No access requests</h3>
-                  <p>No {activeFilter} requests found</p>
+                  <p>No {activeTab} requests found</p>
                 </div>
               ) : (
                 filteredRequests.map((request) => (
@@ -1210,15 +1233,7 @@ body {
         </div>
       </div>
 
-      <div className="chat-widget">
-        <button className="chat-button" onClick={handleChatButtonClick}>
-          <div className="chat-dots">
-            <div className="chat-dot" />
-            <div className="chat-dot" />
-            <div className="chat-dot" />
-          </div>
-        </button>
-      </div>
+      <FloatingMessages />
 
       {/* Logout Modal */}
       {isLogoutModalOpen && (

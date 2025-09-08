@@ -1,9 +1,11 @@
 "use client"
 
 import Sidebar from "@/components/CtuSidebar"; // Assuming Sidebar component is imported
-import { AlertTriangle, BarChart3, CheckCircle, Info, LogOut, XCircle } from "lucide-react";
+import { AlertTriangle, BarChart3, Bell, CheckCircle, Info, LogOut, XCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import FloatingMessages from './CtuMessage';
+import NotificationModal from "./CtuNotif";
 
 function CtuHealthReport() {
   const navigate = useNavigate()
@@ -12,6 +14,7 @@ function CtuHealthReport() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Added state for sidebar open/close
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
+  const [notifsOpen, setNotifsOpen] = useState(false)
 
   // State for data
   const [notifications, setNotifications] = useState([])
@@ -145,7 +148,15 @@ function CtuHealthReport() {
     }
   }, [isNotificationDropdownOpen, isLogoutModalOpen])
 
-  const unreadNotificationCount = notifications.filter((n) => !n.read).length
+
+
+    // Define the styles object at the top of your file or before the return
+const styles = {
+  notificationBtn: {position: "relative",background: "transparent",border: "none",cursor: "pointer",padding: "8px",borderRadius: "50%",},
+  badge: {position: "absolute",top: "2px",right: "2px",backgroundColor: "#ef4444",color: "#fff",borderRadius: "50%",padding: "2px 6px",fontSize: "12px",fontWeight: "bold",
+    },
+  }
+
 
   return (
     <div className="bodyWrapper">
@@ -212,7 +223,7 @@ function CtuHealthReport() {
 
         .headers {
           background: white;
-          padding: 16px 24px;
+          padding: 18px 24px;
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -434,9 +445,9 @@ function CtuHealthReport() {
         }
 
         .content-areas {
-          flex: 1;
-          padding: clamp(16px, 3vw, 24px);
-          background: #f0f0f0;
+         flex: 1;
+          padding: 24px;
+          background: #f5f5f5;
           overflow-y: auto;
         }
 
@@ -1041,6 +1052,20 @@ function CtuHealthReport() {
           <div className="dashboard-container">
             <h2 className="dashboard-title">Health Reports</h2>
           </div>
+          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
+            <Bell size={24} color="#374151" />
+            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
+          </button>
+
+          {/* Notification Modal */}
+          <NotificationModal
+            isOpen={notifsOpen}
+            onClose={() => setNotifsOpen(false)}
+            notifications={notifications.map((n) => ({
+              message: n.message,
+              date: n.date,
+            }))}
+          />
         </header>
 
         <div className="content-areas">
@@ -1135,16 +1160,7 @@ function CtuHealthReport() {
         </div>
       </div>
 
-      {/* Chat Widget - Button Only */}
-      <div className="chat-widget">
-        <button className="chat-button" id="chatButton" onClick={() => navigate("/CtuMessage")}>
-          <div className="chat-dots">
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-            <div className="chat-dot"></div>
-          </div>
-        </button>
-      </div>
+      <FloatingMessages />
 
       {/* Logout Modal */}
       {isLogoutModalOpen && (
