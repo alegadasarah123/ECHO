@@ -114,119 +114,174 @@ export default function HorseSelectionScreen() {
   const router = useRouter()
   const [searchText, setSearchText] = useState("")
   const [selectedHorse, setSelectedHorse] = useState<Horse | null>(null)
+  const [availableHorses, setAvailableHorses] = useState<Horse[]>([]) // Changed to state
+  const [isLoading, setIsLoading] = useState(true)
+  const [userData, setUserData] = useState<any>(null)
   const safeArea = getSafeAreaPadding()
 
-  // Available horses for selection
-  const availableHorses: Horse[] = [
-    {
-      id: "1",
-      name: "Oscar",
-      healthStatus: "Healthy",
-      status: "Ready for work",
-      image: require("../../assets/images/horse.png"),
-      breed: "Arabian",
-      age: 8,
-      lastCheckup: "2 days ago",
-      nextCheckup: "May 30, 2025",
-    },
-    {
-      id: "2",
-      name: "Thunder",
-      healthStatus: "Under Care",
-      status: "Recovering from injury",
-      image: require("../../assets/images/horse.png"),
-      breed: "Thoroughbred",
-      age: 6,
-      lastCheckup: "1 day ago",
-      nextCheckup: "June 5, 2025",
-    },
-    {
-      id: "3",
-      name: "Spirit",
-      healthStatus: "Healthy",
-      status: "Ready for work",
-      image: require("../../assets/images/horse.png"),
-      breed: "Quarter Horse",
-      age: 10,
-      lastCheckup: "3 days ago",
-      nextCheckup: "June 15, 2025",
-    },
-    {
-      id: "4",
-      name: "Blaze",
-      healthStatus: "Recovering",
-      status: "Post-surgery care",
-      image: require("../../assets/images/horse.png"),
-      breed: "Mustang",
-      age: 7,
-      lastCheckup: "Today",
-      nextCheckup: "May 28, 2025",
-    },
-    {
-      id: "5",
-      name: "Star",
-      healthStatus: "Healthy",
-      status: "Ready for work",
-      image: require("../../assets/images/horse.png"),
-      breed: "Paint Horse",
-      age: 5,
-      lastCheckup: "4 days ago",
-      nextCheckup: "June 10, 2025",
-    },
-    {
-      id: "6",
-      name: "Midnight",
-      healthStatus: "Healthy",
-      status: "Ready for work",
-      image: require("../../assets/images/horse.png"),
-      breed: "Friesian",
-      age: 9,
-      lastCheckup: "1 week ago",
-      nextCheckup: "June 20, 2025",
-    },
-    {
-      id: "7",
-      name: "Storm",
-      healthStatus: "Under Care",
-      status: "Routine checkup",
-      image: require("../../assets/images/horse.png"),
-      breed: "Clydesdale",
-      age: 12,
-      lastCheckup: "Yesterday",
-      nextCheckup: "June 1, 2025",
-    },
-    {
-      id: "8",
-      name: "Luna",
-      healthStatus: "Healthy",
-      status: "Ready for work",
-      image: require("../../assets/images/horse.png"),
-      breed: "Andalusian",
-      age: 4,
-      lastCheckup: "5 days ago",
-      nextCheckup: "June 25, 2025",
-    },
-  ]
-
-  // Filter horses based on search
-  const filteredHorses = availableHorses.filter(horse =>
-    horse.name.toLowerCase().includes(searchText.toLowerCase()) ||
-    horse.breed?.toLowerCase().includes(searchText.toLowerCase())
-  )
-
-  // Load currently selected horse on component mount
+  // Load user data and fetch horses
   useEffect(() => {
-    loadSelectedHorse()
+    loadUserDataAndHorses()
   }, [])
+
+  const loadUserDataAndHorses = async () => {
+    setIsLoading(true)
+    try {
+      // Get user data
+      const storedUserData = await AsyncStorage.getItem('user_data')
+      const storedAccessToken = await AsyncStorage.getItem('access_token')
+      
+      if (storedUserData && storedAccessToken) {
+        const parsedUserData = JSON.parse(storedUserData)
+        setUserData(parsedUserData)
+        
+        // Fetch available horses from API
+        await fetchAvailableHorses(storedAccessToken)
+        
+        // Load currently selected horse
+        await loadSelectedHorse()
+      }
+    } catch (error) {
+      console.error('Error loading data:', error)
+      Alert.alert("Error", "Failed to load horses. Please try again.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const fetchAvailableHorses = async (token: string) => {
+    try {
+      // Get today's date for available horses
+      const today = new Date().toISOString().split('T')[0]
+      
+      const response = await fetch(`${API_BASE_URL}/horses/available/?date=${today}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (response.ok) {
+        const horses = await response.json()
+        // Transform to match your frontend Horse interface
+        const transformedHorses = horses.map((horse: any) => ({
+          id: horse.id,
+          name: horse.name,
+          healthStatus: horse.healthStatus,
+          status: horse.status,
+          image: horse.image || require("../../assets/images/horse.png"), // Fallback image
+          breed: horse.breed,
+          age: horse.age,
+          lastCheckup: horse.lastCheckup,
+          nextCheckup: horse.nextCheckup,
+        }))
+        setAvailableHorses(transformedHorses)
+      } else {
+        throw new Error('Failed to fetch horses')
+      }
+    } catch (error) {
+      console.error('Error fetching horses:', error)
+      // Fallback to default horses if API fails
+      setAvailableHorses([
+        {
+          id: "1",
+          name: "Oscar",
+          healthStatus: "Healthy",
+          status: "Ready for work",
+          image: require("../../assets/images/horse.png"),
+          breed: "Arabian",
+          age: 8,
+          lastCheckup: "2 days ago",
+          nextCheckup: "May 30, 2025",
+        },
+        {
+          id: "2",
+          name: "Thunder",
+          healthStatus: "Under Care",
+          status: "Recovering from injury",
+          image: require("../../assets/images/horse.png"),
+          breed: "Thoroughbred",
+          age: 6,
+          lastCheckup: "1 day ago",
+          nextCheckup: "June 5, 2025",
+        },
+        {
+          id: "3",
+          name: "Spirit",
+          healthStatus: "Healthy",
+          status: "Ready for work",
+          image: require("../../assets/images/horse.png"),
+          breed: "Quarter Horse",
+          age: 10,
+          lastCheckup: "3 days ago",
+          nextCheckup: "June 15, 2025",
+        },
+        {
+          id: "4",
+          name: "Blaze",
+          healthStatus: "Recovering",
+          status: "Post-surgery care",
+          image: require("../../assets/images/horse.png"),
+          breed: "Mustang",
+          age: 7,
+          lastCheckup: "Today",
+          nextCheckup: "May 28, 2025",
+        },
+        {
+          id: "5",
+          name: "Star",
+          healthStatus: "Healthy",
+          status: "Ready for work",
+          image: require("../../assets/images/horse.png"),
+          breed: "Paint Horse",
+          age: 5,
+          lastCheckup: "4 days ago",
+          nextCheckup: "June 10, 2025",
+        },
+        {
+          id: "6",
+          name: "Midnight",
+          healthStatus: "Healthy",
+          status: "Ready for work",
+          image: require("../../assets/images/horse.png"),
+          breed: "Friesian",
+          age: 9,
+          lastCheckup: "1 week ago",
+          nextCheckup: "June 20, 2025",
+        },
+        {
+          id: "7",
+          name: "Storm",
+          healthStatus: "Under Care",
+          status: "Routine checkup",
+          image: require("../../assets/images/horse.png"),
+          breed: "Clydesdale",
+          age: 12,
+          lastCheckup: "Yesterday",
+          nextCheckup: "June 1, 2025",
+        },
+        {
+          id: "8",
+          name: "Luna",
+          healthStatus: "Healthy",
+          status: "Ready for work",
+          image: require("../../assets/images/horse.png"),
+          breed: "Andalusian",
+          age: 4,
+          lastCheckup: "5 days ago",
+          nextCheckup: "June 25, 2025",
+        },
+      ])
+    }
+  }
 
   const loadSelectedHorse = async () => {
     try {
-      const savedHorseId = await AsyncStorage.getItem('selectedHorseId')
-      if (savedHorseId) {
-        const horse = availableHorses.find(h => h.id === savedHorseId)
-        if (horse) {
-          setSelectedHorse(horse)
-        }
+      const savedHorseData = await AsyncStorage.getItem('selectedHorseData')
+      if (savedHorseData) {
+        const horse = JSON.parse(savedHorseData)
+        setSelectedHorse(horse)
       }
     } catch (error) {
       console.log('Error loading selected horse:', error)
@@ -237,10 +292,51 @@ export default function HorseSelectionScreen() {
     try {
       await AsyncStorage.setItem('selectedHorseId', horse.id)
       await AsyncStorage.setItem('selectedHorseData', JSON.stringify(horse))
+      
+      // Also create assignment in backend
+      await createHorseAssignment(horse.id)
     } catch (error) {
       console.log('Error saving selected horse:', error)
     }
   }
+
+  const createHorseAssignment = async (horseId: string) => {
+    try {
+      if (!userData) return
+      
+      const token = await AsyncStorage.getItem('access_token')
+      if (!token) return
+
+      const today = new Date().toISOString().split('T')[0]
+      
+      const response = await fetch(`${API_BASE_URL}/assignments/assign/`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          kutsero_id: userData.profile?.kutsero_id || userData.id,
+          horse_id: horseId,
+          date_start: today,
+          date_end: today
+        })
+      })
+
+      if (!response.ok) {
+        console.log('Assignment creation failed, but horse selection saved locally')
+      }
+    } catch (error) {
+      console.error('Error creating assignment:', error)
+      // Don't show error to user as horse is still selected locally
+    }
+  }
+
+  // Filter horses based on search
+  const filteredHorses = availableHorses.filter(horse =>
+    horse.name.toLowerCase().includes(searchText.toLowerCase()) ||
+    horse.breed?.toLowerCase().includes(searchText.toLowerCase())
+  )
 
   const handleHorseSelection = (horse: Horse) => {
     setSelectedHorse(horse)
@@ -284,6 +380,16 @@ export default function HorseSelectionScreen() {
         <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
         <ActivityIndicator size="large" color="white" />
         <Text style={styles.loadingText}>Loading horses...</Text>
+      </View>
+    )
+  }
+
+  // Show loading screen
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+        <Text style={{ color: '#C17A47', fontSize: 16 }}>Loading horses...</Text>
       </View>
     )
   }

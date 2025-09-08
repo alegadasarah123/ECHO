@@ -197,6 +197,7 @@ def signup_mobile(request):
     email = request.data.get("email")
     password = request.data.get("password")
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     role = request.data.get("role")   # 👈 kutsero or horse_operator
 
     if not email or not password or not role:
@@ -208,6 +209,13 @@ def signup_mobile(request):
     if not email or not password or not role_input:
         return Response({"error": "Email, password, and role are required"}, status=status.HTTP_400_BAD_REQUEST)
 
+=======
+    role_input = request.data.get("role", "").strip().lower()  # normalize
+
+    if not email or not password or not role_input:
+        return Response({"error": "Email, password, and role are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+>>>>>>> Stashed changes
     if role_input not in ROLE_MAP:
         return Response({"error": "Invalid role selected"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -240,6 +248,7 @@ def signup_mobile(request):
         return Response({"error": "Supabase Auth did not return a user ID"}, status=status.HTTP_400_BAD_REQUEST)
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     # Convert role to proper format for database
     db_role = "Kutsero" if role == "kutsero" else "Horse Operator" if role == "horse_operator" else role
 
@@ -247,6 +256,12 @@ def signup_mobile(request):
     user_payload = {
         "id": user_id,
         "role": db_role,      # 👈 "Kutsero" or "Horse Operator"
+=======
+    # Insert into users table
+    user_payload = {
+        "id": user_id,
+        "role": role_internal,   # store canonical role
+>>>>>>> Stashed changes
 =======
     # Insert into users table
     user_payload = {
@@ -269,8 +284,13 @@ def signup_mobile(request):
         return Response({"error": "Failed to insert into users table", "details": user_insert_response.json()}, status=status.HTTP_400_BAD_REQUEST)
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     # Insert profile based on role
     if role == "kutsero":
+=======
+    # Insert profile based on canonical role
+    if role_internal == "kutsero":
+>>>>>>> Stashed changes
 =======
     # Insert profile based on canonical role
     if role_internal == "kutsero":
@@ -295,7 +315,11 @@ def signup_mobile(request):
         insert_profile_url = f"{SUPABASE_URL}/rest/v1/kutsero_profile"
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     elif role == "horse_operator":
+=======
+    elif role_internal == "horse_operator":
+>>>>>>> Stashed changes
 =======
     elif role_internal == "horse_operator":
 >>>>>>> Stashed changes
@@ -335,8 +359,14 @@ def signup_mobile(request):
         "message": "User registration completed successfully. Your account is pending approval.",
         "user": auth_json,
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         "user_record": user_insert_json,
         "profile": profile_insert_json
+=======
+        "user_record": user_insert_response.json(),
+        "profile": profile_insert_response.json(),
+        "role": role_internal  # always canonical role
+>>>>>>> Stashed changes
 =======
         "user_record": user_insert_response.json(),
         "profile": profile_insert_response.json(),
@@ -354,8 +384,13 @@ def login_mobile(request):
         return Response({"error": "Email and password are required"}, status=status.HTTP_400_BAD_REQUEST)
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     # 1️⃣ Authenticate with Supabase Auth
     login_url = f"{SUPABASE_URL}/auth/v1/token?grant_type=password"
+=======
+    # 1️⃣ Login via Supabase Auth
+    login_url = f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=password"
+>>>>>>> Stashed changes
 =======
     # 1️⃣ Login via Supabase Auth
     login_url = f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=password"
@@ -410,6 +445,9 @@ def login_mobile(request):
                 "email_used": email,
                 "supabase_url": settings.SUPABASE_URL
             }
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
         }, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -422,6 +460,7 @@ def login_mobile(request):
     if not access_token or not user_id:
         return Response({"error": "Login failed: missing token or user id"}, status=status.HTTP_400_BAD_REQUEST)
 
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
     # 2️⃣ Fetch role and status from public.users using service role key
     service_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
@@ -615,6 +654,171 @@ def login_mobile(request):
 
     # 3️⃣ Get profile info depending on role
 >>>>>>> Stashed changes
+=======
+    # 2️⃣ Get user role and status from users table - NO DEFAULTS
+    try:
+        print(f"🔍 Looking for user with ID: {user_id}")
+        print(f"🔍 Email from auth: {email}")
+        print(f"🔍 Supabase client initialized: {supabase is not None}")
+        
+        # Test basic connection first
+        try:
+            test_query = supabase.table("users").select("count", count="exact").execute()
+            print(f"🔍 Users table accessible, total count: {test_query.count}")
+        except Exception as conn_e:
+            print(f"❌ Cannot access users table: {conn_e}")
+            raise conn_e
+        
+        user_data = supabase.table("users").select("*").eq("id", user_id).execute()
+        
+        print(f"🔍 Users table query result: {user_data}")
+        print(f"🔍 Query data type: {type(user_data)}")
+        print(f"🔍 Has data attribute: {hasattr(user_data, 'data')}")
+        print(f"🔍 Number of records found: {len(user_data.data) if user_data.data else 0}")
+        
+        if not user_data.data:
+            print(f"❌ No user record found for ID: {user_id}")
+            
+            # Let's check what columns actually exist in the users table
+            try:
+                # Try different possible email column names
+                email_search = None
+                possible_email_fields = ['email', 'user_email', 'auth_email']
+                
+                for email_field in possible_email_fields:
+                    try:
+                        email_search = supabase.table("users").select("*").eq(email_field, email).execute()
+                        print(f"🔍 Email search using '{email_field}': {len(email_search.data) if email_search.data else 0} records")
+                        if email_search.data:
+                            break
+                    except Exception as field_e:
+                        print(f"❌ Field '{email_field}' doesn't exist: {field_e}")
+                        continue
+                
+                # Also try to get the table structure
+                try:
+                    structure_query = supabase.table("users").select("*").limit(1).execute()
+                    if structure_query.data:
+                        print(f"🔍 Users table columns: {list(structure_query.data[0].keys())}")
+                        
+                        # Let's also see a sample record to understand the structure
+                        print(f"🔍 Sample user record: {structure_query.data[0]}")
+                    else:
+                        print("🔍 Users table is empty, let's check structure another way")
+                        
+                        # Try to get all records to see structure
+                        all_users = supabase.table("users").select("*").execute()
+                        print(f"🔍 All users query result: {all_users}")
+                        print(f"🔍 Total users in table: {len(all_users.data) if all_users.data else 0}")
+                        
+                except Exception as struct_e:
+                    print(f"❌ Cannot get table structure: {struct_e}")
+                    
+                    # Let's try a different approach - describe table
+                    try:
+                        # This might work depending on your Supabase setup
+                        table_info = supabase.rpc('describe_table', {'table_name': 'users'}).execute()
+                        print(f"🔍 Table description: {table_info}")
+                    except Exception as desc_e:
+                        print(f"❌ Cannot describe table: {desc_e}")
+                    
+            except Exception as search_e:
+                print(f"❌ Email search failed: {search_e}")
+                email_search = None
+            
+            return Response({
+                "error": "User account not found in system. Please contact support.",
+                "debug_info": {
+                    "user_id_searched": user_id,
+                    "email_searched": email,
+                    "found_by_id": 0,
+                    "found_by_email": len(email_search.data) if email_search and email_search.data else 0,
+                    "message": "User exists in auth but not in users table - needs to be created"
+                }
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        user_record = user_data.data[0]
+        role_raw = user_record.get("role")
+        user_status = user_record.get("status")
+        
+        # Check if role exists
+        if not role_raw:
+            print(f"❌ No role assigned for user ID: {user_id}")
+            return Response({
+                "error": "No role assigned to your account. Please contact support."
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Check if status exists
+        if not user_status:
+            print(f"❌ No status assigned for user ID: {user_id}")
+            return Response({
+                "error": "Account status not set. Please contact support."
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        # Normalize role
+        ROLE_MAP = {
+            "Kutsero": "kutsero",
+            "Horse Operator": "horse_operator"
+        }
+        user_role = ROLE_MAP.get(role_raw)
+        
+        if not user_role:
+            print(f"❌ Invalid role '{role_raw}' for user ID: {user_id}")
+            return Response({
+                "error": f"Invalid role '{role_raw}' assigned to your account. Please contact support."
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        print(f"✅ Found user - Role: {user_role}, Status: {user_status}")
+        
+        # Check account status before proceeding
+        status_lower = user_status.lower().strip()
+        
+        if status_lower == "declined" or status_lower == "decline":
+            print(f"❌ Account declined for user ID: {user_id}")
+            return Response({
+                "error": "Your registration has been declined. Please contact support.",
+                "user_status": user_status
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        if status_lower == "pending":
+            print(f"❌ Account pending for user ID: {user_id}")
+            return Response({
+                "error": "Your account is still pending approval. Please wait for admin approval.",
+                "user_status": user_status
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        if status_lower != "approved":
+            print(f"❌ Invalid status '{user_status}' for user ID: {user_id}")
+            return Response({
+                "error": f"Your account status is '{user_status}'. Only approved accounts can login.",
+                "user_status": user_status
+            }, status=status.HTTP_403_FORBIDDEN)
+        
+        print(f"✅ Account approved, proceeding with login for {email}")
+        
+    except Exception as e:
+        print(f"❌ DETAILED ERROR fetching user role/status:")
+        print(f"❌ Exception type: {type(e).__name__}")
+        print(f"❌ Exception message: {str(e)}")
+        print(f"❌ User ID that caused error: {user_id}")
+        print(f"❌ Email: {email}")
+        
+        import traceback
+        print(f"❌ Full traceback:")
+        traceback.print_exc()
+        
+        return Response({
+            "error": "Error accessing user account. Please contact support.",
+            "debug_info": {
+                "error_type": type(e).__name__,
+                "error_message": str(e),
+                "user_id": user_id,
+                "email": email
+            }
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # 3️⃣ Get profile info depending on role
+>>>>>>> Stashed changes
     profile = None
     try:
         if user_role == "Kutsero":
@@ -629,7 +833,11 @@ def login_mobile(request):
         print(f"Error fetching profile: {e}")
 
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     # 6️⃣ Return successful response - MUST include user_role and user_status keys
+=======
+    # 4️⃣ Return response - Only for approved users
+>>>>>>> Stashed changes
 =======
     # 4️⃣ Return response - Only for approved users
 >>>>>>> Stashed changes
@@ -638,10 +846,15 @@ def login_mobile(request):
         "user": user,
         "profile": profile,
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
         "role": user_role,                    # Exact value from database
         "user_role": user_role,               # Frontend expects this key
         "status": user_status,                # Exact value from database  
         "user_status": user_status,           # Frontend expects this key
+=======
+        "user_role": user_role,
+        "user_status": user_status,  # This will always be "approved" at this point
+>>>>>>> Stashed changes
 =======
         "user_role": user_role,
         "user_status": user_status,  # This will always be "approved" at this point
@@ -652,9 +865,12 @@ def login_mobile(request):
         "token_type": auth_data.get('token_type', 'Bearer')
     }
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
     
     print(f"Mobile login successful for user {email} with role {user_role}")
     return Response(response_data, status=status.HTTP_200_OK)
+=======
+>>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes
 

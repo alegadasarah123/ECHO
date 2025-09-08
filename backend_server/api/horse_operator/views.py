@@ -16,6 +16,9 @@ logger = logging.getLogger(__name__)
 import requests
 import time
 from datetime import datetime, timezone
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 
 # Initialize Supabase client
@@ -137,6 +140,7 @@ def get_feeding_schedule(request):
     """
     user_id = request.GET.get("user_id")
     
+<<<<<<< Updated upstream
     try:
         if user_id:
             # Get horses owned by specific user
@@ -431,6 +435,111 @@ def clear_feed_logs(request):
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         service_client.table("feed_log").delete().eq("user_id", user_id).execute()
         return Response({"message": "All feed logs cleared successfully"}, status=status.HTTP_200_OK)
+=======
+    try:
+        if user_id:
+            # Get horses owned by specific user
+            data = supabase.table("horse_profile").select("*").eq("operator_id", user_id).execute()
+        else:
+            # Get all available horses for selection
+            data = supabase.table("horse_profile").select("*").execute()
+        
+        # Transform data to match frontend format
+        horses = []
+        for horse in data.data:
+            horse_data = {
+                "id": str(horse.get("id")),
+                "name": horse.get("horse_name"),
+                "healthStatus": horse.get("health_status", "Healthy"),
+                "status": horse.get("status", "Ready for work"),
+                "breed": horse.get("horse_breed"),
+                "age": horse.get("horse_age"),
+                "lastCheckup": horse.get("last_checkup"),
+                "nextCheckup": horse.get("next_checkup"),
+                "image": horse.get("horse_image"),
+                "color": horse.get("horse_color"),
+                "height": horse.get("horse_height"),
+                "weight": horse.get("horse_weight"),
+                "sex": horse.get("horse_sex"),
+                "dob": horse.get("horse_dob")
+            }
+            horses.append(horse_data)
+            
+        return Response(horses, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_horse_by_id(request, horse_id):
+    """
+    Fetch a specific horse by ID
+    Example: /api/horses/123
+    """
+    try:
+        data = supabase.table("horse_profile").select("*").eq("id", horse_id).execute()
+        
+        if not data.data:
+            return Response({"error": "Horse not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        horse = data.data[0]
+        horse_data = {
+            "id": str(horse.get("id")),
+            "name": horse.get("horse_name"),
+            "healthStatus": horse.get("health_status", "Healthy"),
+            "status": horse.get("status", "Ready for work"),
+            "breed": horse.get("horse_breed"),
+            "age": horse.get("horse_age"),
+            "lastCheckup": horse.get("last_checkup"),
+            "nextCheckup": horse.get("next_checkup"),
+            "image": horse.get("horse_image"),
+            "color": horse.get("horse_color"),
+            "height": horse.get("horse_height"),
+            "weight": horse.get("horse_weight"),
+            "sex": horse.get("horse_sex"),
+            "dob": horse.get("horse_dob")
+        }
+        
+        return Response(horse_data, status=status.HTTP_200_OK)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT'])
+def update_horse(request, horse_id):
+    """
+    Update horse information
+    """
+    try:
+        payload = {}
+        
+        # Only update fields that are provided
+        if request.data.get("name"):
+            payload["horse_name"] = request.data.get("name")
+        if request.data.get("age"):
+            payload["horse_age"] = request.data.get("age")
+        if request.data.get("breed"):
+            payload["horse_breed"] = request.data.get("breed")
+        if request.data.get("health_status"):
+            payload["health_status"] = request.data.get("health_status")
+        if request.data.get("status"):
+            payload["status"] = request.data.get("status")
+        if request.data.get("last_checkup"):
+            payload["last_checkup"] = request.data.get("last_checkup")
+        if request.data.get("next_checkup"):
+            payload["next_checkup"] = request.data.get("next_checkup")
+        
+        payload["updated_at"] = datetime.now(timezone.utc).isoformat()
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        data = service_client.table("horse_profile").update(payload).eq("id", horse_id).execute()
+        
+        if data.data:
+            return Response({"message": "Horse updated successfully", "data": data.data}, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "Horse not found"}, status=status.HTTP_404_NOT_FOUND)
+            
+>>>>>>> Stashed changes
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

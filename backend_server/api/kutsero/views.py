@@ -5,7 +5,13 @@ from rest_framework import status
 from supabase import create_client, Client
 from django.conf import settings
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 from datetime import datetime, date
+=======
+import requests
+import time
+from datetime import datetime, timezone
+>>>>>>> Stashed changes
 =======
 import requests
 import time
@@ -21,6 +27,7 @@ SUPABASE_ANON_KEY = settings.SUPABASE_ANON_KEY
 
 # ------------------------------------------------ HORSE ASSIGNMENT API ------------------------------------------------
 
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
 @api_view(['GET'])
 def available_horses(request):
@@ -514,6 +521,8 @@ def current_assignment(request):
         import traceback
         print(f"Full traceback: {traceback.format_exc()}")
 =======
+=======
+>>>>>>> Stashed changes
 @api_view(['POST'])
 def assign_horse(request):
     """
@@ -559,11 +568,15 @@ def assign_horse(request):
             return Response({"error": str(data.error)}, status=status.HTTP_400_BAD_REQUEST)
             
     except Exception as e:
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
 def get_assignment_history(request):
     """
@@ -673,6 +686,8 @@ def get_assignment_history(request):
         import traceback
         print(f"Full traceback: {traceback.format_exc()}")
 =======
+=======
+>>>>>>> Stashed changes
 def get_user_assignments(request, kutsero_id):
     """
     Get all horse assignments for a specific kutsero
@@ -722,11 +737,15 @@ def get_user_assignments(request, kutsero_id):
         return Response(assignments, status=status.HTTP_200_OK)
         
     except Exception as e:
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['GET'])
+<<<<<<< Updated upstream
 <<<<<<< Updated upstream
 def test_connection(request):
     return Response({"message": "Kutsero API is working"}, status=status.HTTP_200_OK)
@@ -1568,6 +1587,8 @@ def search_kutsero_profiles(request):
 
 # ------------------------------------------------ ANNOUNCEMENT ------------------------------------------------
 =======
+=======
+>>>>>>> Stashed changes
 def get_current_assignment(request, kutsero_id):
     """
     Get current active horse assignment for a kutsero
@@ -1982,5 +2003,9 @@ def get_horses_with_assignment_status(request):
         return Response(horses_with_status, status=status.HTTP_200_OK)
         
     except Exception as e:
+<<<<<<< Updated upstream
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+>>>>>>> Stashed changes
+=======
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 >>>>>>> Stashed changes
