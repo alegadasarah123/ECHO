@@ -127,7 +127,11 @@ const REACTIONS: Reaction[] = [
 // Backend API configuration
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
 const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
+=======
+const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
+>>>>>>> Stashed changes
 =======
 const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
 >>>>>>> Stashed changes

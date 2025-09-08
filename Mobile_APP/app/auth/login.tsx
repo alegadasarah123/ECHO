@@ -79,6 +79,7 @@ export default function LoginScreen() {
       console.log("Login response status:", response.status)
 <<<<<<< Updated upstream
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
       console.log("Raw server response:", data)
       console.log("Login response data:", {
         message: data.message,
@@ -212,11 +213,18 @@ export default function LoginScreen() {
       console.log("Login response data:", data)
 
 >>>>>>> Stashed changes
+=======
+      console.log("Login response data:", data)
+
+>>>>>>> Stashed changes
       if (!response.ok) {
         let errorMessage = data.message || data.error || "Login failed"
         if (response.status === 401) {
           errorMessage = "Invalid email or password. Please check your credentials."
 <<<<<<< Updated upstream
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
 >>>>>>> Stashed changes
 =======
 >>>>>>> Stashed changes

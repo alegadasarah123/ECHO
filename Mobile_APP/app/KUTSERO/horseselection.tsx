@@ -404,6 +404,16 @@ export default function HorseSelectionScreen() {
     )
   }
 
+  // Show loading screen
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+        <Text style={{ color: '#C17A47', fontSize: 16 }}>Loading horses...</Text>
+      </View>
+    )
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
