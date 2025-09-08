@@ -26,6 +26,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'api.kutsero',
+    'api.kutsero_president',
+    'api.veterinarian',
     'corsheaders',
 ]
 
