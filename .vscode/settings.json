@@ -9,6 +9,7 @@
         "Aloguinsan",
         "Apas",
         "apikey",
+        "appt",
         "Argao",
         "asujan",
         "Awihao",
@@ -71,6 +72,7 @@
         "Ginatilan",
         "haha",
         "Hcalendar",
+        "helpsupp",
         "Hfeed",
         "Hfeedlog",
         "Hmessage",
@@ -99,7 +101,11 @@
         "Perlino",
         "Pinamungajan",
         "Poro",
+        "profileinfo",
         "Remigio",
+        "resched",
+        "routefrom",
+        "routeto",
         "Samboan",
         "setrecord",
         "Settingss",
@@ -115,6 +121,8 @@
         "Talisay",
         "Tuburan",
         "Tudela",
-        "vetmed"
+        "uuidv",
+        "vetmed",
+        "yxxx"
     ]
 }

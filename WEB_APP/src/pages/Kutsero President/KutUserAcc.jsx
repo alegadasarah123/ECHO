@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Users, Search, Filter, X, Heart, User, Bell, Eye, MoreVertical,CheckCircle, XCircle } from 'lucide-react';
+import { Users, Search, Filter, X, Heart, User, Bell, Eye, MoreVertical, CheckCircle, XCircle } from 'lucide-react';
 import Sidebar from '@/components/KutSidebar';
 import NotificationModal from './KutNotif';
 import FloatingMessages from './KutMessages';
@@ -13,101 +13,76 @@ const UserAccountsPage = () => {
   const [hoveredRow, setHoveredRow] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
   const [showModal, setShowModal] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(null); 
-  const [confirmAction, setConfirmAction] = useState(null); 
-  const [actionUser, setActionUser] = useState(null); 
-  const [alert, setAlert] = useState(null); 
+  const [menuOpen, setMenuOpen] = useState(null);
+  const [confirmAction, setConfirmAction] = useState(null);
+  const [actionUser, setActionUser] = useState(null);
+  const [alert, setAlert] = useState(null);
   const [showAlert, setShowAlert] = useState(false);
   const [searchFocus, setSearchFocus] = useState(false);
-  const [accountTab, setAccountTab] = useState('active'); 
+  const [accountTab, setAccountTab] = useState('active');
   const [notifOpen, setNotifOpen] = useState(false);
 
-useEffect(() => {
-  const fetchUsers = async () => {
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/get_approved_users/`, { method: "GET", credentials: "include" });
+        if (!res.ok) throw new Error("Failed to fetch users");
+        const data = await res.json();
+
+        const formatted = (data.users || []).map(u => ({
+          id: u.id,
+          name: u.name || "N/A",
+          email: u.email || "N/A",
+          contact_num: u.phoneNumber || "N/A",
+          date: u.approved_date ? new Date(u.approved_date).toISOString().split("T")[0] : "N/A",
+          status: (u.status || "pending").toLowerCase(),
+          role: u.role || "N/A",
+          profile_picture: u.profilePicture || 'https://via.placeholder.com/100',
+          dob: u.dateOfBirth || "N/A",
+          gender: u.sex || "N/A",
+          address: u.address || "N/A",
+          facebook: u.facebook || "N/A",
+        }));
+
+        setUsers(formatted);
+      } catch (err) {
+        console.error("Error fetching users:", err);
+      }
+    };
+    fetchUsers();
+  }, []);
+
+  const handleUserAction = async (action, user) => {
     try {
-      const res = await fetch(`${API_BASE}/get_approved_users/`, {
-        method: "GET",
-        credentials: "include",
-      });
+      let endpoint = "";
+      if (action === "deactivate") endpoint = `${API_BASE}/deactivate_user/${user.id}/`;
+      if (action === "reactivate") endpoint = `${API_BASE}/reactivate_user/${user.id}/`;
+      if (action === "delete") endpoint = `${API_BASE}/delete_user/${user.id}/`;
 
-      if (!res.ok) throw new Error("Failed to fetch users");
-      const data = await res.json();
-      
-      const formatted = (data.users || []).map((u) => ({
-        id: u.id,
-        name: u.name || "N/A",
-        email: u.email || "N/A",
-        contact_num: u.phoneNumber || "N/A",      
-        date: u.approved_date ? new Date(u.approved_date).toISOString().split("T")[0] : "N/A", 
-        status: (u.status || "pending").toLowerCase(),
-        role: u.role || "N/A",
-        profile_picture: u.profilePicture || 'https://via.placeholder.com/100', 
-        dob: u.dateOfBirth || "N/A",              
-        gender: u.sex || "N/A",                  
-        address: u.address || "N/A",
-        facebook: u.facebook || "N/A",
-      }));
+      const res = await fetch(endpoint, { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error("Request failed");
+      const result = await res.json();
 
-      setUsers(formatted);
-    } catch (err) {
-      console.error("Error fetching users:", err);
-    }
-  };
-  
-  fetchUsers();
-}, []);
+      setAlert({ type: "success", message: result.message || `User ${action}d successfully!` });
 
-
-const handleUserAction = async (action, user) => {
-  try {
-    let endpoint = "";
-
-    if (action === "deactivate") {
-      endpoint = `${API_BASE}/deactivate_user/${user.id}/`;
-    } else if (action === "reactivate") {
-      endpoint = `${API_BASE}/reactivate_user/${user.id}/`;
-    } else if (action === "delete") {
-      endpoint = `${API_BASE}/delete_user/${user.id}/`;
-    }
-
-    const res = await fetch(endpoint, { 
-      method: "POST",
-      credentials: "include",  
-    });
-
-    if (!res.ok) throw new Error("Request failed");
-
-    const result = await res.json();
-    setAlert({
-      type: "success",
-      message: result.message || `User ${action}d successfully!`,
-    });
-
-    setUsers((prev) =>
-      prev.map((u) =>
+      setUsers(prev => prev.map(u =>
         u.id === user.id
           ? { ...u, status: action === "deactivate" ? "deactivated" : action === "reactivate" ? "approved" : "deleted" }
           : u
-      )
-    );
-
-  } catch (err) {
-    console.error("Error updating user:", err);
-    setAlert({
-      type: "error",
-      message: "Something went wrong. Please try again.",
-    });
-  }
-
-  setConfirmAction(null);
-};
+      ));
+    } catch (err) {
+      console.error("Error updating user:", err);
+      setAlert({ type: "error", message: "Something went wrong. Please try again." });
+    }
+    setConfirmAction(null);
+  };
 
   useEffect(() => {
     if (alert) {
-      setShowAlert(true); 
+      setShowAlert(true);
       const timer = setTimeout(() => {
-        setShowAlert(false); 
-        setTimeout(() => setAlert(null), 400); 
+        setShowAlert(false);
+        setTimeout(() => setAlert(null), 400);
       }, 3000);
       return () => clearTimeout(timer);
     }
@@ -118,391 +93,236 @@ const handleUserAction = async (action, user) => {
       (user.name || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (user.email || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
       (user.contact_num || "").includes(searchTerm);
-
-    const matchesRole =
-      filterRole.toLowerCase() === 'all' ||
-      (user.role || '').toLowerCase() === filterRole.toLowerCase();
-
-    const matchesStatus =
-      accountTab === 'active'
-        ? user.status === 'approved'
-        : user.status === 'deactivated';
-
+    const matchesRole = filterRole.toLowerCase() === 'all' || (user.role || '').toLowerCase() === filterRole.toLowerCase();
+    const matchesStatus = accountTab === 'active' ? user.status === 'approved' : user.status === 'deactivated';
     return matchesSearch && matchesRole && matchesStatus;
   });
 
   const handleRowClick = (user) => {
     setSelectedUser(user);
-    setActiveTab('user');
     setShowModal(true);
   };
-
-  const handleCloseModal = () => {
-    setSelectedUser(null);
-    setShowModal(false);
-  };
-
+  const handleCloseModal = () => { setSelectedUser(null); setShowModal(false); };
   const pendingUsers = users.filter(u => u.status === "pending");
 
   return (
     <div style={styles.layout}>
       <Sidebar />
       <div style={styles.dashboard}>
-          {/* Header */}
-          <div style={styles.header}>
-            <h1 style={styles.title}>User Approval</h1>
-
-            {/* Notification Icon */}
-            <div style={{ position: "relative" }}>
-              <button
-                style={styles.notificationBtn}
-                onClick={() => setNotifOpen(!notifOpen)}
-              >
-                <Bell size={24} color="#374151" />
-                {pendingUsers.length > 0 && (
-                  <span style={styles.badge}>{pendingUsers.length}</span>
-                )}
-              </button>
-
-              {/* Notification Modal */}
-              <NotificationModal
-                isOpen={notifOpen}
-                onClose={() => setNotifOpen(false)}
-                notifications={pendingUsers.map(u => ({
-                  message: `${u.name} (${u.role}) is pending approval`,
-                  date: u.created_at !== "N/A" ? new Date(u.created_at) : new Date()
-                }))}
-              />
-            </div>
-          </div>
-
-          <div style={styles.scrollContent}>
-            <div style={styles.controlsSection}>
-              <div
-                style={{
-                  ...styles.searchContainer,
-                  ...(searchFocus ? styles.searchContainerFocus : {})
-                }}
-              >
-                <Search style={styles.searchIcon} />
-                <input
-                  type="text"
-                  placeholder="Search users..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  onFocus={() => setSearchFocus(true)}
-                  onBlur={() => setSearchFocus(false)}
-                  style={styles.searchInput}
-                />
-              </div>
-          
-              <div style={styles.filterContainer}>
-                <Filter style={styles.filterIcon} />
-                <select
-                  value={filterRole}
-                  onChange={(e) => setFilterRole(e.target.value)}
-                  style={styles.filterSelect}
-                >
-                  <option value="All">All Roles</option>
-                  <option value="kutsero">Kutsero</option>
-                  <option value="horse operator">Horse Operator</option>
-                </select>
-              </div>
-            </div>
-
-              {/* Users Table + Tabs Wrapper */}
-              <section style={styles.tableWrapper}>
-                {/* Tabs */}
-                <div style={styles.accountTabs}>
-                  {['active', 'deactivated'].map((tab) => (
-                    <div
-                      key={tab}
-                      onClick={() => setAccountTab(tab)}
-                      style={{
-                        ...styles.accountTab,
-                        ...(accountTab === tab ? styles.accountTabActive : {}),
-                      }}
-                    >
-                      {tab === 'active' ? 'Active Accounts' : 'Deactivated Accounts'}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Users Table */}
-                <div style={styles.tableContainer}>
-                  <table style={styles.table}>
-                    <thead>
-                      <tr style={styles.tableHeaderRow}>
-                        <th style={styles.tableHeaderCell}>Name</th>
-                        <th style={styles.tableHeaderCell}>Email</th>
-                        <th style={styles.tableHeaderCell}>Contact Number</th>
-                        <th style={styles.tableHeaderCell}>Approved Date</th>
-                        {filterRole.toLowerCase() === 'all' && (
-                          <th style={styles.tableHeaderCell}>Role</th>
-                        )}
-                        <th style={styles.tableHeaderCell}>Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredUsers.map((user) => (
-                        <tr key={user.id} style={styles.tableRow}>
-                          <td style={styles.tableCell}>{user.name}</td>
-                          <td style={styles.tableCell}>{user.email}</td>
-                          <td style={styles.tableCell}>{user.contact_num}</td>
-                          <td style={styles.tableCell}>{user.date}</td>
-                          {filterRole.toLowerCase() === 'all' && (
-                            <td style={styles.tableCell}>
-                              <span style={{
-                                ...styles.roleBadge,
-                                backgroundColor:
-                                  user.role === 'Kutsero' ? '#D2691E' :
-                                  user.role === 'Horse Operator' ? '#2563eb' : '#888',
-                              }}>
-                                {user.role}
-                              </span>
-                            </td>
-                          )}
-                        <td style={styles.tableCell}>
-                          <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', position: 'relative' }}>
-                            {/* Eye icon */}
-                              <button
-                                onClick={() => handleRowClick(user)}
-                                style={{
-                                  ...styles.iconBtn,
-                                  ...(hoveredRow === `eye-${user.id}` ? styles.iconBtnHover : {})
-                                }}
-                                onMouseEnter={() => setHoveredRow(`eye-${user.id}`)}
-                                onMouseLeave={() => setHoveredRow(null)}
-                              >
-                                <Eye size={18} />
-                              </button>
-
-                              {/* 3 dots menu */}
-                              <button
-                                onClick={() => setMenuOpen(menuOpen === user.id ? null : user.id)}
-                                style={{
-                                  ...styles.iconBtn,
-                                  ...(hoveredRow === `menu-${user.id}` ? styles.iconBtnHover : {})
-                                }}
-                                onMouseEnter={() => setHoveredRow(`menu-${user.id}`)}
-                                onMouseLeave={() => setHoveredRow(null)}
-                              >
-                                <MoreVertical size={18} />
-                              </button>
-
-                              {menuOpen === user.id && (
-                                <div style={styles.dropdownMenu}>
-                                  <button
-                                    style={{
-                                      ...styles.dropdownItem,
-                                      ...(hoveredRow === "toggleStatus" ? styles.dropdownItemHover : {})
-                                    }}
-                                    onMouseEnter={() => setHoveredRow("toggleStatus")}
-                                    onMouseLeave={() => setHoveredRow(null)}
-                                    onClick={() => {
-                                      setActionUser(user);
-                                      setConfirmAction(user.status === "deactivated" ? "reactivate" : "deactivate");
-                                      setMenuOpen(null);
-                                    }}
-                                  >
-                                    {user.status === "deactivated" ? "Reactivate" : "Deactivate"}
-                                  </button>
-
-                                  <button
-                                    style={{
-                                      ...styles.dropdownItem,
-                                      ...(hoveredRow === "delete" ? styles.dropdownItemHover : {})
-                                    }}
-                                    onMouseEnter={() => setHoveredRow("delete")}
-                                    onMouseLeave={() => setHoveredRow(null)}
-                                    onClick={() => {
-                                      setActionUser(user);
-                                      setConfirmAction("delete");
-                                      setMenuOpen(null);
-                                    }}
-                                  >
-                                    Delete
-                                  </button>
-                                </div>
-                              )}
-
-                          </div>
-                        </td>
-                      </tr> 
-                    ))}
-                  </tbody>
-                </table>
-
-                {alert && (
-                  <div
-                    style={{
-                      ...styles.alert,
-                      background: alert.type === "success"
-                        ? "linear-gradient(90deg, #16a34a, #22c55e)"
-                        : "linear-gradient(90deg, #dc2626, #ef4444)",
-                      opacity: showAlert ? 1 : 0,
-                      transform: showAlert
-                        ? "translate(-50%, 0)"
-                        : "translate(-50%, -20px)",
-                    }}
-                  >
-                    {alert.type === "success" ? (
-                      <CheckCircle size={20} color="white" style={{ marginRight: "8px" }} />
-                    ) : (
-                      <XCircle size={20} color="white" style={{ marginRight: "8px" }} />
-                    )}
-                    {alert.message}
-                  </div>
-                )}
-
-                {filteredUsers.length === 0 && (
-                  <div style={styles.noResults}>
-                    <p>No users found.</p>
-                  </div>
-                )}
-              </div>
-            </section>
+        <div style={styles.header}>
+          <h1 style={styles.title}>User Accounts</h1>
+          <div style={{ position: "relative" }}>
+            <button style={styles.notificationBtn} onClick={() => setNotifOpen(!notifOpen)}>
+              <Bell size={24} color="#374151" />
+              {pendingUsers.length > 0 && <span style={styles.badge}>{pendingUsers.length}</span>}
+            </button>
+            <NotificationModal
+              isOpen={notifOpen}
+              onClose={() => setNotifOpen(false)}
+              notifications={pendingUsers.map(u => ({
+                message: `${u.name} (${u.role}) is pending approval`,
+                date: u.created_at !== "N/A" ? new Date(u.created_at) : new Date()
+              }))}
+            />
           </div>
         </div>
 
-        {confirmAction && actionUser && (
-        <div style={styles.modalOverlay} onClick={() => setConfirmAction(null)}>
-          <div style={styles.confirmModalSmall} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.titleRow}>
-              <h3 style={styles.confirmTitleSmall}>
-                {confirmAction === "deactivate"
-                  ? "Deactivate Account"
-                  : confirmAction === "reactivate"
-                  ? "Reactivate Account"
-                  : "Delete Account"}
-              </h3>
+        <div style={styles.scrollContent}>
+          <div style={styles.controlsSection}>
+            <div style={{ ...styles.searchContainer, ...(searchFocus ? styles.searchContainerFocus : {}) }}>
+              <Search style={styles.searchIcon} />
+              <input
+                type="text"
+                placeholder="Search users..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onFocus={() => setSearchFocus(true)}
+                onBlur={() => setSearchFocus(false)}
+                style={styles.searchInput}
+              />
+            </div>
+            <div style={styles.filterContainer}>
+              <Filter style={styles.filterIcon} />
+              <select
+                value={filterRole}
+                onChange={(e) => setFilterRole(e.target.value)}
+                style={styles.filterSelect}
+              >
+                <option value="All">All Roles</option>
+                <option value="kutsero">Kutsero</option>
+                <option value="horse operator">Horse Operator</option>
+              </select>
+            </div>
+          </div>
+
+          <section style={styles.tableWrapper}>
+            <div style={styles.accountTabs}>
+              {['active', 'deactivated'].map(tab => (
+                <div
+                  key={tab}
+                  onClick={() => setAccountTab(tab)}
+                  style={{ ...styles.accountTab, ...(accountTab === tab ? styles.accountTabActive : {}) }}
+                >
+                  {tab === 'active' ? 'Active Accounts' : 'Deactivated Accounts'}
+                </div>
+              ))}
             </div>
 
+            <div style={styles.tableContainer}>
+              <table style={styles.table}>
+                <thead>
+                  <tr style={styles.tableHeaderRow}>
+                    <th style={styles.tableHeaderCell}>Name</th>
+                    <th style={styles.tableHeaderCell}>Email</th>
+                    <th style={styles.tableHeaderCell}>Contact Number</th>
+                    <th style={styles.tableHeaderCell}>Approved Date</th>
+                    {filterRole.toLowerCase() === 'all' && <th style={styles.tableHeaderCell}>Role</th>}
+                    <th style={styles.tableHeaderCell}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredUsers.map(user => (
+                    <tr key={user.id} style={styles.tableRow}>
+                      <td style={styles.tableCell}>{user.name}</td>
+                      <td style={styles.tableCell}>{user.email}</td>
+                      <td style={styles.tableCell}>{user.contact_num}</td>
+                      <td style={styles.tableCell}>{user.date}</td>
+                      {filterRole.toLowerCase() === 'all' && (
+                        <td style={styles.tableCell}>
+                          <span style={{
+                            ...styles.roleBadge,
+                            backgroundColor: user.role === 'Kutsero' ? '#D2691E' :
+                              user.role === 'Horse Operator' ? '#2563eb' : '#888'
+                          }}>{user.role}</span>
+                        </td>
+                      )}
+                      <td style={styles.tableCell}>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', position: 'relative' }}>
+                          <button
+                            onClick={() => handleRowClick(user)}
+                            style={{ ...styles.iconBtn, ...(hoveredRow === `eye-${user.id}` ? styles.iconBtnHover : {}) }}
+                            onMouseEnter={() => setHoveredRow(`eye-${user.id}`)}
+                            onMouseLeave={() => setHoveredRow(null)}
+                          ><Eye size={18} /></button>
+
+                          <button
+                            onClick={() => setMenuOpen(menuOpen === user.id ? null : user.id)}
+                            style={{ ...styles.iconBtn, ...(hoveredRow === `menu-${user.id}` ? styles.iconBtnHover : {}) }}
+                            onMouseEnter={() => setHoveredRow(`menu-${user.id}`)}
+                            onMouseLeave={() => setHoveredRow(null)}
+                          ><MoreVertical size={18} /></button>
+
+                          {menuOpen === user.id && (
+                            <div style={styles.dropdownMenu}>
+                              <button
+                                style={{ ...styles.dropdownItem, ...(hoveredRow === "toggleStatus" ? styles.dropdownItemHover : {}) }}
+                                onMouseEnter={() => setHoveredRow("toggleStatus")}
+                                onMouseLeave={() => setHoveredRow(null)}
+                                onClick={() => { setActionUser(user); setConfirmAction(user.status === "deactivated" ? "reactivate" : "deactivate"); setMenuOpen(null); }}
+                              >{user.status === "deactivated" ? "Reactivate" : "Deactivate"}</button>
+
+                              <button
+                                style={{ ...styles.dropdownItem, ...(hoveredRow === "delete" ? styles.dropdownItemHover : {}) }}
+                                onMouseEnter={() => setHoveredRow("delete")}
+                                onMouseLeave={() => setHoveredRow(null)}
+                                onClick={() => { setActionUser(user); setConfirmAction("delete"); setMenuOpen(null); }}
+                              >Delete</button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {alert && (
+                <div style={{
+                  ...styles.alert,
+                  background: alert.type === "success"
+                    ? "linear-gradient(90deg, #16a34a, #22c55e)"
+                    : "linear-gradient(90deg, #dc2626, #ef4444)",
+                  opacity: showAlert ? 1 : 0,
+                  transform: showAlert ? "translate(-50%, 0)" : "translate(-50%, -20px)",
+                }}>
+                  {alert.type === "success" ? <CheckCircle size={20} color="white" style={{ marginRight: "8px" }} /> :
+                    <XCircle size={20} color="white" style={{ marginRight: "8px" }} />}
+                  {alert.message}
+                </div>
+              )}
+
+              {filteredUsers.length === 0 && <div style={styles.noResults}><p>No users found.</p></div>}
+            </div>
+          </section>
+        </div>
+      </div>
+
+      {/* Confirmation Modal */}
+      {confirmAction && actionUser && (
+        <div style={styles.modalOverlay} onClick={() => setConfirmAction(null)}>
+          <div style={styles.confirmModalSmall} onClick={(e) => e.stopPropagation()}>
+            <h3 style={styles.confirmTitleSmall}>
+              {confirmAction === "deactivate" ? "Deactivate Account" : confirmAction === "reactivate" ? "Reactivate Account" : "Delete Account"}
+            </h3>
             <div style={styles.divider}></div>
-
-            {/* Main question */}
             <p style={styles.confirmTextSmall}>
-              {confirmAction === "deactivate"
-                ? "Are you sure you want to deactivate "
-                : confirmAction === "reactivate"
-                ? "Are you sure you want to reactivate "
-                : "Are you sure you want to permanently delete "}
-              <span style={{ fontWeight: "600", color: "#111" }}>
-                {actionUser.name}
-              </span>
-              ?
+              {confirmAction === "deactivate" ? "Are you sure you want to deactivate " :
+                confirmAction === "reactivate" ? "Are you sure you want to reactivate " :
+                  "Are you sure you want to permanently delete "}
+              <span style={{ fontWeight: "600", color: "#111" }}>{actionUser.name}</span>?
             </p>
-
             <p style={styles.extraText}>
-              {confirmAction === "deactivate"
-                ? "The account will be disabled but can be reactivated later."
-                : confirmAction === "reactivate"
-                ? "The account will be reactivated and the user can access it again."
-                : "This action is irreversible. Once deleted, the account and all related data will be permanently removed."}
+              {confirmAction === "deactivate" ? "The account will be disabled but can be reactivated later." :
+                confirmAction === "reactivate" ? "The account will be reactivated and the user can access it again." :
+                  "This action is irreversible. Once deleted, the account and all related data will be permanently removed."}
             </p>
-
             <div style={styles.confirmButtonsSmall}>
+              <button style={styles.cancelBtnSmall} onClick={() => setConfirmAction(null)}>Cancel</button>
               <button
-                style={styles.cancelBtnSmall}
-                onClick={() => setConfirmAction(null)}
-              >
-                Cancel
-              </button>
-              <button
-                style={{
-                  ...styles.confirmBtnSmall,
-                  backgroundColor:
-                    confirmAction === "deactivate"
-                      ? "#2563eb"
-                      : confirmAction === "reactivate"
-                      ? "#16a34a"
-                      : "#dc2626",
-                }}
+                style={{ ...styles.confirmBtnSmall, backgroundColor: confirmAction === "deactivate" ? "#2563eb" : confirmAction === "reactivate" ? "#16a34a" : "#dc2626" }}
                 onClick={() => handleUserAction(confirmAction, actionUser)}
               >
-                {confirmAction === "deactivate"
-                  ? "Deactivate"
-                  : confirmAction === "reactivate"
-                  ? "Reactivate"
-                  : "Delete"}
+                {confirmAction === "deactivate" ? "Deactivate" : confirmAction === "reactivate" ? "Reactivate" : "Delete"}
               </button>
             </div>
           </div>
         </div>
       )}
-          {/* 🎭 Modal */}
+
+      {/* User Detail Modal */}
       {showModal && selectedUser && (
         <div style={styles.modalOverlay} onClick={handleCloseModal}>
           <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
             <div style={styles.modalHeader}>
               <h2 style={styles.modalTitle}>User Details</h2>
-              <button style={styles.closeBtn} onClick={handleCloseModal}>
-                ✕
-              </button>
+              <button style={styles.closeBtn} onClick={handleCloseModal}>✕</button>
             </div>
-
             <div style={styles.modalBody}>
               <div style={styles.mainContentContainer}>
-                {/* Left Side - Profile, Name, Status */}
                 <div style={styles.leftSide}>
                   <div style={styles.profileSection}>
-                    <img
-                      src={selectedUser.profilePicture}
-                      alt="Profile"
-                      style={styles.profileImage}
-                    />
+                    <img src={selectedUser.profile_picture} alt="Profile" style={styles.profileImage} />
                     <h2 style={styles.formalUserName}>{selectedUser.name}</h2>
                     <p style={styles.role}>{selectedUser.role}</p>
                   </div>
                 </div>
-
-                {/* Right Side - Personal and Contact Information */}
                 <div style={styles.rightSide}>
-                  {/* Personal Information Section */}
                   <div style={styles.sectionContainer}>
                     <h3 style={styles.sectionTitle}>Personal Information</h3>
                     <div style={styles.formalInfoGrid}>
-                      <div style={styles.formalInfoRow}>
-                        <span style={styles.formalLabel}>Full Name:</span>
-                        <span style={styles.formalValue}>{selectedUser.name}</span>
-                      </div>
-                      
-                      <div style={styles.formalInfoRow}>
-                        <span style={styles.formalLabel}>Date of Birth:</span>
-                        <span style={styles.formalValue}>{selectedUser.dateOfBirth}</span>
-                      </div>
-
-                      <div style={styles.formalInfoRow}>
-                        <span style={styles.formalLabel}>Gender:</span>
-                        <span style={styles.formalValue}>{selectedUser.sex}</span>
-                      </div>
+                      <div style={styles.formalInfoRow}><span style={styles.formalLabel}>Full Name:</span><span style={styles.formalValue}>{selectedUser.name}</span></div>
+                      <div style={styles.formalInfoRow}><span style={styles.formalLabel}>Date of Birth:</span><span style={styles.formalValue}>{selectedUser.dob}</span></div>
+                      <div style={styles.formalInfoRow}><span style={styles.formalLabel}>Gender:</span><span style={styles.formalValue}>{selectedUser.gender}</span></div>
                     </div>
                   </div>
-
-                  {/* Contact Information Section */}
                   <div style={styles.sectionContainer}>
                     <h3 style={styles.sectionTitle}>Contact Information</h3>
                     <div style={styles.formalInfoGrid}>
-                      <div style={styles.formalInfoRow}>
-                        <span style={styles.formalLabel}>Email Address:</span>
-                        <span style={styles.formalValue}>{selectedUser.email}</span>
-                      </div>
-
-                      <div style={styles.formalInfoRow}>
-                        <span style={styles.formalLabel}>Phone Number:</span>
-                        <span style={styles.formalValue}>{selectedUser.phoneNumber}</span>
-                      </div>
-
-                      <div style={styles.formalInfoRow}>
-                        <span style={styles.formalLabel}>Home Address:</span>
-                        <span style={styles.formalValue}>{selectedUser.address}</span>
-                      </div>
-
-                      <div style={styles.formalInfoRow}>
-                        <span style={styles.formalLabel}>Facebook Profile:</span>
-                        <a href={`https://${selectedUser.facebook}`} target="_blank" rel="noopener noreferrer" style={styles.formalLink}>
-                          {selectedUser.facebook}
-                        </a>
+                      <div style={styles.formalInfoRow}><span style={styles.formalLabel}>Email Address:</span><span style={styles.formalValue}>{selectedUser.email}</span></div>
+                      <div style={styles.formalInfoRow}><span style={styles.formalLabel}>Phone Number:</span><span style={styles.formalValue}>{selectedUser.contact_num}</span></div>
+                      <div style={styles.formalInfoRow}><span style={styles.formalLabel}>Home Address:</span><span style={styles.formalValue}>{selectedUser.address}</span></div>
+                      <div style={styles.formalInfoRow}><span style={styles.formalLabel}>Facebook Profile:</span>
+                        <a href={`https://${selectedUser.facebook}`} target="_blank" rel="noopener noreferrer" style={styles.formalLink}>{selectedUser.facebook}</a>
                       </div>
                     </div>
                   </div>
@@ -512,10 +332,13 @@ const handleUserAction = async (action, user) => {
           </div>
         </div>
       )}
+
       <FloatingMessages />
     </div>
   );
 };
+
+
 
 const styles = {
   layout: { display: 'flex', minHeight: '100vh', backgroundColor: '#f5f5f5' },

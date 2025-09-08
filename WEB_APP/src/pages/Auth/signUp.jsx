@@ -1,659 +1,312 @@
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Briefcase, CheckCircle, Eye, EyeOff, Lock, MapPin, Stethoscope, Upload, User } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { ArrowLeft, User, MapPin, Briefcase, Lock, Eye, EyeOff, Stethoscope } from "lucide-react";
 
 function SignUp() {
   const navigate = useNavigate();
-  const [currentStep, setCurrentStep] = useState(1)
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [errors, setErrors] = useState({}) 
+  const [currentStep, setCurrentStep] = useState(1);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [errors, setErrors] = useState({});
 
-  // State for personal information
-  const [firstName, setFirstName] = useState("")
-  const [middleName, setMiddleName] = useState("")
-  const [lastName, setLastName] = useState("")
-  const [dob, setDob] = useState("")
-  const [sex, setSex] = useState("") 
-  const [phoneNumber, setPhoneNumber] = useState("")
+  // Step 1 - Personal Info
+  const [firstName, setFirstName] = useState("");
+  const [middleName, setMiddleName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [dob, setDob] = useState("");
+  const [sex, setSex] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
 
-  // State for address
-  const [province, setProvince] = useState("") 
-  const [city, setCity] = useState("") 
-  const [barangay, setBarangay] = useState("")
-  const [zipCode, setZipCode] = useState("")
+  // Step 2 - Address
+  const [province, setProvince] = useState("");
+  const [city, setCity] = useState("");
+  const [barangay, setBarangay] = useState("");
+  const [zipCode, setZipCode] = useState("");
 
-  // State for professional information
-  const [email, setEmail] = useState("")
-  const [licenseNumber, setLicenseNumber] = useState("")
-  const [yearsOfExperience, setYearsOfExperience] = useState("")
-  const [specialization, setSpecialization] = useState("")
-  const [affiliatedOrganization, setAffiliatedOrganization] = useState("")
-  const [document, setDocument] = useState(null)
+  // Step 3 - Professional Info
+  const [licenseNumber, setLicenseNumber] = useState("");
+  const [yearsOfExperience, setYearsOfExperience] = useState("");
+  const [specialization, setSpecialization] = useState("");
+  const [affiliatedOrganization, setAffiliatedOrganization] = useState("");
 
-  // State for login credentials
-  const [password, setPassword] = useState("")
-  const [confirmPassword, setConfirmPassword] = useState("")
+  // Step 4 - Login
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
-  const totalSteps = 4
-  const stepTitles = ["Personal Info", "Address Details", "Professional Info", "Set Up Login"]
+  const totalSteps = 4;
 
-  // Philippine provinces and cities data
   const philippineLocations = {
-    metro_manila: ["Quezon City", "Manila", "Makati", "Taguig", "Pasig"],
-    cebu: ["Cebu City", "Mandaue City", "Lapu-Lapu City", "Talisay City"],
-    davao_del_sur: ["Davao City", "Digos City", "Santa Cruz", "Bansalan"]
-  }
+    Metro_Manila: ["Quezon City", "Manila", "Makati", "Taguig", "Pasig"],
+    Cebu: ["Cebu City", "Mandaue City", "Lapu-Lapu City", "Talisay City"],
+    Davao_Del_Sur: ["Davao City", "Digos City", "Santa Cruz", "Bansalan"]
+  };
+
+  const handleNext = () => { if (validateStep()) setCurrentStep(prev => Math.min(prev + 1, totalSteps)); };
+  const handlePrevious = () => { setErrors({}); setCurrentStep(prev => Math.max(prev - 1, 1)); };
 
   const validateStep = () => {
-    const newErrors = {}
-    let isValid = true
-
+    const newErrors = {};
     if (currentStep === 1) {
-      if (!firstName.trim()) newErrors.firstName = "First name is required."
-      if (!middleName.trim()) newErrors.middleName = "Middle name is required." 
-      if (!lastName.trim()) newErrors.lastName = "Last name is required."
-      if (!dob) newErrors.dob = "Date of Birth is required."
-      if (!sex) newErrors.sex = "Sex is required."
-      if (!phoneNumber.trim()) {
-        newErrors.phoneNumber = "Phone number is required."
-      } else if (!/^\+?\d{10,15}$/.test(phoneNumber)) {
-        newErrors.phoneNumber = "Invalid phone number format."
-      }
+      if (!firstName.trim()) newErrors.firstName = "First name is required.";
+      if (!lastName.trim()) newErrors.lastName = "Last name is required.";
+      if (!dob) newErrors.dob = "Date of Birth is required.";
+      if (!sex) newErrors.sex = "Sex is required.";
+      if (!phoneNumber.trim()) newErrors.phoneNumber = "Phone number is required.";
+      else if (!/^\+?\d{10,15}$/.test(phoneNumber)) newErrors.phoneNumber = "Invalid phone number.";
     } else if (currentStep === 2) {
-      if (!province) newErrors.province = "Province is required."
-      if (!city) newErrors.city = "City is required."
-      if (!barangay.trim()) newErrors.barangay = "Barangay is required."
-      if (!zipCode.trim()) {
-        newErrors.zipCode = "ZIP Code is required."
-      } else if (!/^\d{4}$/.test(zipCode)) {
-        newErrors.zipCode = "Invalid ZIP Code format (e.g., 1000)."
-      }
+      if (!province) newErrors.province = "Province is required.";
+      if (!city) newErrors.city = "City is required.";
+      if (!barangay.trim()) newErrors.barangay = "Barangay is required.";
+      if (!zipCode.trim()) newErrors.zipCode = "ZIP Code is required.";
+      else if (!/^\d{4}$/.test(zipCode)) newErrors.zipCode = "Invalid ZIP Code.";
     } else if (currentStep === 3) {
-      if (!licenseNumber.trim()) newErrors.licenseNumber = "License number is required."
-      if (!yearsOfExperience.trim()) newErrors.yearsOfExperience = "Years of experience is required." 
-      if (!document) newErrors.document = "Please upload a document." 
+      if (!licenseNumber.trim()) newErrors.licenseNumber = "License number is required.";
+      if (!yearsOfExperience.trim()) newErrors.yearsOfExperience = "Years of experience is required.";
     } else if (currentStep === 4) {
-      if (!email.trim()) {
-        newErrors.email = "Email address is required."
-      } else if (!/\S+@\S+\.\S+/.test(email)) {
-        newErrors.email = "Invalid email address format."
-      }
-      if (!password) {
-        newErrors.password = "Password is required."
-      } else if (password.length < 8) {
-        newErrors.password = "Password must be at least 8 characters."
-      }
-      if (!confirmPassword) {
-        newErrors.confirmPassword = "Confirm password is required."
-      }
-      if (password && confirmPassword && password !== confirmPassword) {
-        newErrors.confirmPassword = "Passwords do not match."
-      }
+      if (!email.trim()) newErrors.email = "Email address is required.";
+      else if (!/\S+@\S+\.\S+/.test(email)) newErrors.email = "Invalid email address.";
+      if (!password) newErrors.password = "Password is required.";
+      else if (password.length < 8) newErrors.password = "Password must be at least 8 characters.";
+      if (!confirmPassword) newErrors.confirmPassword = "Confirm password is required.";
+      if (password && confirmPassword && password !== confirmPassword) newErrors.confirmPassword = "Passwords do not match.";
     }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
 
-    setErrors(newErrors)
-    isValid = Object.keys(newErrors).length === 0
-    return isValid
-  }
-
-  const handleNext = () => {
-    if (validateStep()) {
-      setCurrentStep((prev) => Math.min(prev + 1, totalSteps))
-    }
-  }
-
-  const handlePrevious = () => {
-    setErrors({}) 
-    setCurrentStep((prev) => Math.max(prev - 1, 1))
-  }
-
-// Handle form submission
 const handleSubmit = async (e) => {
   e.preventDefault();
 
-  if (!validateStep()) return;
+  // Generate username if needed (not saved in DB, just fallback)
+  let username = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
+  if (!firstName || !lastName) username = email.split('@')[0];
 
   const payload = {
-    firstName,
-    middleName,
-    lastName,
-    dob,
-    sex,
-    phoneNumber,
-    province,
-    city,
-    barangay,
-    zipCode,
-    email,
-    licenseNumber,
-    yearsOfExperience,
+    email: email || "",
+    password: password || "",
+    username: username || "",
+    firstName: firstName || "",
+    middleName: middleName || "",
+    lastName: lastName || "",
+    dob: dob || "0000-01-01",
+    sex: sex || "N/A",
+    phoneNumber: phoneNumber || "",
+    province: province || "",
+    city: city || "",
+    barangay: barangay || "",
+    zipCode: zipCode || "",
+    licenseNumber: licenseNumber || "",
+    yearsOfExperience: yearsOfExperience || "0",
     specialization: specialization || "",
-    affiliatedOrganization: affiliatedOrganization || "",
-    document: document || "", 
-    password,
-    password_confirmation: confirmPassword,
+    affiliatedOrganization: affiliatedOrganization || ""
   };
 
+  console.log("DEBUG payload being sent:", payload);
+
   try {
-    const response = await fetch("http://127.0.0.1:8000/api/signup/", {
+    const response = await fetch("http://127.0.0.1:8000/api/signup_vet/", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
     });
 
     const data = await response.json();
+    console.log("DEBUG response from backend:", data);
 
     if (response.ok) {
-      alert("Sign up successful!");
-      console.log("Signup response:", data);
+      alert("Signup successful! Status: pending");
       navigate("/login");
     } else {
-      if (data.errors) {
-        setErrors(data.errors);
-      } else {
-        alert("Sign up failed: " + (data.error || "Unknown error"));
+      // Display detailed backend error
+      let errorMsg = data.error || "Unknown error";
+      if (data.details) {
+        if (typeof data.details === "string") {
+          errorMsg += `\nDetails: ${data.details}`;
+        } else {
+          errorMsg += `\nDetails: ${JSON.stringify(data.details)}`;
+        }
       }
+      alert("Signup failed:\n" + errorMsg);
     }
-  } catch (error) {
-    console.error("Error during sign up:", error);
-    alert("Sign up failed due to network error.");
+  } catch (err) {
+    console.error("Signup error:", err);
+    alert("Signup error: " + err.message);
   }
 };
 
+  const fieldStyle = { padding: "0.5rem", borderRadius: "0.375rem", border: "1px solid #d1d5db", width: "100%", outline: "none" };
 
   const renderStepContent = () => {
     switch (currentStep) {
       case 1:
         return (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right duration-500">
-            <h3 className="text-xl font-semibold text-gray-800 border-b border-gray-200 pb-2 flex items-center gap-2">
-              <User className="h-5 w-5 text-[#10B981]" /> Personal & Contact Information
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600 }}><User /> Personal & Contact Information</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "1rem" }}>
               <div>
-                <Label htmlFor="firstName">First Name</Label>
-                <Input
-                  id="firstName"
-                  value={firstName}
-                  onChange={(e) => {
-                    setFirstName(e.target.value)
-                    setErrors((prev) => ({ ...prev, firstName: "" }))
-                  }}
-                  placeholder="First Name"
-                  className={errors.firstName ? "border-red-500" : ""}
-                  required
-                />
-                {errors.firstName && <p className="text-red-500 text-xs mt-1">{errors.firstName}</p>}
+                <label>First Name</label>
+                <input style={fieldStyle} type="text" value={firstName} onChange={e => { setFirstName(e.target.value); setErrors(prev => ({ ...prev, firstName: "" })); }} />
+                {errors.firstName && <p style={{ color: "#ef4444" }}>{errors.firstName}</p>}
               </div>
               <div>
-                <Label htmlFor="middleName">Middle Name</Label>
-                <Input
-                  id="middleName"
-                  value={middleName}
-                  onChange={(e) => setMiddleName(e.target.value)}
-                  placeholder="Middle Name"
-                  className={errors.middleName ? "border-red-500" : ""}
-                />
-                {errors.middleName && <p className="text-red-500 text-xs mt-1">{errors.middleName}</p>}
+                <label>Middle Name</label>
+                <input style={fieldStyle} type="text" value={middleName} onChange={e => setMiddleName(e.target.value)} />
               </div>
               <div>
-                <Label htmlFor="lastName">Last Name</Label>
-                <Input
-                  id="lastName"
-                  value={lastName}
-                  onChange={(e) => {
-                    setLastName(e.target.value)
-                    setErrors((prev) => ({ ...prev, lastName: "" }))
-                  }}
-                  placeholder="Last Name"
-                  className={errors.lastName ? "border-red-500" : ""}
-                  required
-                />
-                {errors.lastName && <p className="text-red-500 text-xs mt-1">{errors.lastName}</p>}
+                <label>Last Name</label>
+                <input style={fieldStyle} type="text" value={lastName} onChange={e => { setLastName(e.target.value); setErrors(prev => ({ ...prev, lastName: "" })); }} />
+                {errors.lastName && <p style={{ color: "#ef4444" }}>{errors.lastName}</p>}
               </div>
             </div>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: "1rem" }}>
               <div>
-                <Label htmlFor="dob">Date Of Birth</Label>
-                <Input
-                  id="dob"
-                  type="date"
-                  value={dob}
-                  onChange={(e) => {
-                    setDob(e.target.value)
-                    setErrors((prev) => ({ ...prev, dob: "" }))
-                  }}
-                  placeholder="YYYY-MM-DD"
-                  className={errors.dob ? "border-red-500" : ""}
-                  required
-                />
-                {errors.dob && <p className="text-red-500 text-xs mt-1">{errors.dob}</p>}
+                <label>Date Of Birth</label>
+                <input style={fieldStyle} type="date" value={dob} onChange={e => { setDob(e.target.value); setErrors(prev => ({ ...prev, dob: "" })); }} />
+                {errors.dob && <p style={{ color: "#ef4444" }}>{errors.dob}</p>}
               </div>
               <div>
-                <Label htmlFor="sex">Sex</Label>
-                <Select
-                  onValueChange={(value) => {
-                    setSex(value)
-                    setErrors((prev) => ({ ...prev, sex: "" }))
-                  }}
-                  value={sex}
-                  required
-                >
-                  <SelectTrigger id="sex" className={errors.sex ? "border-red-500 bg-white" : "bg-white"}>
-                    <SelectValue placeholder="Please Select" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white">
-                    <SelectItem value="male">Male</SelectItem>
-                    <SelectItem value="female">Female</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                    <SelectItem value="prefer_not_to_say">Prefer not to say</SelectItem>
-                  </SelectContent>
-                </Select>
-                {errors.sex && <p className="text-red-500 text-xs mt-1">{errors.sex}</p>}
+                <label>Sex</label>
+                <select style={fieldStyle} value={sex} onChange={e => { setSex(e.target.value); setErrors(prev => ({ ...prev, sex: "" })); }}>
+                  <option value="">Please select</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                  <option value="prefer_not_to_say">Prefer not to say</option>
+                </select>
+                {errors.sex && <p style={{ color: "#ef4444" }}>{errors.sex}</p>}
               </div>
             </div>
             <div>
-              <Label htmlFor="phoneNumber">Phone Number</Label>
-              <Input
-                id="phoneNumber"
-                type="tel"
-                value={phoneNumber}
-                onChange={(e) => {
-                  setPhoneNumber(e.target.value)
-                  setErrors((prev) => ({ ...prev, phoneNumber: "" }))
-                }}
-                placeholder="e.g., +639123456789"
-                className={errors.phoneNumber ? "border-red-500" : ""}
-                required
-              />
-              {errors.phoneNumber && <p className="text-red-500 text-xs mt-1">{errors.phoneNumber}</p>}
+              <label>Phone Number</label>
+              <input style={fieldStyle} type="tel" value={phoneNumber} onChange={e => { setPhoneNumber(e.target.value); setErrors(prev => ({ ...prev, phoneNumber: "" })); }} placeholder="e.g., +639123456789"/>
+              {errors.phoneNumber && <p style={{ color: "#ef4444" }}>{errors.phoneNumber}</p>}
             </div>
           </div>
-        )
+        );
       case 2:
         return (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right duration-500">
-            <h3 className="text-xl font-semibold text-gray-800 border-b border-gray-200 pb-2 flex items-center gap-2">
-              <MapPin className="h-5 w-5 text-[#10B981]" /> Address in the Philippines
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="province">Province</Label>
-                <Select
-                  onValueChange={(value) => {
-                    setProvince(value)
-                    setCity("") // Reset city when province changes
-                    setErrors((prev) => ({ ...prev, province: "", city: "" }))
-                  }}
-                  value={province}
-                  required
-                >
-                  <SelectTrigger id="province" className={errors.province ? "border-red-500 bg-white" : "bg-white"}>
-                    <SelectValue placeholder="Please Select" />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white">
-                    <SelectItem value="metro_manila">Metro Manila</SelectItem>
-                    <SelectItem value="cebu">Cebu</SelectItem>
-                    <SelectItem value="davao_del_sur">Davao del Sur</SelectItem>
-                  </SelectContent>
-                </Select>
-                {errors.province && <p className="text-red-500 text-xs mt-1">{errors.province}</p>}
-              </div>
-              <div>
-                <Label htmlFor="city">City</Label>
-                <Select
-                  onValueChange={(value) => {
-                    setCity(value)
-                    setErrors((prev) => ({ ...prev, city: "" }))
-                  }}
-                  value={city}
-                  disabled={!province}
-                  required
-                >
-                  <SelectTrigger id="city" className={errors.city ? "border-red-500 bg-white" : "bg-white"}>
-                    <SelectValue placeholder={province ? "Select City" : "Select Province First"} />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white">
-                    {province && philippineLocations[province]?.map((cityName) => (
-                      <SelectItem 
-                        key={cityName} 
-                        value={cityName.toLowerCase().replace(/\s+/g, '_')}
-                      >
-                        {cityName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {errors.city && <p className="text-red-500 text-xs mt-1">{errors.city}</p>}
-              </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600 }}><MapPin /> Address</h3>
+            <div>
+              <label>Province</label>
+              <select style={fieldStyle} value={province} onChange={e => { setProvince(e.target.value); setCity(""); setErrors(prev => ({ ...prev, province: "", city: "" })); }}>
+                <option value="">Select Province</option>
+                {Object.keys(philippineLocations).map(p => <option key={p} value={p}>{p.replace("_"," ")}</option>)}
+              </select>
+              {errors.province && <p style={{ color: "#ef4444" }}>{errors.province}</p>}
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="barangay">Barangay</Label>
-                <Input
-                  id="barangay"
-                  value={barangay}
-                  onChange={(e) => {
-                    setBarangay(e.target.value)
-                    setErrors((prev) => ({ ...prev, barangay: "" }))
-                  }}
-                  placeholder="Enter Barangay"
-                  className={errors.barangay ? "border-red-500" : ""}
-                  required
-                />
-                {errors.barangay && <p className="text-red-500 text-xs mt-1">{errors.barangay}</p>}
-              </div>
-              <div>
-                <Label htmlFor="zipCode">ZIP Code</Label>
-                <Input
-                  id="zipCode"
-                  type="text"
-                  value={zipCode}
-                  onChange={(e) => {
-                    setZipCode(e.target.value)
-                    setErrors((prev) => ({ ...prev, zipCode: "" }))
-                  }}
-                  placeholder="e.g., 1000"
-                  className={errors.zipCode ? "border-red-500" : ""}
-                  required
-                />
-                {errors.zipCode && <p className="text-red-500 text-xs mt-1">{errors.zipCode}</p>}
-              </div>
+            <div>
+              <label>City</label>
+              <select style={fieldStyle} value={city} onChange={e => { setCity(e.target.value); setErrors(prev => ({ ...prev, city: "" })); }} disabled={!province}>
+                <option value="">Select City</option>
+                {province && philippineLocations[province].map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              {errors.city && <p style={{ color: "#ef4444" }}>{errors.city}</p>}
+            </div>
+            <div>
+              <label>Barangay</label>
+              <input style={fieldStyle} type="text" value={barangay} onChange={e => { setBarangay(e.target.value); setErrors(prev => ({ ...prev, barangay: "" })); }} />
+              {errors.barangay && <p style={{ color: "#ef4444" }}>{errors.barangay}</p>}
+            </div>
+            <div>
+              <label>ZIP Code</label>
+              <input style={fieldStyle} type="text" value={zipCode} onChange={e => { setZipCode(e.target.value); setErrors(prev => ({ ...prev, zipCode: "" })); }} />
+              {errors.zipCode && <p style={{ color: "#ef4444" }}>{errors.zipCode}</p>}
             </div>
           </div>
-        )
+        );
       case 3:
         return (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right duration-500">
-            <h3 className="text-xl font-semibold text-gray-800 border-b border-gray-200 pb-2 flex items-center gap-2">
-              <Briefcase className="h-5 w-5 text-[#10B981]" /> Professional Information
-            </h3>
-            <div>
-              <Label htmlFor="licenseNumber">License Number (PRC or Veterinary License)</Label>
-              <Input
-                id="licenseNumber"
-                value={licenseNumber}
-                onChange={(e) => {
-                  setLicenseNumber(e.target.value)
-                  setErrors((prev) => ({ ...prev, licenseNumber: "" }))
-                }}
-                placeholder="Enter license number"
-                className={errors.licenseNumber ? "border-red-500" : ""}
-                required
-              />
-              {errors.licenseNumber && <p className="text-red-500 text-xs mt-1">{errors.licenseNumber}</p>}
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600 }}><Stethoscope /> Professional Info</h3>
+            <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1rem" }}>
               <div>
-                <Label htmlFor="yearsOfExperience">Years of Experience</Label>
-                <Input
-                id="yearsOfExperience"
-                type="number"
-                value={yearsOfExperience}
-                onChange={(e) => setYearsOfExperience(e.target.value)}
-                placeholder="e.g., 5"
-                className={errors.yearsOfExperience ? "border-red-500" : ""}
-              />
-              {errors.yearsOfExperience && <p className="text-red-500 text-xs mt-1">{errors.yearsOfExperience}</p>}
-
+                <label>License Number</label>
+                <input style={fieldStyle} type="text" value={licenseNumber} onChange={e => { setLicenseNumber(e.target.value); setErrors(prev => ({ ...prev, licenseNumber: "" })); }} />
+                {errors.licenseNumber && <p style={{ color: "#ef4444" }}>{errors.licenseNumber}</p>}
               </div>
               <div>
-                <Label htmlFor="specialization">Specialization (Optional)</Label>
-                <Input
-                  id="specialization"
-                  value={specialization}
-                  onChange={(e) => setSpecialization(e.target.value)}
-                  placeholder="e.g., Equine, Large Animals"
-                />
+                <label>Years of Experience</label>
+                <input style={{ ...fieldStyle, padding: "0.25rem" }} type="number" value={yearsOfExperience} onChange={e => { setYearsOfExperience(e.target.value); setErrors(prev => ({ ...prev, yearsOfExperience: "" })); }} />
+                {errors.yearsOfExperience && <p style={{ color: "#ef4444" }}>{errors.yearsOfExperience}</p>}
               </div>
             </div>
             <div>
-              <Label htmlFor="affiliatedOrganization">Affiliated Organization (Optional)</Label>
-              <Input
-                id="affiliatedOrganization"
-                value={affiliatedOrganization}
-                onChange={(e) => setAffiliatedOrganization(e.target.value)}
-                placeholder="e.g., Philippine Veterinary Medical Association"
-              />
+              <label>Specialization <span style={{ fontWeight: 400, color: "#6b7280" }}>(Optional)</span></label>
+              <input style={fieldStyle} type="text" value={specialization} onChange={e => setSpecialization(e.target.value)} />
             </div>
-
-            {/* Document Uploads */}
-            <div className="space-y-4 mt-6">
-              <h3 className="text-xl font-semibold text-gray-800 border-b border-gray-200 pb-2 flex items-center gap-2">
-                <Upload className="h-5 w-5 text-[#10B981]" /> Document Uploads
-              </h3>
-              <div className="flex items-center space-x-2">
-                <Label
-                  htmlFor="documentUpload"
-                  className="cursor-pointer flex items-center gap-2 text-[#10B981] hover:text-[#0e9f71]"
-                >
-                  <Upload className="h-4 w-4" />
-                  Upload your professional documents (e.g., License, Certifications)
-                </Label>
-                <Input
-                  id="documentUpload"
-                  type="file"
-                  onChange={(e) => setDocument(e.target.files ? e.target.files[0] : null)}
-                  className="hidden"
-              />
-                {document && <span className="text-sm text-gray-500">{document.name}</span>}
-              </div>
-              {errors.document && <p className="text-red-500 text-xs mt-1">{errors.document}</p>}
-
-              <p className="text-sm text-gray-500">
-                Note: Actual file upload functionality requires backend integration. This is a placeholder.
-              </p>
+            <div>
+              <label>Affiliated Organization <span style={{ fontWeight: 400, color: "#6b7280" }}>(Optional)</span></label>
+              <input style={fieldStyle} type="text" value={affiliatedOrganization} onChange={e => setAffiliatedOrganization(e.target.value)} />
             </div>
           </div>
-        )
+        );
       case 4:
         return (
-          <div className="space-y-6 animate-in fade-in slide-in-from-right duration-500">
-            <h3 className="text-xl font-semibold text-gray-800 border-b border-gray-200 pb-2 flex items-center gap-2">
-              <Lock className="h-5 w-5 text-[#10B981]" /> Set up your login
-            </h3>
+          <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600 }}><Lock /> Set Login Credentials</h3>
             <div>
-              <Label htmlFor="email">Email Address</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => {
-                  setEmail(e.target.value)
-                  setErrors((prev) => ({ ...prev, email: "" }))
-                }}
-                placeholder="your.email@example.com"
-                className={errors.email ? "border-red-500" : ""}
-                required
-              />
-              {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-              <p className="text-xs text-gray-500 mt-1">
-                This will be your login email address.
-              </p>
+              <label>Email</label>
+              <input style={fieldStyle} type="email" value={email} onChange={e => { setEmail(e.target.value); setErrors(prev => ({ ...prev, email: "" })); }} placeholder="example@mail.com" />
+              {errors.email && <p style={{ color: "#ef4444" }}>{errors.email}</p>}
             </div>
             <div>
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value)
-                    setErrors((prev) => ({ ...prev, password: "" }))
-                  }}
-                  placeholder="Enter your password"
-                  className={errors.password ? "border-red-500" : ""}
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+              <label>Password</label>
+              <div style={{ position: "relative" }}>
+                <input style={{ ...fieldStyle, paddingRight: "2.5rem" }} type={showPassword ? "text" : "password"} value={password} onChange={e => { setPassword(e.target.value); setErrors(prev => ({ ...prev, password: "" })); }} />
+                <span onClick={() => setShowPassword(prev => !prev)} style={{ position: "absolute", right: "0.5rem", top: "50%", transform: "translateY(-50%)", cursor: "pointer", color: "#6b7280" }}>
+                  {showPassword ? <EyeOff /> : <Eye />}
+                </span>
               </div>
-              {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
+              {errors.password && <p style={{ color: "#ef4444" }}>{errors.password}</p>}
             </div>
             <div>
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
-              <div className="relative">
-                <Input
-                  id="confirmPassword"
-                  type={showConfirmPassword ? "text" : "password"}
-                  value={confirmPassword}
-                  onChange={(e) => {
-                    setConfirmPassword(e.target.value)
-                    setErrors((prev) => ({ ...prev, confirmPassword: "" }))
-                  }}
-                  placeholder="Confirm your password"
-                  className={errors.confirmPassword ? "border-red-500" : ""}
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+              <label>Confirm Password</label>
+              <div style={{ position: "relative" }}>
+                <input style={{ ...fieldStyle, paddingRight: "2.5rem" }} type={showConfirmPassword ? "text" : "password"} value={confirmPassword} onChange={e => { setConfirmPassword(e.target.value); setErrors(prev => ({ ...prev, confirmPassword: "" })); }} />
+                <span onClick={() => setShowConfirmPassword(prev => !prev)} style={{ position: "absolute", right: "0.5rem", top: "50%", transform: "translateY(-50%)", cursor: "pointer", color: "#6b7280" }}>
+                  {showConfirmPassword ? <EyeOff /> : <Eye />}
+                </span>
               </div>
-              {errors.confirmPassword && <p className="text-red-500 text-xs mt-1">{errors.confirmPassword}</p>}
+              {errors.confirmPassword && <p style={{ color: "#ef4444" }}>{errors.confirmPassword}</p>}
             </div>
           </div>
-        )
+        );
       default:
-        return null
+        return null;
     }
-  }
+  };
+
+  const styles = {
+    container: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #fdf8f6 0%, #ffffff 50%, #fdf8f6 100%)", padding: "1rem", position: "relative" },
+    backgroundPattern: { position: "absolute", inset: 0, backgroundImage: "radial-gradient(circle at 1px 1px, rgba(184, 118, 62, 0.1) 1px, transparent 0)", backgroundSize: "20px 20px", opacity: 0.3 },
+    backLink: { position: "absolute", top: "1rem", left: "2rem", display: "flex", alignItems: "center", gap: "0.5rem", color: "#6b7280", cursor: "pointer", fontSize: "0.875rem", transition: "all 0.2s ease", zIndex: 2 },
+    card: { backgroundColor: "white", borderRadius: "1rem", padding: "2rem", width: "100%", maxWidth: "600px", position: "relative", zIndex: 1, boxShadow: "0 25px 50px rgba(184, 118, 62, 0.1), 0 0 0 1px rgba(184, 118, 62, 0.05)" },
+    button: { padding: "0.75rem 1rem", borderRadius: "0.5rem", cursor: "pointer", border: "none", transition: "background 0.2s ease" },
+    buttonPrev: { background: "#f3f4f6", color: "#111827" },
+    buttonNext: { background: "#B8763E", color: "#fff" },
+    progressContainer: { width: "100%", background: "#e5e7eb", borderRadius: "9999px", height: "0.5rem", marginBottom: "1rem", overflow: "hidden" },
+    progressBar: { height: "100%", background: "#B8763E", transition: "width 0.3s ease" },
+  };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#F0FDF4] to-white flex items-center justify-center p-4">
-      <div className="w-full max-w-2xl relative">
-        {/* Back to Login Link */}
-        <div className="mb-6 animate-in slide-in-from-top duration-500">
-          <button className="inline-flex items-center text-sm text-gray-600 hover:text-[#10B981] transition-colors group">
-            <ArrowLeft className="h-4 w-4 mr-2 group-hover:-translate-x-1 transition-transform duration-200" />
-            Back to Login
-          </button>
-        </div>
-
-        {/* Sign Up Card */}
-        <Card className="shadow-xl border border-gray-100 bg-white/90 backdrop-blur-sm animate-in slide-in-from-bottom duration-700">
-          <CardHeader className="text-center space-y-2 pb-6 border-b border-gray-100">
-            <div className="flex items-center justify-center mb-2">
-              <Stethoscope className="h-8 w-8 text-[#10B981]" />
-              <span className="text-3xl font-bold text-gray-900 ml-2">Echo</span>
-            </div>
-            <CardTitle className="text-3xl font-bold text-gray-900">Create Your Veterinarian Account</CardTitle>
-            <CardDescription className="text-gray-600">
-              Join Echo to streamline your practice management.
-            </CardDescription>
-            {/* Progress Indicator */}
-            <div className="flex flex-col items-center mt-6">
-              <div className="flex justify-center items-center space-x-2 w-full max-w-md">
-                {Array.from({ length: totalSteps }).map((_, index) => (
-                  <div
-                    key={index}
-                    className={`flex-1 h-2 rounded-full transition-all duration-300 ${
-                      currentStep >= index + 1 ? "bg-[#10B981] shadow-sm" : "bg-gray-200"
-                    }`}
-                  />
-                ))}
-              </div>
-              <div className="flex justify-between w-full max-w-md mt-2 text-xs font-medium text-gray-500">
-                {stepTitles.map((title, index) => (
-                  <span
-                    key={index}
-                    className={`flex-1 text-center transition-colors duration-300 ${
-                      currentStep >= index + 1 ? "text-[#10B981]" : "text-gray-400"
-                    }`}
-                  >
-                    {title}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-8 p-6 md:p-8">
-            <div className="space-y-6">
-              {renderStepContent()}
-
-              {/* Navigation Buttons */}
-              <div className="flex justify-between mt-8 pt-4 border-t border-gray-100">
-                {currentStep > 1 && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={handlePrevious}
-                    className="hover:scale-105 transition-all duration-200 hover:shadow-md bg-transparent text-gray-700 border-gray-300"
-                  >
-                    <ArrowLeft className="h-4 w-4 mr-2" />
-                    Previous
-                  </Button>
-                )}
-                {currentStep < totalSteps && (
-                  <Button
-                    type="button"
-                    onClick={handleNext}
-                    className="ml-auto bg-[#10B981] hover:bg-[#0e9f71] text-white hover:scale-[1.02] transition-all duration-200 hover:shadow-lg"
-                  >
-                    Next
-                    <ArrowLeft className="h-4 w-4 ml-2 rotate-180" />
-                  </Button>
-                )}
-                {currentStep === totalSteps && (
-                  <Button
-                    type="button"
-                    onClick={handleSubmit}
-                    className="w-full bg-[#10B981] hover:bg-[#0e9f71] text-white py-3 text-base font-medium hover:scale-[1.02] transition-all duration-200 hover:shadow-lg"
-                  >
-                    <CheckCircle className="h-5 w-5 mr-2" /> Create Account
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Already have an account link */}
-            <div className="text-center mt-4">
-              <p className="text-sm text-gray-600">
-                Already have an account?{" "}
-                <button className="text-[#10B981] hover:text-[#0e9f71] font-medium hover:underline transition-colors">
-                  Sign in
-                </button>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Footer */}
-        <div className="mt-8 text-center text-xs text-gray-500 animate-in fade-in duration-500 delay-1400">
-          <p>© 2025 Echo - Veterinarian. All rights reserved.</p>
-          <div className="mt-2 space-x-4">
-            <a href="#" className="hover:text-[#10B981] transition-colors">
-              Privacy Policy
-            </a>
-            <a href="#" className="hover:text-[#10B981] transition-colors">
-              Terms of Service
-            </a>
-            <a href="#" className="hover:text-[#10B981] transition-colors">
-              Support
-            </a>
+    <div style={styles.container}>
+      <div style={styles.backgroundPattern}></div>
+      <div style={styles.backLink} onClick={() => navigate("/login")}><ArrowLeft size={16}/> Back to Login</div>
+      <div style={styles.card}>
+        <div style={styles.progressContainer}><div style={{ ...styles.progressBar, width: `${(currentStep / totalSteps) * 100}%` }}></div></div>
+        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+          {renderStepContent()}
+          <div style={{ display: "flex", justifyContent: "space-between", marginTop: "1.5rem" }}>
+            {currentStep > 1 && <button type="button" style={{ ...styles.button, ...styles.buttonPrev }} onClick={handlePrevious}>Previous</button>}
+            {currentStep < totalSteps && <button type="button" style={{ ...styles.button, ...styles.buttonNext }} onClick={handleNext}>Next</button>}
+            {currentStep === totalSteps && <button type="submit" style={{ ...styles.button, ...styles.buttonNext }}>Submit</button>}
           </div>
-        </div>
+        </form>
       </div>
     </div>
-  )
+  );
 }
 
-export default SignUp
+export default SignUp;

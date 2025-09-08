@@ -25,10 +25,11 @@ import Messages from "./pages/Dvmf/DvmfMessage.jsx";
 import Settingss from "./pages/Dvmf/DvmfSettings.jsx";
 import VetAppointment from "./pages/Veterinarian/VetAppointment.jsx";
 import VetDashboard from "./pages/Veterinarian/VetDashboard.jsx";
-import VetDirectory from "./pages/Veterinarian/vetDirectory.jsx";
+import VetAppointmentRequest from"./pages/Veterinarian/VetAppRequest";
 import VetRequest from "./pages/Veterinarian/VetRequest.jsx";
 import VetSettings from "./pages/Veterinarian/VetSettings.jsx";
 import VetHealthLog from "./pages/Veterinarian/VetHealthLog.jsx";
+import AppointmentDetails from "./pages/Veterinarian/AppointmentDetails.jsx";
 import KutDashboard from "./pages/Kutsero President/KutDashboard.jsx";
 import KutUserManagement from "./pages/Kutsero President/KutUserApproval.jsx";
 import KutUserAccount from "./pages/Kutsero President/KutUserAcc.jsx";
@@ -48,10 +49,11 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <Route path="/KutSettings" element={<KutSettings />} />
         <Route path="/KutMessages" element={<KutMessages />} />
         <Route path="/VetDashboard" element={<VetDashboard />} />
-        <Route path="/VetAppointment" element={<VetAppointment />} />
+        <Route path="/VetAppointmentRequests" element={<VetAppointmentRequest/>}/>
+        <Route path="/VetAppointments" element={<VetAppointment />} />
+        <Route path="/VetAppointmentDetails/:id" element={<AppointmentDetails />} />
         <Route path="/VetRequest" element={<VetRequest />} />
         <Route path="/VetHealthLog" element={<VetHealthLog />} />
-        <Route path="/VetDirectory" element={<VetDirectory />} />
         <Route path="/VetSettings" element={<VetSettings />} />
         <Route path="/CtuDashboard" element={<CtuDashboard />} />
         <Route path="/CtuAccountApproval" element={<AccountApproval />} />

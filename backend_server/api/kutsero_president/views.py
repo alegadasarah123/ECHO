@@ -50,8 +50,8 @@ def fetch_and_merge_users():
     kutsero_res = supabase.table("kutsero_profile").select("*").execute()
     kutsero_profiles = {kp["kutsero_id"]: kp for kp in kutsero_res.data or []}
 
-    ho_res = supabase.table("horse_operator_profile").select("*").execute()
-    ho_profiles = {hp["operator_id"]: hp for hp in ho_res.data or []}
+    ho_res = supabase.table("horse_op_profile").select("*").execute()
+    ho_profiles = {hp["op_id"]: hp for hp in ho_res.data or []}
 
     allowed_roles = {"kutsero", "horse operator"}
     merged = []
@@ -94,24 +94,24 @@ def fetch_and_merge_users():
                 elif role == "horse operator" and user_id in ho_profiles:
                     hp = ho_profiles[user_id]
                     full_name = " ".join(filter(None, [
-                        hp.get("operator_fname"),
-                        hp.get("operator_mname"),
-                        hp.get("operator_lname")
+                        hp.get("op_fname"),
+                        hp.get("op_mname"),
+                        hp.get("op_lname")
                     ]))
-                    contact_num = hp.get("operator_phone_num", "")
+                    contact_num = hp.get("op_phone_num", "")
                     profile = {
-                        "dateOfBirth": str(hp.get("operator_dob")),
-                        "sex": hp.get("operator_sex"),
-                        "phoneNumber": hp.get("operator_phone_num"),
+                        "dateOfBirth": str(hp.get("op_dob")),
+                        "sex": hp.get("op_sex"),
+                        "phoneNumber": hp.get("opr_phone_num"),
                         "address": ", ".join(filter(None, [
-                            hp.get("operator_house_add"),
-                            hp.get("operator_brgy"),
-                            hp.get("operator_municipality"),
-                            hp.get("operator_city"),
-                            hp.get("operator_province"),
-                            hp.get("operator_zipcode"),
+                            hp.get("op_house_add"),
+                            hp.get("op_brgy"),
+                            hp.get("op_municipality"),
+                            hp.get("op_city"),
+                            hp.get("op_province"),
+                            hp.get("op_zipcode"),
                         ])),
-                        "facebook": hp.get("operator_fb"),
+                        "facebook": hp.get("op_fb"),
                         "profilePicture": hp.get("profile_picture", "https://via.placeholder.com/120x120?text=Profile")
                     }
 
@@ -188,13 +188,21 @@ def approve_user(request, user_id):
 @login_required
 def get_approved_users(request):
     users = fetch_and_merge_users()
-    approved_users = [
+    
+    # Include approved AND deactivated users for Kutsero and Horse Operator roles
+    allowed_roles = ["kutsero", "horse operator"]
+    filtered_users = [
         u for u in users
-        if u.get("status", "").strip().lower() == "approved" and u.get("role", "").strip().lower() in ["kutsero", "horse operator"]
+        if u.get("role", "").strip().lower() in allowed_roles
+        and u.get("status", "").strip().lower() in ["approved", "deactivated"]
     ]
-    for u in approved_users:
+
+    # Add approved_date field
+    for u in filtered_users:
         u["approved_date"] = u.pop("created_at", "N/A")
-    return Response({"users": approved_users})
+    
+    return Response({"users": filtered_users})
+
 
 @api_view(["POST"])
 @login_required
@@ -227,7 +235,7 @@ def delete_declined_users(request):
         if role_value == "kutsero":
             supabase.table("kutsero_profile").delete().eq("kutsero_id", user_id).execute()
         elif role_value == "horse operator":
-            supabase.table("horse_operator_profile").delete().eq("operator_id", user_id).execute()
+            supabase.table("horse_op_profile").delete().eq("op_id", user_id).execute()
         supabase.table("users").delete().eq("id", user_id).execute()
         auth_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
         headers = {"apikey": SERVICE_ROLE_KEY, "Authorization": f"Bearer {SERVICE_ROLE_KEY}"}
@@ -573,7 +581,7 @@ def send_message(request):
 @login_required
 def search_users(request):
     query = request.GET.get("q", "").strip().lower()
-    all_users = fetch_and_merge_users()  # returns [{id, name, email, ...}]
+    all_users = fetch_and_merge_users()  
 
     if query:
         filtered_users = [

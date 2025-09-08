@@ -236,18 +236,22 @@ function LogIn({ onBack }) {
     }
 
     console.log("Login successful:", data);
+const role = data.role.trim(); // keep original case from DB
 
-    const role = data.role;
-    if (role === "Veterinarian") {
-      navigate("/VetDashboard");
-    }else if (role === "ctu_vetmed" || role === "Ctu-VetMed") {
-      navigate("/CtuDashboard");
-    } else if (role === "Dvmf") {
-      navigate("/DvmfDashboard");
-    } else {
-      navigate("/KutDashboard");
-    }
-    if (onBack) onBack(role);
+if (role === "Veterinarian") {
+  navigate("/VetDashboard");
+} else if (role === "Ctu-Vetmed" || role === "Ctu-Admin") {
+  navigate("/CtuDashboard");
+} else if (role === "Dvmf") {
+  navigate("/DvmfDashboard");
+} else {
+  navigate("/KutDashboard");
+}
+
+
+
+if (onBack) onBack(role);
+
 
   } catch (err) {
     console.error("Login error:", err);

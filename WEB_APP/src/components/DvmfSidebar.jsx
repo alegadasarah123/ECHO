@@ -1,17 +1,17 @@
 "use client"
 
 import {
-    BarChart3,
-    ClipboardList,
-    FileText,
-    Folder,
-    Heart,
-    LayoutDashboard,
-    LogOut,
-    Megaphone,
-    Menu,
-    Settings,
-    UserCheck,
+  BarChart3,
+  ClipboardList,
+  FileText,
+  Folder,
+  Heart,
+  LayoutDashboard,
+  LogOut,
+  Megaphone,
+  Menu,
+  Settings,
+  UserCheck,
 } from "lucide-react"
 import { useState } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
@@ -29,14 +29,14 @@ const DvmfSidebars = () => {
   }
 
   const sidebarItems = [
-    { icon: LayoutDashboard, label: "Dashboard", path: "/CtuDashboard" },
-    { icon: UserCheck, label: "Account Approval", path: "/CtuAccountApproval" },
-    { icon: FileText, label: "Access Requests", path: "/CtuAccessRequest" },
-    { icon: ClipboardList, label: "Horse Records", path: "/CtuHorseRecord" },
-    { icon: BarChart3, label: "Health Reports", path: "/CtuHealthReport" },
-    { icon: Megaphone, label: "Announcements", path: "/CtuAnnouncement" },
-    { icon: Folder, label: "Directory", path: "/CtuDirectory" },
-    { icon: Settings, label: "Settings", path: "/CtuSettings" },
+    { icon: LayoutDashboard, label: "Dashboard", path: "/DvmfDashboard" },
+    { icon: UserCheck, label: "Account Approval", path: "/DvmfAccountApproval" },
+    { icon: FileText, label: "Access Requests", path: "/DvmfAccessRequest" },
+    { icon: ClipboardList, label: "Horse Records", path: "/DvmfHorseRecord" },
+    { icon: BarChart3, label: "Health Reports", path: "/DvmfHealthReport" },
+    { icon: Megaphone, label: "Announcements", path: "/DvmfAnnouncement" },
+    { icon: Folder, label: "Directory", path: "/DvmfDirectory" },
+    { icon: Settings, label: "Settings", path: "/DvmfSettings" },
   ]
 
   return (

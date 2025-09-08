@@ -1,6 +1,6 @@
 "use client"
 
-// Enhanced Signup Component with Role Selection
+// Enhanced Signup Component with Role Selection - No Username Required
 import { useState } from "react"
 import { useRouter } from "expo-router"
 import {
@@ -98,7 +98,7 @@ const cebuMunicipalities = [
 const allCebuLocations = [...cebuCities, ...cebuMunicipalities].sort()
 
 const municipalitiesByCity: { [key: string]: string[] } = {
-  "Cebu City": ["Lahug", "Capitol Site", "Guadalupe", "Mabolo", "Banilad", "Talamban", "Apas", "Kasambagan"],
+  "Cebu City": ["Apas", "Lahug", "Capitol Site", "Guadalupe", "Mabolo", "Banilad", "Talamban", "Kasambagan"],
   "Mandaue City": ["Alang-alang", "Bakilid", "Banilad", "Basak", "Cabancalan", "Canduman", "Casuntingan"],
   "Lapu-Lapu City": ["Agus", "Babag", "Bankal", "Basak", "Buaya", "Calawisan", "Canjulao", "Caubian"],
   "Talisay City": ["Biasong", "Bulacao", "Cadulawan", "Camp Lapu-lapu", "Candulawan", "Cansojong"],
@@ -162,7 +162,7 @@ interface ProfilePicture {
 
 // Updated API configuration
 const API_CONFIG = {
-  BASE_URL: 'http://172.20.10.2:8000/api/signup_mobile/',
+  BASE_URL: 'http://192.168.1.7:8000/api/signup_mobile/',
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,
@@ -178,7 +178,7 @@ export default function Signup() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
-  // Form data states with proper typing - FIXED: profilePicture is now ProfilePicture | null
+  // Form data states - REMOVED username field, now only 5 steps
   const [formData, setFormData] = useState({
     // Step 1 - Personal Info
     firstName: "",
@@ -188,7 +188,7 @@ export default function Signup() {
     sex: "",
     phoneNumber: "",
 
-    // Step 2 - Role Selection (NEW)
+    // Step 2 - Role Selection
     role: "",
 
     // Step 3 - Location (Cebu only)
@@ -200,16 +200,15 @@ export default function Signup() {
     route: "",
     to: "",
 
-    // Step 4 - Contact Info
-    email: "",
+    // Step 4 - Facebook Link
     facebook: "",
 
-    // Step 5 - Login Credentials
-    username: "",
+    // Step 5 -   l Login Credentials
+    email: "",
     password: "",
     confirmPassword: "",
 
-    // Step 6 - Profile Picture - FIXED: Now properly typed
+    // Step 6 - Profile Picture
     profilePicture: null as ProfilePicture | null,
   })
 
@@ -267,117 +266,127 @@ export default function Signup() {
   }
 
   // Updated camera function with proper null checks
-const openCamera = () => {
-  const options = {
-    mediaType: "photo" as MediaType,
-    quality: 0.8 as PhotoQuality,
-    maxWidth: 800,
-    maxHeight: 800,
-    includeBase64: false,
-    saveToPhotos: false,
-  }
-
-  launchCamera(options, (response: ImagePickerResponse) => {
-    console.log('Camera response:', response)
-    
-    if (response.didCancel) {
-      console.log('User cancelled camera')
-      return
+  const openCamera = () => {
+    const options = {
+      mediaType: "photo" as MediaType,
+      quality: 0.8 as PhotoQuality,
+      maxWidth: 800,
+      maxHeight: 800,
+      includeBase64: false,
+      saveToPhotos: false,
     }
 
-    if (response.errorMessage) {
-      console.log('Camera error:', response.errorMessage)
-      Alert.alert('Camera Error', response.errorMessage)
-      return
-    }
-
-    // Add proper null/undefined checks here
-    if (response.assets && response.assets.length > 0) {
-      const asset = response.assets[0]
+    launchCamera(options, (response: ImagePickerResponse) => {
+      console.log('Camera response:', response)
       
-      // Check if uri exists before proceeding
-      if (!asset.uri) {
+      if (response.didCancel) {
+        console.log('User cancelled camera')
+        return
+      }
+
+      if (response.errorMessage) {
+        console.log('Camera error:', response.errorMessage)
+        Alert.alert('Camera Error', response.errorMessage)
+        return
+      }
+
+      // Add proper null/undefined checks here
+      if (response.assets && response.assets.length > 0) {
+        const asset = response.assets[0]
+        
+        // Check if uri exists before proceeding
+        if (!asset.uri) {
+          Alert.alert('Error', 'No image was captured')
+          return
+        }
+        
+        const imageUri = asset.uri
+        
+        console.log('Camera image selected:', imageUri)
+        setSelectedImage(imageUri)
+        
+        const profilePictureData: ProfilePicture = {
+          uri: imageUri, // Now guaranteed to be string
+          type: asset.type || "image/jpeg",
+          name: asset.fileName || "profile_camera.jpg",
+        }
+        
+        updateFormData("profilePicture", profilePictureData)
+      } else {
         Alert.alert('Error', 'No image was captured')
-        return
       }
-      
-      const imageUri = asset.uri
-      
-      console.log('Camera image selected:', imageUri)
-      setSelectedImage(imageUri)
-      
-      const profilePictureData: ProfilePicture = {
-        uri: imageUri, // Now guaranteed to be string
-        type: asset.type || "image/jpeg",
-        name: asset.fileName || "profile_camera.jpg",
-      }
-      
-      updateFormData("profilePicture", profilePictureData)
-    } else {
-      Alert.alert('Error', 'No image was captured')
-    }
-  })
-}
-
-// Updated image library function with proper null checks
-const openImageLibrary = () => {
-  const options = {
-    mediaType: "photo" as MediaType,
-    quality: 0.8 as PhotoQuality,
-    maxWidth: 800,
-    maxHeight: 800,
-    includeBase64: false,
-    selectionLimit: 1,
+    })
   }
 
-  launchImageLibrary(options, (response: ImagePickerResponse) => {
-    console.log('Image library response:', response)
-    
-    if (response.didCancel) {
-      console.log('User cancelled image picker')
-      return
+  // Updated image library function with proper null checks
+  const openImageLibrary = () => {
+    const options = {
+      mediaType: "photo" as MediaType,
+      quality: 0.8 as PhotoQuality,
+      maxWidth: 800,
+      maxHeight: 800,
+      includeBase64: false,
+      selectionLimit: 1,
     }
 
-    if (response.errorMessage) {
-      console.log('Image picker error:', response.errorMessage)
-      Alert.alert('Image Picker Error', response.errorMessage)
-      return
-    }
-
-    // Add proper null/undefined checks here
-    if (response.assets && response.assets.length > 0) {
-      const asset = response.assets[0]
+    launchImageLibrary(options, (response: ImagePickerResponse) => {
+      console.log('Image library response:', response)
       
-      // Check if uri exists before proceeding
-      if (!asset.uri) {
-        Alert.alert('Error', 'No image was selected')
+      if (response.didCancel) {
+        console.log('User cancelled image picker')
         return
       }
-      
-      const imageUri = asset.uri
-      
-      console.log('Gallery image selected:', imageUri)
-      setSelectedImage(imageUri)
-      
-      const profilePictureData: ProfilePicture = {
-        uri: imageUri, // Now guaranteed to be string
-        type: asset.type || "image/jpeg",
-        name: asset.fileName || "profile_gallery.jpg",
+
+      if (response.errorMessage) {
+        console.log('Image picker error:', response.errorMessage)
+        Alert.alert('Image Picker Error', response.errorMessage)
+        return
       }
-      
-      updateFormData("profilePicture", profilePictureData)
-    } else {
-      Alert.alert('Error', 'No image was selected')
-    }
-  })
-}
+
+      // Add proper null/undefined checks here
+      if (response.assets && response.assets.length > 0) {
+        const asset = response.assets[0]
+        
+        // Check if uri exists before proceeding
+        if (!asset.uri) {
+          Alert.alert('Error', 'No image was selected')
+          return
+        }
+        
+        const imageUri = asset.uri
+        
+        console.log('Gallery image selected:', imageUri)
+        setSelectedImage(imageUri)
+        
+        const profilePictureData: ProfilePicture = {
+          uri: imageUri, // Now guaranteed to be string
+          type: asset.type || "image/jpeg",
+          name: asset.fileName || "profile_gallery.jpg",
+        }
+        
+        updateFormData("profilePicture", profilePictureData)
+      } else {
+        Alert.alert('Error', 'No image was selected')
+      }
+    })
+  }
 
   const handleSignUp = async () => {
     if (isLoading) return
 
-    // Validation
+    // Validation - updated validation without username
     if (!formData.firstName.trim() || !formData.lastName.trim()) {
       Alert.alert("Error", "Please fill in all required fields")
+      return
+    }
+
+    if (!formData.email.trim()) {
+      Alert.alert("Error", "Email is required")
+      return
+    }
+
+    if (!formData.email.includes('@')) {
+      Alert.alert("Error", "Please enter a valid email address")
       return
     }
 
@@ -402,7 +411,7 @@ const openImageLibrary = () => {
       // Create FormData for multipart upload
       const uploadData = new FormData()
 
-      // Add all text form fields first (including role)
+      // Add all text form fields (removed username)
       const fieldsToAdd = {
         firstName: formData.firstName,
         middleName: formData.middleName,
@@ -419,9 +428,8 @@ const openImageLibrary = () => {
         houseAddress: formData.houseAddress,
         route: formData.route,
         to: formData.to,
-        email: formData.email,
+        email: formData.email, // Email is now the main identifier
         facebook: formData.facebook,
-        username: formData.username,
         password: formData.password,
       }
 
@@ -449,6 +457,7 @@ const openImageLibrary = () => {
 
       console.log("Sending request to:", API_CONFIG.BASE_URL)
       console.log("User selected role:", formData.role)
+      console.log("User email:", formData.email)
 
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.TIMEOUT)
@@ -474,7 +483,7 @@ const openImageLibrary = () => {
 
         Alert.alert(
           "Success!",
-          "Your account has been created successfully. Please check your email for verification.",
+          "Your account has been created successfully. Please check your email for verification and wait for admin approval.",
           [
             {
               text: "OK",
@@ -499,9 +508,8 @@ const openImageLibrary = () => {
                   houseAddress: "",
                   route: "",
                   to: "",
-                  email: "",
                   facebook: "",
-                  username: "",
+                  email: "",
                   password: "",
                   confirmPassword: "",
                   profilePicture: null,
@@ -509,17 +517,9 @@ const openImageLibrary = () => {
                 setSelectedImage(null)
                 setCurrentStep(1)
                 
-                // FIXED: Navigate to appropriate dashboard based on role
-                if (userRole === "horse_operator") {
-                  console.log("✅ Redirecting to Login")
-                  router.replace("/auth/login")
-                } else if (userRole === "kutsero") {
-                  console.log("✅ Redirecting to Login")
-                  router.replace("/KUTSERO/dashboard")
-                } else {
-                  console.log("⚠️ Unknown role, redirecting to login")
-                  router.replace("/auth/login")
-                }
+                // Navigate to login page - let users log in with email/password
+                console.log("✅ Redirecting to Login")
+                router.replace("/auth/login")
               },
             },
           ],
@@ -869,25 +869,12 @@ const openImageLibrary = () => {
       <Text style={styles.stepSubtitle}>Please complete the information below</Text>
 
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Email (if any)</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.email}
-          onChangeText={(value) => updateFormData("email", value)}
-          placeholder="Your Email"
-          placeholderTextColor="#999"
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-      </View>
-
-      <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>Facebook Link</Text>
         <TextInput
           style={styles.textInput}
           value={formData.facebook}
           onChangeText={(value) => updateFormData("facebook", value)}
-          placeholder="Your Facebook Link"
+          placeholder="Your Facebook Link (optional)"
           placeholderTextColor="#999"
         />
       </View>
@@ -919,15 +906,15 @@ const openImageLibrary = () => {
       <Text style={styles.stepSubtitle}>Create your login information</Text>
 
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Username</Text>
+        <Text style={styles.inputLabel}>Email Address</Text>
         <TextInput
           style={styles.textInput}
-          value={formData.username}
-          onChangeText={(value) => updateFormData("username", value)}
-          placeholder="Choose a username"
+          value={formData.email}
+          onChangeText={(value) => updateFormData("email", value)}
+          placeholder="Your Email Address"
           placeholderTextColor="#999"
+          keyboardType="email-address"
           autoCapitalize="none"
-          editable={!isLoading}
         />
       </View>
 
@@ -958,6 +945,7 @@ const openImageLibrary = () => {
             </View>
           </TouchableOpacity>
         </View>
+        <Text style={styles.helperText}>Must be at least 8 characters</Text>
       </View>
 
       <View style={styles.inputContainer}>
@@ -1096,9 +1084,9 @@ const openImageLibrary = () => {
       case 3:
         return renderStep3()
       case 4:
-        return renderStep4()
+        return renderStep4() // Email & contact
       case 5:
-        return renderStep5()
+        return renderStep5() // Password only
       case 6:
         return renderStep6()
       default:
@@ -1365,6 +1353,11 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(16),
     backgroundColor: "#FFFFFF",
     color: "#333333",
+  },
+  helperText: {
+    fontSize: moderateScale(12),
+    color: "#666666",
+    marginTop: moderateScale(5),
   },
   dateInputContainer: {
     flexDirection: "row",

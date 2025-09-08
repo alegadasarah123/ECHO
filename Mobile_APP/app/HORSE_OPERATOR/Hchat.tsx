@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { View, Text, TextInput, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, Image, KeyboardAvoidingView, Platform, Modal, Alert,} from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
 interface Message {
@@ -22,25 +22,30 @@ interface ChatMessage {
 }
 
 interface Horse {
-  id: string;
-  name: string;
-  age: string;
-  breed: string;
-  color: string;
+  horse_id: string;
+  horse_name: string;
+  horse_age: string;
+  horse_breed: string;
+  horse_color: string;
 }
+
+const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
 
 // Helper to get the current logged-in user
 const getCurrentUser = async () => {
   try {
-    const user = await AsyncStorage.getItem('current_user');
-    if (user) return user;
+    const userData = await SecureStore.getItemAsync("user_data");
+    if (userData) {
+      const parsed = JSON.parse(userData);
+      return parsed.user_id || parsed.id;
+    }
   } catch (error) {
     console.error('Error getting current user:', error);
   }
   return null;
 };
 
-// Default chat histories for initial conversations (not user-specific)
+// Default chat histories for initial conversations
 const defaultChatHistories: { [key: string]: Message[] } = {
   '1': [ // Dr. Maria Santos
     {
@@ -104,22 +109,6 @@ const defaultChatHistories: { [key: string]: Message[] } = {
       timestamp: 'Yesterday',
     },
   ],
-  '5': [ // Dr. John Cruz
-    {
-      id: '1',
-      text: 'Hello! I specialize in large animal medicine. How can I assist you today?',
-      isOutgoing: false,
-      timestamp: '2:00 PM',
-    },
-  ],
-  '6': [ // Dr. Ana Reyes
-    {
-      id: '1',
-      text: 'Hi there! I focus on small animal care. What can I help you with?',
-      isOutgoing: false,
-      timestamp: '3:30 PM',
-    },
-  ],
 };
 
 const ChatScreen = () => {
@@ -135,16 +124,18 @@ const ChatScreen = () => {
   const [availableHorses, setAvailableHorses] = useState<Horse[]>([]);
   const [showHorseDropdown, setShowHorseDropdown] = useState(false);
   const [showServiceDropdown, setShowServiceDropdown] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [isBookingAppointment, setIsBookingAppointment] = useState(false);
 
   const router = useRouter();
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Get parameters from navigation, including the new chatKey
+  // Get parameters from navigation
   const params = useLocalSearchParams();
   const contactId = params.contactId as string;
   const contactName = (params.contactName as string) || 'Contact';
   const contactAvatar = (params.contactAvatar as string) || '/placeholder.svg?height=35&width=35';
-  const chatKey = params.chatKey as string; // This is the user-specific chat key
+  const chatKey = params.chatKey as string;
 
   // Set default date to tomorrow
   const defaultDate = useMemo(() => {
@@ -168,39 +159,234 @@ const ChatScreen = () => {
     });
   }, []);
 
-  // Load user's horses from AsyncStorage
+  // Load user ID from SecureStore
+  const loadUserId = useCallback(async () => {
+    try {
+      const userData = await SecureStore.getItemAsync("user_data");
+      if (userData) {
+        const parsed = JSON.parse(userData);
+        const id = parsed.user_id || parsed.id;
+        setUserId(id);
+        return id;
+      }
+    } catch (error) {
+      console.error('Error loading user data:', error);
+    }
+    return null;
+  }, []);
+
+  // Load user's horses from backend
   const loadUserHorses = useCallback(async () => {
     try {
-      const user = await getCurrentUser();
-      if (!user) return;
-
-      const userHorsesKey = `horses_${user}`;
-      const storedHorses = await AsyncStorage.getItem(userHorsesKey);
-      if (storedHorses) {
-        const horses: Horse[] = JSON.parse(storedHorses);
-        setAvailableHorses(horses);
-        // Set the first horse as selected by default if none is selected
-        if (horses.length > 0 && !selectedHorse) {
-          setSelectedHorse(horses[0].name);
+      let uid = userId;
+      if (!uid) {
+        uid = await loadUserId();
+        if (!uid) {
+          console.error('No user_id found, cannot load horses.');
+          return;
         }
-      } else {
-        // No horses found
-        setAvailableHorses([]);
+      }
+
+      const url = `${API_BASE_URL}/get_horses/?user_id=${encodeURIComponent(uid)}`;
+      const response = await fetch(url);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load horses: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const horses = Array.isArray(data) ? data : [];
+      setAvailableHorses(horses);
+      
+      // Set the first horse as selected by default if none is selected
+      if (horses.length > 0 && !selectedHorse) {
+        setSelectedHorse(horses[0].horse_name);
       }
     } catch (error) {
       console.error('Error loading user horses:', error);
       setAvailableHorses([]);
     }
-  }, [selectedHorse]); // selectedHorse is a dependency because it's used in the initial selection logic
+  }, [userId, selectedHorse, loadUserId]);
 
-  // Load individual chat messages from AsyncStorage using the user-specific chatKey
+  // Get vet_id from contact information
+  const getVetId = useCallback(async () => {
+    try {
+      console.log('Getting vet ID for contactId:', contactId);
+      
+      // For AI Assistant, return null (no appointment booking)
+      if (contactId === '4' || contactId === 'ai_assistant') {
+        console.log('AI Assistant detected, no vet ID needed');
+        return null;
+      }
+
+      // Fetch all veterinarians from your backend
+      const response = await fetch(`${API_BASE_URL}/get_veterinarians/`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch veterinarians: ${response.status}`);
+      }
+
+      const vets = await response.json();
+      console.log('Fetched veterinarians:', vets);
+      
+      if (!Array.isArray(vets) || vets.length === 0) {
+        throw new Error('No veterinarians available');
+      }
+
+      // Method 1: Direct contactId to vet_id mapping (if contactId is actually the vet_id)
+      const directMatch = vets.find(vet => vet.id === contactId);
+      if (directMatch) {
+        console.log('Direct match found:', directMatch);
+        return directMatch.id;
+      }
+
+      // Method 2: Map based on contact name (more reliable)
+      const contactNameLower = contactName.toLowerCase();
+      console.log('Searching for contact name:', contactNameLower);
+      
+      const nameMatch = vets.find(vet => {
+        const vetFullName = `${vet.first_name} ${vet.last_name}`.toLowerCase();
+        const vetTitleName = `dr. ${vet.first_name} ${vet.last_name}`.toLowerCase();
+        
+        console.log('Comparing with:', vetFullName, 'and', vetTitleName);
+        
+        return contactNameLower.includes(vetFullName) || 
+              contactNameLower.includes(vetTitleName) ||
+              vetFullName.includes(contactNameLower.replace('dr. ', '')) ||
+              vetTitleName.includes(contactNameLower);
+      });
+
+      if (nameMatch) {
+        console.log('Name match found:', nameMatch);
+        return nameMatch.id;
+      }
+
+      // Method 3: Fallback mapping for legacy contact IDs
+      const legacyMapping: { [key: string]: string } = {};
+      
+      // Build dynamic mapping based on names in the vet data
+      vets.forEach((vet: any) => {
+        const fullName = `${vet.first_name} ${vet.last_name}`.toLowerCase();
+        
+        // Map known contacts to actual vets
+        if (fullName.includes('maria') && fullName.includes('santos')) {
+          legacyMapping['1'] = vet.id;
+        } else if (fullName.includes('sarah') && fullName.includes('yap')) {
+          legacyMapping['3'] = vet.id;
+        }
+        // Add more mappings as needed for your specific vets
+      });
+
+      if (legacyMapping[contactId]) {
+        console.log('Legacy mapping found:', legacyMapping[contactId]);
+        return legacyMapping[contactId];
+      }
+
+      // Method 4: If no specific match, use the first available vet (with user confirmation)
+      console.warn('No specific vet match found, using first available vet');
+      return vets[0].id;
+      
+    } catch (error) {
+      console.error('Error getting vet ID:', error);
+      throw error;
+    }
+  }, [contactId, contactName]);
+
+  // Book appointment with database integration
+  const bookAppointmentToDatabase = useCallback(async (appointmentData: any) => {
+  try {
+    setIsBookingAppointment(true);
+    
+    // Get the selected horse's ID
+    const selectedHorseData = availableHorses.find(horse => horse.horse_name === selectedHorse);
+    if (!selectedHorseData) {
+      throw new Error('Selected horse not found');
+    }
+
+    // Get vet ID
+    const vetId = await getVetId();
+
+    // Prepare the payload matching your Django API
+    const payload = {
+      user_id: userId,
+      vet_id: vetId,
+      horse_id: selectedHorseData.horse_id,
+      date: appointmentData.date, // YYYY-MM-DD format
+      time: appointmentData.time,
+      service: appointmentData.service,
+      notes: appointmentData.notes || ''
+    };
+
+    console.log('Booking appointment with payload:', payload);
+    console.log('API URL:', `${API_BASE_URL}/book_appointment/`);
+
+    // Send to your Django backend with enhanced error handling
+    const response = await fetch(`${API_BASE_URL}/book_appointment/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    console.log('Response status:', response.status);
+    console.log('Response headers:', response.headers);
+    console.log('Response ok:', response.ok);
+
+    // Get response text first to see what we're getting
+    const responseText = await response.text();
+    console.log('Raw response:', responseText);
+
+    // Try to parse as JSON
+    let responseData;
+    try {
+      responseData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse response as JSON:', parseError);
+      console.log('Response text that failed to parse:', responseText);
+      
+      // Check if it's an HTML error page
+      if (responseText.includes('<!DOCTYPE html>') || responseText.includes('<html>')) {
+        throw new Error('Server returned HTML page instead of JSON. Check if the API endpoint is correct and the server is running properly.');
+      } else {
+        throw new Error(`Invalid JSON response: ${responseText.substring(0, 100)}...`);
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(responseData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    console.log('Appointment booked successfully:', responseData);
+    return responseData;
+
+  } catch (error) {
+    console.error('Error booking appointment to database:', error);
+    
+    // Enhanced error reporting with proper type checking
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      throw new Error('Network error: Unable to connect to server. Please check your connection and server status.');
+    } else if (error instanceof Error && error.message.includes('JSON Parse error')) {
+      throw new Error('Server response format error. The server may be returning an error page instead of JSON.');
+    } else if (error instanceof Error) {
+      throw error;
+    } else {
+      throw new Error(`Unknown error occurred: ${String(error)}`);
+    }
+  } finally {
+    setIsBookingAppointment(false);
+  }
+}, [userId, availableHorses, selectedHorse, getVetId]);
+
+  // Load individual chat messages from SecureStore
   const loadChatMessages = useCallback(async () => {
     try {
       if (!chatKey) {
         console.warn('chatKey is missing, cannot load chat messages.');
         return;
       }
-      const savedChatMessages = await AsyncStorage.getItem(chatKey);
+      
+      const savedChatMessages = await SecureStore.getItemAsync(chatKey);
       if (savedChatMessages) {
         const chatMessages = JSON.parse(savedChatMessages);
         console.log(`Loaded ${chatMessages.length} messages for ${contactName} with key: ${chatKey}`);
@@ -209,8 +395,8 @@ const ChatScreen = () => {
         // Use default chat history if available for this contactId
         console.log(`Using default chat history for ${contactName}`);
         setMessages(defaultChatHistories[contactId]);
-        // Save the default messages to AsyncStorage using the user-specific chatKey
-        await AsyncStorage.setItem(chatKey, JSON.stringify(defaultChatHistories[contactId]));
+        // Save the default messages to SecureStore
+        await SecureStore.setItemAsync(chatKey, JSON.stringify(defaultChatHistories[contactId]));
       } else {
         // Empty chat for new contacts
         console.log(`Starting new chat with ${contactName}`);
@@ -219,23 +405,23 @@ const ChatScreen = () => {
     } catch (error) {
       console.error('Error loading chat messages:', error);
     }
-  }, [chatKey, contactId, contactName]); // Dependencies for loadChatMessages
+  }, [chatKey, contactId, contactName]);
 
-  // Save individual chat messages to AsyncStorage using the user-specific chatKey
+  // Save individual chat messages to SecureStore
   const saveChatMessages = useCallback(async (updatedMessages: Message[]) => {
     try {
       if (!chatKey) {
         console.warn('chatKey is missing, cannot save chat messages.');
         return;
       }
-      await AsyncStorage.setItem(chatKey, JSON.stringify(updatedMessages));
+      await SecureStore.setItemAsync(chatKey, JSON.stringify(updatedMessages));
       console.log(`Saved ${updatedMessages.length} messages for ${contactName} with key: ${chatKey}`);
     } catch (error) {
       console.error('Error saving chat messages:', error);
     }
-  }, [chatKey, contactName]); // Dependencies for saveChatMessages
+  }, [chatKey, contactName]);
 
-  // This function updates the *list of conversations* on the MessageScreen
+  // Update the messages list on the MessageScreen
   const updateMessagesList = useCallback(async (newMessage: string) => {
     try {
       const user = await getCurrentUser();
@@ -248,14 +434,11 @@ const ChatScreen = () => {
       console.log('Updating messages list for contact:', contactId, contactName, 'using key:', userMessagesKey);
 
       // Load existing messages list for the current user
-      const savedMessages = await AsyncStorage.getItem(userMessagesKey);
+      const savedMessages = await SecureStore.getItemAsync(userMessagesKey);
       let messagesList: ChatMessage[] = [];
       if (savedMessages) {
         messagesList = JSON.parse(savedMessages);
         console.log('Loaded existing messages list:', messagesList.length);
-      } else {
-        // If no messages list exists for this user, initialize it (should ideally be handled by MessageScreen)
-        console.log('No existing messages list found for user, initializing empty list.');
       }
 
       // Check if this contact already exists in messages list
@@ -297,36 +480,35 @@ const ChatScreen = () => {
       }
 
       // Save updated messages list for the current user
-      await AsyncStorage.setItem(userMessagesKey, JSON.stringify(messagesList));
-      console.log('Messages list saved to AsyncStorage, total messages:', messagesList.length);
+      await SecureStore.setItemAsync(userMessagesKey, JSON.stringify(messagesList));
+      console.log('Messages list saved to SecureStore, total messages:', messagesList.length);
     } catch (error) {
       console.error('Error updating messages list:', error);
     }
-  }, [contactId, contactName, contactAvatar]); // Dependencies for updateMessagesList
+  }, [contactId, contactName, contactAvatar]);
 
   useEffect(() => {
     const loadUserDataAndHorses = async () => {
       try {
-        // Check if user is logged in
-        const isLoggedIn = await AsyncStorage.getItem('user_logged_in');
-        if (!isLoggedIn) {
-          router.replace('/Login');
+        const uid = await loadUserId();
+        if (!uid) {
+          router.replace('/auth/login');
           return;
         }
-        loadUserHorses(); // Load horses when component mounts
+        loadUserHorses();
       } catch (error) {
         console.error('Error loading user data:', error);
       }
     };
     loadUserDataAndHorses();
-  }, [router, loadUserHorses]); // Dependencies for this useEffect
+  }, [router, loadUserId, loadUserHorses]);
 
   useEffect(() => {
     // Load chat messages when contactId or chatKey changes
     if (contactId && chatKey) {
       loadChatMessages();
     }
-  }, [contactId, chatKey, loadChatMessages]); // Dependencies for this useEffect
+  }, [contactId, chatKey, loadChatMessages]);
 
   useEffect(() => {
     // Scroll to bottom when new messages are added
@@ -350,10 +532,10 @@ const ChatScreen = () => {
       const updatedMessages = [...messages, newMessage];
       setMessages(updatedMessages);
 
-      // Save the updated individual chat messages to AsyncStorage
+      // Save the updated individual chat messages to SecureStore
       await saveChatMessages(updatedMessages);
 
-      // Update the main messages list (summary) in AsyncStorage
+      // Update the main messages list (summary) in SecureStore
       await updateMessagesList(messageText.trim());
 
       setMessageText('');
@@ -385,7 +567,7 @@ const ChatScreen = () => {
             text: 'Add Horse',
             onPress: () => {
               setShowBookingModal(false);
-              router.push('/addhorse');
+              router.push('/HORSE_OPERATOR/addhorse');
             }
           },
           {
@@ -397,32 +579,21 @@ const ChatScreen = () => {
       return;
     }
 
-    // Create appointment object
-    const newAppointment = {
-      id: Date.now().toString(),
-      contactId: contactId,
-      contactName: contactName,
-      horseName: selectedHorse,
-      service: selectedService,
+    // Create appointment object for database
+    const appointmentData = {
       date: selectedDate.toISOString().split('T')[0], // YYYY-MM-DD format
       time: selectedTime,
+      service: selectedService,
       notes: appointmentNotes,
-      status: 'scheduled' as const,
     };
 
     try {
-      // Save appointment to AsyncStorage
-      const existingAppointments = await AsyncStorage.getItem('appointments');
-      let appointments = [];
-      if (existingAppointments) {
-        appointments = JSON.parse(existingAppointments);
-      }
-      appointments.push(newAppointment);
-      await AsyncStorage.setItem('appointments', JSON.stringify(appointments));
-
+      // Book appointment to database
+      const result = await bookAppointmentToDatabase(appointmentData);
+      
       Alert.alert(
         'Appointment Confirmed',
-        `Your appointment with ${contactName} has been booked.\n\nDate: ${formatDate(selectedDate)}\nTime: ${selectedTime}\nHorse: ${selectedHorse}\nService: ${selectedService}${appointmentNotes ? `\nNotes: ${appointmentNotes}` : ''}`,
+        `Your appointment with ${contactName} has been booked successfully!\n\nDate: ${formatDate(selectedDate)}\nTime: ${selectedTime}\nHorse: ${selectedHorse}\nService: ${selectedService}${appointmentNotes ? `\nNotes: ${appointmentNotes}` : ''}\n\nAppointment ID: ${result.app_id}`,
         [
           {
             text: 'OK',
@@ -436,17 +607,20 @@ const ChatScreen = () => {
               setSelectedDate(defaultDate);
               // Keep the first horse selected for next time
               if (availableHorses.length > 0) {
-                setSelectedHorse(availableHorses[0].name);
+                setSelectedHorse(availableHorses[0].horse_name);
               }
             }
           }
         ]
       );
     } catch (error) {
-      console.error('Error saving appointment:', error);
-      Alert.alert('Error', 'Failed to save appointment. Please try again.');
+      console.error('Error confirming appointment:', error);
+      Alert.alert(
+        'Booking Failed', 
+        `Failed to book appointment: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`
+      );
     }
-  }, [availableHorses, contactId, contactName, selectedDate, selectedTime, selectedHorse, selectedService, appointmentNotes, defaultDate, formatDate, router]);
+  }, [availableHorses, contactName, selectedDate, selectedTime, selectedHorse, selectedService, appointmentNotes, defaultDate, formatDate, router, bookAppointmentToDatabase]);
 
   const handleBack = useCallback(() => {
     router.back();
@@ -536,6 +710,7 @@ const ChatScreen = () => {
           <TouchableOpacity
             style={styles.floatingButton}
             onPress={handleBookAppointment}
+            disabled={isBookingAppointment}
           >
             <FontAwesome5 name="calendar-alt" size={24} color="#fff" />
           </TouchableOpacity>
@@ -584,6 +759,7 @@ const ChatScreen = () => {
               <TouchableOpacity
                 style={styles.modalBackButton}
                 onPress={() => setShowBookingModal(false)}
+                disabled={isBookingAppointment}
               >
                 <FontAwesome5 name="arrow-left" size={20} color="#fff" />
               </TouchableOpacity>
@@ -601,6 +777,7 @@ const ChatScreen = () => {
                     <TouchableOpacity
                       style={styles.dropdown}
                       onPress={() => setShowHorseDropdown(!showHorseDropdown)}
+                      disabled={isBookingAppointment}
                     >
                       <Text style={styles.dropdownText}>{selectedHorse}</Text>
                       <FontAwesome5 name="chevron-down" size={16} color="#666" />
@@ -612,14 +789,15 @@ const ChatScreen = () => {
                         style={styles.addHorseButton}
                         onPress={() => {
                           setShowBookingModal(false);
-                          router.push('/addhorse');
+                          router.push('/HORSE_OPERATOR/addhorse');
                         }}
+                        disabled={isBookingAppointment}
                       >
                         <Text style={styles.addHorseButtonText}>Add Horse</Text>
                       </TouchableOpacity>
                     </View>
                   )}
-                  {/* Horse Dropdown Options - Now Scrollable */}
+                  {/* Horse Dropdown Options */}
                   {showHorseDropdown && availableHorses.length > 0 && (
                     <View style={styles.dropdownOptions}>
                       <ScrollView
@@ -629,16 +807,17 @@ const ChatScreen = () => {
                       >
                         {availableHorses.map((horse) => (
                           <TouchableOpacity
-                            key={horse.id}
+                            key={horse.horse_id}
                             style={styles.dropdownOption}
                             onPress={() => {
-                              setSelectedHorse(horse.name);
+                              setSelectedHorse(horse.horse_name);
                               setShowHorseDropdown(false);
                             }}
+                            disabled={isBookingAppointment}
                           >
-                            <Text style={styles.dropdownOptionText}>{horse.name}</Text>
+                            <Text style={styles.dropdownOptionText}>{horse.horse_name}</Text>
                             <Text style={styles.dropdownOptionSubtext}>
-                              {horse.breed} • {horse.age} years old
+                              {horse.horse_breed} • {horse.horse_age} years old
                             </Text>
                           </TouchableOpacity>
                         ))}
@@ -653,11 +832,12 @@ const ChatScreen = () => {
                   <TouchableOpacity
                     style={styles.dropdown}
                     onPress={() => setShowServiceDropdown(!showServiceDropdown)}
+                    disabled={isBookingAppointment}
                   >
                     <Text style={styles.dropdownText}>{selectedService}</Text>
                     <FontAwesome5 name="chevron-down" size={16} color="#666" />
                   </TouchableOpacity>
-                  {/* Service Dropdown Options - Now Scrollable */}
+                  {/* Service Dropdown Options */}
                   {showServiceDropdown && (
                     <View style={styles.dropdownOptions}>
                       <ScrollView
@@ -673,6 +853,7 @@ const ChatScreen = () => {
                               setSelectedService(service);
                               setShowServiceDropdown(false);
                             }}
+                            disabled={isBookingAppointment}
                           >
                             <Text style={styles.dropdownOptionText}>{service}</Text>
                           </TouchableOpacity>
@@ -688,6 +869,7 @@ const ChatScreen = () => {
                   <TouchableOpacity
                     style={styles.datePickerButton}
                     onPress={() => setShowDatePicker(true)}
+                    disabled={isBookingAppointment}
                   >
                     <FontAwesome5 name="calendar-alt" size={20} color="#CD853F" />
                     <Text style={styles.datePickerText}>
@@ -706,6 +888,7 @@ const ChatScreen = () => {
                         key={time}
                         style={styles.timeSlot}
                         onPress={() => setSelectedTime(time)}
+                        disabled={isBookingAppointment}
                       >
                         <View style={[
                           styles.radioButton,
@@ -730,15 +913,22 @@ const ChatScreen = () => {
                     multiline
                     numberOfLines={4}
                     placeholderTextColor="#999"
+                    editable={!isBookingAppointment}
                   />
                 </View>
 
                 {/* Confirm Button */}
                 <TouchableOpacity
-                  style={styles.confirmButton}
+                  style={[
+                    styles.confirmButton,
+                    isBookingAppointment && styles.confirmButtonDisabled
+                  ]}
                   onPress={confirmAppointment}
+                  disabled={isBookingAppointment}
                 >
-                  <Text style={styles.confirmButtonText}>Confirm Appointment</Text>
+                  <Text style={styles.confirmButtonText}>
+                    {isBookingAppointment ? 'Booking...' : 'Confirm Appointment'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </ScrollView>
@@ -1189,6 +1379,9 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     alignItems: 'center',
     marginTop: 20,
+  },
+  confirmButtonDisabled: {
+    backgroundColor: '#ccc',
   },
   confirmButtonText: {
     fontSize: 18,

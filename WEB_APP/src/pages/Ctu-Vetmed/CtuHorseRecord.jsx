@@ -1,21 +1,20 @@
 "use client"
 import Sidebar from "@/components/CtuSidebar";
 import {
-  AlertTriangle,
   ArrowLeft,
-  CheckCircle,
+  Bell,
   ClipboardList,
   Eye,
-  Info,
   Printer,
   Search,
   Stethoscope,
   Syringe,
-  X,
-  XCircle
+  X
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import FloatingMessages from './CtuMessage';
+import NotificationModal from "./CtuNotif";
 
 function CtuHorseRecord() {
   const navigate = useNavigate()
@@ -27,6 +26,7 @@ function CtuHorseRecord() {
   const [isMedicalRecordModalOpen, setIsMedicalRecordModalOpen] = useState(false)
   const [isTreatmentHistoryModalOpen, setIsTreatmentHistoryModal] = useState(false)
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
+  const [notifsOpen, setNotifsOpen] = useState(false)
 
   // State for filters and search
   const [areaFilter, setAreaFilter] = useState("all")
@@ -64,31 +64,38 @@ function CtuHorseRecord() {
     return `${Math.floor(diffInMinutes / 1440)}d ago`
   }, [])
 
-  const getNotificationIconClass = (type) => {
-    const icons = {
-      info: Info,
-      success: CheckCircle,
-      warning: AlertTriangle,
-      error: XCircle,
-    }
-    return icons[type] || icons.info
-  }
 
-  const markAsRead = (notificationId) => {
-    setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
-  }
-
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-  }
-
-  const deleteNotification = (notificationId) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
-  }
-
+ // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
-    setNotifications([]) // Initialize as empty
+    console.log("Loading notifications...")
+
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch notifications")
+        return res.json()
+      })
+      .then((data) => {
+        const formatted = data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+        }))
+        setNotifications(formatted)
+      })
+      .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
+
+  // ✅ Auto-refresh every 30s
+  useEffect(() => {
+    loadNotifications() // load once
+
+    const interval = setInterval(() => {
+      loadNotifications()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [loadNotifications])
+  
 
   const filteredHorseRecords = useCallback(() => {
     let filtered = horseRecords
@@ -273,8 +280,15 @@ function CtuHorseRecord() {
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-  const unreadNotificationCount = notifications.filter((n) => !n.read).length
   const currentFilteredHorseRecords = filteredHorseRecords()
+
+    // Define the styles object at the top of your file or before the return
+const styles = {
+  notificationBtn: {position: "relative",background: "transparent",border: "none",cursor: "pointer",padding: "8px",borderRadius: "50%",},
+  badge: {position: "absolute",top: "2px",right: "2px",backgroundColor: "#ef4444",color: "#fff",borderRadius: "50%",padding: "2px 6px",fontSize: "12px",fontWeight: "bold",
+    },
+  }
+
 
   return (
     <div className="bodyWrapper">
@@ -310,7 +324,7 @@ body {
 
 .headers {
   background: white;
-  padding: 16px 24px;
+  padding: 18px 24px;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -326,21 +340,19 @@ body {
   position: relative;
   min-width: 200px;
 }
-
 .search-input {
   width: 100%;
   padding: 8px 16px 8px 40px;
-  border: 2px solid #b91c1c;
+  border: 2px solid #fff;
   border-radius: 8px;
   font-size: clamp(12px, 2vw, 14px);
   outline: none;
-  min-height: 40px;
-  margin-bottom: 10px;
+  min-height: 50px;
+  background: #fff;
+    margin-bottom: 10px;
+
 }
 
-.search-input:focus {
-  border-color: #b91c1c;
-}
 
 .search-icon {
   position: absolute;
@@ -538,10 +550,10 @@ body {
 
 /* Content Area & Table */
 .content-areas {
-  flex: 1;
-  padding: clamp(16px, 3vw, 24px);
-  background: #f0f0f0;
-  overflow-y: auto;
+flex: 1;
+          padding: 24px;
+          background: #f5f5f5;
+          overflow-y: auto;
 }
 
 .page-header {
@@ -1795,7 +1807,20 @@ textarea.form-input {
             <h2 className="dashboard-title">Horse Records</h2>
            
           </div>
-          
+          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
+            <Bell size={24} color="#374151" />
+            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
+          </button>
+
+          {/* Notification Modal */}
+          <NotificationModal
+            isOpen={notifsOpen}
+            onClose={() => setNotifsOpen(false)}
+            notifications={notifications.map((n) => ({
+              message: n.message,
+              date: n.date,
+            }))}
+          />
         </header>
 
         <div className="content-areas">
@@ -1864,16 +1889,7 @@ textarea.form-input {
           </div>
         </div>
       </div>
-      {/* Chat Widget - Button Only */}
-      <div className="chat-widget">
-        <button className="chat-button" onClick={handleChatButtonClick}>
-          <div className="chat-dots">
-            <div className="chat-dot" />
-            <div className="chat-dot" />
-            <div className="chat-dot" />
-          </div>
-        </button>
-      </div>
+      <FloatingMessages />
       {/* Horse Details Modal */}
       {isHorseModalOpen && selectedHorse && (
         <div className="modal-overlay active" id="horseModal" ref={horseModalRef}>

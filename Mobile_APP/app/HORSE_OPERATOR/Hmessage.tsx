@@ -9,10 +9,11 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
 interface ChatMessage {
   id: string;
@@ -23,123 +24,112 @@ interface ChatMessage {
   unread: boolean;
 }
 
+const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
+
 const MessageScreen = () => {
   const [searchText, setSearchText] = useState('');
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('message');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  // Helper to get the current logged-in user
-  const getCurrentUser = async () => {
+  // Load user ID from SecureStore
+  const loadUserId = useCallback(async () => {
     try {
-      const user = await AsyncStorage.getItem('current_user');
-      if (user) return user;
+      const userData = await SecureStore.getItemAsync("user_data");
+      if (userData) {
+        const parsed = JSON.parse(userData);
+        const id = parsed.user_id || parsed.id;
+        setUserId(id);
+        return id;
+      }
     } catch (error) {
-      console.error('Error getting current user:', error);
+      console.error('Error loading user data:', error);
     }
     return null;
-  };
+  }, []);
 
-  // Wrap loadMessages in useCallback to make it a stable function reference
+  // Load conversations from backend
   const loadMessages = useCallback(async () => {
     try {
-      const user = await getCurrentUser();
-      if (!user) {
-        console.log('No user logged in, redirecting to Login.');
-        router.replace('/Login');
-        return;
+      setLoading(true);
+      let uid = userId;
+      
+      if (!uid) {
+        uid = await loadUserId();
+        if (!uid) {
+          console.log('No user logged in, redirecting to Login.');
+          router.replace('/auth/login');
+          return;
+        }
       }
 
-      const userMessagesKey = `chat_messages_${user}`;
-      console.log(`Loading messages for user: ${user} from key: ${userMessagesKey}`);
-      const savedMessages = await AsyncStorage.getItem(userMessagesKey);
-      let messagesList: ChatMessage[] = [];
-
-      if (savedMessages) {
-        messagesList = JSON.parse(savedMessages);
-        console.log('Loaded messages from storage:', messagesList.length);
+      const response = await fetch(`${API_BASE_URL}/get_conversations/?user_id=${encodeURIComponent(uid)}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load conversations: ${response.status}`);
       }
 
-      // If no saved messages for this user, use the default initial messages
+      const data = await response.json();
+      console.log('Loaded conversations from backend:', data.length);
+      
+      // If no conversations exist, add default AI Assistant
+      let messagesList = Array.isArray(data) ? data : [];
+      
       if (messagesList.length === 0) {
         messagesList = [
           {
-            id: '1',
-            name: 'Dr. Maria Santos',
-            avatar: '/doctor-woman.png',
-            message: 'You: Maayo na siya, Doc wala na\'y limp ...',
-            time: '9:40 AM',
-            unread: false,
-          },
-          {
-            id: '2',
-            name: 'DVMF Cebu Officer',
-            avatar: '/dvmf-cebu-officer.png',
-            message: 'Reminder: Your appointment has been ...',
-            time: '1:30 PM',
-            unread: true,
-          },
-          {
-            id: '3',
-            name: 'Dr. Sarah Yap',
-            avatar: '/asian-woman-doctor.png',
-            message: 'You: Daghang Salamat Doc!',
-            time: 'Yesterday',
-            unread: false,
-          },
-          {
-            id: '4',
+            id: 'ai_assistant',
             name: 'AI Assistant',
             avatar: '/ai-robot-assistant.png',
             message: 'How can I help you today?',
-            time: 'Yesterday',
+            time: 'Now',
             unread: false,
           },
         ];
-
-        // Save the initial messages to AsyncStorage for the current user
-        await AsyncStorage.setItem(userMessagesKey, JSON.stringify(messagesList));
-        console.log('Saved default messages to storage for user:', user);
       }
 
-      console.log('Setting messages state with:', messagesList.length, 'messages');
+      console.log('Setting messages state with:', messagesList.length, 'conversations');
       setMessages(messagesList);
     } catch (error) {
       console.error('Error loading messages:', error);
+      Alert.alert('Error', 'Failed to load conversations. Please check your connection.');
+      
+      // Fallback to AI Assistant only
+      setMessages([
+        {
+          id: 'ai_assistant',
+          name: 'AI Assistant',
+          avatar: '/ai-robot-assistant.png',
+          message: 'How can I help you today?',
+          time: 'Now',
+          unread: false,
+        },
+      ]);
+    } finally {
+      setLoading(false);
     }
-  }, [router]); // loadMessages depends on router for redirection
+  }, [userId, router, loadUserId]);
 
   const deleteMessage = async (messageId: string, contactName: string) => {
     try {
-      const user = await getCurrentUser();
+      const user = await loadUserId();
       if (!user) {
-        console.log('No user logged in, cannot delete messages.');
+        console.log('No user logged in, cannot delete conversations.');
         return;
       }
 
-      const userMessagesKey = `chat_messages_${user}`;
-      const savedMessages = await AsyncStorage.getItem(userMessagesKey);
-      if (savedMessages) {
-        let messagesList: ChatMessage[] = JSON.parse(savedMessages);
+      // Remove from local state immediately for better UX
+      setMessages(prevMessages => prevMessages.filter(msg => msg.id !== messageId));
 
-        // Remove the message with the specified ID
-        messagesList = messagesList.filter(msg => msg.id !== messageId);
-
-        // Save updated messages list
-        await AsyncStorage.setItem(userMessagesKey, JSON.stringify(messagesList));
-
-        // IMPORTANT: Also delete the individual chat messages for this contact
-        // Make the individual chat key user-specific to avoid data leakage between users
-        const chatKey = `chat_${user}_${messageId}`;
-        await AsyncStorage.removeItem(chatKey);
-        console.log(`Deleted individual chat messages for ${contactName} with key: ${chatKey}`);
-
-        // Update the local state
-        setMessages(messagesList);
-        console.log(`Deleted conversation with ${contactName} for user: ${user}`);
-      }
+      // TODO: Add backend API call to delete conversation if needed
+      console.log(`Deleted conversation with ${contactName} for user: ${user}`);
+      
+      Alert.alert('Success', 'Conversation deleted successfully.');
     } catch (error) {
       console.error('Error deleting message:', error);
+      Alert.alert('Error', 'Failed to delete conversation.');
     }
   };
 
@@ -164,30 +154,31 @@ const MessageScreen = () => {
   // Load messages on initial component mount
   useEffect(() => {
     loadMessages();
-  }, [loadMessages]); // Now correctly depends on loadMessages
+  }, [loadMessages]);
 
   // Use useFocusEffect to reload messages when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       loadMessages();
-    }, [loadMessages]) // Now correctly depends on loadMessages
+    }, [loadMessages])
   );
 
   const handleMessagePress = async (messageId: string, contactName: string, contactAvatar: string) => {
-    const user = await getCurrentUser();
+    const user = await loadUserId();
     if (!user) {
       console.log('No user logged in, cannot open chat.');
-      router.replace('/Login');
+      router.replace('/auth/login');
       return;
     }
-    // Navigate to individual chat screen with contact info and a user-specific chat key
+    
+    // Navigate to individual chat screen
     router.push({
-      pathname: '/chat',
+      pathname: '/HORSE_OPERATOR/Hchat',
       params: {
         contactId: messageId,
         contactName: contactName,
         contactAvatar: contactAvatar,
-        chatKey: `chat_${user}_${messageId}`, // Pass the user-specific chat key
+        userId: user,
       },
     });
   };
@@ -206,12 +197,13 @@ const MessageScreen = () => {
             <Text style={styles.headerTitle}>Messages</Text>
             <TouchableOpacity
               style={styles.searchIconButton}
-              onPress={() => router.push('/contact')}
+              onPress={() => router.push('/HORSE_OPERATOR/Hcontact')}
             >
               <FontAwesome5 name="users" size={20} color="#fff" />
             </TouchableOpacity>
           </View>
         </View>
+        
         {/* Content */}
         <View style={styles.contentWrapper}>
           <View style={styles.content}>
@@ -226,62 +218,81 @@ const MessageScreen = () => {
                 placeholderTextColor="#999"
               />
             </View>
+            
             {/* Messages List */}
-            <ScrollView
-              style={styles.messagesList}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 100 }}
-            >
-              {filteredMessages.map((message) => (
-                <TouchableOpacity
-                  key={message.id}
-                  style={styles.messageItem}
-                  onPress={() => handleMessagePress(message.id, message.name, message.avatar)}
-                  onLongPress={() => handleLongPress(message.id, message.name)}
-                >
-                  <View style={styles.avatarContainer}>
-                    <Image
-                      source={{ uri: message.avatar }}
-                      style={styles.avatar}
-                    />
-                    {message.unread && <View style={styles.unreadDot} />}
-                  </View>
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#CD853F" />
+                <Text style={styles.loadingText}>Loading conversations...</Text>
+              </View>
+            ) : (
+              <ScrollView
+                style={styles.messagesList}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 100 }}
+              >
+                {filteredMessages.map((message) => (
+                  <TouchableOpacity
+                    key={message.id}
+                    style={styles.messageItem}
+                    onPress={() => handleMessagePress(message.id, message.name, message.avatar)}
+                    onLongPress={() => handleLongPress(message.id, message.name)}
+                  >
+                    <View style={styles.avatarContainer}>
+                      <Image
+                        source={{ uri: message.avatar }}
+                        style={styles.avatar}
+                      />
+                      {message.unread && <View style={styles.unreadDot} />}
+                    </View>
 
-                  <View style={styles.messageContent}>
-                    <View style={styles.messageHeader}>
+                    <View style={styles.messageContent}>
+                      <View style={styles.messageHeader}>
+                        <Text style={[
+                          styles.contactName,
+                          message.unread && styles.unreadText
+                        ]}>
+                          {message.name}
+                        </Text>
+                        <Text style={[
+                          styles.messageTime,
+                          message.unread && styles.unreadTime
+                        ]}>
+                          {message.time}
+                        </Text>
+                      </View>
                       <Text style={[
-                        styles.contactName,
-                        message.unread && styles.unreadText
-                      ]}>
-                        {message.name}
-                      </Text>
-                      <Text style={[
-                        styles.messageTime,
-                        message.unread && styles.unreadTime
-                      ]}>
-                        {message.time}
+                        styles.messagePreview,
+                        message.unread && styles.unreadPreview
+                      ]} numberOfLines={1}>
+                        {message.message}
                       </Text>
                     </View>
-                    <Text style={[
-                      styles.messagePreview,
-                      message.unread && styles.unreadPreview
-                    ]} numberOfLines={1}>
-                      {message.message}
+                  </TouchableOpacity>
+                ))}
+                
+                {filteredMessages.length === 0 && !loading && (
+                  <View style={styles.emptyContainer}>
+                    <FontAwesome5 name="comment-dots" size={60} color="#ccc" />
+                    <Text style={styles.emptyTitle}>No conversations</Text>
+                    <Text style={styles.emptyText}>
+                      Start a conversation with a veterinarian to see it here.
                     </Text>
                   </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                )}
+              </ScrollView>
+            )}
           </View>
         </View>
       </View>
+      
       {/* Bottom Navigation */}
       <View style={styles.bottomNav}>
         <TouchableOpacity
           style={[styles.navItem, activeTab === 'home' && styles.activeNavItem]}
           onPress={() => {
             setActiveTab('home');
-            router.push('/home');
+            router.push('/HORSE_OPERATOR/home');
           }}
         >
           <FontAwesome5 name="home" size={24} color={activeTab === 'home' ? '#CD853F' : '#000'} />
@@ -290,7 +301,7 @@ const MessageScreen = () => {
           style={[styles.navItem, activeTab === 'horse' && styles.activeNavItem]}
           onPress={() => {
             setActiveTab('horse');
-            router.push('/horse');
+            router.push('/HORSE_OPERATOR/horse');
           }}
         >
           <FontAwesome5 name="horse" size={24} color={activeTab === 'horse' ? '#CD853F' : '#000'} />
@@ -299,7 +310,7 @@ const MessageScreen = () => {
           style={[styles.navItem, activeTab === 'message' && styles.activeNavItem]}
           onPress={() => {
             setActiveTab('message');
-            router.push('/message');
+            router.push('/HORSE_OPERATOR/Hmessage');
           }}
         >
           <FontAwesome5 name="comment-dots" size={24} color={activeTab === 'message' ? '#CD853F' : '#000'} />
@@ -308,7 +319,7 @@ const MessageScreen = () => {
           style={[styles.navItem, activeTab === 'calendar' && styles.activeNavItem]}
           onPress={() => {
             setActiveTab('calendar');
-            router.push('/calendar');
+            router.push('/HORSE_OPERATOR/Hcalendar');
           }}
         >
           <FontAwesome5 name="calendar-alt" size={24} color={activeTab === 'calendar' ? '#CD853F' : '#000'} />
@@ -317,7 +328,7 @@ const MessageScreen = () => {
           style={[styles.navItem, activeTab === 'profile' && styles.activeNavItem]}
           onPress={() => {
             setActiveTab('profile');
-            router.push('/profile');
+            router.push('/HORSE_OPERATOR/profile');
           }}
         >
           <FontAwesome5 name="user" size={24} color={activeTab === 'profile' ? '#CD853F' : '#000'} />
@@ -387,6 +398,17 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 50,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 10,
+  },
   messagesList: {
     flex: 1,
   },
@@ -454,6 +476,26 @@ const styles = StyleSheet.create({
   unreadPreview: {
     color: '#333',
     fontWeight: '500',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 50,
+    paddingHorizontal: 40,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 20,
   },
   bottomNav: {
     flexDirection: 'row',

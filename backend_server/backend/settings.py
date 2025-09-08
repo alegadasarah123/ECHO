@@ -26,6 +26,8 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'api.kutsero',
+    'api.kutsero_president',
+    'api.veterinarian',
     'corsheaders',
 ]
 
@@ -39,12 +41,27 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+CORS_ALLOW_HEADERS = [
+    "content-type",
+    "authorization",
+    "x-csrftoken",
+]
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",  # ✅ enable session cookie auth
+        "rest_framework.authentication.BasicAuthentication",
+    ]
+}
+
+CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
 ]
 
+SESSION_COOKIE_SAMESITE = "None"   # or "Lax" if only same-origin
+SESSION_COOKIE_SECURE = False   
 ROOT_URLCONF = 'backend.urls'
 
 TEMPLATES = [

@@ -6,6 +6,9 @@ const NotificationsModal = ({ isOpen }) => {
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(false)
 
+const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed";
+
+
   // Format date in PH timezone
   const formatDate = (dateStr) => {
     if (!dateStr) return ""
@@ -24,7 +27,7 @@ const NotificationsModal = ({ isOpen }) => {
   useEffect(() => {
     if (isOpen) {
       setLoading(true)
-      fetch("http://localhost:8000/api/get_vetnotifications/")
+      fetch(`${API_BASE}/get_vetnotifications/`)
         .then((res) => {
           if (!res.ok) throw new Error("Failed to fetch notifications")
           return res.json()

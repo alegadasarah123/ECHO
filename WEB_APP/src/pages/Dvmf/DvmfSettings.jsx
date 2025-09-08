@@ -1,2219 +1,1390 @@
 "use client"
-import { useCallback, useEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router-dom"
 
-import {
-  ArrowLeft,
-  BarChart3,
-  Bell,
-  BellOff,
-  ClipboardList,
-  Eye,
-  EyeOff,
-  FileText,
-  Folder,
-  LayoutDashboard,
-  LogOut,
-  Megaphone,
-  Plus,
-  SettingsIcon,
-  Shield,
-  Trash2,
-  UserCheck,
-  UserCircle,
-  Users,
-} from "lucide-react"
+import Sidebar from "@/components/DvmfSidebar"
+import { Bell, Edit2, Eye, EyeOff, MoreVertical, Plus, Trash2, Users } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+import FloatingMessages from "./DvmfMessage"
+import NotificationModal from "./DvmfNotif"
 
-function DvmfSettings() {
-  const navigate = useNavigate()
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
-  const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
-  const [activePage, setActivePage] = useState("settings")
-  const [activeSettingsView, setActiveSettingsView] = useState("main")
+const API_BASE = "http://127.0.0.1:8000/api/dvmf";
+
+const DvmfSettings = () => {
+  const [activeTab, setActiveTab] = useState("profile")
+  const [notifOpen, setNotifOpen] = useState(false)
+  const [notifsOpen, setNotifsOpen] = useState(false)
+  const [errors, setErrors] = useState({})
+  const [editing, setEditing] = useState(false)
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("All");
+
+  const [profileExists, setProfileExists] = useState(false)
+  const [passwordErrors, setPasswordErrors] = useState({})
   const [notifications, setNotifications] = useState([])
+  const [profile, setProfile] = useState({
+    ctu_fname: "",
+    ctu_lname: "",
+    ctu_email: "",
+    ctu_phonenum: "",
+     ctu_role: "",
+  })
+
+  
+
+
+  const [passwordVisibility, setPasswordVisibility] = useState({
+    current_password: false,
+    new_password: false,
+    confirm_new_password: false,
+  })
+
+  const [activeUserTab, setActiveUserTab] = useState("addNew")
+  const [isPasswordVisible, setIsPasswordVisible] = useState(false)
+  const [dropdownOpen, setDropdownOpen] = useState(null)
+// State for new user
+const [newUser, setNewUser] = useState({
+  firstname: "",
+  lastname: "",
+  email: "",
+  phone: "",
+  role: "Ctu-Vetmed", // force this role
+  password: "" // optional, won't be saved in DB
+});
+
+  const [error, setError] = useState("");
+  const [activeSettingsView, setActiveSettingsView] = useState("userManagement");
+  const [isLoading, setIsLoading] = useState(false);
   const [users, setUsers] = useState([])
-  const [searchTerm, setSearchTerm] = useState("") // Added search term state
-  const [newUser, setNewUser] = useState({
-    firstname: "",
-    lastname: "",
-    email: "",
-    phone: "",
-    role: "",
-    password: "", // Changed from department to password
-  })
-  const [isPasswordVisible, setIsPasswordVisible] = useState(false) // Added password visibility state
-  const [isCurrentPasswordVisible, setIsCurrentPasswordVisible] = useState(false) // For current password
-  const [isNewPasswordVisible, setIsNewPasswordVisible] = useState(false) // For new password
-  const [isConfirmPasswordVisible, setIsConfirmPasswordVisible] = useState(false) // For confirm password
-  const [passwordVisibility, setPasswordVisibility] = useState({}) // For table password visibility
-
-  const sidebarRef = useRef(null)
-  const notificationBellRef = useRef(null)
-  const notificationDropdownRef = useRef(null)
-  const logoutModalRef = useRef(null)
-
-  // Settings data storage
-  const [settingsData, setSettingsData] = useState({
-    profile: {},
-    security: {},
-    userManagement: {},
+  const [profiles, setProfiles] = useState([])
+  const [passwords, setPasswords] = useState({
+    current_password: "",
+    new_password: "",
+    confirm_new_password: "",
   })
 
-  const loadNotifications = useCallback(() => {
-    console.log("Loading notifications...")
-    setNotifications([])
-  }, [])
-
-  const loadUsers = useCallback(() => {
-    console.log("Loading users...")
-    setUsers([])
-  }, [])
-
-  const toggleNotificationDropdown = () => {
-    setIsNotificationDropdownOpen((prev) => !prev)
+  const handleChange = (e) => {
+    const { name, value } = e.target
+    setProfile((prev) => ({ ...prev, [name]: value }))
   }
 
-  const openLogoutModal = (e) => {
-    e.preventDefault()
-    setIsLogoutModalOpen(true)
-  }
+  // Save first-time CTU Vet profile
+const handleSave = async (e) => {
+  e.preventDefault();
+  setErrors({});
 
-  const closeLogoutModal = () => {
-    setIsLogoutModalOpen(false)
-  }
+  try {
+    const res = await fetch(`${API_BASE}/save_ctu_vet_profile/`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ctu_fname: profile.ctu_fname,
+        ctu_lname: profile.ctu_lname,
+        ctu_email: profile.ctu_email,
+        ctu_phonenum: profile.ctu_phonenum,
+      }),
+    });
 
- const confirmLogout = () => {
-  console.log("User logged out")
-  localStorage.removeItem("currentUser")
-  localStorage.removeItem("loginTime")
-  closeLogoutModal()
-  navigate("/")
-  window.location.reload()
-}
+    const data = await res.json();
 
-
-  const markAllNotificationsRead = () => {
-    setNotifications(notifications.map((n) => ({ ...n, read: true })))
-  }
-
-  const handleNotificationClick = (id) => {
-    setNotifications(notifications.map((n) => (n.id === id ? { ...n, read: true } : n)))
-    console.log(`Notification ${id} clicked.`)
-  }
-
-  // Added search input handler
-  const handleSearchInput = (e) => {
-    setSearchTerm(e.target.value.toLowerCase())
-  }
-
-  // Settings navigation functions
-  const openProfileSettings = () => {
-    setActiveSettingsView("profile")
-    loadProfileData()
-  }
-
-  const openSecuritySettings = () => {
-    setActiveSettingsView("security")
-    loadSecurityData()
-  }
-
-  const openUserManagement = () => {
-    setActiveSettingsView("userManagement")
-    loadUsers()
-  }
-
-  const goBackToSettings = () => {
-    setActiveSettingsView("main")
-  }
-
-  // Data loading functions
-  const loadProfileData = () => {
-    console.log("Loading profile data...")
-    // Clear form fields
-    const profileForm = document.getElementById("profileForm")
-    if (profileForm) {
-      profileForm.reset()
+    if (res.ok) {
+      alert("Profile saved successfully!");
+      setEditing(false);
+      setProfileExists(true);
+    } else if (data.errors) {
+      // Display validation errors next to inputs
+      setErrors(data.errors);
+    } else {
+      // Any other server error
+      alert(data.error || "Failed to save profile");
     }
+  } catch (error) {
+    console.error("Error saving profile:", error);
+    alert("Something went wrong. Please try again.");
+  }
+};
+
+// Update existing CTU Vet profile
+const handleUpdate = async (e) => {
+  e.preventDefault();
+  setErrors({});
+
+  try {
+    const res = await fetch("http://localhost:8000/api/dvmf/update_ctu_vet_profile/", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ctu_fname: profile.ctu_fname,
+        ctu_lname: profile.ctu_lname,
+        ctu_email: profile.ctu_email,
+        ctu_phonenum: profile.ctu_phonenum,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      alert("Profile updated successfully!");
+      setEditing(false);
+    } else if (data.errors) {
+      setErrors(data.errors);
+    } else {
+      alert(data.error || "Failed to update profile");
+    }
+  } catch (error) {
+    console.error("Error updating profile:", error);
+    alert("Something went wrong. Please try again.");
+  }
+};
+
+
+  const handlePasswordChange = (e) => {
+    const { name, value } = e.target
+    setPasswords((prev) => ({ ...prev, [name]: value }))
   }
 
-  const loadSecurityData = () => {
-    console.log("Loading security data...")
-    // Clear form fields
-    const securityForm = document.getElementById("securityForm")
-    if (securityForm) {
-      securityForm.reset()
-    }
+
+const handlePasswordUpdate = async (e) => {
+  e.preventDefault();
+  setPasswordErrors({});
+
+  // 1️⃣ Check if new passwords match
+  if (passwords.new_password !== passwords.confirm_new_password) {
+    setPasswordErrors({ confirm_new_password: "Passwords do not match" });
+    return;
   }
 
-  // Save functions
-  const saveProfileSettings = () => {
-    const formData = {
-      firstname: document.getElementById("firstname")?.value || "",
-      lastname: document.getElementById("lastname")?.value || "",
-      email: document.getElementById("email")?.value || "",
-      phone: document.getElementById("phone")?.value || "",
-      location: document.getElementById("location")?.value || "",
-      language: document.getElementById("language")?.value || "",
-      theme: document.getElementById("theme")?.value || "",
-      shareData: document.getElementById("shareData")?.checked || false,
-      profileVisible: document.getElementById("profileVisible")?.checked || false,
-      allowAnalytics: document.getElementById("allowAnalytics")?.checked || false,
-    }
-    setSettingsData((prev) => ({ ...prev, profile: formData }))
-    console.log("Saving profile settings:", formData)
-    alert("Profile settings saved successfully!")
-    goBackToSettings()
-  }
+  try {
+    // 2️⃣ Make API request with credentials included (JWT cookie)
+    const res = await fetch("http://localhost:8000/api/dvmf/ctu_change_password/", {
+      method: "POST",
+      credentials: "include", // send access_token cookie
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ctu_email: profile.ctu_email,   // 👈 use ctu_email instead of pres_email
+        current_password: passwords.current_password,
+        new_password: passwords.new_password,
+      }),
+    });
 
-  const saveSecuritySettings = () => {
-    const currentPassword = document.getElementById("currentPassword")?.value || ""
-    const newPassword = document.getElementById("newPassword")?.value || ""
-    const confirmPassword = document.getElementById("confirmPassword")?.value || ""
+    const data = await res.json();
 
-    if (newPassword && newPassword !== confirmPassword) {
-      alert("New passwords do not match!")
-      return
-    }
-
-    const securityData = {
-      currentPassword: currentPassword,
-      newPassword: newPassword,
-      confirmPassword: confirmPassword,
-      enable2FA: document.getElementById("enable2FA")?.checked || false,
-      smsAuth: document.getElementById("smsAuth")?.checked || false,
-      emailAuth: document.getElementById("emailAuth")?.checked || false,
-      sessionTimeout: document.getElementById("sessionTimeout")?.value || "",
-      logoutAllDevices: document.getElementById("logoutAllDevices")?.checked || false,
+    // 3️⃣ Handle Unauthorized (401)
+    if (res.status === 401) {
+      alert("Session expired or not logged in. Please log in again.");
+      window.location.href = "/login"; 
+      return;
     }
 
-    setSettingsData((prev) => ({ ...prev, security: securityData }))
-    console.log("Saving security settings:", securityData)
-    alert("Security settings saved successfully!")
-    goBackToSettings()
-  }
+    // 4️⃣ Handle successful password update
+    if (res.ok) {
+      alert("Password updated successfully!");
+      setPasswords({ current_password: "", new_password: "", confirm_new_password: "" });
+      return;
+    }
 
-  // User management functions
-  const handleNewUserChange = (field, value) => {
-    setNewUser((prev) => ({ ...prev, [field]: value }))
-  }
+    // 5️⃣ Handle field-specific errors
+    if (data.errors) {
+      setPasswordErrors(data.errors); 
+      return;
+    }
 
-  // Added password visibility toggle function
-  const togglePasswordVisibility = () => {
-    setIsPasswordVisible((prev) => !prev)
-  }
+    // 6️⃣ Handle general errors
+    alert(data.error || "Failed to update password");
 
-  // Add these new toggle functions for security settings
-  const toggleCurrentPasswordVisibility = () => {
-    setIsCurrentPasswordVisible((prev) => !prev)
+  } catch (err) {
+    console.error("Password update error:", err);
+    alert("Something went wrong. Please try again later.");
   }
+};
 
-  const toggleNewPasswordVisibility = () => {
-    setIsNewPasswordVisible((prev) => !prev)
-  }
 
-  const toggleConfirmPasswordVisibility = () => {
-    setIsConfirmPasswordVisible((prev) => !prev)
-  }
 
-  // Add function to toggle password visibility in table
-  const toggleTablePasswordVisibility = (userId) => {
+
+
+// Handle input changes
+const handleNewUserChange = (field, value) => {
+  setNewUser((prev) => ({ ...prev, [field]: value }));
+};
+
+  const togglePasswordVisibility = (field) => {
     setPasswordVisibility((prev) => ({
       ...prev,
-      [userId]: !prev[userId],
+      [field]: !prev[field],
     }))
   }
 
-  const addNewUser = async () => {
-    const { firstname, lastname, email, phone, password } = newUser
+  const toggleNewUserPasswordVisibility = () => {
+    setIsPasswordVisible(!isPasswordVisible)
+  }
 
-    if (!firstname || !lastname || !email || !phone || !password) {
-      alert("Please fill in all required fields.")
-      return
+// Add new user function
+const addNewUser = async () => {
+  const { firstname, lastname, email, phone, password, role } = newUser;
+
+  // 1️⃣ Validate input
+  if (!firstname || !lastname || !email || !phone || !password || !role) {
+    alert("Please fill in all required fields.");
+    return;
+  }
+
+  // 2️⃣ Validate email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email.trim())) {
+    alert("Please enter a valid email address.");
+    return;
+  }
+
+  // 3️⃣ Validate phone: must start with 09 and be 11 digits
+  const phoneRegex = /^09\d{9}$/;
+  if (!phoneRegex.test(phone.trim())) {
+    alert("Phone number must start with 09 and be 11 digits long.");
+    return;
+  }
+
+  try {
+    // 4️⃣ Call backend signup endpoint
+    const response = await fetch("http://localhost:8000/api/dvmf/signup/", {
+      method: "POST",
+      credentials: "include", // send cookies if needed
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email.trim().toLowerCase(),
+        password: password.trim(),
+        firstName: firstname.trim(),
+        lastName: lastname.trim(),
+        phoneNumber: phone.trim(),
+        role: role.trim(), // send role to backend
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      alert(data.error || "Failed to create user.");
+      return;
     }
 
-    const payload = {
-      email: email.trim(),
-      firstName: firstname.trim(),
-      lastName: lastname.trim(),
-      phoneNumber: phone.trim(),
-      password: password.trim(),
-      role: "Dvmf",
+    // 5️⃣ Update UI with new user
+    setUsers((prev) => [
+      ...prev,
+      {
+        id: data.user.ctu_id || data.user.id,
+        firstname,
+        lastname,
+        email,
+        phone,
+        role: data.user.ctu_role || role, // backend response or fallback
+        status: "Active",
+      },
+    ]);
+
+    // 6️⃣ Clear form
+    setNewUser({
+      firstname: "",
+      lastname: "",
+      email: "",
+      phone: "",
+      password: "",
+      role: "Ctu-Vetmed", // reset default
+    });
+
+    alert("✅ User created successfully!");
+  } catch (err) {
+    console.error("Error adding user:", err);
+    alert("Failed to add user. Make sure the backend server is running.");
+  }
+};
+
+// Deactivate user
+const deactivateUser = async (id) => {
+  try {
+    const res = await fetch(`http://localhost:8000/api/dvmf/users/deactivate/${id}/`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || "Failed to deactivate user");
     }
 
+    // Update local state so button disappears immediately
+    setProfiles((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, status: "inactive" } : p
+      )
+    );
+
+    alert("User deactivated successfully!");
+  } catch (err) {
+    console.error("Deactivate failed:", err);
+    alert(`Deactivate failed: ${err.message}`);
+  }
+};
+
+// Delete user
+const deleteUser = async (id) => {
+  try {
+    const res = await fetch(`http://localhost:8000/api/dvmf/users/delete/${id}/`, {
+      method: "DELETE",
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || "Failed to delete user");
+    }
+
+    // Remove user from local state immediately
+    setProfiles((prev) => prev.filter((p) => p.id !== id));
+
+    alert("User deleted successfully!");
+  } catch (err) {
+    console.error("Delete failed:", err);
+    alert(`Delete failed: ${err.message}`);
+  }
+};
+
+
+
+
+ const toggleDropdown = (id) => {
+    setDropdownOpen(dropdownOpen === id ? null : id);
+  };
+
+
+// Fetch CTU Vet profile
+useEffect(() => {
+  const fetchProfile = async () => {
     try {
-      const response = await fetch("http://127.0.0.1:8000/signup/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
+      const res = await fetch("http://localhost:8000/api/dvmf/get_ctu_vet_profiles/", {
+        method: "GET",
+        credentials: "include", // include HttpOnly cookie
+      });
 
-      const rawText = await response.text()
-      let data
-      try {
-        data = JSON.parse(rawText)
-      } catch {
-        data = { error: rawText }
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error("Failed to fetch profile:", data.error || "Unknown error");
+        return;
       }
 
-      if (!response.ok) {
-        console.error("Signup failed:", data)
-        alert(data.error || data.details || "Unknown error occurred")
-        return
+      // Set profile state
+      setProfile({
+        ctu_fname: data.ctu_fname || "",
+        ctu_lname: data.ctu_lname || "",
+        ctu_email: data.ctu_email || "",
+        ctu_phonenum: data.ctu_phonenum || "",
+        ctu_role: data.ctu_role || "",
+      });
+
+      if (data.ctu_fname || data.ctu_lname || data.ctu_phonenum) {
+        setProfileExists(true);
       }
 
-      // Add the new user to the table
-      setUsers((prev) => [
-  ...prev,
-  {
-    id: data.user.id,
-    firstname: data.user.firstName,
-    lastname: data.user.lastName,
-    email: data.user.email,
-    phone: data.user.phoneNumber,
-    role: data.user.role || "Dvmf", // use backend role
-    status: "Active",
-  },
-])
-      // Reset form
-      setNewUser({ firstname: "", lastname: "", email: "", phone: "", password: "" })
-
-      alert("User created successfully!")
-
-      // ✅ balik sa User Management view
-      setActiveSettingsView("userManagement")
-      loadUsers() // reload fresh users if needed
     } catch (err) {
-      console.error("Error adding user:", err)
-      alert("Failed to add user. Make sure backend is running.")
+      console.error("Error fetching profile:", err);
     }
-  }
+  };
 
-  const deleteUser = (userId) => {
-    if (confirm("Are you sure you want to delete this user?")) {
-      setUsers((prev) => prev.filter((user) => user.id !== userId))
-      // Also remove password visibility state for this user
-      setPasswordVisibility((prev) => {
-        const newState = { ...prev }
-        delete newState[userId]
-        return newState
+  fetchProfile();
+}, []);
+
+ // ✅ Fetch notifications from backend
+  const loadNotifications = useCallback(() => {
+    console.log("Loading notifications...")
+
+    fetch("http://127.0.0.1:8000/api/dvmf/get_vetnotifications/")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch notifications")
+        return res.json()
       })
-      alert("User deleted successfully!")
-    }
-  }
-
-  const checkPasswordStrength = () => {
-    const password = document.getElementById("newPassword")?.value || ""
-    const strengthBar = document.getElementById("passwordStrengthBar")
-    if (!strengthBar) return
-
-    let strength = 0
-    if (password.length >= 8) strength++
-    if (password.match(/[a-z]/)) strength++
-    if (password.match(/[A-Z]/)) strength++
-    if (password.match(/[0-9]/)) strength++
-    if (password.match(/[^a-zA-Z0-9]/)) strength++
-
-    strengthBar.className = "passwordStrengthBar"
-    if (strength <= 2) {
-      strengthBar.classList.add("strengthWeak")
-    } else if (strength === 3) {
-      strengthBar.classList.add("strengthFair")
-    } else if (strength === 4) {
-      strengthBar.classList.add("strengthGood")
-    } else {
-      strengthBar.classList.add("strengthStrong")
-    }
-  }
-
-  const currentUser = JSON.parse(localStorage.getItem("currentUser")) || {};
-
-  // Effects
-  useEffect(() => {
-    loadNotifications()
-    loadUsers()
-  }, [loadNotifications, loadUsers])
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (
-        notificationBellRef.current &&
-        !notificationBellRef.current.contains(event.target) &&
-        notificationDropdownRef.current &&
-        !notificationDropdownRef.current.contains(event.target)
-      ) {
-        setIsNotificationDropdownOpen(false)
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-    }
+      .then((data) => {
+        const formatted = data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+        }))
+        setNotifications(formatted)
+      })
+      .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
+  // ✅ Auto-refresh every 30s
   useEffect(() => {
-    const handleResize = () => {
-      if (window.innerWidth > 768) {
-        setIsSidebarExpanded(false)
-      } else {
-        setIsSidebarExpanded(false)
-      }
+    loadNotifications() // load once
+
+    const interval = setInterval(() => {
+      loadNotifications()
+    }, 30000) // 30 seconds
+
+    return () => clearInterval(interval)
+  }, [loadNotifications])
+
+// Fetch users from backend
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const res = await fetch("http://localhost:8000/api/dvmf/users/", {
+        method: "GET",
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (res.ok) setProfiles(data); // admins see all
+      else console.error("Error fetching users:", data.error);
+    } catch (err) {
+      console.error("Fetch error:", err);
+    } finally {
+      setLoading(false);
     }
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
+  };
+
+  
+
+useEffect(() => {
+    fetchUsers();
+  }, []);
+
+
+
+
+
+
+
+
+
 
   return (
-    <div className="bodyWrapper">
-      <style>{`
-       /* Base styles from your existing CSS with modifications for React */
-.bodyWrapper {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background-color: #f5f5f5;
-  display: flex;
-  height: 100vh;
-  overflow-x: hidden;
-  width: 100%;
-}
-
-.sidebars {
-  width: 250px;
-  background-color: #0F3D5A;
-  color: white;
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  height: 100vh;
-  left: 0;
-  top: 0;
-  z-index: 1000;
-  transition: transform 0.3s ease, width 0.3s ease;
-}
-
-.sidebarsLogo {
-  padding: 5px;
-  display: flex;
-  justify-content: center;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  position: relative;
-}
-
-.sidebarsLogo img {
-  width: 250px;
-  height: 200px;
-  object-fit: contain;
-}
-
-.navMenu {
-  flex: 1;
-  padding: 20px 0;
-}
-
-.navItem {
-  display: flex;
-  align-items: center;
-  padding: 12px 40px;
-  color: white;
-  text-decoration: none;
-  transition: all 0.3s ease;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  margin: 0px 0px 2px 0;
-  position: relative;
-  margin-left: 10px;
-  min-height: 44px;
-}
-
-.navItem:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  border-radius: 25px 0 0 25px;
-}
-
-.navItem.active {
-  background-color: #f3f4f6;
-  color: #0F3D5A;
-  border-radius: 20px 0 0 20px;
-  font-weight: 500;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  width: 240px;
-  margin-left: 10px;
-}
-
-.navIcon {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.navItem.active .navIcon {
-  color: #0F3D5A;
-}
-
- .logouts {
-  padding: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.logout-btns {
-  display: flex;
-  align-items: center;
-  color: white;
-  text-decoration: none;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  padding: 14px 40px;
-  border-radius: 25px;
-  transition: all 0.3s ease;
-  min-height: 44px;
-}
-
-.logout-btns:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.logout-icons {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.mainContent {
-  margin-left: 250px;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  transition: margin-left 0.3s ease;
-}
-
-.headers {
-  background: white;
-  padding: 16px 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.searchContainer {
-  flex: 1;
-  max-width: 400px;
-  margin-right: 20px;
-  position: relative;
-  min-width: 200px;
-}
-
-.notificationBell {
-  font-size: 20px;
-  color: #666;
-  cursor: pointer;
-  position: relative;
-  margin-right: 20px;
-  padding: 8px;
-  min-height: 44px;
-  min-width: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s ease;
-}
-
-.notificationBell:hover {
-  color: #0F3D5A;
-}
-
-.notificationCount {
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  background-color: #0F3D5A;
-  color: white;
-  font-size: 11px;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 10;
-  font-weight: 600;
-  border: 2px solid white;
-  box-sizing: border-box;
-  line-height: 1;
-  padding: 0 2px;
-}
-
-.notificationDropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  width: min(350px, 90vw);
-  background-color: white;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 100;
-  display: none;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.notificationDropdown.show {
-  display: block;
-}
-
-.notificationHeader {
-  padding: 15px 20px;
-  border-bottom: 1px solid #eee;
-  background: #f8f9fa;
-  border-radius: 8px 8px 0 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.notificationHeader h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
-  margin: 0;
-}
-
-.markAllRead {
-  background: none;
-  border: none;
-  color: #0F3D5A;
-  font-size: 12px;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.notificationItem {
-  padding: 15px 20px;
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  position: relative;
-}
-
- .empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center; /* centers horizontally */
-  justify-content: center; /* centers vertically (if parent has height) */
-  text-align: center;
-  padding: 2rem;
-}
-
-.icon-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 1rem;
-}
-
-.notificationItem:hover {
-  background-color: #f8f9fa;
-}
-
-.notificationItem.unread {
-  background-color: #f0f8ff;
-  border-left: 3px solid #0F3D5A;
-}
-
-.notificationItem:last-child {
-  border-bottom: none;
-}
-
-.notificationTitle {
-  font-weight: 600;
-  font-size: 14px;
-  margin-bottom: 5px;
-  color: #333;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.notificationMessage {
-  font-size: 13px;
-  color: #666;
-  margin-bottom: 5px;
-  line-height: 1.4;
-}
-
-.notificationTime {
-  font-size: 11px;
-  color: #999;
-}
-
-.notificationIcon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.empty-state {
-  text-align: center;
-  padding: 40px 20px;
-  color: #999;
-}
-
-.empty-state i {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.empty-state h3 {
-  font-size: 18px;
-  margin-bottom: 8px;
-  color: #666;
-}
-
-.empty-state p {
-  font-size: 14px;
-  color: #999;
-}
-
-.contentArea {
-  flex: 1;
-  padding: 40px;
-  background: #e5e7eb;
-  display: flex;
-  justify-content: center;
-  align-items: flex-start;
-}
-
-.settingsContainer {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  width: 120%;
-  max-width: 1000px;
-  overflow: hidden;
-}
-
-.settingsHeader {
-  padding: 24px 32px 20px 32px;
-  border-bottom: 1px solid #e5e7eb;
-  display: flex;
-  align-items: center;
-}
-
-.backButton {
-  background: none;
-  border: none;
-  color: #6b7280;
-  cursor: pointer;
-  margin-right: 16px;
-  font-size: 18px;
-  padding: 4px;
-  border-radius: 4px;
-  transition: background-color 0.2s;
-  min-height: 44px;
-  min-width: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.backButton:hover {
-  background-color: #f3f4f6;
-}
-
-.settingsTitle {
-  font-size: 24px;
-  font-weight: 600;
-  color: #111827;
-}
-
-.settingsList {
-  padding: 0;
-}
-
-.settingsItem {
-  display: flex;
-  align-items: center;
-  padding: 20px 32px;
-  border-bottom: 1px solid #f3f4f6;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  min-height: 60px;
-}
-
-.settingsItem:hover {
-  background: #f9fafb;
-}
-
-.settingsItem:last-child {
-  border-bottom: none;
-}
-
-.settingsIcon {
-  width: 24px;
-  height: 24px;
-  margin-right: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 20px;
-  color: #111827;
-  flex-shrink: 0;
-}
-
-.settingsContent {
-  flex: 1;
-}
-
-.settingsItemTitle {
-  font-size: 16px;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 2px;
-}
-
-.settingsItemDescription {
-  font-size: 14px;
-  color: #9ca3af;
-  line-height: 1.4;
-}
-
-/* Form Styles */
-.profileFormContent,
-.securityFormContent,
-.userManagementContent {
-  padding: 32px 48px;
-  max-width: 950px;
-  margin: 0 auto;
-}
-
-.formGroup {
-  margin-bottom: 24px;
-}
-
-.formLabel {
-  display: block;
-  font-size: 14px;
-  font-weight: 600;
-  color: #374151;
-  margin-bottom: 8px;
-}
-
-.formInput {
-  width: 100%;
-  padding: 12px 16px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 14px;
-  transition: border-color 0.2s;
-  min-height: 44px;
-}
-
-.formInput:focus {
-  outline: none;
-  border-color: #0F3D5A;
-  box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.1);
-}
-
-.formSelect {
-  width: 100%;
-  padding: 12px 16px;
-  border: 1px solid #d1d5db;
-  border-radius: 6px;
-  font-size: 14px;
-  background-color: white;
-  cursor: pointer;
-  min-height: 44px;
-}
-
-.formSelect:focus {
-  outline: none;
-  border-color: #0F3D5A;
-  box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.1);
-}
-
-.checkboxGroup {
-  margin-bottom: 16px;
-}
-
-.checkboxItem {
-  display: flex;
-  align-items: center;
-  margin-bottom: 12px;
-  min-height: 44px;
-}
-
-.checkboxInput {
-  margin-right: 12px;
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  accent-color: #0F3D5A;
-}
-
-.checkboxLabel {
-  font-size: 14px;
-  color: #374151;
-  cursor: pointer;
-}
-
-.formActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  padding: 24px 32px;
-  border-top: 1px solid #e5e7eb;
-  background-color: #f9fafb;
-  flex-wrap: wrap;
-}
-
-.btn {
-  padding: 10px 20px;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  border: none;
-  min-height: 44px;
-  min-width: 80px;
-}
-
-.btnSecondary {
-  background-color: #f3f4f6;
-  color: #374151;
-}
-
-.btnSecondary:hover {
-  background-color: #e5e7eb;
-}
-
-.btnPrimary {
-  background-color: #0F3D5A;
-  color: white;
-}
-
-.btnPrimary:hover {
-  background-color: #991b1b;
-}
-
-.btnDanger {
-  background-color: #dc2626;
-  color: white;
-}
-
-.btnDanger:hover {
-  background-color: #0F3D5A;
-}
-
-.btnSmall {
-  padding: 6px 12px;
-  font-size: 12px;
-  min-height: 32px;
-  min-width: 60px;
-}
-
-/* Security specific styles */
-.securitySection {
-  margin-bottom: 32px;
-}
-
-.securitySectionTitle {
-  font-size: 18px;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 16px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid #e5e7eb;
-}
-
-.securityCheckboxGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.securityCheckboxItem {
-  display: flex;
-  align-items: center;
-  padding: 12px 0;
-  min-height: 44px;
-}
-
-.securityCheckboxInput {
-  margin-right: 12px;
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
-  accent-color: #0F3D5A;
-}
-
-.securityCheckboxLabel {
-  font-size: 15px;
-  color: #374151;
-  cursor: pointer;
-  font-weight: 500;
-}
-
-.passwordStrength {
-  margin-top: 8px;
-  height: 4px;
-  background-color: #e5e7eb;
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.passwordStrengthBar {
-  height: 100%;
-  transition: all 0.3s ease;
-  border-radius: 2px;
-}
-
-.strengthWeak {
-  background-color: #ef4444;
-  width: 25%;
-}
-
-.strengthFair {
-  background-color: #f59e0b;
-  width: 50%;
-}
-
-.strengthGood {
-  background-color: #10b981;
-  width: 75%;
-}
-
-.strengthStrong {
-  background-color: #059669;
-  width: 100%;
-}
-
-/* User Management specific styles */
-.userSection {
-  margin-bottom: 32px;
-}
-
-.userSectionTitle {
-  font-size: 18px;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 16px;
-  padding-bottom: 8px;
-  border-bottom: 2px solid #e5e7eb;
-}
-
-.addUserForm {
-  background: #f9fafb;
-  padding: 24px;
-  border-radius: 8px;
-  border: 1px solid #e5e7eb;
-}
-
-.formRow {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.usersTable {
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  scrollbar-width: thin;
-  overflow-x: auto;
-}
-.tableRow > :last-child,
-.tableHeaderCell:last-child {
-  position: sticky;
-  right: 0;
-  background: white;
-  z-index: 2;
-}
-
-.tableHeader {
-  display: grid;
-  grid-template-columns: 110px 100px 200px 150px 110px 190px 100px 100px 100px; /* added last column */
-  background: #f9fafb;
-  border-bottom: 1px solid #e5e7eb;
-  scrollbar-color: #a5b4fc #f3f4f6;
-}
-
-.tableHeaderCell {
-  padding: 12px 16px;
-  font-weight: 600;
-  color: #3c5137;
-  font-size: 14px;
-  border-right: 1px solid #e5e7eb;
-}
-
-.tableHeaderCell:last-child {
-  border-right: none;
-}
-
-.tableRow {
-  display: grid;
-  grid-template-columns: 110px 100px 200px 150px 110px 190px 100px 100px 100px; /* added last column */
-  border-bottom: 1px solid #e5e7eb;
-}
-
-
-.tableRow:hover {
-  background: #f9fafb;
-}
-
-.tableRow:last-child {
-  border-bottom: none;
-}
-
-.tableCell {
-  padding: 15px 17px;
-  color: #374151;
-  font-size: 14px;
-  border-right: 1px solid #f3f4f6;
-  display: flex;
-  align-items: center;
-}
-
-.tableCell:last-child {
-  border-right: none;
-  justify-content: center;
-}
-
-.roleBadge {
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-  text-transform: capitalize;
-}
-
-.roleadmin {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.roleveterinarian {
-  background: #dbeafe;
-  color: #1e40af;
-}
-
-.rolestaff {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-.roleviewer {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.statusBadge {
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 500;
-}
-
-.statusactive {
-  background: #d1fae5;
-  color: #065f46;
-}
-
-.statusinactive {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-/* Mobile Menu Button */
-.mobileMenuBtn {
-  display: none;
-  position: fixed;
-  top: 20px;
-  left: 20px;
-  z-index: 1001;
-  background: #0F3D5A;
-  color: white;
-  border: none;
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 18px;
-  cursor: pointer;
-  min-height: 44px;
-  min-width: 44px;
-}
-
-.sidebarCloseBtn {
-  display: none;
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  background: none;
-  border: none;
-  color: white;
-  font-size: 24px;
-  cursor: pointer;
-  z-index: 1002;
-  padding: 5px;
-  border-radius: 50%;
-  transition: background-color 0.2s ease;
-}
-
-.sidebarCloseBtn:hover {
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
-.sidebarToggleBtn {
-  display: none;
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  color: #666;
-  padding: 8px;
-  min-height: 44px;
-  min-width: 44px;
-  margin-right: 10px;
-}
-
-/* Logout Modal Styles */
-.modalOverlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: none;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-  padding: 20px;
-}
-
-.modalOverlay.active {
-  display: flex;
-}
-
-.logoutModal {
-  background: white;
-  border-radius: 12px;
-  padding: 32px;
-  width: 90%;
-  max-width: 400px;
-  text-align: center;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-}
-
-.logoutModalIcon {
-  width: 64px;
-  height: 64px;
-  background: #fef3c7;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 20px;
-}
-
-.logoutModalIcon i {
-  font-size: 28px;
-  color: #f59e0b;
-}
-
-.logoutModal h3 {
-  font-size: 20px;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 12px;
-}
-
-.logoutModal p {
-  font-size: 16px;
-  color: #6b7280;
-  margin-bottom: 32px;
-  line-height: 1.5;
-}
-
-.logoutModalButtons {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.logoutModalBtn {
-  padding: 12px 24px;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 100px;
-  min-height: 44px;
-}
-
-.logoutModalBtn.cancel {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.logoutModalBtn.cancel:hover {
-  background: #e5e7eb;
-}
-
-.logoutModalBtn.confirm {
-  background: #ef4444;
-  color: white;
-}
-
-.logoutModalBtn.confirm:hover {
-  background: #dc2626;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-  .sidebars.collapsed {
-    width: 0;
-    overflow: hidden;
-  }
-
-  .sidebars.expanded {
-    width: 250px;
-  }
-
-  .mainContent {
-    margin-left: 0;
-  }
-
-  .headers {
-    margin-left: 60px;
-    padding: 12px 16px;
-  }
-
-  .sidebarToggleBtn {
-    display: none;
-  }
-
-  .mobileMenuBtn {
-    display: block;
-  }
-
-  .sidebars.expanded .sidebarCloseBtn {
-    display: block;
-  }
-
-  .contentArea {
-    padding: 20px;
-  }
-
-  .settingsContainer {
-    max-width: 100%;
-    margin: 0;
-  }
-
-  .settingsItem {
-    padding: 16px 20px;
-  }
-
-  .profileFormContent,
-  .securityFormContent,
-  .userManagementContent {
-    padding: 20px 24px;
-  }
-
-  .formActions {
-    padding: 20px;
-    flex-direction: column;
-  }
-
-  .formRow {
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-
-  .tableHeader,
-  .tableRow {
-    grid-template-columns: 1fr; /* Single column on mobile */
-    gap: 8px;
-  }
-
-  .tableHeaderCell,
-  .tableCell {
-    border-right: none;
-    border-bottom: 1px solid #f3f4f6;
-    padding: 15px 20px;
-  }
-
-  .tableHeaderCell:before,
-  .tableCell:before {
-    content: attr(data-label);
-    font-weight: 600;
-    margin-right: 8px;
-  }
-}
-
-@media (min-width: 769px) {
-  .sidebars.collapsed {
-    width: 80px;
-  }
-
-  .sidebars.expanded {
-    width: 250px;
-  }
-
-  .mainContent {
-    margin-left: 250px;
-  }
-
-  .sidebars.collapsed ~ .mainContent {
-    margin-left: 80px;
-  }
-
-  .sidebarToggleBtn {
-    display: block;
-  }
-
-  .mobileMenuBtn {
-    display: none;
-  }
-
-  .sidebars.collapsed .navItem span,
-  .sidebars.collapsed .logoutBtn span {
-    display: none;
-  }
-
-  .sidebars.collapsed .navItem,
-  .sidebars.collapsed .logoutBtn {
-    padding: 12px 0;
-    justify-content: center;
-    margin-left: 0;
-    border-radius: 0;
-    width: auto;
-  }
-
-  .sidebar.collapsed .navItem:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-    border-radius: 0;
-  }
-
-  .sidebars.collapsed .navItem.active {
-    border-radius: 0;
-    width: auto;
-  }
-
-  .sidebars.collapsed .navIcon,
-  .sidebars.collapsed .logoutIcon {
-    margin-right: 0;
-  }
-
-  .sidebars.collapsed .sidebarsLogo img {
-    width: 60px;
-    height: 60px;
-  }
-
-  .sidebarCloseBtn {
-    display: none;
-  }
-}
-
-@media (max-width: 480px) {
-  .headers {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    margin-left: 50px;
-  }
-
-  /*Search Icon*/
-
-  .search-containers {
-    flex: 1;
-    max-width: 400px;
-    margin-right: 20px;
-    position: relative;
-    min-width: 200px;
-  }
-
-  .search-input {
-    width: 100%;
-    padding: 8px 16px 8px 40px;
-    border: 2px solid #e5e7eb;
-    border-radius: 8px;
-    font-size: 14px;
-    outline: none;
-    min-height: 40px;
-  }
-
-  .search-input:focus {
-    border-color: #0F3D5A;
-  }
-
-  .search-icon {
-    position: absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    width: 16px;
-    height: 16px;
-  }
-
-  .search-icon::before {
-    content: "";
-    position: absolute;
-    width: 10px;
-    height: 10px;
-    border: 2px solid #6b7280;
-    border-radius: 50%;
-    top: 0;
-    left: 0;
-  }
-
-  .search-icon::after {
-    content: "";
-    position: absolute;
-    width: 2px;
-    height: 5px;
-    background: #6b7280;
-    transform: rotate(45deg);
-    bottom: 1px;
-    right: 1px;
-  }
-
-  .notificationBell {
-    align-self: flex-end;
-    margin-right: 0;
-  }
-
-  .mobileMenuBtn {
-    top: 15px;
-    left: 15px;
-    padding: 10px;
-  }
-
-  .settingsItem {
-    padding: 12px 16px;
-  }
-
-  .profileFormContent,
-  .securityFormContent,
-  .userManagementContent {
-    padding: 16px 20px;
-  }
-}
-
-@media (hover: none) and (pointer: coarse) {
-  .navItem,
-  .logoutBtn {
-    min-height: 48px;
-  }
-
-  .settingsItem {
-    min-height: 64px;
-  }
-
-  .notificationBell {
-    min-height: 48px;
-    min-width: 48px;
-  }
-}
-
-      `}</style>
-
-      {/* ... existing sidebar and header code ... */}
-      <div className="sidebars" id="sidebars" ref={sidebarRef}>
-        <div className="sidebarsLogo">
-          <img src="/Images/logo1.png" alt="Dvmf Logo" className="logo" />
+    <div style={styles.layout}>
+      <Sidebar />
+      <div style={styles.dashboard}>
+        <div style={styles.header}>
+          <h1 style={styles.title}>Settings</h1>
+          <div style={{ position: "relative" }}>
+            <button
+              style={styles.notificationBtn}
+              onClick={() => setNotifsOpen(!notifsOpen)}
+            >
+              <Bell size={24} color="#374151" />
+              {notifications.length > 0 && (
+                <span style={styles.badge}>{notifications.length}</span>
+              )}
+            </button>
+          </div>
+          {/* Notification Modal */}
+          <NotificationModal
+            isOpen={notifsOpen}
+            onClose={() => setNotifsOpen(false)}
+            notifications={notifications.map((n) => ({
+              message: n.message,
+              date: n.date,
+            }))}
+          />
         </div>
-        <nav className="navMenu">
-          {[
-            { name: "Dashboard", iconClass: "fas fa-th-large", page: "dashboard", route: "/DvmfDashboard" },
-            {
-              name: "Account Approval",
-              iconClass: "fa-solid fa-user-check",
-              page: "approval",
-              route: "/DvmfAccountApproval",
-            },
-            {
-              name: "Access Requests",
-              iconClass: "fa-solid fa-file-alt",
-              page: "requests",
-              route: "/DvmfAccessRequest",
-            },
-            {
-              name: "Horse Records",
-              iconClass: "fa-solid fa-clipboard-list",
-              page: "records",
-              route: "/DvmfHorseRecord",
-            },
-            { name: "Health Reports", iconClass: "fa-solid fa-chart-bar", page: "reports", route: "/DvmfHealthReport" },
-            {
-              name: "Announcements",
-              iconClass: "fa-solid fa-bullhorn",
-              page: "announcements",
-              route: "/DvmfAnnouncement",
-            },
-            { name: "Directory", iconClass: "fa-solid fa-folder", page: "directory", route: "/DvmfDirectory" },
-            { name: "Settings", iconClass: "fa-solid fa-cog", page: "settings", route: "/DvmfSettings" },
-          ].map((item) => {
-            const getIcon = (iconClass) => {
-              if (iconClass.includes("fa-th-large")) return <LayoutDashboard size={20} className="navIcon" />
-              if (iconClass.includes("fa-user-check")) return <UserCheck size={20} className="navIcon" />
-              if (iconClass.includes("fa-file-alt")) return <FileText size={20} className="navIcon" />
-              if (iconClass.includes("fa-clipboard-list")) return <ClipboardList size={20} className="navIcon" />
-              if (iconClass.includes("fa-chart-bar")) return <BarChart3 size={20} className="navIcon" />
-              if (iconClass.includes("fa-bullhorn")) return <Megaphone size={20} className="navIcon" />
-              if (iconClass.includes("fa-folder")) return <Folder size={20} className="navIcon" />
-              if (iconClass.includes("fa-cog")) return <SettingsIcon size={20} className="navIcon" />
-              return null
+
+        <div style={styles.tabs}>
+         {["profile", "security", "userManagement"].map((tab) => {
+            // Only show "userManagement" if user is Ctu-Admin
+            if (tab === "userManagement" && profile?.ctu_role?.trim().toLowerCase() !== "ctu-admin") {
+              return null;
             }
 
             return (
-              <a
-                key={item.page}
-                href={item.route}
-                className={`navItem ${activePage === item.page ? "active" : ""}`}
-                onClick={(e) => {
-                  e.preventDefault()
-                  setActivePage(item.page)
-                  if (item.page !== "settings") {
-                    window.location.href = item.route
-                  }
+              <button
+                key={tab}
+                style={{
+                  ...styles.tab,
+                  ...(activeTab === tab ? styles.tabActive : {}),
                 }}
+                onClick={() => setActiveTab(tab)}
               >
-                {getIcon(item.iconClass)}
-                <span>{item.name}</span>
-              </a>
-            )
+                {tab === "userManagement"
+                  ? "User Management"
+                  : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              </button>
+            );
           })}
-        </nav>
-        <div className="logouts">
-          <a href="#" className="logout-btns" onClick={openLogoutModal}>
-            <LogOut size={20} className="logout-icons" />
-            <span>Log Out</span>
-          </a>
+
         </div>
-      </div>
 
-      <div className="mainContent">
-        <header className="headers">
-          <div className="search-containers">
-            <div className="search-icon"></div>
-            <input
-              type="text"
-              className="search-input"
-              placeholder="Search......"
-              value={searchTerm}
-              onChange={handleSearchInput}
-            />
-          </div>
-          <div className="notificationBell" ref={notificationBellRef} onClick={toggleNotificationDropdown}>
-            <Bell size={20} />
-            {notifications.filter((n) => !n.read).length > 0 && (
-              <div className="notificationCount">{notifications.filter((n) => !n.read).length}</div>
-            )}
-            <div
-              className={`notificationDropdown ${isNotificationDropdownOpen ? "show" : ""}`}
-              ref={notificationDropdownRef}
-            >
-              <div className="notificationHeader">
-                <h3>Notifications</h3>
-                {notifications.filter((n) => !n.read).length > 0 && (
-                  <button className="markAllRead" onClick={markAllNotificationsRead}>
-                    Mark all as read
-                  </button>
-                )}
-              </div>
-              <div id="notificationList">
-                {notifications.length === 0 ? (
-                  <div className="empty-state">
-                    <BellOff size={48} />
-                    <h3>No notifications</h3>
-                    <p>You're all caught up!</p>
+        <div style={styles.content}>
+          {activeTab === "profile" && (
+            <div style={styles.box}>
+              <div style={styles.profileContainer}>
+                <div style={styles.profileSection}>
+                  <div style={styles.avatar}>
+                    {profile.ctu_fname?.charAt(0)?.toUpperCase() || "J"}
+                    {profile.ctu_lname?.charAt(0)?.toUpperCase() || "S"}
                   </div>
-                ) : (
-                  notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`notificationItem ${!notification.read ? "unread" : ""}`}
-                      onClick={() => handleNotificationClick(notification.id)}
-                    >
-                      <div className="notificationTitle">
-                        <Bell size={16} className="notificationIcon" />
-                        {notification.title}
-                      </div>
-                      <div className="notificationMessage">{notification.message}</div>
-                      <div className="notificationTime">{notification.time}</div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <div className="contentArea">
-          <div className="settingsContainer">
-            {/* Main Settings View */}
-            {activeSettingsView === "main" && (
-              <div id="main-settings">
-                <div className="settingsHeader">
-                  <h1 className="settingsTitle">Settings</h1>
-                </div>
-                <div className="settingsList">
-                  <div className="settingsItem" onClick={openProfileSettings}>
-                    <div className="settingsIcon">
-                      <UserCircle size={24} />
-                    </div>
-                    <div className="settingsContent">
-                      <div className="settingsItemTitle">Profile</div>
-                      <div className="settingsItemDescription">Manage your personal information and preferences.</div>
-                    </div>
-                  </div>
-                  <div className="settingsItem" onClick={openSecuritySettings}>
-                    <div className="settingsIcon">
-                      <Shield size={24} />
-                    </div>
-                    <div className="settingsContent">
-                      <div className="settingsItemTitle">Security</div>
-                      <div className="settingsItemDescription">Manage passwords and account protection</div>
-                    </div>
-                  </div>
-                  <div className="settingsItem" onClick={openUserManagement}>
-                    <div className="settingsIcon">
-                      <Users size={24} />
-                    </div>
-                    <div className="settingsContent">
-                      <div className="settingsItemTitle">User Management</div>
-                      <div className="settingsItemDescription">Add, edit, and manage system users</div>
-                    </div>
+                  <div style={styles.profileInfo}>
+                    <h3 style={styles.profileName}>
+                      {profile.ctu_fname} {profile.ctu_lname}
+                    </h3>
+                    <p style={styles.profileUsername}></p>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* Profile Settings View */}
-            {activeSettingsView === "profile" && (
-              <div id="profile-settings" className="profileSettings">
-                <div className="settingsHeader">
-                  <button className="backButton" onClick={goBackToSettings}>
-                    <ArrowLeft size={20} />
-                  </button>
-                  <h1 className="settingsTitle">Profile Settings</h1>
-                </div>
-                <div className="profileFormContent">
-                  <form id="profileForm">
-                    <div className="formGroup">
-                      <label className="formLabel" htmlFor="firstname">
-                        First Name
-                      </label>
-                      <input type="text" id="firstname" className="formInput" placeholder="Enter first name" />
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabel" htmlFor="lastname">
-                        Last Name
-                      </label>
-                      <input type="text" id="lastname" className="formInput" placeholder="Enter last name" />
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabel" htmlFor="email">
-                        Email Address
-                      </label>
-                      <input type="email" id="email" className="formInput" placeholder="Enter email address" />
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabel" htmlFor="phone">
-                        Phone Number
-                      </label>
-                      <input type="tel" id="phone" className="formInput" placeholder="Enter phone number" />
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabel" htmlFor="location">
-                        Location
-                      </label>
-                      <input type="text" id="location" className="formInput" placeholder="Enter location" />
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabel" htmlFor="language">
-                        Language
-                      </label>
-                      <select id="language" className="formSelect">
-                        <option value="">Select language</option>
-                        <option value="english">English</option>
-                        <option value="filipino">Filipino</option>
-                        <option value="cebuano">Cebuano</option>
-                        <option value="spanish">Spanish</option>
-                      </select>
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabel" htmlFor="theme">
-                        Interface Theme
-                      </label>
-                      <select id="theme" className="formSelect">
-                        <option value="">Select theme</option>
-                        <option value="default">Default</option>
-                        <option value="dark">Dark</option>
-                        <option value="light">Light</option>
-                        <option value="auto">Auto</option>
-                      </select>
-                    </div>
-                    <div className="formGroup">
-                      <label className="formLabel">Privacy Settings</label>
-                      <div className="checkboxGroup">
-                        <div className="checkboxItem">
-                          <input type="checkbox" id="shareData" className="checkboxInput" />
-                          <label htmlFor="shareData" className="checkboxLabel">
-                            Share my data with other system users
-                          </label>
-                        </div>
-                        <div className="checkboxItem">
-                          <input type="checkbox" id="profileVisible" className="checkboxInput" />
-                          <label htmlFor="profileVisible" className="checkboxLabel">
-                            Make my profile visible in directory
-                          </label>
-                        </div>
-                        <div className="checkboxItem">
-                          <input type="checkbox" id="allowAnalytics" className="checkboxInput" />
-                          <label htmlFor="allowAnalytics" className="checkboxLabel">
-                            Allow anonymous usage analytics
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </form>
-                </div>
-                <div className="formActions">
-                  <button type="button" className="btn btnSecondary" onClick={goBackToSettings}>
-                    Cancel
-                  </button>
-                  <button type="button" className="btn btnPrimary" onClick={saveProfileSettings}>
-                    Save Changes
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* ... existing security settings code ... */}
-            {activeSettingsView === "security" && (
-              <div id="security-settings" className="securitySettings">
-                <div className="settingsHeader">
-                  <button className="backButton" onClick={goBackToSettings}>
-                    <ArrowLeft size={20} />
-                  </button>
-                  <h1 className="settingsTitle">Security Settings</h1>
-                </div>
-                <div className="securityFormContent">
-                  <form id="securityForm">
-                    <div className="securitySection">
-                      <h3 className="securitySectionTitle">Password Management</h3>
-                      <div className="formGroup">
-                        <label className="formLabel" htmlFor="currentPassword">
-                          Current Password
-                        </label>
-                        <div className="passwordInputContainer" style={{ position: "relative" }}>
-                          <input
-                            type={isCurrentPasswordVisible ? "text" : "password"}
-                            id="currentPassword"
-                            className="formInput"
-                            placeholder="Enter current password"
-                            style={{ paddingRight: "40px" }}
-                          />
-                          <button
-                            type="button"
-                            onClick={toggleCurrentPasswordVisibility}
-                            style={{
-                              position: "absolute",
-                              right: "10px",
-                              top: "50%",
-                              transform: "translateY(-50%)",
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              color: "#666",
-                              fontSize: "16px",
-                            }}
-                            title={isCurrentPasswordVisible ? "Hide password" : "Show password"}
-                          >
-                            {isCurrentPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                        </div>
-                      </div>
-                      <div className="formGroup">
-                        <label className="formLabel" htmlFor="newPassword">
-                          New Password
-                        </label>
-                        <div className="passwordInputContainer" style={{ position: "relative" }}>
-                          <input
-                            type={isNewPasswordVisible ? "text" : "password"}
-                            id="newPassword"
-                            className="formInput"
-                            placeholder="Enter new password"
-                            onInput={checkPasswordStrength}
-                            style={{ paddingRight: "40px" }}
-                          />
-                          <button
-                            type="button"
-                            onClick={toggleNewPasswordVisibility}
-                            style={{
-                              position: "absolute",
-                              right: "10px",
-                              top: "50%",
-                              transform: "translateY(-50%)",
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              color: "#666",
-                              fontSize: "16px",
-                            }}
-                            title={isNewPasswordVisible ? "Hide password" : "Show password"}
-                          >
-                            {isNewPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                        </div>
-                        <div className="passwordStrength">
-                          <div className="passwordStrengthBar" id="passwordStrengthBar"></div>
-                        </div>
-                      </div>
-                      <div className="formGroup">
-                        <label className="formLabel" htmlFor="confirmPassword">
-                          Confirm New Password
-                        </label>
-                        <div className="passwordInputContainer" style={{ position: "relative" }}>
-                          <input
-                            type={isConfirmPasswordVisible ? "text" : "password"}
-                            id="confirmPassword"
-                            className="formInput"
-                            placeholder="Confirm new password"
-                            style={{ paddingRight: "40px" }}
-                          />
-                          <button
-                            type="button"
-                            onClick={toggleConfirmPasswordVisibility}
-                            style={{
-                              position: "absolute",
-                              right: "10px",
-                              top: "50%",
-                              transform: "translateY(-50%)",
-                              background: "none",
-                              border: "none",
-                              cursor: "pointer",
-                              color: "#666",
-                              fontSize: "16px",
-                            }}
-                            title={isConfirmPasswordVisible ? "Hide password" : "Show password"}
-                          >
-                            {isConfirmPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="securitySection">
-                      <h3 className="securitySectionTitle">Two-Factor Authentication</h3>
-                      <div className="securityCheckboxGroup">
-                        <div className="securityCheckboxItem">
-                          <input type="checkbox" id="enable2FA" className="securityCheckboxInput" />
-                          <label htmlFor="enable2FA" className="securityCheckboxLabel">
-                            Enable two-factor authentication
-                          </label>
-                        </div>
-                        <div className="securityCheckboxItem">
-                          <input type="checkbox" id="smsAuth" className="securityCheckboxInput" />
-                          <label htmlFor="smsAuth" className="securityCheckboxLabel">
-                            SMS authentication
-                          </label>
-                        </div>
-                        <div className="securityCheckboxItem">
-                          <input type="checkbox" id="emailAuth" className="securityCheckboxInput" />
-                          <label htmlFor="emailAuth" className="securityCheckboxLabel">
-                            Email authentication
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="securitySection">
-                      <h3 className="securitySectionTitle">Session Management</h3>
-                      <div className="formGroup">
-                        <label className="formLabel" htmlFor="sessionTimeout">
-                          Session Timeout
-                        </label>
-                        <select id="sessionTimeout" className="formSelect">
-                          <option value="">Select timeout</option>
-                          <option value="15">15 minutes</option>
-                          <option value="30">30 minutes</option>
-                          <option value="60">1 hour</option>
-                          <option value="120">2 hours</option>
-                          <option value="480">8 hours</option>
-                        </select>
-                      </div>
-                      <div className="securityCheckboxGroup">
-                        <div className="securityCheckboxItem">
-                          <input type="checkbox" id="logoutAllDevices" className="securityCheckboxInput" />
-                          <label htmlFor="logoutAllDevices" className="securityCheckboxLabel">
-                            Log out from all other devices
-                          </label>
-                        </div>
-                      </div>
-                    </div>
-                  </form>
-                </div>
-                <div className="formActions">
-                  <button type="button" className="btn btnSecondary" onClick={goBackToSettings}>
-                    Cancel
-                  </button>
-                  <button type="button" className="btn btnPrimary" onClick={saveSecuritySettings}>
-                    Save Changes
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* User Management View */}
-            {activeSettingsView === "userManagement" && (
-              <div id="user-management" className="userManagement">
-                <div className="settingsHeader">
-                  <button className="backButton" onClick={goBackToSettings}>
-                    <ArrowLeft size={20} />
-                  </button>
-                  <h1 className="settingsTitle">User Management</h1>
-                </div>
-                <div className="userManagementContent">
-                  {/* Add New User Section */}
-                  <div className="userSection">
-                    <h3 className="userSectionTitle">Add New User</h3>
-                    <div className="addUserForm">
-                      <div className="formRow">
-                        <div className="formGroup">
-                          <label className="formLabel">First Name</label>
-                          <input
-                            type="text"
-                            className="formInput"
-                            placeholder="Enter first name"
-                            value={newUser.firstname}
-                            onChange={(e) => handleNewUserChange("firstname", e.target.value)}
-                          />
-                        </div>
-                        <div className="formGroup">
-                          <label className="formLabel">Last Name</label>
-                          <input
-                            type="text"
-                            className="formInput"
-                            placeholder="Enter last name"
-                            value={newUser.lastname}
-                            onChange={(e) => handleNewUserChange("lastname", e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <div className="formRow">
-                        <div className="formGroup">
-                          <label className="formLabel">Email</label>
-                          <input
-                            type="email"
-                            className="formInput"
-                            placeholder="Enter email"
-                            value={newUser.email}
-                            onChange={(e) => handleNewUserChange("email", e.target.value)}
-                          />
-                        </div>
-                        <div className="formGroup">
-                          <label className="formLabel">Phone Number</label>
-                          <input
-                            type="tel"
-                            className="formInput"
-                            placeholder="Enter phone number"
-                            value={newUser.phone}
-                            onChange={(e) => handleNewUserChange("phone", e.target.value)}
-                          />
-                        </div>
-                      </div>
-                      <div className="formRow">
-                        <div className="formGroup">
-                          <label className="formLabel">Role</label>
-                          <select
-                            className="formSelect"
-                            value={newUser.role}
-                            onChange={(e) => handleNewUserChange("role", e.target.value)}
-                          >
-                            <option value="">Select role</option>
-                            <option value="admin">Ctu-Vetmed</option>
-                            <option value="veterinarian">Dvmf</option>
-                          </select>
-                        </div>
-                        <div className="formGroup">
-                          <label className="formLabel">Password</label>
-                          <div className="passwordInputContainer" style={{ position: "relative" }}>
-                            <input
-                              type={isPasswordVisible ? "text" : "password"}
-                              className="formInput"
-                              placeholder="Enter password"
-                              value={newUser.password}
-                              onChange={(e) => handleNewUserChange("password", e.target.value)}
-                              style={{ paddingRight: "40px" }}
-                            />
-                            <button
-                              type="button"
-                              onClick={togglePasswordVisibility}
-                              style={{
-                                position: "absolute",
-                                right: "10px",
-                                top: "50%",
-                                transform: "translateY(-50%)",
-                                background: "none",
-                                border: "none",
-                                cursor: "pointer",
-                                color: "#666",
-                                fontSize: "16px",
-                              }}
-                              title={isPasswordVisible ? "Hide password" : "Show password"}
-                            >
-                              {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                      <button type="button" className="btn btnPrimary" onClick={addNewUser}>
-                        <Plus size={16} /> Add User
-                      </button>
-                    </div>
+                <div style={styles.formSection}>
+                  <div style={styles.sectionHeader}>
+                    <h2 style={styles.sectionTitle}>Personal Information</h2>
+                    <div style={styles.sectionDivider}></div>
                   </div>
 
-                  {/* Users List Section */}
-                    <div className="userSection">
-                      <h3 className="userSectionTitle">Existing Users</h3>
-                      {users.length === 0 ? (
-                        <div className="empty-state">
-                          <Users size={48} />
-                          <h3>No users found</h3>
-                          <p>Add your first user to get started</p>
-                        </div>
-                      ) : (
-                        <div className="usersTable">
-                          <div className="tableHeader">
-                            <div className="tableHeaderCell">First Name</div>
-                            <div className="tableHeaderCell">Last Name</div>
-                            <div className="tableHeaderCell">Email</div>
-                            <div className="tableHeaderCell">Phone</div>
-                            <div className="tableHeaderCell">Role</div>
-                            <div className="tableHeaderCell">Password</div>
-                            <div className="tableHeaderCell">Status</div>
-                            <div className="tableHeaderCell">Actions</div>
-                          </div>
-
-                          {users
-                            .filter((user) => {
-                                // Admin sees all users
-                                if (currentUser.role === "admin") return true;
-
-                                // Non-admin users see only themselves
-                                return user.id === currentUser.id;
-                            })
-                            .map((user) => (
-                              <div key={user.id} className="tableRow">
-                                <div className="tableCell">{user.firstname}</div>
-                                <div className="tableCell">{user.lastname}</div>
-                                <div className="tableCell">{user.email}</div>
-                                <div className="tableCell">{user.phone}</div>
-                                <div className="tableCell">
-                                  <span className={`roleBadge role${user.role}`}>{user.role}</span>
-                                </div>
-                                <div className="tableCell">
-                                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                    <span style={{ fontFamily: "monospace", fontSize: "14px" }}>
-                                      {passwordVisibility[user.id]
-                                        ? user.password
-                                        : "•".repeat(user.password.length)}
-                                    </span>
-                                    <button
-                                      type="button"
-                                      onClick={() => toggleTablePasswordVisibility(user.id)}
-                                      style={{
-                                        background: "none",
-                                        border: "none",
-                                        cursor: "pointer",
-                                        color: "#666",
-                                        fontSize: "14px",
-                                        padding: "2px",
-                                      }}
-                                      title={
-                                        passwordVisibility[user.id] ? "Hide password" : "Show password"
-                                      }
-                                    >
-                                      {passwordVisibility[user.id] ? <EyeOff size={16} /> : <Eye size={16} />}
-                                    </button>
-                                  </div>
-                                </div>
-                                <div className="tableCell">
-                                  <span className={`statusBadge status${user.status.toLowerCase()}`}>
-                                    {user.status}
-                                  </span>
-                                </div>
-                                <div className="tableCell">
-                                  <button
-                                    className="btn btnDanger btnSmall"
-                                    onClick={() => deleteUser(user.id)}
-                                    title="Delete user"
-                                  >
-                                    <Trash2 size={16} />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                        </div>
+                  <form onSubmit={profileExists ? handleUpdate : handleSave}>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>Full Name:</label>
+                      <div style={styles.nameRow}>
+                        <input
+                          type="text"
+                          name="ctu_fname"
+                          value={profile.ctu_fname}
+                          onChange={handleChange}
+                         
+                          readOnly={profileExists && !editing}
+                          style={{
+                            ...styles.nameInput,
+                            backgroundColor: profileExists && !editing ? "#f9fafb" : "#fff",
+                            cursor: profileExists && !editing ? "not-allowed" : "text",
+                          }}
+                        />
+                        <input
+                          type="text"
+                          name="ctu_lname"
+                          value={profile.ctu_lname}
+                          onChange={handleChange}
+                         
+                          readOnly={profileExists && !editing}
+                          style={{
+                            ...styles.nameInput,
+                            backgroundColor: profileExists && !editing ? "#f9fafb" : "#fff",
+                            cursor: profileExists && !editing ? "not-allowed" : "text",
+                          }}
+                        />
+                      </div>
+                      {(errors.ctu_fname || errors.ctu_lname) && (
+                        <p style={styles.errorText}>{errors.ctu_fname || errors.ctu_lname}</p>
                       )}
                     </div>
 
-                </div>
-                <div className="formActions">
-                  <button type="button" className="btn btnSecondary" onClick={goBackToSettings}>
-                    Back
-                  </button>
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>Email Address:</label>
+                      <input
+                        type="email"
+                        name="ctu_email"
+                        value={profile.ctu_email}
+                        onChange={handleChange}
+                        readOnly={true}
+                        style={{
+                          ...styles.fullWidthInput,
+                          backgroundColor: "#f9fafb",
+                          cursor: "not-allowed",
+                        }}
+                      />
+                      {errors.ctu_email && <p style={styles.errorText}>{errors.ctu_email}</p>}
+                    </div>
+
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>Phone Number:</label>
+                      <input
+                        type="text"
+                        name="ctu_phonenum"
+                        value={profile.ctu_phonenum}
+                        onChange={handleChange}
+                        readOnly={profileExists && !editing}
+                        style={{
+                          ...styles.fullWidthInput,
+                          backgroundColor: profileExists && !editing ? "#f9fafb" : "#fff",
+                          cursor: profileExists && !editing ? "not-allowed" : "text",
+                        }}
+                      />
+                      {errors.ctu_phonenum && <p style={styles.errorText}>{errors.ctu_phonenum}</p>}
+                    </div>
+
+                    {!profileExists && (
+                      <div style={{ display: "flex", justifyContent: "flex-start", gap: "8px" }}>
+                        <button type="submit" style={styles.saveBtn}>
+                          Save Changes
+                        </button>
+                        <button
+                          type="button"
+                          style={styles.cancelBtn}
+                          onClick={() => {
+                            setProfile({ ctu_fname: "", ctu_lname: "", ctu_email: "", ctu_phonenum: "" })
+                            setErrors({})
+                          }}
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+
+                    <div style={{ textAlign: "left" }}>
+                      {profileExists && !editing && (
+                        <button type="button" style={styles.editBtn} onClick={() => setEditing(true)}>
+                          <Edit2 size={16} /> Edit Profile
+                        </button>
+                      )}
+                    </div>
+
+                    {editing && (
+                      <div style={{ display: "flex", justifyContent: "flex-start", gap: "8px" }}>
+                        <button type="submit" style={styles.saveBtn}>
+                          Save Changes
+                        </button>
+                        <button type="button" style={styles.cancelBtn} onClick={() => setEditing(false)}>
+                          Cancel
+                        </button>
+                      </div>
+                    )}
+                  </form>
                 </div>
               </div>
-              )}
             </div>
-        </div>
-      </div>
+          )}
 
-      {/* Logout Modal */}
-      {isLogoutModalOpen && (
-        <div
-          className="modalOverlay active"
-          ref={logoutModalRef}
-          onClick={(e) => e.target === logoutModalRef.current && closeLogoutModal()}
-        >
-          <div className="logoutModal">
-            <div className="logoutModalIcon">
-              <LogOut size={48} />
+          {activeTab === "security" && (
+            <div
+              style={{
+                ...styles.box,
+                display: "flex",
+                gap: "30px",
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ flex: 1, minWidth: "300px" }}>
+                <h3 style={styles.boxTitle}>Change Password</h3>
+                <p style={styles.boxText}>Update your password to keep your account secure.</p>
+
+                <form onSubmit={handlePasswordUpdate}>
+                  {[
+                    { label: "Current Password", name: "current_password" },
+                    { label: "New Password", name: "new_password" },
+                    { label: "Confirm New Password", name: "confirm_new_password" },
+                  ].map((field) => (
+                    <div style={styles.formGroup} key={field.name}>
+                      <label style={styles.label}>{field.label}</label>
+
+                      {/* Password input with toggle */}
+                      <div style={styles.passwordContainer}>
+                        <input
+                          type={passwordVisibility[field.name] ? "text" : "password"}
+                          name={field.name}
+                          value={passwords[field.name]}
+                          onChange={handlePasswordChange}
+                          style={styles.passwordInput}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => togglePasswordVisibility(field.name)}
+                          style={styles.passwordToggle}
+                        >
+                          {passwordVisibility[field.name] ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+
+                      {/* Error message */}
+                      {passwordErrors[field.name] && <p style={styles.errorText}>{passwordErrors[field.name]}</p>}
+                    </div>
+                  ))}
+
+                  {/* Action buttons */}
+                  <button type="submit" style={{ ...styles.saveBtn, backgroundColor: "#2e7d32" }}>
+                    Save Changes
+                  </button>
+                  <button
+                    type="button"
+                    style={styles.cancelBtn}
+                    onClick={() =>
+                      setPasswords({
+                        current_password: "",
+                        new_password: "",
+                        confirm_new_password: "",
+                      })
+                    }
+                  >
+                    Cancel
+                  </button>
+                </form>
+              </div>
+
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: "250px",
+                  backgroundColor: "#f3f4f6",
+                  borderRadius: "12px",
+                  padding: "20px",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                  alignSelf: "flex-start",
+                  marginTop: "45px",
+                }}
+              >
+                <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "15px" }}>Password Requirements</h3>
+                <ul style={{ listStyle: "none", paddingLeft: "0", lineHeight: "1.8" }}>
+                  {[
+                    "At least 8 characters",
+                    "1 uppercase letter (A-Z)",
+                    "1 lowercase letter (a-z)",
+                    "1 number (0-9)",
+                    "1 special character (!@#$%^&*)",
+                  ].map((rule) => (
+                    <li
+                      key={rule}
+                      style={{ display: "flex", alignItems: "center", gap: "8px", color: "#374151", fontSize: "14px" }}
+                    >
+                      <span
+                        style={{
+                          display: "inline-block",
+                          width: "16px",
+                          height: "16px",
+                          borderRadius: "50%",
+                          backgroundColor: "#e5e7eb",
+                        }}
+                      ></span>
+                      {rule}
+                    </li>
+                  ))}
+                </ul>
+                <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "10px" }}>
+                  Make sure your password meets all the requirements for a strong and secure account.
+                </p>
+              </div>
             </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logoutModalButtons">
-              <button className="logoutModalBtn cancel" onClick={closeLogoutModal}>
-                No
-              </button>
-              <button className="logoutModalBtn confirm" onClick={confirmLogout}>
-                Yes
-              </button>
+          )}
+
+              {activeTab === "userManagement" ? (
+                profile ? (
+                  profile.ctu_role?.trim().toLowerCase() === "ctu-admin" ? (
+                    <div style={styles.box}>
+                      <h2 style={styles.boxTitle}>User Management</h2>
+
+                      {/* Tabs for Add New / Existing Users */}
+                      <div style={styles.userTabs}>
+                        <button
+                          style={{
+                            ...styles.userTab,
+                            ...(activeUserTab === "addNew" ? styles.userTabActive : {}),
+                          }}
+                          onClick={() => setActiveUserTab("addNew")}
+                        >
+                          Add New User
+                        </button>
+                        <button
+                          style={{
+                            ...styles.userTab,
+                            ...(activeUserTab === "existing" ? styles.userTabActive : {}),
+                          }}
+                          onClick={() => setActiveUserTab("existing")}
+                        >
+                          Existing Users
+                        </button>
+                      </div>
+
+                      {/* Add New User Form */}
+                      {activeUserTab === "addNew" && (
+                        <div style={styles.userSection}>
+                          <div style={styles.formRow}>
+                            <div style={styles.formGroup}>
+                              <label style={styles.label}>First Name</label>
+                              <input
+                                type="text"
+                                style={styles.input}
+                                placeholder="Enter first name"
+                                value={newUser.firstname}
+                                onChange={(e) => handleNewUserChange("firstname", e.target.value)}
+                              />
+                            </div>
+                            <div style={styles.formGroup}>
+                              <label style={styles.label}>Last Name</label>
+                              <input
+                                type="text"
+                                style={styles.input}
+                                placeholder="Enter last name"
+                                value={newUser.lastname}
+                                onChange={(e) => handleNewUserChange("lastname", e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          <div style={styles.formRow}>
+                            <div style={styles.formGroup}>
+                              <label style={styles.label}>Email</label>
+                              <input
+                                type="email"
+                                style={styles.input}
+                                placeholder="Enter email"
+                                value={newUser.email}
+                                onChange={(e) => handleNewUserChange("email", e.target.value)}
+                              />
+                            </div>
+                            <div style={styles.formGroup}>
+                              <label style={styles.label}>Phone Number</label>
+                              <input
+                                type="tel"
+                                style={styles.input}
+                                placeholder="Enter phone number"
+                                value={newUser.phone}
+                                onChange={(e) => handleNewUserChange("phone", e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          <div style={styles.formRow}>
+                            <div style={styles.formGroup}>
+                              <label style={styles.label}>Role</label>
+                              <select
+                                style={styles.input}
+                                value={newUser.ctu_role}
+                                onChange={(e) => handleNewUserChange("role", e.target.value)}
+                              >
+                                <option value="">Select role</option>
+                                <option value="Ctu-Vetmed">Ctu-Vetmed</option>
+                                <option value="Dvmf">Dvmf</option>
+                              </select>
+                            </div>
+                            <div style={styles.formGroup}>
+                              <label style={styles.label}>Password</label>
+                              <div style={{ display: "flex", alignItems: "center" }}>
+                                <input
+                                  type={isPasswordVisible ? "text" : "password"}
+                                  style={styles.passwordInput}
+                                  placeholder="Enter password"
+                                  value={newUser.password}
+                                  onChange={(e) => handleNewUserChange("password", e.target.value)}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={toggleNewUserPasswordVisibility}
+                                  style={{
+                                    marginLeft: "5px",
+                                    cursor: "pointer",
+                                    border: "none",
+                                    background: "transparent",
+                                  }}
+                                >
+                                  {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div style={{ marginTop: "20px", textAlign: "left" }}>
+                            <button
+                              type="button"
+                              style={styles.addUserBtn}
+                              onClick={addNewUser}
+                            >
+                              Add User
+                              <Plus size={16} />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Existing Users Table */}
+{activeUserTab === "existing" && (
+  <div style={styles.userSection}>
+    {profiles.length === 0 ? (
+      <div style={styles.emptyState}>
+        <Users size={48} />
+        <h3>No users found</h3>
+        <p>Add your first user to get started</p>
+      </div>
+    ) : (
+      <div style={styles.usersTable}>
+        <div style={styles.tableHeader}>
+          <div style={styles.tableHeaderCell}>First Name</div>
+          <div style={styles.tableHeaderCell}>Last Name</div>
+          <div style={styles.tableHeaderCell}>Email</div>
+          <div style={styles.tableHeaderCell}>Phone</div>
+          <div style={styles.tableHeaderCell}>Role</div>
+          <div style={styles.tableHeaderCell}>Status</div>
+          <div style={styles.tableHeaderCell}>Actions</div>
+        </div>
+
+        {profiles.map((p) => (
+          <div key={p.id} style={styles.tableRow}>
+            <div style={styles.tableCell}>{p.ctu_fname || "-"}</div>
+            <div style={styles.tableCell}>{p.ctu_lname || "-"}</div>
+            <div style={styles.tableCell}>{p.ctu_email || "-"}</div>
+            <div style={styles.tableCell}>{p.ctu_phonenum || "-"}</div>
+            <div style={styles.tableCell}>
+              <span style={styles.roleBadge}>{p.ctu_role || "Ctu-VetMed"}</span>
+            </div>
+            <div style={styles.tableCell}>
+              <span style={styles.statusBadge}>
+                {p.status === "pending" || p.status === "approved" ? "active" : p.status}
+              </span>
+            </div>
+            <div style={styles.tableCell}>
+              <div style={styles.dropdown}>
+                <button
+                  style={styles.dropdownBtn}
+                  onClick={() => toggleDropdown(p.id)}
+                >
+                  <MoreVertical size={16} />
+                </button>
+
+                {dropdownOpen === p.id && (
+                  <div style={styles.dropdownMenu}>
+                    {/* Only show Deactivate if user is active */}
+                    {(p.status === "pending" || p.status === "approved") && (
+                      <button
+                        style={styles.dropdownItem}
+                        onClick={() => {
+                          deactivateUser(p.id);
+                          setDropdownOpen(null);
+                        }}
+                      >
+                        <Eye size={16} />
+                        Deactivate
+                      </button>
+                    )}
+                    <button
+                      style={{ ...styles.dropdownItem, ...styles.dropdownItemDanger }}
+                      onClick={() => {
+                        deleteUser(p.id);
+                        setDropdownOpen(null);
+                      }}
+                    >
+                      <Trash2 size={16} />
+                      Delete
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
+        ))}
+      </div>
+    )}
+  </div>
+)}
+
+                    </div>
+                  ) : (
+                    // ❌ Non-admin: restricted message
+                    <div style={styles.emptyState}>
+                      <Users size={48} />
+                      <h3>Restricted Access</h3>
+                      <p>You do not have permission to view this section.</p>
+                    </div>
+                  )
+                ) : (
+                  <p>Loading...</p>
+                )
+              ) : null}
+
+
+          <FloatingMessages />
         </div>
-      )}  
+      </div>
     </div>
   )
+}
+
+const styles = {
+  layout: { display: "flex", minHeight: "100vh", backgroundColor: "#f5f5f5" },
+  dashboard: {
+    flex: 1,
+    fontFamily: "'Segoe UI', Tahoma",
+    display: "flex",
+    flexDirection: "column",
+    height: "100vh",
+    overflow: "hidden",
+  },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    padding: "20px 30px",
+    borderBottom: "1px solid #eee",
+    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
+    position: "sticky",
+    top: 0,
+    zIndex: 10,
+    justifyContent: "space-between",
+  },
+  title: { fontSize: "25px", fontWeight: "bold", color: "#b91c1c" },
+  notificationBtn: {
+    position: "relative",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    padding: "8px",
+    borderRadius: "50%",
+  },
+  badge: {
+    position: "absolute",
+    top: "2px",
+    right: "2px",
+    backgroundColor: "#ef4444",
+    color: "#fff",
+    borderRadius: "50%",
+    padding: "2px 6px",
+    fontSize: "12px",
+    fontWeight: "bold",
+  },
+  tabs: {
+    display: "flex",
+    gap: "25px",
+    marginBottom: "25px",
+    marginTop: "20px",
+    marginLeft: "20px",
+  },
+  tab: {
+    padding: "6px 0",
+    backgroundColor: "transparent",
+    border: "none",
+    cursor: "pointer",
+    fontSize: "16px",
+    color: "#555",
+  },
+  tabActive: {
+    fontWeight: "bold",
+    borderBottom: "3px solid #b91c1c",
+    transform: "scale(1.05)",
+    color: "#b91c1c",
+  },
+  content: {},
+  box: {
+    backgroundColor: "#fff",
+    borderRadius: "12px",
+    padding: "20px 20px",
+    marginBottom: "20px",
+    boxShadow: "0 3px 10px rgba(0,0,0,0.05)",
+    marginLeft: "20px",
+    width: "calc(100% - 40px)",
+    maxWidth: "none",
+  },
+  boxTitle: { fontSize: "20px", fontWeight: "600", marginBottom: "10px" },
+  boxText: { color: "#555", marginBottom: "10px", fontStyle: "italic", fontSize: "14px" },
+  formGroup: {
+    flex: 1,
+    minWidth: "200px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "6px",
+    position: "relative",
+  },
+  label: { fontWeight: "500", marginBottom: "3px" },
+  input: {
+    padding: "8px 12px",
+    border: "1px solid #ccc",
+    borderRadius: "6px",
+    fontSize: "14px",
+    outline: "none",
+    transition: "all 0.2s ease",
+  },
+  editBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+    padding: "4px 12px",
+    backgroundColor: "#f59e0b",
+    color: "#fff",
+    border: "none",
+    borderRadius: "20px",
+    fontWeight: "bold",
+    fontSize: "13px",
+    cursor: "pointer",
+    marginTop: "20px", // pushes the button all the way to the left
+  },
+  saveBtn: {
+    padding: "6px 16px",
+    backgroundColor: "#2e7d32",
+    color: "#fff",
+    border: "none",
+    borderRadius: "20px",
+    fontWeight: "bold",
+    fontSize: "13px",
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    alignSelf: "flex-start",
+    marginTop: "20px", // Added margin on top
+  },
+  cancelBtn: {
+    padding: "6px 16px",
+    backgroundColor: "#9ca3af",
+    color: "#fff",
+    border: "none",
+    borderRadius: "20px",
+    fontWeight: "bold",
+    fontSize: "13px",
+    cursor: "pointer",
+    marginLeft: "8px",
+    transition: "all 0.2s ease",
+    alignSelf: "flex-start",
+    marginTop: "20px",
+  },
+  errorText: {
+    color: "#ef4444",
+    fontSize: "12px",
+    position: "absolute",
+    bottom: "-18px",
+    margin: 0,
+    right: "0",
+  },
+  profileContainer: {
+    display: "flex",
+    gap: "90px",
+    alignItems: "flex-start",
+  },
+  profileSection: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    minWidth: "200px",
+    flex: "0 0 auto",
+    marginRight: "100px", // <-- added margin right
+  },
+  formSection: {
+    flex: 1,
+    minWidth: "400px",
+  },
+  profileHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "20px",
+    marginBottom: "32px",
+    padding: "0",
+    backgroundColor: "transparent",
+    borderRadius: "0",
+  },
+  avatar: {
+    width: "140px",
+    height: "140px",
+    borderRadius: "50%",
+    backgroundColor: "#e5e7eb",
+    color: "#6a6e77ff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: "32px",
+    fontWeight: "600",
+    border: "3px solid #f3f4f6",
+    marginTop: "50px",
+    marginLeft: "100px", // <-- added margin right
+  },
+  profileInfo: {
+    textAlign: "center",
+    marginLeft: "100px",
+  },
+  profileName: {
+    fontSize: "20px",
+    fontWeight: "600",
+    margin: "0 0 4px 0",
+    color: "#333",
+  },
+  profileUsername: {
+    fontSize: "14px",
+    color: "#6b7280",
+    margin: "0",
+    fontWeight: "400",
+  },
+  userTabs: {
+    display: "flex",
+    borderBottom: "1px solid #e5e7eb",
+    marginBottom: "24px",
+  },
+  userTab: {
+    padding: "12px 24px",
+    backgroundColor: "transparent",
+    border: "none",
+    cursor: "pointer",
+    fontSize: "14px",
+    fontWeight: "500",
+  },
+  userTabActive: {
+    color: "#b91c1c",
+    borderBottomColor: "#b91c1c",
+    backgroundColor: "#fee2e2",
+  },
+  userSection: {
+    padding: "16px 0",
+  },
+  formRow: {
+    display: "flex",
+    gap: "20px",
+    marginBottom: "20px",
+    flexWrap: "wrap",
+  },
+  sectionHeader: {
+    marginBottom: "24px",
+  },
+  sectionTitle: {
+    fontSize: "18px",
+    fontWeight: "600",
+    color: "#D2691E",
+    marginBottom: "8px",
+  },
+  sectionDivider: {
+    height: "3px",
+    backgroundColor: "#D2691E",
+    width: "100%",
+    borderRadius: "2px",
+  },
+  nameRow: {
+    display: "flex",
+    gap: "12px",
+  },
+  nameInput: {
+    flex: 1,
+    padding: "12px 16px",
+    border: "1px solid #d1d5db",
+    borderRadius: "6px",
+    fontSize: "14px",
+    outline: "none",
+    transition: "all 0.2s ease",
+  },
+  fullWidthInput: {
+    width: "100%",
+    padding: "12px 16px",
+    border: "1px solid #d1d5db",
+    borderRadius: "6px",
+    fontSize: "14px",
+    outline: "none",
+    transition: "all 0.2s ease",
+  },
+  passwordContainer: {
+    position: "relative",
+    width: "100%",
+  },
+  passwordInput: {
+    width: "100%",
+    padding: "12px 36px 12px 12px", // space for toggle icon
+    border: "1px solid #ccc",
+    borderRadius: "6px",
+    fontSize: "14px",
+    outline: "none",
+    boxSizing: "border-box",
+    transition: "all 0.2s ease",
+  },
+  passwordToggle: {
+    position: "absolute",
+    top: "50%",
+    right: "12px",
+    transform: "translateY(-50%)",
+    background: "transparent",
+    border: "none",
+    cursor: "pointer",
+    color: "#6b7280",
+    padding: "0",
+    lineHeight: "1",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addUserBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "10px 20px",
+    backgroundColor: "#2e7d32",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+    fontSize: "14px",
+    fontWeight: "500",
+  },
+  emptyState: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    padding: "40px",
+    color: "#6b7280",
+    gap: "10px",
+  },
+usersTable: {
+  border: "1px solid #e5e7eb",
+  borderRadius: "8px",
+  overflow: "hidden",
+  maxHeight: "400px", // adjust height as needed
+  overflowY: "auto",  // enables vertical scrolling
+},
+
+  tableHeader: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 2fr 1fr 1fr 1fr 80px",
+    backgroundColor: "#f9fafb",
+    borderBottom: "1px solid #e5e7eb",
+  },
+  tableHeaderCell: {
+    padding: "12px",
+    fontSize: "12px",
+    fontWeight: "600",
+    color: "#374151",
+    textTransform: "uppercase",
+  },
+  tableRow: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr 2fr 1fr 1fr 1fr 80px",
+    borderBottom: "1px solid #e5e7eb",
+  },
+  tableCell: {
+    padding: "12px",
+    fontSize: "14px",
+    color: "#374151",
+    display: "flex",
+    alignItems: "center",
+  },
+  roleBadge: {
+    padding: "4px 8px",
+    backgroundColor: "#dbeafe",
+    color: "#1e40af",
+    borderRadius: "12px",
+    fontSize: "12px",
+    fontWeight: "500",
+  },
+  statusBadge: {
+    padding: "4px 8px",
+    backgroundColor: "#dcfce7",
+    color: "#166534",
+    borderRadius: "12px",
+    fontSize: "12px",
+    fontWeight: "500",
+  },
+  dropdown: {
+    position: "relative",
+  },
+  dropdownBtn: {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    padding: "4px",
+    borderRadius: "4px",
+  },
+  dropdownMenu: {
+    position: "absolute",
+    right: "0",
+    top: "100%",
+    backgroundColor: "#fff",
+    border: "1px solid #e5e7eb",
+    borderRadius: "6px",
+    boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
+    zIndex: 10,
+    minWidth: "120px",
+  },
+  dropdownItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    width: "100%",
+    padding: "8px 12px",
+    backgroundColor: "transparent",
+    border: "none",
+    cursor: "pointer",
+    fontSize: "14px",
+    color: "#374151",
+  },
+  dropdownItemDanger: {
+    color: "#dc2626",
+  },
 }
 
 export default DvmfSettings

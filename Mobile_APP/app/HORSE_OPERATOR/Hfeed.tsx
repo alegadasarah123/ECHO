@@ -14,13 +14,15 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 
 type Meal = {
-  id: string;
-  meal: string;
-  food: string;
-  amount: string;
-  time: string;
+  fd_id: string;
+  fd_food_type: string;
+  fd_qty: string;
+  fd_time: string;
+  fd_meal_type: string;
   completed?: boolean;
-  completedAt?: string;
+  completed_at?: string;
+  user_id: string;
+  horse_id: string;
 };
 
 type FeedType = {
@@ -29,20 +31,7 @@ type FeedType = {
   amount: string;
 };
 
-type FeedLogEntry = {
-  id: string;
-  date: string;
-  meal: string;
-  horse: string;
-  time: string;
-  food: string;
-  amount: string;
-  status: string;
-  action: 'completed' | 'edited';
-  timestamp: string;
-};
-
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
+const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator";
 
 const FeedScreen = () => {
   const router = useRouter();
@@ -51,32 +40,7 @@ const FeedScreen = () => {
   const horseId = params.horseId as string || '';
   const [currentUser, setCurrentUser] = useState<string>('');
     
-  const [feedingSchedule, setFeedingSchedule] = useState<Meal[]>([
-    {
-      id: '1',
-      meal: 'Breakfast',
-      food: 'Chaff',
-      amount: '3 scoops',
-      time: '6:45 AM',
-      completed: false,
-    },
-    {
-      id: '2',
-      meal: 'Lunch',
-      food: 'Chaff',
-      amount: '3 scoops',
-      time: '12:00 PM',
-      completed: false,
-    },
-    {
-      id: '3',
-      meal: 'Dinner',
-      food: 'Chaff',
-      amount: '3 scoops',
-      time: '7:15 PM',
-      completed: false,
-    },
-  ]);
+  const [feedingSchedule, setFeedingSchedule] = useState<Meal[]>([]);
   const [showEditView, setShowEditView] = useState(false);
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
     
@@ -87,21 +51,75 @@ const FeedScreen = () => {
   });
 
   const [feedTypes, setFeedTypes] = useState<FeedType[]>([
-    { id: '1', name: 'Chaff', amount: '3 scoops' },
+    { id: '1', name: 'Chaff', amount: '' },
     { id: '2', name: 'Resolve', amount: '' },
     { id: '3', name: 'Dynavy', amount: '' },
     { id: '4', name: 'Magnesium', amount: '' },
   ]);
 
+  // Helper function to generate UUID
+  const generateUUID = (): string => {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+
+  // Consistent meal name determination - matches backend logic EXACTLY
+  const getMealName = (time: string): string => {
+    try {
+      // Split time and period
+      const timeParts = time.split(' ');
+      const timeComponent = timeParts[0];
+      const period = timeParts[1] || 'AM';
+      
+      // Parse hour
+      const hour = parseInt(timeComponent.split(':')[0]);
+      
+      // Convert to 24-hour format - EXACT MATCH with backend
+      let hour24: number;
+      if (period.toUpperCase() === 'PM' && hour !== 12) {
+        hour24 = hour + 12;
+      } else if (period.toUpperCase() === 'AM' && hour === 12) {
+        hour24 = 0;
+      } else {
+        hour24 = hour;
+      }
+      
+      // Classify meal based on 24-hour time - EXACT MATCH with backend
+      if (hour24 < 10) {
+        return 'Breakfast';  // 12:00 AM - 9:59 AM
+      } else if (hour24 < 16) {
+        return 'Lunch';      // 10:00 AM - 3:59 PM
+      } else {
+        return 'Dinner';     // 4:00 PM - 11:59 PM
+      }
+    } catch (error) {
+      console.error('Error parsing time:', error);
+      return 'Meal'; // Default fallback
+    }
+  };
+
+  // Helper function to get meal order for sorting
+  const getMealOrder = (mealType: string): number => {
+    switch (mealType) {
+      case 'Breakfast': return 1;
+      case 'Lunch': return 2;
+      case 'Dinner': return 3;
+      default: return 4;
+    }
+  };
+
   // Load user ID from SecureStore
-  const getCurrentUser = async () => {
+  const getCurrentUser = async (): Promise<string | null> => {
     try {
       const storedUser = await SecureStore.getItemAsync("user_data");
       if (storedUser) {
         const parsed = JSON.parse(storedUser);
         const id = parsed.user_id || parsed.id;
         if (id) {
-          console.log("🔑 Loaded user_id from storage:", id);
+          console.log("Loaded user_id from storage:", id);
           setCurrentUser(id);
           return id;
         }
@@ -112,42 +130,8 @@ const FeedScreen = () => {
     return null;
   };
 
-  // Load feeding schedule from backend
-  const loadFeedingSchedule = useCallback(async (userId: string) => {
-    if (!userId || !horseId) return;
-
-    try {
-      const url = `${API_BASE_URL}/get_feeding_schedule/?user_id=${encodeURIComponent(userId)}&horse_id=${encodeURIComponent(horseId)}`;
-      console.log("📡 Fetching feeding schedule:", url);
-
-      const response = await fetch(url);
-      if (response.ok) {
-        const data = await response.json();
-        console.log("✅ Feeding schedule loaded:", data);
-        
-        if (data && data.length > 0) {
-          // Map backend data to frontend format
-          const mappedSchedule = data.map((item: any) => ({
-            id: item.meal_id,
-            meal: item.meal,
-            food: item.food,
-            amount: item.amount,
-            time: item.time,
-            completed: item.completed || false,
-            completedAt: item.completed_at,
-          }));
-          setFeedingSchedule(mappedSchedule);
-        }
-      } else {
-        console.log("No existing feeding schedule found, using default");
-      }
-    } catch (error) {
-      console.error('Error loading feeding schedule:', error);
-    }
-  }, [horseId]);
-
-  // Save feeding schedule to backend
-  const saveFeedingSchedule = async (schedule: Meal[], userId?: string) => {
+  // Save feeding schedule to backend - FIXED to match backend expectations
+  const saveFeedingSchedule = useCallback(async (schedule: Meal[], userId?: string): Promise<void> => {
     try {
       const userIdToUse = userId || currentUser;
       if (!userIdToUse || !horseId) {
@@ -155,19 +139,23 @@ const FeedScreen = () => {
         return;
       }
 
+      // Transform frontend format to EXACTLY match backend expectations
+      const backendSchedule = schedule.map(meal => ({
+        fd_id: meal.fd_id,
+        food: meal.fd_food_type,           // Backend expects "food"
+        amount: meal.fd_qty,               // Backend expects "amount"
+        time: meal.fd_time,                // Backend expects "time"
+        completed: meal.completed || false,
+        completed_at: meal.completed_at
+      }));
+
       const payload = {
         user_id: userIdToUse,
         horse_id: horseId,
-        schedule: schedule.map(meal => ({
-          id: meal.id,
-          meal: meal.meal,
-          food: meal.food,
-          amount: meal.amount,
-          time: meal.time,
-          completed: meal.completed || false,
-          completedAt: meal.completedAt,
-        }))
+        schedule: backendSchedule
       };
+
+      console.log("Sending payload to backend:", JSON.stringify(payload, null, 2));
 
       const response = await fetch(`${API_BASE_URL}/save_feeding_schedule/`, {
         method: 'POST',
@@ -179,66 +167,117 @@ const FeedScreen = () => {
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error("Backend error:", errorData);
         throw new Error(errorData.error || 'Failed to save feeding schedule');
       }
 
-      console.log("✅ Feeding schedule saved successfully");
+      const result = await response.json();
+      console.log("Backend response:", result);
+      console.log("Feeding schedule saved successfully");
     } catch (error) {
       console.error('Error saving feeding schedule:', error);
-      Alert.alert('Error', 'Failed to save feeding schedule');
-    }
-  };
+      Alert.alert('Error', 'Failed to save feeding schedule: ' + (error instanceof Error ? error.message : String(error)));    }
+  }, [currentUser, horseId]);
 
-  // Add entry to backend feed log
-  const addToFeedLog = async (entry: Omit<FeedLogEntry, 'id'>) => {
+  // Create default schedule - FIXED to include required fields
+  const createDefaultSchedule = useCallback(async (userId: string) => {
+    const defaultSchedule: Meal[] = [
+      {
+        fd_id: generateUUID(),
+        fd_food_type: 'Chaff',
+        fd_qty: '3 scoops',
+        fd_time: '6:45 AM',
+        fd_meal_type: 'Breakfast',
+        completed: false,
+        user_id: userId,
+        horse_id: horseId,
+      },
+      {
+        fd_id: generateUUID(),
+        fd_food_type: 'Chaff',
+        fd_qty: '3 scoops',
+        fd_time: '12:00 PM',
+        fd_meal_type: 'Lunch',
+        completed: false,
+        user_id: userId,
+        horse_id: horseId,
+      },
+      {
+        fd_id: generateUUID(),
+        fd_food_type: 'Chaff',
+        fd_qty: '3 scoops',
+        fd_time: '7:15 PM',
+        fd_meal_type: 'Dinner',
+        completed: false,
+        user_id: userId,
+        horse_id: horseId,
+      },
+    ];
+    setFeedingSchedule(defaultSchedule);
+    await saveFeedingSchedule(defaultSchedule, userId);
+  }, [horseId, saveFeedingSchedule]);
+
+  // Load feeding schedule from backend - FIXED to handle backend response format
+  const loadFeedingSchedule = useCallback(async (userId: string): Promise<void> => {
+    if (!userId || !horseId) return;
+
     try {
-      if (!currentUser) return;
+      const url = `${API_BASE_URL}/get_feeding_schedule/?user_id=${encodeURIComponent(userId)}&horse_id=${encodeURIComponent(horseId)}`;
+      console.log("Fetching feeding schedule:", url);
 
-      const payload = {
-        user_id: currentUser,
-        date: entry.date,
-        meal: entry.meal,
-        horse: entry.horse,
-        time: entry.time,
-        food: entry.food,
-        amount: entry.amount,
-        status: entry.status,
-        action: entry.action,
-        timestamp: entry.timestamp,
-      };
-
-      const response = await fetch(`${API_BASE_URL}/add_feed_log_entry/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to add feed log entry');
+      const response = await fetch(url);
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Raw backend data:", JSON.stringify(data, null, 2));
+        
+        if (data && data.length > 0) {
+          // Transform backend format to frontend format - FIXED field mapping
+          const transformedData: Meal[] = data.map((item: any) => ({
+            fd_id: item.fd_id,
+            fd_food_type: item.fd_food_type,
+            fd_qty: item.fd_qty,
+            fd_time: item.fd_time,
+            fd_meal_type: item.fd_meal_type,
+            completed: item.completed || false,
+            completed_at: item.completed_at,
+            user_id: item.user_id,
+            horse_id: item.horse_id
+          }));
+          
+          // Sort meals by proper order (Breakfast, Lunch, Dinner)
+          const sortedData = transformedData.sort((a, b) => 
+            getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type)
+          );
+          
+          console.log("Transformed and sorted data:", JSON.stringify(sortedData, null, 2));
+          setFeedingSchedule(sortedData);
+        } else {
+          console.log("No existing schedule, creating default");
+          await createDefaultSchedule(userId);
+        }
+      } else {
+        console.log("No existing feeding schedule found, creating default");
+        await createDefaultSchedule(userId);
       }
-
-      console.log("✅ Feed log entry added successfully");
-    } catch (error) {
-      console.error('Error adding to feed log:', error);
+    } catch (error: unknown) {
+      console.error('Error loading feeding schedule:', error);
+      await createDefaultSchedule(userId);
     }
-  };
+  }, [horseId, createDefaultSchedule]);
 
   // Load data on component mount
   useEffect(() => {
     const initializeData = async () => {
       const userId = await getCurrentUser();
       if (userId && horseId) {
-        loadFeedingSchedule(userId);
+        await loadFeedingSchedule(userId);
       }
     };
     initializeData();
   }, [horseId, loadFeedingSchedule]);
 
-  // Mark meal as fed
-  const handleMarkAsFed = async (meal: Meal) => {
+  // Mark meal as fed - FIXED to match backend API expectations
+  const handleMarkAsFed = async (meal: Meal): Promise<void> => {
     if (!currentUser) {
       Alert.alert('Error', 'User not found');
       return;
@@ -246,9 +285,16 @@ const FeedScreen = () => {
 
     try {
       const now = new Date();
-      const completedAt = now.toLocaleString();
+      const completedAt = now.toISOString();
 
-      // Call backend API to mark meal as fed
+      console.log("Marking meal as fed:", {
+        user_id: currentUser,
+        horse_id: horseId,
+        fd_id: meal.fd_id,
+        completed_at: completedAt,
+      });
+
+      // Call backend API to mark meal as fed (this also handles logging)
       const response = await fetch(`${API_BASE_URL}/mark_meal_fed/`, {
         method: 'POST',
         headers: {
@@ -257,118 +303,122 @@ const FeedScreen = () => {
         body: JSON.stringify({
           user_id: currentUser,
           horse_id: horseId,
-          meal_id: meal.id,
+          fd_id: meal.fd_id,
           completed_at: completedAt,
         }),
       });
 
       if (!response.ok) {
         const errorData = await response.json();
+        console.error("Mark as fed error:", errorData);
         throw new Error(errorData.error || 'Failed to mark meal as fed');
       }
           
-      // Update local state
+      const result = await response.json();
+      console.log("Mark as fed response:", result);
+
+      // Update local state and maintain sort order
       const updatedSchedule = feedingSchedule.map(m =>
-        m.id === meal.id 
-          ? { ...m, completed: true, completedAt }
+        m.fd_id === meal.fd_id 
+          ? { ...m, completed: true, completed_at: completedAt }
           : m
-      );
+      ).sort((a, b) => getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type));
           
       setFeedingSchedule(updatedSchedule);
           
-      // Add to feed log
-      await addToFeedLog({
-        date: now.toISOString().split('T')[0],
-        meal: meal.meal,
-        horse: horseName,
-        time: completedAt.split(', ')[1],
-        food: meal.food,
-        amount: meal.amount,
-        status: 'Completed',
-        action: 'completed',
-        timestamp: now.toISOString(),
-      });
-          
-      Alert.alert('Success', `${meal.meal} marked as fed for ${horseName}!`);
+      Alert.alert('Success', `Meal marked as fed for ${horseName}!`);
     } catch (error: any) {
       console.error('Error marking meal as fed:', error);
       Alert.alert('Error', error.message || 'Failed to mark meal as fed');
     }
   };
 
-  // Reset daily completion status
-  const resetDailyFeeds = async () => {
+  // Reset daily completion status - FIXED to match backend API
+  const resetDailyFeeds = async (): Promise<void> => {
     if (!currentUser) {
       Alert.alert('Error', 'User not found');
       return;
     }
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/reset_daily_feeds/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          user_id: currentUser,
-          horse_id: horseId,
-        }),
-      });
+    Alert.alert(
+      'Reset Daily Feeds',
+      'Are you sure you want to reset all feeding statuses for today?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await fetch(`${API_BASE_URL}/reset_daily_feeds/`, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  user_id: currentUser,
+                  horse_id: horseId,
+                }),
+              });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to reset daily feeds');
-      }
+              if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to reset daily feeds');
+              }
 
-      // Update local state
-      const resetSchedule = feedingSchedule.map(meal => ({
-        ...meal,
-        completed: false,
-        completedAt: undefined,
-      }));
-          
-      setFeedingSchedule(resetSchedule);
-      Alert.alert('Success', 'Daily feeds reset successfully');
-    } catch (error: any) {
-      console.error('Error resetting daily feeds:', error);
-      Alert.alert('Error', error.message || 'Failed to reset daily feeds');
-    }
+              // Update local state and maintain sort order
+              const resetSchedule = feedingSchedule.map(meal => ({
+                ...meal,
+                completed: false,
+                completed_at: undefined,
+              })).sort((a, b) => getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type));
+                  
+              setFeedingSchedule(resetSchedule);
+              Alert.alert('Success', 'Daily feeds reset successfully');
+            } catch (error: any) {
+              console.error('Error resetting daily feeds:', error);
+              Alert.alert('Error', error.message || 'Failed to reset daily feeds');
+            }
+          }
+        }
+      ]
+    );
   };
 
-  const handleEdit = (meal: Meal) => {
+  const handleEdit = (meal: Meal): void => {
     setEditingMeal(meal);
     // Parse the time from the meal
-    const timeParts = meal.time.split(' ');
+    const timeParts = meal.fd_time.split(' ');
     const time = timeParts[0].split(':');
     setFeedingTime({
       hour: time[0],
       minute: time[1],
-      period: timeParts[1],
+      period: timeParts[1] || 'AM',
     });
           
     // Reset feed types for editing
     setFeedTypes([
-      { id: '1', name: 'Chaff', amount: meal.food === 'Chaff' ? meal.amount : '' },
-      { id: '2', name: 'Resolve', amount: meal.food === 'Resolve' ? meal.amount : '' },
-      { id: '3', name: 'Dynavy', amount: meal.food === 'Dynavy' ? meal.amount : '' },
-      { id: '4', name: 'Magnesium', amount: meal.food === 'Magnesium' ? meal.amount : '' },
+      { id: '1', name: 'Chaff', amount: meal.fd_food_type === 'Chaff' ? meal.fd_qty : '' },
+      { id: '2', name: 'Resolve', amount: meal.fd_food_type === 'Resolve' ? meal.fd_qty : '' },
+      { id: '3', name: 'Dynavy', amount: meal.fd_food_type === 'Dynavy' ? meal.fd_qty : '' },
+      { id: '4', name: 'Magnesium', amount: meal.fd_food_type === 'Magnesium' ? meal.fd_qty : '' },
     ]);
           
     setShowEditView(true);
   };
 
-  const handleFeedLog = () => {
+  const handleFeedLog = (): void => {
     router.push('/HORSE_OPERATOR/Hfeedlog');
   };
 
-  const handleTimeChange = (field: 'hour' | 'minute' | 'period', value: string) => {
+  const handleTimeChange = (field: 'hour' | 'minute' | 'period', value: string): void => {
     setFeedingTime(prev => ({
       ...prev,
       [field]: value
     }));
   };
 
-  const handleAmountChange = (id: string, amount: string) => {
+  const handleAmountChange = (id: string, amount: string): void => {
     setFeedTypes(prev =>
       prev.map(feed =>
         feed.id === id ? { ...feed, amount } : feed
@@ -376,7 +426,7 @@ const FeedScreen = () => {
     );
   };
 
-  const handleAddFeedType = () => {
+  const handleAddFeedType = (): void => {
     Alert.prompt(
       'Add Feed Type',
       'Enter the name of the new feed type:',
@@ -398,10 +448,10 @@ const FeedScreen = () => {
     );
   };
 
-  const handleSaveChanges = async () => {
-    const hasValidFeed = feedTypes.some(feed => feed.amount.trim() !== '');
+  const handleSaveChanges = async (): Promise<void> => {
+    const activeFeed = feedTypes.find(feed => feed.amount.trim() !== '');
           
-    if (!hasValidFeed) {
+    if (!activeFeed) {
       Alert.alert('Error', 'Please specify at least one feed type with an amount.');
       return;
     }
@@ -411,43 +461,26 @@ const FeedScreen = () => {
     try {
       // Update the feeding schedule
       const updatedTime = `${feedingTime.hour}:${feedingTime.minute} ${feedingTime.period}`;
-      const activeFeed = feedTypes.find(feed => feed.amount.trim() !== '');
-          
-      if (!activeFeed) {
-        Alert.alert('Error', 'Please specify at least one feed type with an amount.');
-        return;
-      }
+      const mealType = getMealName(updatedTime);
 
       const updatedSchedule = feedingSchedule.map(meal =>
-        meal.id === editingMeal.id
+        meal.fd_id === editingMeal.fd_id
           ? {
               ...meal,
-              time: updatedTime,
-              food: activeFeed.name,
-              amount: activeFeed.amount,
+              fd_time: updatedTime,
+              fd_food_type: activeFeed.name,
+              fd_qty: activeFeed.amount,
+              fd_meal_type: mealType,
               completed: false, // Reset completion status when edited
+              completed_at: undefined,
             }
           : meal
-      );
+      ).sort((a, b) => getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type));
           
       setFeedingSchedule(updatedSchedule);
       
       // Save to backend
       await saveFeedingSchedule(updatedSchedule);
-
-      // Add edit action to feed log
-      const now = new Date();
-      await addToFeedLog({
-        date: now.toISOString().split('T')[0],
-        meal: editingMeal.meal,
-        horse: horseName,
-        time: updatedTime,
-        food: activeFeed.name,
-        amount: activeFeed.amount,
-        status: 'Edited',
-        action: 'edited',
-        timestamp: now.toISOString(),
-      });
 
       setShowEditView(false);
       Alert.alert('Success', `Feeding schedule updated successfully for ${horseName}!`);
@@ -457,7 +490,7 @@ const FeedScreen = () => {
     }
   };
 
-  const handleCancel = () => {
+  const handleCancel = (): void => {
     setShowEditView(false);
   };
 
@@ -470,7 +503,7 @@ const FeedScreen = () => {
           <TouchableOpacity onPress={() => setShowEditView(false)} style={styles.backButton}>
             <FontAwesome5 name="arrow-left" size={20} color="white" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Edit {editingMeal?.meal}</Text>
+          <Text style={styles.headerTitle}>Edit Meal</Text>
           <View style={styles.placeholder} />
         </View>
 
@@ -506,9 +539,6 @@ const FeedScreen = () => {
                 />
               </View>
             </View>
-
-            {/* Divider */}
-            <View style={styles.divider} />
 
             {/* Feed Types & Amounts Section */}
             <View style={styles.section}>
@@ -557,53 +587,50 @@ const FeedScreen = () => {
           <FontAwesome5 name="arrow-left" size={20} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <FontAwesome5 name="horse-head" size={24} color="#fff" style={styles.horseIcon} />
-          <Text style={styles.headerTitle}>Feeds - {horseName}</Text>
+          <FontAwesome5 name="horse-head" size={20} color="#fff" />
+          <Text style={styles.headerTitle}>{horseName} Feeds</Text>
         </View>
         <TouchableOpacity style={styles.feedLogButton} onPress={handleFeedLog}>
-          <Text style={styles.feedLogText}>Feed log</Text>
+          <FontAwesome5 name="clipboard-list" size={14} color="#fff" />
+          <Text style={styles.feedLogText}>Log</Text>
         </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          {/* Display user info for debugging - can be removed */}
-          {currentUser && (
-            <Text style={styles.userInfo}>User: {currentUser}</Text>
-          )}
-                  
           {feedingSchedule.map((meal) => (
-            <View key={meal.id} style={styles.mealSection}>
-              {/* Meal Header */}
-              <View style={styles.mealHeader}>
-                <Text style={styles.mealTitle}>{meal.meal}</Text>
-                <View style={styles.mealActions}>
-                  <TouchableOpacity
-                    style={styles.editButton}
-                    onPress={() => handleEdit(meal)}
-                  >
-                    <Text style={styles.editButtonText}>Edit</Text>
-                  </TouchableOpacity>
+            <View key={meal.fd_id} style={styles.mealCard}>
+              {/* Card Header */}
+              <View style={styles.cardHeader}>
+                <View style={styles.mealInfo}>
+                  <Text style={styles.mealTitle}>{meal.fd_meal_type}</Text>
+                  <Text style={styles.mealTime}>{meal.fd_time}</Text>
                 </View>
+                <TouchableOpacity style={styles.editButton} onPress={() => handleEdit(meal)}>
+                  <FontAwesome5 name="edit" size={14} color="#3B82F6" />
+                </TouchableOpacity>
               </View>
 
-              {/* Meal Card */}
-              <View style={[
-                styles.mealCard,
-                meal.completed && styles.completedMealCard
-              ]}>
-                <View style={styles.mealInfo}>
-                  <Text style={styles.foodText}>
-                    {meal.food}: {meal.amount}
-                  </Text>
-                  <Text style={styles.timeText}>{meal.time}</Text>
+              {/* Card Content */}
+              <View style={styles.cardContent}>
+                <View style={styles.feedInfo}>
+                  <View style={styles.feedTypeRow}>
+                    <FontAwesome5 
+                      name={meal.fd_meal_type === 'Breakfast' ? 'sun' : meal.fd_meal_type === 'Lunch' ? 'cloud-sun' : 'moon'} 
+                      size={18} 
+                      color={meal.completed ? '#10B981' : '#8B5A2B'} 
+                    />
+                    <Text style={styles.feedType}>{meal.fd_food_type}</Text>
+                  </View>
+                  <Text style={styles.feedAmount}>{meal.fd_qty}</Text>
                 </View>
-                                              
+
                 {meal.completed ? (
-                  <View style={styles.completedSection}>
-                    <Text style={styles.completedText}>
-                      ✓ Fed at {meal.completedAt}
-                    </Text>
+                  <View style={styles.completedBadge}>
+                    <View style={styles.completedIconContainer}>
+                      <FontAwesome5 name="check" size={14} color="#fff" />
+                    </View>
+                    <Text style={styles.completedText}>Completed</Text>
                   </View>
                 ) : (
                   <TouchableOpacity
@@ -616,9 +643,12 @@ const FeedScreen = () => {
               </View>
             </View>
           ))}
-                            
-          {/* Reset Daily Feeds Button */}
+
+          {/* Reset Button */}
           <TouchableOpacity style={styles.resetButton} onPress={resetDailyFeeds}>
+            <View style={styles.resetIconContainer}>
+              <FontAwesome5 name="redo" size={14} color="#fff" />
+            </View>
             <Text style={styles.resetButtonText}>Reset Daily Feeds</Text>
           </TouchableOpacity>
         </View>
@@ -637,158 +667,221 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 15,
+    paddingVertical: 18,
     backgroundColor: '#CD853F',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
   },
   backButton: {
-    padding: 5,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backdropFilter: 'blur(10px)',
   },
   headerCenter: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
     justifyContent: 'center',
-    marginRight: 80,
-  },
-  horseIcon: {
-    marginRight: 10,
+    marginHorizontal: 16,
   },
   headerTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '700',
     color: '#fff',
+    marginLeft: 8,
   },
   feedLogButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 15,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 22,
+    backdropFilter: 'blur(10px)',
   },
   feedLogText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
+    marginLeft: 6,
   },
   placeholder: {
-    width: 30,
+    width: 44,
   },
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#F8FAFC',
   },
   content: {
     padding: 20,
-    paddingBottom: 40,
-  },
-  userInfo: {
-    fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-    marginBottom: 20,
-    fontStyle: 'italic',
-  },
-  mealSection: {
-    marginBottom: 25,
-  },
-  mealHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  mealTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-  },
-  mealActions: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  editButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  editButtonText: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '500',
   },
   mealCard: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
     padding: 20,
+    marginBottom: 16,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  completedMealCard: {
-    backgroundColor: '#e8f5e8',
-    borderColor: '#4CAF50',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 4,
     borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.1)',
   },
-  mealInfo: {
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
+  mealInfo: {
+    flex: 1,
+  },
+  mealTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 6,
+  },
+  mealTime: {
+    fontSize: 15,
+    color: '#64748B',
+    fontWeight: '500',
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+  },
+  editButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#EFF6FF',
+    justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
   },
-  foodText: {
-    fontSize: 16,
-    color: '#333',
+  cardContent: {
+    gap: 16,
+  },
+  feedInfo: {
+    backgroundColor: '#F8FAFC',
+    padding: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  feedTypeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  feedType: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#334155',
+    marginLeft: 12,
+  },
+  feedAmount: {
+    fontSize: 15,
+    color: '#64748B',
     fontWeight: '500',
   },
-  timeText: {
+  completedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    padding: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  completedIconContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  completedText: {
+    color: '#059669',
     fontSize: 16,
-    color: '#666',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   markFedButton: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 8,
+    backgroundColor: '#10B981',
+    paddingVertical: 16,
+    borderRadius: 16,
     alignItems: 'center',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
   markFedButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
-  },
-  completedSection: {
-    alignItems: 'center',
-  },
-  completedText: {
-    color: '#4CAF50',
-    fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   resetButton: {
-    backgroundColor: '#FF6B6B',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
-    borderRadius: 12,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#EF4444',
+    paddingVertical: 16,
+    borderRadius: 16,
     marginTop: 20,
+    shadowColor: '#EF4444',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  resetIconContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
   },
   resetButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   // Edit View Styles
   section: {
-    marginBottom: 30,
+    marginBottom: 24,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.1)',
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 15,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1E293B',
+    marginBottom: 16,
   },
   timeInputContainer: {
     flexDirection: 'row',
@@ -796,38 +889,37 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
   },
   timeInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 15,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    fontSize: 16,
-    backgroundColor: '#fff',
-    width: 60,
+    fontSize: 18,
+    fontWeight: '600',
+    backgroundColor: '#F8FAFC',
+    width: 70,
     textAlign: 'center',
+    color: '#1E293B',
   },
   timeSeparator: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginHorizontal: 10,
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#64748B',
+    marginHorizontal: 12,
   },
   periodInput: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    paddingHorizontal: 15,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    fontSize: 16,
-    backgroundColor: '#fff',
-    width: 80,
+    fontSize: 18,
+    fontWeight: '600',
+    backgroundColor: '#F8FAFC',
+    width: 90,
     textAlign: 'center',
     marginLeft: 15,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#ddd',
-    marginVertical: 20,
+    color: '#1E293B',
   },
   feedTypesGrid: {
     flexDirection: 'row',
@@ -837,74 +929,99 @@ const styles = StyleSheet.create({
   },
   feedTypeCard: {
     width: '48%',
-    backgroundColor: '#B8D4F0',
-    borderRadius: 12,
-    padding: 15,
-    marginBottom: 15,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
   },
   feedTypeName: {
     fontSize: 16,
-    fontWeight: 'bold',
-    color: '#333',
+    fontWeight: '700',
+    color: '#1E293B',
     textAlign: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   amountInput: {
-    backgroundColor: '#fff',
-    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: '#ddd',
+    paddingVertical: 10,
+    fontSize: 15,
+    fontWeight: '500',
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    color: '#334155',
   },
   addFeedButton: {
-    backgroundColor: '#007AFF',
-    borderRadius: 12,
-    paddingVertical: 15,
+    backgroundColor: '#3B82F6',
+    borderRadius: 16,
+    paddingVertical: 16,
     alignItems: 'center',
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
   addFeedButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   bottomButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 20,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#ddd',
+    borderTopColor: '#E2E8F0',
+    gap: 12,
   },
   cancelButton: {
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 25,
-    paddingHorizontal: 30,
-    paddingVertical: 12,
-    minWidth: 120,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#94A3B8',
+    borderRadius: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    flex: 1,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   cancelButtonText: {
-    color: '#333',
+    color: '#64748B',
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   saveButton: {
-    backgroundColor: '#007AFF',
-    borderRadius: 25,
-    paddingHorizontal: 30,
-    paddingVertical: 12,
-    minWidth: 120,
+    backgroundColor: '#3B82F6',
+    borderRadius: 16,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    flex: 1,
     alignItems: 'center',
+    shadowColor: '#3B82F6',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
   saveButtonText: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
 });
 
