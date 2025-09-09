@@ -292,7 +292,7 @@ const styles = {
   conversationsContainer: { flex: 1, overflowY: 'auto' },
   conversationItem: { display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', transition: 'background-color 0.2s', backgroundColor: '#fff' },
   avatarWrapper: { position: 'relative' },
-  avatar: { width: '48px', height: '48px', borderRadius: '9999px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 600 },
+  avatar: { width: '48px', height: '48px', borderRadius: '9999px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 600},
   onlineBadge: { position: 'absolute', bottom: 0, right: 0, width: '12px', height: '12px', backgroundColor: '#22c55e', border: '2px solid #fff', borderRadius: '9999px' },
   conversationInfo: { flex: 1, minWidth: 0 },
   conversationHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' },
@@ -314,11 +314,11 @@ const styles = {
   messageInput: { flex: 1, backgroundColor: 'transparent', border: 'none', outline: 'none', fontSize: '14px', resize: 'none', overflow: 'hidden', lineHeight: '20px', height: '20px' },
   sendButton: { width: '40px', height: '40px', backgroundColor: '#3b82f6', borderRadius: '9999px', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'background 0.2s', color: '#fff' },
   floatingButtonWrapper: { position: 'fixed', bottom: '24px', right: '24px', zIndex: 50 },
-  floatingButton: { width: '64px', height: '64px', borderRadius: '9999px', background: 'linear-gradient(to bottom right, #22c55e, #16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', boxShadow: '0 8px 16px rgba(0,0,0,0.25)', position: 'relative', transition: 'all 0.3s' },
+  floatingButton: { width: '64px', height: '64px', borderRadius: '9999px', background: 'linear-gradient(to bottom right, #D2691E, #A0522D)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', boxShadow: '0 8px 16px rgba(0,0,0,0.25)', position: 'relative', transition: 'all 0.3s' },
   totalUnread: { position: 'absolute', top: '-4px', right: '-4px', width: '24px', height: '24px', borderRadius: '9999px', backgroundColor: '#ef4444', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 500 },
   smallWrapper: { position: 'fixed', bottom: '24px', right: '24px', width: '320px', height: '500px', borderRadius: '24px', backgroundColor: '#fff', boxShadow: '0 16px 32px rgba(0,0,0,0.25)', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 50 },
   fullscreenWrapper: { position: 'fixed', inset: 0, zIndex: 50, backgroundColor: '#fff', display: 'flex', flexDirection: 'column' },
-  chatBoxHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderBottom: '1px solid #e5e7eb', background: 'linear-gradient(to right, #22c55e, #16a34a)', color: '#fff' },
+  chatBoxHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderBottom: '1px solid #e5e7eb', background: '#D2691E', color: '#fff' },
   chatBoxHeaderLeft: { display: 'flex', alignItems: 'center', gap: '8px' },
   chatBoxHeaderRight: { display: 'flex', alignItems: 'center', gap: '4px' }
 };
