@@ -53,6 +53,11 @@ def login(request):
     user_query = service_client.table("users").select("role").eq("id", user_id).execute()
     role_info = user_query.data[0] if user_query.data else None
     user_role = (role_info.get("role", "general") if role_info else "general").strip()
+    is_active = role_info.get("is_active", True) if role_info else True  # default True if missing
+
+    # ❌ Prevent deactivated accounts from logging in
+    if not is_active:
+        return Response({"error": "Account is deactivated. Please contact admin."}, status=status.HTTP_403_FORBIDDEN)
 
     print(f"[LOGIN] User ID: {user_id}, Role: {user_role}")
 

@@ -116,8 +116,8 @@ function CtuAccountApproval() {
     return filtered
   }, [registrationData, activeTab, searchTerm])
 
-  const viewDetails = (userId, status) => {
-    const user = registrationData.find((u) => u.id === userId)
+  const viewDetails = (vetId, status) => {
+    const user = registrationData.find((u) => u.vet_id === vetId)
     if (user) {
       setSelectedUser({ ...user, status }) // Pass status to modal for conditional buttons
       setIsViewDetailsModalOpen(true)
@@ -200,40 +200,17 @@ const showDeleteConfirmation = (vetId) => {
   
 // -------------------- Delete a single vet profile --------------------
 const deleteVetProfile = async (vetId) => {
-  if (!vetId) {
-    alert("Vet ID is invalid.");
-    return;
-  }
-
-  const confirmDelete = window.confirm(
-    "Are you sure you want to delete this vet profile?"
-  );
-  if (!confirmDelete) return;
-
   try {
     const response = await fetch(`${API_BASE}/delete-vet-profile/${vetId}/`, {
       method: "DELETE",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
     });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      alert(data.error || "Failed to delete profile");
-      return;
-    }
-
-    alert(data.message || "Vet profile deleted successfully");
-
-    setRegistrationData((prev) =>
-      prev.filter((user) => user.vet_id !== vetId)
-    );
+    if (!response.ok) throw new Error("Failed to delete");
+    setRegistrationData((prev) => prev.filter((u) => u.vet_id !== vetId));
   } catch (err) {
     console.error("Delete error:", err);
-    alert("Error deleting vet profile");
   }
-};
+}
 
 
 
@@ -326,17 +303,16 @@ const declineUser = async (vetId) => {
 const approveAllPending = async () => {
   if (activeTab !== "pending") return;
 
-  const pendingUsers = registrationData.filter((user) => user.status === "pending");
+  const pendingUsers = registrationData.filter((u) => u.status === "pending");
   if (pendingUsers.length === 0) return;
 
-  setMessage("Approving all pending users...");
-
-  for (const user of pendingUsers) {
-    await approveUser(user.vet_id);
+  try {
+    await Promise.all(pendingUsers.map((u) => approveUser(u.vet_id)));
+    setMessage("All pending users approved successfully!");
+  } catch (err) {
+    setMessage(`Error approving users: ${err.message}`);
   }
-
-  setMessage("All pending users approved successfully!");
-};
+}
 
 
 
@@ -500,6 +476,41 @@ useEffect(() => {
   }, [isNotificationDropdownOpen, isViewDetailsModalOpen, isConfirmationModalOpen])
 
   const filteredRegistrations = filterRegistrations()
+
+  const togglePin = (postId) => {
+    setPinnedPosts((prev) => {
+      const updated = new Set(prev)
+      if (updated.has(postId)) {
+        updated.delete(postId)
+      } else {
+        updated.add(postId)
+      }
+      return updated
+    })
+    setShowDropdown((prev) => ({ ...prev, [postId]: false }))
+    
+    // Reorder posts: pinned posts first, then regular posts by timestamp
+    setPosts(prev => {
+      const pinned = []
+      const unpinned = []
+      
+      prev.forEach(post => {
+        if ((post.id === postId && !pinnedPosts.has(postId)) || 
+            (post.id !== postId && pinnedPosts.has(post.id))) {
+          pinned.push(post)
+        } else if (post.id === postId && pinnedPosts.has(postId)) {
+          unpinned.push(post)
+        } else if (pinnedPosts.has(post.id)) {
+          pinned.push(post)
+        } else {
+          unpinned.push(post)
+        }
+      })
+      
+      return [...pinned.sort((a, b) => b.timestamp - a.timestamp), 
+              ...unpinned.sort((a, b) => b.timestamp - a.timestamp)]
+    })
+  }
 
   const styles = {
     notificationBtn: {
@@ -1623,7 +1634,7 @@ useEffect(() => {
                   <div className="action-buttons" style={styles.actionButtons}>
                     <button
                       className="action-btn btn-view"
-                      onClick={() => viewDetails(user.id, user.users?.status)}
+                      onClick={() => viewDetails(user.vet_id, user.status)}
                       style={{ ...styles.actionBtn, ...styles.btnView }}
                     >
                       <Eye size={16} style={{ marginRight: "6px" }} />

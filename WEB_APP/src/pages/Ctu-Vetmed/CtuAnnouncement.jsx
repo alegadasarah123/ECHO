@@ -4,19 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 
-import {
-  Bell,
-  Edit,
-  Mail,
-  MapPin,
-  MessageCircle,
-  MoreVertical,
-  Phone,
-  Pin,
-  Send, Trash,
-
-  Upload,
-} from "lucide-react"
+import { Bell, Edit, Mail, MapPin, MessageCircle, MoreVertical, Phone, Pin, Send, Trash, Upload } from "lucide-react"
 import NotificationModal from "./CtuNotif"
 
 const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
@@ -392,7 +380,7 @@ const CTUAnnouncement = () => {
     [selectedPhotos],
   )
 
-  const [pinnedPosts, setPinnedPosts] = useState(new Set());
+  const [pinnedPosts, setPinnedPosts] = useState(new Set())
 
   const removePhoto = useCallback((photoId) => {
     setSelectedPhotos((prev) => prev.filter((photo) => photo.id !== photoId))
@@ -752,56 +740,52 @@ const CTUAnnouncement = () => {
               style={{ width: "100%", height: "100%", borderRadius: "50%" }}
             />
           </div>
-<div style={{ ...styles.commentInputContainer, position: "relative" }}>
-  <input
-    id={`comment-input-${post.id}`}
-    type="text"
-    value={commentInputs[post.id] || ""}
-    onChange={(e) =>
-      setCommentInputs((prev) => ({ ...prev, [post.id]: e.target.value }))
-    }
-    onKeyDown={(e) => {
-      if (e.key === "Enter") {
-        addComment(post.id, commentInputs[post.id] || "");
-        setCommentInputs((prev) => ({ ...prev, [post.id]: "" }));
-      }
-    }}
-    style={{
-      width: "calc(100% - 44px)", // leaves space for the Send button
-      padding: "8px 12px",
-      borderRadius: "18px",
-      border: "1px solid #ddd",
-      fontSize: "14px",
-      boxSizing: "border-box",
-    }}
-  />
+          <div style={{ ...styles.commentInputContainer, position: "relative" }}>
+            <input
+              id={`comment-input-${post.id}`}
+              type="text"
+              value={commentInputs[post.id] || ""}
+              onChange={(e) => setCommentInputs((prev) => ({ ...prev, [post.id]: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  addComment(post.id, commentInputs[post.id] || "")
+                  setCommentInputs((prev) => ({ ...prev, [post.id]: "" }))
+                }
+              }}
+              style={{
+                width: "calc(100% - 44px)", // leaves space for the Send button
+                padding: "8px 12px",
+                borderRadius: "18px",
+                border: "1px solid #ddd",
+                fontSize: "14px",
+                boxSizing: "border-box",
+              }}
+            />
 
-  <button
-    style={{
-      position: "absolute",
-      right: "4px",
-      top: "50%",
-      transform: "translateY(-50%)",
-      background: "none",
-      border: "none",
-      cursor: "pointer",
-      color: "#1877f2",
-      width: "36px",
-      height: "36px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-    }}
-    onClick={() => {
-      addComment(post.id, commentInputs[post.id] || "");
-      setCommentInputs((prev) => ({ ...prev, [post.id]: "" }));
-    }}
-  >
-    <Send size={20} /> {/* increase icon size for better visibility */}
-  </button>
-</div>
-
-
+            <button
+              style={{
+                position: "absolute",
+                right: "4px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "#1877f2",
+                width: "36px",
+                height: "36px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              onClick={() => {
+                addComment(post.id, commentInputs[post.id] || "")
+                setCommentInputs((prev) => ({ ...prev, [post.id]: "" }))
+              }}
+            >
+              <Send size={20} /> {/* increase icon size for better visibility */}
+            </button>
+          </div>
         </div>
 
         {/* Comments List */}
@@ -937,16 +921,20 @@ const CTUAnnouncement = () => {
     })
   }, [])
 
-  const toggleLike = (postId) => {
-    setPosts((prevPosts) =>
-      prevPosts.map((post) => {
-        if (post.id === postId) {
-          return { ...post, isLiked: !post.isLiked, likes: post.isLiked ? post.likes - 1 : post.likes + 1 }
-        }
-        return post
-      }),
-    )
-  }
+  const getSortedPosts = useCallback(() => {
+    // Separate pinned and unpinned posts
+    const pinned = posts.filter((post) => pinnedPosts.has(post.id))
+    const unpinned = posts.filter((post) => !pinnedPosts.has(post.id))
+
+    // Sort pinned posts by timestamp (newest first)
+    const sortedPinned = pinned.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+
+    // Sort unpinned posts by timestamp (newest first)
+    const sortedUnpinned = unpinned.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+
+    // Return pinned posts first, then unpinned posts
+    return [...sortedPinned, ...sortedUnpinned]
+  }, [posts, pinnedPosts])
 
   return (
     <div className="bodyWrapper">
@@ -3102,9 +3090,9 @@ flex: 1;
                   <h3>No announcements yet</h3>
                   <p>Create your first announcement to get started</p>
                 </div>
-                  ) : (
+              ) : (
                 <div id="postsContainer">
-                  {posts.map((post) => (
+                  {getSortedPosts().map((post) => (
                     <div key={post.id} style={styles.postCard}>
                       {/* Post Header */}
                       <div style={styles.postHeader}>
@@ -3136,115 +3124,114 @@ flex: 1;
                           </button>
 
                           {showDropdown[post.id] && (
-  <div
-    style={{
-      position: "absolute",
-      top: "100%",
-      right: "0",
-      backgroundColor: "white",
-      border: "1px solid #ddd",
-      borderRadius: "8px",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-      zIndex: 1000,
-      minWidth: "220px",
-      padding: "8px 0",
-    }}
-  >
-    {/* Pin Post */}
-    <div
-  style={{
-    padding: "12px 16px",
-    fontSize: "14px",
-    color: pinnedPosts.has(post.id) ? "#1877f2" : "#65676b",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  }}
-  onClick={() => {
-    setPinnedPosts((prev) => {
-      const updated = new Set(prev);
-      if (updated.has(post.id)) {
-        updated.delete(post.id);
-      } else {
-        updated.add(post.id);
-      }
-      return updated;
-    });
-    setShowDropdown((prev) => ({ ...prev, [post.id]: false })); // close dropdown
-  }}
-  onMouseEnter={(e) => (e.target.style.backgroundColor = "#f2f2f2")}
-  onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
->
-  <Pin size={18} />
-  {pinnedPosts.has(post.id) ? "Unpin post" : "Pin post"}
-</div>
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: "100%",
+                                right: "0",
+                                backgroundColor: "white",
+                                border: "1px solid #ddd",
+                                borderRadius: "8px",
+                                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                                zIndex: 1000,
+                                minWidth: "220px",
+                                padding: "8px 0",
+                              }}
+                            >
+                              {/* Pin Post */}
+                              <div
+                                style={{
+                                  padding: "12px 16px",
+                                  fontSize: "14px",
+                                  color: pinnedPosts.has(post.id) ? "#1877f2" : "#65676b",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                }}
+                                onClick={() => {
+                                  setPinnedPosts((prev) => {
+                                    const updated = new Set(prev)
+                                    if (updated.has(post.id)) {
+                                      updated.delete(post.id)
+                                    } else {
+                                      updated.add(post.id)
+                                    }
+                                    return updated
+                                  })
+                                  setShowDropdown((prev) => ({ ...prev, [post.id]: false })) // close dropdown
+                                }}
+                                onMouseEnter={(e) => (e.target.style.backgroundColor = "#f2f2f2")}
+                                onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                              >
+                                <Pin size={18} />
+                                {pinnedPosts.has(post.id) ? "Unpin post" : "Pin post"}
+                              </div>
 
-    {/* Edit Post */}
-    <div
-      style={{
-        padding: "12px 16px",
-        fontSize: "14px",
-        color: "#65676b",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "10px",
-      }}
-      onClick={() => {
-        toggleEdit(post.id)
-        setShowDropdown((prev) => ({ ...prev, [post.id]: false }))
-      }}
-      onMouseEnter={(e) => (e.target.style.backgroundColor = "#f2f2f2")}
-      onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
-    >
-      <Edit size={18} />
-      Edit post
-    </div>
+                              {/* Edit Post */}
+                              <div
+                                style={{
+                                  padding: "12px 16px",
+                                  fontSize: "14px",
+                                  color: "#65676b",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                }}
+                                onClick={() => {
+                                  toggleEdit(post.id)
+                                  setShowDropdown((prev) => ({ ...prev, [post.id]: false }))
+                                }}
+                                onMouseEnter={(e) => (e.target.style.backgroundColor = "#f2f2f2")}
+                                onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                              >
+                                <Edit size={18} />
+                                Edit post
+                              </div>
 
-    {/* Delete Post */}
-    <div
-      style={{
-        padding: "12px 16px",
-        fontSize: "14px",
-        color: "#e53935",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "10px",
-      }}
-      onClick={async () => {
-        if (window.confirm("Are you sure you want to delete this post?")) {
-          try {
-            const res = await fetch(
-              `http://localhost:8000/api/ctu_vetmed/delete-post/${post.id}/`,
-              {
-                method: "DELETE",
-                credentials: "include",
-              }
-            );
-            if (!res.ok) throw new Error("Failed to delete post");
-            setPosts((prev) => prev.filter((p) => p.id !== post.id));
-          } catch (err) {
-            console.error(err);
-            alert("Failed to delete post. Try again.");
-          }
-        }
-      }}
-      onMouseEnter={(e) => (e.target.style.backgroundColor = "#fceaea")}
-      onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
-    >
-      <Trash size={18} />
-      Delete post
-    </div>
-  </div>
-)}
-
+                              {/* Delete Post */}
+                              <div
+                                style={{
+                                  padding: "12px 16px",
+                                  fontSize: "14px",
+                                  color: "#e53935",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                }}
+                                onClick={async () => {
+                                  if (window.confirm("Are you sure you want to delete this post?")) {
+                                    try {
+                                      const res = await fetch(
+                                        `http://localhost:8000/api/ctu_vetmed/delete-post/${post.id}/`,
+                                        {
+                                          method: "DELETE",
+                                          credentials: "include",
+                                        },
+                                      )
+                                      if (!res.ok) throw new Error("Failed to delete post")
+                                      setPosts((prev) => prev.filter((p) => p.id !== post.id))
+                                    } catch (err) {
+                                      console.error(err)
+                                      alert("Failed to delete post. Try again.")
+                                    }
+                                  }
+                                }}
+                                onMouseEnter={(e) => (e.target.style.backgroundColor = "#fceaea")}
+                                onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                              >
+                                <Trash size={18} />
+                                Delete post
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
 
                       {/* Content */}
-                        <div style={styles.postContent}>
+                      <div style={styles.postContent}>
                         {isEditingPost === post.id ? (
                           <div>
                             <textarea
@@ -3356,9 +3343,7 @@ flex: 1;
                       </div>
 
                       {/* Post Actions */}
-                        <div style={styles.postActions}>
-                        
-
+                      <div style={styles.postActions}>
                         <button
                           style={{
                             ...styles.actionButton,
@@ -3370,7 +3355,6 @@ flex: 1;
                           <span>Comment</span>
                           {post.comments && post.comments.length > 0 && <span>({post.comments.length})</span>}
                         </button>
-
                       </div>
 
                       {/* Images */}
@@ -3379,13 +3363,13 @@ flex: 1;
                       {/* Comments */}
                       {renderComments(post)}
                     </div>
-                    ))}
-                   </div>
-                  )}
+                  ))}
                 </div>
               )}
+            </div>
+          )}
         </div>
-    </div>
+      </div>
 
       <FloatingMessages />
 

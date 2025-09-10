@@ -187,29 +187,28 @@ function CtuDirectory() {
     [navigate],
   )
 
-const handleDelete = async (email) => {
-  if (!email) return;
+const handleDelete = async (userId) => {
+  if (!userId) return;
 
-  const confirmDelete = window.confirm(`Are you sure you want to delete ${email}?`);
+  const confirmDelete = window.confirm("Are you sure you want to delete this user?");
   if (!confirmDelete) return;
 
   try {
-    const response = await fetch(`http://127.0.0.1:8000/api/ctu_vetmed/directory/${email}/`, {
+    const response = await fetch(`http://127.0.0.1:8000/api/ctu_vetmed/directory/${userId}/`, {
       method: "DELETE",
       credentials: "include",
     });
 
     const result = await response.json();
     if (response.ok) {
-      alert(result.message);  // Show approved deletion message
-      loadDirectoryData();     // Refresh list
+      alert(result.message);
+      loadDirectoryData();  // refresh the directory
     } else {
       alert(result.error);
-      console.error("Error deleting user:", result);
     }
   } catch (err) {
-    alert("Unexpected error occurred while deleting user.");
-    console.error("Error deleting user:", err);
+    alert("Unexpected error occurred while deleting the user.");
+    console.error("Error deleting directory user:", err);
   }
 };
 
@@ -1136,47 +1135,57 @@ flex: 1;
             </div>
 
             <div className="directory-content">
-              {filteredDirectoryData.length === 0 ? (
-                <div className="empty-state">
-                  <Folder size={48} />
-                  <h3>No directory entries found</h3>
-                  <p>Directory entries will appear here when data is available</p>
-                </div>
-              ) : (
-                <table className="directory-table">
-                  <thead className="table-header">
-                    <tr>
-                      <th>Name</th>
-                      <th>Role</th>
-                      <th>Email</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredDirectoryData.map((person) => (
-                      <tr key={person.email} className="table-row">
-                        <td>{person.name}</td>
-                        <td>
-                          <span className={`role-badge role-${person.type?.toLowerCase().replace(/\s+/g, "-")}`}>
-                            {person.type}
-                          </span>
-                        </td>
-                        <td>{person.email}</td>
-                        <td>
-                          <span className={`status-badge status-${person.status?.toLowerCase()}`}>{person.status}</span>
-                        </td>
-                        <td>
-                          <button className="delete-button" onClick={() => handleDelete(person.email)}>
-                            <Trash2 size={16} /> Delete
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
+  {filteredDirectoryData.filter((person) => person.status?.toLowerCase() === "approved").length === 0 ? (
+    <div className="empty-state">
+      <Folder size={48} />
+      <h3>No approved directory entries found</h3>
+      <p>Only approved entries will appear here</p>
+    </div>
+  ) : (
+    <table className="directory-table">
+      <thead className="table-header">
+        <tr>
+          <th>Name</th>
+          <th>Role</th>
+          <th>Email</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {filteredDirectoryData
+          .filter((person) => person.status?.toLowerCase() === "approved") // ✅ Only approved
+          .map((person) => (
+            <tr key={person.email} className="table-row">
+              <td>{person.name}</td>
+              <td>
+                <span
+                  className={`role-badge role-${person.type?.toLowerCase().replace(/\s+/g, "-")}`}
+                >
+                  {person.type}
+                </span>
+              </td>
+              <td>{person.email}</td>
+              <td>
+                <span className={`status-badge status-${person.status?.toLowerCase()}`}>
+                  {person.status}
+                </span>
+              </td>
+              <td>
+                <button
+                  className="delete-button"
+                  onClick={() => handleDelete(person.email)}
+                >
+                  <Trash2 size={16} /> Delete
+                </button>
+              </td>
+            </tr>
+          ))}
+      </tbody>
+    </table>
+  )}
+</div>
+
           </div>
         </div>
       </div>

@@ -14,6 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 import re
 from supabase import create_client 
+from django.http import JsonResponse
 
 # -------------------- SUPABASE CLIENT --------------------
 # Environment config
@@ -748,35 +749,47 @@ def get_directory_profiles(request):
 # -------------------- DELETE VET,KUTSERO, HORSE OPERATOR PROFILE IN DIRECTORY--------------------
 
 
+# -------------------- DELETE VET, KUTSERO, HORSE OPERATOR PROFILE IN DIRECTORY --------------------
+
 @api_view(['DELETE'])
-def delete_directory_user(request, email):
+def delete_directory_user(request, user_id):
     """
-    Delete a user from Supabase users table based on their email.
-    Always returns JSON.
+    Delete a directory user (vet, kutsero, or horse operator) + their users record using user_id.
     """
     try:
-        print(f"Attempting to delete user with email: {email}")  # debug log
+        print(f"Attempting to delete user with ID: {user_id}")  # debug log
 
-        # Query Supabase
-        user_res = sr_client.table("users").select("id, user_email").eq("user_email", email).execute()
+        # 1. Check VET PROFILE
+        vet_res = sr_client.table("vet_profile").select("vet_id, user_id").eq("user_id", user_id).execute()
+        if vet_res.data:
+            vet_id = vet_res.data[0]["vet_id"]
+            sr_client.table("vet_profile").delete().eq("vet_id", vet_id).execute()
+            sr_client.table("users").delete().eq("id", user_id).execute()
+            return Response({"message": f"Vet with user ID '{user_id}' deleted successfully"}, status=200)
 
-        if not user_res.data:
-            # User not found -> return JSON 404
-            return Response({"error": f"User with email '{email}' not found"}, status=404)
+        # 2. Check KUTSERO PROFILE
+        kutsero_res = sr_client.table("kutsero_profile").select("kutsero_id, user_id").eq("user_id", user_id).execute()
+        if kutsero_res.data:
+            kutsero_id = kutsero_res.data[0]["kutsero_id"]
+            sr_client.table("kutsero_profile").delete().eq("kutsero_id", kutsero_id).execute()
+            sr_client.table("users").delete().eq("id", user_id).execute()
+            return Response({"message": f"Kutsero with user ID '{user_id}' deleted successfully"}, status=200)
 
-        user_id = user_res.data[0].get("id")
+        # 3. Check HORSE OPERATOR PROFILE
+        op_res = sr_client.table("horse_op_profile").select("op_id, user_id").eq("user_id", user_id).execute()
+        if op_res.data:
+            op_id = op_res.data[0]["op_id"]
+            sr_client.table("horse_op_profile").delete().eq("op_id", op_id).execute()
+            sr_client.table("users").delete().eq("id", user_id).execute()
+            return Response({"message": f"Operator with user ID '{user_id}' deleted successfully"}, status=200)
 
-        # Delete user
-        delete_res = sr_client.table("users").delete().eq("id", user_id).execute()
-
-        if delete_res.data:
-            return Response({"message": f"User with email '{email}' deleted successfully"}, status=200)
-        else:
-            return Response({"error": "Deletion failed"}, status=500)
+        # If not found anywhere
+        return Response({"error": f"No directory user found with user ID '{user_id}'"}, status=404)
 
     except Exception as e:
-        logging.exception("Error deleting user")
+        logging.exception("Error deleting directory user")
         return Response({"error": "Internal server error", "details": str(e)}, status=500)
+
 
 
 
@@ -1032,103 +1045,117 @@ def ctu_change_password(request):
 def get_current_user(request):
     token = request.COOKIES.get("access_token")
     if not token:
+        print("No access_token cookie found")
         return None
     try:
-        user_res = sr_client.auth.get_user(token)
+        # Use token as a JWT
+        user_res = sr_client.auth.get_user(jwt=token)
         if user_res and getattr(user_res, "user", None):
+            print("Authenticated user:", user_res.user.id)
             return user_res.user.id
+        print("No user found in Supabase response")
         return None
-    except:
+    except Exception as e:
+        print("Auth error:", e)
         return None
+
 
 
 # -------------------- FETCH USERS --------------------
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-
+# -------------------- FETCH USERS --------------------
 @api_view(['GET'])
 def fetch_users(request):
-    user_id = get_current_user(request)
-    if not user_id:
-        return Response({"error": "User not authenticated."}, status=401)
-
     try:
-        # Get current user's role
-        role_res = sr_client.table("users").select("role").eq("id", user_id).execute()
-        current_role = (role_res.data or [{}])[0].get("role", "Ctu-VetMed")
+        # kuha sa profiles
+        profiles_res = sr_client.table("ctu_vet_profile").select("*").execute()
 
-        # Admin sees all users, others see only themselves
-        if current_role == "Ctu-Admin":
-            res = sr_client.table("ctu_vet_profile").select("*").execute()
-        else:
-            res = sr_client.table("ctu_vet_profile").select("*").eq("ctu_id", user_id).execute()
+        # kuha sa users (id, role, status)
+        users_res = sr_client.table("users").select("id, role, status").execute()
+        users_map = {u["id"]: {"role": u["role"], "status": u["status"]} for u in users_res.data or []}
 
         profiles = []
-        for p in res.data or []:
+        for p in profiles_res.data or []:
+            user_data = users_map.get(p.get("ctu_id"), {})
             profiles.append({
                 "id": p.get("ctu_id"),
                 "ctu_fname": p.get("ctu_fname"),
                 "ctu_lname": p.get("ctu_lname"),
                 "ctu_email": p.get("ctu_email"),
                 "ctu_phonenum": p.get("ctu_phonenum"),
-                "role": p.get("ctu_role") or "Ctu-VetMed",
-                "status": p.get("status") or "pending"
+                # override role + status with data from users table
+                "role": user_data.get("role", "N/A"),
+                "status": user_data.get("status", "pending"),
             })
 
         return Response(profiles, status=200)
 
     except Exception as e:
-        return Response({"error": f"Internal server error: {str(e)}"}, status=500)
+        return Response({"error": str(e)}, status=500)
 
 
 
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+
+
 
 from django.http import JsonResponse
-from supabase import create_client
-import os
+from rest_framework.decorators import api_view
 
-# Supabase client (make sure keys are in .env)
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-sr_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-
+# -------------------- Deactivate User --------------------
+@api_view(['POST'])
 def deactivate_user(request, user_id):
-    if request.method != "POST":
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+    try:
+        # Check if user exists
+        result = sr_client.table("users").select("*").eq("id", user_id).execute()
+        user = result.data[0] if result.data else None
 
-    # Fetch the user by UUID
-    result = sr_client.table("users").select("*").eq("id", user_id).single().execute()
-    user = result.data
+        if not user:
+            return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
 
-    if not user:
-        return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
+        # Update status
+        sr_client.table("users").update({"status": "deactivated"}).eq("id", user_id).execute()
 
-    # Update status to 'inactive'
-    sr_client.table("users").update({"status": "inactive"}).eq("id", user_id).execute()
+        return JsonResponse({"message": "User deactivated successfully"}, status=200)
 
-    return JsonResponse({"message": "User deactivated successfully"})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 
 
+# -------------------- Delete User --------------------
+@api_view(['DELETE'])
 def delete_user(request, user_id):
-    if request.method != "DELETE":
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+    try:
+        print("Trying to delete user:", user_id)
 
-    # Fetch the user by UUID
-    result = sr_client.table("users").select("*").eq("id", user_id).single().execute()
-    user = result.data
+        # Delete profile first
+        sr_client.table("ctu_vet_profile").delete().eq("ctu_id", user_id).execute()
 
-    if not user:
-        return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
+        # Then delete from users
+        sr_client.table("users").delete().eq("id", user_id).execute()
 
-    # Delete user
-    sr_client.table("users").delete().eq("id", user_id).execute()
+        return JsonResponse({"message": "User and profile deleted (if existed)"}, status=200)
 
-    return JsonResponse({"message": "User deleted successfully"})
+    except Exception as e:
+        print("Delete error:", e)
+        return JsonResponse({"error": str(e)}, status=500)
 
 
+# -------------------- Reactivate User --------------------
+@api_view(['POST'])
+def reactivate_user(request, user_id):
+    try:
+        result = sr_client.table("users").select("*").eq("id", user_id).execute()
+        user = result.data[0] if result.data else None
+
+        if not user:
+            return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
+
+        # Update to approved (active)
+        sr_client.table("users").update({"status": "approved"}).eq("id", user_id).execute()
+
+        return JsonResponse({"message": "User reactivated successfully"}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 
 
 
@@ -1290,3 +1317,46 @@ def get_announcements(request):
     except Exception:
         logging.exception("Failed to fetch announcements")
         return Response({"error": "Failed to fetch announcements"}, status=500)
+    
+
+
+
+# -------------------- SEARCH VETS --------------------
+# -------------------- SEARCH VETS --------------------
+@api_view(["GET"])
+@login_required
+def search_vet(request):
+    query = request.GET.get("q", "").strip().lower()
+
+    try:
+        # Fetch all vets from Supabase table "vet_profile"
+        response = sr_client.table("vet_profile").select("*").execute()
+        vets = response.data or []
+
+        # Optional: filter results by query (fname, lname, or email)
+        if query:
+            vets = [
+                v for v in vets
+                if query in (v.get("vet_fname", "").lower())
+                or query in (v.get("vet_lname", "").lower())
+                or query in (v.get("vet_email", "").lower())
+            ]
+
+        # Transform results into frontend-friendly structure
+        results = [
+            {
+                "id": str(v.get("vet_id")),
+                "name": f"{v.get('vet_fname', '')} {v.get('vet_lname', '')}".strip(),
+                "email": v.get("vet_email"),
+                "specialization": v.get("vet_specialization"),
+                "phone": v.get("vet_phone_num"),
+                "org": v.get("vet_org"),
+            }
+            for v in vets
+        ]
+
+        return Response({"users": results}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logging.error(f"Error fetching vets: {e}")
+        return Response({"error": "Failed to fetch vets"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
