@@ -1,8 +1,10 @@
 "use client"
 
 import { useRouter } from "expo-router"
-import { useState } from "react"
-import { Dimensions, Image, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { useState, useEffect, useCallback } from "react"
+import { Dimensions, Image, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, Alert, Modal } from "react-native"
+import * as SecureStore from "expo-secure-store"
+import { useFocusEffect } from "expo-router"
 
 const { width, height } = Dimensions.get("window")
 
@@ -40,93 +42,514 @@ const getSafeAreaPadding = () => {
 }
 
 interface HistoryEntry {
+  assignmentId: string
+  checkedInAt: string
+  checkedOutAt: string | null
+  workDuration: string | null
+  isActive: boolean
+  status: string
+  horse: {
+    id: string
+    name: string
+    breed: string
+    age: number
+    color: string
+    image: string | null
+    opName: string
+  }
+}
+
+interface GroupedEntries {
+  [key: string]: HistoryEntry[]
+}
+
+// User data interface matching dashboard
+interface UserData {
   id: string
-  horseName: string
-  action: string
-  time: string
-  date: string
-  status?: string
-  additionalInfo?: string
-  duration?: string
+  email: string
+  profile?: {
+    kutsero_id: string
+    kutsero_fname?: string
+    kutsero_lname?: string
+    kutsero_mname?: string
+    kutsero_username?: string
+    kutsero_phone_num?: string
+    kutsero_email?: string
+    [key: string]: any
+  }
+  access_token: string
+  refresh_token?: string
+  user_status?: string
 }
 
 export default function HistoryScreen() {
   const router = useRouter()
-  const [activeFilter, setActiveFilter] = useState("This Week")
+  const [activeFilter, setActiveFilter] = useState("All Time")
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [totalCount, setTotalCount] = useState(0)
+  const [activeCount, setActiveCount] = useState(0)
+  const [completedCount, setCompletedCount] = useState(0)
+  const [userData, setUserData] = useState<UserData | null>(null)
+  
+  // Modal states for detailed view
+  const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null)
+  const [modalVisible, setModalVisible] = useState(false)
 
   const safeArea = getSafeAreaPadding()
 
-  // Enhanced sample history data
-  const [historyEntries] = useState<HistoryEntry[]>([
-    {
-      id: "1",
-      horseName: "Oscar",
-      action: "Check-in",
-      time: "06:45 AM",
-      date: "Today • May 25, 2025",
-      additionalInfo: "Check-out 11:05 AM",
-      duration: "4h 20m",
-      status: "Completed",
-    },
-    {
-      id: "2",
-      horseName: "Oscar",
-      action: "Check-out",
-      time: "02:15 PM",
-      date: "Today • May 25, 2025",
-      status: "Completed",
-      additionalInfo: "Work session completed",
-      duration: "6h 30m",
-    },
-    {
-      id: "3",
-      horseName: "Thunder",
-      action: "Check-in",
-      time: "07:30 AM",
-      date: "Yesterday • May 24, 2025",
-      additionalInfo: "Check-out 01:45 PM",
-      duration: "6h 15m",
-      status: "Completed",
-    },
-  ])
+  // Replace with your actual API base URL
+  const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
 
-  const getStatusColor = (status?: string) => {
-    switch (status) {
-      case "Completed":
-        return "#4CAF50"
-      case "Under Care":
-        return "#FF9800"
-      case "In Progress":
-        return "#2196F3"
-      default:
-        return "#666"
+  // Load user data from SecureStore (matching dashboard approach)
+  const loadUserData = async (): Promise<UserData | null> => {
+    try {
+      const storedUserData = await SecureStore.getItemAsync('user_data')
+      const storedAccessToken = await SecureStore.getItemAsync('access_token')
+      
+      console.log('Loading user data for history...')
+      console.log('Has stored user data:', !!storedUserData)
+      console.log('Has stored access token:', !!storedAccessToken)
+      
+      if (storedUserData && storedAccessToken) {
+        const parsedUserData = JSON.parse(storedUserData)
+        
+        // Create a unified user data structure
+        const unifiedUserData: UserData = {
+          id: parsedUserData.id,
+          email: parsedUserData.email,
+          profile: parsedUserData.profile,
+          access_token: storedAccessToken,
+          user_status: parsedUserData.user_status || 'pending'
+        }
+
+        console.log('Successfully loaded user data for history:', {
+          userId: parsedUserData.id,
+          hasProfile: !!parsedUserData.profile,
+          kutserroId: parsedUserData.profile?.kutsero_id
+        })
+        
+        return unifiedUserData
+      } else {
+        console.log('No stored authentication data found in history')
+        return null
+      }
+    } catch (error) {
+      console.error('Error loading user data for history:', error)
+      return null
     }
   }
 
-  const getActionIcon = (action: string) => {
-    switch (action.toLowerCase()) {
-      case "check-in":
-        return "✓"
-      case "check-out":
-        return "→"
-      case "veterinary check":
-        return "+"
-      case "training session":
-        return "🏃"
-      default:
-        return "•"
+  // Use useFocusEffect to reload data when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      initializeScreen()
+    }, [])
+  )
+
+  useEffect(() => {
+    initializeScreen()
+  }, [])
+
+  const initializeScreen = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      const userData = await loadUserData()
+      
+      if (userData) {
+        setUserData(userData)
+        
+        // Get kutsero_id from profile or fallback to user id
+        const kutserroId = userData.profile?.kutsero_id || userData.id
+        console.log('Using kutsero_id for history:', kutserroId)
+        
+        await fetchAssignmentHistory(kutserroId, userData.access_token)
+      } else {
+        setError('Unable to get user authentication. Please log in again.')
+        Alert.alert(
+          'Session Expired', 
+          'Please log in again to view your history.',
+          [
+            {
+              text: 'Go to Login',
+              onPress: () => router.replace('../../pages/auth/login')
+            }
+          ]
+        )
+      }
+    } catch (error) {
+      console.error('Error initializing history screen:', error)
+      setError('Failed to initialize. Please try again.')
+    } finally {
+      setLoading(false)
     }
   }
 
-  // Group entries by date
-  const groupedEntries = historyEntries.reduce((groups: { [key: string]: HistoryEntry[] }, entry) => {
-    const date = entry.date
+  const fetchAssignmentHistory = async (kutsero_id: string, accessToken: string) => {
+    try {
+      setLoading(true)
+      setError(null)
+
+      // Fetch the assignment history for all horses the kutsero has ever worked with
+      const historyUrl = `${API_BASE_URL}/assignment_history/?kutsero_id=${kutsero_id}`
+      console.log('Fetching assignment history from URL:', historyUrl)
+
+      const historyResponse = await fetch(historyUrl, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
+      })
+      
+      console.log('History response status:', historyResponse.status)
+      
+      if (!historyResponse.ok) {
+        const errorText = await historyResponse.text()
+        console.log('History error response:', errorText)
+        
+        // Handle specific error cases
+        if (historyResponse.status === 401) {
+          Alert.alert(
+            'Session Expired', 
+            'Please log in again.',
+            [
+              {
+                text: 'Go to Login',
+                onPress: () => router.replace('../../pages/auth/login')
+              }
+            ]
+          )
+          return
+        } else if (historyResponse.status === 404) {
+          // No history available
+          setHistoryEntries([])
+          setTotalCount(0)
+          setActiveCount(0)
+          setCompletedCount(0)
+          return
+        }
+        
+        throw new Error(`HTTP error! status: ${historyResponse.status}, message: ${errorText}`)
+      }
+
+      const historyData = await historyResponse.json()
+      console.log('Received assignment history data:', historyData)
+      
+      if (historyData.assignments && Array.isArray(historyData.assignments)) {
+        // Show ALL history for all horses the kutsero has ever worked with
+        const allHistory = historyData.assignments
+        
+        console.log(`Showing ALL history: ${allHistory.length} total entries for all horses ever worked with`)
+        
+        if (allHistory.length > 0) {
+          console.log('Sample entry:', allHistory[0])
+        }
+        
+        // Calculate stats based on all history
+        const allActiveCount = allHistory.filter((entry: HistoryEntry) => entry.isActive).length
+        const allCompletedCount = allHistory.filter((entry: HistoryEntry) => !entry.isActive).length
+        
+        setHistoryEntries(allHistory)
+        setTotalCount(allHistory.length)
+        setActiveCount(allActiveCount)
+        setCompletedCount(allCompletedCount)
+        
+        console.log(`Final stats: Total=${allHistory.length}, Active=${allActiveCount}, Completed=${allCompletedCount}`)
+      } else {
+        console.log('No assignments found in history response')
+        setHistoryEntries([])
+        setTotalCount(0)
+        setActiveCount(0)
+        setCompletedCount(0)
+      }
+    } catch (err) {
+      console.error('Error fetching assignment history:', err)
+      const error = err as Error
+      console.error('Error details:', {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+      })
+      setError(error.message || 'Failed to load history')
+      
+      // Show user-friendly error message
+      Alert.alert(
+        'Network Error', 
+        `Failed to load assignment history.\n\nError: ${error.message}\n\nCheck your network connection and try again.`,
+        [
+          {
+            text: 'Retry',
+            onPress: () => handleRefresh()
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel'
+          }
+        ]
+      )
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Handle entry click
+  const handleEntryClick = (entry: HistoryEntry) => {
+    setSelectedEntry(entry)
+    setModalVisible(true)
+  }
+
+  // Close modal
+  const closeModal = () => {
+    setModalVisible(false)
+    setSelectedEntry(null)
+  }
+
+  // Refresh function that reloads user data and history
+  const handleRefresh = async () => {
+    await initializeScreen()
+  }
+
+  // Filter entries based on the selected filter
+  const getFilteredEntries = () => {
+    const now = new Date()
+    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()))
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+
+    switch (activeFilter) {
+      case "This Week":
+        return historyEntries.filter(entry => {
+          const entryDate = new Date(entry.checkedInAt)
+          return entryDate >= startOfWeek
+        })
+      case "This Month":
+        return historyEntries.filter(entry => {
+          const entryDate = new Date(entry.checkedInAt)
+          return entryDate >= startOfMonth
+        })
+      case "All Time":
+      default:
+        return historyEntries
+    }
+  }
+
+  const formatDate = (dateString: string, label: string = '') => {
+    try {
+      console.log('Formatting date:', dateString)
+      
+      // Parse the date string directly
+      const date = new Date(dateString)
+      console.log('Date - parsed date object:', date)
+      console.log('Date - is valid date:', !isNaN(date.getTime()))
+      
+      if (isNaN(date.getTime())) {
+        throw new Error('Invalid date')
+      }
+      
+      // Get current date in local timezone (already in Philippine timezone since you're in PH)
+      const now = new Date()
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const yesterday = new Date(today)
+      yesterday.setDate(yesterday.getDate() - 1)
+      
+      // Get the entry date (convert to local date only, ignoring time)
+      const entryDateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+      
+      console.log('Entry date only:', entryDateOnly.toDateString())
+      console.log('Today:', today.toDateString())
+      console.log('Yesterday:', yesterday.toDateString())
+
+      // Check if it's today
+      if (entryDateOnly.getTime() === today.getTime()) {
+        return `Today • ${date.toLocaleDateString('en-PH', { 
+          month: 'short', 
+          day: 'numeric', 
+          year: 'numeric',
+          timeZone: 'Asia/Manila'
+        })}`
+      }
+      
+      // Check if it's yesterday
+      if (entryDateOnly.getTime() === yesterday.getTime()) {
+        return `Yesterday • ${date.toLocaleDateString('en-PH', { 
+          month: 'short', 
+          day: 'numeric', 
+          year: 'numeric',
+          timeZone: 'Asia/Manila'
+        })}`
+      }
+      
+      // For other dates
+      return date.toLocaleDateString('en-PH', { 
+        weekday: 'long', 
+        month: 'short', 
+        day: 'numeric', 
+        year: 'numeric',
+        timeZone: 'Asia/Manila'
+      })
+    } catch (error) {
+      console.error('Error formatting date:', error)
+      return dateString
+    }
+  }
+
+  const formatTime = (dateString: string) => {
+    try {
+      console.log('Formatting time for:', dateString)
+      
+      // Parse the date string directly
+      const date = new Date(dateString)
+      console.log('Parsed date object:', date)
+      console.log('Is valid date:', !isNaN(date.getTime()))
+      console.log('Date in UTC:', date.toUTCString())
+      console.log('Date in local timezone:', date.toString())
+      
+      if (isNaN(date.getTime())) {
+        throw new Error('Invalid date')
+      }
+      
+      // Convert to Philippine timezone (+8 hours from UTC)
+      // Create a new date object adjusted for Philippine timezone
+      const philippineTime = new Date(date.getTime() + (8 * 60 * 60 * 1000)) // Add 8 hours in milliseconds
+      console.log('Philippine time calculated:', philippineTime.toString())
+      
+      // Format time in 12-hour format
+      const hours = philippineTime.getUTCHours() // Use UTC methods since we already adjusted
+      const minutes = philippineTime.getUTCMinutes()
+      const ampm = hours >= 12 ? 'PM' : 'AM'
+      const displayHours = hours > 12 ? hours - 12 : (hours === 0 ? 12 : hours)
+      const formattedTime = `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`
+      
+      console.log('Formatted time result:', formattedTime)
+      return formattedTime
+    } catch (error) {
+      console.error('Error formatting time:', error)
+      // Fallback: try to extract time from string manually
+      try {
+        const timeMatch = dateString.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/)
+        if (timeMatch) {
+          let hours = parseInt(timeMatch[1])
+          const minutes = timeMatch[2]
+          
+          // Add 8 hours for Philippine timezone if it looks like UTC
+          if (dateString.includes('T') || dateString.includes('Z')) {
+            hours = (hours + 8) % 24
+          }
+          
+          const ampm = hours >= 12 ? 'PM' : 'AM'
+          const displayHours = hours > 12 ? hours - 12 : (hours === 0 ? 12 : hours)
+          return `${displayHours}:${minutes} ${ampm}`
+        }
+      } catch (fallbackError) {
+        console.error('Fallback formatting failed:', fallbackError)
+      }
+      return dateString
+    }
+  }
+
+  const formatFullDateTime = (dateString: string) => {
+    try {
+      console.log('Formatting full datetime for:', dateString)
+      
+      // Parse the date string directly
+      const date = new Date(dateString)
+      console.log('Full datetime - parsed date object:', date)
+      console.log('Full datetime - is valid date:', !isNaN(date.getTime()))
+      console.log('Full datetime - date in UTC:', date.toUTCString())
+      
+      if (isNaN(date.getTime())) {
+        throw new Error('Invalid date')
+      }
+      
+      // Convert to Philippine timezone (+8 hours from UTC)
+      const philippineTime = new Date(date.getTime() + (8 * 60 * 60 * 1000))
+      console.log('Full datetime - Philippine time calculated:', philippineTime.toString())
+      
+      // Format full datetime manually to ensure correct timezone
+      const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+      const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+      
+      const weekday = weekdays[philippineTime.getUTCDay()]
+      const month = months[philippineTime.getUTCMonth()]
+      const day = philippineTime.getUTCDate()
+      const year = philippineTime.getUTCFullYear()
+      const hours = philippineTime.getUTCHours()
+      const minutes = philippineTime.getUTCMinutes()
+      
+      const ampm = hours >= 12 ? 'PM' : 'AM'
+      const displayHours = hours > 12 ? hours - 12 : (hours === 0 ? 12 : hours)
+      
+      const formattedDateTime = `${weekday}, ${month} ${day}, ${year} at ${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`
+      
+      console.log('Formatted full datetime result:', formattedDateTime)
+      return formattedDateTime
+    } catch (error) {
+      console.error('Error formatting full date time:', error)
+      return dateString
+    }
+  }
+
+  const getStatusColor = (isActive: boolean) => {
+    return isActive ? "#FF9800" : "#4CAF50"
+  }
+
+  const getActionIcon = (isActive: boolean) => {
+    return isActive ? "→" : "✓"
+  }
+
+  const formatWorkDuration = (duration: string | null) => {
+    if (!duration || duration === "Unable to calculate") return "N/A"
+    
+    try {
+      // Parse duration string like "6:30:00" or "6h 30m"
+      const parts = duration.split(":")
+      if (parts.length >= 2) {
+        const hours = parseInt(parts[0])
+        const minutes = parseInt(parts[1])
+        return `${hours}h ${minutes}m`
+      }
+      return duration
+    } catch (error) {
+      return duration
+    }
+  }
+
+  // Get filtered entries for display
+  const filteredEntries = getFilteredEntries()
+
+  // Group filtered entries by date
+  const groupedEntries: GroupedEntries = filteredEntries.reduce((groups, entry) => {
+    const date = formatDate(entry.checkedInAt)
     if (!groups[date]) {
       groups[date] = []
     }
     groups[date].push(entry)
     return groups
-  }, {})
+  }, {} as GroupedEntries)
+
+  // Calculate total hours worked from filtered entries
+  const totalHoursWorked = filteredEntries.reduce((total, entry) => {
+    if (entry.workDuration && entry.workDuration !== "Unable to calculate") {
+      try {
+        const parts = entry.workDuration.split(":")
+        if (parts.length >= 2) {
+          const hours = parseInt(parts[0])
+          const minutes = parseInt(parts[1])
+          return total + hours + (minutes / 60)
+        }
+      } catch (error) {
+        // Skip if can't parse
+      }
+    }
+    return total
+  }, 0)
+
+  // Count unique horses worked with from all history (not just filtered)
+  const uniqueHorses = new Set(historyEntries.map(entry => entry.horse.id)).size
 
   // Dashboard/Home Icon Component
   const DashboardIcon = ({ color }: { color: string }) => (
@@ -166,17 +589,17 @@ export default function HistoryScreen() {
       onPress={() => {
         // Navigate directly without updating local state
         if (tabKey === "home") {
-          router.push("/(tabs)/dashboard")
+          router.push("./dashboard")
         } else if (tabKey === "horse") {
-          router.push("/(tabs)/horsecare")
+          router.push("./horsecare")
         } else if (tabKey === "chat") {
-          router.push("/(tabs)/messages")
+          router.push("./messages")
         } else if (tabKey === "calendar") {
-          router.push("/(tabs)/calendar")
+          router.push("./calendar")
         } else if (tabKey === "history") {
           // Stay on history - already here
         } else if (tabKey === "profile") {
-          router.push("/(tabs)/profile")
+          router.push("./profile")
         }
       }}
     >
@@ -208,6 +631,166 @@ export default function HistoryScreen() {
     </TouchableOpacity>
   )
 
+  // Detail Modal Component
+  const DetailModal = () => {
+    if (!selectedEntry) return null
+
+    return (
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={closeModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Modal Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Work Session Details</Text>
+              <TouchableOpacity onPress={closeModal} style={styles.closeButton}>
+                <Text style={styles.closeButtonText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
+              {/* Horse Information */}
+              <View style={styles.modalSection}>
+                <View style={styles.modalHorseInfo}>
+                  <View style={styles.modalHorseAvatar}>
+                    {selectedEntry.horse.image ? (
+                      <Image
+                        source={{ uri: selectedEntry.horse.image }}
+                        style={styles.modalHorseAvatarImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Image
+                        source={require("../../assets/images/horse.png")}
+                        style={[styles.modalHorseIconImage, { tintColor: "#C17A47" }]}
+                        resizeMode="contain"
+                      />
+                    )}
+                  </View>
+                  <View style={styles.modalHorseDetails}>
+                    <Text style={styles.modalHorseName}>{selectedEntry.horse.name}</Text>
+                    <Text style={styles.modalHorseBreed}>
+                      {selectedEntry.horse.breed} • {selectedEntry.horse.color} • Age {selectedEntry.horse.age}
+                    </Text>
+                    <Text style={styles.modalOwnerName}>Owner: {selectedEntry.horse.opName}</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Status */}
+              <View style={styles.modalSection}>
+                <Text style={styles.modalSectionTitle}>Status</Text>
+                <View style={styles.modalStatusContainer}>
+                  <View style={[styles.modalStatusDot, { backgroundColor: getStatusColor(selectedEntry.isActive) }]} />
+                  <Text style={[styles.modalStatusText, { color: getStatusColor(selectedEntry.isActive) }]}>
+                    {selectedEntry.isActive ? "Currently Working" : "Work Session Completed"}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Time Information */}
+              <View style={styles.modalSection}>
+                <Text style={styles.modalSectionTitle}>Time Information</Text>
+                
+                <View style={styles.modalTimeItem}>
+                  <Text style={styles.modalTimeLabel}>Check-in Time:</Text>
+                  <Text style={styles.modalTimeValue}>{formatFullDateTime(selectedEntry.checkedInAt)}</Text>
+                </View>
+
+                {selectedEntry.checkedOutAt && (
+                  <View style={styles.modalTimeItem}>
+                    <Text style={styles.modalTimeLabel}>Check-out Time:</Text>
+                    <Text style={styles.modalTimeValue}>{formatFullDateTime(selectedEntry.checkedOutAt)}</Text>
+                  </View>
+                )}
+
+                {!selectedEntry.isActive && selectedEntry.workDuration && (
+                  <View style={styles.modalTimeItem}>
+                    <Text style={styles.modalTimeLabel}>Total Duration:</Text>
+                    <Text style={[styles.modalTimeValue, styles.modalDurationText]}>
+                      {formatWorkDuration(selectedEntry.workDuration)}
+                    </Text>
+                  </View>
+                )}
+
+                {selectedEntry.isActive && (
+                  <View style={styles.modalTimeItem}>
+                    <Text style={[styles.modalTimeLabel, { color: "#FF9800" }]}>
+                      Work session is currently active
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Assignment ID */}
+              <View style={styles.modalSection}>
+                <Text style={styles.modalSectionTitle}>Assignment Details</Text>
+                <View style={styles.modalTimeItem}>
+                  <Text style={styles.modalTimeLabel}>Assignment ID:</Text>
+                  <Text style={[styles.modalTimeValue, styles.modalAssignmentId]}>
+                    {selectedEntry.assignmentId}
+                  </Text>
+                </View>
+              </View>
+            </ScrollView>
+
+            {/* Modal Footer */}
+            <View style={styles.modalFooter}>
+              <TouchableOpacity style={styles.modalCloseButton} onPress={closeModal}>
+                <Text style={styles.modalCloseButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    )
+  }
+
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+        
+        {/* Header */}
+        <View style={[styles.header, { paddingTop: safeArea.top }]}>
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>Activity History</Text>
+          </View>
+        </View>
+
+        {/* Loading State */}
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#C17A47" />
+          <Text style={styles.loadingText}>Loading history...</Text>
+        </View>
+
+        {/* Bottom Tab Navigation */}
+        <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
+          <TabButton iconSource={null} label="Home" tabKey="home" isActive={false} />
+          <TabButton iconSource={require("../../assets/images/horse.png")} label="Horse" tabKey="horse" isActive={false} />
+          <TabButton iconSource={require("../../assets/images/chat.png")} label="Chat" tabKey="chat" isActive={false} />
+          <TabButton
+            iconSource={require("../../assets/images/calendar.png")}
+            label="Calendar"
+            tabKey="calendar"
+            isActive={false}
+          />
+          <TabButton
+            iconSource={require("../../assets/images/history.png")}
+            label="History"
+            tabKey="history"
+            isActive={true}
+          />
+          <TabButton iconSource={null} label="Profile" tabKey="profile" isActive={false} />
+        </View>
+      </View>
+    )
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
@@ -217,6 +800,10 @@ export default function HistoryScreen() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Activity History</Text>
         </View>
+        {/* Refresh Button */}
+        <TouchableOpacity onPress={handleRefresh} style={styles.refreshButton}>
+          <Text style={styles.refreshButtonText}>↻</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Content */}
@@ -224,28 +811,28 @@ export default function HistoryScreen() {
         {/* Summary Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>24</Text>
-            <Text style={styles.statLabel}>Total Sessions</Text>
+            <Text style={styles.statNumber}>{filteredEntries.length}</Text>
+            <Text style={styles.statLabel}>Sessions</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>156h</Text>
+            <Text style={styles.statNumber}>{Math.round(totalHoursWorked)}h</Text>
             <Text style={styles.statLabel}>Total Hours</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>8</Text>
+            <Text style={styles.statNumber}>{uniqueHorses}</Text>
             <Text style={styles.statLabel}>Horses Worked</Text>
           </View>
         </View>
 
         {/* Horse Check Log Section */}
         <View style={styles.logSection}>
-          <Text style={styles.logTitle}>Horse Activity Log</Text>
+          <Text style={styles.logTitle}>All Horses History</Text>
 
           {/* Filter Buttons */}
           <View style={styles.filterContainer}>
             <FilterButton title="This Week" isActive={activeFilter === "This Week"} />
             <FilterButton title="This Month" isActive={activeFilter === "This Month"} />
-            <FilterButton title="Custom" isActive={activeFilter === "Custom"} />
+            <FilterButton title="All Time" isActive={activeFilter === "All Time"} />
           </View>
 
           {/* History Entries */}
@@ -259,53 +846,91 @@ export default function HistoryScreen() {
 
                 {/* Entries for this date */}
                 {entries.map((entry) => (
-                  <View key={entry.id} style={styles.historyEntry}>
+                  <TouchableOpacity 
+                    key={entry.assignmentId} 
+                    style={styles.historyEntry}
+                    onPress={() => handleEntryClick(entry)}
+                    activeOpacity={0.7}
+                  >
                     <View style={styles.entryLeft}>
                       <View style={styles.horseAvatar}>
-                        <Image
-                          source={require("../../assets/images/horse.png")}
-                          style={[styles.horseIconImage, { tintColor: "#C17A47" }]}
-                          resizeMode="contain"
-                        />
+                        {entry.horse.image ? (
+                          <Image
+                            source={{ uri: entry.horse.image }}
+                            style={styles.horseAvatarImage}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <Image
+                            source={require("../../assets/images/horse.png")}
+                            style={[styles.horseIconImage, { tintColor: "#C17A47" }]}
+                            resizeMode="contain"
+                          />
+                        )}
                       </View>
                       <View style={styles.actionIndicator}>
-                        <Text style={styles.actionIcon}>{getActionIcon(entry.action)}</Text>
+                        <Text style={styles.actionIcon}>{getActionIcon(entry.isActive)}</Text>
                       </View>
                     </View>
                     <View style={styles.entryContent}>
                       <View style={styles.entryHeader}>
-                        <Text style={styles.horseName}>{entry.horseName}</Text>
-                        <Text style={styles.entryTime}>{entry.time}</Text>
+                        <Text style={styles.horseName}>{entry.horse.name}</Text>
+                        <Text style={styles.tapHint}>Tap for details →</Text>
                       </View>
-                      <Text style={styles.entryAction}>{entry.action}</Text>
-                      {entry.duration && <Text style={styles.durationText}>Duration: {entry.duration}</Text>}
-                      {entry.additionalInfo && <Text style={styles.additionalInfo}>{entry.additionalInfo}</Text>}
-                      {entry.status && (
-                        <View style={styles.statusContainer}>
-                          <View style={[styles.statusDot, { backgroundColor: getStatusColor(entry.status) }]} />
-                          <Text style={[styles.entryStatus, { color: getStatusColor(entry.status) }]}>
-                            {entry.status}
-                          </Text>
-                        </View>
+                      <Text style={styles.entryAction}>
+                        {entry.isActive ? "Currently Working" : "Work Session Completed"}
+                      </Text>
+                      <Text style={styles.horseDetails}>
+                        {entry.horse.breed} • {entry.horse.color} • {entry.horse.opName}
+                      </Text>
+                      {entry.workDuration && !entry.isActive && (
+                        <Text style={styles.durationText}>Duration: {formatWorkDuration(entry.workDuration)}</Text>
                       )}
+                      <View style={styles.statusContainer}>
+                        <View style={[styles.statusDot, { backgroundColor: getStatusColor(entry.isActive) }]} />
+                        <Text style={[styles.entryStatus, { color: getStatusColor(entry.isActive) }]}>
+                          {entry.status}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </View>
             ))}
 
             {/* Empty State */}
-            {historyEntries.length === 0 && (
+            {filteredEntries.length === 0 && !loading && (
               <View style={styles.emptyState}>
                 <Text style={styles.emptyStateText}>No activity history found</Text>
-                <Text style={styles.emptyStateSubtext}>Your horse activity will appear here</Text>
+                <Text style={styles.emptyStateSubtext}>
+                  {activeFilter === "All Time" 
+                    ? "Your horse assignments activity will appear here" 
+                    : `No activity found for ${activeFilter.toLowerCase()}`}
+                </Text>
+                <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+                  <Text style={styles.retryButtonText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Error State */}
+            {error && (
+              <View style={styles.errorState}>
+                <Text style={styles.errorText}>Error loading history</Text>
+                <Text style={styles.errorSubtext}>{error}</Text>
+                <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
+                  <Text style={styles.retryButtonText}>Try Again</Text>
+                </TouchableOpacity>
               </View>
             )}
           </ScrollView>
         </View>
       </View>
 
-      {/* Bottom Tab Navigation - Updated order: History before Profile */}
+      {/* Detail Modal */}
+      <DetailModal />
+
+      {/* Bottom Tab Navigation */}
       <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
         <TabButton iconSource={null} label="Home" tabKey="home" isActive={false} />
         <TabButton iconSource={require("../../assets/images/horse.png")} label="Horse" tabKey="horse" isActive={false} />
@@ -350,9 +975,28 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "white",
   },
+  refreshButton: {
+    padding: scale(8),
+  },
+  refreshButtonText: {
+    color: "white",
+    fontSize: moderateScale(18),
+    fontWeight: "bold",
+  },
   content: {
     flex: 1,
     backgroundColor: "white",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "white",
+  },
+  loadingText: {
+    marginTop: verticalScale(16),
+    fontSize: moderateScale(16),
+    color: "#666",
   },
   statsContainer: {
     flexDirection: "row",
@@ -424,6 +1068,7 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(8),
     borderBottomWidth: 1,
     borderBottomColor: "#F0F0F0",
+    backgroundColor: "white",
   },
   entryLeft: {
     marginRight: scale(10),
@@ -437,6 +1082,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginBottom: verticalScale(4),
+    overflow: "hidden",
+  },
+  horseAvatarImage: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
   },
   horseIconImage: {
     width: scale(20),
@@ -469,9 +1120,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
   },
-  entryTime: {
+  tapHint: {
     fontSize: moderateScale(10),
-    color: "#666",
+    color: "#C17A47",
+    fontWeight: "500",
   },
   entryAction: {
     fontSize: moderateScale(12),
@@ -479,16 +1131,16 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(2),
     fontWeight: "500",
   },
+  horseDetails: {
+    fontSize: moderateScale(10),
+    color: "#999",
+    marginBottom: verticalScale(2),
+  },
   durationText: {
     fontSize: moderateScale(10),
     color: "#2196F3",
     marginBottom: verticalScale(2),
     fontWeight: "500",
-  },
-  additionalInfo: {
-    fontSize: moderateScale(10),
-    color: "#999",
-    marginBottom: verticalScale(2),
   },
   statusContainer: {
     flexDirection: "row",
@@ -518,7 +1170,194 @@ const styles = StyleSheet.create({
   emptyStateSubtext: {
     fontSize: moderateScale(14),
     color: "#999",
+    marginBottom: verticalScale(16),
+    textAlign: "center",
   },
+  errorState: {
+    alignItems: "center",
+    paddingVertical: verticalScale(40),
+  },
+  errorText: {
+    fontSize: moderateScale(16),
+    color: "#E53E3E",
+    fontWeight: "500",
+    marginBottom: verticalScale(8),
+  },
+  errorSubtext: {
+    fontSize: moderateScale(12),
+    color: "#999",
+    textAlign: "center",
+    marginBottom: verticalScale(16),
+  },
+  retryButton: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(24),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(16),
+  },
+  retryButtonText: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+  },
+
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderRadius: scale(16),
+    width: width * 0.9,
+    maxHeight: height * 0.8,
+    elevation: 5,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: scale(20),
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+  },
+  modalTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: "600",
+    color: "#333",
+  },
+  closeButton: {
+    width: scale(30),
+    height: scale(30),
+    borderRadius: scale(15),
+    backgroundColor: "#F0F0F0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  closeButtonText: {
+    fontSize: moderateScale(16),
+    color: "#666",
+    fontWeight: "bold",
+  },
+  modalBody: {
+    maxHeight: height * 0.6,
+  },
+  modalSection: {
+    padding: scale(20),
+    borderBottomWidth: 1,
+    borderBottomColor: "#F8F8F8",
+  },
+  modalSectionTitle: {
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(12),
+  },
+  modalHorseInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  modalHorseAvatar: {
+    width: scale(60),
+    height: scale(60),
+    borderRadius: scale(30),
+    backgroundColor: "#F0F0F0",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: scale(16),
+    overflow: "hidden",
+  },
+  modalHorseAvatarImage: {
+    width: scale(60),
+    height: scale(60),
+    borderRadius: scale(30),
+  },
+  modalHorseIconImage: {
+    width: scale(30),
+    height: scale(30),
+  },
+  modalHorseDetails: {
+    flex: 1,
+  },
+  modalHorseName: {
+    fontSize: moderateScale(18),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(4),
+  },
+  modalHorseBreed: {
+    fontSize: moderateScale(14),
+    color: "#666",
+    marginBottom: verticalScale(2),
+  },
+  modalOwnerName: {
+    fontSize: moderateScale(14),
+    color: "#999",
+  },
+  modalStatusContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  modalStatusDot: {
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
+    marginRight: scale(8),
+  },
+  modalStatusText: {
+    fontSize: moderateScale(16),
+    fontWeight: "500",
+  },
+  modalTimeItem: {
+    marginBottom: verticalScale(12),
+  },
+  modalTimeLabel: {
+    fontSize: moderateScale(14),
+    color: "#666",
+    marginBottom: verticalScale(4),
+    fontWeight: "500",
+  },
+  modalTimeValue: {
+    fontSize: moderateScale(16),
+    color: "#333",
+  },
+  modalDurationText: {
+    color: "#2196F3",
+    fontWeight: "600",
+  },
+  modalAssignmentId: {
+    fontFamily: "monospace",
+    fontSize: moderateScale(14),
+    backgroundColor: "#F8F8F8",
+    padding: scale(8),
+    borderRadius: scale(4),
+  },
+  modalFooter: {
+    padding: scale(20),
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+  },
+  modalCloseButton: {
+    backgroundColor: "#C17A47",
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(8),
+    alignItems: "center",
+  },
+  modalCloseButtonText: {
+    color: "white",
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+  },
+
   // Tab Bar Styles
   tabBar: {
     flexDirection: "row",

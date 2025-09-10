@@ -24,14 +24,22 @@ interface UserData {
   id: string;
   email: string;
   profile?: {
-    operator_id: string;
-    operator_fname?: string;
-    operator_lname?: string;
-    operator_mname?: string;
-    operator_username?: string;
-    operator_phone_num?: string;
-    operator_email?: string;
-    operator_role?: string;
+    op_id: string;
+    op_fname?: string;
+    op_lname?: string;
+    op_mname?: string;
+    op_phone_num?: string;
+    op_email?: string;
+    op_province?: string;
+    op_city?: string;
+    op_municipality?: string;
+    op_brgy?: string;
+    op_zipcode?: string;
+    op_house_add?: string;
+    op_routefrom?: string;
+    op_routeto?: string;
+    op_fb?: string;
+    op_image?: string;
     [key: string]: any;
   };
   access_token: string;
@@ -161,18 +169,16 @@ const HorseOperatorHome = () => {
 
         setUserData(unifiedUserData);
         
-        // Set display name based on available data
+        // Set display name based on available data - CORRECTED FIELD NAMES
         let displayName = "Horse Operator"; // default fallback
         
         if (parsedUserData.profile) {
-          // Use profile data if available
-          const { operator_fname, operator_lname, operator_username } = parsedUserData.profile;
-          if (operator_fname && operator_lname) {
-            displayName = `${operator_fname} ${operator_lname}`;
-          } else if (operator_username) {
-            displayName = operator_username;
-          } else if (operator_fname) {
-            displayName = operator_fname;
+          // Use correct field names from horse_op_profile table
+          const { op_fname, op_lname } = parsedUserData.profile;
+          if (op_fname && op_lname) {
+            displayName = `${op_fname} ${op_lname}`;
+          } else if (op_fname) {
+            displayName = op_fname; // Just first name if last name not available
           }
         } else if (parsedUserData.email) {
           // Fallback to user email if no profile
@@ -387,15 +393,6 @@ const HorseOperatorHome = () => {
               <View style={styles.welcomeSection}>
                 <Text style={styles.welcomeText}>Welcome,</Text>
                 <Text style={styles.nameText}>{currentUser}</Text>
-                {userData?.profile?.operator_email && (
-                  <Text style={styles.emailText}>{userData.profile.operator_email}</Text>
-                )}
-                {userData?.profile?.operator_role && (
-                  <Text style={styles.roleText}>{userData.profile.operator_role}</Text>
-                )}
-                {false && (
-                  <Text style={styles.roleText}>Horse Operator</Text>
-                )}
                 {false && userData?.user_status === 'pending' && (
                   <Text style={styles.statusText}>Account Status: Pending Approval</Text>
                 )}
@@ -539,47 +536,6 @@ const HorseOperatorHome = () => {
                     </View>
                   </View>
                 </View>
-
-                {/* Second Activity */}
-                <View style={styles.activityCard}>
-                  <View style={styles.activityHeader}>
-                    <View style={styles.activityIcon}>
-                      <Text style={styles.activityIconText}>🏥</Text>
-                    </View>
-                    <View style={styles.activityInfo}>
-                      <Text style={styles.activityTitle}>
-                        Health Check Completed - Horse &quot;Blaze&quot;
-                      </Text>
-                      <Text style={styles.activityTime}>3h</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.activityDescription}>
-                    Dr. Rodriguez completed the monthly health checkup for your horse &quot;Blaze&quot;. 
-                    All vitals are normal and the horse is cleared for service.
-                  </Text>
-                  <Text style={styles.activityDetails}>
-                    {'• Weight: 450kg (Normal)\n'}
-                    {'• Temperature: 37.8°C\n'}
-                    {'• Heart Rate: 32 BPM\n'}
-                    • Overall Status: &quot;Healthy&quot;
-                  </Text>
-                  <View style={styles.activityFooter}>
-                    <View style={styles.activityActions}>
-                      <TouchableOpacity style={styles.actionButton}>
-                        <FontAwesome5 name="heart" size={18} color="#333" />
-                        <Text style={styles.actionCount}>12</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.actionButton}>
-                        <Text style={styles.commentIcon}>💬</Text>
-                        <Text style={styles.actionCount}>5</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.actionButton}>
-                        <Text style={styles.shareIcon}>📤</Text>
-                        <Text style={styles.actionCount}>8</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
               </View>
             </View>
           </View>
@@ -612,16 +568,16 @@ const HorseOperatorHome = () => {
           <FontAwesome5 name="horse" size={24} color={activeTab === 'horses' ? '#CD853F' : '#000'} />
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.navItem, activeTab === 'bookings' && styles.activeNavItem]}
-          onPress={() => navigateToTab('bookings', '../HORSE_OPERATOR/bookings')}
-        >
-          <FontAwesome5 name="calendar-alt" size={24} color={activeTab === 'bookings' ? '#CD853F' : '#000'} />
-        </TouchableOpacity>
-        <TouchableOpacity
           style={[styles.navItem, activeTab === 'messages' && styles.activeNavItem]}
-          onPress={() => navigateToTab('messages', '../HORSE_OPERATOR/messages')}
+          onPress={() => navigateToTab('messages', '../HORSE_OPERATOR/Hmessage')}
         >
           <FontAwesome5 name="comment-dots" size={24} color={activeTab === 'messages' ? '#CD853F' : '#000'} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.navItem, activeTab === 'bookings' && styles.activeNavItem]}
+          onPress={() => navigateToTab('bookings', '../HORSE_OPERATOR/Hcalendar')}
+        >
+          <FontAwesome5 name="calendar-alt" size={24} color={activeTab === 'bookings' ? '#CD853F' : '#000'} />
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.navItem, activeTab === 'profile' && styles.activeNavItem]}
@@ -865,8 +821,9 @@ const styles = StyleSheet.create({
   healthCard: {
     backgroundColor: '#fff',
     borderRadius: 15,
-    padding: 20,
+    padding: 15,
     marginBottom: 25,
+    marginTop: -110,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,

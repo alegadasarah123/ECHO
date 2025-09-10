@@ -10,6 +10,7 @@ import {
   Alert,
   Image,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
@@ -17,7 +18,7 @@ import * as SecureStore from 'expo-secure-store';
 import { useRouter } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 
-type DropdownField = 'sex' | 'breed' | 'color';
+type DropdownField = 'sex' | 'breed';
 
 interface Horse {
   id: string;
@@ -32,7 +33,7 @@ interface Horse {
   image: string | null;
 }
 
-const API_URL = "http://192.168.101.2:8000/api/horse_operator"; // base Django API
+const API_URL = "http://192.168.101.4:8000/api/horse_operator";
 
 const AddHorseScreen = () => {
   const router = useRouter();
@@ -52,21 +53,15 @@ const AddHorseScreen = () => {
   const [showDropdowns, setShowDropdowns] = useState<Record<DropdownField, boolean>>({
     sex: false,
     breed: false,
-    color: false,
   });
 
-  const sexOptions = ['Male', 'Female', 'Gelding', 'Mare', 'Stallion'];
+  const sexOptions = ['Stallion', 'Gelding', 'Mare'];
   const breedOptions = [
     'Arabian', 'Thoroughbred', 'Quarter Horse', 'Paint Horse', 'Appaloosa',
     'Mustang', 'Clydesdale', 'Friesian', 'Andalusian', 'Percheron',
     'Belgian', 'Shire', 'Tennessee Walker', 'Morgan', 'Standardbred', 'Other',
   ];
-  const colorOptions = [
-    'Bay','Black','Brown','Chestnut','Gray','Palomino','Pinto',
-    'White','Buckskin','Dun','Roan','Cremello','Perlino','Other',
-  ];
 
-  // ✅ Get current user from SecureStore (from login)
   const getCurrentUser = async () => {
     try {
       const userData = await SecureStore.getItemAsync("user_data");
@@ -95,7 +90,6 @@ const AddHorseScreen = () => {
     setShowDropdowns({
       sex: false,
       breed: false,
-      color: false,
       [field]: !showDropdowns[field],
     });
   };
@@ -186,7 +180,6 @@ const AddHorseScreen = () => {
         return;
       }
 
-      // ✅ Try both user_id and id properties
       const userId = currentUser.user_id || currentUser.id;
       if (!userId) {
         Alert.alert("Error", "User ID not found. Please log in again.");
@@ -222,35 +215,35 @@ const AddHorseScreen = () => {
     }
   };
 
-  const renderDropdownField = (field: DropdownField, options: string[]) => (
-    <View
-      style={[styles.fieldContainer, showDropdowns[field] && styles.fieldContainerExpanded]}
-      key={field}
-    >
-      <Text style={styles.fieldLabel}>{field.charAt(0).toUpperCase() + field.slice(1)}</Text>
+  const renderDropdownField = (field: DropdownField, options: string[], label: string) => (
+    <View style={[styles.inputGroup, showDropdowns[field] && styles.dropdownExpanded]} key={field}>
+      <Text style={styles.label}>{label}</Text>
       <TouchableOpacity
-        style={[styles.dropdown, showDropdowns[field] && styles.dropdownActive]}
+        style={[styles.dropdown, showDropdowns[field] && styles.dropdownOpen]}
         onPress={() => toggleDropdown(field)}
       >
-        <Text style={[styles.dropdownText, !formData[field] && styles.placeholderText]}>
-          {formData[field] || "Please Select"}
+        <Text style={[styles.dropdownText, !formData[field] && styles.placeholder]}>
+          {formData[field] || `Select ${label.toLowerCase()}`}
         </Text>
         <FontAwesome5
           name={showDropdowns[field] ? "chevron-up" : "chevron-down"}
-          size={12}
-          color="#CD853F"
+          size={16}
+          color="#666"
         />
       </TouchableOpacity>
+      
       {showDropdowns[field] && (
-        <View style={styles.dropdownOptions}>
-          <ScrollView style={styles.dropdownScrollView} nestedScrollEnabled>
-            {options.map(option => (
+        <View style={styles.dropdownMenu}>
+          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+            {options.map((option) => (
               <TouchableOpacity
                 key={option}
-                style={styles.dropdownOption}
+                style={[styles.dropdownItem, formData[field] === option && styles.selectedItem]}
                 onPress={() => handleDropdownSelect(field, option)}
               >
-                <Text style={styles.dropdownOptionText}>{option}</Text>
+                <Text style={[styles.dropdownItemText, formData[field] === option && styles.selectedText]}>
+                  {option}
+                </Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -260,170 +253,346 @@ const AddHorseScreen = () => {
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.container}>
+      {/* Clean Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <FontAwesome5 name="arrow-left" size={20} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Horse</Text>
-        <View style={styles.placeholder} />
+        <Text style={styles.title}>Add New Horse</Text>
+        <View style={{ width: 40 }} />
       </View>
-      <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-        {/* Image */}
-        <View style={styles.imageSection}>
-          <TouchableOpacity style={styles.imageContainer} onPress={handleImagePicker}>
-            {imageUri ? (
-              <Image source={{ uri: imageUri }} style={styles.imagePlaceholder} />
-            ) : (
-              <View style={styles.imagePlaceholder}>
-                <FontAwesome5 name="user" size={40} color="#ccc" />
-              </View>
-            )}
-            <View style={styles.cameraIcon}>
-              <FontAwesome5 name="camera" size={16} color="#fff" />
-            </View>
-          </TouchableOpacity>
-        </View>
 
-        {/* Form Fields */}
-        <View style={styles.formContainer}>
-          <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Horse Name</Text>
-            <TextInput
-              style={styles.textInput}
-              value={formData.name}
-              onChangeText={value => handleInputChange("name", value)}
-            />
-          </View>
-
-          <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Age</Text>
-            <TextInput
-              style={styles.textInput}
-              value={formData.age}
-              onChangeText={value => handleInputChange("age", value)}
-              keyboardType="numeric"
-            />
-          </View>
-
-          <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Date of Birth</Text>
-            <TouchableOpacity
-              style={styles.dateInputContainer}
-              onPress={() => setShowDatePicker(true)}
-            >
-              <Text style={styles.dateInput}>{formData.dateOfBirth || "YYYY-MM-DD"}</Text>
-              <FontAwesome5 name="calendar-alt" size={16} color="#CD853F" />
+      <KeyboardAvoidingView 
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <ScrollView 
+          style={styles.content} 
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContentContainer}
+        >
+          {/* Photo Section */}
+          <View style={styles.photoSection}>
+            <TouchableOpacity style={styles.photoContainer} onPress={handleImagePicker}>
+              {imageUri ? (
+                <Image source={{ uri: imageUri }} style={styles.photo} />
+              ) : (
+                <View style={styles.photoPlaceholder}>
+                  <FontAwesome5 name="camera" size={24} color="#CD853F" />
+                  <Text style={styles.photoText}>Add Photo</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 
-          {showDatePicker && (
-            <DateTimePicker
-              value={date}
-              mode="date"
-              display={Platform.OS === "ios" ? "spinner" : "default"}
-              onChange={handleDateChange}
-              maximumDate={new Date()}
-            />
-          )}
+          {/* Form */}
+          <View style={styles.form}>
+            {/* Horse Name */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Horse Name</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.name}
+                onChangeText={value => handleInputChange("name", value)}
+                placeholder="Enter horse name"
+                placeholderTextColor="#999"
+                returnKeyType="next"
+              />
+            </View>
 
-          {renderDropdownField("sex", sexOptions)}
-          {renderDropdownField("breed", breedOptions)}
-          {renderDropdownField("color", colorOptions)}
+            {/* Age and Date of Birth */}
+            <View style={styles.row}>
+              <View style={[styles.inputGroup, styles.halfWidth]}>
+                <Text style={styles.label}>Age</Text>
+                <TextInput
+                  style={styles.input}
+                  value={formData.age}
+                  onChangeText={value => handleInputChange("age", value)}
+                  keyboardType="numeric"
+                  placeholder="Years"
+                  placeholderTextColor="#999"
+                  returnKeyType="next"
+                />
+              </View>
+              
+              <View style={[styles.inputGroup, styles.halfWidth]}>
+                <Text style={styles.label}>Date of Birth</Text>
+                <TouchableOpacity
+                  style={styles.dateInput}
+                  onPress={() => setShowDatePicker(true)}
+                >
+                  <Text style={[styles.dateText, !formData.dateOfBirth && styles.placeholder]}>
+                    {formData.dateOfBirth || "YYYY-MM-DD"}
+                  </Text>
+                  <FontAwesome5 name="calendar" size={16} color="#666" />
+                </TouchableOpacity>
+              </View>
+            </View>
 
-          <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Height</Text>
-            <TextInput
-              style={styles.textInput}
-              value={formData.height}
-              onChangeText={value => handleInputChange("height", value)}
-              placeholder="e.g., 15.2 hands"
-            />
+            {showDatePicker && (
+              <DateTimePicker
+                value={date}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={handleDateChange}
+                maximumDate={new Date()}
+              />
+            )}
+
+            {/* Dropdowns */}
+            {renderDropdownField("sex", sexOptions, "Sex")}
+            {renderDropdownField("breed", breedOptions, "Breed")}
+
+            {/* Color Field */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Color</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.color}
+                onChangeText={value => handleInputChange("color", value)}
+                placeholder="e.g., Bay, Black, Chestnut"
+                placeholderTextColor="#999"
+                returnKeyType="next"
+              />
+            </View>
+
+            {/* Height and Weight */}
+            <View style={styles.row}>
+              <View style={[styles.inputGroup, styles.halfWidth]}>
+                <Text style={styles.label}>Height</Text>
+                <TextInput
+                  style={styles.input}
+                  value={formData.height}
+                  onChangeText={value => handleInputChange("height", value)}
+                  placeholder="e.g., 15.2 hands"
+                  placeholderTextColor="#999"
+                  returnKeyType="next"
+                />
+              </View>
+              
+              <View style={[styles.inputGroup, styles.halfWidth]}>
+                <Text style={styles.label}>Weight</Text>
+                <TextInput
+                  style={styles.input}
+                  value={formData.weight}
+                  onChangeText={value => handleInputChange("weight", value)}
+                  placeholder="e.g., 1000 lbs"
+                  placeholderTextColor="#999"
+                  keyboardType="numeric"
+                  returnKeyType="done"
+                />
+              </View>
+            </View>
+
+            {/* Submit Button */}
+            <TouchableOpacity style={styles.submitBtn} onPress={handleAddHorse}>
+              <Text style={styles.submitText}>Add Horse</Text>
+            </TouchableOpacity>
           </View>
-
-          <View style={styles.fieldContainer}>
-            <Text style={styles.fieldLabel}>Weight</Text>
-            <TextInput
-              style={styles.textInput}
-              value={formData.weight}
-              onChangeText={value => handleInputChange("weight", value)}
-              placeholder="e.g., 1000 lbs"
-            />
-          </View>
-
-          <TouchableOpacity style={styles.addButton} onPress={handleAddHorse}>
-            <Text style={styles.addButtonText}>Add Horse</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: "#CD853F" },
+  container: {
+    flex: 1,
+    backgroundColor: '#fff', // Changed to white to match form
+  },
   header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    backgroundColor: '#CD853F',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#fff',
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+  },
+  content: {
+    flex: 1,
+  },
+  scrollContentContainer: {
+    flexGrow: 1,
+  },
+  photoSection: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    backgroundColor: '#fff',
+  },
+  photoContainer: {
+    position: 'relative',
+  },
+  photo: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  photoPlaceholder: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#f8f8f8',
+    borderWidth: 2,
+    borderColor: '#CD853F',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#CD853F',
+    fontWeight: '500',
+  },
+  form: {
+    backgroundColor: '#fff',
     paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: "#CD853F",
+    paddingTop: 24,
+    paddingBottom: 24, // Reduced padding
+    flex: 1, // Makes form fill remaining space
+    minHeight: '100%', // Ensures form covers full height
   },
-  backButton: { padding: 5 },
-  headerTitle: { fontSize: 20, fontWeight: "bold", color: "#fff" },
-  placeholder: { width: 30 },
-  container: { flex: 1, backgroundColor: "#f5f5f5" },
-  imageSection: { alignItems: "center", paddingVertical: 30 },
-  imageContainer: { position: "relative" },
-  imagePlaceholder: {
-    width: 120, height: 120, borderRadius: 60,
-    backgroundColor: "#fff", borderWidth: 2, borderColor: "#ddd",
-    justifyContent: "center", alignItems: "center",
+  inputGroup: {
+    marginBottom: 20,
+    position: 'relative',
+    zIndex: 1,
   },
-  cameraIcon: {
-    position: "absolute", bottom: 5, right: 5,
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: "#333", justifyContent: "center", alignItems: "center",
+  dropdownExpanded: {
+    zIndex: 1000,
+    elevation: 1000,
   },
-  formContainer: { paddingHorizontal: 20, paddingBottom: 40 },
-  fieldContainer: { marginBottom: 20, position: "relative", zIndex: 1 },
-  fieldContainerExpanded: { zIndex: 1000, elevation: 1000 },
-  fieldLabel: { fontSize: 16, color: "#CD853F", marginBottom: 8, fontWeight: "500" },
-  textInput: {
-    borderWidth: 1, borderColor: "#CD853F", borderRadius: 25,
-    paddingHorizontal: 20, paddingVertical: 12, fontSize: 16, backgroundColor: "#fff",
+  label: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#333',
+    marginBottom: 8,
   },
-  dateInputContainer: {
-    flexDirection: "row", alignItems: "center",
-    borderWidth: 1, borderColor: "#CD853F", borderRadius: 25,
-    backgroundColor: "#fff", paddingRight: 15,
+  input: {
+    borderWidth: 1,
+    borderColor: '#CD853F',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    backgroundColor: '#fff',
+    color: '#333',
+    minHeight: 48,
   },
-  dateInput: { flex: 1, paddingHorizontal: 20, paddingVertical: 12, fontSize: 16, color: "#333" },
+  row: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  halfWidth: {
+    flex: 1,
+  },
+  dateInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#CD853F',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    minHeight: 48,
+  },
+  dateText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  placeholder: {
+    color: '#999',
+  },
   dropdown: {
-    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
-    borderWidth: 1, borderColor: "#CD853F", borderRadius: 25,
-    paddingHorizontal: 20, paddingVertical: 12, backgroundColor: "#fff",
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderColor: '#CD853F',
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#fff',
+    minHeight: 48,
   },
-  dropdownActive: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0, borderBottomWidth: 0 },
-  dropdownText: { fontSize: 16, color: "#333" },
-  placeholderText: { color: "#999" },
-  dropdownOptions: {
-    position: "absolute", top: "100%", left: 0, right: 0,
-    backgroundColor: "#fff", borderWidth: 1, borderColor: "#CD853F",
-    borderTopWidth: 0, borderBottomLeftRadius: 25, borderBottomRightRadius: 25,
-    zIndex: 1000, elevation: 1000, maxHeight: 200,
+  dropdownOpen: {
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+    borderBottomWidth: 0,
   },
-  dropdownScrollView: { maxHeight: 200 },
-  dropdownOption: {
-    paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#f0f0f0",
+  dropdownText: {
+    fontSize: 16,
+    color: '#333',
+    flex: 1,
   },
-  dropdownOptionText: { fontSize: 16, color: "#333" },
-  addButton: {
-    backgroundColor: "#CD853F", borderRadius: 25, paddingVertical: 15,
-    alignItems: "center", marginTop: 30,
+  dropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderTopWidth: 0,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
+    maxHeight: 200,
+    zIndex: 1000,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
-  addButtonText: { color: "#fff", fontSize: 18, fontWeight: "bold" },
+  dropdownItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  selectedItem: {
+    backgroundColor: '#f8f8f8',
+  },
+  dropdownItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  selectedText: {
+    color: '#CD853F',
+    fontWeight: '500',
+  },
+  submitBtn: {
+    backgroundColor: '#CD853F',
+    borderRadius: 8,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 24,
+  },
+  submitText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
 });
 
 export default AddHorseScreen;

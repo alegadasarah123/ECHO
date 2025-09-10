@@ -259,23 +259,26 @@ def signup_mobile(request):
 
     elif role == "horse_operator":
         profile_payload = {
-            "operator_id": user_id,
-            "operator_username": username,
-            "operator_fname": request.data.get("firstName"),
-            "operator_mname": request.data.get("middleName"),
-            "operator_lname": request.data.get("lastName"),
-            "operator_dob": request.data.get("dob"),
-            "operator_sex": request.data.get("sex"),
-            "operator_phone_num": request.data.get("phoneNumber"),
-            "operator_province": request.data.get("province"),
-            "operator_city": request.data.get("city"),
-            "operator_municipality": request.data.get("municipality"),
-            "operator_brgy": request.data.get("barangay"),
-            "operator_zipcode": request.data.get("zipCode"),
-            "operator_email": email,
-            "operator_fb": request.data.get("facebook"),
+            "op_id": user_id,
+            "op_fname": request.data.get("firstName"),
+            "op_mname": request.data.get("middleName"),
+            "op_lname": request.data.get("lastName"),
+            "op_dob": request.data.get("dob"),
+            "op_sex": request.data.get("sex"),
+            "op_phone_num": request.data.get("phoneNumber"),
+            "op_province": request.data.get("province", "Cebu"),
+            "op_city": request.data.get("city"),
+            "op_municipality": request.data.get("municipality"),
+            "op_brgy": request.data.get("barangay"),
+            "op_zipcode": request.data.get("zipCode"),
+            "op_house_add": request.data.get("houseAddress"),
+            "op_routefrom": request.data.get("route"),
+            "op_routeto": request.data.get("to"),
+            "op_email": email,
+            "op_fb": request.data.get("facebook"),
+            "op_image": request.data.get("profilePicture"),
         }
-        insert_profile_url = f"{SUPABASE_URL}/rest/v1/horse_operator_profile"
+        insert_profile_url = f"{SUPABASE_URL}/rest/v1/horse_op_profile"
 
     else:
         return Response({"error": "Invalid role selected"}, status=status.HTTP_400_BAD_REQUEST)

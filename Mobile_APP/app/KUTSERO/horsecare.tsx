@@ -105,7 +105,7 @@ interface CareActivity {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.3:8000/api/kutsero"
 
 export default function HorseCareScreen() {
   const router = useRouter()

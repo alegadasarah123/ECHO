@@ -1,4 +1,6 @@
-import { useFocusEffect, useRouter } from 'expo-router'
+"use client"
+
+import { useFocusEffect, useRouter } from "expo-router"
 import { useCallback, useEffect, useState } from "react"
 import {
   Alert,
@@ -77,7 +79,7 @@ interface Horse {
   age?: number
   color?: string
   operatorName?: string
-  assignmentStatus?: 'available' | 'assigned'
+  assignmentStatus?: "available" | "assigned"
   currentAssignmentId?: string
   lastCheckup?: string
   nextCheckup?: string
@@ -104,7 +106,7 @@ interface UserData {
 
 // Reaction types
 interface Reaction {
-  type: 'like' | 'love' | 'haha' | 'wow' | 'sad' | 'angry'
+  type: "like" | "love" | "haha" | "wow" | "sad" | "angry"
   emoji: string
   color: string
   label: string
@@ -112,35 +114,35 @@ interface Reaction {
 
 interface UserReaction {
   userId: string
-  type: Reaction['type']
+  type: Reaction["type"]
 }
 
 const REACTIONS: Reaction[] = [
-  { type: 'like', emoji: '👍', color: '#1877F2', label: 'Like' },
-  { type: 'love', emoji: '❤️', color: '#E2264D', label: 'Love' },
-  { type: 'haha', emoji: '😂', color: '#FFD93D', label: 'Haha' },
-  { type: 'wow', emoji: '😮', color: '#FFD93D', label: 'Wow' },
-  { type: 'sad', emoji: '😢', color: '#FFD93D', label: 'Sad' },
-  { type: 'angry', emoji: '😡', color: '#F25268', label: 'Angry' },
+  { type: "like", emoji: "👍", color: "#1877F2", label: "Like" },
+  { type: "love", emoji: "❤️", color: "#E2264D", label: "Love" },
+  { type: "haha", emoji: "😂", color: "#FFD93D", label: "Haha" },
+  { type: "wow", emoji: "😮", color: "#FFD93D", label: "Wow" },
+  { type: "sad", emoji: "😢", color: "#FFD93D", label: "Sad" },
+  { type: "angry", emoji: "😡", color: "#F25268", label: "Angry" },
 ]
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
+const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
+
 
 export default function DashboardScreen() {
   const router = useRouter()
   const [searchText, setSearchText] = useState("")
   const [showCommentModal, setShowCommentModal] = useState(false)
   const [newComment, setNewComment] = useState("")
-  
+
   // Updated user state management
   const [currentUser, setCurrentUser] = useState("User") // Default fallback
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingHorse, setIsLoadingHorse] = useState(false)
-  
-  // Default horse - will be replaced by backend data
-  const [selectedHorse, setSelectedHorse] = useState<Horse>({
+
+  const defaultHorse: Horse = {
     id: "default",
     name: "No Horse Assigned",
     healthStatus: "Healthy",
@@ -151,20 +153,22 @@ export default function DashboardScreen() {
     operatorName: "N/A",
     lastCheckup: "N/A",
     nextCheckup: "N/A",
-  })
-  
+  }
+
+  const [selectedHorse, setSelectedHorse] = useState<Horse>(defaultHorse)
+
   const [isCheckedIn, setIsCheckedIn] = useState(false)
   const [checkInTime, setCheckInTime] = useState<string | null>(null)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showSOSEmergency, setShowSOSEmergency] = useState(false)
   // Reaction states
   const [reactions, setReactions] = useState<UserReaction[]>([
-    { userId: 'user1', type: 'like' },
-    { userId: 'user2', type: 'love' },
-    { userId: 'user3', type: 'like' },
-    { userId: 'user4', type: 'haha' },
+    { userId: "user1", type: "like" },
+    { userId: "user2", type: "love" },
+    { userId: "user3", type: "like" },
+    { userId: "user4", type: "haha" },
   ])
-  const [userReaction, setUserReaction] = useState<Reaction['type'] | null>(null)
+  const [userReaction, setUserReaction] = useState<Reaction["type"] | null>(null)
   const [showReactionPicker, setShowReactionPicker] = useState(false)
   const [reactionPickerPosition, setReactionPickerPosition] = useState({ x: 0, y: 0 })
   const [reactionPickerScale] = useState(new Animated.Value(0))
@@ -195,7 +199,7 @@ export default function DashboardScreen() {
       // For now, we'll assume token is valid if it exists
       return token.length > 0
     } catch (error) {
-      console.error('Token validation error:', error)
+      console.error("Token validation error:", error)
       return false
     }
   }
@@ -204,11 +208,22 @@ export default function DashboardScreen() {
   const loadCurrentAssignment = async (kutserroId: string) => {
     try {
       setIsLoadingHorse(true)
-      
+
+      const storedHorseData = await SecureStore.getItemAsync("selectedHorseData")
+      if (storedHorseData) {
+        try {
+          const parsedHorseData = JSON.parse(storedHorseData)
+          setSelectedHorse(parsedHorseData)
+          console.log("Loaded horse from SecureStore:", parsedHorseData.name)
+        } catch (parseError) {
+          console.error("Error parsing stored horse data:", parseError)
+        }
+      }
+
       const response = await fetch(`${API_BASE_URL}/current_assignment/?kutsero_id=${kutserroId}`, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       })
 
@@ -226,27 +241,41 @@ export default function DashboardScreen() {
             age: data.assignment.horse.age,
             color: data.assignment.horse.color,
             operatorName: data.assignment.horse.operatorName,
-            assignmentStatus: 'assigned',
+            assignmentStatus: "assigned",
             currentAssignmentId: data.assignment.assignmentId,
             lastCheckup: data.assignment.horse.lastCheckup,
             nextCheckup: data.assignment.horse.nextCheckup,
           }
-          
+
           setSelectedHorse(horse)
-          
-          // Also save to SecureStore
-          await SecureStore.setItemAsync('selectedHorseData', JSON.stringify(horse))
-          
-          console.log('Loaded current horse assignment:', horse.name)
+
+          await SecureStore.setItemAsync("selectedHorseData", JSON.stringify(horse))
+
+          console.log("Loaded current horse assignment from API:", horse.name)
         } else {
-          console.log('No current horse assignment found')
-          // Keep default "No Horse Assigned" state
+          console.log("No current horse assignment found from API")
+          if (!storedHorseData) {
+            setSelectedHorse(defaultHorse)
+          }
         }
       } else {
-        console.log('Failed to fetch current assignment')
+        console.log("Failed to fetch current assignment from API")
+        if (!storedHorseData) {
+          setSelectedHorse(defaultHorse)
+        }
       }
     } catch (error) {
-      console.error('Error loading current assignment:', error)
+      console.error("Error loading current assignment:", error)
+      try {
+        const storedHorseData = await SecureStore.getItemAsync("selectedHorseData")
+        if (storedHorseData && !selectedHorse) {
+          const parsedHorseData = JSON.parse(storedHorseData)
+          setSelectedHorse(parsedHorseData)
+          console.log("Loaded horse from SecureStore as fallback:", parsedHorseData.name)
+        }
+      } catch (fallbackError) {
+        console.error("Error loading horse from SecureStore fallback:", fallbackError)
+      }
     } finally {
       setIsLoadingHorse(false)
     }
@@ -261,27 +290,27 @@ export default function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       loadUserData()
-    }, [])
+    }, []),
   )
 
   const loadUserData = async () => {
     setIsLoading(true)
     try {
       // Get the stored authentication data from SecureStore
-      const storedUserData = await SecureStore.getItemAsync('user_data')
-      const storedAccessToken = await SecureStore.getItemAsync('access_token')
-      
-      console.log('Loading user data...')
-      console.log('Has stored user data:', !!storedUserData)
-      console.log('Has stored access token:', !!storedAccessToken)
-      
+      const storedUserData = await SecureStore.getItemAsync("user_data")
+      const storedAccessToken = await SecureStore.getItemAsync("access_token")
+
+      console.log("Loading user data...")
+      console.log("Has stored user data:", !!storedUserData)
+      console.log("Has stored access token:", !!storedAccessToken)
+
       if (storedUserData && storedAccessToken) {
         const parsedUserData = JSON.parse(storedUserData)
-        
+
         // Validate token
         const isValidToken = await validateAuthToken(storedAccessToken)
         if (!isValidToken) {
-          throw new Error('Invalid token')
+          throw new Error("Invalid token")
         }
 
         // Create a unified user data structure
@@ -290,14 +319,14 @@ export default function DashboardScreen() {
           email: parsedUserData.email,
           profile: parsedUserData.profile,
           access_token: storedAccessToken,
-          user_status: parsedUserData.user_status || 'pending'
+          user_status: parsedUserData.user_status || "pending",
         }
 
         setUserData(unifiedUserData)
-        
+
         // Set display name based on available data
         let displayName = "User" // default fallback
-        
+
         if (parsedUserData.profile) {
           // Use profile data if available
           const { kutsero_fname, kutsero_lname, kutsero_username } = parsedUserData.profile
@@ -310,47 +339,39 @@ export default function DashboardScreen() {
           }
         } else if (parsedUserData.email) {
           // Fallback to user email if no profile
-          displayName = parsedUserData.email.split('@')[0]
+          displayName = parsedUserData.email.split("@")[0]
         }
-        
+
         setCurrentUser(displayName)
-        
+
         // Load current horse assignment from backend
         const kutserroId = parsedUserData.profile?.kutsero_id || parsedUserData.id
         await loadCurrentAssignment(kutserroId)
-        
-        console.log('Successfully loaded user data:', {
+
+        console.log("Successfully loaded user data:", {
           userId: parsedUserData.id,
           email: parsedUserData.email,
           displayName: displayName,
-          status: parsedUserData.user_status
+          status: parsedUserData.user_status,
         })
       } else {
         // No stored auth data - redirect to login
-        console.log('No stored authentication data found')
-        Alert.alert(
-          "Session Expired", 
-          "Please log in again to continue.",
-          [
-            {
-              text: "OK",
-              onPress: () => router.replace('../../pages/auth/login')
-            }
-          ]
-        )
-      }
-    } catch (error) {
-      console.error('Error loading user data:', error)
-      Alert.alert(
-        "Error", 
-        "Failed to load user data. Please log in again.",
-        [
+        console.log("No stored authentication data found")
+        Alert.alert("Session Expired", "Please log in again to continue.", [
           {
             text: "OK",
-            onPress: () => router.replace('../../pages/auth/login')
-          }
-        ]
-      )
+            onPress: () => router.replace("../../pages/auth/login"),
+          },
+        ])
+      }
+    } catch (error) {
+      console.error("Error loading user data:", error)
+      Alert.alert("Error", "Failed to load user data. Please log in again.", [
+        {
+          text: "OK",
+          onPress: () => router.replace("../../pages/auth/login"),
+        },
+      ])
     } finally {
       setIsLoading(false)
     }
@@ -365,18 +386,18 @@ export default function DashboardScreen() {
         onPress: async () => {
           try {
             // Clear all user data from SecureStore
-            await SecureStore.deleteItemAsync('access_token')
-            await SecureStore.deleteItemAsync('refresh_token')
-            await SecureStore.deleteItemAsync('user_data')
-            await SecureStore.deleteItemAsync('selectedHorseData')
-            await SecureStore.deleteItemAsync('checkInData')
-            
-            console.log('User data cleared, navigating to login')
-            router.replace('../../pages/auth/login')
+            await SecureStore.deleteItemAsync("access_token")
+            await SecureStore.deleteItemAsync("refresh_token")
+            await SecureStore.deleteItemAsync("user_data")
+            await SecureStore.deleteItemAsync("selectedHorseData")
+            await SecureStore.deleteItemAsync("checkInData")
+
+            console.log("User data cleared, navigating to login")
+            router.replace("../../pages/auth/login")
           } catch (error) {
-            console.error('Error during logout:', error)
+            console.error("Error during logout:", error)
             // Still navigate even if storage clear fails
-            router.replace('../../pages/auth/login')
+            router.replace("../../pages/auth/login")
           }
         },
       },
@@ -386,7 +407,7 @@ export default function DashboardScreen() {
   // Reaction functions
   const getReactionCounts = () => {
     const counts: { [key: string]: number } = {}
-    reactions.forEach(reaction => {
+    reactions.forEach((reaction) => {
       counts[reaction.type] = (counts[reaction.type] || 0) + 1
     })
     return counts
@@ -399,20 +420,20 @@ export default function DashboardScreen() {
   const getTopReactions = () => {
     const counts = getReactionCounts()
     return Object.entries(counts)
-      .sort(([,a], [,b]) => b - a)
+      .sort(([, a], [, b]) => b - a)
       .slice(0, 3)
-      .map(([type]) => REACTIONS.find(r => r.type === type))
+      .map(([type]) => REACTIONS.find((r) => r.type === type))
       .filter(Boolean) as Reaction[]
   }
 
   const handleReactionPress = (event: any) => {
     if (userReaction) {
       // Remove current reaction
-      setReactions(prev => prev.filter(r => r.userId !== (userData?.id || currentUser)))
+      setReactions((prev) => prev.filter((r) => r.userId !== (userData?.id || currentUser)))
       setUserReaction(null)
     } else {
       // Add like reaction
-      handleReactionSelect('like')
+      handleReactionSelect("like")
     }
   }
 
@@ -422,15 +443,15 @@ export default function DashboardScreen() {
     setShowReactionPicker(true)
   }
 
-  const handleReactionSelect = (reactionType: Reaction['type']) => {
+  const handleReactionSelect = (reactionType: Reaction["type"]) => {
     const userId = userData?.id || currentUser
     // Remove any existing reaction from this user
-    setReactions(prev => prev.filter(r => r.userId !== userId))
-    
+    setReactions((prev) => prev.filter((r) => r.userId !== userId))
+
     // Add new reaction
-    setReactions(prev => [...prev, { userId: userId, type: reactionType }])
+    setReactions((prev) => [...prev, { userId: userId, type: reactionType }])
     setUserReaction(reactionType)
-    
+
     // Hide picker
     hideReactionPicker()
   }
@@ -479,25 +500,33 @@ export default function DashboardScreen() {
 
     try {
       const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      
+
       // Store check-in data in SecureStore
-      await SecureStore.setItemAsync('checkInData', JSON.stringify({
-        horseId: selectedHorse.id,
-        horseName: selectedHorse.name,
-        checkInTime: currentTime,
-        timestamp: Date.now()
-      }))
-      
+      await SecureStore.setItemAsync(
+        "checkInData",
+        JSON.stringify({
+          horseId: selectedHorse.id,
+          horseName: selectedHorse.name,
+          checkInTime: currentTime,
+          timestamp: Date.now(),
+        }),
+      )
+
       setIsCheckedIn(true)
       setCheckInTime(currentTime)
       Alert.alert("Success", `Checked in with ${selectedHorse.name} at ${currentTime}`)
     } catch (error) {
-      console.error('Error during check-in:', error)
+      console.error("Error during check-in:", error)
       Alert.alert("Error", "Failed to check in. Please try again.")
     }
   }
 
   const handleCheckOut = async () => {
+    if (!selectedHorse.currentAssignmentId) {
+      Alert.alert("Error", "No active assignment found. Cannot check out.")
+      return
+    }
+
     const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     Alert.alert(
       "Check Out Confirmation",
@@ -508,15 +537,39 @@ export default function DashboardScreen() {
           text: "Check Out",
           onPress: async () => {
             try {
-              // Clear check-in data from SecureStore
-              await SecureStore.deleteItemAsync('checkInData')
-              
-              setIsCheckedIn(false)
-              setCheckInTime(null)
-              Alert.alert("Success", `Successfully checked out from ${selectedHorse.name}`)
+              const kutserroId = await SecureStore.getItemAsync("kutseroId")
+
+              const response = await fetch(`${API_BASE_URL}/checkout/`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  assignment_id: selectedHorse.currentAssignmentId,
+                  kutsero_id: kutserroId,
+                }),
+              })
+
+              if (response.ok) {
+                const data = await response.json()
+
+                // Clear check-in data from SecureStore only after successful API call
+                await SecureStore.deleteItemAsync("checkInData")
+
+                // Update local state
+                setIsCheckedIn(false)
+                setCheckInTime(null)
+
+                setSelectedHorse(defaultHorse)
+
+                Alert.alert("Success", data.message || `Successfully checked out from ${selectedHorse.name}`)
+              } else {
+                const errorData = await response.json()
+                Alert.alert("Checkout Failed", errorData.error || "Failed to check out. Please try again.")
+              }
             } catch (error) {
-              console.error('Error during check-out:', error)
-              Alert.alert("Error", "Failed to check out. Please try again.")
+              console.error("Error during check-out:", error)
+              Alert.alert("Error", "Failed to check out. Please check your internet connection and try again.")
             }
           },
         },
@@ -528,7 +581,7 @@ export default function DashboardScreen() {
   useEffect(() => {
     const loadCheckInStatus = async () => {
       try {
-        const checkInData = await SecureStore.getItemAsync('checkInData')
+        const checkInData = await SecureStore.getItemAsync("checkInData")
         if (checkInData) {
           const data = JSON.parse(checkInData)
           if (data.horseId === selectedHorse.id) {
@@ -537,7 +590,7 @@ export default function DashboardScreen() {
           }
         }
       } catch (error) {
-        console.log('Error loading check-in status:', error)
+        console.log("Error loading check-in status:", error)
       }
     }
 
@@ -591,15 +644,15 @@ export default function DashboardScreen() {
           if (tabKey === "home") {
             // Stay on dashboard - already here
           } else if (tabKey === "horse") {
-            router.push('./horsecare')
+            router.push("./horsecare")
           } else if (tabKey === "chat") {
-            router.push('./messages')
+            router.push("./messages")
           } else if (tabKey === "calendar") {
-            router.push('./calendar')
+            router.push("./calendar")
           } else if (tabKey === "history") {
-            router.push('./history')
+            router.push("./history")
           } else if (tabKey === "profile") {
-            router.push('./profile')
+            router.push("./profile")
           }
         }
       }}
@@ -694,22 +747,20 @@ export default function DashboardScreen() {
 
   const topReactions = getTopReactions()
   const totalReactions = getTotalReactionCount()
-  const currentUserReactionObj = userReaction ? REACTIONS.find(r => r.type === userReaction) : null
+  const currentUserReactionObj = userReaction ? REACTIONS.find((r) => r.type === userReaction) : null
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-      
+
       {/* Header Section */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
         <View style={styles.headerTop}>
           <View style={styles.welcomeSection}>
             <Text style={styles.welcomeText}>Welcome,</Text>
             <Text style={styles.userName}>{currentUser}</Text>
-            {userData?.profile?.kutsero_email && (
-              <Text style={styles.userEmail}>{userData.profile.kutsero_email}</Text>
-            )}
-            {userData?.user_status === 'pending' && (
+            {userData?.profile?.kutsero_email && <Text style={styles.userEmail}>{userData.profile.kutsero_email}</Text>}
+            {userData?.user_status === "pending" && (
               <Text style={styles.statusText}>Account Status: Pending Approval</Text>
             )}
           </View>
@@ -726,10 +777,7 @@ export default function DashboardScreen() {
                 </View>
               )}
             </TouchableOpacity>
-            <TouchableOpacity 
-              style={styles.sosButton}
-              onPress={() => setShowSOSEmergency(true)}
-            >
+            <TouchableOpacity style={styles.sosButton} onPress={() => setShowSOSEmergency(true)}>
               <Image source={require("../../assets/images/sos.png")} style={styles.sosIcon} resizeMode="contain" />
             </TouchableOpacity>
             <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
@@ -737,7 +785,7 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
         </View>
-        
+
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <TextInput
@@ -768,9 +816,7 @@ export default function DashboardScreen() {
           <View style={styles.horseSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Horse Assignment</Text>
-              {isLoadingHorse && (
-                <ActivityIndicator size="small" color="#C17A47" />
-              )}
+              {isLoadingHorse && <ActivityIndicator size="small" color="#C17A47" />}
             </View>
             <View style={styles.horseCard}>
               <View style={styles.horseImageContainer}>
@@ -807,7 +853,7 @@ export default function DashboardScreen() {
               {selectedHorse.id !== "default" ? (
                 <>
                   <Text style={styles.reminderText}>Remember to check-out your horse at the end of the day</Text>
-                  
+
                   {/* Check In/Out Buttons */}
                   <View style={styles.checkInOutContainer}>
                     {!isCheckedIn ? (
@@ -829,12 +875,9 @@ export default function DashboardScreen() {
               ) : (
                 <Text style={styles.reminderText}>Select a horse to start working</Text>
               )}
-              
+
               {/* Change/Select Horse Button */}
-              <TouchableOpacity
-                style={styles.changeHorseButton}
-                onPress={() => router.push('./horseselection')}
-              >
+              <TouchableOpacity style={styles.changeHorseButton} onPress={() => router.push("./horseselection")}>
                 <Text style={styles.changeHorseButtonText}>
                   {selectedHorse.id === "default" ? "Select Horse" : "Change Horse"}
                 </Text>
@@ -864,13 +907,16 @@ export default function DashboardScreen() {
                 Medicine and Pathology is committed to providing exceptional veterinary care and advancing the field
                 through research, education, and clinical excellence.
               </Text>
-              
+
               {/* Reaction Summary */}
               {totalReactions > 0 && (
                 <View style={styles.reactionSummary}>
                   <View style={styles.reactionEmojis}>
                     {topReactions.map((reaction, index) => (
-                      <View key={reaction.type} style={[styles.reactionEmojiContainer, { zIndex: topReactions.length - index }]}>
+                      <View
+                        key={reaction.type}
+                        style={[styles.reactionEmojiContainer, { zIndex: topReactions.length - index }]}
+                      >
                         <Text style={styles.reactionEmojiSmall}>{reaction.emoji}</Text>
                       </View>
                     ))}
@@ -880,9 +926,9 @@ export default function DashboardScreen() {
                   </Text>
                 </View>
               )}
-              
+
               <View style={styles.activityActions}>
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={styles.actionButton}
                   onPress={handleReactionPress}
                   onLongPress={handleReactionLongPress}
@@ -906,7 +952,7 @@ export default function DashboardScreen() {
                     </>
                   )}
                 </TouchableOpacity>
-                
+
                 <TouchableOpacity style={styles.actionButton} onPress={handleComment}>
                   <Image
                     source={require("../../assets/images/comment.png")}
@@ -929,12 +975,7 @@ export default function DashboardScreen() {
             tabKey="horse"
             isActive={false}
           />
-          <TabButton
-            iconSource={require("../../assets/images/chat.png")}
-            label="Chat"
-            tabKey="chat"
-            isActive={false}
-          />
+          <TabButton iconSource={require("../../assets/images/chat.png")} label="Chat" tabKey="chat" isActive={false} />
           <TabButton
             iconSource={require("../../assets/images/calendar.png")}
             label="Calendar"
@@ -947,12 +988,7 @@ export default function DashboardScreen() {
             tabKey="history"
             isActive={false}
           />
-          <TabButton
-            iconSource={null}
-            label="Profile"
-            tabKey="profile"
-            isActive={false}
-          />
+          <TabButton iconSource={null} label="Profile" tabKey="profile" isActive={false} />
         </View>
       </View>
 

@@ -1,18 +1,20 @@
-import * as SecureStore from 'expo-secure-store'
-import { useRouter } from 'expo-router'
-import { useEffect, useState } from "react"
+"use client"
+
+import * as SecureStore from "expo-secure-store"
+import { useRouter, useFocusEffect } from "expo-router"
+import { useEffect, useState, useCallback } from "react"
 import {
-    Alert,
-    Dimensions,
-    Image,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    ActivityIndicator
+  Alert,
+  Dimensions,
+  Image,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  ActivityIndicator,
 } from "react-native"
 
 const { width, height } = Dimensions.get("window")
@@ -60,10 +62,15 @@ interface Horse {
   age?: number
   color?: string
   operatorName?: string
-  assignmentStatus?: 'available' | 'assigned'
+  ownerName?: string
+  opName?: string
+  assignmentStatus?: "available" | "assigned"
   currentAssignmentId?: string
   lastCheckup?: string
   nextCheckup?: string
+  assignmentId?: string
+  checkedInAt?: string
+  checkedOutAt?: string
 }
 
 interface UserData {
@@ -81,26 +88,26 @@ interface UserData {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
+const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
 
 // Helper function to test API connectivity
 const testAPIConnection = async () => {
   try {
     const response = await fetch(`${API_BASE_URL}/test/`, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
     })
-    
+
     if (response.ok) {
       const data = await response.json()
-      console.log('✅ Backend connection successful:', data)
+      console.log("Backend connection successful:", data)
       return true
     } else {
-      console.error('❌ Backend connection failed:', response.status, response.statusText)
+      console.error("Backend connection failed:", response.status, response.statusText)
       return false
     }
   } catch (error) {
-    console.error('❌ Backend connection error:', error)
+    console.error("Backend connection error:", error)
     return false
   }
 }
@@ -117,31 +124,41 @@ export default function HorseSelectionScreen() {
     total: 0,
     healthy: 0,
     underCare: 0,
-    recovering: 0
+    recovering: 0,
   })
   const safeArea = getSafeAreaPadding()
 
-  // Load user data and horses
+  // Load user data and horses on mount
   useEffect(() => {
     loadUserDataAndHorses()
   }, [])
 
+  // FIXED: Use useFocusEffect for proper screen focus handling
+  useFocusEffect(
+    useCallback(() => {
+      console.log("Screen focused, refreshing data...")
+      if (userData) {
+        refreshData()
+      }
+    }, [userData]),
+  )
+
   const loadUserDataAndHorses = async () => {
     try {
       setIsLoading(true)
-      
+
       // Test API connection first
-      console.log('🔗 Testing backend connection...')
+      console.log("Testing backend connection...")
       const isConnected = await testAPIConnection()
       if (!isConnected) {
         Alert.alert("Connection Error", "Cannot connect to the backend server. Please check if the server is running.")
         return
       }
-      
+
       // Load user data from SecureStore
-      const storedUserData = await SecureStore.getItemAsync('user_data')
-      const storedAccessToken = await SecureStore.getItemAsync('access_token')
-      
+      const storedUserData = await SecureStore.getItemAsync("user_data")
+      const storedAccessToken = await SecureStore.getItemAsync("access_token")
+
       if (storedUserData && storedAccessToken) {
         const parsedUserData = JSON.parse(storedUserData)
         const unifiedUserData: UserData = {
@@ -151,158 +168,222 @@ export default function HorseSelectionScreen() {
           access_token: storedAccessToken,
         }
         setUserData(unifiedUserData)
-        console.log('User data loaded:', unifiedUserData)
-        
-        // Load current assignment and available horses
-        await loadCurrentAssignment(unifiedUserData.profile?.kutsero_id || unifiedUserData.id)
+        console.log("User data loaded:", unifiedUserData)
+
+        // Load available horses first, then current assignment
         await loadAvailableHorses()
+        await loadCurrentAssignment(unifiedUserData.profile?.kutsero_id || unifiedUserData.id)
       } else {
         Alert.alert("Error", "User session not found. Please login again.")
       }
     } catch (error) {
-      console.error('Error loading user data and horses:', error)
+      console.error("Error loading user data and horses:", error)
       Alert.alert("Error", "Failed to load data. Please try again.")
     } finally {
       setIsLoading(false)
     }
   }
 
+  // FIXED: Updated loadCurrentAssignment function
   const loadCurrentAssignment = async (kutserroId: string) => {
     try {
-      console.log('Loading current assignment for kutsero ID:', kutserroId)
+      console.log("Loading current assignment for kutsero ID:", kutserroId)
       const response = await fetch(`${API_BASE_URL}/current_assignment/?kutsero_id=${kutserroId}`, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       })
 
-      console.log('Current assignment response status:', response.status)
+      console.log("Current assignment response status:", response.status)
 
       if (response.ok) {
         const data = await response.json()
-        console.log('Current assignment data:', data)
-        
+        console.log("Current assignment data:", data)
+
         if (data.assignment && data.assignment.horse) {
-          // Transform the horse data to match our interface
           const horse: Horse = {
             id: data.assignment.horse.id,
             name: data.assignment.horse.name,
             healthStatus: data.assignment.horse.healthStatus as Horse["healthStatus"],
             status: data.assignment.horse.status,
-            image: require("../../assets/images/horse.png"), // Default image
+            image: require("../../assets/images/horse.png"),
             breed: data.assignment.horse.breed,
             age: data.assignment.horse.age,
             color: data.assignment.horse.color,
-            operatorName: data.assignment.horse.operatorName,
-            assignmentStatus: 'assigned',
+            operatorName:
+              data.assignment.horse.operatorName || data.assignment.horse.opName || data.assignment.horse.ownerName,
+            ownerName:
+              data.assignment.horse.ownerName || data.assignment.horse.opName || data.assignment.horse.operatorName,
+            opName: data.assignment.horse.opName,
+            assignmentStatus: "assigned",
             currentAssignmentId: data.assignment.assignmentId,
             lastCheckup: data.assignment.horse.lastCheckup,
             nextCheckup: data.assignment.horse.nextCheckup,
           }
+
           setSelectedHorse(horse)
-          
-          // Also save to SecureStore for dashboard
-          await SecureStore.setItemAsync('selectedHorseData', JSON.stringify(horse))
+
+          // Update the availableHorses array to reflect this assignment
+          setAvailableHorses((prevHorses) =>
+            prevHorses.map((h) =>
+              h.id === horse.id
+                ? { ...h, assignmentStatus: "assigned", currentAssignmentId: data.assignment.assignmentId }
+                : h,
+            ),
+          )
+
+          // FIXED: Save complete horse data structure to SecureStore
+          const horseDataToStore = {
+            ...horse,
+            assignmentId: data.assignment.assignmentId,
+            checkedInAt: data.assignment.checkedInAt,
+            checkedOutAt: data.assignment.checkedOutAt,
+          }
+
+          await SecureStore.setItemAsync("selectedHorseData", JSON.stringify(horseDataToStore))
+          await SecureStore.setItemAsync("currentAssignmentId", data.assignment.assignmentId)
+
+          console.log("Current assignment loaded and saved to SecureStore:", horse.name)
+        } else {
+          // No current assignment
+          setSelectedHorse(null)
+
+          // Clear SecureStore
+          try {
+            await SecureStore.deleteItemAsync("selectedHorseData")
+            await SecureStore.deleteItemAsync("currentAssignmentId")
+          } catch (clearError) {
+            console.log("No data to clear from SecureStore")
+          }
+
+          console.log("No current assignment found, cleared SecureStore")
         }
       } else {
-        console.log('No current assignment found or error:', response.status)
+        console.log("No current assignment found or error:", response.status)
+        setSelectedHorse(null)
+        try {
+          await SecureStore.deleteItemAsync("selectedHorseData")
+          await SecureStore.deleteItemAsync("currentAssignmentId")
+        } catch (clearError) {
+          console.log("No data to clear from SecureStore")
+        }
       }
     } catch (error) {
-      console.error('Error loading current assignment:', error)
+      console.error("Error loading current assignment:", error)
     }
   }
 
   const loadAvailableHorses = async () => {
     try {
-      console.log('Attempting to fetch horses from:', `${API_BASE_URL}/available_horses/`)
-      
+      console.log("Attempting to fetch horses from:", `${API_BASE_URL}/available_horses/`)
+
       const response = await fetch(`${API_BASE_URL}/available_horses/`, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
       })
 
-      console.log('Response status:', response.status)
-      console.log('Response ok:', response.ok)
+      console.log("Response status:", response.status)
+      console.log("Response ok:", response.ok)
 
       if (response.ok) {
         const data = await response.json()
-        console.log('Received horses data:', data)
-        
-        // Transform horses data
+        console.log("Received horses data:", data)
+
+        // Transform horses data with proper owner name mapping
         const horses: Horse[] = data.horses.map((horse: any) => ({
           id: horse.id,
           name: horse.name,
           healthStatus: horse.healthStatus as Horse["healthStatus"],
           status: horse.status,
-          image: require("../../assets/images/horse.png"), // Default image for now
+          image: require("../../assets/images/horse.png"),
           breed: horse.breed,
           age: horse.age,
           color: horse.color,
-          operatorName: horse.operatorName,
+          operatorName: horse.operatorName || horse.opName || horse.ownerName || "Unknown Owner",
+          ownerName: horse.ownerName || horse.opName || horse.operatorName || "Unknown Owner",
+          opName: horse.opName,
           assignmentStatus: horse.assignmentStatus,
           currentAssignmentId: horse.currentAssignmentId,
           lastCheckup: horse.lastCheckup,
           nextCheckup: horse.nextCheckup,
         }))
-        
+
         setAvailableHorses(horses)
-        
+
         // Update stats
         setStatsData({
           total: data.total_count || horses.length,
-          healthy: horses.filter(h => h.healthStatus === 'Healthy').length,
-          underCare: horses.filter(h => h.healthStatus === 'Under Care').length,
-          recovering: horses.filter(h => h.healthStatus === 'Recovering').length,
+          healthy: horses.filter((h) => h.healthStatus === "Healthy").length,
+          underCare: horses.filter((h) => h.healthStatus === "Under Care").length,
+          recovering: horses.filter((h) => h.healthStatus === "Recovering").length,
         })
       } else {
-        // Get more detailed error information
-        let errorMessage = 'Failed to fetch horses'
+        let errorMessage = "Failed to fetch horses"
         try {
-          // Clone the response to avoid "Already read" error
           const responseClone = response.clone()
           const errorData = await response.json()
           errorMessage = errorData.error || errorMessage
-          console.error('Server error response:', errorData)
+          console.error("Server error response:", errorData)
         } catch (e) {
-          console.error('Could not parse error response as JSON:', errorMessage)
+          console.error("Could not parse error response as JSON:", errorMessage)
           try {
-            // Use the cloned response for text parsing
             const errorText = await response.text()
-            console.error('Raw error response:', errorText)
+            console.error("Raw error response:", errorText)
             errorMessage = `HTTP ${response.status}: ${response.statusText}`
           } catch (textError) {
-            console.error('Could not read response as text either')
+            console.error("Could not read response as text either")
             errorMessage = `HTTP ${response.status}: ${response.statusText}`
           }
         }
         throw new Error(errorMessage)
       }
     } catch (error) {
-      console.error('Error loading horses:', error)
-      
-      // Provide more specific error messages
-      let userMessage = 'Failed to load horses. Please try again.'
-      
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        userMessage = 'Cannot connect to server. Please check your internet connection and make sure the backend server is running.'
+      console.error("Error loading horses:", error)
+
+      let userMessage = "Failed to load horses. Please try again."
+
+      if (error instanceof TypeError && error.message.includes("fetch")) {
+        userMessage =
+          "Cannot connect to server. Please check your internet connection and make sure the backend server is running."
       } else if (error instanceof Error) {
         userMessage = error.message
       }
-      
+
       Alert.alert("Error", userMessage)
     }
   }
 
-  // Filter horses based on search and availability
-  const filteredHorses = availableHorses.filter(horse =>
-    (horse.name.toLowerCase().includes(searchText.toLowerCase()) ||
-     horse.breed?.toLowerCase().includes(searchText.toLowerCase()) ||
-     horse.operatorName?.toLowerCase().includes(searchText.toLowerCase())) &&
-    horse.assignmentStatus === 'available'
-  )
+  // Add a refresh function that can be called when returning to the screen
+  const refreshData = async () => {
+    setIsLoading(true)
+    try {
+      const kutserroId = userData?.profile?.kutsero_id || userData?.id
+      if (kutserroId) {
+        await loadAvailableHorses()
+        await loadCurrentAssignment(kutserroId)
+      }
+    } catch (error) {
+      console.error("Error refreshing data:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Updated filtering logic - show ALL horses but handle assignment status in the UI
+  const filteredHorses = availableHorses.filter((horse) => {
+    const searchLower = searchText.toLowerCase()
+    const matchesSearch =
+      horse.name.toLowerCase().includes(searchLower) ||
+      horse.breed?.toLowerCase().includes(searchLower) ||
+      horse.operatorName?.toLowerCase().includes(searchLower) ||
+      horse.ownerName?.toLowerCase().includes(searchLower) ||
+      horse.opName?.toLowerCase().includes(searchLower)
+
+    return matchesSearch
+  })
 
   const handleHorseSelection = async (horse: Horse) => {
     if (!userData?.profile?.kutsero_id && !userData?.id) {
@@ -310,82 +391,146 @@ export default function HorseSelectionScreen() {
       return
     }
 
+    // Check if this horse is already assigned to someone else (not the current user)
+    if (horse.assignmentStatus === "assigned" && selectedHorse?.id !== horse.id) {
+      Alert.alert(
+        "Horse Unavailable",
+        "This horse is currently assigned to another kutsero. Please select a different horse.",
+      )
+      return
+    }
+
+    // If user already has a horse assigned and it's different from the selected one
+    if (selectedHorse && selectedHorse.id !== horse.id) {
+      Alert.alert(
+        "Switch Horse Assignment",
+        `You currently have ${selectedHorse.name} assigned. Selecting ${horse.name} will automatically end your current assignment and start a new one. Do you want to continue?`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Switch Horse", onPress: () => performHorseAssignment(horse) },
+        ],
+      )
+    } else if (selectedHorse && selectedHorse.id === horse.id) {
+      // User clicked on their currently assigned horse - no action needed
+      Alert.alert("Already Assigned", `${horse.name} is already assigned to you.`)
+    } else {
+      // No current assignment, proceed directly
+      performHorseAssignment(horse)
+    }
+  }
+
+  // FIXED: Updated performHorseAssignment to properly handle state updates
+  const performHorseAssignment = async (horse: Horse) => {
     setIsAssigning(true)
-    
+
     try {
-      console.log('Assigning horse:', horse.name, 'to kutsero:', userData.profile?.kutsero_id || userData.id)
-      
-      // First, end any existing assignment
-      if (selectedHorse?.currentAssignmentId) {
-        console.log('Ending existing assignment:', selectedHorse.currentAssignmentId)
-        const endResponse = await fetch(`${API_BASE_URL}/end_assignment/${selectedHorse.currentAssignmentId}/`, {
-          method: 'DELETE',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        })
-        
-        if (!endResponse.ok) {
-          console.warn('Failed to end existing assignment, continuing with new assignment')
-        }
-      }
+      const kutserroId = userData?.profile?.kutsero_id || userData?.id
+      console.log("Assigning horse:", horse.name, "to kutsero:", kutserroId)
 
-      // Create new assignment
+      // Store the previous horse ID before assignment
+      const previousHorseId = selectedHorse?.id
+
       const assignmentData = {
-        kutsero_id: userData.profile?.kutsero_id || userData.id,
+        kutsero_id: kutserroId,
         horse_id: horse.id,
-        date_start: new Date().toISOString().split('T')[0], // Today's date
-        // date_end will be null for indefinite assignment
+        date_start: new Date().toISOString(), // FIXED: Use full ISO string
+        force_switch: true,
       }
 
-      console.log('Creating new assignment with data:', assignmentData)
+      console.log("Creating assignment with data:", assignmentData)
 
       const response = await fetch(`${API_BASE_URL}/assign_horse/`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(assignmentData),
       })
 
-      console.log('Assignment response status:', response.status)
+      console.log("Assignment response status:", response.status)
 
       if (response.ok) {
         const result = await response.json()
-        console.log('Assignment successful:', result)
-        
-        // Update the selected horse
+        console.log("Assignment successful:", result)
+
+        // FIXED: Create the updated horse object from API response
         const updatedHorse: Horse = {
-          ...horse,
-          assignmentStatus: 'assigned',
-          currentAssignmentId: result.assignment.assign_id,
+          id: result.horse.id,
+          name: result.horse.name,
+          healthStatus: result.horse.healthStatus as Horse["healthStatus"],
+          status: result.horse.status,
+          image: require("../../assets/images/horse.png"),
+          breed: result.horse.breed,
+          age: result.horse.age,
+          color: result.horse.color,
+          operatorName: result.horse.operatorName || result.horse.opName || result.horse.ownerName,
+          ownerName: result.horse.ownerName || result.horse.opName || result.horse.operatorName,
+          opName: result.horse.opName,
+          assignmentStatus: "assigned",
+          currentAssignmentId: result.assignment.assign_id, // FIXED: Use correct field
+          lastCheckup: result.horse.lastCheckup,
+          nextCheckup: result.horse.nextCheckup,
         }
-        
+
+        // Update state properly
         setSelectedHorse(updatedHorse)
-        
-        // Save to SecureStore for dashboard
-        await SecureStore.setItemAsync('selectedHorseData', JSON.stringify(updatedHorse))
-        
-        // Reload horses to update the list
-        await loadAvailableHorses()
-        
-        Alert.alert(
-          "Horse Assigned Successfully",
-          `${horse.name} has been assigned to you for work.`,
-          [
-            {
-              text: "OK",
-              onPress: () => router.back()
+
+        // Update the availableHorses array to reflect the assignment changes
+        setAvailableHorses((prevHorses) =>
+          prevHorses.map((h) => {
+            if (h.id === horse.id) {
+              // Mark the newly selected horse as assigned
+              return { ...h, assignmentStatus: "assigned", currentAssignmentId: result.assignment.assign_id }
+            } else if (previousHorseId && h.id === previousHorseId) {
+              // Mark the previously assigned horse as available again
+              return { ...h, assignmentStatus: "available", currentAssignmentId: undefined }
             }
-          ]
+            return h
+          }),
         )
+
+        // FIXED: Save complete horse data structure to SecureStore
+        const horseDataToStore = {
+          ...updatedHorse,
+          assignmentId: result.assignment.assign_id,
+          checkedInAt: result.assignment.date_start,
+          checkedOutAt: result.assignment.date_end,
+        }
+
+        await SecureStore.setItemAsync("selectedHorseData", JSON.stringify(horseDataToStore))
+        await SecureStore.setItemAsync("currentAssignmentId", result.assignment.assign_id)
+
+        console.log("Horse assignment saved to SecureStore:", updatedHorse.name)
+
+        const switchMessage =
+          result.previous_assignments_ended > 0
+            ? `Your previous assignment has been ended automatically. ${horse.name} is now assigned to you for work.`
+            : `${horse.name} has been assigned to you for work.`
+
+        Alert.alert("Horse Assigned Successfully", switchMessage, [
+          {
+            text: "OK",
+            onPress: () => {
+              console.log("Navigating back after successful assignment")
+              router.back()
+            },
+          },
+        ])
       } else {
         const errorData = await response.json()
-        console.error('Assignment failed:', errorData)
-        Alert.alert("Assignment Failed", errorData.error || "Failed to assign horse")
+        console.error("Assignment failed:", errorData)
+
+        if (errorData.error?.includes("already assigned to another kutsero")) {
+          Alert.alert(
+            "Assignment Failed",
+            "This horse is currently assigned to another kutsero. Please select a different horse.",
+          )
+        } else {
+          Alert.alert("Assignment Failed", errorData.error || "Failed to assign horse")
+        }
       }
     } catch (error) {
-      console.error('Error assigning horse:', error)
+      console.error("Error assigning horse:", error)
       Alert.alert("Error", "Failed to assign horse. Please check your connection and try again.")
     } finally {
       setIsAssigning(false)
@@ -405,6 +550,11 @@ export default function HorseSelectionScreen() {
     }
   }
 
+  // Helper function to get owner name with fallback
+  const getOwnerName = (horse: Horse) => {
+    return horse.operatorName || horse.ownerName || horse.opName || "Unknown Owner"
+  }
+
   if (isLoading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
@@ -418,27 +568,32 @@ export default function HorseSelectionScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-      
+
       {/* Header */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
         <View style={styles.headerContent}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.backButton}
-            onPress={() => router.back()}
+            onPress={() => {
+              console.log("Back button pressed, navigating back")
+              router.back()
+            }}
           >
             <Text style={styles.backButtonText}>←</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Select Horse</Text>
-          <View style={styles.headerSpacer} />
+          <TouchableOpacity style={styles.refreshButton} onPress={refreshData}>
+            <Text style={styles.refreshButtonText}>↻</Text>
+          </TouchableOpacity>
         </View>
-        
+
         {/* Search Bar */}
         <View style={styles.searchContainer}>
           <TextInput
             style={styles.searchInput}
             value={searchText}
             onChangeText={setSearchText}
-            placeholder="Search horses by name, breed, or operator..."
+            placeholder="Search horses by name, breed, or owner..."
             placeholderTextColor="#999"
           />
           <TouchableOpacity style={styles.searchButton}>
@@ -460,21 +615,15 @@ export default function HorseSelectionScreen() {
             <Text style={styles.statLabel}>Total Horses</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: "#4CAF50" }]}>
-              {statsData.healthy}
-            </Text>
+            <Text style={[styles.statNumber, { color: "#4CAF50" }]}>{statsData.healthy}</Text>
             <Text style={styles.statLabel}>Healthy</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: "#FF9800" }]}>
-              {statsData.underCare}
-            </Text>
+            <Text style={[styles.statNumber, { color: "#FF9800" }]}>{statsData.underCare}</Text>
             <Text style={styles.statLabel}>Under Care</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: "#2196F3" }]}>
-              {statsData.recovering}
-            </Text>
+            <Text style={[styles.statNumber, { color: "#2196F3" }]}>{statsData.recovering}</Text>
             <Text style={styles.statLabel}>Recovering</Text>
           </View>
         </View>
@@ -493,11 +642,20 @@ export default function HorseSelectionScreen() {
               </View>
               <View style={styles.currentHorseInfo}>
                 <Text style={styles.currentHorseName}>{selectedHorse.name}</Text>
-                <Text style={styles.currentHorseBreed}>{selectedHorse.breed} • {selectedHorse.age} years</Text>
-                <Text style={styles.currentHorseOperator}>Owner: {selectedHorse.operatorName}</Text>
+                <Text style={styles.currentHorseBreed}>
+                  {selectedHorse.breed} • {selectedHorse.age} years
+                </Text>
+                <Text style={styles.currentHorseOperator}>Owner: {getOwnerName(selectedHorse)}</Text>
                 <View style={styles.currentHorseHealthRow}>
-                  <View style={[styles.currentHorseHealthDot, { backgroundColor: getHealthStatusColor(selectedHorse.healthStatus) }]} />
-                  <Text style={[styles.currentHorseHealthText, { color: getHealthStatusColor(selectedHorse.healthStatus) }]}>
+                  <View
+                    style={[
+                      styles.currentHorseHealthDot,
+                      { backgroundColor: getHealthStatusColor(selectedHorse.healthStatus) },
+                    ]}
+                  />
+                  <Text
+                    style={[styles.currentHorseHealthText, { color: getHealthStatusColor(selectedHorse.healthStatus) }]}
+                  >
                     {selectedHorse.healthStatus}
                   </Text>
                 </View>
@@ -511,74 +669,94 @@ export default function HorseSelectionScreen() {
 
         {/* Available Horses List */}
         <View style={styles.horsesListContainer}>
-          <Text style={styles.horsesListTitle}>
-            Available Horses ({filteredHorses.length})
-          </Text>
-                    
-          <ScrollView 
+          <Text style={styles.horsesListTitle}>All Horses ({filteredHorses.length})</Text>
+
+          <ScrollView
             style={styles.horsesList}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.horsesListContent}
           >
-            {filteredHorses.map((horse) => (
-              <TouchableOpacity 
-                key={horse.id}
-                style={[
-                  styles.horseItem,
-                  selectedHorse?.id === horse.id && styles.selectedHorseItem
-                ]}
-                onPress={() => handleHorseSelection(horse)}
-                activeOpacity={0.7}
-                disabled={isAssigning || horse.assignmentStatus === 'assigned'}
-              >
-                <View style={styles.horseAvatar}>
-                  <Image
-                    source={horse.image}
-                    style={[styles.horseIconImage, { tintColor: "#C17A47" }]}
-                    resizeMode="contain"
-                  />
-                </View>
-                <View style={styles.horseInfo}>
-                  <View style={styles.horseHeader}>
-                    <Text style={styles.horseName}>{horse.name}</Text>
-                    {horse.assignmentStatus === 'assigned' && (
-                      <View style={styles.assignedBadge}>
-                        <Text style={styles.assignedBadgeText}>Assigned</Text>
+            {filteredHorses.map((horse) => {
+              // Determine if this horse is assigned to someone else (not current user)
+              const isAssignedToOther = horse.assignmentStatus === "assigned" && selectedHorse?.id !== horse.id
+              const isCurrentlySelected = selectedHorse?.id === horse.id
+
+              return (
+                <TouchableOpacity
+                  key={horse.id}
+                  style={[
+                    styles.horseItem,
+                    isCurrentlySelected && styles.selectedHorseItem,
+                    isAssignedToOther && styles.unavailableHorseItem,
+                  ]}
+                  onPress={() => handleHorseSelection(horse)}
+                  activeOpacity={0.7}
+                  disabled={isAssigning}
+                >
+                  <View style={styles.horseAvatar}>
+                    <Image
+                      source={horse.image}
+                      style={[styles.horseIconImage, { tintColor: isAssignedToOther ? "#999" : "#C17A47" }]}
+                      resizeMode="contain"
+                    />
+                  </View>
+                  <View style={styles.horseInfo}>
+                    <View style={styles.horseHeader}>
+                      <Text style={[styles.horseName, isAssignedToOther && styles.unavailableText]}>{horse.name}</Text>
+                      {isAssignedToOther && (
+                        <View style={styles.assignedBadge}>
+                          <Text style={styles.assignedBadgeText}>Assigned</Text>
+                        </View>
+                      )}
+                      {isCurrentlySelected && (
+                        <View style={styles.currentBadge}>
+                          <Text style={styles.currentBadgeText}>Current</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={[styles.horseBreed, isAssignedToOther && styles.unavailableText]}>
+                      {horse.breed} • {horse.age} years old
+                    </Text>
+                    <Text style={[styles.horseOperator, isAssignedToOther && styles.unavailableText]}>
+                      Owner: {getOwnerName(horse)}
+                    </Text>
+                    <View style={styles.horseHealthRow}>
+                      <View
+                        style={[styles.horseHealthDot, { backgroundColor: getHealthStatusColor(horse.healthStatus) }]}
+                      />
+                      <Text style={[styles.horseHealthText, { color: getHealthStatusColor(horse.healthStatus) }]}>
+                        {horse.healthStatus}
+                      </Text>
+                      <Text style={styles.horseSeparator}>•</Text>
+                      <Text style={[styles.horseStatus, isAssignedToOther && styles.unavailableText]}>
+                        {horse.status}
+                      </Text>
+                    </View>
+                    <Text style={[styles.horseCheckup, isAssignedToOther && styles.unavailableText]}>
+                      Last checkup: {horse.lastCheckup}
+                    </Text>
+                  </View>
+                  <View style={styles.selectIndicator}>
+                    {isCurrentlySelected ? (
+                      <View style={styles.selectedIndicator}>
+                        <Text style={styles.selectedIndicatorText}>✓</Text>
                       </View>
+                    ) : isAssignedToOther ? (
+                      <View style={styles.assignedIndicator}>
+                        <Text style={styles.assignedIndicatorText}>×</Text>
+                      </View>
+                    ) : (
+                      <View style={styles.unselectedIndicator} />
                     )}
                   </View>
-                  <Text style={styles.horseBreed}>{horse.breed} • {horse.age} years old</Text>
-                  <Text style={styles.horseOperator}>Owner: {horse.operatorName}</Text>
-                  <View style={styles.horseHealthRow}>
-                    <View style={[styles.horseHealthDot, { backgroundColor: getHealthStatusColor(horse.healthStatus) }]} />
-                    <Text style={[styles.horseHealthText, { color: getHealthStatusColor(horse.healthStatus) }]}>
-                      {horse.healthStatus}
-                    </Text>
-                    <Text style={styles.horseSeparator}>•</Text>
-                    <Text style={styles.horseStatus}>{horse.status}</Text>
-                  </View>
-                  <Text style={styles.horseCheckup}>Last checkup: {horse.lastCheckup}</Text>
-                </View>
-                <View style={styles.selectIndicator}>
-                  {selectedHorse?.id === horse.id ? (
-                    <View style={styles.selectedIndicator}>
-                      <Text style={styles.selectedIndicatorText}>✓</Text>
-                    </View>
-                  ) : horse.assignmentStatus === 'assigned' ? (
-                    <View style={styles.assignedIndicator}>
-                      <Text style={styles.assignedIndicatorText}>×</Text>
-                    </View>
-                  ) : (
-                    <View style={styles.unselectedIndicator} />
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              )
+            })}
             {filteredHorses.length === 0 && (
               <View style={styles.noResultsContainer}>
-                <Text style={styles.noResultsText}>No available horses found</Text>
+                <Text style={styles.noResultsText}>No horses found</Text>
                 <Text style={styles.noResultsSubtext}>
-                  {searchText ? 'Try adjusting your search terms' : 'All horses are currently assigned or none are available'}
+                  {searchText ? "Try adjusting your search terms" : "No horses available"}
                 </Text>
               </View>
             )}
@@ -607,6 +785,7 @@ const styles = StyleSheet.create({
   loadingContainer: {
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#C17A47",
   },
   loadingText: {
     color: "white",
@@ -644,8 +823,18 @@ const styles = StyleSheet.create({
     color: "white",
     textAlign: "center",
   },
-  headerSpacer: {
+  refreshButton: {
     width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  refreshButtonText: {
+    color: "white",
+    fontSize: moderateScale(18),
+    fontWeight: "bold",
   },
   searchContainer: {
     flexDirection: "row",
@@ -808,6 +997,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#E8F5E8",
     borderColor: "#C17A47",
   },
+  unavailableHorseItem: {
+    backgroundColor: "#F0F0F0",
+    opacity: 0.7,
+  },
   horseAvatar: {
     width: scale(48),
     height: scale(48),
@@ -834,14 +1027,31 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(16),
     fontWeight: "600",
     color: "#333",
+    flex: 1,
+  },
+  unavailableText: {
+    color: "#999",
   },
   assignedBadge: {
     backgroundColor: "#FF6B6B",
     paddingHorizontal: scale(8),
     paddingVertical: verticalScale(2),
     borderRadius: scale(10),
+    marginLeft: scale(8),
   },
   assignedBadgeText: {
+    color: "white",
+    fontSize: moderateScale(9),
+    fontWeight: "600",
+  },
+  currentBadge: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(2),
+    borderRadius: scale(10),
+    marginLeft: scale(8),
+  },
+  currentBadgeText: {
     color: "white",
     fontSize: moderateScale(9),
     fontWeight: "600",
@@ -938,21 +1148,21 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   loadingOverlay: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingContent: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     paddingHorizontal: scale(30),
     paddingVertical: verticalScale(20),
     borderRadius: scale(10),
-    alignItems: 'center',
+    alignItems: "center",
   },
   loadingOverlayText: {
     fontSize: moderateScale(14),

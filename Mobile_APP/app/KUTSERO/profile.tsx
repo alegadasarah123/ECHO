@@ -15,9 +15,9 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator,
 } from "react-native"
-import HelpSupport from "./help"
-import TermsPolicies from "./terms"
+import * as SecureStore from "expo-secure-store"
 
 const { width, height } = Dimensions.get("window")
 
@@ -59,43 +59,230 @@ const getSafeAreaPadding = () => {
   }
 }
 
+// Backend API configuration
+const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
+
+// Updated User data interface - Fixed to include kutsero_id at root level
+interface UserData {
+  id: string
+  email: string
+  kutsero_id?: string // Added this property
+  profile?: {
+    kutsero_id?: string // Changed from string to string | undefined to match the root level
+    kutsero_fname?: string
+    kutsero_lname?: string
+    kutsero_mname?: string
+    kutsero_username?: string
+    kutsero_phone_num?: string
+    kutsero_email?: string
+    kutsero_city?: string
+    kutsero_municipality?: string
+    kutsero_brgy?: string
+    kutsero_zipcode?: string
+    kutsero_province?: string
+    kutsero_dob?: string
+    kutsero_sex?: string
+    kutsero_fb?: string
+    [key: string]: any
+  }
+  access_token: string
+  refresh_token?: string
+  user_status?: string
+}
+
 interface ProfileInformationProps {
   onBack: () => void
 }
 
-// Add currentUser state and loading functionality
+interface HelpSupportProps {
+  onBack: () => void
+}
+
+interface TermsPoliciesProps {
+  onBack: () => void
+}
+
+// Help & Support Component
+function HelpSupport({ onBack }: HelpSupportProps) {
+  const safeArea = getSafeAreaPadding()
+
+  const BackIcon = () => (
+    <View style={styles.backIconContainer}>
+      <View style={styles.backArrow} />
+    </View>
+  )
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+      {/* Header */}
+      <View style={[styles.profileInfoHeader, { paddingTop: safeArea.top }]}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <BackIcon />
+        </TouchableOpacity>
+        <Text style={styles.profileInfoHeaderTitle} numberOfLines={1} adjustsFontSizeToFit>
+          Help & Support
+        </Text>
+        <View style={styles.headerRight} />
+      </View>
+
+      {/* Content */}
+      <ScrollView style={styles.helpContainer} showsVerticalScrollIndicator={false}>
+        <View style={styles.helpSection}>
+          <Text style={styles.helpSectionTitle}>Frequently Asked Questions</Text>
+          
+          <View style={styles.helpItem}>
+            <Text style={styles.helpQuestion}>How do I register my horse?</Text>
+            <Text style={styles.helpAnswer}>
+              To register your horse, go to the Horse Care section and tap "Add Horse". Fill in all the required information including your horse's name, age, breed, and health details.
+            </Text>
+          </View>
+
+          <View style={styles.helpItem}>
+            <Text style={styles.helpQuestion}>How do I update my profile information?</Text>
+            <Text style={styles.helpAnswer}>
+              Go to Profile &gt; Profile Information. You can edit your personal details, location, and account information across three easy steps. Don't forget to save your changes.
+            </Text>
+          </View>
+
+          <View style={styles.helpItem}>
+            <Text style={styles.helpQuestion}>How do I schedule a veterinary appointment?</Text>
+            <Text style={styles.helpAnswer}>
+              Use the Calendar section to view available appointments and schedule visits with veterinarians in your area.
+            </Text>
+          </View>
+
+          <View style={styles.helpItem}>
+            <Text style={styles.helpQuestion}>How do I contact support?</Text>
+            <Text style={styles.helpAnswer}>
+              You can reach our support team through the contact information below or use the chat feature for immediate assistance.
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.helpSection}>
+          <Text style={styles.helpSectionTitle}>Contact Information</Text>
+          
+          <View style={styles.contactItem}>
+            <Text style={styles.contactLabel}>Email:</Text>
+            <Text style={styles.contactValue}>support@kutsero.app</Text>
+          </View>
+
+          <View style={styles.contactItem}>
+            <Text style={styles.contactLabel}>Phone:</Text>
+            <Text style={styles.contactValue}>+63 912 345 6789</Text>
+          </View>
+
+          <View style={styles.contactItem}>
+            <Text style={styles.contactLabel}>Office Hours:</Text>
+            <Text style={styles.contactValue}>Monday - Friday, 8:00 AM - 5:00 PM</Text>
+          </View>
+        </View>
+
+        <View style={styles.helpSection}>
+          <Text style={styles.helpSectionTitle}>App Version</Text>
+          <Text style={styles.versionText}>Version 1.0.0</Text>
+        </View>
+      </ScrollView>
+    </View>
+  )
+}
+
+// Terms & Policies Component
+function TermsPolicies({ onBack }: TermsPoliciesProps) {
+  const safeArea = getSafeAreaPadding()
+
+  const BackIcon = () => (
+    <View style={styles.backIconContainer}>
+      <View style={styles.backArrow} />
+    </View>
+  )
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+      {/* Header */}
+      <View style={[styles.profileInfoHeader, { paddingTop: safeArea.top }]}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <BackIcon />
+        </TouchableOpacity>
+        <Text style={styles.profileInfoHeaderTitle} numberOfLines={1} adjustsFontSizeToFit>
+          Terms & Policies
+        </Text>
+        <View style={styles.headerRight} />
+      </View>
+
+      {/* Content */}
+      <ScrollView style={styles.termsContainer} showsVerticalScrollIndicator={false}>
+        <View style={styles.termsSection}>
+          <Text style={styles.termsSectionTitle}>Terms of Service</Text>
+          <Text style={styles.termsText}>
+            Welcome to Kutsero App. By using our application, you agree to comply with and be bound by the following terms and conditions of use.
+          </Text>
+          <Text style={styles.termsText}>
+            1. The content of the pages of this app is for your general information and use only. It is subject to change without notice.
+          </Text>
+          <Text style={styles.termsText}>
+            2. Your use of any information or materials on this app is entirely at your own risk, for which we shall not be liable.
+          </Text>
+          <Text style={styles.termsText}>
+            3. This app contains material which is owned by or licensed to us. This material includes, but is not limited to, the design, layout, look, appearance and graphics.
+          </Text>
+        </View>
+
+        <View style={styles.termsSection}>
+          <Text style={styles.termsSectionTitle}>Privacy Policy</Text>
+          <Text style={styles.termsText}>
+            Your privacy is important to us. This Privacy Policy explains how we collect, use, and protect your information when you use the Kutsero App.
+          </Text>
+          <Text style={styles.termsText}>
+            Information We Collect:
+            - Personal information (name, email, phone number)
+            - Location data for service delivery
+            - Horse care and health information
+            - Usage data and app interactions
+          </Text>
+          <Text style={styles.termsText}>
+            How We Use Your Information:
+            - To provide and maintain our service
+            - To notify you about changes to our service
+            - To provide customer support
+            - To gather analysis or valuable information to improve our service
+          </Text>
+        </View>
+
+        <View style={styles.termsSection}>
+          <Text style={styles.termsSectionTitle}>Data Protection</Text>
+          <Text style={styles.termsText}>
+            We implement appropriate security measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction.
+          </Text>
+          <Text style={styles.termsText}>
+            Your data is stored securely and is only accessed by authorized personnel who need it to provide you with our services.
+          </Text>
+        </View>
+
+        <View style={styles.termsSection}>
+          <Text style={styles.termsSectionTitle}>Contact Us</Text>
+          <Text style={styles.termsText}>
+            If you have any questions about these Terms & Policies, please contact us at:
+          </Text>
+          <Text style={styles.termsText}>
+            Email: legal@kutsero.app
+            Phone: +63 912 345 6789
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
+  )
+}
+
+// Profile Information Component with fixed rendering issues
 function ProfileInformation({ onBack }: ProfileInformationProps) {
   const [currentUser, setCurrentUser] = useState("User")
+  const [userData, setUserData] = useState<UserData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
 
-  // Load user data from AsyncStorage
-  const loadUserData = async () => {
-    try {
-      const userData = await AsyncStorage.getItem("currentUser")
-      if (userData) {
-        setCurrentUser(userData)
-        // Update form data with current user info
-        const nameParts = userData.split(" ")
-        const firstName = nameParts[0] || "User"
-        const lastName = nameParts.slice(1).join(" ") || ""
-
-        setFormData((prev) => ({
-          ...prev,
-          firstName: firstName,
-          lastName: lastName,
-          username: userData.toLowerCase().replace(/\s+/g, ""),
-          email: `${userData.toLowerCase().replace(/\s+/g, "")}@gmail.com`,
-          facebook: userData,
-        }))
-      }
-    } catch (error) {
-      console.error("Error loading user data:", error)
-    }
-  }
-
-  // Load user data when component mounts
-  useEffect(() => {
-    loadUserData()
-  }, [])
   const safeArea = getSafeAreaPadding()
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
@@ -108,22 +295,22 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     route: "",
     to: "",
     // Step 2 - Personal Info
-    firstName: "Martin",
-    middleName: "Aqua",
-    lastName: "Diaz",
-    dateOfBirth: "1990-01-25",
-    sex: "Male",
-    phoneNumber: "09391233173",
-    province: "Metro Manila",
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    dateOfBirth: "",
+    sex: "",
+    phoneNumber: "",
+    province: "",
     // Step 3 - Account Info
-    email: "martindiaz@gmail.com",
-    facebook: "Martin Diaz",
-    username: "martindiaz",
+    email: "",
+    facebook: "",
+    username: "",
     password: "••••••••••",
   })
 
   // Store original form data to track changes
-  const [originalFormData] = useState({
+  const [originalFormData, setOriginalFormData] = useState({
     // Step 1 - Location Info
     city: "",
     municipality: "",
@@ -133,19 +320,191 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     route: "",
     to: "",
     // Step 2 - Personal Info
-    firstName: "Martin",
-    middleName: "Aqua",
-    lastName: "Diaz",
-    dateOfBirth: "1990-01-25",
-    sex: "Male",
-    phoneNumber: "09391233173",
-    province: "Metro Manila",
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    dateOfBirth: "",
+    sex: "",
+    phoneNumber: "",
+    province: "",
     // Step 3 - Account Info
-    email: "martindiaz@gmail.com",
-    facebook: "Martin Diaz",
-    username: "martindiaz",
+    email: "",
+    facebook: "",
+    username: "",
     password: "••••••••••",
   })
+
+  // Load user data and profile from backend
+  const loadUserData = async () => {
+    try {
+      setIsLoading(true)
+      
+      // Get the stored authentication data from SecureStore
+      const storedUserData = await SecureStore.getItemAsync('user_data')
+      const storedAccessToken = await SecureStore.getItemAsync('access_token')
+      
+      console.log('Stored user data raw:', storedUserData) // Debug log
+      
+      if (!storedUserData || !storedAccessToken) {
+        Alert.alert("Error", "No user data found. Please log in again.")
+        return
+      }
+
+      const parsedUserData = JSON.parse(storedUserData)
+      console.log('Parsed user data:', parsedUserData) // Debug log
+      
+      // Set userData immediately so it's available for fallback
+      setUserData(parsedUserData)
+      
+      // Set display name
+      let displayName = "User"
+      if (parsedUserData.profile) {
+        const { kutsero_fname, kutsero_lname, kutsero_username } = parsedUserData.profile
+        if (kutsero_fname && kutsero_lname) {
+          displayName = `${kutsero_fname} ${kutsero_lname}`
+        } else if (kutsero_username) {
+          displayName = kutsero_username
+        } else if (kutsero_fname) {
+          displayName = kutsero_fname
+        }
+      }
+      setCurrentUser(displayName)
+
+      // Try to get kutsero_id from multiple sources
+      let kutserroId: string | null = null
+      if (parsedUserData.profile?.kutsero_id) {
+        kutserroId = parsedUserData.profile.kutsero_id
+      } else if (parsedUserData.kutsero_id) {
+        kutserroId = parsedUserData.kutsero_id
+      } else if (parsedUserData.id) {
+        kutserroId = parsedUserData.id
+      }
+      
+      console.log('Extracted kutsero_id:', kutserroId) // Debug log
+      
+      if (kutserroId) {
+        // Try to fetch detailed profile from backend
+        try {
+          const response = await fetch(`${API_BASE_URL}/profile/${kutserroId}/`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          })
+
+          if (response.ok) {
+            const result = await response.json()
+            console.log('Backend API response:', result) // Debug log
+            
+            if (result.success && result.data) {
+              // Map backend data to form data
+              const profileData = result.data
+              console.log('Profile data from backend:', profileData) // Debug log
+              
+              const newFormData = {
+                // Step 1 - Location Info (mapped from kutsero_profile backend response)
+                city: profileData.city || "",
+                municipality: profileData.municipality || "",
+                barangay: profileData.barangay || "",
+                zipCode: profileData.zipCode || "",
+                houseNumber: profileData.houseNumber || "",
+                route: profileData.route || "",
+                to: profileData.to || "",
+                // Step 2 - Personal Info (mapped from kutsero_profile backend response)
+                firstName: profileData.firstName || "",
+                middleName: profileData.middleName || "",
+                lastName: profileData.lastName || "",
+                dateOfBirth: profileData.dateOfBirth || "",
+                sex: profileData.sex || "",
+                phoneNumber: profileData.phoneNumber || "",
+                province: profileData.province || "",
+                // Step 3 - Account Info (mapped from kutsero_profile backend response)
+                email: profileData.email || "",
+                facebook: profileData.facebook || "",
+                username: profileData.username || "",
+                password: "••••••••••", // Never show real password
+              }
+              
+              console.log('Mapped form data from API:', newFormData) // Debug log
+              setFormData(newFormData)
+              setOriginalFormData(newFormData)
+              
+              console.log('Profile data loaded successfully from kutsero_profile table')
+              return // Exit early since we have API data
+            }
+          }
+          
+          // If we get here, the API call failed or returned no data
+          try {
+            const errorData = await response.json()
+            console.log('Failed to fetch kutsero_profile:', errorData.message || 'Unknown error')
+          } catch (e) {
+            console.log('Failed to fetch kutsero_profile: Unable to parse error response')
+          }
+          
+        } catch (fetchError) {
+          console.error('Error fetching kutsero_profile:', fetchError)
+        }
+      }
+      
+      // If we get here, either no kutsero_id or API call failed
+      // Use stored profile data directly
+      console.log('Using stored profile data directly')
+      console.log('parsedUserData.profile:', parsedUserData.profile)
+      
+      if (parsedUserData.profile) {
+        const profile = parsedUserData.profile
+        const basicFormData = {
+          // Step 1 - Location Info (using data from stored profile)
+          city: profile.kutsero_city || "",
+          municipality: profile.kutsero_municipality || "",
+          barangay: profile.kutsero_brgy || "",
+          zipCode: profile.kutsero_zipcode || "",
+          houseNumber: "",
+          route: "",
+          to: "",
+          // Step 2 - Personal Info (using stored profile data)
+          firstName: profile.kutsero_fname || "",
+          middleName: profile.kutsero_mname || "",
+          lastName: profile.kutsero_lname || "",
+          dateOfBirth: profile.kutsero_dob || "",
+          sex: profile.kutsero_sex || "",
+          phoneNumber: profile.kutsero_phone_num || "",
+          province: profile.kutsero_province || "",
+          // Step 3 - Account Info
+          email: profile.kutsero_email || "",
+          facebook: profile.kutsero_fb || "",
+          username: profile.kutsero_username || "",
+          password: "••••••••••",
+        }
+        
+        console.log('Basic form data from stored profile:', basicFormData) // Debug log
+        setFormData(basicFormData)
+        setOriginalFormData(basicFormData)
+      } else {
+        console.log('No stored profile data available')
+        // Set empty form
+        const emptyFormData = {
+          city: "", municipality: "", barangay: "", zipCode: "", houseNumber: "", route: "", to: "",
+          firstName: "", middleName: "", lastName: "", dateOfBirth: "", sex: "", phoneNumber: "", province: "",
+          email: "", facebook: "", username: "", password: "••••••••••",
+        }
+        setFormData(emptyFormData)
+        setOriginalFormData(emptyFormData)
+      }
+      
+    } catch (error) {
+      console.error("Error loading user data:", error)
+      Alert.alert("Error", "Failed to load user data.")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Load user data when component mounts
+  useEffect(() => {
+    loadUserData()
+  }, [])
 
   // Function to check if form data has been modified
   const hasChanges = () => {
@@ -170,7 +529,7 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     }
   }
 
-  const handleEdit = () => {
+  const handleEdit = async () => {
     // Basic validation
     if (!formData.firstName.trim() || !formData.lastName.trim()) {
       Alert.alert("Validation Error", "First name and last name are required.")
@@ -192,26 +551,114 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
       return
     }
 
-    // Save the changes (in a real app, this would save to a database or API)
+    // Save the changes
     Alert.alert("Save Changes", "Are you sure you want to save these changes?", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Save",
-        onPress: () => {
-          // Here you would typically save to AsyncStorage, database, or API
-          // For now, we'll just show a success message
-          Alert.alert("Success", "Your profile information has been updated successfully!", [
-            {
-              text: "OK",
-              onPress: () => {
-                // Go back to the main profile screen
-                onBack()
-              },
-            },
-          ])
-        },
+        onPress: () => saveProfileChanges(),
       },
     ])
+  }
+
+  const saveProfileChanges = async () => {
+    try {
+      setIsSaving(true)
+      
+      // Add null check for userData - Fixed
+      if (!userData) {
+        Alert.alert("Error", "Unable to save: No user data found.")
+        return
+      }
+      
+      // Get kutsero_id with proper type safety - Fixed
+      let kutserroId: string | null = null
+      if (userData.profile?.kutsero_id) {
+        kutserroId = userData.profile.kutsero_id
+      } else if (userData.kutsero_id) {
+        kutserroId = userData.kutsero_id
+      } else if (userData.id) {
+        kutserroId = userData.id
+      }
+      
+      if (!kutserroId) {
+        Alert.alert("Error", "Unable to save: No kutsero ID found.")
+        return
+      }
+
+      console.log('Saving kutsero_profile for kutsero_id:', kutserroId)
+      console.log('Form data to save:', formData)
+
+      // Save to kutsero_profile table
+      const response = await fetch(`${API_BASE_URL}/profile/${kutserroId}/`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      })
+
+      console.log('Save response status:', response.status)
+      const result = await response.json()
+      console.log('Save response data:', result)
+      
+      if (response.ok && result.success) {
+        // Update the original form data to new values
+        setOriginalFormData({ ...formData })
+        
+        // Update stored user data with new profile information - Fixed null check
+        if (userData) {
+          const updatedUserData = {
+            ...userData,
+            profile: {
+              ...userData.profile,
+              kutsero_fname: formData.firstName,
+              kutsero_lname: formData.lastName,
+              kutsero_mname: formData.middleName,
+              kutsero_email: formData.email,
+              kutsero_phone_num: formData.phoneNumber,
+              kutsero_username: formData.username,
+              kutsero_city: formData.city,
+              kutsero_municipality: formData.municipality,
+              kutsero_brgy: formData.barangay,
+              kutsero_zipcode: formData.zipCode,
+              kutsero_province: formData.province,
+              kutsero_dob: formData.dateOfBirth,
+              kutsero_sex: formData.sex,
+              kutsero_fb: formData.facebook,
+            }
+          }
+          
+          await SecureStore.setItemAsync('user_data', JSON.stringify(updatedUserData))
+          setUserData(updatedUserData)
+          
+          // Update display name
+          const displayName = formData.firstName && formData.lastName 
+            ? `${formData.firstName} ${formData.lastName}`
+            : formData.firstName || formData.username || "User"
+          setCurrentUser(displayName)
+          
+          console.log('Updated user data in SecureStore')
+        }
+        
+        Alert.alert("Success", result.message || "Your profile information has been updated successfully!", [
+          {
+            text: "OK",
+            onPress: () => {
+              // Go back to the main profile screen
+              onBack()
+            },
+          },
+        ])
+      } else {
+        Alert.alert("Error", result.message || "Failed to update profile. Please try again.")
+      }
+    } catch (error) {
+      console.error('Error saving kutsero_profile:', error)
+      Alert.alert("Error", "An error occurred while saving your profile. Please try again.")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const renderStepIndicator = () => (
@@ -230,231 +677,267 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
   )
 
   const renderStepOne = () => (
-    <ScrollView
-      style={styles.formContainer}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.formScrollContent}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.profilePhotoContainer}>
-        <View style={styles.profilePhotoCircle}>
-          <Image
-            source={require("../../assets/images/horse.png")}
-            style={[styles.profileHorseIcon, { tintColor: "#C17A47" }]}
-            resizeMode="contain"
-          />
-        </View>
-        <Text style={styles.stepTitle}>Location Information</Text>
-        <Text style={styles.stepSubtitle}>Please provide your address details</Text>
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>City</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.city}
-          onChangeText={(text) => setFormData({ ...formData, city: text })}
-          placeholder="Enter your city"
-          placeholderTextColor="#999"
+  <ScrollView
+    style={styles.formContainer}
+    showsVerticalScrollIndicator={false}
+    contentContainerStyle={styles.formScrollContent}
+    keyboardShouldPersistTaps="handled"
+  >
+    <View style={styles.profilePhotoContainer}>
+      <View style={styles.profilePhotoCircle}>
+        <Image
+          source={require("../../assets/images/horse.png")}
+          style={[styles.profileHorseIcon, { tintColor: "#C17A47" }]}
+          resizeMode="contain"
         />
       </View>
+      <Text style={styles.stepTitle}>Location Information</Text>
+      <Text style={styles.stepSubtitle}>Please provide your address details</Text>
+    </View>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Municipality</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.municipality}
-          onChangeText={(text) => setFormData({ ...formData, municipality: text })}
-          placeholder="Enter your municipality"
-          placeholderTextColor="#999"
-        />
-      </View>
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionHeaderText}>ADDRESS IN THE PHILIPPINES</Text>
+    </View>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Barangay</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.barangay}
-          onChangeText={(text) => setFormData({ ...formData, barangay: text })}
-          placeholder="Enter your barangay"
-          placeholderTextColor="#999"
-        />
-      </View>
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>Province</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.province}
+        onChangeText={(text) => setFormData({ ...formData, province: text })}
+        placeholder="Enter province"
+        placeholderTextColor="#999"
+      />
+    </View>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Zip Code</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.zipCode}
-          onChangeText={(text) => setFormData({ ...formData, zipCode: text })}
-          placeholder="Enter zip code"
-          placeholderTextColor="#999"
-          keyboardType="numeric"
-        />
-      </View>
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>City</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.city}
+        onChangeText={(text) => setFormData({ ...formData, city: text })}
+        placeholder="Enter city"
+        placeholderTextColor="#999"
+      />
+    </View>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>House Number or Street Address</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.houseNumber}
-          onChangeText={(text) => setFormData({ ...formData, houseNumber: text })}
-          placeholder="Enter house number or street address"
-          placeholderTextColor="#999"
-        />
-      </View>
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>Municipality</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.municipality}
+        onChangeText={(text) => setFormData({ ...formData, municipality: text })}
+        placeholder="Enter municipality"
+        placeholderTextColor="#999"
+      />
+    </View>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Route</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.route}
-          onChangeText={(text) => setFormData({ ...formData, route: text })}
-          placeholder="Enter route"
-          placeholderTextColor="#999"
-        />
-      </View>
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>Barangay</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.barangay}
+        onChangeText={(text) => setFormData({ ...formData, barangay: text })}
+        placeholder="Enter barangay"
+        placeholderTextColor="#999"
+      />
+    </View>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>To</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.to}
-          onChangeText={(text) => setFormData({ ...formData, to: text })}
-          placeholder="Enter destination"
-          placeholderTextColor="#999"
-        />
-      </View>
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>Zip Code</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.zipCode}
+        onChangeText={(text) => setFormData({ ...formData, zipCode: text })}
+        placeholder="Enter zip code"
+        placeholderTextColor="#999"
+        keyboardType="numeric"
+      />
+    </View>
 
-      <View style={styles.buttonContainer}>
-        {hasChanges() && (
-          <TouchableOpacity style={styles.saveButton} onPress={handleEdit}>
-            <Text style={styles.saveButtonText}>Save Changes</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-          <Text style={styles.nextButtonText}>Next</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
-  )
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>House Number</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.houseNumber}
+        onChangeText={(text) => setFormData({ ...formData, houseNumber: text })}
+        placeholder="Enter house number"
+        placeholderTextColor="#999"
+      />
+    </View>
 
-  const renderStepTwo = () => (
-    <ScrollView
-      style={styles.formContainer}
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.formScrollContent}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.profilePhotoContainer}>
-        <View style={styles.profilePhotoCircle}>
-          <Image
-            source={require("../../assets/images/horse.png")}
-            style={[styles.profileHorseIcon, { tintColor: "#C17A47" }]}
-            resizeMode="contain"
-          />
-        </View>
-        <Text style={styles.stepTitle}>Personal Information</Text>
-        <Text style={styles.stepSubtitle}>Please provide your personal details</Text>
-      </View>
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>Route</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.route}
+        onChangeText={(text) => setFormData({ ...formData, route: text })}
+        placeholder="Enter route"
+        placeholderTextColor="#999"
+      />
+    </View>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>First Name *</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.firstName}
-          onChangeText={(text) => setFormData({ ...formData, firstName: text })}
-          placeholder="Enter first name"
-          placeholderTextColor="#999"
-        />
-      </View>
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>To</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.to}
+        onChangeText={(text) => setFormData({ ...formData, to: text })}
+        placeholder="Enter destination"
+        placeholderTextColor="#999"
+      />
+    </View>
 
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Middle Name</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.middleName}
-          onChangeText={(text) => setFormData({ ...formData, middleName: text })}
-          placeholder="Enter middle name"
-          placeholderTextColor="#999"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Last Name *</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.lastName}
-          onChangeText={(text) => setFormData({ ...formData, lastName: text })}
-          placeholder="Enter last name"
-          placeholderTextColor="#999"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Date of Birth</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.dateOfBirth}
-          onChangeText={(text) => setFormData({ ...formData, dateOfBirth: text })}
-          placeholder="YYYY-MM-DD"
-          placeholderTextColor="#999"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Sex</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.sex}
-          onChangeText={(text) => setFormData({ ...formData, sex: text })}
-          placeholder="Male/Female"
-          placeholderTextColor="#999"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Phone Number *</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.phoneNumber}
-          onChangeText={(text) => setFormData({ ...formData, phoneNumber: text })}
-          placeholder="Enter phone number"
-          placeholderTextColor="#999"
-          keyboardType="phone-pad"
-        />
-      </View>
-
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionHeaderText}>ADDRESS IN THE PHILIPPINES</Text>
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Province</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.province}
-          onChangeText={(text) => setFormData({ ...formData, province: text })}
-          placeholder="Enter province"
-          placeholderTextColor="#999"
-        />
-      </View>
-
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.previousButton} onPress={handlePrevious}>
-          <Text style={styles.previousButtonText}>Previous</Text>
-        </TouchableOpacity>
-        {hasChanges() && (
-          <TouchableOpacity style={styles.saveButton} onPress={handleEdit}>
+    <View style={styles.buttonContainer}>
+      <TouchableOpacity style={styles.previousButton} onPress={handlePrevious}>
+        <Text style={styles.previousButtonText}>Previous</Text>
+      </TouchableOpacity>
+      {hasChanges() && (
+        <TouchableOpacity 
+          style={[styles.saveButton, isSaving && styles.disabledButton]} 
+          onPress={handleEdit}
+          disabled={isSaving}
+        >
+          {isSaving ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
             <Text style={styles.saveButtonText}>Save</Text>
-          </TouchableOpacity>
-        )}
-        <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-          <Text style={styles.nextButtonText}>Next</Text>
+          )}
         </TouchableOpacity>
+      )}
+      <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
+        <Text style={styles.nextButtonText}>Next</Text>
+      </TouchableOpacity>
+    </View>
+  </ScrollView>
+)
+
+  // After your renderStepOne function ends, add this:
+
+const renderStepTwo = () => (
+  <ScrollView
+    style={styles.formContainer}
+    showsVerticalScrollIndicator={false}
+    contentContainerStyle={styles.formScrollContent}
+    keyboardShouldPersistTaps="handled"
+  >
+    <View style={styles.profilePhotoContainer}>
+      <View style={styles.profilePhotoCircle}>
+        <Image
+          source={require("../../assets/images/horse.png")}
+          style={[styles.profileHorseIcon, { tintColor: "#C17A47" }]}
+          resizeMode="contain"
+        />
       </View>
-    </ScrollView>
-  )
+      <Text style={styles.stepTitle}>Personal Information</Text>
+      <Text style={styles.stepSubtitle}>Please provide your personal details</Text>
+    </View>
+
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>First Name *</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.firstName}
+        onChangeText={(text) => setFormData({ ...formData, firstName: text })}
+        placeholder="Enter first name"
+        placeholderTextColor="#999"
+      />
+    </View>
+
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>Middle Name</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.middleName}
+        onChangeText={(text) => setFormData({ ...formData, middleName: text })}
+        placeholder="Enter middle name"
+        placeholderTextColor="#999"
+      />
+    </View>
+
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>Last Name *</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.lastName}
+        onChangeText={(text) => setFormData({ ...formData, lastName: text })}
+        placeholder="Enter last name"
+        placeholderTextColor="#999"
+      />
+    </View>
+
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>Date of Birth</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.dateOfBirth}
+        onChangeText={(text) => setFormData({ ...formData, dateOfBirth: text })}
+        placeholder="YYYY-MM-DD"
+        placeholderTextColor="#999"
+      />
+    </View>
+
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>Sex</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.sex}
+        onChangeText={(text) => setFormData({ ...formData, sex: text })}
+        placeholder="Male/Female"
+        placeholderTextColor="#999"
+      />
+    </View>
+
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>Phone Number *</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.phoneNumber}
+        onChangeText={(text) => setFormData({ ...formData, phoneNumber: text })}
+        placeholder="Enter phone number"
+        placeholderTextColor="#999"
+        keyboardType="phone-pad"
+      />
+    </View>
+
+    <View style={styles.sectionHeader}>
+      <Text style={styles.sectionHeaderText}>ADDRESS IN THE PHILIPPINES</Text>
+    </View>
+
+    <View style={styles.inputGroup}>
+      <Text style={styles.inputLabel}>Province</Text>
+      <TextInput
+        style={styles.textInput}
+        value={formData.province}
+        onChangeText={(text) => setFormData({ ...formData, province: text })}
+        placeholder="Enter province"
+        placeholderTextColor="#999"
+      />
+    </View>
+
+    <View style={styles.buttonContainer}>
+      <TouchableOpacity style={styles.previousButton} onPress={handlePrevious}>
+        <Text style={styles.previousButtonText}>Previous</Text>
+      </TouchableOpacity>
+      {hasChanges() && (
+        <TouchableOpacity 
+          style={[styles.saveButton, isSaving && styles.disabledButton]} 
+          onPress={handleEdit}
+          disabled={isSaving}
+        >
+          {isSaving ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <Text style={styles.saveButtonText}>Save</Text>
+          )}
+        </TouchableOpacity>
+      )}
+      <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
+        <Text style={styles.nextButtonText}>Next</Text>
+      </TouchableOpacity>
+    </View>
+  </ScrollView>
+)
 
   const renderStepThree = () => (
     <ScrollView
@@ -521,6 +1004,7 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
           placeholderTextColor="#999"
           secureTextEntry
         />
+        <Text style={styles.inputHint}>Leave as dots to keep current password</Text>
       </View>
 
       <View style={styles.buttonContainer}>
@@ -528,13 +1012,32 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
           <Text style={styles.previousButtonText}>Previous</Text>
         </TouchableOpacity>
         {hasChanges() && (
-          <TouchableOpacity style={styles.saveButton} onPress={handleEdit}>
-            <Text style={styles.saveButtonText}>Save Changes</Text>
+          <TouchableOpacity 
+            style={[styles.saveButton, isSaving && styles.disabledButton]} 
+            onPress={handleEdit}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save Changes</Text>
+            )}
           </TouchableOpacity>
         )}
       </View>
     </ScrollView>
   )
+
+  // Show loading screen while data is being loaded
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+        <ActivityIndicator size="large" color="#C17A47" />
+        <Text style={styles.loadingText}>Loading profile...</Text>
+      </View>
+    )
+  }
 
   return (
     <View style={styles.container}>
@@ -567,16 +1070,36 @@ export default function ProfileScreen() {
   const router = useRouter()
   const safeArea = getSafeAreaPadding()
   const [currentUser, setCurrentUser] = useState("User")
+  const [userData, setUserData] = useState<UserData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
 
-  // Load user data from AsyncStorage
+  // Load user data from SecureStore
   const loadUserData = async () => {
     try {
-      const userData = await AsyncStorage.getItem("currentUser")
-      if (userData) {
-        setCurrentUser(userData)
+      setIsLoading(true)
+      const storedUserData = await SecureStore.getItemAsync('user_data')
+      if (storedUserData) {
+        const parsedUserData = JSON.parse(storedUserData)
+        setUserData(parsedUserData)
+        
+        // Set display name
+        let displayName = "User"
+        if (parsedUserData.profile) {
+          const { kutsero_fname, kutsero_lname, kutsero_username } = parsedUserData.profile
+          if (kutsero_fname && kutsero_lname) {
+            displayName = `${kutsero_fname} ${kutsero_lname}`
+          } else if (kutsero_username) {
+            displayName = kutsero_username
+          } else if (kutsero_fname) {
+            displayName = kutsero_fname
+          }
+        }
+        setCurrentUser(displayName)
       }
     } catch (error) {
       console.error("Error loading user data:", error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -591,6 +1114,7 @@ export default function ProfileScreen() {
       loadUserData()
     }, []),
   )
+  
   const [showHelpSupport, setShowHelpSupport] = useState(false)
   const [showProfileInfo, setShowProfileInfo] = useState(false)
   const [showTermsPolicies, setShowTermsPolicies] = useState(false)
@@ -616,8 +1140,20 @@ export default function ProfileScreen() {
       {
         text: "Log Out",
         style: "destructive",
-        onPress: () => {
-          router.replace("../dashboard")
+        onPress: async () => {
+          try {
+            // Clear all user data from SecureStore
+            await SecureStore.deleteItemAsync('access_token')
+            await SecureStore.deleteItemAsync('refresh_token')
+            await SecureStore.deleteItemAsync('user_data')
+            await SecureStore.deleteItemAsync('selectedHorseData')
+            await SecureStore.deleteItemAsync('checkInData')
+            
+            router.replace("../../pages/auth/login")
+          } catch (error) {
+            console.error('Error during logout:', error)
+            router.replace("../../pages/auth/login")
+          }
         },
       },
     ])
@@ -674,15 +1210,15 @@ export default function ProfileScreen() {
       onPress={() => {
         // Navigate directly without updating local state
         if (tabKey === "home") {
-          router.push("/(tabs)/dashboard")
+          router.push("./dashboard")
         } else if (tabKey === "horse") {
-          router.push("/(tabs)/horsecare")
+          router.push("./horsecare")
         } else if (tabKey === "chat") {
-          router.push("/(tabs)/messages")
+          router.push("./messages")
         } else if (tabKey === "calendar") {
-          router.push("/(tabs)/calendar")
+          router.push("./calendar")
         } else if (tabKey === "history") {
-          router.push("/(tabs)/history")
+          router.push("./history")
         } else if (tabKey === "profile") {
           // Stay on profile - already here
         }
@@ -708,6 +1244,17 @@ export default function ProfileScreen() {
     </TouchableOpacity>
   )
 
+  // Show loading screen while data is being loaded
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+        <ActivityIndicator size="large" color="#C17A47" />
+        <Text style={styles.loadingText}>Loading profile...</Text>
+      </View>
+    )
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
@@ -724,8 +1271,11 @@ export default function ProfileScreen() {
           {currentUser}
         </Text>
         <Text style={styles.profileEmail} numberOfLines={1} adjustsFontSizeToFit>
-          {currentUser.toLowerCase().replace(/\s+/g, "")}@gmail.com
+          {userData?.profile?.kutsero_email || `${currentUser.toLowerCase().replace(/\s+/g, "")}@gmail.com`}
         </Text>
+        {userData?.user_status === 'pending' && (
+          <Text style={styles.statusText}>Account Status: Pending Approval</Text>
+        )}
       </View>
 
       {/* Menu Options */}
@@ -804,6 +1354,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F5F5F5",
   },
+  loadingContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    color: "#C17A47",
+    fontSize: moderateScale(16),
+    fontWeight: "500",
+    marginTop: verticalScale(10),
+  },
   profileHeader: {
     backgroundColor: "#C17A47",
     alignItems: "center",
@@ -833,6 +1393,12 @@ const styles = StyleSheet.create({
     color: "rgba(255,255,255,0.8)",
     textAlign: "center",
     paddingHorizontal: scale(16),
+  },
+  statusText: {
+    fontSize: moderateScale(10),
+    color: "#FFE082",
+    marginTop: verticalScale(4),
+    fontWeight: "500",
   },
   menuContainer: {
     flex: 1,
@@ -1187,67 +1753,153 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(6),
     fontWeight: "500",
   },
+  inputHint: {
+    fontSize: moderateScale(12),
+    color: "#666",
+    marginTop: verticalScale(4),
+    fontStyle: "italic",
+  },
   textInput: {
     borderWidth: 1,
     borderColor: "#E0E0E0",
     borderRadius: scale(8),
-    paddingHorizontal: scale(16),
+    paddingHorizontal: scale(12),
     paddingVertical: verticalScale(12),
-    fontSize: moderateScale(14),
+    fontSize: moderateScale(16),
     color: "#333",
-    backgroundColor: "white",
+    backgroundColor: "#FAFAFA",
     minHeight: verticalScale(48),
   },
+  // Button Styles
   buttonContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
+    alignItems: "center",
     marginTop: verticalScale(30),
-    gap: scale(12),
+    paddingHorizontal: scale(10),
     flexWrap: "wrap",
+    gap: scale(10),
   },
   previousButton: {
-    backgroundColor: "#666",
-    paddingVertical: verticalScale(12),
+    backgroundColor: "#F0F0F0",
     paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(12),
     borderRadius: scale(8),
-    alignItems: "center",
     minWidth: scale(80),
-    flex: 1,
-    maxWidth: scale(120),
+    alignItems: "center",
   },
   previousButtonText: {
+    color: "#666",
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+  },
+  nextButton: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(8),
+    minWidth: scale(80),
+    alignItems: "center",
+  },
+  nextButtonText: {
     color: "white",
     fontSize: moderateScale(14),
     fontWeight: "600",
   },
   saveButton: {
-    backgroundColor: "#4CAF50",
-    paddingVertical: verticalScale(12),
+    backgroundColor: "#28A745",
     paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(12),
     borderRadius: scale(8),
+    minWidth: scale(100),
     alignItems: "center",
-    minWidth: scale(80),
-    flex: 1,
-    maxWidth: scale(120),
+    flexDirection: "row",
+    justifyContent: "center",
   },
   saveButtonText: {
     color: "white",
     fontSize: moderateScale(14),
     fontWeight: "600",
   },
-  nextButton: {
-    backgroundColor: "#C17A47",
-    paddingVertical: verticalScale(12),
-    paddingHorizontal: scale(20),
-    borderRadius: scale(8),
-    alignItems: "center",
-    minWidth: scale(80),
-    flex: 1,
-    maxWidth: scale(120),
+  disabledButton: {
+    opacity: 0.6,
   },
-  nextButtonText: {
-    color: "white",
+  // Help & Support Styles
+  helpContainer: {
+    flex: 1,
+    backgroundColor: "white",
+  },
+  helpSection: {
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(20),
+  },
+  helpSectionTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(16),
+  },
+  helpItem: {
+    marginBottom: verticalScale(20),
+    paddingBottom: verticalScale(16),
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+  },
+  helpQuestion: {
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(8),
+    lineHeight: moderateScale(20),
+  },
+  helpAnswer: {
+    fontSize: moderateScale(14),
+    color: "#666",
+    lineHeight: moderateScale(20),
+  },
+  contactItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: verticalScale(12),
+    flexWrap: "wrap",
+  },
+  contactLabel: {
     fontSize: moderateScale(14),
     fontWeight: "600",
+    color: "#333",
+    minWidth: scale(80),
+    marginRight: scale(8),
+  },
+  contactValue: {
+    fontSize: moderateScale(14),
+    color: "#666",
+    flex: 1,
+  },
+  versionText: {
+    fontSize: moderateScale(14),
+    color: "#666",
+    textAlign: "center",
+  },
+  // Terms & Policies Styles
+  termsContainer: {
+    flex: 1,
+    backgroundColor: "white",
+  },
+  termsSection: {
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(20),
+  },
+  termsSectionTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(16),
+  },
+  termsText: {
+    fontSize: moderateScale(14),
+    color: "#666",
+    lineHeight: moderateScale(20),
+    marginBottom: verticalScale(12),
+    textAlign: "justify",
   },
 })
