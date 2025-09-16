@@ -746,53 +746,6 @@ def get_directory_profiles(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-# -------------------- DELETE VET,KUTSERO, HORSE OPERATOR PROFILE IN DIRECTORY--------------------
-
-
-# -------------------- DELETE VET, KUTSERO, HORSE OPERATOR PROFILE IN DIRECTORY --------------------
-
-@api_view(['DELETE'])
-def delete_directory_user(request, user_id):
-    """
-    Delete a directory user (vet, kutsero, or horse operator) + their users record using user_id.
-    """
-    try:
-        print(f"Attempting to delete user with ID: {user_id}")  # debug log
-
-        # 1. Check VET PROFILE
-        vet_res = sr_client.table("vet_profile").select("vet_id, user_id").eq("user_id", user_id).execute()
-        if vet_res.data:
-            vet_id = vet_res.data[0]["vet_id"]
-            sr_client.table("vet_profile").delete().eq("vet_id", vet_id).execute()
-            sr_client.table("users").delete().eq("id", user_id).execute()
-            return Response({"message": f"Vet with user ID '{user_id}' deleted successfully"}, status=200)
-
-        # 2. Check KUTSERO PROFILE
-        kutsero_res = sr_client.table("kutsero_profile").select("kutsero_id, user_id").eq("user_id", user_id).execute()
-        if kutsero_res.data:
-            kutsero_id = kutsero_res.data[0]["kutsero_id"]
-            sr_client.table("kutsero_profile").delete().eq("kutsero_id", kutsero_id).execute()
-            sr_client.table("users").delete().eq("id", user_id).execute()
-            return Response({"message": f"Kutsero with user ID '{user_id}' deleted successfully"}, status=200)
-
-        # 3. Check HORSE OPERATOR PROFILE
-        op_res = sr_client.table("horse_op_profile").select("op_id, user_id").eq("user_id", user_id).execute()
-        if op_res.data:
-            op_id = op_res.data[0]["op_id"]
-            sr_client.table("horse_op_profile").delete().eq("op_id", op_id).execute()
-            sr_client.table("users").delete().eq("id", user_id).execute()
-            return Response({"message": f"Operator with user ID '{user_id}' deleted successfully"}, status=200)
-
-        # If not found anywhere
-        return Response({"error": f"No directory user found with user ID '{user_id}'"}, status=404)
-
-    except Exception as e:
-        logging.exception("Error deleting directory user")
-        return Response({"error": "Internal server error", "details": str(e)}, status=500)
-
-
-
-
 
 
 
@@ -883,30 +836,6 @@ def get_account_counts(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-@api_view(['DELETE'])
-def delete_vet_profile(request, vet_id):
-    """
-    Delete a vet profile from the Supabase vet_profile table.
-    """
-    try:
-        response = sr_client.table("vet_profile").delete().eq("vet_id", vet_id).execute()
-
-        if not response.data:
-            return Response(
-                {"error": f"Vet profile with id {vet_id} not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        return Response(
-            {"message": f"Vet profile with id {vet_id} deleted successfully."},
-            status=status.HTTP_200_OK
-        )
-
-    except Exception as e:
-        return Response(
-            {"error": "Internal Server Error", "details": str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
 
 
 
@@ -1120,23 +1049,6 @@ def deactivate_user(request, user_id):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-# -------------------- Delete User --------------------
-@api_view(['DELETE'])
-def delete_user(request, user_id):
-    try:
-        print("Trying to delete user:", user_id)
-
-        # Delete profile first
-        sr_client.table("ctu_vet_profile").delete().eq("ctu_id", user_id).execute()
-
-        # Then delete from users
-        sr_client.table("users").delete().eq("id", user_id).execute()
-
-        return JsonResponse({"message": "User and profile deleted (if existed)"}, status=200)
-
-    except Exception as e:
-        print("Delete error:", e)
-        return JsonResponse({"error": str(e)}, status=500)
 
 
 # -------------------- Reactivate User --------------------
@@ -1207,29 +1119,56 @@ def search_vets(request):
     query = request.GET.get("q", "").strip().lower()
 
     # Fetch all vet profiles
-    res = sr_client.table("vet_profiles").select("*").execute()
-    vets = res.data or []
+    vets_res = sr_client.table("vet_profiles").select("*").execute()
+    vets = vets_res.data or []
 
-    # Filter by first or last name if query exists
-    if query:
-        vets = [
-            v for v in vets
-            if query in (v.get("vet_fname") or "").lower() 
-               or query in (v.get("vet_lname") or "").lower()
-        ]
+    # Fetch all kutsero profiles
+    kutseros_res = sr_client.table("kutsero_profiles").select("*").execute()
+    kutseros = kutseros_res.data or []
 
-    # Map to API response format
-    data = [
-        {
-            "id": str(v.get("vet_id")),
-            "name": f"{v.get('vet_fname')} {v.get('vet_lname')}",
-            "email": v.get("vet_email"),
-        }
-        for v in vets
-    ]
+    # Fetch all horse operator profiles
+    ops_res = sr_client.table("horse_op_profiles").select("*").execute()
+    horse_ops = ops_res.data or []
 
-    return Response({"users": data}, status=200)
+    results = []
 
+    # Filter vets
+    for v in vets:
+        if v.get("users", {}).get("status") != "approved":
+            continue
+        full_name = f"{v.get('vet_fname','')} {v.get('vet_lname','')}".strip()
+        if not query or query in full_name.lower():
+            results.append({
+                "id": str(v.get("vet_id")),
+                "name": full_name,
+                "email": v.get("vet_email"),
+            })
+
+    # Filter kutseros
+    for k in kutseros:
+        if k.get("users", {}).get("status") != "approved":
+            continue
+        full_name = f"{k.get('kutsero_fname','')} {k.get('kutsero_lname','')}".strip()
+        if not query or query in full_name.lower():
+            results.append({
+                "id": str(k.get("kutsero_id")),
+                "name": full_name,
+                "email": k.get("kutsero_email"),
+            })
+
+    # Filter horse operators
+    for op in horse_ops:
+        if op.get("users", {}).get("status") != "approved":
+            continue
+        full_name = f"{op.get('op_fname','')} {op.get('op_lname','')}".strip()
+        if not query or query in full_name.lower():
+            results.append({
+                "id": str(op.get("op_id")),
+                "name": full_name,
+                "email": op.get("op_email"),
+            })
+
+    return Response({"users": results}, status=200)
 
 
 
@@ -1360,3 +1299,151 @@ def search_vet(request):
     except Exception as e:
         logging.error(f"Error fetching vets: {e}")
         return Response({"error": "Failed to fetch vets"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# -------------------- display horses with owner full name --------------------
+
+
+
+@api_view(['GET'])
+def get_horses(request):
+    """
+    Fetch all horses with owner info, current medical record,
+    treatment history, and medrec history, flattened.
+    """
+    try:
+        # 1️⃣ Fetch horses with owner info and current medical record
+        horses_response = sr_client.table("horse_profile").select("""
+            horse_id,
+            horse_name,
+            horse_breed,
+            horse_dob,
+            horse_age,
+            horse_sex,
+            horse_color,
+            horse_weight,
+            horse_height,
+            horse_image,
+            created_at,
+            horse_op_profile (
+                op_fname,
+                op_mname,
+                op_lname,
+                op_province,
+                op_city,
+                op_municipality,
+                users (status, role)
+            ),
+            horse_medrecord (
+                medrec_id,
+                medrec_date,
+                medrec_heart_rate,
+                medrec_resp_rate,
+                medrec_bodytemp,
+                medrec_concern,
+                medrec_clinical_sign,
+                medrec_lab_results,
+                medrec_lab_img,
+                medrec_diagnosis,
+                medrec_treatment,
+                medrec_remark,
+                vet_id,
+                vet_profile (vet_fname, vet_lname)
+            )
+        """).execute()
+
+        horse_list = []
+
+        for horse in horses_response.data:
+            # --- Owner info ---
+            owner = horse.get("horse_op_profile", {})
+            fullname = " ".join(filter(None, [owner.get("op_fname"), owner.get("op_mname"), owner.get("op_lname")]))
+            location = ", ".join(filter(None, [owner.get("op_municipality"), owner.get("op_city"), owner.get("op_province")]))
+            user_info = owner.get("users", {})
+
+            horse["owner_fullname"] = fullname.strip()
+            horse["location"] = location.strip()
+            horse["status"] = user_info.get("status", "Unknown")
+            horse["role"] = user_info.get("role", "N/A")
+
+            # Remove owner object
+            if "horse_op_profile" in horse:
+                del horse["horse_op_profile"]
+
+            # --- Medical record ---
+            medrec = horse.get("horse_medrecord")
+            if medrec:
+                # Flatten vet info
+                medrec["vet_name"] = " ".join(filter(None, [
+                    medrec.get("vet_profile", {}).get("vet_fname"),
+                    medrec.get("vet_profile", {}).get("vet_lname")
+                ]))
+                if "vet_profile" in medrec:
+                    del medrec["vet_profile"]
+
+                medrec_id = medrec.get("medrec_id")
+
+                # --- Fetch medrec_history ---
+                histories_response = sr_client.table("medrec_history").select("""
+                    history_id,
+                    change_date,
+                    prev_heart_rate,
+                    prev_resp_rate,
+                    prev_bodytemp,
+                    prev_concern,
+                    prev_clinical_sign,
+                    prev_lab_results,
+                    prev_lab_img,
+                    prev_diagnosis,
+                    prev_remark,
+                    vet_id,
+                    vet_profile (vet_fname, vet_lname)
+                """).eq("medrec_id", medrec_id).execute()
+
+                medrec_histories = []
+                for h in histories_response.data:
+                    h["vet_name"] = " ".join(filter(None, [
+                        h.get("vet_profile", {}).get("vet_fname"),
+                        h.get("vet_profile", {}).get("vet_lname")
+                    ]))
+                    if "vet_profile" in h:
+                        del h["vet_profile"]
+                    medrec_histories.append(h)
+
+                medrec["medrec_history"] = medrec_histories
+
+                # --- Fetch treatment_history ---
+                treatments_response = sr_client.table("treatment_history").select("""
+                    treatment_id,
+                    treatment_date,
+                    treatment_info,
+                    treatment_remark,
+                    vet_id,
+                    vet_profile (vet_fname, vet_lname)
+                """).eq("medrec_id", medrec_id).execute()
+
+                treatments = []
+                for t in treatments_response.data:
+                    t["vet_name"] = " ".join(filter(None, [
+                        t.get("vet_profile", {}).get("vet_fname"),
+                        t.get("vet_profile", {}).get("vet_lname")
+                    ]))
+                    if "vet_profile" in t:
+                        del t["vet_profile"]
+                    treatments.append(t)
+
+                medrec["treatment_history"] = treatments
+
+            horse["medical_record"] = medrec
+            if "horse_medrecord" in horse:
+                del horse["horse_medrecord"]
+
+            horse_list.append(horse)
+
+        return Response(horse_list, status=200)
+
+    except Exception as e:
+        logging.exception("Error fetching horses with histories")
+        return Response(
+            {"error": "Internal server error", "details": str(e)},
+            status=500
+        )

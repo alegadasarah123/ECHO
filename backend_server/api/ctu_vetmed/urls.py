@@ -13,7 +13,7 @@ urlpatterns = [
     path('users/', views.fetch_users, name='fetch-users'), 
      path('users/deactivate/<str:user_id>/', views.deactivate_user, name='deactivate_user'),
     path('users/reactivate/<str:user_id>/', views.reactivate_user, name='reactivate_user'),
-    path('users/delete/<str:user_id>/', views.delete_user, name='delete_user'),
+   
 
 
     path('recent-activity/', views.get_recent_activity, name='recent-activity'),
@@ -22,8 +22,7 @@ urlpatterns = [
     path('save_ctu_vet_profile/', views.save_ctu_vet_profile, name='save_ctu_vet_profile'),
     # api/ctu_vetmed/urls.py
      path("ctu_change_password/", views.ctu_change_password, name="ctu_change_password"),
-# Delete directory user (same style as other paths)
-    path('directory/<str:user_id>/', views.delete_directory_user, name='delete_directory_user'),
+
 
 
     path('get-users/', views.get_users, name='get-users'),
@@ -34,7 +33,7 @@ urlpatterns = [
     path('display_ctu_profiles/', views.display_ctu_profiles, name='display_ctu_profiles'),
     path('get-account-counts/', views.get_account_counts, name='get_account_counts'),
     # Use str:vet_id for UUID strings
-    path('delete-vet-profile/<str:vet_id>/', views.delete_vet_profile, name='delete-vet-profile'),
+
     path('update_ctu_vet_profile/', views.update_ctu_vet_profile, name='update_ctu_vet_profile'),
     path('ctu-profiles/<uuid:profile_id>/', views.update_ctu_profile, name='update_ctu_profile'),
 
@@ -51,6 +50,9 @@ urlpatterns = [
     path("test-cookie/", views.test_cookie, name="test_cookie"),
     path("announcements/", views.get_announcements, name="get_announcements"),
      path("search_vet/", views.search_vet, name="search_vet"),
+
+
+     path("get_horses/", views.get_horses, name="get_horses"),
 
 
 ]

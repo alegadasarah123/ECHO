@@ -274,7 +274,7 @@ function DvmfAccessRequest() {
     titleStyle: {
       fontSize: "25px",
       fontWeight: "bold",
-      color: "#da2424ff",
+      color: "#0F3D5A",
     },
   }
 
@@ -418,7 +418,7 @@ body {
   position: absolute;
   top: 2px;
   right: 2px;
-  background-color: #b91c1c;
+  background-color: #0F3D5A;
   color: white;
   font-size: 10px;
   width: 15px;
@@ -468,7 +468,7 @@ body {
 .mark-all-read {
   background: none;
   border: none;
-  color: #b91c1c;
+  color: #0F3D5A;
   font-size: 12px;
   cursor: pointer;
   text-decoration: underline;
@@ -488,7 +488,7 @@ body {
 
 .notification-item.unread {
   background-color: #f0f8ff;
-  border-left: 3px solid #b91c1c;
+  border-left: 3px solid #0F3D5A;
 }
 
 .notification-item:last-child {
@@ -788,7 +788,7 @@ flex: 1;
   top: 20px;
   left: 20px;
   z-index: 1001;
-  background: #b91c1c;
+  background: #0F3D5A;
   color: white;
   border: none;
   padding: 12px;
@@ -810,7 +810,7 @@ flex: 1;
 .chat-button {
   width: 64px;
   height: 64px;
-  background: #b91c1c;
+  background: #0F3D5A;
   border: none;
   border-radius: 20px;
   color: white;
@@ -833,7 +833,7 @@ flex: 1;
   height: 0;
   border-left: 10px solid transparent;
   border-right: 10px solid transparent;
-  border-top: 10px solid #b91c1c;
+  border-top: 10px solid #0F3D5A;
 }
 
 .chat-button:hover {
@@ -842,7 +842,7 @@ flex: 1;
 }
 
 .chat-button:hover::after {
-  border-top-color: #b91c1c;
+  border-top-color: #0F3D5A;
 }
 
 .chat-dots {

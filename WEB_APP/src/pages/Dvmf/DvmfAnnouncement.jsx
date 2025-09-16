@@ -4,24 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./DvmfMessage"
 
-import {
-  Bell,
-  Edit,
-  Mail,
-  MapPin,
-  MessageCircle,
-  MoreVertical,
-  Phone,
-  Pin,
-  Send, Trash,
-
-  Upload,
-} from "lucide-react"
+import { Bell, Edit, Mail, MapPin, MessageCircle, MoreVertical, Phone, Pin, Send, Upload } from "lucide-react"
 import NotificationModal from "./DvmfNotif"
 
 const API_BASE = "http://127.0.0.1:8000/api/dvmf"
 
-const CTUAnnouncement = () => {
+const DvmfAnnouncement = () => {
   const navigate = useNavigate()
 
   // State for sidebar and modals
@@ -392,7 +380,7 @@ const CTUAnnouncement = () => {
     [selectedPhotos],
   )
 
-  const [pinnedPosts, setPinnedPosts] = useState(new Set());
+  const [pinnedPosts, setPinnedPosts] = useState(new Set())
 
   const removePhoto = useCallback((photoId) => {
     setSelectedPhotos((prev) => prev.filter((photo) => photo.id !== photoId))
@@ -426,7 +414,7 @@ const CTUAnnouncement = () => {
     try {
       // Only include the image if selected
       const bodyData = {
-        announce_title: "CTU Announcement",
+        announce_title: "Dvmf Announcement",
         announce_content: postText,
       }
       if (selectedPhotos.length > 0) {
@@ -449,10 +437,10 @@ const CTUAnnouncement = () => {
       const now = new Date()
       const newPost = {
         id: result?.post?.announce_id || `temp-${now.getTime()}`,
-        title: result?.post?.announce_title || "CTU Announcement",
+        title: result?.post?.announce_title || "Dvmf Announcement",
         content: result?.post?.announce_content || "",
         photos: result?.post?.announce_img ? [{ id: `photo-${now.getTime()}`, url: result.post.announce_img }] : [],
-        author: "CTU VET-MED",
+        author: "Dvmf",
         date: now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
         timestamp: now,
         comments: [],
@@ -483,7 +471,7 @@ const CTUAnnouncement = () => {
           id: announcement.announce_id,
           content: announcement.announce_content,
           photos: announcement.announce_img ? [{ id: 1, url: announcement.announce_img }] : [],
-          author: "CTU VET-MED",
+          author: "Dvmf",
           timestamp: new Date(announcement.announce_date),
           date: new Date(announcement.announce_date).toLocaleDateString("en-US", {
             year: "numeric",
@@ -752,56 +740,52 @@ const CTUAnnouncement = () => {
               style={{ width: "100%", height: "100%", borderRadius: "50%" }}
             />
           </div>
-<div style={{ ...styles.commentInputContainer, position: "relative" }}>
-  <input
-    id={`comment-input-${post.id}`}
-    type="text"
-    value={commentInputs[post.id] || ""}
-    onChange={(e) =>
-      setCommentInputs((prev) => ({ ...prev, [post.id]: e.target.value }))
-    }
-    onKeyDown={(e) => {
-      if (e.key === "Enter") {
-        addComment(post.id, commentInputs[post.id] || "");
-        setCommentInputs((prev) => ({ ...prev, [post.id]: "" }));
-      }
-    }}
-    style={{
-      width: "calc(100% - 44px)", // leaves space for the Send button
-      padding: "8px 12px",
-      borderRadius: "18px",
-      border: "1px solid #ddd",
-      fontSize: "14px",
-      boxSizing: "border-box",
-    }}
-  />
+          <div style={{ ...styles.commentInputContainer, position: "relative" }}>
+            <input
+              id={`comment-input-${post.id}`}
+              type="text"
+              value={commentInputs[post.id] || ""}
+              onChange={(e) => setCommentInputs((prev) => ({ ...prev, [post.id]: e.target.value }))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  addComment(post.id, commentInputs[post.id] || "")
+                  setCommentInputs((prev) => ({ ...prev, [post.id]: "" }))
+                }
+              }}
+              style={{
+                width: "calc(100% - 44px)", // leaves space for the Send button
+                padding: "8px 12px",
+                borderRadius: "18px",
+                border: "1px solid #ddd",
+                fontSize: "14px",
+                boxSizing: "border-box",
+              }}
+            />
 
-  <button
-    style={{
-      position: "absolute",
-      right: "4px",
-      top: "50%",
-      transform: "translateY(-50%)",
-      background: "none",
-      border: "none",
-      cursor: "pointer",
-      color: "#1877f2",
-      width: "36px",
-      height: "36px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-    }}
-    onClick={() => {
-      addComment(post.id, commentInputs[post.id] || "");
-      setCommentInputs((prev) => ({ ...prev, [post.id]: "" }));
-    }}
-  >
-    <Send size={20} /> {/* increase icon size for better visibility */}
-  </button>
-</div>
-
-
+            <button
+              style={{
+                position: "absolute",
+                right: "4px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                color: "#1877f2",
+                width: "36px",
+                height: "36px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+              onClick={() => {
+                addComment(post.id, commentInputs[post.id] || "")
+                setCommentInputs((prev) => ({ ...prev, [post.id]: "" }))
+              }}
+            >
+              <Send size={20} /> {/* increase icon size for better visibility */}
+            </button>
+          </div>
         </div>
 
         {/* Comments List */}
@@ -937,16 +921,20 @@ const CTUAnnouncement = () => {
     })
   }, [])
 
-  const toggleLike = (postId) => {
-    setPosts((prevPosts) =>
-      prevPosts.map((post) => {
-        if (post.id === postId) {
-          return { ...post, isLiked: !post.isLiked, likes: post.isLiked ? post.likes - 1 : post.likes + 1 }
-        }
-        return post
-      }),
-    )
-  }
+  const getSortedPosts = useCallback(() => {
+    // Separate pinned and unpinned posts
+    const pinned = posts.filter((post) => pinnedPosts.has(post.id))
+    const unpinned = posts.filter((post) => !pinnedPosts.has(post.id))
+
+    // Sort pinned posts by timestamp (newest first)
+    const sortedPinned = pinned.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+
+    // Sort unpinned posts by timestamp (newest first)
+    const sortedUnpinned = unpinned.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+
+    // Return pinned posts first, then unpinned posts
+    return [...sortedPinned, ...sortedUnpinned]
+  }, [posts, pinnedPosts])
 
   return (
     <div className="bodyWrapper">
@@ -1009,7 +997,7 @@ body {
 }
 
 .search-input:focus {
-  border-color:#b91c1c;
+  border-color:#0F3D5A;
 }
 
 .search-icon {
@@ -1061,7 +1049,7 @@ body {
   position: absolute;
   top: 2px;
   right: 2px;
-  background-color: #b91c1c;
+  background-color: #0F3D5A;
   color: white;
   font-size: 10px;
   width: 15px;
@@ -1111,7 +1099,7 @@ body {
 .mark-all-read {
   background: none;
   border: none;
-  color: #b91c1c;
+  color: #0F3D5A;
   font-size: 12px;
   cursor: pointer;
   text-decoration: underline;
@@ -1131,7 +1119,7 @@ body {
 
 .notification-item.unread {
   background-color: #f0f8ff;
-  border-left: 3px solid #b91c1c;
+  border-left: 3px solid #0F3D5A;
 }
 
 .notification-item:last-child {
@@ -1227,7 +1215,7 @@ flex: 1;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 2px solid #b91c1c;
+  border: 2px solid #0F3D5A;
   flex-shrink: 0;
 }
 
@@ -1283,8 +1271,8 @@ flex: 1;
 }
 
 .tab-button.active {
-  color: #b91c1c;
-  border-bottom-color: #b91c1c;
+  color: #0F3D5A;
+  border-bottom-color: #0F3D5A;
 }
 
 .content-section {
@@ -1396,7 +1384,7 @@ flex: 1;
 
 .services-column li::before {
   content: "•";
-  color: #b91c1c;
+  color:#0F3D5A;
   font-weight: bold;
   position: absolute;
   left: 0;
@@ -1478,12 +1466,12 @@ flex: 1;
 }
 
 .media-btn.active {
-  color: #b91c1c;
+  color: #0F3D5A;
   background: #dbeafe;
 }
 
 .post-btn {
-  background: #b91c1c;
+  background: #0F3D5A;
   color: white;
   border: none;
   padding: 8px 20px;
@@ -1520,12 +1508,12 @@ flex: 1;
 }
 
 .photo-upload-area:hover {
-  border-color: #b91c1c;
+  border-color: #0F3D5A;
   background: #f8fafc;
 }
 
 .photo-upload-area.dragover {
-  border-color: #b91c1c;
+  border-color: #0F3D5A;
   background: #dbeafe;
 }
 
@@ -1613,7 +1601,7 @@ flex: 1;
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 2px solid #b91c1c;
+  border: 2px solid #0F3D5A;
   flex-shrink: 0;
 }
 
@@ -1919,7 +1907,7 @@ flex: 1;
 }
 
 .comment-input:focus {
-  border-color: #b91c1c;
+  border-color: #0F3D5A;
   background: white;
 }
 
@@ -1930,7 +1918,7 @@ flex: 1;
   transform: translateY(-50%);
   background: none;
   border: none;
-  color:#b91c1c;
+  color:#0F3D5A;
   cursor: pointer;
   font-size: 16px;
 }
@@ -2017,7 +2005,7 @@ flex: 1;
 .comments-more-btn {
   background: none;
   border: none;
-  color: #b91c1c;
+  color: #0F3D5A;
   font-size: 14px;
   cursor: pointer;
   padding: 4px 8px;
@@ -2068,7 +2056,7 @@ flex: 1;
   top: 20px;
   left: 20px;
   z-index: 1001;
-  background: #b91c1c;
+  background: #0F3D5A;
   color: white;
   border: none;
   padding: 12px;
@@ -2090,7 +2078,7 @@ flex: 1;
 .chat-button {
   width: 64px;
   height: 64px;
-  background: #b91c1c;
+  background: #0F3D5A;
   border: none;
   border-radius: 20px;
   color: white;
@@ -2113,7 +2101,7 @@ flex: 1;
   height: 0;
   border-left: 10px solid transparent;
   border-right: 10px solid transparent;
-  border-top: 10px solid #b91c1c;
+  border-top: 10px solid #0F3D5A;
 }
 
 .chat-button:hover {
@@ -2122,7 +2110,7 @@ flex: 1;
 }
 
 .chat-button:hover::after {
-  border-top-color: #b91c1c;
+  border-top-color: #0F3D5A;
 }
 
 .chat-dots {
@@ -2541,7 +2529,7 @@ flex: 1;
 .reply-submit {
  
   border: none;
-  color: #b91c1c;
+  color: #0F3D5A;
   cursor: pointer;
   padding: 4px;
   border-radius: 50%;
@@ -2710,7 +2698,7 @@ flex: 1;
 
 
 .comment-action:focus {
-  outline: 2px solid #b91c1c;
+  outline: 2px solid #0F3D5A;
   outline-offset: 2px;
 }
 
@@ -2806,7 +2794,7 @@ flex: 1;
   }
 
   .reply-submit {
-    color: #b91c1c;
+    color: #0F3D5A;
   }
 
   .reply-submit:hover {
@@ -2874,7 +2862,7 @@ flex: 1;
 .announcement-title {
           font-size: 22px;
           font-weight: bold;
-          color: #da2424ff;
+          color: #0F3D5A;
         }
 
       `}</style>
@@ -2911,7 +2899,7 @@ flex: 1;
             </div>
 
             <div className="profile-details">
-              <h1>Cebu City CTU</h1>
+              <h1>Cebu City Dvmf</h1>
 
               <div className="detail-item">
                 <MapPin size={18} style={{ marginRight: "8px" }} />
@@ -2925,7 +2913,7 @@ flex: 1;
 
               <div className="detail-item">
                 <Mail size={18} style={{ marginRight: "8px" }} />
-                <span>ctu.city@ctu.edu.ph</span>
+                <span>ctu.city@dvmf.edu.ph</span>
               </div>
             </div>
           </div>
@@ -2951,7 +2939,7 @@ flex: 1;
               <div className="description-box">
                 <h3>Description</h3>
                 <p>
-                  The College of Technological University Veterinary Medical (CTU VET-MED) is responsible for ensuring
+                  The College of Technological University Veterinary Medical (Dvmf) is responsible for ensuring
                   the health and welfare of animals within the city limits, including horses used by kutseros for
                   transportation.
                 </p>
@@ -3102,9 +3090,9 @@ flex: 1;
                   <h3>No announcements yet</h3>
                   <p>Create your first announcement to get started</p>
                 </div>
-                  ) : (
+              ) : (
                 <div id="postsContainer">
-                  {posts.map((post) => (
+                  {getSortedPosts().map((post) => (
                     <div key={post.id} style={styles.postCard}>
                       {/* Post Header */}
                       <div style={styles.postHeader}>
@@ -3136,115 +3124,80 @@ flex: 1;
                           </button>
 
                           {showDropdown[post.id] && (
-  <div
-    style={{
-      position: "absolute",
-      top: "100%",
-      right: "0",
-      backgroundColor: "white",
-      border: "1px solid #ddd",
-      borderRadius: "8px",
-      boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-      zIndex: 1000,
-      minWidth: "220px",
-      padding: "8px 0",
-    }}
-  >
-    {/* Pin Post */}
-    <div
-  style={{
-    padding: "12px 16px",
-    fontSize: "14px",
-    color: pinnedPosts.has(post.id) ? "#1877f2" : "#65676b",
-    cursor: "pointer",
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-  }}
-  onClick={() => {
-    setPinnedPosts((prev) => {
-      const updated = new Set(prev);
-      if (updated.has(post.id)) {
-        updated.delete(post.id);
-      } else {
-        updated.add(post.id);
-      }
-      return updated;
-    });
-    setShowDropdown((prev) => ({ ...prev, [post.id]: false })); // close dropdown
-  }}
-  onMouseEnter={(e) => (e.target.style.backgroundColor = "#f2f2f2")}
-  onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
->
-  <Pin size={18} />
-  {pinnedPosts.has(post.id) ? "Unpin post" : "Pin post"}
-</div>
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: "100%",
+                                right: "0",
+                                backgroundColor: "white",
+                                border: "1px solid #ddd",
+                                borderRadius: "8px",
+                                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                                zIndex: 1000,
+                                minWidth: "220px",
+                                padding: "8px 0",
+                              }}
+                            >
+                              {/* Pin Post */}
+                              <div
+                                style={{
+                                  padding: "12px 16px",
+                                  fontSize: "14px",
+                                  color: pinnedPosts.has(post.id) ? "#1877f2" : "#65676b",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                }}
+                                onClick={() => {
+                                  setPinnedPosts((prev) => {
+                                    const updated = new Set(prev)
+                                    if (updated.has(post.id)) {
+                                      updated.delete(post.id)
+                                    } else {
+                                      updated.add(post.id)
+                                    }
+                                    return updated
+                                  })
+                                  setShowDropdown((prev) => ({ ...prev, [post.id]: false })) // close dropdown
+                                }}
+                                onMouseEnter={(e) => (e.target.style.backgroundColor = "#f2f2f2")}
+                                onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                              >
+                                <Pin size={18} />
+                                {pinnedPosts.has(post.id) ? "Unpin post" : "Pin post"}
+                              </div>
 
-    {/* Edit Post */}
-    <div
-      style={{
-        padding: "12px 16px",
-        fontSize: "14px",
-        color: "#65676b",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "10px",
-      }}
-      onClick={() => {
-        toggleEdit(post.id)
-        setShowDropdown((prev) => ({ ...prev, [post.id]: false }))
-      }}
-      onMouseEnter={(e) => (e.target.style.backgroundColor = "#f2f2f2")}
-      onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
-    >
-      <Edit size={18} />
-      Edit post
-    </div>
+                              {/* Edit Post */}
+                              <div
+                                style={{
+                                  padding: "12px 16px",
+                                  fontSize: "14px",
+                                  color: "#65676b",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                }}
+                                onClick={() => {
+                                  toggleEdit(post.id)
+                                  setShowDropdown((prev) => ({ ...prev, [post.id]: false }))
+                                }}
+                                onMouseEnter={(e) => (e.target.style.backgroundColor = "#f2f2f2")}
+                                onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
+                              >
+                                <Edit size={18} />
+                                Edit post
+                              </div>
 
-    {/* Delete Post */}
-    <div
-      style={{
-        padding: "12px 16px",
-        fontSize: "14px",
-        color: "#e53935",
-        cursor: "pointer",
-        display: "flex",
-        alignItems: "center",
-        gap: "10px",
-      }}
-      onClick={async () => {
-        if (window.confirm("Are you sure you want to delete this post?")) {
-          try {
-            const res = await fetch(
-              `http://localhost:8000/api/dvmf/delete-post/${post.id}/`,
-              {
-                method: "DELETE",
-                credentials: "include",
-              }
-            );
-            if (!res.ok) throw new Error("Failed to delete post");
-            setPosts((prev) => prev.filter((p) => p.id !== post.id));
-          } catch (err) {
-            console.error(err);
-            alert("Failed to delete post. Try again.");
-          }
-        }
-      }}
-      onMouseEnter={(e) => (e.target.style.backgroundColor = "#fceaea")}
-      onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
-    >
-      <Trash size={18} />
-      Delete post
-    </div>
-  </div>
-)}
-
+                              
+                            </div>
+                          )}
                         </div>
                       </div>
 
                       {/* Content */}
-                        <div style={styles.postContent}>
+                      <div style={styles.postContent}>
                         {isEditingPost === post.id ? (
                           <div>
                             <textarea
@@ -3356,9 +3309,7 @@ flex: 1;
                       </div>
 
                       {/* Post Actions */}
-                        <div style={styles.postActions}>
-                        
-
+                      <div style={styles.postActions}>
                         <button
                           style={{
                             ...styles.actionButton,
@@ -3370,7 +3321,6 @@ flex: 1;
                           <span>Comment</span>
                           {post.comments && post.comments.length > 0 && <span>({post.comments.length})</span>}
                         </button>
-
                       </div>
 
                       {/* Images */}
@@ -3379,13 +3329,13 @@ flex: 1;
                       {/* Comments */}
                       {renderComments(post)}
                     </div>
-                    ))}
-                   </div>
-                  )}
+                  ))}
                 </div>
               )}
+            </div>
+          )}
         </div>
-    </div>
+      </div>
 
       <FloatingMessages />
 
@@ -3402,4 +3352,4 @@ flex: 1;
   )
 }
 
-export default CTUAnnouncement
+export default DvmfAnnouncement

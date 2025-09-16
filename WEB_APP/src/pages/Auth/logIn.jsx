@@ -242,7 +242,7 @@ if (role === "Veterinarian") {
   navigate("/VetDashboard");
 } else if (role === "Ctu-Vetmed" || role === "Ctu-Admin") {
   navigate("/CtuDashboard");
-} else if (role === "Dvmf") {
+} else if (role === "Dvmf" || role === "Dvmf-Admin")  {
   navigate("/DvmfDashboard");
 } else {
   navigate("/KutDashboard");

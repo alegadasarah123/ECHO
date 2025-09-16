@@ -1,16 +1,36 @@
 "use client"
 
 import Sidebar from "@/components/CtuSidebar"
-import { AlertTriangle, Bell, CheckCircle, Folder, Info, LogOut, Search, Trash2, XCircle } from "lucide-react"
+import {
+  AlertTriangle,
+  Award,
+  Bell,
+  Building,
+  Calendar,
+  CheckCircle,
+  CheckSquare,
+  Eye,
+  Facebook,
+  Folder,
+  Globe,
+  Info,
+  Mail,
+  MapPin,
+  Phone,
+  Search,
+  User,
+  X,
+  XCircle,
+} from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import FloatingMessages from './CtuMessage'
+import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
 const initialDirectoryData = []
 const initialNotifications = []
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed";
+const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
 
 function CtuDirectory() {
   const navigate = useNavigate()
@@ -37,6 +57,10 @@ function CtuDirectory() {
   const [directory, setDirectory] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+
+  // State for profile modal
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [selectedPerson, setSelectedPerson] = useState(null)
 
   // Utility functions
   const formatTimeAgo = useCallback((timestamp) => {
@@ -187,58 +211,59 @@ function CtuDirectory() {
     [navigate],
   )
 
-const handleDelete = async (userId) => {
-  if (!userId) return;
-
-  const confirmDelete = window.confirm("Are you sure you want to delete this user?");
-  if (!confirmDelete) return;
-
+const handleView = async (person) => {
   try {
-    const response = await fetch(`http://127.0.0.1:8000/api/ctu_vetmed/directory/${userId}/`, {
-      method: "DELETE",
+    // Optional: fetch full data from API if not already complete
+    const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_directory_profiles/", {
+      method: "GET",
       credentials: "include",
     });
 
-    const result = await response.json();
-    if (response.ok) {
-      alert(result.message);
-      loadDirectoryData();  // refresh the directory
+    if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+
+    const data = await response.json();
+
+    // Find the matching person in the API response
+    const fullPersonData = [
+      ...data.vets,
+      ...data.kutseros,
+      ...data.horse_operators,
+    ].find((p) =>
+      (p.vet_email && p.vet_email === person.email) ||
+      (p.kutsero_email && p.kutsero_email === person.email) ||
+      (p.op_email && p.op_email === person.email)
+    );
+
+    if (!fullPersonData) {
+      console.warn("Full profile data not found, using current person object.");
+      setSelectedPerson(person);
     } else {
-      alert(result.error);
+      setSelectedPerson(fullPersonData);
     }
+
+    setShowProfileModal(true);
   } catch (err) {
-    alert("Unexpected error occurred while deleting the user.");
-    console.error("Error deleting directory user:", err);
+    console.error("Failed to load profile data:", err);
+    setSelectedPerson(person); // fallback
+    setShowProfileModal(true);
   }
 };
 
 
-
-
-  const handleSearchInput = (e) => {
-    const searchTerm = e.target.value.toLowerCase()
-    setSearchTerm(searchTerm)
-
-    // Filter directory items based on search term
-    if (searchTerm === "") {
-      setFilteredDirectoryData(directoryData)
-    } else {
-      const filtered = directoryData.filter(
-        (item) =>
-          item.name.toLowerCase().includes(searchTerm) ||
-          item.type.toLowerCase().includes(searchTerm) ||
-          (item.description && item.description.toLowerCase().includes(searchTerm)),
-      )
-      setFilteredDirectoryData(filtered)
-    }
+  const handleSearchInput = (event) => {
+    setSearchTerm(event.target.value)
   }
 
+  // Load data from backend
   // Load data from backend
 const loadDirectoryData = async () => {
   try {
     const response = await fetch(
       "http://127.0.0.1:8000/api/ctu_vetmed/get_directory_profiles/",
-      { method: "GET", credentials: "include" }
+      {
+        method: "GET",
+        credentials: "include",
+      }
     );
 
     if (!response.ok) {
@@ -253,18 +278,42 @@ const loadDirectoryData = async () => {
         type: "Veterinarian",
         email: vet.vet_email || "N/A",
         status: vet.users?.status || "Unknown",
+        date_of_birth: vet.vet_dob || "N/A",
+        gender: vet.vet_sex || "N/A",
+        phone: vet.vet_phone_num || "N/A",
+        province: vet.vet_province || "N/A",
+        city: vet.vet_city || "N/A",
+        barangay: vet.vet_brgy || "N/A",
+        zip_code: vet.vet_zipcode || "N/A",
+        middle_name: vet.vet_mname || "N/A",
       })),
       ...data.kutseros.map((k) => ({
         name: `${k.kutsero_fname} ${k.kutsero_lname}`,
         type: "Kutsero",
         email: k.kutsero_email || "N/A",
         status: k.users?.status || "Unknown",
+        date_of_birth: k.kutsero_dob || "N/A",
+        gender: k.kutsero_sex || "N/A",
+        phone: k.kutsero_phone_num || "N/A",
+        province: k.kutsero_province || "N/A",
+        city: k.kutsero_city || "N/A",
+        barangay: k.kutsero_brgy || "N/A",
+        zip_code: k.kutsero_zipcode || "N/A",
+        middle_name: k.kutsero_mname || "N/A",
       })),
       ...data.horse_operators.map((h) => ({
         name: `${h.op_fname} ${h.op_lname}`,
         type: "Horse Operator",
         email: h.op_email || "N/A",
         status: h.users?.status || "Unknown",
+        date_of_birth: h.op_dob || "N/A",
+        gender: h.op_sex || "N/A",
+        phone: h.op_phone_num || "N/A",
+        province: h.op_province || "N/A",
+        city: h.op_city || "N/A",
+        barangay: h.op_brgy || "N/A",
+        zip_code: h.op_zipcode || "N/A",
+        middle_name: h.op_mname || "N/A",
       })),
     ];
 
@@ -303,6 +352,170 @@ const loadDirectoryData = async () => {
   useEffect(() => {
     loadDirectoryData()
   }, [])
+  
+
+const ProfileModal = ({ person, onClose }) => {
+  if (!person) return null;
+
+  console.log("Person data received:", person); // Debug log
+
+  // Map person to a normalized structure
+  const normalizedPerson = (() => {
+    if (person.vet_fname) {
+      return {
+        type: "Veterinarian",
+        name: `${person.vet_fname} ${person.vet_mname || ""} ${person.vet_lname}`.trim(),
+        email: person.vet_email,
+        fb: person.vet_fb || "N/A",
+        phone: person.vet_phone_num,
+        date_of_birth: person.vet_dob,
+        gender: person.vet_sex,
+        province: person.vet_province,
+        city: person.vet_city,
+        barangay: person.vet_brgy,
+        zip_code: person.vet_zipcode,
+        license: person.vet_license_num,
+        experience: person.vet_exp_yr,
+        specialization: person.vet_specialization,
+        organization: person.vet_org,
+       status: person.users?.status || "N/A",
+      };
+    } 
+
+    if (person.kutsero_fname) {
+      return {
+        type: "Kutsero",
+        name: `${person.kutsero_fname} ${person.kutsero_mname || ""} ${person.kutsero_lname}`.trim(),
+        email: person.kutsero_email,
+        fb: person.kutsero_fb || "N/A",
+        phone: person.kutsero_phone_num,
+        date_of_birth: person.kutsero_dob,
+        gender: person.kutsero_sex,
+        province: person.kutsero_province,
+        city: person.kutsero_city,
+        barangay: person.kutsero_brgy,
+        zip_code: person.kutsero_zipcode,
+        status: person.users?.status || "N/A",
+      };
+    }
+
+    if (person.op_fname) {
+      return {
+        type: "Horse Operator",
+        name: `${person.op_fname} ${person.op_mname || ""} ${person.op_lname}`.trim(),
+        email: person.op_email,
+        fb: person.op_fb || "N/A",
+        phone: person.op_phone_num,
+        date_of_birth: person.op_dob,
+        gender: person.op_sex,
+        province: person.op_province,
+        city: person.op_city,
+        barangay: person.op_brgy,
+        zip_code: person.op_zipcode,
+      status: person.users?.status || "N/A",
+      };
+    }
+
+    console.warn("Unknown person type:", person);
+    return person;
+  })();
+
+  const typeClassMap = {
+    Veterinarian: "veterinarian",
+    Kutsero: "kutsero",
+    "Horse Operator": "horse-operator",
+  };
+
+  const InfoItem = ({ icon: Icon, label, value }) => (
+    <div className="info-item">
+      <Icon size={14} />
+      <span>{label}: {value || "N/A"}</span>
+    </div>
+  );
+
+  const renderPersonalInfo = () => (
+  <div className="profile-section">
+    <h4 className="section-title"><User size={16} /> Personal Information</h4>
+    <div className="info-grid">
+      <InfoItem icon={User} label="Name" value={normalizedPerson.name} />
+      <InfoItem icon={Calendar} label="Date of Birth" value={normalizedPerson.date_of_birth} />
+      <InfoItem icon={User} label="Gender" value={normalizedPerson.gender} />
+      <InfoItem icon={Phone} label="Phone" value={normalizedPerson.phone} />
+      <InfoItem 
+        icon={CheckSquare} 
+        label="Status" 
+        value={<span className={`status-badge ${normalizedPerson.status.toLowerCase()}`}>{normalizedPerson.status}</span>} 
+      />
+
+    </div>
+  </div>
+);
+
+
+
+  const renderSocialMediaInfo = () => (
+    <div className="profile-section">
+      <h4 className="section-title"><Globe size={16} /> Social Media</h4>
+      <div className="info-grid">
+        <InfoItem icon={Mail} label="Email" value={normalizedPerson.email} />
+        <InfoItem icon={Facebook} label="Facebook" value={normalizedPerson.fb} />
+      </div>
+    </div>
+  );
+
+  const renderAddressInfo = () => (
+    <div className="profile-section">
+      <h4 className="section-title"><MapPin size={16} /> Address Information</h4>
+      <div className="info-grid">
+        <InfoItem icon={MapPin} label="Province" value={normalizedPerson.province} />
+        <InfoItem icon={MapPin} label="City" value={normalizedPerson.city} />
+        <InfoItem icon={MapPin} label="Barangay" value={normalizedPerson.barangay} />
+        <InfoItem icon={MapPin} label="ZIP Code" value={normalizedPerson.zip_code} />
+      </div>
+    </div>
+  );
+
+const renderProfessionalInfo = () => {
+  if (normalizedPerson.type !== "Veterinarian") return null;
+
+  return (
+    <div className="profile-section">
+      <h4 className="section-title"><Award size={16} /> Professional Details</h4>
+      <div className="info-grid">
+        <InfoItem icon={Award} label="License" value={normalizedPerson.vet_license_num} />
+        <InfoItem icon={Award} label="Experience (Years)" value={normalizedPerson.vet_exp_yr} />
+        <InfoItem icon={Award} label="Specialization" value={normalizedPerson.vet_specialization} />
+        <InfoItem icon={Building} label="Organization" value={normalizedPerson.vet_org} />
+      </div>
+    </div>
+  );
+};
+
+
+  return (
+    <div className="modal-overlay active" onClick={onClose}>
+      <div className="profile-modal" onClick={e => e.stopPropagation()}>
+        <div className="profile-modal-header">
+          <div className="profile-header-content">
+            <h3>{normalizedPerson.name}</h3>
+            <span className={`user-type-badge ${typeClassMap[normalizedPerson.type]}`}>
+              {normalizedPerson.type?.replace("_", " ")}
+            </span>
+          </div>
+          <button className="close-button" onClick={onClose}><X size={20} /></button>
+        </div>
+
+        <div className="profile-modal-body">
+          {renderPersonalInfo()}
+          {renderSocialMediaInfo()}
+          {renderAddressInfo()}
+          {renderProfessionalInfo()}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -322,40 +535,6 @@ body {
   box-sizing: border-box;
 }
 
- .logouts {
-  padding: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.logout-btns {
-  display: flex;
-  align-items: center;
-  color: white;
-  text-decoration: none;
-  font-size: clamp(13px, 2vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  padding: 14px 40px;
-  border-radius: 25px;
-  transition: all 0.3s ease;
-  min-height: 44px;
-}
-
-.logout-btns:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.logout-icons {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
 .main-content {
   flex: 1;
   display: flex;
@@ -373,8 +552,6 @@ body {
   flex-wrap: wrap;
   gap: 16px;
 }
-
-
 
 .notification-bell {
   font-size: clamp(18px, 3vw, 20px);
@@ -585,11 +762,6 @@ flex: 1;
   padding: clamp(16px, 3vw, 20px);
 }
 
-
-
-
-
-
 .directory-table {
   width: 100%;
   border-collapse: collapse;
@@ -687,7 +859,6 @@ flex: 1;
   border: 1px solid #d1d5db;
 }
 
-/* Added role-based color styling */
 .role-badge {
   display: inline-block;
   padding: 4px 8px;
@@ -715,312 +886,242 @@ flex: 1;
   border: 1px solid #fed7aa;
 }
 
-/* Improved delete button styling and positioning */
-.delete-button {
+.view-button {
   display: flex;
   align-items: center;
   gap: 4px;
   padding: 6px 12px;
-  background: #fee2e2;
-  color: #dc2626;
-  border: 1px solid #fecaca;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
   border-radius: 6px;
   font-size: clamp(10px, 1.8vw, 12px);
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.delete-button:hover {
-  background: #fecaca;
-  border-color: #f87171;
+.view-button:hover {
+  background: #bfdbfe;
+  border-color: #93c5fd;
 }
 
-/* Empty State */
- .empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center; /* centers horizontally */
-  justify-content: center; /* centers vertically (if parent has height) */
-  text-align: center;
-  padding: 2rem;
-}
-
-.icon-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 1rem;
-}
-
-.empty-state i {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.empty-state h3 {
-  font-size: clamp(16px, 3vw, 18px);
-  margin-bottom: 8px;
-  color: #374151;
-}
-
-.empty-state p {
-  font-size: clamp(12px, 2vw, 14px);
-}
-
-/* Mobile Menu Button */
-.mobile-menu-btn {
-  display: none;
-  position: fixed;
-  top: 20px;
-  left: 20px;
-  z-index: 1001;
-  background: #b91c1c;
-  color: white;
-  border: none;
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 18px;
-  cursor: pointer;
-  min-height: 44px;
-  min-width: 44px;
-}
-
-/* Chat Widget Styling */
-.chat-widget {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 1000;
-}
-
-.chat-button {
-  width: 64px;
-  height: 64px;
-  background: #b91c1c;
-  border: none;
-  border-radius: 20px;
-  color: white;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-.chat-button::after {
-  content: "";
-  position: absolute;
-  bottom: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-top: 10px solid #b91c1c;
-}
-
-.chat-button:hover {
-  transform: scale(1.05);
-  box-shadow: 0 6px 16px rgba(185, 28, 28, 0.4);
-}
-
-.chat-button:hover::after {
-  border-top-color: #b91c1c;
-}
-
-.chat-dots {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  justify-content: center;
-}
-
-.chat-dot {
-  width: 8px;
-  height: 8px;
-  background: white;
-  border-radius: 50%;
-}
-
-/* Logout Modal Styles */
 .modal-overlay {
-  position: fixed;
+ position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: none;
-  justify-content: center;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  display: flex;
   align-items: center;
-  z-index: 2000;
+  justify-content: center;
+  z-index: 1000;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   padding: 20px;
 }
 
 .modal-overlay.active {
-  display: flex;
+  opacity: 1;
+  visibility: visible;
 }
 
-.confirmation-modal {
+.profile-modal {
   background: #ffffff;
-  border-radius: 8px;
-  padding: clamp(20px, 4vw, 24px);
-  width: 90%;
-  max-width: 400px;
-  text-align: center;
+  border-radius: 24px;
+  width: 100%;
+  max-width: 900px;
+  max-height: 90vh; /* limit modal height */
+  overflow: hidden; /* hide overflow at modal level */
+  box-shadow: 
+    0 25px 50px -12px rgba(0, 0, 0, 0.25),
+    0 0 0 1px rgba(255, 255, 255, 0.1);
+  animation: modalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+  display: flex;
+  flex-direction: column; /* so header stays on top and body scrolls */
 }
 
-.confirmation-modal h3 {
-  font-size: clamp(16px, 3vw, 18px);
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-40px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.profile-modal-header {
+  background: #b91c1c;
+padding: 32px;
+  color: white;
+  position: relative;
+  overflow: hidden;
+}
+
+.profile-modal-header ::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: 
+    radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.profile-header-content h3 {
+  font-size: 24px;
   font-weight: 600;
-  color: #111827;
-  margin-bottom: 12px;
+  margin: 0 0 8px 0;
 }
 
-.confirmation-modal p {
-  font-size: clamp(12px, 2vw, 14px);
-  color: #6b7280;
-  margin-bottom: 24px;
-  line-height: 1.5;
-}
-
-.confirmation-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.confirmation-btn {
-  padding: 8px 20px;
-  border: none;
-  border-radius: 6px;
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 80px;
-  min-height: 40px;
-}
-
-.confirmation-btn.cancel {
-  background: #6b7280;
+/* Status badge colors */
+/* Status badge colors */
+.status-approved {
+  background-color: #4caf50; /* green */
   color: white;
-}
-
-.confirmation-btn.cancel:hover {
-  background: #4b5563;
-}
-
-.confirmation-btn.confirm {
-  background: #ef4444;
-  color: white;
-}
-
-.confirmation-btn.confirm:hover {
-  background: #dc2626;
-}
-
-.logout-modal {
-  background: #ffffff;
+  padding: 3px 8px;
   border-radius: 12px;
-  padding: 32px;
-  width: 90%;
-  max-width: 400px;
-  text-align: center;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  font-size: 0.8rem;
+}
+.status-badge.approved { background-color: #4caf50; color: white; }
+.status-badge.declined { background-color: #f44336; color: white; }
+.status-badge.pending { background-color: #ff9800; color: white; }
+
+
+.header-subinfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.logout-modal-icon {
-  width: 64px;
-  height: 64px;
-  background: #fef3c7;
-  border-radius: 50%;
+
+.user-type-badge {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  text-transform: capitalize;
+  backdrop-filter: blur(10px);
+}
+
+/* Type-specific colors */
+.user-type-badge.veterinarian {
+  background-color: #4caf50; /* green */
+  color: white;
+}
+
+.user-type-badge.kutsero {
+  background-color: #8b4513; /* brown */
+  color: white;
+}
+
+.user-type-badge.horse-operator {
+  background-color: #ff9800; /* orange */
+  color: white;
+}
+
+
+.close-button {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 12px;
+  width: 40px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 20px;
-}
-
-.logout-modal h3 {
-  font-size: 20px;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 12px;
-}
-
-.logout-modal p {
-  font-size: 16px;
-  color: #6b7280;
-  margin-bottom: 32px;
-  line-height: 1.5;
-}
-
-.logout-modal-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.logout-modal-btn {
-  padding: 12px 24px;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
-  min-width: 100px;
-  min-height: 44px;
-}
-
-.logout-modal-btn.cancel {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.logout-modal-btn.cancel:hover {
-  background: #e5e7eb;
-}
-
-.logout-modal-btn.confirm {
-  background: #ef4444;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   color: white;
+  z-index: 3;
 }
 
-.logout-modal-btn.confirm:hover {
-  background: #dc2626;
+.close-button:hover {
+   background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: scale(1.05);
 }
 
-/* Tablet */
+.profile-modal-body {
+   padding: 32px;
+  background: #f8fafc;
+  overflow-y: auto; 
+}
+
+.profile-section {
+ background: white;
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: 1px solid #e2e8f0;
+}
+
+.profile-section:last-child {
+  margin-bottom: 0;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 16px;
+}
+
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.info-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  color: #475569;
+  font-size: 14px;
+}
+
+.info-item svg {
+  color: #667eea;
+  flex-shrink: 0;
+}
+
 @media (max-width: 1024px) {
-  
   .filter-select {
     min-width: auto;
   }
 }
 
-
-
 .dashboard-container {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px 20px;
-          background: transparent;
-          
-        }
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: transparent;
+}
 
-        .dashboard-title {
-          font-size: 25px;
-          font-weight: bold;
-          color: #da2424ff;
-        }
+.directory-title {
+  font-size: 25px;
+  font-weight: bold;
+  color: #da2424ff;
+}
 .search-containers {
   flex: 1;
   max-width: 400px;
@@ -1041,8 +1142,6 @@ flex: 1;
   background: #fff;
 }
 
-
-
 .search-icon {
   position: absolute;
   left: 12px;
@@ -1052,20 +1151,19 @@ flex: 1;
   height: 16px;
   color: #6b7280;
 }
-  .dashboard-container {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px 20px;
-          background: transparent;
-          
-        }
 
-        .directory-title {
-          font-size: 25px;
-          font-weight: bold;
-          color: #da2424ff;
-        }
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;   /* centers horizontally */
+  justify-content: center; /* centers vertically */
+  text-align: center;    /* centers text inside */
+  padding: 40px 20px;
+  height: 100%; /* optional, if you want it vertically centered in parent */
+  gap: 12px;    /* spacing between icon, heading, and paragraph */
+  color: #555;  /* optional text color */
+}
+
       `}</style>
 
       <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
@@ -1135,90 +1233,58 @@ flex: 1;
             </div>
 
             <div className="directory-content">
-  {filteredDirectoryData.filter((person) => person.status?.toLowerCase() === "approved").length === 0 ? (
-    <div className="empty-state">
-      <Folder size={48} />
-      <h3>No approved directory entries found</h3>
-      <p>Only approved entries will appear here</p>
-    </div>
-  ) : (
-    <table className="directory-table">
-      <thead className="table-header">
-        <tr>
-          <th>Name</th>
-          <th>Role</th>
-          <th>Email</th>
-          <th>Status</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {filteredDirectoryData
-          .filter((person) => person.status?.toLowerCase() === "approved") // ✅ Only approved
-          .map((person) => (
-            <tr key={person.email} className="table-row">
-              <td>{person.name}</td>
-              <td>
-                <span
-                  className={`role-badge role-${person.type?.toLowerCase().replace(/\s+/g, "-")}`}
-                >
-                  {person.type}
-                </span>
-              </td>
-              <td>{person.email}</td>
-              <td>
-                <span className={`status-badge status-${person.status?.toLowerCase()}`}>
-                  {person.status}
-                </span>
-              </td>
-              <td>
-                <button
-                  className="delete-button"
-                  onClick={() => handleDelete(person.email)}
-                >
-                  <Trash2 size={16} /> Delete
-                </button>
-              </td>
-            </tr>
-          ))}
-      </tbody>
-    </table>
-  )}
-</div>
-
+              {filteredDirectoryData.filter((person) => person.status?.toLowerCase() === "approved").length === 0 ? (
+                <div className="empty-state">
+                  <Folder size={48} />
+                  <h3>No approved directory entries found</h3>
+                  <p>Only approved entries will appear here</p>
+                </div>
+              ) : (
+                <table className="directory-table">
+                  <thead className="table-header">
+                    <tr>
+                      <th>Name</th>
+                      <th>Role</th>
+                      <th>Email</th>
+                      <th>Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredDirectoryData
+                      .filter((person) => person.status?.toLowerCase() === "approved") // ✅ Only approved
+                      .map((person) => (
+                        <tr key={person.email} className="table-row">
+                          <td>{person.name}</td>
+                          <td>
+                            <span className={`role-badge role-${person.type?.toLowerCase().replace(/\s+/g, "-")}`}>
+                              {person.type}
+                            </span>
+                          </td>
+                          <td>{person.email}</td>
+                          <td>
+                            <span className={`status-badge status-${person.status?.toLowerCase()}`}>
+                              {person.status}
+                            </span>
+                          </td>
+                          <td>
+                            <button className="view-button" onClick={() => handleView(person)}>
+                              <Eye size={16} /> View
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      <FloatingMessages />
+      {showProfileModal && <ProfileModal person={selectedPerson} onClose={() => setShowProfileModal(false)} />}
 
-      {/* Logout Confirmation Modal */}
-      {showLogoutModal && (
-        <div className="modal-overlay active">
-          <div className="logout-modal">
-            <div className="logout-modal-icon">
-              <LogOut size={25} color="#f59e0b" />
-            </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons">
-              <button className="logout-modal-btn cancel" onClick={() => setShowLogoutModal(false)}>
-                No
-              </button>
-              <button
-                className="logout-modal-btn confirm"
-                onClick={() => {
-                  console.log("User logged out")
-                  navigate("/") // Navigate to login page
-                  setShowLogoutModal(false)
-                }}
-              >
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <FloatingMessages />
     </div>
   )
 }

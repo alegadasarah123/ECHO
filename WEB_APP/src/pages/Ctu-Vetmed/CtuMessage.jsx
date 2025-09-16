@@ -35,31 +35,72 @@ const FloatingMessages = () => {
     fetchConversations('');
   }, []);
 
-  const fetchConversations = async (query) => {
-    try {
-      const res = await fetch(`${API_BASE}/search_vet/?q=${encodeURIComponent(query)}`
-, {
-        credentials: "include",
-      });
-      const data = await res.json();
-      const users = data.users || [];
-      const mapped = users.map(v => ({
-        id: v.id,
-        name: v.name || v.email,
-        avatar: (v.name || v.email).slice(0, 2).toUpperCase(),
+  // Fetch conversations
+useEffect(() => {
+  fetchConversations('');
+}, []);
+
+const fetchConversations = async (query) => {
+  try {
+    const res = await fetch(`${API_BASE}/get_directory_profiles/`, {
+      credentials: "include",
+    });
+    const data = await res.json();
+
+    // Combine all users and filter by query
+    const allUsers = [
+      ...(data.vets || []).map(v => ({
+        id: v.vet_id,
+        name: `${v.vet_fname} ${v.vet_lname}`,
+        avatar: `${v.vet_fname.slice(0,1)}${v.vet_lname.slice(0,1)}`.toUpperCase(),
+        type: "Veterinarian",
         lastMessage: '',
         timestamp: '',
         unread: 0,
         online: false,
-        messages: []
-      }));
-      setConversations(mapped);
-      const unreadSum = mapped.reduce((sum, c) => sum + (c.unread || 0), 0);
-      setTotalUnread(unreadSum);
-    } catch (err) {
-      console.error(err);
-    }
-  };
+        messages: [],
+        status: v.users?.status || 'pending'
+      })),
+      ...(data.kutseros || []).map(k => ({
+        id: k.kutsero_id,
+        name: `${k.kutsero_fname} ${k.kutsero_lname}`,
+        avatar: `${k.kutsero_fname.slice(0,1)}${k.kutsero_lname.slice(0,1)}`.toUpperCase(),
+        type: "Kutsero",
+        lastMessage: '',
+        timestamp: '',
+        unread: 0,
+        online: false,
+        messages: [],
+        status: k.users?.status || 'pending'
+      })),
+      ...(data.horse_operators || []).map(op => ({
+        id: op.op_id,
+        name: `${op.op_fname} ${op.op_lname}`,
+        avatar: `${op.op_fname.slice(0,1)}${op.op_lname.slice(0,1)}`.toUpperCase(),
+        type: "Horse Operator",
+        lastMessage: '',
+        timestamp: '',
+        unread: 0,
+        online: false,
+        messages: [],
+        status: op.users?.status || 'pending'
+      })),
+    ];
+
+    // Filter by search query
+    const filtered = allUsers.filter(u => 
+      u.name.toLowerCase().includes(query.toLowerCase())
+    );
+
+    setConversations(filtered);
+
+    const unreadSum = filtered.reduce((sum, c) => sum + (c.unread || 0), 0);
+    setTotalUnread(unreadSum);
+  } catch (err) {
+    console.error(err);
+  }
+};
+
 
   const handleSearch = (term) => {
     setSearchTerm(term);

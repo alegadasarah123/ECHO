@@ -1048,7 +1048,7 @@ const styles = {
         .dashboard-title {
           font-size: 22px;
           font-weight: bold;
-          color: #da2424ff;
+          color: #0F3D5A;
         }
       `}</style>
 

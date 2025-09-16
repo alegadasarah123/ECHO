@@ -14,6 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 import re
 from supabase import create_client 
+from django.http import JsonResponse
 
 # -------------------- SUPABASE CLIENT --------------------
 # Environment config
@@ -76,7 +77,7 @@ def signup(request):
         first_name = request.data.get("firstName", "").strip()
         last_name = request.data.get("lastName", "").strip()
         phone_number = str(request.data.get("phoneNumber", "")).strip()
-        role = request.data.get("role", "Ctu-Vetmed").strip()   # Default = Ctu-Vetmed
+        role = request.data.get("role", "Dvmf-Vetmed").strip()   # Default = Dvmf-Vetmed
 
         if not all([email, password, first_name, last_name, phone_number]):
             return Response({"error": "All fields are required"}, status=400)
@@ -114,23 +115,23 @@ def signup(request):
         # 5️⃣ Insert/Update central users table
         user_record = {
             "id": user_id,         # must match auth.users.id
-            "role": role,          # "Ctu-Vetmed" or "Ctu-Admin"
+            "role": role,          # "Dvmf-Vetmed" or "Dvmf-Admin"
             "status": "approved"   # could also be "pending"
         }
-        users_res = sr_client.table("users").upsert(user_record).execute()
+        users_res = sr_client.table("dvmf_users").upsert(user_record).execute()
         if getattr(users_res, "error", None):
-            return Response({"error": "Failed to insert into users table", "details": users_res.error}, status=400)
+            return Response({"error": "Failed to insert into DVMF users table", "details": users_res.error}, status=400)
 
-        # 6️⃣ Insert into CTU Vet profile
+        # 6️⃣ Insert into DVMF Vet profile
         profile_payload = {
-            "ctu_id": user_id,
-            "ctu_fname": first_name,
-            "ctu_lname": last_name,
-            "ctu_email": email,
-            "ctu_phonenum": phone_number,
-            "ctu_role": role
+            "dvmf_id": user_id,
+            "dvmf_fname": first_name,
+            "dvmf_lname": last_name,
+            "dvmf_email": email,
+            "dvmf_phonenum": phone_number,
+            "dvmf_role": role
         }
-        profile_res = sr_client.table("ctu_vet_profile").upsert(profile_payload).execute()
+        profile_res = sr_client.table("dvmf_user_profile").upsert(profile_payload).execute()
         if getattr(profile_res, "error", None):
             return Response({"error": "Failed to insert profile", "details": profile_res.error}, status=400)
 
@@ -148,6 +149,7 @@ def signup(request):
         import traceback
         traceback.print_exc()
         return Response({"error": "Internal Server Error", "details": str(e)}, status=500)
+
 
 
 
@@ -273,7 +275,7 @@ def get_status_counts(request):
 # -------------------- GET PROFILES IN SETTINGS --------------------
 @api_view(["GET"])
 @login_required
-def get_ctu_vet_profiles(request):
+def get_dvmf_profiles(request):
     token = request.COOKIES.get("access_token")
     if not token:
         return Response({"error": "Authentication required"}, status=401)
@@ -286,31 +288,31 @@ def get_ctu_vet_profiles(request):
     except Exception:
         return Response({"error": "Invalid token"}, status=401)
 
-    res = sr_client.table("ctu_vet_profile").select("*").eq("ctu_id", user_id).execute()
+    # Fetch DVMF profile
+    res = sr_client.table("dvmf_user_profile").select("*").eq("dvmf_id", user_id).execute()
     profile = res.data[0] if res.data else None
 
     if not profile:
         return Response({"error": "Profile not found"}, status=404)
 
     return Response({
-        "ctu_id": profile.get("ctu_id"),
+        "dvmf_id": profile.get("dvmf_id"),
         "user_id": user_id,
-        "ctu_email": profile.get("ctu_email", ""),
-        "ctu_fname": profile.get("ctu_fname", ""),
-        "ctu_lname": profile.get("ctu_lname", ""),
-        "ctu_phonenum": profile.get("ctu_phonenum", ""),
-        "ctu_role": profile.get("ctu_role", "")
-        
+        "dvmf_email": profile.get("dvmf_email", ""),
+        "dvmf_fname": profile.get("dvmf_fname", ""),
+        "dvmf_lname": profile.get("dvmf_lname", ""),
+        "dvmf_phonenum": profile.get("dvmf_phonenum", ""),
+        "dvmf_role": profile.get("dvmf_role", "")
     })
 
 # Assuming you have your Supabase client setup as sr_client
 # -------------------- SAVE CTU VET PROFILE --------------------
 @api_view(["POST"])
-def save_ctu_vet_profile(request):
+def save_dvmf_profile(request):
     """
-    Save first-time CTU Vet profile:
+    Save first-time DVMF Vet profile:
     - fname, lname, phone, email
-    - Uses Supabase table 'ctu_vet_profile'
+    - Uses Supabase table 'dvmf_user_profile'
     """
     try:
         # 1️⃣ Get token to identify user
@@ -319,40 +321,42 @@ def save_ctu_vet_profile(request):
             return Response({"error": "Authentication required"}, status=401)
 
         payload = jwt.decode(token, options={"verify_signature": False})
-        ctu_id = payload.get("sub")
-        if not ctu_id:
+        dvmf_id = payload.get("sub")
+        if not dvmf_id:
             return Response({"error": "Invalid token"}, status=401)
 
         # 2️⃣ Get input values
-        ctu_fname = request.data.get("ctu_fname", "").strip()
-        ctu_lname = request.data.get("ctu_lname", "").strip()
-        ctu_email = request.data.get("ctu_email", "").strip()
-        ctu_phonenum = request.data.get("ctu_phonenum", "")
+        dvmf_fname = request.data.get("dvmf_fname", "").strip()
+        dvmf_lname = request.data.get("dvmf_lname", "").strip()
+        dvmf_email = request.data.get("dvmf_email", "").strip()
+        dvmf_phonenum = request.data.get("dvmf_phonenum", "").strip()
 
         # 3️⃣ Validate required fields
         errors = {}
-        if not ctu_fname:
-            errors["ctu_fname"] = "First name is required."
-        if not ctu_lname:
-            errors["ctu_lname"] = "Last name is required."
-        if not ctu_email:
-            errors["ctu_email"] = "Email is required."
-        if not ctu_phonenum:
-            errors["ctu_phonenum"] = "Phone number is required."
+        if not dvmf_fname:
+            errors["dvmf_fname"] = "First name is required."
+        if not dvmf_lname:
+            errors["dvmf_lname"] = "Last name is required."
+        if not dvmf_email:
+            errors["dvmf_email"] = "Email is required."
+        if not dvmf_phonenum:
+            errors["dvmf_phonenum"] = "Phone number is required."
 
         if errors:
             return Response({"errors": errors}, status=400)
 
         # 4️⃣ Upsert profile in Supabase
         profile_data = {
-            "ctu_id": ctu_id,
-            "ctu_fname": ctu_fname,
-            "ctu_lname": ctu_lname,
-            "ctu_email": ctu_email,
-            "ctu_phonenum": ctu_phonenum,
+            "dvmf_id": dvmf_id,
+            "dvmf_fname": dvmf_fname,
+            "dvmf_lname": dvmf_lname,
+            "dvmf_email": dvmf_email,
+            "dvmf_phonenum": dvmf_phonenum,
         }
 
-        response = sr_client.table("ctu_vet_profile").upsert(profile_data, on_conflict="ctu_id").execute()
+        response = sr_client.table("dvmf_user_profile").upsert(
+            profile_data, on_conflict="dvmf_id"
+        ).execute()
 
         # ✅ Safe handling
         profile_error = getattr(response, "error", None)
@@ -372,63 +376,15 @@ def save_ctu_vet_profile(request):
         return Response({"error": f"Server error: {str(e)}"}, status=500)
 
 
-# -------------------- UPDATE CTU VET PROFILE --------------------
-@api_view(["POST"])
-def update_ctu_vet_profile(request):
-    """
-    Update existing CTU Vet profile
-    """
-    try:
-        token = request.COOKIES.get("access_token")
-        if not token:
-            return Response({"error": "Authentication required"}, status=401)
 
-        payload = jwt.decode(token, options={"verify_signature": False})
-        ctu_id = payload.get("sub")
-        if not ctu_id:
-            return Response({"error": "Invalid token"}, status=401)
-
-        data = request.data
-        update_data = {}
-
-        if "ctu_fname" in data:
-            update_data["ctu_fname"] = data["ctu_fname"].strip()
-        if "ctu_lname" in data:
-            update_data["ctu_lname"] = data["ctu_lname"].strip()
-        if "ctu_email" in data:
-            update_data["ctu_email"] = data["ctu_email"].strip()
-        if "ctu_phonenum" in data:
-            update_data["ctu_phonenum"] = data["ctu_phonenum"]
-
-        if not update_data:
-            return Response({"error": "No fields provided to update"}, status=400)
-
-        # Supabase update
-        response = sr_client.table("ctu_vet_profile").update(update_data).eq("ctu_id", ctu_id).execute()
-
-        # ✅ Safe handling
-        update_error = getattr(response, "error", None)
-        update_result = getattr(response, "data", None)
-
-        if update_error:
-            return Response({"error": str(update_error)}, status=500)
-        if not update_result:
-            return Response({"error": "Profile not found"}, status=404)
-
-        return Response({
-            "message": "Profile updated successfully",
-            "profile": update_result[0]
-        })
-
-    except Exception as e:
-        return Response({"error": f"Server error: {str(e)}"}, status=500)
 # -------------------- SAVE CTU VET PROFILE --------------------
+# -------------------- SAVE DVMF PROFILE --------------------
 @api_view(["POST"])
-def save_ctu_vet_profile(request):
+def save_dvmf_profile(request):
     """
-    Save first-time CTU Vet profile:
+    Save first-time DVMF Vet profile:
     - fname, lname, phone, email
-    - Uses Supabase table 'ctu_vet_profile'
+    - Uses Supabase table 'dvmf_vet_profile'
     """
     try:
         # 1️⃣ Get token to identify user
@@ -437,40 +393,40 @@ def save_ctu_vet_profile(request):
             return Response({"error": "Authentication required"}, status=401)
 
         payload = jwt.decode(token, options={"verify_signature": False})
-        ctu_id = payload.get("sub")
-        if not ctu_id:
+        dvmf_id = payload.get("sub")
+        if not dvmf_id:
             return Response({"error": "Invalid token"}, status=401)
 
         # 2️⃣ Get input values
-        ctu_fname = request.data.get("ctu_fname", "").strip()
-        ctu_lname = request.data.get("ctu_lname", "").strip()
-        ctu_email = request.data.get("ctu_email", "").strip()
-        ctu_phonenum = request.data.get("ctu_phonenum", "")
+        dvmf_fname = request.data.get("dvmf_fname", "").strip()
+        dvmf_lname = request.data.get("dvmf_lname", "").strip()
+        dvmf_email = request.data.get("dvmf_email", "").strip()
+        dvmf_phonenum = request.data.get("dvmf_phonenum", "")
 
         # 3️⃣ Validate required fields
         errors = {}
-        if not ctu_fname:
-            errors["ctu_fname"] = "First name is required."
-        if not ctu_lname:
-            errors["ctu_lname"] = "Last name is required."
-        if not ctu_email:
-            errors["ctu_email"] = "Email is required."
-        if not ctu_phonenum:
-            errors["ctu_phonenum"] = "Phone number is required."
+        if not dvmf_fname:
+            errors["dvmf_fname"] = "First name is required."
+        if not dvmf_lname:
+            errors["dvmf_lname"] = "Last name is required."
+        if not dvmf_email:
+            errors["dvmf_email"] = "Email is required."
+        if not dvmf_phonenum:
+            errors["dvmf_phonenum"] = "Phone number is required."
 
         if errors:
             return Response({"errors": errors}, status=400)
 
         # 4️⃣ Upsert profile in Supabase
         profile_data = {
-            "ctu_id": ctu_id,
-            "ctu_fname": ctu_fname,
-            "ctu_lname": ctu_lname,
-            "ctu_email": ctu_email,
-            "ctu_phonenum": ctu_phonenum,
+            "dvmf_id": dvmf_id,
+            "dvmf_fname": dvmf_fname,
+            "dvmf_lname": dvmf_lname,
+            "dvmf_email": dvmf_email,
+            "dvmf_phonenum": dvmf_phonenum,
         }
 
-        response = sr_client.table("ctu_vet_profile").upsert(profile_data, on_conflict="ctu_id").execute()
+        response = sr_client.table("dvmf_user_profile").upsert(profile_data, on_conflict="dvmf_id").execute()
 
         # ✅ Safe handling
         profile_error = getattr(response, "error", None)
@@ -491,10 +447,11 @@ def save_ctu_vet_profile(request):
 
 
 # -------------------- UPDATE CTU VET PROFILE --------------------
+# -------------------- UPDATE DVMF PROFILE -------------------- 
 @api_view(["POST"])
-def update_ctu_vet_profile(request):
+def update_dvmf_profile(request):
     """
-    Update existing CTU Vet profile
+    Update existing DVMF Vet profile
     """
     try:
         token = request.COOKIES.get("access_token")
@@ -502,27 +459,27 @@ def update_ctu_vet_profile(request):
             return Response({"error": "Authentication required"}, status=401)
 
         payload = jwt.decode(token, options={"verify_signature": False})
-        ctu_id = payload.get("sub")
-        if not ctu_id:
+        dvmf_id = payload.get("sub")
+        if not dvmf_id:
             return Response({"error": "Invalid token"}, status=401)
 
         data = request.data
         update_data = {}
 
-        if "ctu_fname" in data:
-            update_data["ctu_fname"] = data["ctu_fname"].strip()
-        if "ctu_lname" in data:
-            update_data["ctu_lname"] = data["ctu_lname"].strip()
-        if "ctu_email" in data:
-            update_data["ctu_email"] = data["ctu_email"].strip()
-        if "ctu_phonenum" in data:
-            update_data["ctu_phonenum"] = data["ctu_phonenum"]
+        if "dvmf_fname" in data:
+            update_data["dvmf_fname"] = data["dvmf_fname"].strip()
+        if "dvmf_lname" in data:
+            update_data["dvmf_lname"] = data["dvmf_lname"].strip()
+        if "dvmf_email" in data:
+            update_data["dvmf_email"] = data["dvmf_email"].strip()
+        if "dvmf_phonenum" in data:
+            update_data["dvmf_phonenum"] = data["dvmf_phonenum"]
 
         if not update_data:
             return Response({"error": "No fields provided to update"}, status=400)
 
         # Supabase update
-        response = sr_client.table("ctu_vet_profile").update(update_data).eq("ctu_id", ctu_id).execute()
+        response = sr_client.table("dvmf_user_profile").update(update_data).eq("dvmf_id", dvmf_id).execute()
 
         # ✅ Safe handling
         update_error = getattr(response, "error", None)
@@ -540,6 +497,7 @@ def update_ctu_vet_profile(request):
 
     except Exception as e:
         return Response({"error": f"Server error: {str(e)}"}, status=500)
+
 
 
 
@@ -563,23 +521,23 @@ def get_users(request):
         if not current_user_id:
             return Response({"error": "Missing user_id"}, status=status.HTTP_400_BAD_REQUEST)
 
-        query = sr_client.table("ctu_vet_profile").select("*")
+        query = sr_client.table("dvmf_user_profile").select("*")
 
-        if current_user_role != "Ctu-Admin":
-            query = query.eq("ctu_id", current_user_id)
+        if current_user_role != "Dvmf-Admin":
+            query = query.eq("dvmf_id", current_user_id)
 
         response = query.execute()
 
         users_data = [
             {
                 "id": u.get("id"),
-                "firstname": u.get("ctu_fname"),
-                "lastname": u.get("ctu_lname"),
-                "email": u.get("ctu_email"),
-                "phone": u.get("ctu_phonenum"),
+                "firstname": u.get("dvmf_fname"),
+                "lastname": u.get("dvmf_lname"),
+                "email": u.get("dvmf_email"),
+                "phone": u.get("dvmf_phonenum"),
                 "role": u.get("role") or "general",
                 "status": u.get("status") or "pending",
-                "password": u.get("ctu_pass") or ""
+                "password": u.get("dvmf_pass") or ""
             }
             for u in response.data or []
         ]
@@ -588,6 +546,7 @@ def get_users(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
     
 
 # --------------------NOTIFICATIONS--------------------
@@ -745,41 +704,6 @@ def get_directory_profiles(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-# -------------------- DELETE VET,KUTSERO, HORSE OPERATOR PROFILE IN DIRECTORY--------------------
-
-
-@api_view(['DELETE'])
-def delete_directory_user(request, email):
-    """
-    Delete a user from Supabase users table based on their email.
-    Always returns JSON.
-    """
-    try:
-        print(f"Attempting to delete user with email: {email}")  # debug log
-
-        # Query Supabase
-        user_res = sr_client.table("users").select("id, user_email").eq("user_email", email).execute()
-
-        if not user_res.data:
-            # User not found -> return JSON 404
-            return Response({"error": f"User with email '{email}' not found"}, status=404)
-
-        user_id = user_res.data[0].get("id")
-
-        # Delete user
-        delete_res = sr_client.table("users").delete().eq("id", user_id).execute()
-
-        if delete_res.data:
-            return Response({"message": f"User with email '{email}' deleted successfully"}, status=200)
-        else:
-            return Response({"error": "Deletion failed"}, status=500)
-
-    except Exception as e:
-        logging.exception("Error deleting user")
-        return Response({"error": "Internal server error", "details": str(e)}, status=500)
-
-
-
 
 
 
@@ -801,20 +725,20 @@ def delete_directory_user(request, email):
 
 
 @api_view(['GET'])
-def display_ctu_profiles(request):
+def display_dvmf_profiles(request):
     """
-    Fetch all CTU VetMed profiles.
+    Fetch all DVMF VetMed profiles.
     Non-admin users only get their own profile.
     """
     user_id = request.GET.get("user_id")
     role = request.GET.get("role", "")
 
     try:
-        query = sr_client.table("ctu_vet_profile").select("*")
+        query = sr_client.table("dvmf_user_profile").select("*")
 
         # Non-admin users only see their own record
         if role != "admin" and user_id:
-            query = query.eq("ctu_id", user_id)
+            query = query.eq("dvmf_id", user_id)
 
         response = query.execute()
         data = response.data or []
@@ -823,19 +747,19 @@ def display_ctu_profiles(request):
         profiles = []
         for p in data:
             profiles.append({
-                "id": p.get("ctu_id"),
-                "ctu_fname": p.get("ctu_fname"),
-                "ctu_lname": p.get("ctu_lname"),
-                "ctu_email": p.get("ctu_email"),
-                "ctu_phonenum": p.get("ctu_phonenum"),
-                "role": p.get("role") or "Ctu-VetMed",
+                "id": p.get("dvmf_id"),
+                "dvmf_fname": p.get("dvmf_fname"),
+                "dvmf_lname": p.get("dvmf_lname"),
+                "dvmf_email": p.get("dvmf_email"),
+                "dvmf_phonenum": p.get("dvmf_phonenum"),
+                "role": p.get("role") or "Dvmf-VetMed",
                 "status": p.get("status") or "pending"
             })
 
         return Response(profiles, status=status.HTTP_200_OK)
 
     except Exception as e:
-        print("Error fetching CTU profiles:", e)
+        print("Error fetching DVMF profiles:", e)
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -870,30 +794,6 @@ def get_account_counts(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-@api_view(['DELETE'])
-def delete_vet_profile(request, vet_id):
-    """
-    Delete a vet profile from the Supabase vet_profile table.
-    """
-    try:
-        response = sr_client.table("vet_profile").delete().eq("vet_id", vet_id).execute()
-
-        if not response.data:
-            return Response(
-                {"error": f"Vet profile with id {vet_id} not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        return Response(
-            {"message": f"Vet profile with id {vet_id} deleted successfully."},
-            status=status.HTTP_200_OK
-        )
-
-    except Exception as e:
-        return Response(
-            {"error": "Internal Server Error", "details": str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
 
 
 
@@ -963,9 +863,9 @@ def update_ctu_profile(request):
 
 
 @api_view(["POST"])
-def ctu_change_password(request):
+def dvmf_change_password(request):
     """
-    Change password for the logged-in CTU VetMed user
+    Change password for the logged-in DVMF VetMed user
     """
     try:
         # 🔑 Get token from cookies
@@ -982,15 +882,15 @@ def ctu_change_password(request):
         # Get passwords and email
         current_password = request.data.get("current_password", "").strip()
         new_password = request.data.get("new_password", "").strip()
-        ctu_email = request.data.get("ctu_email", "").strip().lower()
+        dvmf_email = request.data.get("dvmf_email", "").strip().lower()
 
         errors = {}
         if not current_password:
             errors["current_password"] = "Current password is required."
         if not new_password:
             errors["new_password"] = "New password is required."
-        if not ctu_email:
-            errors["ctu_email"] = "Email is required."
+        if not dvmf_email:
+            errors["dvmf_email"] = "Email is required."
         if errors:
             return Response({"errors": errors}, status=400)
 
@@ -998,7 +898,7 @@ def ctu_change_password(request):
         verify_resp = requests.post(
             f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
             headers={"apikey": SUPABASE_SERVICE_ROLE_KEY},
-            json={"email": ctu_email, "password": current_password}
+            json={"email": dvmf_email, "password": current_password}
         )
         verify_data = verify_resp.json()
         if verify_resp.status_code != 200 or "access_token" not in verify_data:
@@ -1032,103 +932,98 @@ def ctu_change_password(request):
 def get_current_user(request):
     token = request.COOKIES.get("access_token")
     if not token:
+        print("No access_token cookie found")
         return None
     try:
-        user_res = sr_client.auth.get_user(token)
+        # Use token as a JWT
+        user_res = sr_client.auth.get_user(jwt=token)
         if user_res and getattr(user_res, "user", None):
+            print("Authenticated user:", user_res.user.id)
             return user_res.user.id
+        print("No user found in Supabase response")
         return None
-    except:
+    except Exception as e:
+        print("Auth error:", e)
         return None
+
 
 
 # -------------------- FETCH USERS --------------------
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-
+# -------------------- FETCH USERS --------------------
 @api_view(['GET'])
 def fetch_users(request):
-    user_id = get_current_user(request)
-    if not user_id:
-        return Response({"error": "User not authenticated."}, status=401)
-
     try:
-        # Get current user's role
-        role_res = sr_client.table("users").select("role").eq("id", user_id).execute()
-        current_role = (role_res.data or [{}])[0].get("role", "Ctu-VetMed")
+        # kuha sa profiles
+        profiles_res = sr_client.table("ctu_vet_profile").select("*").execute()
 
-        # Admin sees all users, others see only themselves
-        if current_role == "Ctu-Admin":
-            res = sr_client.table("ctu_vet_profile").select("*").execute()
-        else:
-            res = sr_client.table("ctu_vet_profile").select("*").eq("ctu_id", user_id).execute()
+        # kuha sa users (id, role, status)
+        users_res = sr_client.table("users").select("id, role, status").execute()
+        users_map = {u["id"]: {"role": u["role"], "status": u["status"]} for u in users_res.data or []}
 
         profiles = []
-        for p in res.data or []:
+        for p in profiles_res.data or []:
+            user_data = users_map.get(p.get("ctu_id"), {})
             profiles.append({
                 "id": p.get("ctu_id"),
                 "ctu_fname": p.get("ctu_fname"),
                 "ctu_lname": p.get("ctu_lname"),
                 "ctu_email": p.get("ctu_email"),
                 "ctu_phonenum": p.get("ctu_phonenum"),
-                "role": p.get("ctu_role") or "Ctu-VetMed",
-                "status": p.get("status") or "pending"
+                # override role + status with data from users table
+                "role": user_data.get("role", "N/A"),
+                "status": user_data.get("status", "pending"),
             })
 
         return Response(profiles, status=200)
 
     except Exception as e:
-        return Response({"error": f"Internal server error: {str(e)}"}, status=500)
+        return Response({"error": str(e)}, status=500)
 
 
 
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+
+
 
 from django.http import JsonResponse
-from supabase import create_client
-import os
+from rest_framework.decorators import api_view
 
-# Supabase client (make sure keys are in .env)
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-sr_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-
+# -------------------- Deactivate DVMF User --------------------
+@api_view(['POST'])
 def deactivate_user(request, user_id):
-    if request.method != "POST":
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+    try:
+        # Check if user exists
+        result = sr_client.table("dvmf_user_profile").select("*").eq("dvmf_id", user_id).execute()
+        user = result.data[0] if result.data else None
 
-    # Fetch the user by UUID
-    result = sr_client.table("users").select("*").eq("id", user_id).single().execute()
-    user = result.data
+        if not user:
+            return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
 
-    if not user:
-        return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
+        # Update status
+        sr_client.table("dvmf_user_profile").update({"status": "deactivated"}).eq("dvmf_id", user_id).execute()
 
-    # Update status to 'inactive'
-    sr_client.table("users").update({"status": "inactive"}).eq("id", user_id).execute()
+        return JsonResponse({"message": "User deactivated successfully"}, status=200)
 
-    return JsonResponse({"message": "User deactivated successfully"})
-
-
-def delete_user(request, user_id):
-    if request.method != "DELETE":
-        return JsonResponse({"error": "Method not allowed"}, status=405)
-
-    # Fetch the user by UUID
-    result = sr_client.table("users").select("*").eq("id", user_id).single().execute()
-    user = result.data
-
-    if not user:
-        return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
-
-    # Delete user
-    sr_client.table("users").delete().eq("id", user_id).execute()
-
-    return JsonResponse({"message": "User deleted successfully"})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 
 
+# -------------------- Reactivate DVMF User --------------------
+@api_view(['POST'])
+def reactivate_user(request, user_id):
+    try:
+        result = sr_client.table("dvmf_user_profile").select("*").eq("dvmf_id", user_id).execute()
+        user = result.data[0] if result.data else None
+
+        if not user:
+            return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
+
+        # Update to approved (active)
+        sr_client.table("dvmf_user_profile").update({"status": "approved"}).eq("dvmf_id", user_id).execute()
+
+        return JsonResponse({"message": "User reactivated successfully"}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 
 
 
@@ -1180,29 +1075,56 @@ def search_vets(request):
     query = request.GET.get("q", "").strip().lower()
 
     # Fetch all vet profiles
-    res = sr_client.table("vet_profiles").select("*").execute()
-    vets = res.data or []
+    vets_res = sr_client.table("vet_profiles").select("*").execute()
+    vets = vets_res.data or []
 
-    # Filter by first or last name if query exists
-    if query:
-        vets = [
-            v for v in vets
-            if query in (v.get("vet_fname") or "").lower() 
-               or query in (v.get("vet_lname") or "").lower()
-        ]
+    # Fetch all kutsero profiles
+    kutseros_res = sr_client.table("kutsero_profiles").select("*").execute()
+    kutseros = kutseros_res.data or []
 
-    # Map to API response format
-    data = [
-        {
-            "id": str(v.get("vet_id")),
-            "name": f"{v.get('vet_fname')} {v.get('vet_lname')}",
-            "email": v.get("vet_email"),
-        }
-        for v in vets
-    ]
+    # Fetch all horse operator profiles
+    ops_res = sr_client.table("horse_op_profiles").select("*").execute()
+    horse_ops = ops_res.data or []
 
-    return Response({"users": data}, status=200)
+    results = []
 
+    # Filter vets
+    for v in vets:
+        if v.get("users", {}).get("status") != "approved":
+            continue
+        full_name = f"{v.get('vet_fname','')} {v.get('vet_lname','')}".strip()
+        if not query or query in full_name.lower():
+            results.append({
+                "id": str(v.get("vet_id")),
+                "name": full_name,
+                "email": v.get("vet_email"),
+            })
+
+    # Filter kutseros
+    for k in kutseros:
+        if k.get("users", {}).get("status") != "approved":
+            continue
+        full_name = f"{k.get('kutsero_fname','')} {k.get('kutsero_lname','')}".strip()
+        if not query or query in full_name.lower():
+            results.append({
+                "id": str(k.get("kutsero_id")),
+                "name": full_name,
+                "email": k.get("kutsero_email"),
+            })
+
+    # Filter horse operators
+    for op in horse_ops:
+        if op.get("users", {}).get("status") != "approved":
+            continue
+        full_name = f"{op.get('op_fname','')} {op.get('op_lname','')}".strip()
+        if not query or query in full_name.lower():
+            results.append({
+                "id": str(op.get("op_id")),
+                "name": full_name,
+                "email": op.get("op_email"),
+            })
+
+    return Response({"users": results}, status=200)
 
 
 
@@ -1290,3 +1212,194 @@ def get_announcements(request):
     except Exception:
         logging.exception("Failed to fetch announcements")
         return Response({"error": "Failed to fetch announcements"}, status=500)
+    
+
+
+
+# -------------------- SEARCH VETS --------------------
+# -------------------- SEARCH VETS --------------------
+@api_view(["GET"])
+@login_required
+def search_vet(request):
+    query = request.GET.get("q", "").strip().lower()
+
+    try:
+        # Fetch all vets from Supabase table "vet_profile"
+        response = sr_client.table("vet_profile").select("*").execute()
+        vets = response.data or []
+
+        # Optional: filter results by query (fname, lname, or email)
+        if query:
+            vets = [
+                v for v in vets
+                if query in (v.get("vet_fname", "").lower())
+                or query in (v.get("vet_lname", "").lower())
+                or query in (v.get("vet_email", "").lower())
+            ]
+
+        # Transform results into frontend-friendly structure
+        results = [
+            {
+                "id": str(v.get("vet_id")),
+                "name": f"{v.get('vet_fname', '')} {v.get('vet_lname', '')}".strip(),
+                "email": v.get("vet_email"),
+                "specialization": v.get("vet_specialization"),
+                "phone": v.get("vet_phone_num"),
+                "org": v.get("vet_org"),
+            }
+            for v in vets
+        ]
+
+        return Response({"users": results}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logging.error(f"Error fetching vets: {e}")
+        return Response({"error": "Failed to fetch vets"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# -------------------- display horses with owner full name --------------------
+
+
+
+@api_view(['GET'])
+def get_horses(request):
+    """
+    Fetch all horses with owner info, current medical record,
+    treatment history, and medrec history, flattened.
+    """
+    try:
+        # 1️⃣ Fetch horses with owner info and current medical record
+        horses_response = sr_client.table("horse_profile").select("""
+            horse_id,
+            horse_name,
+            horse_breed,
+            horse_dob,
+            horse_age,
+            horse_sex,
+            horse_color,
+            horse_weight,
+            horse_height,
+            horse_image,
+            created_at,
+            horse_op_profile (
+                op_fname,
+                op_mname,
+                op_lname,
+                op_province,
+                op_city,
+                op_municipality,
+                users (status, role)
+            ),
+            horse_medrecord (
+                medrec_id,
+                medrec_date,
+                medrec_heart_rate,
+                medrec_resp_rate,
+                medrec_bodytemp,
+                medrec_concern,
+                medrec_clinical_sign,
+                medrec_lab_results,
+                medrec_lab_img,
+                medrec_diagnosis,
+                medrec_treatment,
+                medrec_remark,
+                vet_id,
+                vet_profile (vet_fname, vet_lname)
+            )
+        """).execute()
+
+        horse_list = []
+
+        for horse in horses_response.data:
+            # --- Owner info ---
+            owner = horse.get("horse_op_profile", {})
+            fullname = " ".join(filter(None, [owner.get("op_fname"), owner.get("op_mname"), owner.get("op_lname")]))
+            location = ", ".join(filter(None, [owner.get("op_municipality"), owner.get("op_city"), owner.get("op_province")]))
+            user_info = owner.get("users", {})
+
+            horse["owner_fullname"] = fullname.strip()
+            horse["location"] = location.strip()
+            horse["status"] = user_info.get("status", "Unknown")
+            horse["role"] = user_info.get("role", "N/A")
+
+            # Remove owner object
+            if "horse_op_profile" in horse:
+                del horse["horse_op_profile"]
+
+            # --- Medical record ---
+            medrec = horse.get("horse_medrecord")
+            if medrec:
+                # Flatten vet info
+                medrec["vet_name"] = " ".join(filter(None, [
+                    medrec.get("vet_profile", {}).get("vet_fname"),
+                    medrec.get("vet_profile", {}).get("vet_lname")
+                ]))
+                if "vet_profile" in medrec:
+                    del medrec["vet_profile"]
+
+                medrec_id = medrec.get("medrec_id")
+
+                # --- Fetch medrec_history ---
+                histories_response = sr_client.table("medrec_history").select("""
+                    history_id,
+                    change_date,
+                    prev_heart_rate,
+                    prev_resp_rate,
+                    prev_bodytemp,
+                    prev_concern,
+                    prev_clinical_sign,
+                    prev_lab_results,
+                    prev_lab_img,
+                    prev_diagnosis,
+                    prev_remark,
+                    vet_id,
+                    vet_profile (vet_fname, vet_lname)
+                """).eq("medrec_id", medrec_id).execute()
+
+                medrec_histories = []
+                for h in histories_response.data:
+                    h["vet_name"] = " ".join(filter(None, [
+                        h.get("vet_profile", {}).get("vet_fname"),
+                        h.get("vet_profile", {}).get("vet_lname")
+                    ]))
+                    if "vet_profile" in h:
+                        del h["vet_profile"]
+                    medrec_histories.append(h)
+
+                medrec["medrec_history"] = medrec_histories
+
+                # --- Fetch treatment_history ---
+                treatments_response = sr_client.table("treatment_history").select("""
+                    treatment_id,
+                    treatment_date,
+                    treatment_info,
+                    treatment_remark,
+                    vet_id,
+                    vet_profile (vet_fname, vet_lname)
+                """).eq("medrec_id", medrec_id).execute()
+
+                treatments = []
+                for t in treatments_response.data:
+                    t["vet_name"] = " ".join(filter(None, [
+                        t.get("vet_profile", {}).get("vet_fname"),
+                        t.get("vet_profile", {}).get("vet_lname")
+                    ]))
+                    if "vet_profile" in t:
+                        del t["vet_profile"]
+                    treatments.append(t)
+
+                medrec["treatment_history"] = treatments
+
+            horse["medical_record"] = medrec
+            if "horse_medrecord" in horse:
+                del horse["horse_medrecord"]
+
+            horse_list.append(horse)
+
+        return Response(horse_list, status=200)
+
+    except Exception as e:
+        logging.exception("Error fetching horses with histories")
+        return Response(
+            {"error": "Internal server error", "details": str(e)},
+            status=500
+        )

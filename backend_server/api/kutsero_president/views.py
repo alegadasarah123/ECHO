@@ -102,7 +102,7 @@ def fetch_and_merge_users():
                     profile = {
                         "dateOfBirth": str(hp.get("op_dob")),
                         "sex": hp.get("op_sex"),
-                        "phoneNumber": hp.get("opr_phone_num"),
+                        "phoneNumber": hp.get("op_phone_num"),
                         "address": ", ".join(filter(None, [
                             hp.get("op_house_add"),
                             hp.get("op_brgy"),

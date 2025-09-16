@@ -1,7 +1,7 @@
 "use client"
 
 import Sidebar from "@/components/CtuSidebar"
-import { Bell, Check, Edit2, Eye, EyeOff, MoreVertical, Plus, Trash2, Users } from "lucide-react"
+import { Bell, Check, Edit2, Eye, EyeOff, MoreVertical, Plus, Users } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
@@ -239,14 +239,14 @@ const addNewUser = async () => {
   // 2️⃣ Validate email
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email.trim())) {
-    alert("Please enter a valid email address.");
+    window.alert("Please enter a valid email address.");
     return;
   }
 
   // 3️⃣ Validate phone: must start with 09 and be 11 digits
   const phoneRegex = /^09\d{9}$/;
   if (!phoneRegex.test(phone.trim())) {
-    alert("Phone number must start with 09 and be 11 digits long.");
+    window.alert("Phone number must start with 09 and be 11 digits long.");
     return;
   }
 
@@ -269,7 +269,7 @@ const addNewUser = async () => {
     const data = await response.json();
 
     if (!response.ok) {
-      alert(data.error || "Failed to create user.");
+      window.alert(data.error || "Failed to create user.");
       return;
     }
 
@@ -297,7 +297,7 @@ const addNewUser = async () => {
       role: "Ctu-Vetmed", // reset default
     });
 
-    alert("✅ User created successfully!");
+   window.alert("✅ User created successfully!");
   } catch (err) {
     console.error("Error adding user:", err);
     alert("Failed to add user. Make sure the backend server is running.");
@@ -358,27 +358,6 @@ const reactivateUser = async (id) => {
 };
 
 
-// -------------------- DELETE USER --------------------
-const deleteUser = async (id) => {
-  try {
-    const res = await fetch(`${API_BASE}/users/delete/${id}/`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (!res.ok) throw new Error("Failed to delete user");
-
-    const data = await res.json();
-    console.log("Deleted:", data);
-
-    setProfiles((prev) => prev.filter((p) => p.id !== id));
-
-    showAlert("User deleted successfully!", "success");
-  } catch (err) {
-    console.error("Error deleting user:", err);
-    showAlert("Error deleting user", "error");
-  }
-};
 
 
 
@@ -1027,20 +1006,7 @@ useEffect(() => {
                           </button>
                         )}
 
-                        <button
-                          style={{
-                            ...styles.dropdownItem,
-                            ...styles.dropdownItemDanger,
-                          }}
-                          onClick={async () => {
-                            await deleteUser(p.id);
-                            showAlert("User deleted successfully!", "success");
-                            setDropdownOpen(null);
-                          }}
-                        >
-                          <Trash2 size={16} />
-                          Delete
-                        </button>
+                        
                       </div>
                     )}
                   </div>

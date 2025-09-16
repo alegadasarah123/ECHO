@@ -13,7 +13,6 @@ import {
   Search,
   SquareX,
   Stethoscope,
-  Trash2,
   User,
   UserCheck,
   UserX,
@@ -152,22 +151,6 @@ const showDeclineConfirmation = (vetId) => {
   });
   setIsConfirmationModalOpen(true);
 };
-const showDeleteConfirmation = (vetId) => {
-  console.log("Deleting vet with ID:", vetId); // Check here!
-  if (!vetId) {
-    alert("Vet ID is invalid.");
-    return;
-  }
-
-  setSelectedUser({ vet_id: vetId });
-  setConfirmationDetails({
-    title: "Confirm Delete",
-    message: "Are you sure you want to delete this vet profile? This action cannot be undone.",
-    action: "delete",
-  });
-  setIsConfirmationModalOpen(true);
-};
-
 
 
   const showApproveConfirmationFromModal = () => {
@@ -184,12 +167,7 @@ const showDeleteConfirmation = (vetId) => {
     }
   }
 
-  const showDeleteConfirmationFromModal = () => {
-    if (selectedUser) {
-      closeModal()
-      showDeleteConfirmation(selectedUser.vet_id)
-    }
-  }
+
 
   const closeConfirmation = () => {
     setIsConfirmationModalOpen(false)
@@ -198,19 +176,7 @@ const showDeleteConfirmation = (vetId) => {
   }
 
   
-// -------------------- Delete a single vet profile --------------------
-const deleteVetProfile = async (vetId) => {
-  try {
-    const response = await fetch(`${API_BASE}/delete-vet-profile/${vetId}/`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-    if (!response.ok) throw new Error("Failed to delete");
-    setRegistrationData((prev) => prev.filter((u) => u.vet_id !== vetId));
-  } catch (err) {
-    console.error("Delete error:", err);
-  }
-}
+
 
 
 
@@ -219,9 +185,7 @@ const deleteVetProfile = async (vetId) => {
       approveUser(selectedUser.vet_id)
     } else if (confirmationDetails.action === "decline" && selectedUser) {
       declineUser(selectedUser.vet_id)
-    } else if (confirmationDetails.action === "delete" && selectedUser) {
-      deleteVetProfile(selectedUser.vet_id)
-    }
+    } 
     closeConfirmation()
   }
 
@@ -478,39 +442,34 @@ useEffect(() => {
   const filteredRegistrations = filterRegistrations()
 
   const togglePin = (postId) => {
-    setPinnedPosts((prev) => {
-      const updated = new Set(prev)
-      if (updated.has(postId)) {
-        updated.delete(postId)
+  setPinnedPosts((prev) => {
+    const updated = new Set(prev);
+    updated.add(postId); // only add, never delete
+    return updated;
+  });
+
+  setShowDropdown((prev) => ({ ...prev, [postId]: false }));
+
+  // Reorder posts: pinned posts first, then regular posts by timestamp
+  setPosts((prev) => {
+    const pinned = [];
+    const unpinned = [];
+
+    prev.forEach((post) => {
+      if (post.id === postId || pinnedPosts.has(post.id)) {
+        pinned.push(post);
       } else {
-        updated.add(postId)
+        unpinned.push(post);
       }
-      return updated
-    })
-    setShowDropdown((prev) => ({ ...prev, [postId]: false }))
-    
-    // Reorder posts: pinned posts first, then regular posts by timestamp
-    setPosts(prev => {
-      const pinned = []
-      const unpinned = []
-      
-      prev.forEach(post => {
-        if ((post.id === postId && !pinnedPosts.has(postId)) || 
-            (post.id !== postId && pinnedPosts.has(post.id))) {
-          pinned.push(post)
-        } else if (post.id === postId && pinnedPosts.has(postId)) {
-          unpinned.push(post)
-        } else if (pinnedPosts.has(post.id)) {
-          pinned.push(post)
-        } else {
-          unpinned.push(post)
-        }
-      })
-      
-      return [...pinned.sort((a, b) => b.timestamp - a.timestamp), 
-              ...unpinned.sort((a, b) => b.timestamp - a.timestamp)]
-    })
-  }
+    });
+
+    return [
+      ...pinned.sort((a, b) => b.timestamp - a.timestamp),
+      ...unpinned.sort((a, b) => b.timestamp - a.timestamp),
+    ];
+  });
+};
+
 
   const styles = {
     notificationBtn: {
@@ -895,13 +854,7 @@ useEffect(() => {
     btnViewHover: {
       background: "#6e7c9b",
     },
-    btnDelete: {
-      backgroundColor: "#ef4444",
-      color: "#fff",
-    },
-    btnDeleteHover: {
-      backgroundColor: "#dc2626",
-    },
+
     btnApprove: {
       backgroundColor: "#22c55e",
       color: "#fff",
@@ -1255,13 +1208,7 @@ useEffect(() => {
     modalBtnsHover: {
       opacity: "0.9",
     },
-    modalBtnsDelete: {
-      backgroundColor: "#ef4444",
-      color: "white",
-    },
-    modalBtnsDeleteHover: {
-      backgroundColor: "#dc2626",
-    },
+  
     modalStatusWrapper: {
       display: "flex",
       alignItems: "center",
@@ -1299,14 +1246,7 @@ useEffect(() => {
     modalStatusTextDeclined: {
       color: "#721c24",
     },
-    deleteAllBtnHover: {
-      backgroundColor: "#b02a37",
-      transform: "translateY(-1px)",
-    },
-    deleteAllBtnFocus: {
-      outline: "none",
-      boxShadow: "0 0 0 3px rgba(220, 53, 69, 0.4)",
-    },
+
     modalHeaders: {
       display: "flex",
       justifyContent: "center",
@@ -1663,15 +1603,10 @@ useEffect(() => {
                     )}
 
                     {(user.users?.status === "approved" || user.users?.status === "declined") && (
-                      <button
-                        className="action-btn btn-delete"
-                        onClick={() => showDeleteConfirmation(user.vet_id)}
-                        style={{ ...styles.actionBtn, ...styles.btnDelete }}
-                      >
-                        <Trash2 size={16} style={{ marginRight: "6px" }} />
-                        Delete
-                      </button>
-                    )}
+                    // No delete button anymore
+                    null
+                  )}
+
                   </div>
                 </div>
               ))
@@ -2060,7 +1995,7 @@ useEffect(() => {
                 Cancel
               </button>
               <button
-                className={`confirmation-btn confirm ${confirmationDetails.action === "decline" ? "decline" : confirmationDetails.action === "delete" ? "delete" : ""}`}
+                className={`confirmation-btn confirm ${confirmationDetails.action === "decline" ? "decline" : ""}`}
                 onClick={confirmAction}
                 style={{
                   ...styles.confirmationBtn,
@@ -2068,17 +2003,11 @@ useEffect(() => {
                   ...(confirmationDetails.action === "decline"
                     ? { ...styles.confirmationBtnConfirm, ...styles.confirmationBtnConfirmDecline }
                     : {}),
-                  ...(confirmationDetails.action === "delete"
-                    ? { ...styles.confirmationBtnConfirm, ...styles.confirmationBtnConfirmDecline }
-                    : {}),
                 }}
               >
-                {confirmationDetails.action === "approve"
-                  ? "Approve"
-                  : confirmationDetails.action === "decline"
-                    ? "Decline"
-                    : "Delete"}
+                {confirmationDetails.action === "approve" ? "Approve" : "Decline"}
               </button>
+
             </div>
           </div>
         </div>
