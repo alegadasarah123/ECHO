@@ -1,7 +1,7 @@
 "use client"
 
 import Sidebar from "@/components/CtuSidebar"
-import { Bell, Edit2, Eye, EyeOff, MoreVertical, Plus, Trash2, Users } from "lucide-react"
+import { Bell, Check, Edit2, Eye, EyeOff, MoreVertical, Plus, Users } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
@@ -27,6 +27,14 @@ const CtuSettings = () => {
     ctu_phonenum: "",
      ctu_role: "",
   })
+
+  const [alert, setAlert] = useState({ show: false, message: "", type: "" });
+
+const showAlert = (message, type = "success") => {
+  setAlert({ show: true, message, type });
+  setTimeout(() => setAlert({ show: false, message: "", type: "" }), 3000);
+};
+
 
   
 
@@ -231,14 +239,14 @@ const addNewUser = async () => {
   // 2️⃣ Validate email
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   if (!emailRegex.test(email.trim())) {
-    alert("Please enter a valid email address.");
+    window.alert("Please enter a valid email address.");
     return;
   }
 
   // 3️⃣ Validate phone: must start with 09 and be 11 digits
   const phoneRegex = /^09\d{9}$/;
   if (!phoneRegex.test(phone.trim())) {
-    alert("Phone number must start with 09 and be 11 digits long.");
+    window.alert("Phone number must start with 09 and be 11 digits long.");
     return;
   }
 
@@ -261,7 +269,7 @@ const addNewUser = async () => {
     const data = await response.json();
 
     if (!response.ok) {
-      alert(data.error || "Failed to create user.");
+      window.alert(data.error || "Failed to create user.");
       return;
     }
 
@@ -289,63 +297,66 @@ const addNewUser = async () => {
       role: "Ctu-Vetmed", // reset default
     });
 
-    alert("✅ User created successfully!");
+   window.alert("✅ User created successfully!");
   } catch (err) {
     console.error("Error adding user:", err);
     alert("Failed to add user. Make sure the backend server is running.");
   }
 };
 
-// Deactivate user
+// -------------------- DEACTIVATE USER --------------------
 const deactivateUser = async (id) => {
   try {
-    const res = await fetch(`http://localhost:8000/api/ctu_vetmed/users/deactivate/${id}/`, {
+    const res = await fetch(`${API_BASE}/users/deactivate/${id}/`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
     });
 
-    if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.error || "Failed to deactivate user");
-    }
+    if (!res.ok) throw new Error("Failed to deactivate user");
 
-    // Update local state so button disappears immediately
+    const data = await res.json();
+    console.log("Deactivated:", data);
+
     setProfiles((prev) =>
       prev.map((p) =>
-        p.id === id ? { ...p, status: "inactive" } : p
+        p.id === id ? { ...p, status: "deactivated" } : p
       )
     );
 
-    alert("User deactivated successfully!");
+    showAlert("User deactivated successfully!", "success");
   } catch (err) {
-    console.error("Deactivate failed:", err);
-    alert(`Deactivate failed: ${err.message}`);
+    console.error("Error deactivating user:", err);
+    showAlert("Error deactivating user", "error");
   }
 };
 
-// Delete user
-const deleteUser = async (id) => {
+
+// -------------------- REACTIVATE USER --------------------
+const reactivateUser = async (id) => {
   try {
-    const res = await fetch(`http://localhost:8000/api/ctu_vetmed/users/delete/${id}/`, {
-      method: "DELETE",
+    const res = await fetch(`${API_BASE}/users/reactivate/${id}/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
     });
 
-    if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.error || "Failed to delete user");
-    }
+    if (!res.ok) throw new Error("Failed to reactivate user");
 
-    // Remove user from local state immediately
-    setProfiles((prev) => prev.filter((p) => p.id !== id));
+    const data = await res.json();
+    console.log("Reactivated:", data);
 
-    alert("User deleted successfully!");
+    setProfiles((prev) =>
+      prev.map((p) =>
+        p.id === id ? { ...p, status: "approved" } : p
+      )
+    );
+
+    showAlert("User reactivated successfully!", "success");
   } catch (err) {
-    console.error("Delete failed:", err);
-    alert(`Delete failed: ${err.message}`);
+    console.error("Error reactivating user:", err);
+    showAlert("Error reactivating user", "error");
   }
 };
+
 
 
 
@@ -424,22 +435,23 @@ useEffect(() => {
   }, [loadNotifications])
 
 // Fetch users from backend
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      const res = await fetch("http://localhost:8000/api/ctu_vetmed/users/", {
-        method: "GET",
-        credentials: "include",
-      });
-      const data = await res.json();
-      if (res.ok) setProfiles(data); // admins see all
-      else console.error("Error fetching users:", data.error);
-    } catch (err) {
-      console.error("Fetch error:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+const fetchUsers = async () => {
+  try {
+    setLoading(true);
+    const res = await fetch("http://localhost:8000/api/ctu_vetmed/users/", {
+      method: "GET",
+      credentials: "include",
+    });
+    const data = await res.json();
+    if (res.ok) setProfiles(data); // admins see all
+    else console.error("Error fetching users:", data.error);
+  } catch (err) {
+    console.error("Fetch error:", err);
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   
 
@@ -882,11 +894,26 @@ useEffect(() => {
                           </div>
                         </div>
                       )}
+{/* ALERT UI */}
+{alert.show && (
+  <div
+    style={{
+      ...styles.alertBox,
+      ...(alert.type === "success" ? styles.alertSuccess : styles.alertError),
+    }}
+  >
+    {alert.message}
+  </div>
+)}
 
-                      {/* Existing Users Table */}
+{/* Existing Users Table */}
 {activeUserTab === "existing" && (
   <div style={styles.userSection}>
-    {profiles.length === 0 ? (
+    {profiles.filter(
+      (p) =>
+        (p.status === "approved" || p.status === "deactivated") &&
+        p.role !== "Ctu-Admin" // exclude Ctu-Admin from display
+    ).length === 0 ? (
       <div style={styles.emptyState}>
         <Users size={48} />
         <h3>No users found</h3>
@@ -904,64 +931,95 @@ useEffect(() => {
           <div style={styles.tableHeaderCell}>Actions</div>
         </div>
 
-        {profiles.map((p) => (
-          <div key={p.id} style={styles.tableRow}>
-            <div style={styles.tableCell}>{p.ctu_fname || "-"}</div>
-            <div style={styles.tableCell}>{p.ctu_lname || "-"}</div>
-            <div style={styles.tableCell}>{p.ctu_email || "-"}</div>
-            <div style={styles.tableCell}>{p.ctu_phonenum || "-"}</div>
-            <div style={styles.tableCell}>
-              <span style={styles.roleBadge}>{p.ctu_role || "Ctu-VetMed"}</span>
-            </div>
-            <div style={styles.tableCell}>
-              <span style={styles.statusBadge}>
-                {p.status === "pending" || p.status === "approved" ? "active" : p.status}
-              </span>
-            </div>
-            <div style={styles.tableCell}>
-              <div style={styles.dropdown}>
-                <button
-                  style={styles.dropdownBtn}
-                  onClick={() => toggleDropdown(p.id)}
-                >
-                  <MoreVertical size={16} />
-                </button>
+        {profiles
+          .filter(
+            (p) =>
+              (p.status === "approved" || p.status === "deactivated") &&
+              p.role !== "Ctu-Admin"
+          )
+          .map((p) => {
+            let displayStatus = p.status === "approved" ? "active" : p.status;
 
-                {dropdownOpen === p.id && (
-                  <div style={styles.dropdownMenu}>
-                    {/* Only show Deactivate if user is active */}
-                    {(p.status === "pending" || p.status === "approved") && (
-                      <button
-                        style={styles.dropdownItem}
-                        onClick={() => {
-                          deactivateUser(p.id);
-                          setDropdownOpen(null);
-                        }}
-                      >
-                        <Eye size={16} />
-                        Deactivate
-                      </button>
-                    )}
+            return (
+              <div key={p.id} style={styles.tableRow}>
+                <div style={styles.tableCell}>{p.ctu_fname || "-"}</div>
+                <div style={styles.tableCell}>{p.ctu_lname || "-"}</div>
+                <div style={styles.tableCell}>{p.ctu_email || "-"}</div>
+                <div style={styles.tableCell}>{p.ctu_phonenum || "-"}</div>
+                <div style={styles.tableCell}>
+                  <span style={styles.roleBadge}>{p.role || "-"}</span>
+                </div>
+                <div style={styles.tableCell}>
+                  <span
+                    style={{
+                      ...styles.statusBadge,
+                      backgroundColor:
+                        p.status === "approved"
+                          ? "green"
+                          : p.status === "deactivated"
+                          ? "red"
+                          : "gray",
+                    }}
+                  >
+                    {displayStatus}
+                  </span>
+                </div>
+                <div style={styles.tableCell}>
+                  <div style={styles.dropdown}>
                     <button
-                      style={{ ...styles.dropdownItem, ...styles.dropdownItemDanger }}
-                      onClick={() => {
-                        deleteUser(p.id);
-                        setDropdownOpen(null);
-                      }}
+                      style={styles.dropdownBtn}
+                      onClick={() => toggleDropdown(p.id)}
                     >
-                      <Trash2 size={16} />
-                      Delete
+                      <MoreVertical size={16} />
                     </button>
+
+                    {dropdownOpen === p.id && (
+                      <div style={styles.dropdownMenu}>
+                        {p.status === "approved" && (
+                          <button
+                            style={styles.dropdownItem}
+                            onClick={async () => {
+                              await deactivateUser(p.id);
+                              showAlert("User deactivated successfully!", "success");
+                              setDropdownOpen(null);
+                            }}
+                          >
+                            <Eye size={16} />
+                            Deactivate
+                          </button>
+                        )}
+
+                        {p.status === "deactivated" && (
+                          <button
+                            style={{
+                              ...styles.dropdownItem,
+                              ...styles.dropdownItemDanger,
+                            }}
+                            onClick={async () => {
+                              await reactivateUser(p.id);
+                              showAlert("User reactivated successfully!", "success");
+                              setDropdownOpen(null);
+                            }}
+                          >
+                            <Check size={16} />
+                            Reactivate
+                          </button>
+                        )}
+
+                        
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
               </div>
-            </div>
-          </div>
-        ))}
+            );
+          })}
       </div>
     )}
   </div>
 )}
+
+
 
                     </div>
                   ) : (
@@ -1343,11 +1401,12 @@ usersTable: {
   },
   statusBadge: {
     padding: "4px 8px",
-    backgroundColor: "#dcfce7",
-    color: "#166534",
+
     borderRadius: "12px",
     fontSize: "12px",
     fontWeight: "500",
+    color: status === "deactivated" ? "#ff4d4f" : "#fff", // red for deactivated
+    backgroundColor: status === "deactivated" ? "#fff1f0" : "#52c41a", // green for active
   },
   dropdown: {
     position: "relative",
@@ -1385,6 +1444,30 @@ usersTable: {
   dropdownItemDanger: {
     color: "#dc2626",
   },
+  alertBox: {
+  position: "fixed",
+  top: "20px",
+  left: "50%",
+  transform: "translateX(-50%)",
+  padding: "14px 24px",
+  borderRadius: "12px",
+  fontSize: "15px",
+  fontWeight: "600",
+  color: "white",
+  boxShadow: "0 6px 14px rgba(0,0,0,0.2)",
+  zIndex: 1000,
+  textAlign: "center",
+  minWidth: "250px",
+  maxWidth: "500px",
+  transition: "opacity 0.3s ease-in-out",
+},
+alertSuccess: {
+  backgroundColor: "#16a34a", // green
+},
+alertError: {
+  backgroundColor: "#dc2626", // red
+},
+
 }
 
 export default CtuSettings

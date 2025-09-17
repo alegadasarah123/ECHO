@@ -1,14 +1,13 @@
 "use client"
 
 import Sidebar from "@/components/CtuSidebar"
-import { Bell, ClipboardList } from "lucide-react"
+import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, MapPin, Phone, User, XCircle } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from './CtuMessage'
 import NotificationModal from "./CtuNotif"
 
 const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed";
-
 
 const styles = {
   bodyWrapper: {
@@ -112,7 +111,6 @@ const styles = {
     fontSize: "12px",
     fontWeight: "bold",
   },
- 
   contentAreas: {
     flex: 1,
     padding: "24px",
@@ -132,26 +130,50 @@ const styles = {
     boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
     transition: "transform 0.2s",
     cursor: "pointer",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center", // Center everything horizontally
+    textAlign: "center",   // Center text alignment
   },
   statCardHover: {
     transform: "translateY(-2px)",
   },
-  statTitle: {
-    color: "#bd5656ff",
-    fontSize: "14px",
-    marginBottom: "8px",
+  statIcon: {
+   marginRight: "10px",
+    padding: "12px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
+  
+  
+  pendingIcon: {
+    backgroundColor: "#fef3c7",
+    color: "#d97706",
+  },
+  approvedIcon: {
+    backgroundColor: "#dcfce7",
+    color: "#16a34a",
+  },
+  declinedIcon: {
+    backgroundColor: "#fee2e2",
+    color: "#dc2626",
+  },
+  statTitle: {
+     color: "#666",
+     fontSize: "14px",
+    fontWeight: "500",
+  },
+  
   statNumbers: {
     fontSize: "36px",
     fontWeight: "bold",
     color: "#b91c1c",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
   },
   mainGrid: {
     display: "grid",
-    gridTemplateColumns: "1fr 300px",
+    gridTemplateColumns: "1fr 400px",
     gap: "24px",
   },
   recentActivity: {
@@ -160,8 +182,8 @@ const styles = {
     borderRadius: "12px",
     boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
     border: "1px solid #fee2e2",
-    maxHeight: "400px",      // fixed height for scrollable area
-  overflowY: "auto",       // vertical scroll when content exceeds height
+    maxHeight: "600px",
+    overflowY: "auto",
   },
   activityHeader: {
     fontSize: "20px",
@@ -308,70 +330,105 @@ const styles = {
     fontWeight: 500,
     whiteSpace: "nowrap",
   },
-  calendarWidget: {
+  // SOS Emergency Styles
+  sosWidget: {
     background: "white",
-    borderRadius: "8px",
-    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
+    borderRadius: "12px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+    border: "1px solid #fee2e2",
     padding: "20px",
+    maxHeight: "380px",
+    overflowY: "auto",
   },
-  calendarHeader: {
+  sosHeader: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "space-between",
+    gap: "12px",
     marginBottom: "16px",
-    flexWrap: "wrap",
-    gap: "8px",
+    paddingBottom: "12px",
+    borderBottom: "2px solid #fee2e2",
   },
-  calendarTitle: {
-    fontWeight: 600,
-    color: "#111827",
-  },
-  calendarNav: {
+  sosTitle: {
+    fontSize: "20px",
+    fontWeight: "bold",
+    color: "#dc2626",
     display: "flex",
+    alignItems: "center",
     gap: "8px",
   },
-  calendarNavBtn: {
-    padding: "4px 8px",
-    border: "none",
-    background: "#3b82f6",
-    color: "white",
-    borderRadius: "4px",
+  sosSubtitle: {
+    fontSize: "14px",
+    color: "#666",
+    marginBottom: "16px",
+  },
+  sosList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
+  },
+  sosItem: {
+    background: "linear-gradient(135deg, #fef2f2 0%, #fff 100%)",
+    border: "1px solid #fca5a5",
+    borderRadius: "12px",
+    padding: "16px",
+    transition: "all 0.3s ease",
     cursor: "pointer",
+    position: "relative",
+    overflow: "hidden",
+  },
+  sosItemHover: {
+    transform: "translateY(-2px)",
+    boxShadow: "0 8px 25px rgba(220, 38, 38, 0.15)",
+    borderColor: "#dc2626",
+  },
+  sosItemHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: "12px",
+  },
+  sosEmergencyType: {
+    background: "#dc2626",
+    color: "white",
+    padding: "4px 12px",
+    borderRadius: "20px",
     fontSize: "12px",
-    transition: "background-color 0.2s",
-    minHeight: "32px",
+    fontWeight: 600,
+    textTransform: "uppercase",
+    letterSpacing: "0.5px",
   },
-  calendarGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(7, 1fr)",
-    gap: "4px",
+  sosUrgent: {
+    background: "#ef4444",
+    animation: "pulse 2s infinite",
   },
-  calendarDayHeader: {
-    textAlign: "center",
+  sosTime: {
     fontSize: "12px",
     color: "#6b7280",
-    padding: "8px 4px",
     fontWeight: 500,
   },
-  calendarDay: {
-    textAlign: "center",
-    padding: "8px 4px",
-    fontSize: "12px",
-    color: "#374151",
-    cursor: "pointer",
-    borderRadius: "4px",
-    transition: "background-color 0.2s",
-    minHeight: "32px",
+  sosDetails: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: "8px",
+    marginBottom: "12px",
+  },
+  sosDetailItem: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
+    gap: "6px",
+    fontSize: "13px",
+    color: "#374151",
   },
-  calendarDayHover: {
+  sosLocation: {
     background: "#f3f4f6",
-  },
-  calendarDayToday: {
-    background: "#3b82f6",
-    color: "white",
+    padding: "8px 12px",
+    borderRadius: "8px",
+    fontSize: "12px",
+    color: "#4b5563",
+    fontStyle: "italic",
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
   },
   chatWidget: {
     position: "fixed",
@@ -413,6 +470,7 @@ const styles = {
     justifyContent: "center",
     textAlign: "center",
     padding: "2rem",
+    color: "#6b7280",
   },
   emptyStateH3: {
     fontSize: "18px",
@@ -436,7 +494,7 @@ function CtuDashboard() {
   const [vetCount, setvetCount] = useState(0)
   const [declinedCount, setDeclinedCount] = useState(0)
   const [recentActivities, setRecentActivities] = useState([])
-  const [calendarDate, setCalendarDate] = useState(new Date())
+  const [sosEmergencies, setSosEmergencies] = useState([])
 
   const [time, setTime] = useState(new Date().toLocaleTimeString())
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
@@ -445,59 +503,38 @@ function CtuDashboard() {
   const notificationDropdownRef = useRef(null)
   const logoutModalRef = useRef(null)
 
-  // Helper to format date for calendar title
-  const getCalendarTitle = useCallback(() => {
-    return calendarDate.toLocaleString("default", { month: "long", year: "numeric" })
-  }, [calendarDate])
-
-  // Calendar functions
-  const initializeCalendar = useCallback(() => {
-    const now = new Date(calendarDate)
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1).getDay()
-    const days = []
-
-    // Add empty cells for days before the first day of the month
-    for (let i = 0; i < firstDay; i++) {
-      days.push(<div key={`empty-${i}`} style={styles.calendarDay} />)
-    }
-
-    // Add days of the month
-    for (let day = 1; day <= daysInMonth; day++) {
-      const isToday =
-        day === new Date().getDate() &&
-        now.getMonth() === new Date().getMonth() &&
-        now.getFullYear() === new Date().getFullYear()
-
-      days.push(
-        <div
-          key={`day-${day}`}
-          style={{
-            ...styles.calendarDay,
-            ...(isToday ? styles.calendarDayToday : {}),
-          }}
-          onClick={() => selectDate(day)}
-        >
-          {day}
-        </div>,
-      )
-    }
-
-    return days
-  }, [calendarDate])
-
-  const selectDate = (day) => {
-    const newDate = new Date(calendarDate.getFullYear(), calendarDate.getMonth(), day)
-    setCalendarDate(newDate)
-    console.log(`Selected date: ${newDate.toDateString()}`)
-  }
-
-  const goToToday = () => {
-    setCalendarDate(new Date())
-  }
+  // Sample SOS Emergency data
+  const sampleSosData = [
+    {
+      id: 1,
+      type: "Medical Emergency",
+      contact: "Dr. Maria Santos",
+      phone: "+63 917 123 4567",
+      location: "CTU Veterinary Clinic - Room 205",
+      time: "2 minutes ago",
+      urgent: true,
+    },
+    {
+      id: 2,
+      type: "Animal Emergency",
+      contact: "Emergency Vet Team",
+      phone: "+63 918 765 4321",
+      location: "Main Campus - Building A",
+      time: "15 minutes ago",
+      urgent: false,
+    },
+    {
+      id: 3,
+      type: "Fire Emergency",
+      contact: "Fire Department",
+      phone: "911",
+      location: "Laboratory Building - 2nd Floor",
+      time: "45 minutes ago",
+      urgent: true,
+    },
+  ]
 
   // Data loading functions
-  // 🔹 define loadStats inside the component
   const loadStats = useCallback(() => {
     console.log("Loading statistics...")
 
@@ -517,17 +554,12 @@ function CtuDashboard() {
       .catch((err) => console.error("Error fetching stats:", err))
   }, [])
 
-  // 🔹 call loadStats when component mounts
-  useEffect(() => {
-    loadStats()
-  }, [loadStats])
-
   const loadRecentActivities = useCallback(() => {
     console.log("Loading recent activities...")
     setRecentActivities([])
   }, [])
 
- // ✅ Fetch notifications from backend
+  // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
@@ -547,16 +579,22 @@ function CtuDashboard() {
       .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
+  const loadSosEmergencies = useCallback(() => {
+    // For now, use sample data. Replace with actual API call later
+    setSosEmergencies(sampleSosData)
+  }, [])
 
   const loadDashboardData = useCallback(() => {
     loadStats()
     loadRecentActivities()
     loadNotifications()
-  }, [loadStats, loadRecentActivities, loadNotifications])
+    loadSosEmergencies()
+  }, [loadStats, loadRecentActivities, loadNotifications, loadSosEmergencies])
 
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
   }
+
   // ✅ Auto-refresh every 30s
   useEffect(() => {
     loadNotifications() // load once
@@ -568,21 +606,19 @@ function CtuDashboard() {
     return () => clearInterval(interval)
   }, [loadNotifications])
 
-
   // Fetch from Django backend
-useEffect(() => {
-  fetch("http://127.0.0.1:8000/api/ctu_vetmed/recent-activity/", {
-    method: "GET",
-    credentials: "include",
-  })
-    .then((res) => {
-      if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-      return res.json();
+  useEffect(() => {
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/recent-activity/", {
+      method: "GET",
+      credentials: "include",
     })
-    .then((data) => setRecentActivities(data))
-    .catch((err) => console.error("Error fetching activity:", err));
-}, []);
-
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => setRecentActivities(data))
+      .catch((err) => console.error("Error fetching activity:", err));
+  }, []);
 
   // Effects
   useEffect(() => {
@@ -622,6 +658,11 @@ useEffect(() => {
     }
   }, [])
 
+  const handleSosItemClick = (emergency) => {
+    console.log("SOS Emergency clicked:", emergency)
+    // Handle emergency action here
+  }
+
   return (
     <div style={styles.bodyWrapper}>
       <Sidebar isOpen={isSidebarOpen} />
@@ -632,39 +673,56 @@ useEffect(() => {
             <h2 style={styles.dashboardTitle}>Dashboard</h2>
             <span style={styles.dashboardTime}>{time}</span>
           </div>
-            <button
-              style={styles.notificationBtn}
-              onClick={() => setNotifsOpen(!notifsOpen)}
-            >
-              <Bell size={24} color="#374151" />
-              {notifications.length > 0 && (
-                <span style={styles.badge}>{notifications.length}</span>
-              )}
-            </button>
+          <button
+            style={styles.notificationBtn}
+            onClick={() => setNotifsOpen(!notifsOpen)}
+          >
+            <Bell size={24} color="#374151" />
+            {notifications.length > 0 && (
+              <span style={styles.badge}>{notifications.length}</span>
+            )}
+          </button>
 
           {/* 📩 Notification Modal */}
-            <NotificationModal
-              isOpen={notifsOpen}
-              onClose={() => setNotifsOpen(false)}
-              notifications={notifications.map((n) => ({
-                message: n.message,
-                date: n.date,
-              }))}
-            />
+          <NotificationModal
+            isOpen={notifsOpen}
+            onClose={() => setNotifsOpen(false)}
+            notifications={notifications.map((n) => ({
+              message: n.message,
+              date: n.date,
+            }))}
+          />
         </header>
 
         <div style={styles.contentAreas}>
           <div style={styles.statsContainers}>
             <div style={styles.statCard}>
-              <div style={styles.statTitle}>Total Pending</div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                <div style={styles.statTitle}>Total Pending</div>
+                <div style={{ ...styles.statIcon, ...styles.pendingIcon }}>
+                  <Clock size={24} />
+                </div>
+              </div>
               <div style={styles.statNumbers}>{recordCount}</div>
             </div>
+
             <div style={styles.statCard}>
-              <div style={styles.statTitle}>Total Approved</div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                <div style={styles.statTitle}>Total Approved</div>
+                <div style={{ ...styles.statIcon, ...styles.approvedIcon }}>
+                  <CheckCircle size={24} />
+                </div>
+              </div>
               <div style={styles.statNumbers}>{vetCount}</div>
             </div>
+
             <div style={styles.statCard}>
-              <div style={styles.statTitle}>Total Declined</div>
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
+                <div style={styles.statTitle}>Total Declined</div>
+                <div style={{ ...styles.statIcon, ...styles.declinedIcon }}>
+                  <XCircle size={24} />
+                </div>
+              </div>
               <div style={styles.statNumbers}>{declinedCount || 0}</div>
             </div>
           </div>
@@ -676,7 +734,7 @@ useEffect(() => {
 
               {recentActivities.length === 0 ? (
                 <div style={styles.emptyState}>
-                  <ClipboardList size={48} className="empty-icon" />
+                  <ClipboardList size={48} />
                   <h3 style={styles.emptyStateH3}>No recent activity</h3>
                   <p style={styles.emptyStateP}>Activity will appear here when available</p>
                 </div>
@@ -742,32 +800,73 @@ useEffect(() => {
               )}
             </div>
 
-            <div style={styles.calendarWidget}>
-              <div style={styles.calendarHeader}>
-                <span style={styles.calendarTitle}>{getCalendarTitle()}</span>
-                <div style={styles.calendarNav}>
-                  <button style={styles.calendarNavBtn} onClick={goToToday}>
-                    Today
-                  </button>
-                </div>
+            {/* SOS Emergency Widget */}
+            <div style={styles.sosWidget}>
+              <div style={styles.sosHeader}>
+                <h3 style={styles.sosTitle}>
+                  <AlertTriangle size={24} />
+                  SOS Emergency
+                </h3>
               </div>
+              <p style={styles.sosSubtitle}>Active emergency contacts and alerts</p>
 
-              <div style={styles.calendarGrid}>
-                <div style={styles.calendarDayHeader}>Sun</div>
-                <div style={styles.calendarDayHeader}>Mon</div>
-                <div style={styles.calendarDayHeader}>Tue</div>
-                <div style={styles.calendarDayHeader}>Wed</div>
-                <div style={styles.calendarDayHeader}>Thu</div>
-                <div style={styles.calendarDayHeader}>Fri</div>
-                <div style={styles.calendarDayHeader}>Sat</div>
-                {initializeCalendar()}
-              </div>
+              {sosEmergencies.length === 0 ? (
+                <div style={styles.emptyState}>
+                  <AlertTriangle size={48} />
+                  <h3 style={styles.emptyStateH3}>No active emergencies</h3>
+                  <p style={styles.emptyStateP}>Emergency alerts will appear here</p>
+                </div>
+              ) : (
+                <div style={styles.sosList}>
+                  {sosEmergencies.map((emergency) => (
+                    <div
+                      key={emergency.id}
+                      style={styles.sosItem}
+                      onClick={() => handleSosItemClick(emergency)}
+                      onMouseEnter={(e) => {
+                        Object.assign(e.currentTarget.style, styles.sosItemHover)
+                      }}
+                      onMouseLeave={(e) => {
+                        Object.assign(e.currentTarget.style, styles.sosItem)
+                      }}
+                    >
+                      <div style={styles.sosItemHeader}>
+                        <span
+                          style={{
+                            ...styles.sosEmergencyType,
+                            ...(emergency.urgent ? styles.sosUrgent : {}),
+                          }}
+                        >
+                          {emergency.type}
+                        </span>
+                        <span style={styles.sosTime}>{emergency.time}</span>
+                      </div>
+
+                      <div style={styles.sosDetails}>
+                        <div style={styles.sosDetailItem}>
+                          <User size={16} />
+                          <span>{emergency.contact}</span>
+                        </div>
+                        <div style={styles.sosDetailItem}>
+                          <Phone size={16} />
+                          <span>{emergency.phone}</span>
+                        </div>
+                      </div>
+
+                      <div style={styles.sosLocation}>
+                        <MapPin size={14} />
+                        <span>{emergency.location}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-       <FloatingMessages />
+      <FloatingMessages />
     </div>
   )
 }

@@ -14,6 +14,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 import re
 from supabase import create_client 
+from django.http import JsonResponse
 
 # -------------------- SUPABASE CLIENT --------------------
 # Environment config
@@ -745,41 +746,6 @@ def get_directory_profiles(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-# -------------------- DELETE VET,KUTSERO, HORSE OPERATOR PROFILE IN DIRECTORY--------------------
-
-
-@api_view(['DELETE'])
-def delete_directory_user(request, email):
-    """
-    Delete a user from Supabase users table based on their email.
-    Always returns JSON.
-    """
-    try:
-        print(f"Attempting to delete user with email: {email}")  # debug log
-
-        # Query Supabase
-        user_res = sr_client.table("users").select("id, user_email").eq("user_email", email).execute()
-
-        if not user_res.data:
-            # User not found -> return JSON 404
-            return Response({"error": f"User with email '{email}' not found"}, status=404)
-
-        user_id = user_res.data[0].get("id")
-
-        # Delete user
-        delete_res = sr_client.table("users").delete().eq("id", user_id).execute()
-
-        if delete_res.data:
-            return Response({"message": f"User with email '{email}' deleted successfully"}, status=200)
-        else:
-            return Response({"error": "Deletion failed"}, status=500)
-
-    except Exception as e:
-        logging.exception("Error deleting user")
-        return Response({"error": "Internal server error", "details": str(e)}, status=500)
-
-
-
 
 
 
@@ -870,30 +836,6 @@ def get_account_counts(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-@api_view(['DELETE'])
-def delete_vet_profile(request, vet_id):
-    """
-    Delete a vet profile from the Supabase vet_profile table.
-    """
-    try:
-        response = sr_client.table("vet_profile").delete().eq("vet_id", vet_id).execute()
-
-        if not response.data:
-            return Response(
-                {"error": f"Vet profile with id {vet_id} not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        return Response(
-            {"message": f"Vet profile with id {vet_id} deleted successfully."},
-            status=status.HTTP_200_OK
-        )
-
-    except Exception as e:
-        return Response(
-            {"error": "Internal Server Error", "details": str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
 
 
 
@@ -1032,103 +974,100 @@ def ctu_change_password(request):
 def get_current_user(request):
     token = request.COOKIES.get("access_token")
     if not token:
+        print("No access_token cookie found")
         return None
     try:
-        user_res = sr_client.auth.get_user(token)
+        # Use token as a JWT
+        user_res = sr_client.auth.get_user(jwt=token)
         if user_res and getattr(user_res, "user", None):
+            print("Authenticated user:", user_res.user.id)
             return user_res.user.id
+        print("No user found in Supabase response")
         return None
-    except:
+    except Exception as e:
+        print("Auth error:", e)
         return None
+
 
 
 # -------------------- FETCH USERS --------------------
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-
+# -------------------- FETCH USERS --------------------
 @api_view(['GET'])
 def fetch_users(request):
-    user_id = get_current_user(request)
-    if not user_id:
-        return Response({"error": "User not authenticated."}, status=401)
-
     try:
-        # Get current user's role
-        role_res = sr_client.table("users").select("role").eq("id", user_id).execute()
-        current_role = (role_res.data or [{}])[0].get("role", "Ctu-VetMed")
+        # kuha sa profiles
+        profiles_res = sr_client.table("ctu_vet_profile").select("*").execute()
 
-        # Admin sees all users, others see only themselves
-        if current_role == "Ctu-Admin":
-            res = sr_client.table("ctu_vet_profile").select("*").execute()
-        else:
-            res = sr_client.table("ctu_vet_profile").select("*").eq("ctu_id", user_id).execute()
+        # kuha sa users (id, role, status)
+        users_res = sr_client.table("users").select("id, role, status").execute()
+        users_map = {u["id"]: {"role": u["role"], "status": u["status"]} for u in users_res.data or []}
 
         profiles = []
-        for p in res.data or []:
+        for p in profiles_res.data or []:
+            user_data = users_map.get(p.get("ctu_id"), {})
             profiles.append({
                 "id": p.get("ctu_id"),
                 "ctu_fname": p.get("ctu_fname"),
                 "ctu_lname": p.get("ctu_lname"),
                 "ctu_email": p.get("ctu_email"),
                 "ctu_phonenum": p.get("ctu_phonenum"),
-                "role": p.get("ctu_role") or "Ctu-VetMed",
-                "status": p.get("status") or "pending"
+                # override role + status with data from users table
+                "role": user_data.get("role", "N/A"),
+                "status": user_data.get("status", "pending"),
             })
 
         return Response(profiles, status=200)
 
     except Exception as e:
-        return Response({"error": f"Internal server error: {str(e)}"}, status=500)
+        return Response({"error": str(e)}, status=500)
 
 
 
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+
+
 
 from django.http import JsonResponse
-from supabase import create_client
-import os
+from rest_framework.decorators import api_view
 
-# Supabase client (make sure keys are in .env)
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-sr_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-
+# -------------------- Deactivate User --------------------
+@api_view(['POST'])
 def deactivate_user(request, user_id):
-    if request.method != "POST":
-        return JsonResponse({"error": "Method not allowed"}, status=405)
+    try:
+        # Check if user exists
+        result = sr_client.table("users").select("*").eq("id", user_id).execute()
+        user = result.data[0] if result.data else None
 
-    # Fetch the user by UUID
-    result = sr_client.table("users").select("*").eq("id", user_id).single().execute()
-    user = result.data
+        if not user:
+            return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
 
-    if not user:
-        return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
+        # Update status
+        sr_client.table("users").update({"status": "deactivated"}).eq("id", user_id).execute()
 
-    # Update status to 'inactive'
-    sr_client.table("users").update({"status": "inactive"}).eq("id", user_id).execute()
+        return JsonResponse({"message": "User deactivated successfully"}, status=200)
 
-    return JsonResponse({"message": "User deactivated successfully"})
-
-
-def delete_user(request, user_id):
-    if request.method != "DELETE":
-        return JsonResponse({"error": "Method not allowed"}, status=405)
-
-    # Fetch the user by UUID
-    result = sr_client.table("users").select("*").eq("id", user_id).single().execute()
-    user = result.data
-
-    if not user:
-        return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
-
-    # Delete user
-    sr_client.table("users").delete().eq("id", user_id).execute()
-
-    return JsonResponse({"message": "User deleted successfully"})
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 
 
+
+
+# -------------------- Reactivate User --------------------
+@api_view(['POST'])
+def reactivate_user(request, user_id):
+    try:
+        result = sr_client.table("users").select("*").eq("id", user_id).execute()
+        user = result.data[0] if result.data else None
+
+        if not user:
+            return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
+
+        # Update to approved (active)
+        sr_client.table("users").update({"status": "approved"}).eq("id", user_id).execute()
+
+        return JsonResponse({"message": "User reactivated successfully"}, status=200)
+
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
 
 
 
@@ -1180,29 +1119,56 @@ def search_vets(request):
     query = request.GET.get("q", "").strip().lower()
 
     # Fetch all vet profiles
-    res = sr_client.table("vet_profiles").select("*").execute()
-    vets = res.data or []
+    vets_res = sr_client.table("vet_profiles").select("*").execute()
+    vets = vets_res.data or []
 
-    # Filter by first or last name if query exists
-    if query:
-        vets = [
-            v for v in vets
-            if query in (v.get("vet_fname") or "").lower() 
-               or query in (v.get("vet_lname") or "").lower()
-        ]
+    # Fetch all kutsero profiles
+    kutseros_res = sr_client.table("kutsero_profiles").select("*").execute()
+    kutseros = kutseros_res.data or []
 
-    # Map to API response format
-    data = [
-        {
-            "id": str(v.get("vet_id")),
-            "name": f"{v.get('vet_fname')} {v.get('vet_lname')}",
-            "email": v.get("vet_email"),
-        }
-        for v in vets
-    ]
+    # Fetch all horse operator profiles
+    ops_res = sr_client.table("horse_op_profiles").select("*").execute()
+    horse_ops = ops_res.data or []
 
-    return Response({"users": data}, status=200)
+    results = []
 
+    # Filter vets
+    for v in vets:
+        if v.get("users", {}).get("status") != "approved":
+            continue
+        full_name = f"{v.get('vet_fname','')} {v.get('vet_lname','')}".strip()
+        if not query or query in full_name.lower():
+            results.append({
+                "id": str(v.get("vet_id")),
+                "name": full_name,
+                "email": v.get("vet_email"),
+            })
+
+    # Filter kutseros
+    for k in kutseros:
+        if k.get("users", {}).get("status") != "approved":
+            continue
+        full_name = f"{k.get('kutsero_fname','')} {k.get('kutsero_lname','')}".strip()
+        if not query or query in full_name.lower():
+            results.append({
+                "id": str(k.get("kutsero_id")),
+                "name": full_name,
+                "email": k.get("kutsero_email"),
+            })
+
+    # Filter horse operators
+    for op in horse_ops:
+        if op.get("users", {}).get("status") != "approved":
+            continue
+        full_name = f"{op.get('op_fname','')} {op.get('op_lname','')}".strip()
+        if not query or query in full_name.lower():
+            results.append({
+                "id": str(op.get("op_id")),
+                "name": full_name,
+                "email": op.get("op_email"),
+            })
+
+    return Response({"users": results}, status=200)
 
 
 
@@ -1290,3 +1256,194 @@ def get_announcements(request):
     except Exception:
         logging.exception("Failed to fetch announcements")
         return Response({"error": "Failed to fetch announcements"}, status=500)
+    
+
+
+
+# -------------------- SEARCH VETS --------------------
+# -------------------- SEARCH VETS --------------------
+@api_view(["GET"])
+@login_required
+def search_vet(request):
+    query = request.GET.get("q", "").strip().lower()
+
+    try:
+        # Fetch all vets from Supabase table "vet_profile"
+        response = sr_client.table("vet_profile").select("*").execute()
+        vets = response.data or []
+
+        # Optional: filter results by query (fname, lname, or email)
+        if query:
+            vets = [
+                v for v in vets
+                if query in (v.get("vet_fname", "").lower())
+                or query in (v.get("vet_lname", "").lower())
+                or query in (v.get("vet_email", "").lower())
+            ]
+
+        # Transform results into frontend-friendly structure
+        results = [
+            {
+                "id": str(v.get("vet_id")),
+                "name": f"{v.get('vet_fname', '')} {v.get('vet_lname', '')}".strip(),
+                "email": v.get("vet_email"),
+                "specialization": v.get("vet_specialization"),
+                "phone": v.get("vet_phone_num"),
+                "org": v.get("vet_org"),
+            }
+            for v in vets
+        ]
+
+        return Response({"users": results}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logging.error(f"Error fetching vets: {e}")
+        return Response({"error": "Failed to fetch vets"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# -------------------- display horses with owner full name --------------------
+
+
+
+@api_view(['GET'])
+def get_horses(request):
+    """
+    Fetch all horses with owner info, current medical record,
+    treatment history, and medrec history, flattened.
+    """
+    try:
+        # 1️⃣ Fetch horses with owner info and current medical record
+        horses_response = sr_client.table("horse_profile").select("""
+            horse_id,
+            horse_name,
+            horse_breed,
+            horse_dob,
+            horse_age,
+            horse_sex,
+            horse_color,
+            horse_weight,
+            horse_height,
+            horse_image,
+            created_at,
+            horse_op_profile (
+                op_fname,
+                op_mname,
+                op_lname,
+                op_province,
+                op_city,
+                op_municipality,
+                users (status, role)
+            ),
+            horse_medrecord (
+                medrec_id,
+                medrec_date,
+                medrec_heart_rate,
+                medrec_resp_rate,
+                medrec_bodytemp,
+                medrec_concern,
+                medrec_clinical_sign,
+                medrec_lab_results,
+                medrec_lab_img,
+                medrec_diagnosis,
+                medrec_treatment,
+                medrec_remark,
+                vet_id,
+                vet_profile (vet_fname, vet_lname)
+            )
+        """).execute()
+
+        horse_list = []
+
+        for horse in horses_response.data:
+            # --- Owner info ---
+            owner = horse.get("horse_op_profile", {})
+            fullname = " ".join(filter(None, [owner.get("op_fname"), owner.get("op_mname"), owner.get("op_lname")]))
+            location = ", ".join(filter(None, [owner.get("op_municipality"), owner.get("op_city"), owner.get("op_province")]))
+            user_info = owner.get("users", {})
+
+            horse["owner_fullname"] = fullname.strip()
+            horse["location"] = location.strip()
+            horse["status"] = user_info.get("status", "Unknown")
+            horse["role"] = user_info.get("role", "N/A")
+
+            # Remove owner object
+            if "horse_op_profile" in horse:
+                del horse["horse_op_profile"]
+
+            # --- Medical record ---
+            medrec = horse.get("horse_medrecord")
+            if medrec:
+                # Flatten vet info
+                medrec["vet_name"] = " ".join(filter(None, [
+                    medrec.get("vet_profile", {}).get("vet_fname"),
+                    medrec.get("vet_profile", {}).get("vet_lname")
+                ]))
+                if "vet_profile" in medrec:
+                    del medrec["vet_profile"]
+
+                medrec_id = medrec.get("medrec_id")
+
+                # --- Fetch medrec_history ---
+                histories_response = sr_client.table("medrec_history").select("""
+                    history_id,
+                    change_date,
+                    prev_heart_rate,
+                    prev_resp_rate,
+                    prev_bodytemp,
+                    prev_concern,
+                    prev_clinical_sign,
+                    prev_lab_results,
+                    prev_lab_img,
+                    prev_diagnosis,
+                    prev_remark,
+                    vet_id,
+                    vet_profile (vet_fname, vet_lname)
+                """).eq("medrec_id", medrec_id).execute()
+
+                medrec_histories = []
+                for h in histories_response.data:
+                    h["vet_name"] = " ".join(filter(None, [
+                        h.get("vet_profile", {}).get("vet_fname"),
+                        h.get("vet_profile", {}).get("vet_lname")
+                    ]))
+                    if "vet_profile" in h:
+                        del h["vet_profile"]
+                    medrec_histories.append(h)
+
+                medrec["medrec_history"] = medrec_histories
+
+                # --- Fetch treatment_history ---
+                treatments_response = sr_client.table("treatment_history").select("""
+                    treatment_id,
+                    treatment_date,
+                    treatment_info,
+                    treatment_remark,
+                    vet_id,
+                    vet_profile (vet_fname, vet_lname)
+                """).eq("medrec_id", medrec_id).execute()
+
+                treatments = []
+                for t in treatments_response.data:
+                    t["vet_name"] = " ".join(filter(None, [
+                        t.get("vet_profile", {}).get("vet_fname"),
+                        t.get("vet_profile", {}).get("vet_lname")
+                    ]))
+                    if "vet_profile" in t:
+                        del t["vet_profile"]
+                    treatments.append(t)
+
+                medrec["treatment_history"] = treatments
+
+            horse["medical_record"] = medrec
+            if "horse_medrecord" in horse:
+                del horse["horse_medrecord"]
+
+            horse_list.append(horse)
+
+        return Response(horse_list, status=200)
+
+    except Exception as e:
+        logging.exception("Error fetching horses with histories")
+        return Response(
+            {"error": "Internal server error", "details": str(e)},
+            status=500
+        )

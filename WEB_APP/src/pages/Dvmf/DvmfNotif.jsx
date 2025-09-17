@@ -72,7 +72,7 @@ const API_BASE = "http://127.0.0.1:8000/api/dvmf";
             <p style={{ color: "#6b7280", marginBottom: "10px" }}>NO NOTIF</p>
             <button
               style={{
-                background: "#b91c1c",
+                background: "#0F3D5A",
                 color: "white",
                 border: "none",
                 padding: "8px 16px",
@@ -102,7 +102,7 @@ const API_BASE = "http://127.0.0.1:8000/api/dvmf";
             style={{
               background: "none",
               border: "none",
-              color: "#b91c1c",
+              color: "#0F3D5A",
               fontSize: "12px",
               cursor: "pointer",
               fontWeight: "600",
@@ -134,7 +134,7 @@ const styles = {
     padding: "10px 14px",
     borderBottom: "1px solid #eee",
   },
-  title: { fontSize: "16px", fontWeight: "600", color: "#b91c1c" },
+  title: { fontSize: "16px", fontWeight: "600", color: "#0F3D5A" },
   body: { padding: "10px" },
   notification: {
     padding: "10px",

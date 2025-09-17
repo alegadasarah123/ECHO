@@ -25,7 +25,8 @@ function DvmfHorseRecord() {
   const [isHorseModalOpen, setIsHorseModalOpen] = useState(false)
   const [isMedicalRecordModalOpen, setIsMedicalRecordModalOpen] = useState(false)
   const [isTreatmentHistoryModalOpen, setIsTreatmentHistoryModal] = useState(false)
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
+  const [loading, setLoading] = useState(false); // ✅ added
+  const [error, setError] = useState(null);  // <-- Add this
   const [notifsOpen, setNotifsOpen] = useState(false)
 
   // State for filters and search
@@ -40,10 +41,7 @@ function DvmfHorseRecord() {
   const [selectedMedicalRecord, setSelectedMedicalRecord] = useState(null)
   const [selectedTreatmentHistory, setSelectedTreatmentHistory] = useState(null)
 
-  const handleChatButtonClick = () => {
-    console.log("Chat button clicked")
-    navigate("/CtuMessage")
-  }
+
 
   // Refs for click outside functionality
   const notificationBellRef = useRef(null)
@@ -69,7 +67,7 @@ function DvmfHorseRecord() {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/dvmf/get_vetnotifications/")
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -116,11 +114,10 @@ function DvmfHorseRecord() {
     return filtered
   }, [horseRecords, areaFilter, statusFilter, searchTerm])
 
-  const viewHorseDetails = (horseId) => {
-    const horse = horseRecords.find((h) => h.id === horseId)
-    setSelectedHorse(horse)
-    setIsHorseModalOpen(true)
-  }
+const viewHorseDetails = (horse) => {
+  setSelectedHorse(horse); // set the whole object
+  setIsHorseModalOpen(true);
+};
 
   const closeHorseModal = () => {
     setIsHorseModalOpen(false)
@@ -179,27 +176,7 @@ function DvmfHorseRecord() {
     setStatusFilter(e.target.value)
   }
 
-  const openLogoutModal = (e) => {
-    e.preventDefault()
-    setIsLogoutModalOpen(true)
-  }
 
-  const closeLogoutModal = () => {
-    setIsLogoutModalOpen(false)
-  }
-
-  const confirmLogout = () => {
-    console.log("User logged out")
-    localStorage.removeItem("currentUser")
-    localStorage.removeItem("loginTime")
-    closeLogoutModal()
-    navigate("/")
-    window.location.reload()
-  }
-
-  const toggleSidebar = () => {
-    setIsSidebarOpen((prev) => !prev)
-  }
 
   // Effects for click outside and resize
   useEffect(() => {
@@ -237,10 +214,7 @@ function DvmfHorseRecord() {
         closeTreatmentHistory()
       }
 
-      // Close logout modal
-      if (isLogoutModalOpen && logoutModalRef.current && event.target === logoutModalRef.current) {
-        closeLogoutModal()
-      }
+      
 
       // Close mobile sidebar
       const sidebar = document.getElementById("sidebar")
@@ -266,7 +240,6 @@ function DvmfHorseRecord() {
     isHorseModalOpen,
     isMedicalRecordModalOpen,
     isTreatmentHistoryModalOpen,
-    isLogoutModalOpen,
     isSidebarOpen,
   ])
 
@@ -288,6 +261,31 @@ const styles = {
   badge: {position: "absolute",top: "2px",right: "2px",backgroundColor: "#ef4444",color: "#fff",borderRadius: "50%",padding: "2px 6px",fontSize: "12px",fontWeight: "bold",
     },
   }
+
+
+
+ // ✅ Fetch horses from backend
+ useEffect(() => {
+    const fetchHorses = async () => {
+      setLoading(true);
+      setError(null);
+
+      try {
+        const res = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_horses/");
+        if (!res.ok) throw new Error("Failed to fetch horses");
+        const data = await res.json();
+        setHorseRecords(data);
+      } catch (err) {
+        console.error("Error fetching horses:", err);
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchHorses();
+  }, []);
+
 
 
   return (
@@ -404,7 +402,7 @@ body {
   position: absolute;
   top: 2px;
   right: 2px;
-  background-color: #b91c1c;
+  background-color: #0F3D5A;
   color: white;
   font-size: 10px;
   width: 15px;
@@ -454,7 +452,7 @@ body {
 .mark-all-read {
   background: none;
   border: none;
-  color: #b91c1c;
+  color: #0F3D5A;
   font-size: 12px;
   cursor: pointer;
   text-decoration: underline;
@@ -474,7 +472,7 @@ body {
 
 .notification-item.unread {
   background-color: #f0f8ff;
-  border-left: 3px solid #b91c1c;
+  border-left: 3px solid #0F3D5A;
 }
 
 .notification-item:last-child {
@@ -612,7 +610,7 @@ flex: 1;
 }
 
 .add-horse-btn {
-  background: #b91c1c;
+  background: #0F3D5A;
   color: white;
   border: none;
   padding: 10px 16px;
@@ -641,7 +639,7 @@ flex: 1;
 .table-header {
   background: #f8f9fa;
   display: grid;
-  grid-template-columns: 80px 1fr 1fr 1fr 100px 80px;
+  grid-template-columns:  1fr 1fr 1fr 1fr 90px 80px;
   padding: 16px 20px;
   font-weight: 600;
   color: #374151;
@@ -651,7 +649,7 @@ flex: 1;
 
 .table-row {
   display: grid;
-  grid-template-columns: 80px 1fr 1fr 1fr 100px 80px;
+  grid-template-columns:  1fr 1fr 1fr 1fr 100px 80px;
   padding: 16px 20px;
   border-bottom: 1px solid #f3f4f6;
   transition: background-color 0.2s;
@@ -667,6 +665,12 @@ flex: 1;
   border-bottom: none;
 }
 
+.action-cell {
+  display: flex;
+  justify-content: flex-end; /* push button to the far right */
+}
+
+
 .status-badge {
   display: inline-block;
   padding: 4px 8px;
@@ -677,7 +681,8 @@ flex: 1;
 
 .status-healthy,
 .status-completed,
-.status-successful {
+.status-successful,
+.status-approved {
   background: #dcfce7;
   color: #166534;
 }
@@ -697,8 +702,14 @@ flex: 1;
   color: #2563eb;
 }
 
+/* Updated view button styles */
 .view-btn {
-  background: #b91c1c;
+  display: inline-flex;       /* flex so icon & text align horizontally */
+  align-items: center;        /* vertical center */
+  justify-content: center;    /* horizontal center */
+  gap: 4px;                   /* space between icon and text */
+
+  background: #0F3D5A;
   color: white;
   border: none;
   padding: 6px 12px;
@@ -711,8 +722,9 @@ flex: 1;
 }
 
 .view-btn:hover {
-  background: #991b1b;
+  background: #2e5d7aff;
 }
+
 
  .empty-state {
   display: flex;
@@ -753,7 +765,7 @@ flex: 1;
   top: 20px;
   left: 20px;
   z-index: 1001;
-  background: #b91c1c;
+  background: #0F3D5A;
   color: white;
   border: none;
   padding: 12px;
@@ -984,7 +996,7 @@ flex: 1;
 }
 
 .medical-modal-header {
-  background: #b91c1c;
+  background: #0F3D5A;
   color: white;
   padding: 18px 24px;
   display: flex;
@@ -1103,7 +1115,7 @@ flex: 1;
 .medical-section h5 {
   font-size: clamp(12px, 2vw, 14px);
   font-weight: 600;
-  color: #b91c1c;
+  color: #0F3D5A;
   margin-bottom: 12px;
   border-bottom: 1px solid #e5e7eb;
   padding-bottom: 4px;
@@ -1112,7 +1124,7 @@ flex: 1;
 .medical-record-title {
   font-size: clamp(14px, 2.5vw, 16px);
   font-weight: 600;
-  color: #b91c1c;
+  color: #0F3D5A;
   margin-bottom: 16px;
   border-bottom: 2px solid #e5e7eb;
   padding-bottom: 6px;
@@ -1162,7 +1174,7 @@ flex: 1;
 .medication-title {
   font-size: clamp(12px, 2vw, 14px);
   font-weight: 600;
-  color: #b91c1c;
+  color: #0F3D5A;
   margin-bottom: 12px;
 }
 
@@ -1218,7 +1230,7 @@ flex: 1;
 .treatment-title {
   font-size: clamp(16px, 3vw, 18px);
   font-weight: 600;
-  color: #b91c1c;
+  color: #0F3D5A;
   margin-bottom: 20px;
 }
 
@@ -1232,7 +1244,7 @@ flex: 1;
 .treatment-info-title {
   font-size: clamp(12px, 2vw, 14px);
   font-weight: 600;
-  color: #b91c1c;
+  color: #0F3D5A;
   margin-bottom: 12px;
 }
 
@@ -1254,7 +1266,7 @@ flex: 1;
 .medical-data-title {
   font-size: clamp(12px, 2vw, 14px);
   font-weight: 600;
-  color: #b91c1c;
+  color: #0F3D5A;
   margin-bottom: 12px;
 }
 
@@ -1307,7 +1319,7 @@ flex: 1;
 .next-vaccination-title {
   font-size: clamp(12px, 2vw, 14px);
   font-weight: 600;
-  color: #b91c1c;
+  color: #0F3D5A;
   margin-bottom: 12px;
 }
 
@@ -1365,7 +1377,7 @@ flex: 1;
 
 .form-input:focus,
 .form-select:focus {
-  border-color: #b91c1c;
+  border-color: #0F3D5A;
 }
 
 .form-input::placeholder,
@@ -1404,7 +1416,7 @@ textarea.form-input {
   grid-column: 1 / -1; /* Spans all columns */
   font-size: 16px;
   font-weight: 600;
-  color: #b91c1c;
+  color: #0F3D5A;
   margin-top: 20px;
   margin-bottom: 15px;
   border-bottom: 1px solid #e5e7eb;
@@ -1440,12 +1452,12 @@ textarea.form-input {
 }
 
 .submit-btn {
-  background: #b91c1c;
+  background:#0F3D5A;
   color: white;
 }
 
 .submit-btn:hover {
-  background: #991b1b;
+  background: #0F3D5A;
 }
 
 /* Chat Widget Styling - Button Only */
@@ -1459,7 +1471,7 @@ textarea.form-input {
         .chat-button {
           width: 64px;
           height: 64px;
-          background: #b91c1c;
+          background: #0F3D5A;
           border: none;
           border-radius: 20px;
           color: white;
@@ -1482,7 +1494,7 @@ textarea.form-input {
           height: 0;
           border-left: 10px solid transparent;
           border-right: 10px solid transparent;
-          border-top: 10px solid #b91c1c;
+          border-top: 10px solid #0F3D5A;
         }
 
         .chat-button:hover {
@@ -1491,7 +1503,7 @@ textarea.form-input {
         }
 
         .chat-button:hover::after {
-          border-top-color: #b91c1c;
+          border-top-color: #0F3D5A;
         }
 
         .chat-dots {
@@ -1774,7 +1786,7 @@ textarea.form-input {
   h4,
   h5,
   h6 {
-    color: #b91c1c !important;
+    color: #0F3D5A !important;
     font-weight: bold !important;
   }
 
@@ -1794,7 +1806,7 @@ textarea.form-input {
   .dashboard-title {
           font-size: 22px;
           font-weight: bold;
-          color: #da2424ff;
+          color: #0F3D5A;
         }
 
       `}</style>
@@ -1853,172 +1865,193 @@ textarea.form-input {
             </div>
             <div className="horse-table">
               <div className="table-header">
-                <div>ID</div>
-                <div>Name</div>
-                <div>Owner</div>
-                <div>Location</div>
-                <div>Status</div>
-                <div>Action</div>
+              <div>Horse Name</div>
+              <div>Horse Color</div>
+              <div>Owner</div>
+              <div>Location</div>
+              <div>Status</div>
+              <div>Action</div>
               </div>
+
               {currentFilteredHorseRecords.length === 0 ? (
-                <div className="empty-state">
-                  <ClipboardList size={48} />
-                  <h3>No horse records</h3>
-                  <p>Horse records will appear here when available</p>
-                </div>
+              <div className="empty-state">
+                <ClipboardList size={48} />
+                <h3>No horse records</h3>
+                <p>Horse records will appear here when available</p>
+              </div>
               ) : (
-                currentFilteredHorseRecords.map((horse) => (
-                  <div className="table-row" key={horse.id}>
-                    <div>{horse.id}</div>
-                    <div>{horse.name}</div>
-                    <div>{horse.owner}</div>
-                    <div>{horse.location}</div>
-                    <div>
-                      <span className={`status-badge status-${horse.status}`}>{horse.status}</span>
-                    </div>
-                    <div>
-                      <button className="view-btn" onClick={() => viewHorseDetails(horse.id)}>
-                        <Eye size={16} style={{ marginRight: "4px" }} />
-                        View
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+              currentFilteredHorseRecords.map((horse, index) => (
+              <div className="table-row" key={index}>
+                {/* Horse Name */}
+                <div>{horse.horse_name}</div>
+                 {/* Horse Color */}
+                <div>{horse.horse_color}</div>
+
+                {/* Owner Fullname */}
+                <div>{horse.owner_fullname}</div>
+
+                {/* Location */}
+                <div>{horse.location || "N/A"}</div>
+
+                {/* Status Badge */}
+                <div>
+                 <span className={`status-badge status-${horse?.status?.toLowerCase() || "unknown"}`}>
+                  {horse?.status || "N/A"}
+                </span>
+
+                </div>
+
+                {/* View Button */}
+                <div>
+                  <button
+                    className="view-btn"
+                   onClick={() => viewHorseDetails(horse)}
+
+                  >
+                  <Eye size={16} style={{ marginRight: "4px" }} />
+                    View
+                  </button>
+                </div>
+              </div>
+            ))
+
+            )}
+          </div>
+
           </div>
         </div>
       </div>
       <FloatingMessages />
-      {/* Horse Details Modal */}
-      {isHorseModalOpen && selectedHorse && (
-        <div className="modal-overlay active" id="horseModal" ref={horseModalRef}>
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2 className="modal-title">Horse Details</h2>
-              <button className="modal-close" onClick={closeHorseModal}>
-                <X size={20} />
-              </button>
+{/* Horse Details Modal */}
+{isHorseModalOpen && selectedHorse && (
+  <div className="modal-overlay active" id="horseModal" ref={horseModalRef}>
+    <div className="modal-content">
+      <div className="modal-header">
+        <h2 className="modal-title">Horse Details</h2>
+        <button className="modal-close" onClick={closeHorseModal}>
+          <X size={20} />
+        </button>
+      </div>
+
+      <div className="modal-body">
+        {/* Horse Basic Information */}
+        <div className="horse-info-section">
+          <div className="horse-header">
+            <div className="horse-avatar" id="horseAvatar">
+              {selectedHorse.horse_name ? selectedHorse.horse_name.charAt(0) : "?"}
             </div>
-            <div className="modal-body">
-              {/* Horse Basic Information */}
-              <div className="horse-info-section">
-                <div className="horse-header">
-                  <div className="horse-avatar" id="horseAvatar">
-                    {selectedHorse.name.charAt(0)}
-                  </div>
-                  <div className="horse-basic-info">
-                    <h3 id="horseName">{selectedHorse.name}</h3>
-                    <div className="horse-details">
-                      <span id="horseAge">Age: {selectedHorse.age}</span> •
-                      <span id="horseBreed">Breed: {selectedHorse.breed}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="info-grid">
-                  <div className="info-item">
-                    <span className="info-label">Owner</span>
-                    <span className="info-value" id="horseOwner">
-                      {selectedHorse.owner}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <span className="info-label">Contact</span>
-                    <span className="info-value" id="horseContact">
-                      {selectedHorse.contact}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <span className="info-label">Location</span>
-                    <span className="info-value" id="horseLocation">
-                      {selectedHorse.location}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <span className="info-label">Sex</span>
-                    <span className="info-value" id="horseSex">
-                      {selectedHorse.sex}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Medical Record Section */}
-              <div className="section-title">Medical Record</div>
-              <div className="records-table">
-                <div className="records-header">
-                  <div>Date</div>
-                  <div>Diagnosis</div>
-                  <div>Veterinarian</div>
-                  <div>Status</div>
-                  <div>Action</div>
-                </div>
-                {selectedHorse.medicalRecords?.length === 0 || !selectedHorse.medicalRecords ? (
-                  <div className="empty-state">
-                    <Stethoscope size={48} />
-                    <h3>No medical records</h3>
-                    <p>Medical records will appear here when available</p>
-                  </div>
-                ) : (
-                  selectedHorse.medicalRecords.map((record) => (
-                    <div className="records-row" key={record.id}>
-                      <div>{record.date}</div>
-                      <div>{record.diagnosis}</div>
-                      <div>{record.veterinarian}</div>
-                      <div>
-                        <span className={`status-badge status-${record.status}`}>{record.status}</span>
-                      </div>
-                      <div>
-                        <button className="view-btn" onClick={() => viewMedicalRecord(record)}>
-                          <Eye size={16} style={{ marginRight: "4px" }} />
-                          View
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Treatment History Section */}
-              <div className="section-title">Treatment History</div>
-              <div className="records-table">
-                <div className="treatment-header">
-                  <div>Date</div>
-                  <div>Treatment</div>
-                  <div>Administered By</div>
-                  <div>Result</div>
-                  <div>Action</div>
-                </div>
-                {selectedHorse.treatmentHistory?.length === 0 || !selectedHorse.treatmentHistory ? (
-                  <div className="empty-state">
-                    <Syringe size={48} />
-                    <h3>No treatment history</h3>
-                    <p>Treatment records will appear here when available</p>
-                  </div>
-                ) : (
-                  selectedHorse.treatmentHistory.map((record) => (
-                    <div className="treatment-row" key={record.id}>
-                      <div>{record.date}</div>
-                      <div>{record.treatment}</div>
-                      <div>{record.administeredBy}</div>
-                      <div>
-                        <span className={`status-badge status-${record.result.toLowerCase()}`}>{record.result}</span>
-                      </div>
-                      <div>
-                        <button className="view-btn" onClick={() => viewTreatmentHistory(record)}>
-                          <Eye size={16} style={{ marginRight: "4px" }} />
-                          View
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                )}
+            <div className="horse-basic-info">
+              <h3 id="horseName">{selectedHorse.horse_name}</h3>
+              <div className="horse-details">
+                <span id="horseAge">Age: {selectedHorse.horse_age}</span> •
+                <span id="horseBreed">Breed: {selectedHorse.horse_breed}</span>
               </div>
             </div>
           </div>
+
+          <div className="info-grid">
+            <div className="info-item">
+              <span className="info-label">Owner</span>
+              <span className="info-value" id="horseOwner">
+                {selectedHorse.owner_fullname || "N/A"}
+              </span>
+            </div>
+            <div className="info-item">
+              <span className="info-label">Location</span>
+              <span className="info-value" id="horseLocation">
+                {selectedHorse.location || "N/A"}
+              </span>
+            </div>
+            <div className="info-item">
+              <span className="info-label">Sex</span>
+              <span className="info-value" id="horseSex">
+                {selectedHorse.horse_sex || "N/A"}
+              </span>
+            </div>
+            <div className="info-item">
+              <span className="info-label">Color</span>
+              <span className="info-value">{selectedHorse.horse_color || "N/A"}</span>
+            </div>
+          </div>
         </div>
-      )}
+
+        {/* Medical Record Section */}
+        <div className="section-title">Medical Record History</div>
+        <div className="records-table">
+          <div className="records-header">
+            <div>Date</div>
+            <div>Diagnosis</div>
+            <div>Veterinarian</div>
+            <div>Action</div>
+          </div>
+
+          {(selectedHorse.medical_record?.medrec_history || []).length > 0 ? (
+            (selectedHorse.medical_record.medrec_history || []).map((record) => (
+              <div className="records-row" key={record.history_id}>
+                <div>{record.change_date}</div>
+                <div>{record.prev_diagnosis}</div>
+                <div>{record.vet_name || "N/A"}</div>
+                <div>
+                  <button className="view-btn" onClick={() => viewMedicalRecord(record)}>
+                    <Eye size={16} style={{ marginRight: "4px" }} />
+                    View
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="empty-state">
+              <Stethoscope size={48} />
+              <h3>No medical record history</h3>
+              <p>Previous records will appear here when available</p>
+            </div>
+          )}
+        </div>
+
+        {/* Treatment History Section */}
+        <div className="section-title">Treatment History</div>
+        <div className="records-table">
+          <div className="treatment-header">
+            <div>Date</div>
+            <div>Treatment</div>
+            <div>Administered By</div>
+            <div>Result</div>
+            <div>Action</div>
+          </div>
+
+          {(selectedHorse.medical_record?.treatment_history || []).length > 0 ? (
+            (selectedHorse.medical_record.treatment_history || []).map((treatment) => (
+              <div className="treatment-row" key={treatment.treatment_id}>
+                <div>{treatment.treatment_date}</div>
+                <div>{treatment.treatment_info}</div>
+                <div>{treatment.vet_name || "N/A"}</div>
+                <div>
+                  <span className={`status-badge status-${treatment.result?.toLowerCase() || "unknown"}`}>
+                    {treatment.result || "Unknown"}
+                  </span>
+                </div>
+                <div>
+                  <button className="view-btn" onClick={() => viewTreatmentHistory(treatment)}>
+                    <Eye size={16} style={{ marginRight: "4px" }} />
+                    View
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="empty-state">
+              <Syringe size={48} />
+              <h3>No treatment history</h3>
+              <p>Treatment records will appear here when available</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
+
       {/* Medical Record Detail Modal */}
       {isMedicalRecordModalOpen && selectedMedicalRecord && (
         <div className="modal-overlay active" id="medicalRecordModal" ref={medicalRecordModalRef}>

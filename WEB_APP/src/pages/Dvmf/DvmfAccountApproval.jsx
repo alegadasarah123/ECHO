@@ -9,16 +9,14 @@ import {
   Eye,
   FileText,
   Info,
-  LogOut,
   MapPin,
   Search,
   SquareX,
   Stethoscope,
-  Trash2,
   User,
   UserCheck,
   UserX,
-  XCircle,
+  XCircle
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -117,8 +115,8 @@ function DvmfAccountApproval() {
     return filtered
   }, [registrationData, activeTab, searchTerm])
 
-  const viewDetails = (userId, status) => {
-    const user = registrationData.find((u) => u.id === userId)
+  const viewDetails = (vetId, status) => {
+    const user = registrationData.find((u) => u.vet_id === vetId)
     if (user) {
       setSelectedUser({ ...user, status }) // Pass status to modal for conditional buttons
       setIsViewDetailsModalOpen(true)
@@ -153,22 +151,6 @@ const showDeclineConfirmation = (vetId) => {
   });
   setIsConfirmationModalOpen(true);
 };
-const showDeleteConfirmation = (vetId) => {
-  console.log("Deleting vet with ID:", vetId); // Check here!
-  if (!vetId) {
-    alert("Vet ID is invalid.");
-    return;
-  }
-
-  setSelectedUser({ vet_id: vetId });
-  setConfirmationDetails({
-    title: "Confirm Delete",
-    message: "Are you sure you want to delete this vet profile? This action cannot be undone.",
-    action: "delete",
-  });
-  setIsConfirmationModalOpen(true);
-};
-
 
 
   const showApproveConfirmationFromModal = () => {
@@ -185,12 +167,7 @@ const showDeleteConfirmation = (vetId) => {
     }
   }
 
-  const showDeleteConfirmationFromModal = () => {
-    if (selectedUser) {
-      closeModal()
-      showDeleteConfirmation(selectedUser.vet_id)
-    }
-  }
+
 
   const closeConfirmation = () => {
     setIsConfirmationModalOpen(false)
@@ -199,42 +176,7 @@ const showDeleteConfirmation = (vetId) => {
   }
 
   
-// -------------------- Delete a single vet profile --------------------
-const deleteVetProfile = async (vetId) => {
-  if (!vetId) {
-    alert("Vet ID is invalid.");
-    return;
-  }
 
-  const confirmDelete = window.confirm(
-    "Are you sure you want to delete this vet profile?"
-  );
-  if (!confirmDelete) return;
-
-  try {
-    const response = await fetch(`${API_BASE}/delete-vet-profile/${vetId}/`, {
-      method: "DELETE",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      alert(data.error || "Failed to delete profile");
-      return;
-    }
-
-    alert(data.message || "Vet profile deleted successfully");
-
-    setRegistrationData((prev) =>
-      prev.filter((user) => user.vet_id !== vetId)
-    );
-  } catch (err) {
-    console.error("Delete error:", err);
-    alert("Error deleting vet profile");
-  }
-};
 
 
 
@@ -243,9 +185,7 @@ const deleteVetProfile = async (vetId) => {
       approveUser(selectedUser.vet_id)
     } else if (confirmationDetails.action === "decline" && selectedUser) {
       declineUser(selectedUser.vet_id)
-    } else if (confirmationDetails.action === "delete" && selectedUser) {
-      deleteVetProfile(selectedUser.vet_id)
-    }
+    } 
     closeConfirmation()
   }
 
@@ -327,17 +267,16 @@ const declineUser = async (vetId) => {
 const approveAllPending = async () => {
   if (activeTab !== "pending") return;
 
-  const pendingUsers = registrationData.filter((user) => user.status === "pending");
+  const pendingUsers = registrationData.filter((u) => u.status === "pending");
   if (pendingUsers.length === 0) return;
 
-  setMessage("Approving all pending users...");
-
-  for (const user of pendingUsers) {
-    await approveUser(user.vet_id);
+  try {
+    await Promise.all(pendingUsers.map((u) => approveUser(u.vet_id)));
+    setMessage("All pending users approved successfully!");
+  } catch (err) {
+    setMessage(`Error approving users: ${err.message}`);
   }
-
-  setMessage("All pending users approved successfully!");
-};
+}
 
 
 
@@ -502,6 +441,36 @@ useEffect(() => {
 
   const filteredRegistrations = filterRegistrations()
 
+  const togglePin = (postId) => {
+  setPinnedPosts((prev) => {
+    const updated = new Set(prev);
+    updated.add(postId); // only add, never delete
+    return updated;
+  });
+
+  setShowDropdown((prev) => ({ ...prev, [postId]: false }));
+
+  // Reorder posts: pinned posts first, then regular posts by timestamp
+  setPosts((prev) => {
+    const pinned = [];
+    const unpinned = [];
+
+    prev.forEach((post) => {
+      if (post.id === postId || pinnedPosts.has(post.id)) {
+        pinned.push(post);
+      } else {
+        unpinned.push(post);
+      }
+    });
+
+    return [
+      ...pinned.sort((a, b) => b.timestamp - a.timestamp),
+      ...unpinned.sort((a, b) => b.timestamp - a.timestamp),
+    ];
+  });
+};
+
+
   const styles = {
     notificationBtn: {
         position: "relative",
@@ -624,7 +593,7 @@ useEffect(() => {
     markAllRead: {
       background: "none",
       border: "none",
-      color: "#b91c1c",
+      color: "#0F3D5A",
       fontSize: "12px",
       cursor: "pointer",
       textDecoration: "underline",
@@ -885,13 +854,7 @@ useEffect(() => {
     btnViewHover: {
       background: "#6e7c9b",
     },
-    btnDelete: {
-      backgroundColor: "#ef4444",
-      color: "#fff",
-    },
-    btnDeleteHover: {
-      backgroundColor: "#dc2626",
-    },
+
     btnApprove: {
       backgroundColor: "#22c55e",
       color: "#fff",
@@ -912,7 +875,7 @@ useEffect(() => {
       top: "20px",
       left: "20px",
       zIndex: "1001",
-      background: "#b91c1c",
+      background: "#0F3D5A",
       color: "white",
       border: "none",
       padding: "12px",
@@ -973,7 +936,7 @@ useEffect(() => {
       borderBottom: "1px solid #e5e7eb",
     },
     sectionIcon: {
-      color: "#b91c1c",
+      color: "#0F3D5A",
       marginRight: "8px",
       fontSize: "16px",
       width: "20px",
@@ -1245,13 +1208,7 @@ useEffect(() => {
     modalBtnsHover: {
       opacity: "0.9",
     },
-    modalBtnsDelete: {
-      backgroundColor: "#ef4444",
-      color: "white",
-    },
-    modalBtnsDeleteHover: {
-      backgroundColor: "#dc2626",
-    },
+  
     modalStatusWrapper: {
       display: "flex",
       alignItems: "center",
@@ -1289,14 +1246,7 @@ useEffect(() => {
     modalStatusTextDeclined: {
       color: "#721c24",
     },
-    deleteAllBtnHover: {
-      backgroundColor: "#b02a37",
-      transform: "translateY(-1px)",
-    },
-    deleteAllBtnFocus: {
-      outline: "none",
-      boxShadow: "0 0 0 3px rgba(220, 53, 69, 0.4)",
-    },
+
     modalHeaders: {
       display: "flex",
       justifyContent: "center",
@@ -1397,7 +1347,7 @@ useEffect(() => {
       minHeight: "44px",
     },
     tabButtonActive: {
-      color: "#b91c1c",
+      color: "#0F3D5A",
       borderBottom: "none",
     },
     tabButtonHover: {
@@ -1439,7 +1389,7 @@ useEffect(() => {
     accountTitle: {
       fontSize: "25px",
       fontWeight: "bold",
-      color: "#da2424ff",
+      color: "#0F3D5A",
     },
   }
 
@@ -1624,7 +1574,7 @@ useEffect(() => {
                   <div className="action-buttons" style={styles.actionButtons}>
                     <button
                       className="action-btn btn-view"
-                      onClick={() => viewDetails(user.id, user.users?.status)}
+                      onClick={() => viewDetails(user.vet_id, user.status)}
                       style={{ ...styles.actionBtn, ...styles.btnView }}
                     >
                       <Eye size={16} style={{ marginRight: "6px" }} />
@@ -1653,15 +1603,10 @@ useEffect(() => {
                     )}
 
                     {(user.users?.status === "approved" || user.users?.status === "declined") && (
-                      <button
-                        className="action-btn btn-delete"
-                        onClick={() => showDeleteConfirmation(user.vet_id)}
-                        style={{ ...styles.actionBtn, ...styles.btnDelete }}
-                      >
-                        <Trash2 size={16} style={{ marginRight: "6px" }} />
-                        Delete
-                      </button>
-                    )}
+                    // No delete button anymore
+                    null
+                  )}
+
                   </div>
                 </div>
               ))
@@ -2050,7 +1995,7 @@ useEffect(() => {
                 Cancel
               </button>
               <button
-                className={`confirmation-btn confirm ${confirmationDetails.action === "decline" ? "decline" : confirmationDetails.action === "delete" ? "delete" : ""}`}
+                className={`confirmation-btn confirm ${confirmationDetails.action === "decline" ? "decline" : ""}`}
                 onClick={confirmAction}
                 style={{
                   ...styles.confirmationBtn,
@@ -2058,54 +2003,17 @@ useEffect(() => {
                   ...(confirmationDetails.action === "decline"
                     ? { ...styles.confirmationBtnConfirm, ...styles.confirmationBtnConfirmDecline }
                     : {}),
-                  ...(confirmationDetails.action === "delete"
-                    ? { ...styles.confirmationBtnConfirm, ...styles.confirmationBtnConfirmDecline }
-                    : {}),
                 }}
               >
-                {confirmationDetails.action === "approve"
-                  ? "Approve"
-                  : confirmationDetails.action === "decline"
-                    ? "Decline"
-                    : "Delete"}
+                {confirmationDetails.action === "approve" ? "Approve" : "Decline"}
               </button>
+
             </div>
           </div>
         </div>
       )}
 
-      {/* Logout Modal */}
-      {isLogoutModalOpen && (
-        <div
-          className="modal-overlay active"
-          ref={logoutModalRef}
-          style={{ ...styles.modalOverlay, ...styles.modalOverlayActive }}
-        >
-          <div className="logout-modal" style={styles.logoutModal}>
-            <div className="logout-modal-icon" style={styles.logoutModalIcon}>
-              <LogOut size={25} color="#f59e0b" style={styles.logoutModalIconI} />
-            </div>
-            <h3 style={styles.logoutModalH3}>Confirm Logout</h3>
-            <p style={styles.logoutModalP}>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons" style={styles.logoutModalButtons}>
-              <button
-                className="logout-modal-btn cancel"
-                onClick={closeLogoutModal}
-                style={{ ...styles.logoutModalBtn, ...styles.logoutModalBtnCancel }}
-              >
-                No
-              </button>
-              <button
-                className="logout-modal-btn confirm"
-                onClick={confirmLogout}
-                style={{ ...styles.logoutModalBtn, ...styles.logoutModalBtnConfirm }}
-              >
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      
     </div>
   )
 }
