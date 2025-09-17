@@ -1,0 +1,344 @@
+    /* SettingsPage.css */
+    .settings-layout {
+    display: flex;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%);
+    font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .settings-dashboard {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    }
+
+    .settings-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #fff;
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid #e1e5eb;
+    box-shadow: 0 2px 15px rgba(0, 0, 0, 0.05);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    }
+
+    .notification-container {
+    position: relative;
+    }
+
+    .notification-btn {
+    background: #f8f9fa;
+    border: none;
+    border-radius: 50%;
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    color: #4a5568;
+    }
+
+    .notification-btn:hover {
+    background: #edf2f7;
+    transform: translateY(-2px);
+    }
+
+    .notification-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    background: #e53e3e;
+    color: white;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.7rem;
+    font-weight: bold;
+    }
+
+    .settings-tabs {
+    display: flex;
+    gap: 0;
+    margin: 1.5rem 0 0 2rem;
+    border-bottom: 1px solid #e1e5eb;
+    }
+
+    .settings-tab {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 0.95rem;
+    color: #718096;
+    transition: all 0.3s ease;
+    border-bottom: 3px solid transparent;
+    }
+
+    .settings-tab:hover {
+    color: #4299e1;
+    background: #f8f9fa;
+    }
+
+    .settings-tab.active {
+    color: #3182ce;
+    border-bottom: 3px solid #3182ce;
+    font-weight: 600;
+    }
+
+    .settings-content {
+    padding: 2rem;
+    overflow-y: auto;
+    flex: 1;
+    }
+
+    .settings-box {
+    background: #fff;
+    border-radius: 12px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .settings-box:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.08);
+    }
+
+    .box-header {
+    margin-bottom: 1.5rem;
+    }
+
+    .box-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #2d3748;
+    margin: 0 0 0.5rem 0;
+    }
+
+    .box-text {
+    color: #718096;
+    margin: 0;
+    font-size: 0.95rem;
+    }
+
+    .profile-form, .password-form, .support-form {
+    max-width: 600px;
+    }
+
+    .form-row {
+    display: flex;
+    gap: 1rem;
+    }
+
+    .form-row .form-group {
+    flex: 1;
+    }
+
+    .form-group {
+    margin-bottom: 1.25rem;
+    position: relative;
+    }
+
+    .form-label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    color: #4a5568;
+    }
+
+    .form-input, .form-textarea {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+    background: #fff;
+    box-sizing: border-box;
+    }
+
+    .form-input:focus, .form-textarea:focus {
+    outline: none;
+    border-color: #4299e1;
+    box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.15);
+    }
+
+    .form-input-readonly {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    background: #f7fafc;
+    color: #718096;
+    cursor: not-allowed;
+    box-sizing: border-box;
+    }
+
+    .form-textarea {
+    resize: vertical;
+    min-height: 120px;
+    }
+
+    .error-text {
+    color: #e53e3e;
+    font-size: 0.85rem;
+    margin: 0.25rem 0 0 0;
+    position: absolute;
+    bottom: -20px;
+    right: 0;
+    }
+
+    .form-buttons {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1.5rem;
+    }
+
+    .btn-primary {
+    padding: 0.75rem 1.5rem;
+    background: #3182ce;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    }
+
+    .btn-primary:hover {
+    background: #2b6cb0;
+    transform: translateY(-2px);
+    }
+
+    .btn-secondary {
+    padding: 0.75rem 1.5rem;
+    background: #a0aec0;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    }
+
+    .btn-secondary:hover {
+    background: #718096;
+    transform: translateY(-2px);
+    }
+
+    .btn-edit {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: #ed8936;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    margin-top: 1.5rem;
+    }
+
+    .btn-edit:hover {
+    background: #dd6b20;
+    transform: translateY(-2px);
+    }
+
+    .security-container {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+    }
+
+    .security-box {
+    flex: 1;
+    min-width: 300px;
+    }
+
+    .password-requirements {
+    flex: 1;
+    min-width: 250px;
+    background: #f8fafc;
+    border-radius: 12px;
+    padding: 1.5rem;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+    align-self: flex-start;
+    }
+
+    .password-requirements h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+    color: #2d3748;
+    }
+
+    .password-requirements ul {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 1rem 0;
+    }
+
+    .password-requirements li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    color: #4a5568;
+    font-size: 0.9rem;
+    }
+
+    .password-requirements p {
+    font-size: 0.85rem;
+    color: #718096;
+    margin: 0;
+    line-height: 1.5;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+    .settings-header {
+        padding: 1rem;
+    }
+    
+    .settings-tabs {
+        margin-left: 1rem;
+        overflow-x: auto;
+    }
+    
+    .settings-content {
+        padding: 1rem;
+    }
+    
+    .form-row {
+        flex-direction: column;
+        gap: 0;
+    }
+    
+    .security-container {
+        flex-direction: column;
+    }
+    
+    .password-requirements {
+        width: 100%;
+    }
+    }

@@ -2,9 +2,9 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from supabase import create_client, Client
 from django.conf import settings
+from functools import wraps
 import requests
 import datetime
-from functools import wraps
 import jwt
 from django.utils import timezone
 
@@ -212,40 +212,6 @@ def decline_user(request, user_id):
         return Response({"message": "⚠️ User declined successfully", "user_id": user_id})
     return Response({"error": "User not found"}, status=404)
 
-@api_view(['DELETE'])
-@login_required
-def delete_declined_users(request):
-    ids = request.data.get("ids", [])
-    if not ids:
-        return Response({"error": "No user IDs provided."})
-
-    deleted_ids = []
-    skipped_ids = []
-
-    for user_id in ids:
-        res = supabase.table("users").select("status, role").eq("id", user_id).execute()
-        if not res.data:
-            skipped_ids.append(user_id)
-            continue
-        status_value = res.data[0]["status"]
-        role_value = (res.data[0].get("role") or "").lower()
-        if status_value != "declined":
-            skipped_ids.append(user_id)
-            continue
-        if role_value == "kutsero":
-            supabase.table("kutsero_profile").delete().eq("kutsero_id", user_id).execute()
-        elif role_value == "horse operator":
-            supabase.table("horse_op_profile").delete().eq("op_id", user_id).execute()
-        supabase.table("users").delete().eq("id", user_id).execute()
-        auth_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
-        headers = {"apikey": SERVICE_ROLE_KEY, "Authorization": f"Bearer {SERVICE_ROLE_KEY}"}
-        try:
-            requests.delete(auth_url, headers=headers, timeout=10)
-        except Exception as e:
-            print(f"⚠️ Failed to delete auth user {user_id}: {e}")
-        deleted_ids.append(user_id)
-
-    return Response({"success": True, "deleted": deleted_ids, "skipped": skipped_ids})
 
 @api_view(["GET"])
 @login_required
@@ -305,16 +271,6 @@ def deactivate_user(request, user_id):
     
     if res.data:
         return Response({"message": "User deactivated successfully", "user_id": user_id})
-    return Response({"error": "User not found"}, status=404)
-
-@api_view(["POST"])
-@login_required
-def delete_user(request, user_id):
-    """Set user status to deleted in public.users"""
-    res = supabase.table("users").update({"status": "deleted"}).eq("id", user_id).execute()
-    
-    if res.data:
-        return Response({"message": "User deleted successfully", "user_id": user_id})
     return Response({"error": "User not found"}, status=404)
 
 @api_view(["POST"])
@@ -538,57 +494,4 @@ def change_password(request):
     except Exception as e:
         return Response({"error": f"Unexpected server error: {str(e)}"}, status=500)
 
-
-# -------------------- MESSAGES ------------------------------
-# GET messages between two users
-@api_view(["GET"])
-@login_required
-def get_messages(request, user_id, receiver_id):
-    """Fetch all messages between two users"""
-    res = supabase.table("messages").select("*").or_(
-        f"(user_id.eq.{user_id},receiver_id.eq.{receiver_id}),"
-        f"(user_id.eq.{receiver_id},receiver_id.eq.{user_id})"
-    ).order("mes_date", desc=False).execute()
     
-    return Response(res.data or [])
-
-# POST new message
-@api_view(["POST"])
-@login_required
-def send_message(request):
-    """Send a new message"""
-    user_id = request.data.get("user_id")
-    receiver_id = request.data.get("receiver_id")
-    mes_content = request.data.get("mes_content", "").strip()
-
-    if not mes_content:
-        return Response({"error": "Message content cannot be empty"}, status=400)
-
-    res = supabase.table("messages").insert({
-        "user_id": user_id,
-        "receiver_id": receiver_id,
-        "mes_content": mes_content,
-        "mes_date": timezone.now(),
-        "is_read": False
-    }).execute()
-
-    if res.data:
-        return Response(res.data[0])
-    return Response({"error": "Failed to send message"}, status=500)
-
-# SEARCH users
-@api_view(["GET"])
-@login_required
-def search_users(request):
-    query = request.GET.get("q", "").strip().lower()
-    all_users = fetch_and_merge_users()  
-
-    if query:
-        filtered_users = [
-            u for u in all_users
-            if query in (u.get("name") or "").lower() or query in (u.get("email") or "").lower()
-        ]
-    else:
-        filtered_users = all_users
-
-    return Response({"users": filtered_users})

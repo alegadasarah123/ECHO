@@ -57,7 +57,6 @@ const UserAccountsPage = () => {
       let endpoint = "";
       if (action === "deactivate") endpoint = `${API_BASE}/deactivate_user/${user.id}/`;
       if (action === "reactivate") endpoint = `${API_BASE}/reactivate_user/${user.id}/`;
-      if (action === "delete") endpoint = `${API_BASE}/delete_user/${user.id}/`;
 
       const res = await fetch(endpoint, { method: "POST", credentials: "include" });
       if (!res.ok) throw new Error("Request failed");
@@ -67,7 +66,7 @@ const UserAccountsPage = () => {
 
       setUsers(prev => prev.map(u =>
         u.id === user.id
-          ? { ...u, status: action === "deactivate" ? "deactivated" : action === "reactivate" ? "approved" : "deleted" }
+          ? { ...u, status: action === "deactivate" ? "deactivated" : "approved" }
           : u
       ));
     } catch (err) {
@@ -180,6 +179,7 @@ const UserAccountsPage = () => {
                     <th style={styles.tableHeaderCell}>Action</th>
                   </tr>
                 </thead>
+                
                 <tbody>
                   {filteredUsers.map(user => (
                     <tr key={user.id} style={styles.tableRow}>
@@ -197,43 +197,46 @@ const UserAccountsPage = () => {
                         </td>
                       )}
                       <td style={styles.tableCell}>
-                        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px', position: 'relative' }}>
+                        <div style={{ display: 'flex', justifyContent: 'center', gap: '10px' }}>
+                          {/* View Button */}
                           <button
                             onClick={() => handleRowClick(user)}
                             style={{ ...styles.iconBtn, ...(hoveredRow === `eye-${user.id}` ? styles.iconBtnHover : {}) }}
                             onMouseEnter={() => setHoveredRow(`eye-${user.id}`)}
                             onMouseLeave={() => setHoveredRow(null)}
-                          ><Eye size={18} /></button>
+                            title="View User"
+                          >
+                            <Eye size={18} />
+                          </button>
 
-                          <button
-                            onClick={() => setMenuOpen(menuOpen === user.id ? null : user.id)}
-                            style={{ ...styles.iconBtn, ...(hoveredRow === `menu-${user.id}` ? styles.iconBtnHover : {}) }}
-                            onMouseEnter={() => setHoveredRow(`menu-${user.id}`)}
-                            onMouseLeave={() => setHoveredRow(null)}
-                          ><MoreVertical size={18} /></button>
-
-                          {menuOpen === user.id && (
-                            <div style={styles.dropdownMenu}>
-                              <button
-                                style={{ ...styles.dropdownItem, ...(hoveredRow === "toggleStatus" ? styles.dropdownItemHover : {}) }}
-                                onMouseEnter={() => setHoveredRow("toggleStatus")}
-                                onMouseLeave={() => setHoveredRow(null)}
-                                onClick={() => { setActionUser(user); setConfirmAction(user.status === "deactivated" ? "reactivate" : "deactivate"); setMenuOpen(null); }}
-                              >{user.status === "deactivated" ? "Reactivate" : "Deactivate"}</button>
-
-                              <button
-                                style={{ ...styles.dropdownItem, ...(hoveredRow === "delete" ? styles.dropdownItemHover : {}) }}
-                                onMouseEnter={() => setHoveredRow("delete")}
-                                onMouseLeave={() => setHoveredRow(null)}
-                                onClick={() => { setActionUser(user); setConfirmAction("delete"); setMenuOpen(null); }}
-                              >Delete</button>
-                            </div>
+                          {/* Deactivate / Reactivate */}
+                          {user.status === "deactivated" ? (
+                            <button
+                              onClick={() => { setActionUser(user); setConfirmAction("reactivate"); }}
+                              style={{ ...styles.iconBtn, ...(hoveredRow === `reactivate-${user.id}` ? styles.iconBtnHover : {}) }}
+                              onMouseEnter={() => setHoveredRow(`reactivate-${user.id}`)}
+                              onMouseLeave={() => setHoveredRow(null)}
+                              title="Reactivate User"
+                            >
+                              <CheckCircle size={18} color="#16a34a" />
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => { setActionUser(user); setConfirmAction("deactivate"); }}
+                              style={{ ...styles.iconBtn, ...(hoveredRow === `deactivate-${user.id}` ? styles.iconBtnHover : {}) }}
+                              onMouseEnter={() => setHoveredRow(`deactivate-${user.id}`)}
+                              onMouseLeave={() => setHoveredRow(null)}
+                              title="Deactivate User"
+                            >
+                              <XCircle size={18} color="#dc2626" />
+                            </button>
                           )}
                         </div>
                       </td>
                     </tr>
                   ))}
                 </tbody>
+
               </table>
 
               {alert && (
@@ -262,27 +265,25 @@ const UserAccountsPage = () => {
         <div style={styles.modalOverlay} onClick={() => setConfirmAction(null)}>
           <div style={styles.confirmModalSmall} onClick={(e) => e.stopPropagation()}>
             <h3 style={styles.confirmTitleSmall}>
-              {confirmAction === "deactivate" ? "Deactivate Account" : confirmAction === "reactivate" ? "Reactivate Account" : "Delete Account"}
+              {confirmAction === "deactivate" ? "Deactivate Account" : "Reactivate Account"}
             </h3>
             <div style={styles.divider}></div>
             <p style={styles.confirmTextSmall}>
               {confirmAction === "deactivate" ? "Are you sure you want to deactivate " :
-                confirmAction === "reactivate" ? "Are you sure you want to reactivate " :
-                  "Are you sure you want to permanently delete "}
+                "Are you sure you want to reactivate "}
               <span style={{ fontWeight: "600", color: "#111" }}>{actionUser.name}</span>?
             </p>
             <p style={styles.extraText}>
               {confirmAction === "deactivate" ? "The account will be disabled but can be reactivated later." :
-                confirmAction === "reactivate" ? "The account will be reactivated and the user can access it again." :
-                  "This action is irreversible. Once deleted, the account and all related data will be permanently removed."}
+                "The account will be reactivated and the user can access it again."}
             </p>
             <div style={styles.confirmButtonsSmall}>
               <button style={styles.cancelBtnSmall} onClick={() => setConfirmAction(null)}>Cancel</button>
               <button
-                style={{ ...styles.confirmBtnSmall, backgroundColor: confirmAction === "deactivate" ? "#2563eb" : confirmAction === "reactivate" ? "#16a34a" : "#dc2626" }}
+                style={{ ...styles.confirmBtnSmall, backgroundColor: confirmAction === "deactivate" ? "#2563eb" : "#16a34a" }}
                 onClick={() => handleUserAction(confirmAction, actionUser)}
               >
-                {confirmAction === "deactivate" ? "Deactivate" : confirmAction === "reactivate" ? "Reactivate" : "Delete"}
+                {confirmAction === "deactivate" ? "Deactivate" : "Reactivate"}
               </button>
             </div>
           </div>
@@ -338,8 +339,6 @@ const UserAccountsPage = () => {
   );
 };
 
-
-
 const styles = {
   layout: { display: 'flex', minHeight: '100vh', backgroundColor: '#f5f5f5' },
   dashboard: { flex: 1, fontFamily: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif'", display: 'flex', flexDirection: 'column', height: '100vh' },
@@ -393,7 +392,6 @@ const styles = {
   modalActions: { display: "flex", justifyContent: "flex-end", gap: "15px", padding: "20px", borderTop: "1px solid #eee", backgroundColor: "#fafafa" },
   declineBtn: { padding: "10px 20px", backgroundColor: "#ef4444", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", transition: "0.2s" },
   approveBtn: { padding: "10px 20px", backgroundColor: "#16a34a", color: "#fff", border: "none", borderRadius: "8px", cursor: "pointer", transition: "0.2s" },
-  deleteBtn: {display: "flex",alignItems: "center",gap: "6px",padding: "8px 14px",backgroundColor: "#ef4444",color: "#fff",border: "none",borderRadius: "6px",cursor: "pointer",fontSize: "14px",fontWeight: "600"},
   cancelBtn: {display: "flex",alignItems: "center",gap: "6px",padding: "8px 14px", backgroundColor: "#9ca3af",border: "none",borderRadius: "6px",cursor: "pointer",fontSize: "14px",fontWeight: "600"},
 
   iconBtn: { background: 'transparent', border: 'none', cursor: 'pointer', padding: '6px', borderRadius: '6px', transition: 'all 0.2s ease' },

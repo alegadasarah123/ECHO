@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const NotificationModal = ({ isOpen }) => {
+const NotificationModal = ({ isOpen, onNotificationClick }) => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -19,19 +19,19 @@ const NotificationModal = ({ isOpen }) => {
     });
   };
 
-useEffect(() => {
-  if (isOpen) {
-    setLoading(true);
-    fetch("http://localhost:8000/api/kutsero_president/get_notifications/", {
-      method: "GET",
-      credentials: "include", // ✅ send cookie automatically
-    })
-      .then((res) => res.json())
-      .then((data) => setNotifications(data))
-      .catch((err) => console.error("Failed to fetch notifications:", err))
-      .finally(() => setLoading(false));
-  }
-}, [isOpen]);
+  useEffect(() => {
+    if (isOpen) {
+      setLoading(true);
+      fetch("http://localhost:8000/api/kutsero_president/get_notifications/", {
+        method: "GET",
+        credentials: "include", // ✅ send cookie automatically
+      })
+        .then((res) => res.json())
+        .then((data) => setNotifications(data))
+        .catch((err) => console.error("Failed to fetch notifications:", err))
+        .finally(() => setLoading(false));
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -48,7 +48,11 @@ useEffect(() => {
           <p style={{ textAlign: "center", color: "#6b7280" }}>Loading...</p>
         ) : notifications.length > 0 ? (
           notifications.map((n, i) => (
-            <div key={i} style={styles.notification}>
+            <div
+              key={i}
+              style={styles.notification}
+              onClick={() => onNotificationClick?.(n)} // ✅ Make it clickable
+            >
               <p style={styles.message}>{n.message}</p>
               <span style={styles.date}>{formatDate(n.date)}</span>
             </div>
@@ -85,6 +89,8 @@ const styles = {
   notification: {
     padding: "10px",
     borderBottom: "1px solid #f1f1f1",
+    cursor: "pointer", // ✅ makes it look clickable
+    transition: "background 0.2s ease",
   },
   message: {
     fontSize: "14px",
@@ -95,4 +101,4 @@ const styles = {
   date: { fontSize: "12px", color: "#888" },
 };
 
-export default NotificationModal; 
+export default NotificationModal;
