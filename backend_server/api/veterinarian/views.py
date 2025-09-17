@@ -448,7 +448,7 @@ def add_medical_record(request):
         return Response({"error": str(e)}, status=500)
 
 
-# -------------------- UPDATE GET_APPOINTMENT_DETAILS TO INCLUDE MEDICAL RECORDS --------------------
+# -------------------- GET_APPOINTMENT_DETAILS TO INCLUDE MEDICAL RECORDS --------------------
 @api_view(["GET"])
 @login_required
 def get_appointment_details(request, app_id):
@@ -591,14 +591,6 @@ def get_appointment_details(request, app_id):
 def add_schedule(request):
     """
     Save vet availability schedule (multiple dates, multiple slots per date).
-    Expects JSON:
-    {
-      "schedules": [
-        {"date": "2025-09-20", "startTime": "9:00 AM", "endTime": "11:00 AM"},
-        {"date": "2025-09-20", "startTime": "2:00 PM", "endTime": "5:00 PM"},
-        {"date": "2025-09-21", "startTime": "9:00 AM", "endTime": "5:00 PM"}
-      ]
-    }
     """
     import uuid
     vet_id = get_current_vet_id(request)
@@ -683,7 +675,7 @@ def get_all_schedules(request):
     """
     Get all schedules for the logged-in vet.
     Returns a list of schedules with date, time, availability,
-    and optional placeholders for service/horse_name/app_status.
+    and optional placeholders for service/operator_name/app_status.
     """
     vet_id = get_current_vet_id(request)
     if not vet_id:
@@ -699,22 +691,119 @@ def get_all_schedules(request):
 
         schedules = res.data or []
 
-        # Map backend fields to frontend expected fields
-        schedule_slots = [
-            {
+        schedule_slots = []
+        for s in schedules:
+            # Find appointment linked to this schedule
+            app_res = supabase.table("appointment")\
+                .select("app_service, app_status, horse_id")\
+                .eq("sched_id", s.get("sched_id"))\
+                .execute()
+            
+            appointment = app_res.data[0] if app_res.data else None
+
+            operator_name = None
+            is_available = s.get("is_available", True)
+            is_pending = False
+            
+            if appointment:
+                # If appointment is declined, treat the schedule as available
+                if appointment.get("app_status") == "declined":
+                    is_available = True
+                    is_pending = False
+                else:
+                    is_available = False
+                    is_pending = appointment.get("app_status") == "pending"
+                
+                # Fetch the horse's operator only for non-declined appointments
+                if appointment.get("app_status") != "declined":
+                    horse_res = supabase.table("horse_profile")\
+                        .select("op_id")\
+                        .eq("horse_id", appointment.get("horse_id"))\
+                        .execute()
+                    horse_data = horse_res.data[0] if horse_res.data else None
+                    if horse_data:
+                        op_res = supabase.table("horse_op_profile")\
+                            .select("op_fname, op_lname")\
+                            .eq("op_id", horse_data.get("op_id"))\
+                            .execute()
+                        op_data = op_res.data[0] if op_res.data else None
+                        if op_data:
+                            operator_name = f"{op_data.get('op_fname')} {op_data.get('op_lname')}"
+
+            schedule_slots.append({
                 "id": s.get("sched_id"),
                 "date": s.get("sched_date"),
                 "time": s.get("sched_time"),
-                "available": s.get("is_available", True),
-                "pending": False,        # Placeholder
-                "service": None,         # Placeholder
-                "horse_name": None,      # Placeholder
-                "app_status": None       # Placeholder
-            }
-            for s in schedules
-        ]
+                "available": is_available,
+                "pending": is_pending,
+                "operator_name": operator_name, 
+            })
 
         return Response({"schedule_slots": schedule_slots}, status=200)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+# -------------------- GET ALL MEDICAL RECORDS ACCESSIBLE TO VET --------------------
+@api_view(["GET"])
+@login_required
+def get_medrec_access(request):
+    """
+    Fetch all medical records that the logged-in vet has access to.
+    Returns a list of records with horse and vet info.
+    """
+    vet_id = get_current_vet_id(request)
+    if not vet_id:
+        return Response({"error": "Unauthorized"}, status=401)
+
+    try:
+        # Fetch all medical records for horses this vet treated
+        res = supabase.table("horse_medrecord").select(
+            """
+            *,
+            horse_profile:horse_id(
+                horse_name,
+                horse_breed,
+                horse_age
+            ),
+            vet_profile:vet_id(
+                vet_fname,
+                vet_mname,
+                vet_lname
+            )
+            """
+        ).eq("vet_id", vet_id).order("medrec_date", desc=True).execute()
+
+        if not res.data:
+            return Response({"records": []}, status=200)
+
+        # Format records
+        records = []
+        for record in res.data:
+            horse = record.get("horse_profile", {}) or {}
+            vet = record.get("vet_profile", {}) or {}
+            vet_name = " ".join(filter(None, [vet.get("vet_fname"), vet.get("vet_mname"), vet.get("vet_lname")])).strip()
+
+            records.append({
+                "id": record.get("medrec_id"),
+                "horseName": horse.get("horse_name"),
+                "horseBreed": horse.get("horse_breed"),
+                "horseAge": horse.get("horse_age"),
+                "date": record.get("medrec_date"),
+                "heartRate": record.get("medrec_heart_rate"),
+                "respRate": record.get("medrec_resp_rate"),
+                "temperature": record.get("medrec_bodytemp"),
+                "concern": record.get("medrec_concern"),
+                "clinicalSigns": record.get("medrec_clinical_sign"),
+                "labResult": record.get("medrec_lab_results"),
+                "labImage": record.get("medrec_lab_img"),
+                "diagnosis": record.get("medrec_diagnosis"),
+                "treatment": record.get("medrec_treatment"),
+                "remarks": record.get("medrec_remark"),
+                "veterinarian": vet_name or "Unknown Veterinarian"
+            })
+
+        return Response({"records": records}, status=200)
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)

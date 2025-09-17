@@ -15,6 +15,8 @@ const VetAccessRequests = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchFocus, setSearchFocus] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [medicalRecords, setMedicalRecords] = useState([]);
+  const [error, setError] = useState(null);
   
   // ---------------- FETCH VET PROFILE ----------------
   const fetchProfile = async () => {
@@ -30,144 +32,38 @@ const VetAccessRequests = () => {
       console.error('Profile fetch failed:', err);
     }
   };
+
+  // ---------------- FETCH MEDICAL RECORDS ----------------
+  const fetchMedicalRecords = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await fetch('http://localhost:8000/api/veterinarian/get_medrec_access/', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
+      const data = await res.json();
+      setMedicalRecords(data.records || []);
+    } catch (err) {
+      console.error('Failed to fetch medical records:', err);
+      setError('Failed to load medical records. Please try again later.');
+    } finally {
+      setLoading(false);
+    }
+  };
   
   useEffect(() => {
-    // Simulate loading delay
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 1500);
-    
     fetchProfile();
-    
-    return () => clearTimeout(timer);
+    fetchMedicalRecords();
   }, []);
-
-  // Sample data for medical records that vet has accessed
-  const [medicalRecords, setMedicalRecords] = useState([
-    {
-      id: 1,
-      horseName: "Wetzon",
-      ownerName: "Jose Rizal",
-      accessDate: "2025-07-30",
-      status: "approved",
-      accessedBy: "Dr. Sarah Johnson",
-      horseDetails: {
-        age: "7 years",
-        breed: "Slice Bread",
-        contact: "09123456789",
-        location: "Cebu City",
-        sex: "Male"
-      },
-      records: [
-        {
-          date: "May 2, 2025",
-          diagnosis: "Annual Check-up",
-          veterinarian: "Dr. Sarah Johnson",
-          status: "Completed",
-          details: "Routine annual examination, all vitals normal"
-        },
-        {
-          date: "April 15, 2025",
-          diagnosis: "Dental Check",
-          veterinarian: "Dr. Michael Tan",
-          status: "Completed",
-          details: "Teeth floating performed, minor issues resolved"
-        }
-      ],
-      treatments: [
-        {
-          date: "May 2, 2025",
-          treatment: "Equine Influenza Vaccine",
-          administeredBy: "Dr. Sarah Johnson",
-          result: "Successful",
-          details: "Vaccine administered with no adverse reactions"
-        }
-      ]
-    },
-    {
-      id: 2,
-      horseName: "Bella",
-      ownerName: "John Smith",
-      accessDate: "2025-07-28",
-      status: "approved",
-      accessedBy: "Dr. Mike Chen",
-      horseDetails: {
-        age: "5 years",
-        breed: "Arabian",
-        contact: "(555) 234-5678",
-        location: "Manila",
-        sex: "Female"
-      },
-      records: [
-        {
-          date: "July 28, 2025",
-          diagnosis: "Emergency Check",
-          veterinarian: "Dr. Mike Chen",
-          status: "Completed",
-          details: "Emergency consultation for colic symptoms"
-        }
-      ],
-      treatments: [
-        {
-          date: "July 28, 2025",
-          treatment: "Pain Relief Medication",
-          administeredBy: "Dr. Mike Chen",
-          result: "Successful",
-          details: "Administered Banamine for pain management"
-        }
-      ]
-    },
-    {
-      id: 3,
-      horseName: "Max",
-      ownerName: "Sarah Wilson",
-      accessDate: "2025-08-02",
-      status: "completed",
-      accessedBy: "Dr. Emily Rodriguez",
-      horseDetails: {
-        age: "8 years",
-        breed: "Quarter Horse",
-        contact: "(555) 345-6789",
-        location: "Davao",
-        sex: "Male"
-      },
-      records: [
-        {
-          date: "August 2, 2025",
-          diagnosis: "Pre-surgical Assessment",
-          veterinarian: "Dr. Emily Rodriguez",
-          status: "Completed",
-          details: "Full assessment before scheduled surgery"
-        }
-      ],
-      treatments: []
-    },
-    {
-      id: 4,
-      horseName: "Luna",
-      ownerName: "Mike Johnson",
-      accessDate: "2025-07-25",
-      status: "declined",
-      accessedBy: "Dr. Lisa Wang",
-      horseDetails: {
-        age: "4 years",
-        breed: "Thoroughbred",
-        contact: "(555) 456-7890",
-        location: "Cebu",
-        sex: "Female"
-      },
-      records: [
-        {
-          date: "July 25, 2025",
-          diagnosis: "Routine Check",
-          veterinarian: "Dr. Lisa Wang",
-          status: "Completed",
-          details: "Regular health check-up, all parameters normal"
-        }
-      ],
-      treatments: []
-    }
-  ]);
 
   const handleViewRecord = (record) => {
     setSelectedRecord(record);
@@ -184,6 +80,7 @@ const VetAccessRequests = () => {
       case 'approved': return 'bg-green-100 text-green-700 border-green-200';
       case 'completed': return 'bg-blue-100 text-blue-700 border-blue-200';
       case 'declined': return 'bg-red-100 text-red-700 border-red-200';
+      case 'pending': return 'bg-yellow-100 text-yellow-700 border-yellow-200';
       default: return 'bg-gray-100 text-gray-700 border-gray-200';
     }
   };
@@ -199,8 +96,9 @@ const VetAccessRequests = () => {
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       return (
-        record.horseName.toLowerCase().includes(searchLower) ||
-        record.ownerName.toLowerCase().includes(searchLower)
+        record.horseName?.toLowerCase().includes(searchLower) ||
+        record.ownerName?.toLowerCase().includes(searchLower) ||
+        record.approvedBy?.toLowerCase().includes(searchLower)
       );
     }
     
@@ -210,9 +108,11 @@ const VetAccessRequests = () => {
   const approvedCount = medicalRecords.filter(r => r.status === 'approved').length;
   const completedCount = medicalRecords.filter(r => r.status === 'completed').length;
   const declinedCount = medicalRecords.filter(r => r.status === 'declined').length;
+  const pendingCount = medicalRecords.filter(r => r.status === 'pending').length;
 
   const filterOptions = [
     { key: 'all', label: 'All', count: medicalRecords.length },
+    { key: 'pending', label: 'Pending', count: pendingCount },
     { key: 'approved', label: 'Approved', count: approvedCount },
     { key: 'declined', label: 'Declined', count: declinedCount },
     { key: 'completed', label: 'Completed', count: completedCount },
@@ -229,6 +129,9 @@ const VetAccessRequests = () => {
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-center">
         <div className="h-4 bg-gray-200 rounded w-28 mx-auto"></div>
+      </td>
+      <td className="px-6 py-4 whitespace-nowrap text-center">
+        <div className="h-4 bg-gray-200 rounded w-32 mx-auto"></div>
       </td>
       <td className="px-6 py-4 whitespace-nowrap text-center">
         <div className="h-6 bg-gray-200 rounded-full w-20 mx-auto"></div>
@@ -268,6 +171,21 @@ const VetAccessRequests = () => {
 
         {/* Medical Records Content */}
         <div className="flex-1 p-6 overflow-auto">
+          {/* Error message */}
+          {error && (
+            <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center">
+              <AlertCircle className="w-5 h-5 mr-2" />
+              {error}
+              <button 
+                onClick={fetchMedicalRecords}
+                className="ml-auto bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded-lg text-sm flex items-center"
+              >
+                <RefreshCw className="w-4 h-4 mr-1" />
+                Retry
+              </button>
+            </div>
+          )}
+
           {/* Filters and Search - Search on left, Filters on right */}
           <div className="flex items-center justify-between mb-6">
             {/* Search Container - On the left */}
@@ -277,7 +195,7 @@ const VetAccessRequests = () => {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 transition-all duration-200" />
               <input
                 type="text"
-                placeholder="Search horse name or owner name..."
+                placeholder="Search horse name, owner name, or approved by..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onFocus={() => setSearchFocus(true)}
@@ -320,6 +238,7 @@ const VetAccessRequests = () => {
                     <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Access Date</th>
                     <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
                     <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Horse</th>
+                    <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Approved By</th>
                     <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="px-6 py-4 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                   </tr>
@@ -347,8 +266,11 @@ const VetAccessRequests = () => {
                           <div className="text-sm text-gray-900">{record.horseName}</div>
                         </td>
                         <td className="text-center px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">{record.approvedBy || 'Pending approval'}</div>
+                        </td>
+                        <td className="text-center px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex px-3 py-1 rounded-full text-xs font-medium border ${getStatusColor(record.status)}`}>
-                            {record.status.charAt(0).toUpperCase() + record.status.slice(1)}
+                            {record.status?.charAt(0).toUpperCase() + record.status?.slice(1)}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -364,7 +286,7 @@ const VetAccessRequests = () => {
                   ) : (
                     // Show no results message
                     <tr>
-                      <td colSpan="5" className="px-6 py-24 text-center">
+                      <td colSpan="6" className="px-6 py-24 text-center">
                         <div className="flex flex-col items-center justify-center">
                           <FileText className="w-12 h-12 text-gray-300 mb-4" />
                           <p className="text-gray-500 text-lg font-medium">No records found</p>
@@ -393,7 +315,12 @@ const VetAccessRequests = () => {
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold">Horse Medical Records</h2>
-                    <p className="text-blue-100 text-sm">Accessed by {selectedRecord.accessedBy}</p>
+                    <p className="text-blue-100 text-sm">
+                      {selectedRecord.status === 'pending' 
+                        ? 'Pending approval' 
+                        : `Approved by ${selectedRecord.approvedBy}, Accessed by ${selectedRecord.accessedBy}`
+                      }
+                    </p>
                   </div>
                 </div>
                 <button 
@@ -466,50 +393,67 @@ const VetAccessRequests = () => {
                 </div>
               </div>
 
-              {/* Medical Record Section */}
-              <div className="p-6 border-b border-gray-100">
-                <div className="flex items-center space-x-3 mb-6">
-                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <FileText className="w-5 h-5 text-blue-600" />
+              {/* Status Information */}
+              {selectedRecord.status === 'pending' && (
+                <div className="p-6 border-b border-gray-100">
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-6">
+                    <div className="flex items-center space-x-3">
+                      <Clock3 className="w-6 h-6 text-yellow-600" />
+                      <div>
+                        <h3 className="text-lg font-semibold text-yellow-800">Pending Approval</h3>
+                        <p className="text-yellow-700">This medical record access request is awaiting approval.</p>
+                      </div>
+                    </div>
                   </div>
-                  <h3 className="text-xl font-bold text-gray-800">Medical Records</h3>
                 </div>
-                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-                  <table className="w-full">
-                    <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
-                      <tr>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Date</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Diagnosis</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Veterinarian</th>
-                        <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
-                        <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {selectedRecord.records?.map((record, index) => (
-                        <tr key={index} className="hover:bg-gray-50/50 transition-colors">
-                          <td className="px-6 py-4 text-sm text-gray-900 font-medium">{record.date}</td>
-                          <td className="px-6 py-4 text-sm text-gray-900">{record.diagnosis}</td>
-                          <td className="px-6 py-4 text-sm text-gray-900">{record.veterinarian}</td>
-                          <td className="px-6 py-4">
-                            <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-medium border border-green-200">
-                              {record.status}
-                            </span>
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <button className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-md">
-                              View Details
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+              )}
 
-              {/* Treatment History Section */}
-              {selectedRecord.treatments && selectedRecord.treatments.length > 0 && (
+              {/* Medical Record Section - Only show if approved or completed */}
+              {(selectedRecord.status === 'approved' || selectedRecord.status === 'completed') && (
+                <div className="p-6 border-b border-gray-100">
+                  <div className="flex items-center space-x-3 mb-6">
+                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+                      <FileText className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">Medical Records</h3>
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+                    <table className="w-full">
+                      <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Date</th>
+                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Diagnosis</th>
+                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Veterinarian</th>
+                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
+                          <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {selectedRecord.records?.map((record, index) => (
+                          <tr key={index} className="hover:bg-gray-50/50 transition-colors">
+                            <td className="px-6 py-4 text-sm text-gray-900 font-medium">{record.date}</td>
+                            <td className="px-6 py-4 text-sm text-gray-900">{record.diagnosis}</td>
+                            <td className="px-6 py-4 text-sm text-gray-900">{record.veterinarian}</td>
+                            <td className="px-6 py-4">
+                              <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-medium border border-green-200">
+                                {record.status}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <button className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-md">
+                                View Details
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Treatment History Section - Only show if approved or completed */}
+              {(selectedRecord.status === 'approved' || selectedRecord.status === 'completed') && selectedRecord.treatments && selectedRecord.treatments.length > 0 && (
                 <div className="p-6">
                   <div className="flex items-center space-x-3 mb-6">
                     <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">

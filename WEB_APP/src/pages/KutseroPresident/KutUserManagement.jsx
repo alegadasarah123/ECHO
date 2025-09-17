@@ -333,44 +333,45 @@ const UserManagement = () => {
           </div>
         </div>
 
-        <div style={styles.scrollableContent}>
-          {/* Main Navigation Tabs - Fixed at top */}
-          <div style={styles.mainTabsContainer}>
-            <div 
-              style={{ 
-                ...styles.tabSlider,
-                width: `calc(50% - 8px)`, 
-                left: activeTab === "approval" ? '8px' : 'calc(50% + 4px)' 
-              }} 
-            />  
-            <button
-              style={{
-                ...styles.mainTab,
-                ...(activeTab === "approval" ? styles.mainTabActive : {})
-              }}
-              onClick={() => {
-                setActiveTab("approval")
-                setCurrentPage(1)
-              }}
-            >
-              <Users size={20} />
-              User Approval
-            </button>
-            <button
-              style={{
-                ...styles.mainTab,
-                ...(activeTab === "accounts" ? styles.mainTabActive : {})
-              }}
-              onClick={() => {
-                setActiveTab("accounts")
-                setCurrentPage(1)
-              }}
-            >
-              <CheckCircle size={20} />
-              User Accounts
-            </button>
-          </div>
+        {/* Main Navigation Tabs - Fixed at top */}
+        <div style={styles.mainTabsContainer}>
+          <div 
+            style={{ 
+              ...styles.tabSlider,
+              width: `calc(50% - 8px)`, 
+              left: activeTab === "approval" ? '8px' : 'calc(50% + 4px)' 
+            }} 
+          />  
+          <button
+            style={{
+              ...styles.mainTab,
+              ...(activeTab === "approval" ? styles.mainTabActive : {})
+            }}
+            onClick={() => {
+              setActiveTab("approval")
+              setCurrentPage(1)
+            }}
+          >
+            <Users size={20} />
+            User Approval
+          </button>
+          <button
+            style={{
+              ...styles.mainTab,
+              ...(activeTab === "accounts" ? styles.mainTabActive : {})
+            }}
+            onClick={() => {
+              setActiveTab("accounts")
+              setCurrentPage(1)
+            }}
+          >
+            <CheckCircle size={20} />
+            User Accounts
+          </button>
+        </div>
 
+        {/* Scrollable Content Area */}
+        <div style={styles.scrollableContent}>
           {/* Content Container */}
           <div style={styles.contentContainer}>
             {/* User Approval Section */}
@@ -876,16 +877,16 @@ const UserManagement = () => {
 const styles = {
   container: { 
     display: "flex", 
-    minHeight: "100vh", 
+    height: "100vh", 
     backgroundColor: "#f5f5f5", 
-    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif",
-    overflow: "hidden"
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif", 
+    overflow: "hidden" 
   },
   content: { 
     flex: 1, 
     display: "flex", 
-    flexDirection: "column",
-    overflow: "hidden"
+    flexDirection: "column", 
+    overflow: "hidden" 
   },
   header: { 
     padding: "16px 32px", 
@@ -899,160 +900,569 @@ const styles = {
     flexShrink: 0, 
     zIndex: 100 
   },
-  headerContent: { display: "flex", flexDirection: "column", gap: "4px" },
-  title: { fontSize: "24px", fontWeight: "600", color: "#D2691E", margin: 0 },
-  subtitle: { fontSize: "14px", color: "#666", margin: 0, fontWeight: "400" },
-  notificationBtn: { background: "none", border: "none", cursor: "pointer", padding: "8px", borderRadius: "50%", position: "relative", transition: "background-color 0.2s ease", "&:hover": { backgroundColor: "#f3f4f6" } },
-  badge: { position: "absolute", top: "-4px", right: "-4px", backgroundColor: "#ef4444", color: "white", borderRadius: "50%", width: "18px", height: "18px", fontSize: "10px", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" },
-  scrollableContent: { 
-    flex: 1, 
-    overflowY: "auto", 
-    padding: "0 32px 32px 32px",
-    display: "flex",
-    flexDirection: "column"
+  headerContent: { 
+    display: "flex", 
+    flexDirection: "column", 
+    gap: "4px" 
+  },
+  title: { 
+    fontSize: "24px", 
+    fontWeight: "700", 
+    color: "#D2691E", 
+    margin: 0 
+  },
+  subtitle: { 
+    fontSize: "14px", 
+    color: "#666", 
+    margin: 0, 
+    fontWeight: "400" 
+  },
+  notificationBtn: { 
+    background: "none", 
+    border: "none", 
+    cursor: "pointer", 
+    padding: "8px", 
+    borderRadius: "50%", 
+    position: "relative", 
+    transition: "background-color 0.2s ease", 
+    "&:hover": { backgroundColor: "#f3f4f6" } 
+  },
+  badge: { 
+    position: "absolute", 
+    top: "-4px", 
+    right: "-4px", 
+    backgroundColor: "#ef4444", 
+    color: "white", 
+    borderRadius: "50%", 
+    width: "18px", 
+    height: "18px", 
+    fontSize: "10px", 
+    display: "flex", 
+    alignItems: "center", 
+    justifyContent: "center", 
+    fontWeight: "bold" 
   },
   mainTabsContainer: { 
     display: "flex", 
     backgroundColor: "#f8f9fa", 
-    borderRadius: "8px 8px 0 0", 
+    borderRadius: "12px 12px 0 0", 
     border: "1px solid #dee2e6", 
     borderBottom: "none", 
     position: "relative", 
-    marginTop: "24px",
-    flexShrink: 0
+    margin: "24px 32px 0 32px", 
+    flexShrink: 0,
+    overflow: "hidden"
   },
-  mainTab: { flex: 1, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", backgroundColor: "transparent", border: "none", cursor: "pointer", fontSize: "14px", fontWeight: "500", color: "#6c757d", transition: "all 0.2s ease", "&:hover": { backgroundColor: "#e9ecef" } },
-  mainTabActive: { color: "#495057", fontWeight: "600" },
-  tabSlider: { position: "absolute", bottom: 0, height: "3px", backgroundColor: "#D2691E", transition: "left 0.3s ease" },
+  mainTab: { 
+    flex: 1, 
+    padding: "16px 24px", 
+    display: "flex", 
+    alignItems: "center", 
+    justifyContent: "center", 
+    gap: "10px", 
+    backgroundColor: "transparent", 
+    border: "none", 
+    cursor: "pointer", 
+    fontSize: "16px", 
+    fontWeight: "500", 
+    color: "#6c757d", 
+    transition: "all 0.3s ease",
+    position: "relative",
+    zIndex: 1,
+    "&:hover": { 
+      backgroundColor: "rgba(210, 105, 30, 0.1)",
+      color: "#D2691E" 
+    } 
+  },
+  mainTabActive: { 
+    color: "#D2691E", 
+    fontWeight: "600" 
+  },
+  tabSlider: { 
+    position: "absolute", 
+    bottom: 0, 
+    height: "4px", 
+    backgroundColor: "#D2691E", 
+    transition: "left 0.3s ease",
+    borderRadius: "4px 4px 0 0"
+  },
+  scrollableContent: { 
+    flex: 1, 
+    overflowY: "auto", 
+    padding: "0 32px 32px 32px" 
+  },
   contentContainer: { 
     backgroundColor: "#fff", 
     border: "1px solid #dee2e6", 
     borderTop: "none", 
-    borderRadius: "0 0 8px 8px", 
+    borderRadius: "0 0 12px 12px", 
     marginBottom: "24px", 
-    overflow: "hidden",
-    flex: 1,
-    display: "flex",
-    flexDirection: "column"
+    overflow: "hidden", 
+    flex: 1, 
+    display: "flex", 
+    flexDirection: "column",
+    boxShadow: "0 4px 6px rgba(0, 0, 0, 0.05)" 
   },
   tabContent: { 
-    padding: "24px",
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    overflow: "hidden"
+    padding: "24px", 
+    flex: 1, 
+    display: "flex", 
+    flexDirection: "column", 
+    overflow: "hidden" 
   },
   searchFilterContainer: { 
     display: "flex", 
     gap: "16px", 
     marginBottom: "24px", 
     alignItems: "center", 
-    flexWrap: "wrap",
-    flexShrink: 0
+    flexWrap: "wrap", 
+    flexShrink: 0 
   },
-  searchWrapper: { position: "relative", flex: "1", minWidth: "250px" },
-  searchIcon: { position: "absolute", left: "12px", top: "50%", transform: "translateY(-50%)", color: "#6c757d" },
-  searchInput: { width: "100%", padding: "10px 12px 10px 40px", border: "1px solid #ced4da", borderRadius: "6px", fontSize: "14px", "&:focus": { outline: "none", borderColor: "#86b7fe", boxShadow: "0 0 0 0.25rem rgba(13, 110, 253, 0.25)" } },
-  filterDropdown: { padding: "10px 12px", border: "1px solid #ced4da", borderRadius: "6px", fontSize: "14px", backgroundColor: "#fff", minWidth: "150px", "&:focus": { outline: "none", borderColor: "#86b7fe", boxShadow: "0 0 0 0.25rem rgba(13, 110, 253, 0.25)" } },
-  statusTabs: { display: "flex", gap: "8px", backgroundColor: "#f8f9fa", borderRadius: "6px", padding: "4px" },
-  statusTab: { padding: "8px 16px", border: "none", backgroundColor: "transparent", borderRadius: "4px", fontSize: "14px", fontWeight: "500", color: "#6c757d", cursor: "pointer", display: "flex", alignItems: "center", gap: "6px", transition: "all 0.2s ease", "&:hover": { backgroundColor: "#e9ecef" } },
-  statusTabActive: { backgroundColor: "#fff", color: "#495057", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)" },
-  statusBadge: { fontSize: "12px", fontWeight: "600", color: "#fff", borderRadius: "10px", padding: "2px 6px", minWidth: "24px", textAlign: "center" },
-  tableContainer: { 
-    border: "1px solid #dee2e6", 
+  searchWrapper: { 
+    position: "relative", 
+    flex: "1", 
+    minWidth: "280px" 
+  },
+  searchIcon: { 
+    position: "absolute", 
+    left: "14px", 
+    top: "50%", 
+    transform: "translateY(-50%)", 
+    color: "#9ca3af" 
+  },
+  searchInput: { 
+    width: "100%", 
+    padding: "12px 16px 12px 44px", 
+    border: "1px solid #d1d5db", 
+    borderRadius: "8px", 
+    fontSize: "14px", 
+    backgroundColor: "#f9fafb",
+    transition: "all 0.2s ease",
+    "&:focus": { 
+      outline: "none", 
+      borderColor: "#D2691E", 
+      boxShadow: "0 0 0 3px rgba(210, 105, 30, 0.2)",
+      backgroundColor: "#fff"
+    } 
+  },
+  filterDropdown: { 
+    padding: "12px 16px", 
+    border: "1px solid #d1d5db", 
+    borderRadius: "8px", 
+    fontSize: "14px", 
+    backgroundColor: "#f9fafb", 
+    minWidth: "160px", 
+    cursor: "pointer",
+    transition: "all 0.2s ease",
+    "&:focus": { 
+      outline: "none", 
+      borderColor: "#D2691E", 
+      boxShadow: "0 0 0 3px rgba(210, 105, 30, 0.2)",
+      backgroundColor: "#fff"
+    } 
+  },
+  statusTabs: { 
+    display: "flex", 
+    gap: "4px", 
+    backgroundColor: "#f3f4f6", 
+    borderRadius: "8px", 
+    padding: "4px" 
+  },
+  statusTab: { 
+    padding: "10px 18px", 
+    border: "none", 
+    backgroundColor: "transparent", 
     borderRadius: "6px", 
-    overflow: "hidden",
-    flex: 1,
-    display: "flex",
-    flexDirection: "column"
+    fontSize: "14px", 
+    fontWeight: "500", 
+    color: "#6b7280", 
+    cursor: "pointer", 
+    display: "flex", 
+    alignItems: "center", 
+    gap: "8px", 
+    transition: "all 0.2s ease", 
+    "&:hover": { 
+      backgroundColor: "#e5e7eb" 
+    } 
+  },
+  statusTabActive: { 
+    backgroundColor: "#fff", 
+    color: "#374151", 
+    boxShadow: "0 2px 4px rgba(0, 0, 0, 0.1)" 
+  },
+  statusBadge: { 
+    fontSize: "12px", 
+    fontWeight: "600", 
+    color: "#fff", 
+    borderRadius: "10px", 
+    padding: "2px 8px", 
+    minWidth: "26px", 
+    textAlign: "center" 
+  },
+  tableContainer: { 
+    border: "1px solid #e5e7eb", 
+    borderRadius: "8px", 
+    overflow: "hidden", 
+    flex: 1, 
+    display: "flex", 
+    flexDirection: "column",
+    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)" 
   },
   tableScrollContainer: { 
-    overflowX: "auto",
-    flex: 1,
-    display: "flex",
-    flexDirection: "column"
+    overflowX: "auto", 
+    flex: 1, 
+    display: "flex", 
+    flexDirection: "column" 
   },
   dataTable: { 
     width: "100%", 
-    borderCollapse: "collapse",
-    tableLayout: "fixed",
-    minWidth: "600px"
+    borderCollapse: "collapse", 
+    tableLayout: "fixed", 
+    minWidth: "600px" 
   },
   tableHeader: { 
-    backgroundColor: "#f8f9fa",
-    position: "sticky",
-    top: 0,
-    zIndex: 10
+    backgroundColor: "#f9fafb", 
+    position: "sticky", 
+    top: 0, 
+    zIndex: 10 
   },
   tableHeaderCell: { 
-    padding: "12px 16px", 
-    textAlign: "left", 
+    padding: "16px", 
+    textAlign: "center", 
     fontWeight: "600", 
-    color: "#495057", 
+    color: "#374151", 
     fontSize: "14px", 
-    borderBottom: "2px solid #dee2e6",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis"
+    borderBottom: "2px solid #e5e7eb", 
+    whiteSpace: "nowrap", 
+    overflow: "hidden", 
+    textOverflow: "ellipsis" 
   },
-  tableRow: { borderBottom: "1px solid #dee2e6", transition: "background-color 0.2s ease", "&:hover": { backgroundColor: "#f8f9fa" } },
+  tableRow: { 
+    borderBottom: "1px solid #e5e7eb", 
+    transition: "background-color 0.2s ease", 
+    "&:hover": { 
+      backgroundColor: "#f9fafb" 
+    } 
+  },
   tableCell: { 
-    padding: "12px 16px", 
+    padding: "16px", 
     fontSize: "14px", 
-    color: "#212529",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis"
+    color: "#374151", 
+    whiteSpace: "nowrap", 
+    overflow: "hidden", 
+    textOverflow: "ellipsis",
+    textAlign: "center",
+    verticalAlign: "middle"
   },
-  statusIndicator: { padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600", display: "inline-block", textAlign: "center", minWidth: "80px" },
-  statusPending: { backgroundColor: "#fff3cd", color: "#856404" },
-  statusApproved: { backgroundColor: "#d1e7dd", color: "#0f5132" },
-  statusDeclined: { backgroundColor: "#f8d7da", color: "#842029" },
-  viewBtn: { display: "flex", alignItems: "center", gap: "6px", padding: "6px 12px", backgroundColor: "transparent", border: "1px solid #dee2e6", borderRadius: "4px", fontSize: "14px", color: "#6c757d", cursor: "pointer", transition: "all 0.2s ease", "&:hover": { backgroundColor: "#f8f9fa", borderColor: "#adb5bd" } },
-  actionButtons: { display: "flex", gap: "8px" },
-  iconBtn: { display: "flex", alignItems: "center", justifyContent: "center", padding: "6px", backgroundColor: "transparent", border: "1px solid #dee2e6", borderRadius: "4px", cursor: "pointer", transition: "all 0.2s ease", "&:hover": { backgroundColor: "#f8f9fa" } },
-  roleBadge: { padding: "4px 8px", borderRadius: "4px", fontSize: "12px", fontWeight: "600", display: "inline-block" },
-  roleKutsero: { backgroundColor: "#e9ecef", color: "#495057" },
-  roleOperator: { backgroundColor: "#e7f1ff", color: "#0a58ca" },
-  roleOther: { backgroundColor: "#fff3cd", color: "#856404" },
+  statusIndicator: { 
+    padding: "6px 12px", 
+    borderRadius: "20px", 
+    fontSize: "12px", 
+    fontWeight: "600", 
+    display: "inline-block", 
+    textAlign: "center", 
+    minWidth: "90px" 
+  },
+  statusPending: { 
+    backgroundColor: "#fffbeb", 
+    color: "#d97706", 
+    border: "1px solid #fcd34d" 
+  },
+  statusApproved: { 
+    backgroundColor: "#ecfdf5", 
+    color: "#059669", 
+    border: "1px solid #34d399" 
+  },
+  statusDeclined: { 
+    backgroundColor: "#fef2f2", 
+    color: "#dc2626", 
+    border: "1px solid #f87171" 
+  },
+  viewBtn: { 
+    display: "flex", 
+    alignItems: "center", 
+    justifyContent: "center",
+    gap: "6px", 
+    padding: "8px 14px", 
+    backgroundColor: "transparent", 
+    border: "1px solid #d1d5db", 
+    borderRadius: "6px", 
+    fontSize: "14px", 
+    color: "#6b7280", 
+    cursor: "pointer", 
+    transition: "all 0.2s ease", 
+    margin: "0 auto",
+    "&:hover": { 
+      backgroundColor: "#f3f4f6", 
+      borderColor: "#9ca3af",
+      color: "#374151"
+    } 
+  },
+  actionButtons: { 
+    display: "flex", 
+    gap: "8px", 
+    justifyContent: "center" 
+  },
+  iconBtn: { 
+    display: "flex", 
+    alignItems: "center", 
+    justifyContent: "center", 
+    padding: "8px", 
+    backgroundColor: "transparent", 
+    border: "1px solid #e5e7eb", 
+    borderRadius: "6px", 
+    cursor: "pointer", 
+    transition: "all 0.2s ease", 
+    "&:hover": { 
+      backgroundColor: "#f3f4f6",
+      transform: "scale(1.05)"
+    } 
+  },
+  roleBadge: { 
+    padding: "6px 12px", 
+    borderRadius: "20px", 
+    fontSize: "12px", 
+    fontWeight: "600", 
+    display: "inline-block" 
+  },
+  roleKutsero: { 
+    backgroundColor: "#ffedd5", 
+    color: "#ea580c" 
+  },
+  roleOperator: { 
+    backgroundColor: "#dbeafe", 
+    color: "#1d4ed8" 
+  },
+  roleOther: { 
+    backgroundColor: "#fef3c7", 
+    color: "#ca8a04" 
+  },
   paginationContainer: { 
     display: "flex", 
     justifyContent: "space-between", 
     alignItems: "center", 
-    padding: "16px", 
-    borderTop: "1px solid #dee2e6", 
-    backgroundColor: "#f8f9fa",
-    flexShrink: 0
+    padding: "20px", 
+    borderTop: "1px solid #e5e7eb", 
+    backgroundColor: "#f9fafb", 
+    flexShrink: 0 
   },
-  paginationInfo: { fontSize: "14px", color: "#6c757d" },
-  paginationControls: { display: "flex", gap: "8px" },
-  paginationBtn: { padding: "8px 12px", border: "1px solid #dee2e6", backgroundColor: "#fff", borderRadius: "4px", fontSize: "14px", color: "#0d6efd", cursor: "pointer", transition: "all 0.2s ease", "&:hover:not(:disabled)": { backgroundColor: "#e9ecef" }, "&:disabled": { opacity: "0.6", cursor: "not-allowed" } },
-  paginationBtnActive: { backgroundColor: "#0d6efd", color: "#fff", borderColor: "#0d6efd" },
-  modalOverlay: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: "20px" },
-  modalContent: { backgroundColor: "#fff", borderRadius: "8px", maxWidth: "800px", width: "100%", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 10px 25px rgba(0, 0, 0, 0.2)" },
-  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 24px", borderBottom: "1px solid #dee2e6" },
-  modalTitle: { fontSize: "20px", fontWeight: "600", color: "#212529", margin: 0 },
-  closeBtn: { background: "none", border: "none", fontSize: "20px", cursor: "pointer", color: "#6c757d", padding: "4px", borderRadius: "4px", "&:hover": { backgroundColor: "#f8f9fa", color: "#212529" } },
-  modalBody: { padding: "24px" },
-  userProfileContainer: { display: "flex", gap: "24px", flexWrap: "wrap" },
-  profileImageContainer: { display: "flex", flexDirection: "column", alignItems: "center", minWidth: "200px" },
-  profileImage: { width: "120px", height: "120px", borderRadius: "50%", objectFit: "cover", border: "4px solid #f8f9fa" },
-  userInfoContainer: { flex: 1, minWidth: "300px" },
-  infoSection: { marginBottom: "24px" },
-  sectionTitle: { fontSize: "16px", fontWeight: "600", color: "#495057", margin: "0 0 16px 0", paddingBottom: "8px", borderBottom: "1px solid #dee2e6" },
-  infoGrid: { display: "flex", flexDirection: "column", gap: "12px" },
-  infoRow: { display: "flex", gap: "12px" },
-  infoLabel: { minWidth: "120px", fontSize: "14px", fontWeight: "500", color: "#6c757d" },
-  infoValue: { fontSize: "14px", color: "#212529", flex: 1 },
-  infoLink: { fontSize: "14px", color: "#0d6efd", textDecoration: "none", "&:hover": { textDecoration: "underline" } },
-  modalActions: { display: "flex", justifyContent: "flex-end", gap: "12px", padding: "20px 24px", borderTop: "1px solid #dee2e6" },
-  actionBtnApprove: { display: "flex", alignItems: "center", gap: "8px", padding: "10px 20px", backgroundColor: "#198754", color: "#fff", border: "none", borderRadius: "6px", fontSize: "14px", fontWeight: "500", cursor: "pointer", transition: "background-color 0.2s ease", "&:hover": { backgroundColor: "#157347" } },
-  actionBtnDecline: { display: "flex", alignItems: "center", gap: "8px", padding: "10px 20px", backgroundColor: "#dc3545", color: "#fff", border: "none", borderRadius: "6px", fontSize: "14px", fontWeight: "500", cursor: "pointer", transition: "background-color 0.2s ease", "&:hover": { backgroundColor: "#bb2d3b" } },
-  alertContainer: { position: "fixed", bottom: "24px", right: "24px", padding: "16px 20px", borderRadius: "6px", display: "flex", alignItems: "center", gap: "12px", boxShadow: "0 4px 12px rgba(0, 0, 0, 0.15)", transform: "translateY(100px)", opacity: 0, transition: "all 0.3s ease", zIndex: 1000 },
-  alertVisible: { transform: "translateY(0)", opacity: 1 },
-  alertSuccess: { backgroundColor: "#198754", color: "#fff" },
-  alertError: { backgroundColor: "#dc3545", color: "#fff" }
+  paginationInfo: { 
+    fontSize: "14px", 
+    color: "#6b7280" 
+  },
+  paginationControls: { 
+    display: "flex", 
+    gap: "8px" 
+  },
+  paginationBtn: { 
+    padding: "8px 14px", 
+    border: "1px solid #d1d5db", 
+    backgroundColor: "#fff", 
+    borderRadius: "6px", 
+    fontSize: "14px", 
+    color: "#4b5563", 
+    cursor: "pointer", 
+    transition: "all 0.2s ease", 
+    "&:hover:not(:disabled)": { 
+      backgroundColor: "#f3f4f6",
+      borderColor: "#9ca3af"
+    }, 
+    "&:disabled": { 
+      opacity: "0.5", 
+      cursor: "not-allowed" 
+    } 
+  },
+  paginationBtnActive: { 
+    backgroundColor: "#D2691E", 
+    color: "#fff", 
+    borderColor: "#D2691E" 
+  },
+  modalOverlay: { 
+    position: "fixed", 
+    top: 0, 
+    left: 0, 
+    right: 0, 
+    bottom: 0, 
+    backgroundColor: "rgba(0, 0, 0, 0.5)", 
+    display: "flex", 
+    alignItems: "center", 
+    justifyContent: "center", 
+    zIndex: 1000, 
+    padding: "20px" 
+  },
+  modalContent: { 
+    backgroundColor: "#fff", 
+    borderRadius: "12px", 
+    maxWidth: "800px", 
+    width: "100%", 
+    maxHeight: "90vh", 
+    overflowY: "auto", 
+    boxShadow: "0 20px 25px rgba(0, 0, 0, 0.15)" 
+  },
+  modalHeader: { 
+    display: "flex", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+    padding: "24px", 
+    borderBottom: "1px solid #e5e7eb" 
+  },
+  modalTitle: { 
+    fontSize: "24px", 
+    fontWeight: "700", 
+    color: "#1f2937", 
+    margin: 0 
+  },
+  closeBtn: { 
+    background: "none", 
+    border: "none", 
+    fontSize: "24px", 
+    cursor: "pointer", 
+    color: "#9ca3af", 
+    padding: "4px", 
+    borderRadius: "6px", 
+    transition: "all 0.2s ease",
+    "&:hover": { 
+      backgroundColor: "#f3f4f6", 
+      color: "#374151" 
+    } 
+  },
+  modalBody: { 
+    padding: "24px" 
+  },
+  userProfileContainer: { 
+    display: "flex", 
+    gap: "32px", 
+    flexWrap: "wrap" 
+  },
+  profileImageContainer: { 
+    display: "flex", 
+    flexDirection: "column", 
+    alignItems: "center", 
+    minWidth: "200px" 
+  },
+  profileImage: { 
+    width: "120px", 
+    height: "120px", 
+    borderRadius: "50%", 
+    objectFit: "cover", 
+    border: "4px solid #f3f4f6",
+    boxShadow: "0 4px 6px rgba(0, 0, 0, 0.05)" 
+  },
+  userInfoContainer: { 
+    flex: 1, 
+    minWidth: "300px" 
+  },
+  infoSection: { 
+    marginBottom: "28px" 
+  },
+  sectionTitle: { 
+    fontSize: "18px", 
+    fontWeight: "600", 
+    color: "#374151", 
+    margin: "0 0 18px 0", 
+    paddingBottom: "10px", 
+    borderBottom: "1px solid #e5e7eb" 
+  },
+  infoGrid: { 
+    display: "flex", 
+    flexDirection: "column", 
+    gap: "14px" 
+  },
+  infoRow: { 
+    display: "flex", 
+    gap: "14px" 
+  },
+  infoLabel: { 
+    minWidth: "140px", 
+    fontSize: "14px", 
+    fontWeight: "500", 
+    color: "#6b7280" 
+  },
+  infoValue: { 
+    fontSize: "14px", 
+    color: "#374151", 
+    flex: 1 
+  },
+  infoLink: { 
+    fontSize: "14px", 
+    color: "#D2691E", 
+    textDecoration: "none", 
+    transition: "color 0.2s ease",
+    "&:hover": { 
+      textDecoration: "underline",
+      color: "#a15813" 
+    } 
+  },
+  modalActions: { 
+    display: "flex", 
+    justifyContent: "flex-end", 
+    gap: "14px", 
+    padding: "24px", 
+    borderTop: "1px solid #e5e7eb" 
+  },
+  actionBtnApprove: { 
+    display: "flex", 
+    alignItems: "center", 
+    justifyContent: "center",
+    gap: "8px", 
+    padding: "12px 24px", 
+    backgroundColor: "#059669", 
+    color: "#fff", 
+    border: "none", 
+    borderRadius: "8px", 
+    fontSize: "14px", 
+    fontWeight: "600", 
+    cursor: "pointer", 
+    transition: "all 0.2s ease", 
+    "&:hover": { 
+      backgroundColor: "#047857" 
+    } 
+  },
+  actionBtnDecline: { 
+    display: "flex", 
+    alignItems: "center", 
+    justifyContent: "center",
+    gap: "8px", 
+    padding: "12px 24px", 
+    backgroundColor: "#dc2626", 
+    color: "#fff", 
+    border: "none", 
+    borderRadius: "8px", 
+    fontSize: "14px", 
+    fontWeight: "600", 
+    cursor: "pointer", 
+    transition: "all 0.2s ease", 
+    "&:hover": { 
+      backgroundColor: "#b91c1c" 
+    } 
+  },
+  alertContainer: { 
+    position: "fixed", 
+    bottom: "24px", 
+    right: "24px", 
+    padding: "16px 24px", 
+    borderRadius: "8px", 
+    display: "flex", 
+    alignItems: "center", 
+    gap: "12px", 
+    boxShadow: "0 10px 15px rgba(0, 0, 0, 0.1)", 
+    transform: "translateY(100px)", 
+    opacity: 0, 
+    transition: "all 0.3s ease", 
+    zIndex: 1000 
+  },
+  alertVisible: { 
+    transform: "translateY(0)", 
+    opacity: 1 
+  },
+  alertSuccess: { 
+    backgroundColor: "#059669", 
+    color: "#fff" 
+  },
+  alertError: { 
+    backgroundColor: "#dc2626", 
+    color: "white" 
+  }
 };
 
-
-export default UserManagement
+export default UserManagement;

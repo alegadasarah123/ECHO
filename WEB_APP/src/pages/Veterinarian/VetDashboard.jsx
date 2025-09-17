@@ -67,7 +67,7 @@ const fetchScheduleSlots = async () => {
     });
 
     const data = await res.json();
-
+  console.log("Backend schedule slots:", data.schedule_slots); 
     if (res.ok) {
       // data.schedule_slots already contains only upcoming schedules
       const processedSlots = processScheduleSlots(data.schedule_slots || []);
@@ -102,8 +102,7 @@ const fetchScheduleSlots = async () => {
         time: slot.app_time || slot.time,
         available: slot.available !== undefined ? slot.available : true,
         pending: slot.app_status === 'pending',
-        service: slot.app_service || slot.service,
-        horse_name: slot.horse_name,
+        operator_name: slot.operator_name,
         app_status: slot.app_status
       });
     });
@@ -134,26 +133,6 @@ const fetchScheduleSlots = async () => {
     fetchAppointments();
     fetchScheduleSlots();
   }, []);
-
-  // ---------------- HELPER FUNCTIONS ----------------
-  const getDaysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-  const getFirstDayOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
-  const getMonthName = (date) => date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-
-  const navigateMonth = (direction) => {
-    setCurrentDate(prev => {
-      const newDate = new Date(prev);
-      newDate.setMonth(prev.getMonth() + direction);
-      return newDate;
-    });
-  };
-
-  const isToday = (day) => {
-    const today = new Date();
-    return day === today.getDate() &&
-      currentDate.getMonth() === today.getMonth() &&
-      currentDate.getFullYear() === today.getFullYear();
-  };
 
   // ---------------- FILTER APPROVED APPOINTMENTS FOR TODAY ----------------
   const today = new Date();
@@ -377,7 +356,7 @@ const fetchScheduleSlots = async () => {
                                     : 'bg-red-50 border-red-200 hover:bg-red-100'
                                 }`}
                               >
-                                <div className="flex justify-between items-start">
+                                <div className="flex justify-between items-center mb-1">
                                   <div className="flex items-center">
                                     <Clock3 className={`w-4 h-4 mr-2 ${
                                       slot.available 
@@ -386,10 +365,13 @@ const fetchScheduleSlots = async () => {
                                         ? 'text-yellow-500'
                                         : 'text-red-500'
                                     }`} />
-                                    <span className="font-medium text-gray-800">
+                                    <span className="font-medium text-gray-800 text-sm whitespace-nowrap">
                                       {formatTime(slot.time)}
                                     </span>
                                   </div>
+                                </div>
+                                
+                                <div className="flex items-center justify-between">
                                   <span className={`text-xs font-medium px-2 py-1 rounded-full ${
                                     slot.available 
                                       ? 'bg-blue-100 text-blue-800' 
@@ -399,21 +381,16 @@ const fetchScheduleSlots = async () => {
                                   }`}>
                                     {slot.available ? 'Available' : slot.pending ? 'Pending' : 'Booked'}
                                   </span>
+                                  
+                                  {!slot.available && (
+                                    <div className="text-sm text-gray-600 text-right">
+                                      by {slot.operator_name}
+                                    </div>
+                                  )}
                                 </div>
-                                
-                                {!slot.available && (
-                                  <div className="mt-2 text-sm">
-                                    <div className="font-medium text-gray-900">
-                                      {slot.service}
-                                    </div>
-                                    <div className="text-gray-600">
-                                      with {slot.horse_name}
-                                    </div>
-                                  </div>
-                                )}
                               </div>
                             ))}
-                          </div>
+                          </div>                        
                         </div>
                       ))}
                     </div>

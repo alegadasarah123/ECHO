@@ -5,7 +5,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import Sidebar from "@/components/VetSidebar";
 import {
   Bell, FileText, Heart, Thermometer, Activity, Calendar,
-  User, Phone, Mail, MapPin, Plus, X, Upload, Image, AlertCircle, Lock
+  User, Phone, Mail, MapPin, Plus, X, Upload, Image, AlertCircle, Lock, Key, Clock
 } from "lucide-react";
 
 // Confirmation Modal Component
@@ -45,7 +45,7 @@ const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
 };
 
 // Access Denied Modal Component
-const AccessDeniedModal = ({ isOpen, onClose, recordVetName }) => {
+const AccessDeniedModal = ({ isOpen, onClose, recordVetName, onRequestAccess }) => {
   if (!isOpen) return null;
 
   return (
@@ -59,7 +59,45 @@ const AccessDeniedModal = ({ isOpen, onClose, recordVetName }) => {
         </div>
         
         <p className="text-gray-600 mb-6">
-          This medical record was created by {recordVetName}. You need access permissions to view and update this record.
+          This medical record was created by {recordVetName}. You need access permissions to view this record.
+        </p>
+        
+        <div className="flex justify-end gap-3">
+          <Button 
+            variant="outline"
+            onClick={onClose}
+            className="px-4 py-2 border-gray-300 hover:bg-gray-100 rounded-xl"
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={onRequestAccess}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center gap-2"
+          >
+            <Key className="w-4 h-4" /> Request Access
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Access Requested Modal Component
+const AccessRequestedModal = ({ isOpen, onClose, recordVetName }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md">
+        <div className="flex items-center mb-4">
+          <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+            <Key className="w-5 h-5 text-blue-600" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-800">Access Requested</h3>
+        </div>
+        
+        <p className="text-gray-600 mb-6">
+          Your request to access {recordVetName}'s medical record has been sent. You'll be notified when access is granted.
         </p>
         
         <div className="flex justify-end">
@@ -72,6 +110,35 @@ const AccessDeniedModal = ({ isOpen, onClose, recordVetName }) => {
         </div>
       </div>
     </div>
+  );
+};
+
+const AppointmentNotToday = ({ appointmentDate }) => {
+  // Append 'T00:00:00' to force valid ISO format
+  const date = new Date(`${appointmentDate}T00:00:00`);
+  const formattedDate = date.toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  return (
+    <Card className="bg-gradient-to-br shadow-2xl rounded-3xl border border-white/50 backdrop-blur-sm">
+      <CardContent className="p-8">
+        <div className="text-center py-12">
+          <div className="w-16 h-16 bg-yellow-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <Clock className="w-8 h-8 text-yellow-600" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-800 mb-2">Appointment Scheduled</h3>
+          <p className="text-gray-600 mb-6">
+            This appointment is scheduled for <span className="font-semibold text-blue-600">{formattedDate}</span>.
+          </p>
+          <p className="text-gray-500">
+            Medical records can only be added on the day of the appointment.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
   );
 };
 
@@ -310,7 +377,9 @@ const AppointmentDetails = () => {
   const [error, setError] = useState(null);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [showAccessDenied, setShowAccessDenied] = useState(false);
+  const [showAccessRequested, setShowAccessRequested] = useState(false);
   const [recordVetName, setRecordVetName] = useState("");
+  const [recordToAccess, setRecordToAccess] = useState(null);
   const [formData, setFormData] = useState({
     date: new Date().toISOString().split('T')[0],
     heartRate: "",
@@ -366,6 +435,20 @@ const AppointmentDetails = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Check if appointment date is today
+  const isAppointmentToday = () => {
+    if (!appointment || !appointment.date) return false;
+    
+    const appointmentDate = new Date(appointment.date);
+    const today = new Date();
+    
+    return (
+      appointmentDate.getDate() === today.getDate() &&
+      appointmentDate.getMonth() === today.getMonth() &&
+      appointmentDate.getFullYear() === today.getFullYear()
+    );
   };
 
   const handleAddMedicalRecord = async () => {
@@ -475,10 +558,29 @@ const AppointmentDetails = () => {
     if (record.vet_id && vetProfile && record.vet_id !== vetProfile.id) {
       // Show access denied modal
       setRecordVetName(record.veterinarian || "another veterinarian");
+      setRecordToAccess(record);
       setShowAccessDenied(true);
     } else {
       // Allow viewing if it's the current vet's record
       setSelectedRecord(record);
+    }
+  };
+
+  const handleRequestAccess = async () => {
+    try {
+      // In a real application, this would send a request to the server
+      // to notify the record owner about the access request
+      console.log("Requesting access to record:", recordToAccess);
+      
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Show access requested confirmation
+      setShowAccessDenied(false);
+      setShowAccessRequested(true);
+    } catch (err) {
+      console.error("Failed to request access:", err);
+      setError("Failed to request access to this record");
     }
   };
 
@@ -523,6 +625,14 @@ const AppointmentDetails = () => {
       <AccessDeniedModal
         isOpen={showAccessDenied}
         onClose={() => setShowAccessDenied(false)}
+        onRequestAccess={handleRequestAccess}
+        recordVetName={recordVetName}
+      />
+
+      {/* Access Requested Modal */}
+      <AccessRequestedModal
+        isOpen={showAccessRequested}
+        onClose={() => setShowAccessRequested(false)}
         recordVetName={recordVetName}
       />
 
@@ -663,17 +773,21 @@ const AppointmentDetails = () => {
                       <h2 className="text-xl font-bold text-gray-800">Medical Records</h2>
                       <div className="flex items-center gap-4">
                         <span className="text-gray-500">{medicalRecords.length} records found</span>
-                        <Button 
-                          onClick={() => setShowAddRecordForm(true)}
-                          className="flex items-center gap-2 rounded-xl"
-                        >
-                          <Plus className="w-4 h-4" /> Add Record
-                        </Button>
+                        {isAppointmentToday() && (
+                          <Button 
+                            onClick={() => setShowAddRecordForm(true)}
+                            className="flex items-center gap-2 rounded-xl"
+                          >
+                            <Plus className="w-4 h-4" /> Add Record
+                          </Button>
+                        )}
                       </div>
                     </div>
                     
-                    {/* Table */}
-                    {medicalRecords.length > 0 ? (
+                    {/* Check if appointment is today */}
+                    {!isAppointmentToday() && medicalRecords.length === 0 ? (
+                      <AppointmentNotToday appointmentDate={appointment?.date} />
+                    ) : medicalRecords.length > 0 ? (
                       <div className="bg-white/80 border border-gray-200/50 rounded-3xl overflow-hidden shadow-xl backdrop-blur-sm">
                         <table className="w-full">
                           <thead className="bg-gray-50">
@@ -690,7 +804,14 @@ const AppointmentDetails = () => {
                               <tr key={record.id || index}>
                                 <td className="px-8 py-6 text-center">{record.date || "N/A"}</td>
                                 <td className="px-8 py-6 text-center">{record.diagnosis || "No diagnosis"}</td>
-                                <td className="px-8 py-6 text-center">{record.veterinarian || "Unknown"}</td>
+                                <td className="px-8 py-6 text-center">
+                                  {record.veterinarian || "Unknown"}
+                                  {record.vet_id && vetProfile && record.vet_id !== vetProfile.id && (
+                                    <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
+                                      External
+                                    </span>
+                                  )}
+                                </td>
                                 <td className="px-8 py-6 text-center">{record.treatment || "No treatment"}</td>
                                 <td className="px-8 py-6 text-center">
                                   <Button 
@@ -709,12 +830,14 @@ const AppointmentDetails = () => {
                       <div className="text-center py-12 bg-white/50 rounded-2xl">
                         <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                         <p className="text-gray-500 mb-4">No medical records available</p>
-                        <Button 
-                          onClick={() => setShowAddRecordForm(true)}
-                          className="bg-blue-600 text-white hover:bg-blue-700 rounded-xl"
-                        >
-                          <Plus className="w-4 h-4 mr-2" /> Add First Medical Record
-                        </Button>
+                        {isAppointmentToday() && (
+                          <Button 
+                            onClick={() => setShowAddRecordForm(true)}
+                            className="bg-blue-600 text-white hover:bg-blue-700 rounded-xl"
+                          >
+                            <Plus className="w-4 h-4 mr-2" /> Add First Medical Record
+                          </Button>
+                        )}
                       </div>
                     )}
                   </CardContent>
