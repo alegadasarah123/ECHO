@@ -10,8 +10,15 @@ import requests
 import time
 from datetime import datetime, timezone
 import traceback
+import json
+import logging
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.db import connection
+from .models import CalendarEvent
 
 
+logger = logging.getLogger(__name__)
 
 # Initialize Supabase client
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY)
@@ -682,460 +689,199 @@ def test_connection(request):
 
 # ------------------------------------------------ FEED MANAGEMENT API ------------------------------------------------
 
-import uuid
-from datetime import datetime, timezone
-
 @api_view(['GET'])
-def get_feeds(request, user_id, horse_id):
+def get_feeding_schedule(request):
     """
-    Get all feeds for a specific user and horse
+    Get feeding schedule for a specific user and horse
     """
+    user_id = request.GET.get("user_id")
+    horse_id = request.GET.get("horse_id")
+    
+    if not user_id or not horse_id:
+        return Response({"error": "user_id and horse_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+    
     try:
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
-        # Get all feeds for this user and horse using correct column names
-        feeds_response = service_client.table("feed_detail").select(
-            "fd_id, fd_meal_type, fd_food_type, fd_qty, fd_time, user_id, horse_id, completed, completed_at, updated_at"
-        ).eq("user_id", user_id).eq("horse_id", horse_id).order("updated_at", desc=False).execute()
+        # Get feeding schedule from feed_detail table - only select existing columns
+        response = service_client.table("feed_detail").select(
+            "fd_id, user_id, horse_id, fd_meal_type, fd_food_type, fd_qty, fd_time, completed, completed_at"
+        ).eq("user_id", user_id).eq("horse_id", horse_id).execute()
         
-        feeds = feeds_response.data or []
+        if not response.data:
+            return Response([], status=status.HTTP_200_OK)
         
-        # Transform data to match frontend expectations
-        transformed_feeds = []
-        for feed in feeds:
-            transformed_feeds.append({
-                'feed_id': feed['fd_id'],  # Map fd_id to feed_id for frontend
-                'user_id': feed['user_id'],
-                'horse_id': feed['horse_id'],
-                'food': feed.get('fd_food_type', ''),
-                'amount': feed.get('fd_qty', ''),
-                'time': feed.get('fd_meal_type', ''),
-                'completed': feed.get('completed', False),
-                'completed_at': feed.get('completed_at'),
-                'created_at': feed.get('updated_at'),
-                'updated_at': feed.get('updated_at')
-            })
-        
-        return Response({
-            'success': True,
-            'feeds': transformed_feeds,
-            'total_count': len(transformed_feeds)
-        }, status=status.HTTP_200_OK)
+        return Response(response.data, status=status.HTTP_200_OK)
         
     except Exception as e:
-        print(f"Error fetching feeds: {e}")
-        return Response({
-            'success': False,
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        print(f"Error fetching feeding schedule: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(['POST'])
-def create_multiple_feeds(request):
+def save_feeding_schedule(request):
     """
-    Create multiple feeds for a meal
+    Save or update feeding schedule
     """
     try:
         data = request.data
-        user_id = data.get('user_id')
-        horse_id = data.get('horse_id')
-        meal_type = data.get('meal_type')
-        feeds_data = data.get('feeds', [])
+        user_id = data.get("user_id")
+        horse_id = data.get("horse_id")
+        schedule = data.get("schedule", [])
         
-        if not all([user_id, horse_id, meal_type, feeds_data]):
-            return Response({
-                'success': False,
-                'error': 'Missing required fields: user_id, horse_id, meal_type, feeds'
-            }, status=status.HTTP_400_BAD_REQUEST)
+        if not user_id or not horse_id:
+            return Response({"error": "user_id and horse_id are required"}, status=status.HTTP_400_BAD_REQUEST)
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        current_time = datetime.now(timezone.utc).isoformat()
         
-        created_feeds = []
+        # First, delete existing schedule for this user and horse from feed_detail table
+        service_client.table("feed_detail").delete().eq("user_id", user_id).eq("horse_id", horse_id).execute()
         
-        for feed_data in feeds_data:
-            # Build food string from components
-            food_components = []
-            
-            if feed_data.get('chaff'):
-                food_components.append(f"Chaff: {feed_data['chaff']}")
-            if feed_data.get('restone') and meal_type == 'breakfast':
-                food_components.append(f"Restone: {feed_data['restone']}")
-            if feed_data.get('magnesium') and meal_type == 'dinner':
-                food_components.append(f"Magnesium: {feed_data['magnesium']}")
-            if feed_data.get('dynamy'):
-                food_components.append(f"Dynamy: {feed_data['dynamy']}")
-            
-            food_string = ", ".join(food_components) if food_components else "No food specified"
-            
-            # Calculate total amount
-            amount_parts = []
-            for component in food_components:
-                if ":" in component:
-                    amount_parts.append(component.split(":")[1].strip())
-            amount = ", ".join(amount_parts) if amount_parts else "0"
-            
-            # Create feed record with correct column names
-            feed_record = {
-                'fd_id': str(uuid.uuid4()),
-                'user_id': user_id,
-                'horse_id': horse_id,
-                'fd_food_type': food_string,
-                'fd_qty': amount,
-                'fd_meal_type': meal_type,
-                'fd_time': meal_type,
-                'completed': False,
-                'completed_at': None,
-                'updated_at': current_time
+        # Insert new schedule items
+        for meal in schedule:
+            # Only include columns that actually exist in your table
+            meal_data = {
+                "user_id": user_id,
+                "horse_id": horse_id,
+                "fd_meal_type": meal.get("meal_type", "General"),
+                "fd_food_type": meal.get("food", ""),
+                "fd_qty": meal.get("amount", ""),
+                "fd_time": meal.get("time", ""),
+                "completed": meal.get("completed", False),
+                "completed_at": meal.get("completed_at"),
             }
             
-            # Insert feed record
-            result = service_client.table("feed_detail").insert(feed_record).execute()
+            # Remove None values
+            meal_data = {k: v for k, v in meal_data.items() if v is not None}
             
-            if result.data:
-                created_feeds.extend(result.data)
+            service_client.table("feed_detail").insert(meal_data).execute()
         
-        return Response({
-            'success': True,
-            'message': f'Successfully created {len(created_feeds)} feeds',
-            'feeds': created_feeds
-        }, status=status.HTTP_201_CREATED)
+        return Response({"message": "Feeding schedule saved successfully"}, status=status.HTTP_200_OK)
         
     except Exception as e:
-        print(f"Error creating feeds: {e}")
-        return Response({
-            'success': False,
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        print(f"Error saving feeding schedule: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-@api_view(['PUT'])
-def mark_feed_completed(request, feed_id):
+@api_view(['POST'])
+def mark_meal_fed(request):
     """
-    Mark a feed as completed
+    Mark a meal as fed/completed
     """
     try:
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        current_time = datetime.now(timezone.utc).isoformat()
+        data = request.data
+        user_id = data.get("user_id")
+        horse_id = data.get("horse_id")
+        fd_id = data.get("fd_id")
+        completed_at = data.get("completed_at", datetime.now().isoformat())
         
-        # Update feed to completed using correct column name
-        result = service_client.table("feed_detail").update({
-            'completed': True,
-            'completed_at': current_time,
-            'updated_at': current_time
-        }).eq('fd_id', feed_id).execute()  # Use fd_id here
+        if not user_id or not horse_id or not fd_id:
+            return Response({"error": "user_id, horse_id, and fd_id are required"}, status=status.HTTP_400_BAD_REQUEST)
         
-        if result.data:
-            return Response({
-                'success': True,
-                'message': 'Feed marked as completed',
-                'feed': result.data[0]
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({
-                'success': False,
-                'error': 'Feed not found'
-            }, status=status.HTTP_404_NOT_FOUND)
-            
-    except Exception as e:
-        print(f"Error marking feed as completed: {e}")
-        return Response({
-            'success': False,
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['DELETE'])
-def clear_meal_feeds(request, user_id, horse_id, meal_type):
-    """
-    Clear all feeds for a specific meal type
-    """
-    try:
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
-        # Delete all feeds for this meal type using correct column name
-        result = service_client.table("feed_detail").delete().eq('user_id', user_id)\
-                .eq('horse_id', horse_id).eq('fd_meal_type', meal_type).execute()
-        
-        return Response({
-            'success': True,
-            'message': f'Successfully cleared {meal_type} feeds',
-            'deleted_count': len(result.data) if result.data else 0
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        print(f"Error clearing meal feeds: {e}")
-        return Response({
-            'success': False,
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['DELETE'])
-def delete_feed(request, feed_id):
-    """
-    Delete a specific feed
-    """
-    try:
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        
-        # Delete the feed using correct column name
-        result = service_client.table("feed_detail").delete().eq('fd_id', feed_id).execute()
-        
-        if result.data:
-            return Response({
-                'success': True,
-                'message': 'Feed deleted successfully'
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({
-                'success': False,
-                'error': 'Feed not found'
-            }, status=status.HTTP_404_NOT_FOUND)
-            
-    except Exception as e:
-        print(f"Error deleting feed: {e}")
-        return Response({
-            'success': False,
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['GET'])
-def get_feed_log(request, user_id, horse_id):
-    """
-    Get feed log with filtering options
-    """
-    try:
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        
-        # Get query parameters
-        date_from = request.GET.get('date_from')
-        date_to = request.GET.get('date_to')
-        meal_type = request.GET.get('meal_type')
-        completed_only = request.GET.get('completed_only') == 'true'
-        limit = int(request.GET.get('limit', 50))
-        offset = int(request.GET.get('offset', 0))
-        
-        # Build query with correct column names
-        query = service_client.table("feed_detail").select(
-            "fd_id, user_id, horse_id, fd_food_type, fd_qty, fd_meal_type, fd_time, completed, completed_at, updated_at"
-        ).eq("user_id", user_id).eq("horse_id", horse_id)
-        
-        # Apply filters
-        if date_from:
-            query = query.gte('updated_at', date_from)
-        if date_to:
-            query = query.lte('updated_at', date_to)
-        if meal_type:
-            query = query.eq('fd_meal_type', meal_type)
-        if completed_only:
-            query = query.eq('completed', True)
-        
-        # Apply pagination and ordering
-        query = query.order('updated_at', desc=True).range(offset, offset + limit - 1)
-        
-        result = query.execute()
-        feeds = result.data or []
-        
-        # Transform data for frontend
-        transformed_feeds = []
-        for feed in feeds:
-            transformed_feeds.append({
-                'feed_id': feed['fd_id'],
-                'user_id': feed['user_id'],
-                'horse_id': feed['horse_id'],
-                'food': feed.get('fd_food_type', ''),
-                'amount': feed.get('fd_qty', ''),
-                'time': feed.get('fd_meal_type', ''),
-                'completed': feed.get('completed', False),
-                'completed_at': feed.get('completed_at'),
-                'created_at': feed.get('updated_at'),
-                'updated_at': feed.get('updated_at')
-            })
-        
-        # Get total count for pagination using correct column name
-        count_query = service_client.table("feed_detail").select(
-            "fd_id", count="exact"
-        ).eq("user_id", user_id).eq("horse_id", horse_id)
-        
-        if date_from:
-            count_query = count_query.gte('updated_at', date_from)
-        if date_to:
-            count_query = count_query.lte('updated_at', date_to)
-        if meal_type:
-            count_query = count_query.eq('fd_meal_type', meal_type)
-        if completed_only:
-            count_query = count_query.eq('completed', True)
-        
-        count_result = count_query.execute()
-        total_count = count_result.count if hasattr(count_result, 'count') else len(feeds)
-        
-        # Calculate statistics
-        completed_feeds = [f for f in feeds if f.get('completed')]
-        pending_feeds = [f for f in feeds if not f.get('completed')]
-        
-        # Group by meal type
-        breakfast_feeds = [f for f in feeds if f.get('fd_meal_type') == 'breakfast']
-        lunch_feeds = [f for f in feeds if f.get('fd_meal_type') == 'lunch']
-        dinner_feeds = [f for f in feeds if f.get('fd_meal_type') == 'dinner']
-        
-        return Response({
-            'success': True,
-            'feeds': transformed_feeds,
-            'pagination': {
-                'total_count': total_count,
-                'limit': limit,
-                'offset': offset,
-                'has_more': len(feeds) == limit
-            },
-            'statistics': {
-                'total_feeds': len(feeds),
-                'completed_feeds': len(completed_feeds),
-                'pending_feeds': len(pending_feeds),
-                'breakfast_count': len(breakfast_feeds),
-                'lunch_count': len(lunch_feeds),
-                'dinner_count': len(dinner_feeds)
-            },
-            'filters_applied': {
-                'date_from': date_from,
-                'date_to': date_to,
-                'meal_type': meal_type,
-                'completed_only': completed_only
-            }
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        print(f"Error fetching feed log: {e}")
-        return Response({
-            'success': False,
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['GET'])
-def get_feed_statistics(request, user_id, horse_id):
-    """
-    Get feeding statistics for a horse
-    """
-    try:
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        
-        # Get date range (default to last 30 days)
-        from datetime import timedelta
-        date_from = request.GET.get('date_from')
-        date_to = request.GET.get('date_to')
-        
-        if not date_from:
-            date_from = (datetime.now() - timedelta(days=30)).isoformat()
-        if not date_to:
-            date_to = datetime.now().isoformat()
-        
-        # Get all feeds in date range using correct column names
-        feeds_response = service_client.table("feed_detail").select(
-            "fd_id, fd_food_type, fd_qty, fd_meal_type, completed, completed_at, updated_at"
-        ).eq("user_id", user_id).eq("horse_id", horse_id)\
-         .gte('updated_at', date_from).lte('updated_at', date_to).execute()
-        
-        feeds = feeds_response.data or []
-        
-        # Calculate statistics
-        stats = {
-            'total_feeds': len(feeds),
-            'completed_feeds': len([f for f in feeds if f.get('completed')]),
-            'pending_feeds': len([f for f in feeds if not f.get('completed')]),
-            'completion_rate': 0,
-            'meal_breakdown': {
-                'breakfast': {
-                    'total': len([f for f in feeds if f.get('fd_meal_type') == 'breakfast']),
-                    'completed': len([f for f in feeds if f.get('fd_meal_type') == 'breakfast' and f.get('completed')]),
-                    'completion_rate': 0
-                },
-                'lunch': {
-                    'total': len([f for f in feeds if f.get('fd_meal_type') == 'lunch']),
-                    'completed': len([f for f in feeds if f.get('fd_meal_type') == 'lunch' and f.get('completed')]),
-                    'completion_rate': 0
-                },
-                'dinner': {
-                    'total': len([f for f in feeds if f.get('fd_meal_type') == 'dinner']),
-                    'completed': len([f for f in feeds if f.get('fd_meal_type') == 'dinner' and f.get('completed')]),
-                    'completion_rate': 0
-                }
-            },
-            'date_range': {
-                'from': date_from,
-                'to': date_to
-            }
+        # Update the meal record in feed_detail table - only update existing columns
+        update_data = {
+            "completed": True,
+            "completed_at": completed_at,
         }
         
-        # Calculate completion rates
-        if stats['total_feeds'] > 0:
-            stats['completion_rate'] = round((stats['completed_feeds'] / stats['total_feeds']) * 100, 2)
+        response = service_client.table("feed_detail").update(update_data).eq(
+            "fd_id", fd_id
+        ).eq("user_id", user_id).eq("horse_id", horse_id).execute()
         
-        for meal_type in ['breakfast', 'lunch', 'dinner']:
-            meal_stats = stats['meal_breakdown'][meal_type]
-            if meal_stats['total'] > 0:
-                meal_stats['completion_rate'] = round((meal_stats['completed'] / meal_stats['total']) * 100, 2)
+        # Also log this feeding in a separate log table
+        # First get the meal details
+        meal_response = service_client.table("feed_detail").select("*").eq("fd_id", fd_id).execute()
         
-        return Response({
-            'success': True,
-            'statistics': stats
-        }, status=status.HTTP_200_OK)
+        if meal_response.data:
+            meal = meal_response.data[0]
+            log_data = {
+                "user_id": user_id,
+                "horse_id": horse_id,
+                "fd_meal_type": meal.get("fd_meal_type"),
+                "fd_food_type": meal.get("fd_food_type"),
+                "fd_qty": meal.get("fd_qty"),
+                "fd_time": meal.get("fd_time"),
+                "completed_at": completed_at,
+            }
+            
+            # Check if feed_log table exists, if not, we'll just skip logging
+            try:
+                service_client.table("feed_log").insert(log_data).execute()
+            except Exception as log_error:
+                print(f"Warning: Could not log to feed_log table: {log_error}")
+                # Continue without failing the main operation
+        
+        return Response({"message": "Meal marked as fed successfully"}, status=status.HTTP_200_OK)
         
     except Exception as e:
-        print(f"Error fetching feed statistics: {e}")
-        return Response({
-            'success': False,
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        print(f"Error marking meal as fed: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-@api_view(['POST'])
-def bulk_update_feeds(request):
+@api_view(['GET'])
+def get_feeding_log(request):
     """
-    Bulk update multiple feeds (e.g., mark multiple as completed)
+    Get feeding log for a specific user and horse
+    """
+    user_id = request.GET.get("user_id")
+    horse_id = request.GET.get("horse_id")
+    limit = request.GET.get("limit", 50)
+    offset = request.GET.get("offset", 0)
+    
+    if not user_id or not horse_id:
+        return Response({"error": "user_id and horse_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Try to get feeding log from supabase
+        try:
+            response = service_client.table("feed_log").select(
+                "log_id, user_id, horse_id, fd_meal_type, fd_food_type, fd_qty, fd_time, completed_at"
+            ).eq("user_id", user_id).eq("horse_id", horse_id).order(
+                "completed_at", desc=True  # Use completed_at for ordering since logged_at might not exist
+            ).limit(limit).offset(offset).execute()
+            
+            if not response.data:
+                return Response([], status=status.HTTP_200_OK)
+            
+            return Response(response.data, status=status.HTTP_200_OK)
+            
+        except Exception as e:
+            # If feed_log table doesn't exist, return empty array
+            if "Could not find the table" in str(e):
+                return Response([], status=status.HTTP_200_OK)
+            raise e
+        
+    except Exception as e:
+        print(f"Error fetching feeding log: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def debug_table_structure(request):
+    """
+    Debug endpoint to check the structure of your tables
     """
     try:
-        data = request.data
-        feed_ids = data.get('feed_ids', [])
-        updates = data.get('updates', {})
-        
-        if not feed_ids or not updates:
-            return Response({
-                'success': False,
-                'error': 'feed_ids and updates are required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        current_time = datetime.now(timezone.utc).isoformat()
         
-        # Add timestamp to updates
-        updates['updated_at'] = current_time
+        # Try to get a sample record to see the structure
+        feed_detail_sample = service_client.table("feed_detail").select("*").limit(1).execute()
         
-        # If marking as completed, add completed_at timestamp
-        if updates.get('completed') is True:
-            updates['completed_at'] = current_time
-        
-        updated_feeds = []
-        
-        # Update each feed individually using correct column name
-        for feed_id in feed_ids:
-            result = service_client.table("feed_detail").update(updates).eq('fd_id', feed_id).execute()
-            if result.data:
-                updated_feeds.extend(result.data)
+        # Try to get feed_log structure if it exists
+        try:
+            feed_log_sample = service_client.table("feed_log").select("*").limit(1).execute()
+        except:
+            feed_log_sample = {"data": [], "error": "Table does not exist"}
         
         return Response({
-            'success': True,
-            'message': f'Successfully updated {len(updated_feeds)} feeds',
-            'updated_feeds': updated_feeds
+            "feed_detail_columns": list(feed_detail_sample.data[0].keys()) if feed_detail_sample.data else [],
+            "feed_log_columns": list(feed_log_sample.data[0].keys()) if feed_log_sample.data else [],
+            "feed_detail_sample": feed_detail_sample.data[0] if feed_detail_sample.data else {},
+            "feed_log_exists": bool(feed_log_sample.data)
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
-        print(f"Error bulk updating feeds: {e}")
-        return Response({
-            'success': False,
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 # ------------------------------------------------ PROFILE ------------------------------------------------
 
@@ -1936,17 +1682,507 @@ def get_horses_with_assignment_status(request):
 @api_view(["GET"])
 def get_announcements(request):
     """
-    Fetch announcements from Supabase
+    Fetch announcements from Supabase with comment counts
     """
     try:
-        response = supabase.table("announcement").select("*").order("announce_date", desc=True).execute()
+        # Fetch announcements
+        announcements_response = supabase.table("announcement") \
+            .select("*") \
+            .order("announce_date", desc=True) \
+            .execute()
 
-        if response.data:
-            return Response({"announcements": response.data}, status=status.HTTP_200_OK)
+        print(f"[DEBUG] Raw announcements response: {announcements_response.data}")
+
+        if announcements_response.data:
+            announcements_with_counts = []
+            
+            for announcement in announcements_response.data:
+                # Use announce_id as the primary key (not id)
+                announce_id = announcement.get("announce_id")
+                if not announce_id:
+                    print(f"[WARN] Skipping announcement without announce_id: {announcement}")
+                    continue
+                    
+                # Get comment count for each announcement
+                try:
+                    comment_count_response = supabase.table("comment") \
+                        .select("id", count="exact") \
+                        .eq("announcement_id", announce_id) \
+                        .execute()
+                    
+                    comment_count = comment_count_response.count or 0
+                except Exception as e:
+                    print(f"[WARN] Error getting comment count for announcement {announce_id}: {e}")
+                    comment_count = 0
+                
+                # Ensure all required fields are present - use announce_id as id for frontend
+                announcement_data = {
+                    "id": announce_id,  # Frontend expects 'id', but we use announce_id from DB
+                    "announce_id": announce_id,  # Keep original field for reference
+                    "announce_title": announcement.get("announce_title", "Untitled"),
+                    "announce_content": announcement.get("announce_content", ""),
+                    "announce_date": announcement.get("announce_date", ""),
+                    "announce_status": announcement.get("announce_status", "active"),
+                    "created_at": announcement.get("created_at", ""),
+                    "comment_count": comment_count
+                }
+                
+                print(f"[DEBUG] Processed announcement: ID={announcement_data['id']}, Title={announcement_data['announce_title']}")
+                announcements_with_counts.append(announcement_data)
+            
+            print(f"[DEBUG] Total valid announcements: {len(announcements_with_counts)}")
+            return Response({"announcements": announcements_with_counts}, status=status.HTTP_200_OK)
         else:
+            print("[DEBUG] No announcements found")
             return Response({"announcements": []}, status=status.HTTP_200_OK)
 
     except Exception as e:
+        print(f"[ERROR] Error in get_announcements: {e}")
         traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+def get_announcement_comments(request, announcement_id):
+    """
+    Fetch comments for a specific announcement
+    """
+    try:
+        print(f"[DEBUG] Fetching comments for announcement ID: {announcement_id}")
+        
+        # Validate announcement_id
+        if not announcement_id or announcement_id == "undefined":
+            return Response({"error": "Invalid announcement ID"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if announcement exists (using announce_id)
+        announcement_response = supabase.table("announcement").select("announce_id").eq("announce_id", announcement_id).execute()
+        if not announcement_response.data:
+            return Response({"error": "Announcement not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Fetch comments
+        comments_response = supabase.table("comment") \
+            .select("*") \
+            .eq("announcement_id", announcement_id) \
+            .order("comment_date", desc=True) \
+            .execute()
+
+        print(f"[DEBUG] Found {len(comments_response.data) if comments_response.data else 0} comments")
+
+        if comments_response.data:
+            formatted_comments = []
+            for comment in comments_response.data:
+                formatted_comment = {
+                    "id": comment["id"],
+                    "comment_text": comment["comment_text"],
+                    "comment_date": comment["comment_date"],
+                    "kutsero_id": comment["kutsero_id"],
+                    "announcement_id": comment["announcement_id"],
+                }
+                
+                # Try to fetch user details separately
+                try:
+                    user_response = supabase.table("users") \
+                        .select("id, email, user_metadata") \
+                        .eq("id", comment["kutsero_id"]) \
+                        .execute()
+                    
+                    if user_response.data and len(user_response.data) > 0:
+                        user_data = user_response.data[0]
+                        metadata = user_data.get("user_metadata", {})
+                        formatted_comment.update({
+                            "kutsero_fname": metadata.get("kutsero_fname"),
+                            "kutsero_lname": metadata.get("kutsero_lname"),
+                            "kutsero_username": metadata.get("kutsero_username"),
+                            "user_email": user_data.get("email"),
+                        })
+                except Exception as user_error:
+                    print(f"[WARN] Error fetching user details for comment {comment['id']}: {user_error}")
+                    formatted_comment.update({
+                        "kutsero_fname": "Unknown",
+                        "kutsero_lname": "User",
+                        "kutsero_username": None,
+                    })
+                
+                formatted_comments.append(formatted_comment)
+            
+            return Response({"comments": formatted_comments}, status=status.HTTP_200_OK)
+        else:
+            return Response({"comments": []}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"[ERROR] Error in get_announcement_comments: {e}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+def post_announcement_comment(request, announcement_id):
+    """
+    Post a comment to a specific announcement
+    """
+    try:
+        print(f"[DEBUG] Posting comment to announcement ID: {announcement_id}")
+        
+        # Validate announcement_id
+        if not announcement_id or announcement_id == "undefined":
+            return Response({"error": "Invalid announcement ID"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Get request data
+        comment_text = request.data.get("comment_text", "").strip()
+        kutsero_id = request.data.get("kutsero_id")
+
+        print(f"[DEBUG] Comment data: text='{comment_text[:50]}...', kutsero_id={kutsero_id}")
+
+        # Validation
+        if not comment_text:
+            return Response({"error": "Comment text is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if len(comment_text) > 500:
+            return Response({"error": "Comment is too long (max 500 characters)"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not kutsero_id:
+            return Response({"error": "User ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if announcement exists (using announce_id)
+        announcement_response = supabase.table("announcement").select("announce_id").eq("announce_id", announcement_id).execute()
+        if not announcement_response.data:
+            return Response({"error": "Announcement not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        # Insert comment
+        comment_data = {
+            "comment_text": comment_text,
+            "kutsero_id": kutsero_id,
+            "announcement_id": announcement_id,
+            "comment_date": datetime.now().isoformat()
+        }
+
+        print(f"[DEBUG] Inserting comment data: {comment_data}")
+
+        response = supabase.table("comment").insert(comment_data).execute()
+
+        if response.data:
+            comment = response.data[0]
+            formatted_comment = {
+                "id": comment["id"],
+                "comment_text": comment["comment_text"],
+                "comment_date": comment["comment_date"],
+                "kutsero_id": comment["kutsero_id"],
+                "announcement_id": comment["announcement_id"],
+                "kutsero_fname": "Current",
+                "kutsero_lname": "User",
+            }
+
+            print(f"[DEBUG] Comment posted successfully: {comment['id']}")
+
+            return Response({
+                "message": "Comment posted successfully",
+                "comment": formatted_comment
+            }, status=status.HTTP_201_CREATED)
+
+        return Response({"error": "Failed to post comment"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    except Exception as e:
+        print(f"[ERROR] Error in post_announcement_comment: {e}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Replace your announcement_comments_handler function with this:
+
+@api_view(["GET", "POST"])
+def announcement_comments_handler(request, announcement_id):
+    """
+    Handle both GET and POST requests for announcement comments
+    """
+    try:
+        print(f"[DEBUG] {request.method} request for announcement ID: {announcement_id}")
+        
+        # Validate announcement_id
+        if not announcement_id or announcement_id == "undefined":
+            return Response({"error": "Invalid announcement ID"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if request.method == "GET":
+            # GET: Fetch comments for announcement
+            # Check if announcement exists (using announce_id)
+            announcement_response = supabase.table("announcement").select("announce_id").eq("announce_id", announcement_id).execute()
+            if not announcement_response.data:
+                return Response({"error": "Announcement not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            # Fetch comments
+            comments_response = supabase.table("comment") \
+                .select("*") \
+                .eq("announcement_id", announcement_id) \
+                .order("comment_date", desc=True) \
+                .execute()
+
+            print(f"[DEBUG] Found {len(comments_response.data) if comments_response.data else 0} comments")
+
+            if comments_response.data:
+                formatted_comments = []
+                for comment in comments_response.data:
+                    formatted_comment = {
+                        "id": comment["id"],
+                        "comment_text": comment["comment_text"],
+                        "comment_date": comment["comment_date"],
+                        "kutsero_id": comment["kutsero_id"],
+                        "announcement_id": comment["announcement_id"],
+                    }
+                    
+                    # Try to fetch user details separately
+                    try:
+                        user_response = supabase.table("users") \
+                            .select("id, email, user_metadata") \
+                            .eq("id", comment["kutsero_id"]) \
+                            .execute()
+                        
+                        if user_response.data and len(user_response.data) > 0:
+                            user_data = user_response.data[0]
+                            metadata = user_data.get("user_metadata", {})
+                            formatted_comment.update({
+                                "kutsero_fname": metadata.get("kutsero_fname"),
+                                "kutsero_lname": metadata.get("kutsero_lname"),
+                                "kutsero_username": metadata.get("kutsero_username"),
+                                "user_email": user_data.get("email"),
+                            })
+                    except Exception as user_error:
+                        print(f"[WARN] Error fetching user details for comment {comment['id']}: {user_error}")
+                        formatted_comment.update({
+                            "kutsero_fname": "Unknown",
+                            "kutsero_lname": "User",
+                            "kutsero_username": None,
+                        })
+                    
+                    formatted_comments.append(formatted_comment)
+                
+                return Response({"comments": formatted_comments}, status=status.HTTP_200_OK)
+            else:
+                return Response({"comments": []}, status=status.HTTP_200_OK)
+
+        elif request.method == "POST":
+            # POST: Create new comment
+            # Get request data
+            comment_text = request.data.get("comment_text", "").strip()
+            kutsero_id = request.data.get("kutsero_id")
+
+            print(f"[DEBUG] Comment data: text='{comment_text[:50] if comment_text else ''}...', kutsero_id={kutsero_id}")
+
+            # Validation
+            if not comment_text:
+                return Response({"error": "Comment text is required"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if len(comment_text) > 500:
+                return Response({"error": "Comment is too long (max 500 characters)"}, status=status.HTTP_400_BAD_REQUEST)
+
+            if not kutsero_id:
+                return Response({"error": "User ID is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Check if announcement exists (using announce_id)
+            announcement_response = supabase.table("announcement").select("announce_id").eq("announce_id", announcement_id).execute()
+            if not announcement_response.data:
+                return Response({"error": "Announcement not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            # Insert comment
+            comment_data = {
+                "comment_text": comment_text,
+                "kutsero_id": kutsero_id,
+                "announcement_id": announcement_id,
+                "comment_date": datetime.now().isoformat()
+            }
+
+            print(f"[DEBUG] Inserting comment data: {comment_data}")
+
+            response = supabase.table("comment").insert(comment_data).execute()
+
+            if response.data:
+                comment = response.data[0]
+                formatted_comment = {
+                    "id": comment["id"],
+                    "comment_text": comment["comment_text"],
+                    "comment_date": comment["comment_date"],
+                    "kutsero_id": comment["kutsero_id"],
+                    "announcement_id": comment["announcement_id"],
+                    "kutsero_fname": "Current",
+                    "kutsero_lname": "User",
+                }
+
+                print(f"[DEBUG] Comment posted successfully: {comment['id']}")
+
+                return Response({
+                    "message": "Comment posted successfully",
+                    "comment": formatted_comment
+                }, status=status.HTTP_201_CREATED)
+
+            return Response({"error": "Failed to post comment"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    except Exception as e:
+        print(f"[ERROR] Error in announcement_comments_handler: {e}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)    
+
+# ------------------------------------------------ CALENDAR ------------------------------------------------
+
+@api_view(['GET'])
+def get_calendar_events(request):
+    """
+    Retrieves all events from the calendar_events table.
+    """
+    events = []
+    try:
+        with connection.cursor() as cursor:
+            # Query the database directly
+            cursor.execute("SELECT id, title_event, date, time FROM calendar_events ORDER BY date, time")
+            rows = cursor.fetchall()
+            
+            # Manually map rows to a list of dictionaries
+            for row in rows:
+                events.append({
+                    'id': row[0],
+                    'title_event': row[1],
+                    'date': str(row[2]), # Convert date object to string
+                    'time': str(row[3]), # Convert time object to string
+                })
+        
+        return JsonResponse({'success': True, 'events': events})
+
+    except Exception as e:
+        print(f"Error fetching events: {e}")
+        return JsonResponse({'success': False, 'message': 'Failed to retrieve events'}, status=500)
+
+
+@api_view(['POST'])
+def create_calendar_event(request):
+    """
+    Creates a new calendar event in Supabase.
+    """
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        # CHANGE THIS LINE
+        title = request.data.get('title_event')  # <-- Corrected key name
+        date = request.data.get('date')
+        time = request.data.get('time')
+
+        if not all([title, date, time]):
+            return Response({"error": "Missing event data."}, status=status.HTTP_400_BAD_REQUEST)
+
+        event_data = {
+            'title_event': title,
+            'date': date,
+            'time': time
+        }
+
+        response = service_client.table("calendar_events").insert(event_data).execute()
+
+        return Response({"message": "Event created successfully", "data": response.data}, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        print(f"Error creating event: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['DELETE'])
+def delete_calendar_event(request, pk):
+    """
+    Deletes a specific calendar event using the Supabase client.
+    """
+    try:
+        # Create a Supabase client
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Perform the delete operation on the 'calendar_event' table
+        # We assume the primary key is named 'id' in your Supabase table.
+        # The .eq() method filters for the row where the 'id' column matches the provided pk.
+        delete_response = service_client.table("calendar_events").delete().eq("id", pk).execute()
+        
+        # Supabase returns a list of deleted rows. If the list is empty,
+        # no row was found and nothing was deleted.
+        if not delete_response.data:
+            return Response({'error': 'Event not found or already deleted'}, status=status.HTTP_404_NOT_FOUND)
+            
+        return Response({'success': 'Event deleted successfully'}, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        print(f"Error deleting calendar event: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# ------------------------------------------------ SOS ------------------------------------------------
+
+@api_view(['POST'])
+def create_sos_request(request):
+    """
+    Create a new SOS request
+    """
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        user_id = request.data.get("user_id")
+        contact_number = request.data.get("contact_number")
+        additional_info = request.data.get("additional_info")
+        emergency_type = request.data.get("emergency_type")
+        horse_status = request.data.get("horse_status")  # array from frontend
+        description = request.data.get("description")
+        location_text = request.data.get("location_text")
+        latitude = request.data.get("latitude")
+        longitude = request.data.get("longitude")
+
+        if not user_id:
+            return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        response = service_client.table("sos_requests").insert({
+            "contact_number": contact_number,
+            "additional_info": additional_info,
+            "emergency_type": emergency_type,
+            "horse_status": horse_status,  # store as array (Supabase supports JSON/array fields)
+            "description": description,
+            "location_text": location_text,
+            "latitude": latitude,
+            "longitude": longitude,
+            "status": "pending",
+            "created_at": datetime.utcnow().isoformat()
+        }).execute()
+
+        return Response({"message": "SOS request created", "data": response.data}, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        print(f"Error creating SOS request: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def list_sos_requests(request):
+    """
+    Get all SOS requests (latest first)
+    """
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        response = service_client.table("sos_requests").select("*").order("created_at", desc=True).execute()
+
+        return Response({"sos_requests": response.data}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"Error fetching SOS requests: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+@api_view(['GET'])
+def debug_urls(request):
+    """
+    Debug endpoint to see all registered URLs
+    """
+    url_patterns = []
+    resolver = get_resolver()
+    
+    # Function to recursively extract URLs
+    def extract_urls(patterns, prefix=''):
+        for pattern in patterns:
+            if hasattr(pattern, 'url_patterns'):
+                # This is an include
+                extract_urls(pattern.url_patterns, prefix + str(pattern.pattern))
+            else:
+                url_patterns.append({
+                    'pattern': prefix + str(pattern.pattern),
+                    'name': getattr(pattern, 'name', 'N/A'),
+                    'callback': pattern.callback.__name__ if hasattr(pattern, 'callback') else 'N/A'
+                })
+    
+    extract_urls(resolver.url_patterns)
+    return Response({'url_patterns': url_patterns})
 

@@ -2,7 +2,19 @@
 
 import { useRouter } from "expo-router"
 import { useState, useEffect, useCallback } from "react"
-import { Dimensions, Image, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, Alert, Modal } from "react-native"
+import {
+  Dimensions,
+  Image,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  ActivityIndicator,
+  Alert,
+  Modal,
+} from "react-native"
 import * as SecureStore from "expo-secure-store"
 import { useFocusEffect } from "expo-router"
 
@@ -92,7 +104,7 @@ export default function HistoryScreen() {
   const [activeCount, setActiveCount] = useState(0)
   const [completedCount, setCompletedCount] = useState(0)
   const [userData, setUserData] = useState<UserData | null>(null)
-  
+
   // Modal states for detailed view
   const [selectedEntry, setSelectedEntry] = useState<HistoryEntry | null>(null)
   const [modalVisible, setModalVisible] = useState(false)
@@ -100,43 +112,43 @@ export default function HistoryScreen() {
   const safeArea = getSafeAreaPadding()
 
   // Replace with your actual API base URL
-  const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
+  const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
 
   // Load user data from SecureStore (matching dashboard approach)
   const loadUserData = async (): Promise<UserData | null> => {
     try {
-      const storedUserData = await SecureStore.getItemAsync('user_data')
-      const storedAccessToken = await SecureStore.getItemAsync('access_token')
-      
-      console.log('Loading user data for history...')
-      console.log('Has stored user data:', !!storedUserData)
-      console.log('Has stored access token:', !!storedAccessToken)
-      
+      const storedUserData = await SecureStore.getItemAsync("user_data")
+      const storedAccessToken = await SecureStore.getItemAsync("access_token")
+
+      console.log("Loading user data for history...")
+      console.log("Has stored user data:", !!storedUserData)
+      console.log("Has stored access token:", !!storedAccessToken)
+
       if (storedUserData && storedAccessToken) {
         const parsedUserData = JSON.parse(storedUserData)
-        
+
         // Create a unified user data structure
         const unifiedUserData: UserData = {
           id: parsedUserData.id,
           email: parsedUserData.email,
           profile: parsedUserData.profile,
           access_token: storedAccessToken,
-          user_status: parsedUserData.user_status || 'pending'
+          user_status: parsedUserData.user_status || "pending",
         }
 
-        console.log('Successfully loaded user data for history:', {
+        console.log("Successfully loaded user data for history:", {
           userId: parsedUserData.id,
           hasProfile: !!parsedUserData.profile,
-          kutserroId: parsedUserData.profile?.kutsero_id
+          kutserroId: parsedUserData.profile?.kutsero_id,
         })
-        
+
         return unifiedUserData
       } else {
-        console.log('No stored authentication data found in history')
+        console.log("No stored authentication data found in history")
         return null
       }
     } catch (error) {
-      console.error('Error loading user data for history:', error)
+      console.error("Error loading user data for history:", error)
       return null
     }
   }
@@ -145,7 +157,7 @@ export default function HistoryScreen() {
   useFocusEffect(
     useCallback(() => {
       initializeScreen()
-    }, [])
+    }, []),
   )
 
   useEffect(() => {
@@ -156,33 +168,29 @@ export default function HistoryScreen() {
     try {
       setLoading(true)
       setError(null)
-      
+
       const userData = await loadUserData()
-      
+
       if (userData) {
         setUserData(userData)
-        
+
         // Get kutsero_id from profile or fallback to user id
         const kutserroId = userData.profile?.kutsero_id || userData.id
-        console.log('Using kutsero_id for history:', kutserroId)
-        
+        console.log("Using kutsero_id for history:", kutserroId)
+
         await fetchAssignmentHistory(kutserroId, userData.access_token)
       } else {
-        setError('Unable to get user authentication. Please log in again.')
-        Alert.alert(
-          'Session Expired', 
-          'Please log in again to view your history.',
-          [
-            {
-              text: 'Go to Login',
-              onPress: () => router.replace('../../pages/auth/login')
-            }
-          ]
-        )
+        setError("Unable to get user authentication. Please log in again.")
+        Alert.alert("Session Expired", "Please log in again to view your history.", [
+          {
+            text: "Go to Login",
+            onPress: () => router.replace("../../pages/auth/login"),
+          },
+        ])
       }
     } catch (error) {
-      console.error('Error initializing history screen:', error)
-      setError('Failed to initialize. Please try again.')
+      console.error("Error initializing history screen:", error)
+      setError("Failed to initialize. Please try again.")
     } finally {
       setLoading(false)
     }
@@ -195,35 +203,31 @@ export default function HistoryScreen() {
 
       // Fetch the assignment history for all horses the kutsero has ever worked with
       const historyUrl = `${API_BASE_URL}/assignment_history/?kutsero_id=${kutsero_id}`
-      console.log('Fetching assignment history from URL:', historyUrl)
+      console.log("Fetching assignment history from URL:", historyUrl)
 
       const historyResponse = await fetch(historyUrl, {
-        method: 'GET',
+        method: "GET",
         headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Bearer ${accessToken}`,
         },
       })
-      
-      console.log('History response status:', historyResponse.status)
-      
+
+      console.log("History response status:", historyResponse.status)
+
       if (!historyResponse.ok) {
         const errorText = await historyResponse.text()
-        console.log('History error response:', errorText)
-        
+        console.log("History error response:", errorText)
+
         // Handle specific error cases
         if (historyResponse.status === 401) {
-          Alert.alert(
-            'Session Expired', 
-            'Please log in again.',
-            [
-              {
-                text: 'Go to Login',
-                onPress: () => router.replace('../../pages/auth/login')
-              }
-            ]
-          )
+          Alert.alert("Session Expired", "Please log in again.", [
+            {
+              text: "Go to Login",
+              onPress: () => router.replace("../../pages/auth/login"),
+            },
+          ])
           return
         } else if (historyResponse.status === 404) {
           // No history available
@@ -233,64 +237,64 @@ export default function HistoryScreen() {
           setCompletedCount(0)
           return
         }
-        
+
         throw new Error(`HTTP error! status: ${historyResponse.status}, message: ${errorText}`)
       }
 
       const historyData = await historyResponse.json()
-      console.log('Received assignment history data:', historyData)
-      
+      console.log("Received assignment history data:", historyData)
+
       if (historyData.assignments && Array.isArray(historyData.assignments)) {
         // Show ALL history for all horses the kutsero has ever worked with
         const allHistory = historyData.assignments
-        
+
         console.log(`Showing ALL history: ${allHistory.length} total entries for all horses ever worked with`)
-        
+
         if (allHistory.length > 0) {
-          console.log('Sample entry:', allHistory[0])
+          console.log("Sample entry:", allHistory[0])
         }
-        
+
         // Calculate stats based on all history
         const allActiveCount = allHistory.filter((entry: HistoryEntry) => entry.isActive).length
         const allCompletedCount = allHistory.filter((entry: HistoryEntry) => !entry.isActive).length
-        
+
         setHistoryEntries(allHistory)
         setTotalCount(allHistory.length)
         setActiveCount(allActiveCount)
         setCompletedCount(allCompletedCount)
-        
+
         console.log(`Final stats: Total=${allHistory.length}, Active=${allActiveCount}, Completed=${allCompletedCount}`)
       } else {
-        console.log('No assignments found in history response')
+        console.log("No assignments found in history response")
         setHistoryEntries([])
         setTotalCount(0)
         setActiveCount(0)
         setCompletedCount(0)
       }
     } catch (err) {
-      console.error('Error fetching assignment history:', err)
+      console.error("Error fetching assignment history:", err)
       const error = err as Error
-      console.error('Error details:', {
+      console.error("Error details:", {
         name: error.name,
         message: error.message,
         stack: error.stack,
       })
-      setError(error.message || 'Failed to load history')
-      
+      setError(error.message || "Failed to load history")
+
       // Show user-friendly error message
       Alert.alert(
-        'Network Error', 
+        "Network Error",
         `Failed to load assignment history.\n\nError: ${error.message}\n\nCheck your network connection and try again.`,
         [
           {
-            text: 'Retry',
-            onPress: () => handleRefresh()
+            text: "Retry",
+            onPress: () => handleRefresh(),
           },
           {
-            text: 'Cancel',
-            style: 'cancel'
-          }
-        ]
+            text: "Cancel",
+            style: "cancel",
+          },
+        ],
       )
     } finally {
       setLoading(false)
@@ -322,12 +326,12 @@ export default function HistoryScreen() {
 
     switch (activeFilter) {
       case "This Week":
-        return historyEntries.filter(entry => {
+        return historyEntries.filter((entry) => {
           const entryDate = new Date(entry.checkedInAt)
           return entryDate >= startOfWeek
         })
       case "This Month":
-        return historyEntries.filter(entry => {
+        return historyEntries.filter((entry) => {
           const entryDate = new Date(entry.checkedInAt)
           return entryDate >= startOfMonth
         })
@@ -337,115 +341,115 @@ export default function HistoryScreen() {
     }
   }
 
-  const formatDate = (dateString: string, label: string = '') => {
+  const formatDate = (dateString: string, label = "") => {
     try {
-      console.log('Formatting date:', dateString)
-      
+      console.log("Formatting date:", dateString)
+
       // Parse the date string directly
       const date = new Date(dateString)
-      console.log('Date - parsed date object:', date)
-      console.log('Date - is valid date:', !isNaN(date.getTime()))
-      
+      console.log("Date - parsed date object:", date)
+      console.log("Date - is valid date:", !isNaN(date.getTime()))
+
       if (isNaN(date.getTime())) {
-        throw new Error('Invalid date')
+        throw new Error("Invalid date")
       }
-      
+
       // Get current date in local timezone (already in Philippine timezone since you're in PH)
       const now = new Date()
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
       const yesterday = new Date(today)
       yesterday.setDate(yesterday.getDate() - 1)
-      
+
       // Get the entry date (convert to local date only, ignoring time)
       const entryDateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-      
-      console.log('Entry date only:', entryDateOnly.toDateString())
-      console.log('Today:', today.toDateString())
-      console.log('Yesterday:', yesterday.toDateString())
+
+      console.log("Entry date only:", entryDateOnly.toDateString())
+      console.log("Today:", today.toDateString())
+      console.log("Yesterday:", yesterday.toDateString())
 
       // Check if it's today
       if (entryDateOnly.getTime() === today.getTime()) {
-        return `Today • ${date.toLocaleDateString('en-PH', { 
-          month: 'short', 
-          day: 'numeric', 
-          year: 'numeric',
-          timeZone: 'Asia/Manila'
+        return `Today • ${date.toLocaleDateString("en-PH", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "Asia/Manila",
         })}`
       }
-      
+
       // Check if it's yesterday
       if (entryDateOnly.getTime() === yesterday.getTime()) {
-        return `Yesterday • ${date.toLocaleDateString('en-PH', { 
-          month: 'short', 
-          day: 'numeric', 
-          year: 'numeric',
-          timeZone: 'Asia/Manila'
+        return `Yesterday • ${date.toLocaleDateString("en-PH", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+          timeZone: "Asia/Manila",
         })}`
       }
-      
+
       // For other dates
-      return date.toLocaleDateString('en-PH', { 
-        weekday: 'long', 
-        month: 'short', 
-        day: 'numeric', 
-        year: 'numeric',
-        timeZone: 'Asia/Manila'
+      return date.toLocaleDateString("en-PH", {
+        weekday: "long",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "Asia/Manila",
       })
     } catch (error) {
-      console.error('Error formatting date:', error)
+      console.error("Error formatting date:", error)
       return dateString
     }
   }
 
   const formatTime = (dateString: string) => {
     try {
-      console.log('Formatting time for:', dateString)
-      
+      console.log("Formatting time for:", dateString)
+
       // Parse the date string directly
       const date = new Date(dateString)
-      console.log('Parsed date object:', date)
-      console.log('Is valid date:', !isNaN(date.getTime()))
-      console.log('Date in UTC:', date.toUTCString())
-      console.log('Date in local timezone:', date.toString())
-      
+      console.log("Parsed date object:", date)
+      console.log("Is valid date:", !isNaN(date.getTime()))
+      console.log("Date in UTC:", date.toUTCString())
+      console.log("Date in local timezone:", date.toString())
+
       if (isNaN(date.getTime())) {
-        throw new Error('Invalid date')
+        throw new Error("Invalid date")
       }
-      
+
       // Convert to Philippine timezone (+8 hours from UTC)
       // Create a new date object adjusted for Philippine timezone
-      const philippineTime = new Date(date.getTime() + (8 * 60 * 60 * 1000)) // Add 8 hours in milliseconds
-      console.log('Philippine time calculated:', philippineTime.toString())
-      
+      const philippineTime = new Date(date.getTime() + 8 * 60 * 60 * 1000) // Add 8 hours in milliseconds
+      console.log("Philippine time calculated:", philippineTime.toString())
+
       // Format time in 12-hour format
       const hours = philippineTime.getUTCHours() // Use UTC methods since we already adjusted
       const minutes = philippineTime.getUTCMinutes()
-      const ampm = hours >= 12 ? 'PM' : 'AM'
-      const displayHours = hours > 12 ? hours - 12 : (hours === 0 ? 12 : hours)
-      const formattedTime = `${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`
-      
-      console.log('Formatted time result:', formattedTime)
+      const ampm = hours >= 12 ? "PM" : "AM"
+      const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours
+      const formattedTime = `${displayHours}:${minutes.toString().padStart(2, "0")} ${ampm}`
+
+      console.log("Formatted time result:", formattedTime)
       return formattedTime
     } catch (error) {
-      console.error('Error formatting time:', error)
+      console.error("Error formatting time:", error)
       // Fallback: try to extract time from string manually
       try {
         const timeMatch = dateString.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/)
         if (timeMatch) {
-          let hours = parseInt(timeMatch[1])
+          let hours = Number.parseInt(timeMatch[1])
           const minutes = timeMatch[2]
-          
+
           // Add 8 hours for Philippine timezone if it looks like UTC
-          if (dateString.includes('T') || dateString.includes('Z')) {
+          if (dateString.includes("T") || dateString.includes("Z")) {
             hours = (hours + 8) % 24
           }
-          
-          const ampm = hours >= 12 ? 'PM' : 'AM'
-          const displayHours = hours > 12 ? hours - 12 : (hours === 0 ? 12 : hours)
+
+          const ampm = hours >= 12 ? "PM" : "AM"
+          const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours
           return `${displayHours}:${minutes} ${ampm}`
         }
       } catch (fallbackError) {
-        console.error('Fallback formatting failed:', fallbackError)
+        console.error("Fallback formatting failed:", fallbackError)
       }
       return dateString
     }
@@ -453,42 +457,55 @@ export default function HistoryScreen() {
 
   const formatFullDateTime = (dateString: string) => {
     try {
-      console.log('Formatting full datetime for:', dateString)
-      
+      console.log("Formatting full datetime for:", dateString)
+
       // Parse the date string directly
       const date = new Date(dateString)
-      console.log('Full datetime - parsed date object:', date)
-      console.log('Full datetime - is valid date:', !isNaN(date.getTime()))
-      console.log('Full datetime - date in UTC:', date.toUTCString())
-      
+      console.log("Full datetime - parsed date object:", date)
+      console.log("Full datetime - is valid date:", !isNaN(date.getTime()))
+      console.log("Full datetime - date in UTC:", date.toUTCString())
+
       if (isNaN(date.getTime())) {
-        throw new Error('Invalid date')
+        throw new Error("Invalid date")
       }
-      
+
       // Convert to Philippine timezone (+8 hours from UTC)
-      const philippineTime = new Date(date.getTime() + (8 * 60 * 60 * 1000))
-      console.log('Full datetime - Philippine time calculated:', philippineTime.toString())
-      
+      const philippineTime = new Date(date.getTime() + 8 * 60 * 60 * 1000)
+      console.log("Full datetime - Philippine time calculated:", philippineTime.toString())
+
       // Format full datetime manually to ensure correct timezone
-      const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-      const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
-      
+      const weekdays = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+      const months = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+      ]
+
       const weekday = weekdays[philippineTime.getUTCDay()]
       const month = months[philippineTime.getUTCMonth()]
       const day = philippineTime.getUTCDate()
       const year = philippineTime.getUTCFullYear()
       const hours = philippineTime.getUTCHours()
       const minutes = philippineTime.getUTCMinutes()
-      
-      const ampm = hours >= 12 ? 'PM' : 'AM'
-      const displayHours = hours > 12 ? hours - 12 : (hours === 0 ? 12 : hours)
-      
-      const formattedDateTime = `${weekday}, ${month} ${day}, ${year} at ${displayHours}:${minutes.toString().padStart(2, '0')} ${ampm}`
-      
-      console.log('Formatted full datetime result:', formattedDateTime)
+
+      const ampm = hours >= 12 ? "PM" : "AM"
+      const displayHours = hours > 12 ? hours - 12 : hours === 0 ? 12 : hours
+
+      const formattedDateTime = `${weekday}, ${month} ${day}, ${year} at ${displayHours}:${minutes.toString().padStart(2, "0")} ${ampm}`
+
+      console.log("Formatted full datetime result:", formattedDateTime)
       return formattedDateTime
     } catch (error) {
-      console.error('Error formatting full date time:', error)
+      console.error("Error formatting full date time:", error)
       return dateString
     }
   }
@@ -503,13 +520,13 @@ export default function HistoryScreen() {
 
   const formatWorkDuration = (duration: string | null) => {
     if (!duration || duration === "Unable to calculate") return "N/A"
-    
+
     try {
       // Parse duration string like "6:30:00" or "6h 30m"
       const parts = duration.split(":")
       if (parts.length >= 2) {
-        const hours = parseInt(parts[0])
-        const minutes = parseInt(parts[1])
+        const hours = Number.parseInt(parts[0])
+        const minutes = Number.parseInt(parts[1])
         return `${hours}h ${minutes}m`
       }
       return duration
@@ -537,9 +554,9 @@ export default function HistoryScreen() {
       try {
         const parts = entry.workDuration.split(":")
         if (parts.length >= 2) {
-          const hours = parseInt(parts[0])
-          const minutes = parseInt(parts[1])
-          return total + hours + (minutes / 60)
+          const hours = Number.parseInt(parts[0])
+          const minutes = Number.parseInt(parts[1])
+          return total + hours + minutes / 60
         }
       } catch (error) {
         // Skip if can't parse
@@ -549,7 +566,7 @@ export default function HistoryScreen() {
   }, 0)
 
   // Count unique horses worked with from all history (not just filtered)
-  const uniqueHorses = new Set(historyEntries.map(entry => entry.horse.id)).size
+  const uniqueHorses = new Set(historyEntries.map((entry) => entry.horse.id)).size
 
   // Dashboard/Home Icon Component
   const DashboardIcon = ({ color }: { color: string }) => (
@@ -636,12 +653,7 @@ export default function HistoryScreen() {
     if (!selectedEntry) return null
 
     return (
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={closeModal}
-      >
+      <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={closeModal}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             {/* Modal Header */}
@@ -695,7 +707,7 @@ export default function HistoryScreen() {
               {/* Time Information */}
               <View style={styles.modalSection}>
                 <Text style={styles.modalSectionTitle}>Time Information</Text>
-                
+
                 <View style={styles.modalTimeItem}>
                   <Text style={styles.modalTimeLabel}>Check-in Time:</Text>
                   <Text style={styles.modalTimeValue}>{formatFullDateTime(selectedEntry.checkedInAt)}</Text>
@@ -719,22 +731,9 @@ export default function HistoryScreen() {
 
                 {selectedEntry.isActive && (
                   <View style={styles.modalTimeItem}>
-                    <Text style={[styles.modalTimeLabel, { color: "#FF9800" }]}>
-                      Work session is currently active
-                    </Text>
+                    <Text style={[styles.modalTimeLabel, { color: "#FF9800" }]}>Work session is currently active</Text>
                   </View>
                 )}
-              </View>
-
-              {/* Assignment ID */}
-              <View style={styles.modalSection}>
-                <Text style={styles.modalSectionTitle}>Assignment Details</Text>
-                <View style={styles.modalTimeItem}>
-                  <Text style={styles.modalTimeLabel}>Assignment ID:</Text>
-                  <Text style={[styles.modalTimeValue, styles.modalAssignmentId]}>
-                    {selectedEntry.assignmentId}
-                  </Text>
-                </View>
               </View>
             </ScrollView>
 
@@ -754,7 +753,7 @@ export default function HistoryScreen() {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-        
+
         {/* Header */}
         <View style={[styles.header, { paddingTop: safeArea.top }]}>
           <View style={styles.headerCenter}>
@@ -771,7 +770,12 @@ export default function HistoryScreen() {
         {/* Bottom Tab Navigation */}
         <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
           <TabButton iconSource={null} label="Home" tabKey="home" isActive={false} />
-          <TabButton iconSource={require("../../assets/images/horse.png")} label="Horse" tabKey="horse" isActive={false} />
+          <TabButton
+            iconSource={require("../../assets/images/horse.png")}
+            label="Horse"
+            tabKey="horse"
+            isActive={false}
+          />
           <TabButton iconSource={require("../../assets/images/chat.png")} label="Chat" tabKey="chat" isActive={false} />
           <TabButton
             iconSource={require("../../assets/images/calendar.png")}
@@ -846,8 +850,8 @@ export default function HistoryScreen() {
 
                 {/* Entries for this date */}
                 {entries.map((entry) => (
-                  <TouchableOpacity 
-                    key={entry.assignmentId} 
+                  <TouchableOpacity
+                    key={entry.assignmentId}
                     style={styles.historyEntry}
                     onPress={() => handleEntryClick(entry)}
                     activeOpacity={0.7}
@@ -903,8 +907,8 @@ export default function HistoryScreen() {
               <View style={styles.emptyState}>
                 <Text style={styles.emptyStateText}>No activity history found</Text>
                 <Text style={styles.emptyStateSubtext}>
-                  {activeFilter === "All Time" 
-                    ? "Your horse assignments activity will appear here" 
+                  {activeFilter === "All Time"
+                    ? "Your horse assignments activity will appear here"
                     : `No activity found for ${activeFilter.toLowerCase()}`}
                 </Text>
                 <TouchableOpacity style={styles.retryButton} onPress={handleRefresh}>
@@ -933,7 +937,12 @@ export default function HistoryScreen() {
       {/* Bottom Tab Navigation */}
       <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
         <TabButton iconSource={null} label="Home" tabKey="home" isActive={false} />
-        <TabButton iconSource={require("../../assets/images/horse.png")} label="Horse" tabKey="horse" isActive={false} />
+        <TabButton
+          iconSource={require("../../assets/images/horse.png")}
+          label="Horse"
+          tabKey="horse"
+          isActive={false}
+        />
         <TabButton iconSource={require("../../assets/images/chat.png")} label="Chat" tabKey="chat" isActive={false} />
         <TabButton
           iconSource={require("../../assets/images/calendar.png")}
@@ -1333,13 +1342,6 @@ const styles = StyleSheet.create({
   modalDurationText: {
     color: "#2196F3",
     fontWeight: "600",
-  },
-  modalAssignmentId: {
-    fontFamily: "monospace",
-    fontSize: moderateScale(14),
-    backgroundColor: "#F8F8F8",
-    padding: scale(8),
-    borderRadius: scale(4),
   },
   modalFooter: {
     padding: scale(20),

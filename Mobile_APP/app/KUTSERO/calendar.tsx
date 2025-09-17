@@ -1,30 +1,44 @@
 "use client"
 
 import { useRouter } from "expo-router"
-import { useState } from "react"
-import { Dimensions, Image, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { useState, useEffect } from "react"
+import {
+  Dimensions,
+  Image,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  Modal,
+  TextInput,
+  Alert,
+  ActivityIndicator
+} from "react-native"
+import * as SecureStore from "expo-secure-store"
 
 const { width, height } = Dimensions.get("window")
 
-// Enhanced responsive scaling functions
-const scale = (size: number) => {
+// Enhanced responsive scaling functions with explicit types
+const scale = (size: number): number => {
   const scaleFactor = width / 375
   const scaledSize = size * scaleFactor
   return Math.max(Math.min(scaledSize, size * 1.2), size * 0.8)
 }
 
-const verticalScale = (size: number) => {
+const verticalScale = (size: number): number => {
   const scaleFactor = height / 812
   const scaledSize = size * scaleFactor
   return Math.max(Math.min(scaledSize, size * 1.15), size * 0.85)
 }
 
-const moderateScale = (size: number, factor = 0.5) => {
+const moderateScale = (size: number, factor = 0.5): number => {
   const scaledSize = size + (scale(size) - size) * factor
   return Math.max(Math.min(scaledSize, size * 1.1), size * 0.9)
 }
 
-const dynamicSpacing = (baseSize: number) => {
+const dynamicSpacing = (baseSize: number): number => {
   if (width < 350) return verticalScale(baseSize * 0.7)
   if (width < 400) return verticalScale(baseSize * 0.85)
   if (width > 450) return verticalScale(baseSize * 1.05)
@@ -39,46 +53,267 @@ const getSafeAreaPadding = () => {
   }
 }
 
+// Interface for Event object
+interface Event {
+  id: string
+  title_event: string
+  date: string
+  time: string
+}
+
+// API Base URL - UPDATE THIS TO YOUR IP ADDRESS
+const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
+
 export default function CalendarScreen() {
   const router = useRouter()
-  const [currentMonth, setCurrentMonth] = useState(new Date(2025, 4)) // May 2025
+  const [currentMonth, setCurrentMonth] = useState(new Date())
+  const [showAddEventModal, setShowAddEventModal] = useState(false)
+  const [events, setEvents] = useState<Event[]>([])
+  const [loading, setLoading] = useState(false)
+  const [eventTitle, setEventTitle] = useState("")
+  const [selectedDate, setSelectedDate] = useState("")
+  const [eventTime, setEventTime] = useState("")
 
   const safeArea = getSafeAreaPadding()
 
-  const events = [
-    {
-      id: "1",
-      title: "City Health Inspection",
-      date: "2025-05-17",
-      time: "10:00 AM",
-      description: "The DVMP will conduct spot checks on horse health and living conditions.",
-      type: "inspection",
-    },
-    {
-      id: "2",
-      title: "Oscar Vaccination",
-      date: "2025-05-08",
-      time: "2:00 PM",
-      description: "Annual vaccination schedule for Oscar",
-      type: "vaccination",
-    },
-  ]
+  const today = new Date()
+  const currentDateString = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
 
-  const getDaysInMonth = (date: Date) => {
+  useEffect(() => {
+    initializeCalendar()
+  }, [])
+
+  const initializeCalendar = async () => {
+    await fetchEvents()
+  }
+
+  const getDaysInMonth = (date: Date): number => {
     return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate()
   }
 
-  const getFirstDayOfMonth = (date: Date) => {
+  const getFirstDayOfMonth = (date: Date): number => {
     return new Date(date.getFullYear(), date.getMonth(), 1).getDay()
   }
 
-  const getMonthName = (date: Date) => {
+  const getMonthName = (date: Date): string => {
     return date.toLocaleDateString("en-US", { month: "long", year: "numeric" })
   }
 
-  const hasEvent = (day: number) => {
+  const hasEvent = (day: number): boolean => {
     const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
     return events.some((event) => event.date === dateStr)
+  }
+
+  const isToday = (day: number): boolean => {
+    const dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+    return dateStr === currentDateString
+  }
+
+  const openAddEventModal = (day?: number) => {
+    let dateStr = ""
+    if (day) {
+      dateStr = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+      setSelectedDate(dateStr)
+    } else {
+      setSelectedDate(currentDateString)
+    }
+    setEventTitle("")
+    setEventTime("")
+    setShowAddEventModal(true)
+  }
+
+  const saveEventsToSecureStorage = async (events: Event[]): Promise<void> => {
+    try {
+      await SecureStore.setItemAsync("calendar_events", JSON.stringify(events))
+    } catch (error) {
+      console.error("Error saving events to secure storage:", error)
+    }
+  }
+
+  const loadEventsFromSecureStorage = async (): Promise<Event[]> => {
+    try {
+      const storedEvents = await SecureStore.getItemAsync("calendar_events")
+      return storedEvents ? JSON.parse(storedEvents) : []
+    } catch (error) {
+      console.error("Error loading events from secure storage:", error)
+      return []
+    }
+  }
+
+  const fetchEvents = async (): Promise<void> => {
+    try {
+      setLoading(true)
+      console.log("Attempting to fetch events from:", `${API_BASE_URL}/get-calendar-events/`)
+
+      const response = await fetch(`${API_BASE_URL}/get-calendar-events/`)
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("API Response:", data)
+
+        if (data.success && Array.isArray(data.events)) {
+          const formattedEvents: Event[] = data.events.map((event: any) => ({
+            id: String(event.id),
+            title_event: event.title_event || '',
+            date: event.date || '',
+            time: event.time || ''
+          }))
+
+          setEvents(formattedEvents)
+          await saveEventsToSecureStorage(formattedEvents)
+          console.log("Events loaded from API:", formattedEvents.length)
+        } else {
+          console.log("API response was not successful, loading local events.")
+          const localEvents = await loadEventsFromSecureStorage()
+          setEvents(localEvents)
+        }
+      } else {
+        console.error("API request failed with status:", response.status, response.statusText)
+        const localEvents = await loadEventsFromSecureStorage()
+        setEvents(localEvents)
+      }
+    } catch (error) {
+      console.error("Network or API error while fetching events:", error)
+      const localEvents = await loadEventsFromSecureStorage()
+      setEvents(localEvents)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const addEvent = async (): Promise<void> => {
+    if (!eventTitle.trim()) {
+      Alert.alert("Error", "Please enter an event title")
+      return
+    }
+
+    if (!selectedDate) {
+      Alert.alert("Error", "Please select a date")
+      return
+    }
+
+    if (!eventTime.trim()) {
+      Alert.alert("Error", "Please enter event time")
+      return
+    }
+
+    const newEvent: Event = {
+      id: Date.now().toString(),
+      title_event: eventTitle.trim(),
+      date: selectedDate,
+      time: eventTime.trim()
+    }
+
+    try {
+      setLoading(true)
+
+      const requestBody = {
+        title_event: eventTitle.trim(),
+        date: selectedDate,
+        time: eventTime.trim()
+      }
+
+      console.log("Sending request to add event:", requestBody)
+
+      const response = await fetch(`${API_BASE_URL}/create-calendar-event/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      })
+
+      if (response.ok) {
+        Alert.alert("Success", "Event created successfully!")
+        setEventTitle("")
+        setEventTime("")
+        setSelectedDate("")
+        setShowAddEventModal(false)
+        await fetchEvents() // Re-fetch events from the server to get the updated list
+      } else {
+        const errorText = await response.text()
+        console.error("Server error:", response.status, errorText)
+        Alert.alert("Warning", "Failed to save event on server. Saved locally.")
+        // Fallback to local storage
+        const updatedEvents = [...events, newEvent]
+        setEvents(updatedEvents)
+        await saveEventsToSecureStorage(updatedEvents)
+        setShowAddEventModal(false)
+      }
+    } catch (error) {
+      console.error("Network or API error while adding event:", error)
+      Alert.alert("Warning", "Network error. Event saved locally.")
+      // Fallback to local storage
+      const updatedEvents = [...events, newEvent]
+      setEvents(updatedEvents)
+      await saveEventsToSecureStorage(updatedEvents)
+      setShowAddEventModal(false)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const deleteEvent = async (eventId: string): Promise<void> => {
+    Alert.alert(
+      "Delete Event",
+      "Are you sure you want to delete this event?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const response = await fetch(`${API_BASE_URL}/delete-calendar-event/${eventId}/`, {
+                method: "DELETE",
+              });
+
+              if (response.ok) {
+                Alert.alert("Success", "Event deleted successfully!");
+                // Filter out the deleted event from the state
+                const updatedEvents = events.filter(event => event.id !== eventId);
+                setEvents(updatedEvents);
+                await saveEventsToSecureStorage(updatedEvents);
+              } else {
+                const errorText = await response.text();
+                console.error("Server error:", response.status, errorText);
+                Alert.alert("Error", "Failed to delete event on server.");
+              }
+            } catch (error) {
+              console.error("Network or API error while deleting event:", error);
+              Alert.alert("Error", "Network error. Failed to delete event.");
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const formatDateForDisplay = (dateStr: string): string => {
+    const date = new Date(dateStr)
+    return date.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    })
+  }
+
+  const getEventsForCurrentMonth = (): Event[] => {
+    const currentYear = currentMonth.getFullYear()
+    const currentMonthIndex = currentMonth.getMonth()
+
+    return events
+      .filter((event: Event) => {
+        const eventDate = new Date(event.date)
+        return eventDate.getFullYear() === currentYear && eventDate.getMonth() === currentMonthIndex
+      })
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
   }
 
   const renderCalendarDays = () => {
@@ -86,7 +321,6 @@ export default function CalendarScreen() {
     const firstDay = getFirstDayOfMonth(currentMonth)
     const days = []
 
-    // Empty cells for days before the first day of the month
     for (let i = 0; i < firstDay; i++) {
       days.push(
         <View key={`empty-${i}`} style={styles.calendarDay}>
@@ -95,18 +329,39 @@ export default function CalendarScreen() {
       )
     }
 
-    // Days of the month
     for (let day = 1; day <= daysInMonth; day++) {
       const hasEventToday = hasEvent(day)
+      const isTodayDate = isToday(day)
+
       days.push(
-        <TouchableOpacity key={day} style={styles.calendarDay} activeOpacity={0.7}>
-          <View style={[styles.dayContainer, hasEventToday && styles.eventDay]}>
-            <Text style={[styles.dayText, hasEventToday && styles.eventDayText]}>{day}</Text>
+        <TouchableOpacity
+          key={day}
+          style={styles.calendarDay}
+          activeOpacity={0.7}
+          onPress={() => openAddEventModal(day)}
+        >
+          <View
+            style={[
+              styles.dayContainer,
+              hasEventToday && styles.eventDay,
+              isTodayDate && styles.todayDay,
+              hasEventToday && isTodayDate && styles.eventTodayDay,
+            ]}
+          >
+            <Text
+              style={[
+                styles.dayText,
+                hasEventToday && styles.eventDayText,
+                isTodayDate && styles.todayDayText,
+                hasEventToday && isTodayDate && styles.eventTodayDayText,
+              ]}
+            >
+              {day}
+            </Text>
           </View>
         </TouchableOpacity>,
       )
     }
-
     return days
   }
 
@@ -132,6 +387,14 @@ export default function CalendarScreen() {
     </View>
   )
 
+  // Plus Icon Component
+  const PlusIcon = ({ color = "#C17A47", size = 24 }: { color?: string; size?: number }) => (
+    <View style={[styles.plusIcon, { width: scale(size), height: scale(size) }]}>
+      <View style={[styles.plusHorizontal, { backgroundColor: color }]} />
+      <View style={[styles.plusVertical, { backgroundColor: color }]} />
+    </View>
+  )
+
   const TabButton = ({
     iconSource,
     label,
@@ -146,7 +409,6 @@ export default function CalendarScreen() {
     <TouchableOpacity
       style={styles.tabButton}
       onPress={() => {
-        // Navigate directly without updating local state
         if (tabKey === "home") {
           router.push("./dashboard")
         } else if (tabKey === "horse") {
@@ -190,6 +452,9 @@ export default function CalendarScreen() {
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Calendar</Text>
         </View>
+        <TouchableOpacity style={styles.addButton} onPress={() => openAddEventModal()} activeOpacity={0.7}>
+          <PlusIcon color="white" size={20} />
+        </TouchableOpacity>
       </View>
 
       {/* Content Section */}
@@ -238,37 +503,137 @@ export default function CalendarScreen() {
             <View style={styles.calendarGrid}>{renderCalendarDays()}</View>
           </View>
 
-          {/* Upcoming Events Section */}
+          {/* Events Table */}
           <View style={styles.eventsSection}>
-            <Text style={styles.sectionTitle}>Upcoming Events</Text>
-            {events.map((event) => (
-              <TouchableOpacity key={event.id} style={styles.eventCard} activeOpacity={0.7}>
-                <View style={styles.eventHeader}>
-                  <View
-                    style={[
-                      styles.eventTypeIndicator,
-                      {
-                        backgroundColor:
-                          event.type === "inspection"
-                            ? "#FF6B6B"
-                            : event.type === "vaccination"
-                              ? "#4ECDC4"
-                              : "#45B7D1",
-                      },
-                    ]}
-                  />
-                  <View style={styles.eventContent}>
-                    <Text style={styles.eventTitle}>{event.title}</Text>
-                    <Text style={styles.eventDate}>
-                      {event.date} • {event.time}
-                    </Text>
-                  </View>
-                </View>
-                <Text style={styles.eventDescription}>{event.description}</Text>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Events for {getMonthName(currentMonth)}</Text>
+              <TouchableOpacity style={styles.addEventButton} onPress={() => openAddEventModal()} activeOpacity={0.7}>
+                <PlusIcon color="white" size={16} />
               </TouchableOpacity>
-            ))}
+            </View>
+
+            {/* Loading Indicator */}
+            {loading ? (
+              <ActivityIndicator size="large" color="#C17A47" style={{ paddingVertical: verticalScale(24) }} />
+            ) : (
+              <View style={styles.tableContainer}>
+                {/* Table Header */}
+                <View style={styles.tableHeader}>
+                  <Text style={[styles.tableHeaderText, { flex: 2 }]}>Date</Text>
+                  <Text style={[styles.tableHeaderText, { flex: 1.5 }]}>Time</Text>
+                  <Text style={[styles.tableHeaderText, { flex: 2.5 }]}>Title</Text>
+                  <Text style={[styles.tableHeaderText, { flex: 1, textAlign: 'center' }]}>Actions</Text>
+                </View>
+
+                {/* Table Rows */}
+                {getEventsForCurrentMonth().length > 0 ? (
+                  getEventsForCurrentMonth().map((event: Event) => (
+                    <View key={event.id} style={styles.tableRow}>
+                      <Text style={[styles.tableCellText, { flex: 2 }]}>{formatDateForDisplay(event.date)}</Text>
+                      <Text style={[styles.tableCellText, { flex: 1.5 }]}>{event.time}</Text>
+                      <Text style={[styles.tableCellText, { flex: 2.5 }]} numberOfLines={2}>
+                        {event.title_event}
+                      </Text>
+                      <View style={{ flex: 1, alignItems: 'center' }}>
+                        <TouchableOpacity
+                          style={styles.deleteButton}
+                          onPress={() => deleteEvent(event.id)}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={styles.deleteButtonText}>×</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                ) : (
+                  <View style={styles.noEventsContainer}>
+                    <Text style={styles.noEventsText}>No events scheduled for this month</Text>
+                    <TouchableOpacity
+                      style={styles.addFirstEventButton}
+                      onPress={() => openAddEventModal()}
+                      activeOpacity={0.7}
+                    >
+                      <PlusIcon color="#C17A47" size={16} />
+                      <Text style={styles.addFirstEventText}>Add your first event</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )}
           </View>
         </ScrollView>
+
+        {/* Add Event Modal */}
+        <Modal
+          visible={showAddEventModal}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setShowAddEventModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Add New Event</Text>
+                <TouchableOpacity onPress={() => setShowAddEventModal(false)} style={styles.closeButton}>
+                  <Text style={styles.closeButtonText}>×</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView style={styles.modalContent}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Event Title *</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={eventTitle}
+                    onChangeText={setEventTitle}
+                    placeholder="Enter event title"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Date *</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={selectedDate}
+                    onChangeText={setSelectedDate}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Time *</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    value={eventTime}
+                    onChangeText={setEventTime}
+                    placeholder="e.g., 10:00 AM"
+                    placeholderTextColor="#999"
+                  />
+                </View>
+              </ScrollView>
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={() => setShowAddEventModal(false)}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.saveButton]}
+                  onPress={addEvent}
+                  disabled={loading}
+                >
+                  <Text style={styles.saveButtonText}>
+                    {loading ? "Adding..." : "Add Event"}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
 
         {/* Bottom Tab Navigation */}
         <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
@@ -308,14 +673,26 @@ const styles = StyleSheet.create({
     backgroundColor: "#C17A47",
     paddingHorizontal: scale(16),
     paddingBottom: dynamicSpacing(16),
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   headerCenter: {
+    flex: 1,
     alignItems: "center",
   },
   headerTitle: {
     fontSize: moderateScale(18),
     fontWeight: "600",
     color: "white",
+  },
+  addButton: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   contentContainer: {
     flex: 1,
@@ -400,6 +777,14 @@ const styles = StyleSheet.create({
   eventDay: {
     backgroundColor: "#C17A47",
   },
+  todayDay: {
+    backgroundColor: "#4ECDC4",
+  },
+  eventTodayDay: {
+    backgroundColor: "#C17A47",
+    borderWidth: 2,
+    borderColor: "#4ECDC4",
+  },
   dayText: {
     fontSize: moderateScale(14),
     color: "#333",
@@ -408,6 +793,14 @@ const styles = StyleSheet.create({
   eventDayText: {
     color: "white",
     fontWeight: "600",
+  },
+  todayDayText: {
+    color: "white",
+    fontWeight: "600",
+  },
+  eventTodayDayText: {
+    color: "white",
+    fontWeight: "700",
   },
   emptyDayText: {
     fontSize: moderateScale(14),
@@ -420,147 +813,280 @@ const styles = StyleSheet.create({
     borderRadius: scale(12),
     padding: scale(16),
   },
-  eventCard: {
-    marginBottom: verticalScale(16),
-    paddingBottom: verticalScale(16),
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
-  },
-  eventHeader: {
+  sectionHeader: {
     flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: verticalScale(8),
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: verticalScale(16),
   },
-  eventTypeIndicator: {
-    width: scale(4),
-    height: scale(40),
-    borderRadius: scale(2),
-    marginRight: scale(12),
+  addEventButton: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  eventContent: {
-    flex: 1,
+  tableContainer: {
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: scale(8),
+    overflow: "hidden",
   },
-  eventTitle: {
-    fontSize: moderateScale(16),
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: verticalScale(4),
-    lineHeight: moderateScale(20),
+  tableHeader: {
+    flexDirection: "row",
+    backgroundColor: "#F5F5F5",
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(16),
   },
-  eventDate: {
+  tableHeaderText: {
     fontSize: moderateScale(12),
+    fontWeight: "600",
     color: "#666",
-    fontWeight: "500",
+    textAlign: "left",
   },
-  eventDescription: {
+  tableRow: {
+    flexDirection: "row",
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(16),
+    borderTopWidth: 1,
+    borderTopColor: "#E0E0E0",
+    alignItems: 'center',
+  },
+  tableCellText: {
+    fontSize: moderateScale(12),
+    color: "#333",
+    textAlign: "left",
+  },
+  deleteButton: {
+    width: scale(28),
+    height: scale(28),
+    borderRadius: scale(14),
+    backgroundColor: '#FF6347',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deleteButtonText: {
+    color: 'white',
+    fontSize: moderateScale(16),
+    fontWeight: 'bold',
+  },
+  noEventsContainer: {
+    alignItems: "center",
+    paddingVertical: verticalScale(24),
+  },
+  noEventsText: {
     fontSize: moderateScale(14),
     color: "#666",
-    lineHeight: moderateScale(18),
-    marginLeft: scale(16),
+    marginBottom: verticalScale(12),
   },
-  // Tab Bar Styles
+  addFirstEventButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(20),
+    backgroundColor: "#F5F5F5",
+  },
+  addFirstEventText: {
+    fontSize: moderateScale(12),
+    color: "#C17A47",
+    marginLeft: scale(8),
+    fontWeight: "500",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalContainer: {
+    backgroundColor: "white",
+    width: width * 0.9,
+    maxHeight: height * 0.8,
+    borderRadius: scale(16),
+    overflow: "hidden",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(16),
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
+  modalTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: "600",
+    color: "#333",
+  },
+  closeButton: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#F5F5F5",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  closeButtonText: {
+    fontSize: moderateScale(20),
+    color: "#666",
+  },
+  modalContent: {
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(16),
+    maxHeight: height * 0.5,
+  },
+  inputGroup: {
+    marginBottom: verticalScale(16),
+  },
+  inputLabel: {
+    fontSize: moderateScale(14),
+    fontWeight: "500",
+    color: "#333",
+    marginBottom: verticalScale(8),
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: scale(8),
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(10),
+    fontSize: moderateScale(14),
+    color: "#333",
+    backgroundColor: "#FAFAFA",
+  },
+  modalButtons: {
+    flexDirection: "row",
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(16),
+    borderTopWidth: 1,
+    borderTopColor: "#E0E0E0",
+    gap: scale(12),
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(8),
+    alignItems: "center",
+  },
+  cancelButton: {
+    backgroundColor: "#F5F5F5",
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  cancelButtonText: {
+    fontSize: moderateScale(14),
+    fontWeight: "500",
+    color: "#666",
+  },
+  saveButton: {
+    backgroundColor: "#C17A47",
+  },
+  saveButtonText: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "white",
+  },
   tabBar: {
     flexDirection: "row",
     backgroundColor: "white",
-    paddingVertical: dynamicSpacing(8),
-    paddingHorizontal: scale(8),
+    paddingTop: dynamicSpacing(12),
+    paddingHorizontal: scale(16),
     borderTopWidth: 1,
     borderTopColor: "#E0E0E0",
-    minHeight: verticalScale(60),
-    alignItems: "center",
-    justifyContent: "space-around",
   },
   tabButton: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: verticalScale(4),
-    paddingHorizontal: scale(2),
+    paddingVertical: verticalScale(8),
   },
   tabIcon: {
-    width: scale(28),
-    height: scale(28),
-    borderRadius: scale(14),
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: verticalScale(2),
+    marginBottom: verticalScale(4),
   },
   activeTabIcon: {
     backgroundColor: "#C17A47",
   },
   tabIconImage: {
-    width: scale(16),
-    height: scale(16),
-  },
-  fallbackIcon: {
-    width: scale(14),
-    height: scale(14),
-    backgroundColor: "#666",
-    borderRadius: scale(2),
+    width: scale(20),
+    height: scale(20),
   },
   tabLabel: {
-    fontSize: moderateScale(9),
+    fontSize: moderateScale(10),
     color: "#666",
-    textAlign: "center",
+    fontWeight: "500",
   },
   activeTabLabel: {
     color: "#C17A47",
     fontWeight: "600",
   },
-  // Icon container for custom icons
   iconContainer: {
-    width: scale(14),
-    height: scale(14),
     justifyContent: "center",
     alignItems: "center",
-    position: "relative",
   },
-  // Dashboard/Home Icon Styles
   dashboardGrid: {
-    width: scale(14),
-    height: scale(14),
-    position: "relative",
+    width: scale(20),
+    height: scale(20),
+    flexDirection: "row",
+    flexWrap: "wrap",
   },
   gridSquare: {
-    width: scale(5),
-    height: scale(5),
-    position: "absolute",
+    width: scale(8),
+    height: scale(8),
+    margin: scale(1),
   },
   gridTopLeft: {
-    top: 0,
-    left: 0,
+    borderTopLeftRadius: scale(2),
   },
   gridTopRight: {
-    top: 0,
-    right: 0,
+    borderTopRightRadius: scale(2),
   },
   gridBottomLeft: {
-    bottom: 0,
-    left: 0,
+    borderBottomLeftRadius: scale(2),
   },
   gridBottomRight: {
-    bottom: 0,
-    right: 0,
+    borderBottomRightRadius: scale(2),
   },
-  // Profile Icon Styles
   profileContainer: {
-    width: scale(14),
-    height: scale(14),
-    position: "relative",
     alignItems: "center",
   },
   profileHead: {
-    width: scale(5),
-    height: scale(5),
-    borderRadius: scale(2.5),
-    position: "absolute",
-    top: 0,
+    width: scale(10),
+    height: scale(10),
+    borderRadius: scale(5),
+    marginBottom: scale(2),
   },
   profileBody: {
-    width: scale(10),
-    height: scale(7),
-    borderTopLeftRadius: scale(5),
-    borderTopRightRadius: scale(5),
+    width: scale(16),
+    height: scale(10),
+    borderRadius: scale(8),
+  },
+  plusIcon: {
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  plusHorizontal: {
     position: "absolute",
-    bottom: 0,
+    width: "80%",
+    height: scale(2),
+    borderRadius: scale(1),
+  },
+  plusVertical: {
+    position: "absolute",
+    width: scale(2),
+    height: "80%",
+    borderRadius: scale(1),
+  },
+  fallbackIcon: {
+    width: scale(20),
+    height: scale(20),
+    backgroundColor: "#E0E0E0",
+    borderRadius: scale(10),
   },
 })
