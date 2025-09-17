@@ -13,6 +13,10 @@ urlpatterns = [
     path('api/signup_mobile/', views.signup_mobile, name='signup_mobile'),
     path('api/login_mobile/', views.login_mobile, name='login_mobile'),
     path('api/update_user_status/', views.update_user_status, name='update_user_status'),
+   
+    path("api/forgot-password/", views.forgot_password, name="forgot-password"),
+     path("api/reset-password/", views.reset_password, name="reset-password"),
+
 ]
    
 

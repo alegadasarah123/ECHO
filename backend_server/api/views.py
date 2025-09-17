@@ -1,9 +1,11 @@
+
 from django.shortcuts import render
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from rest_framework import status
 from supabase import create_client, Client
 from django.conf import settings
+from django.views.decorators.csrf import csrf_exempt  # <-- add this
 import requests
 import datetime
 
@@ -444,3 +446,93 @@ def update_user_status(request):
     "error": "Failed to update user status",
     "details": str(e)
 }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+
+
+
+
+#-----------------------------------------------------------------FORGOT PASSWORD WEB---------------------------------------------------------------------------------------
+
+
+@api_view(["POST"])
+def forgot_password(request):
+    email = request.data.get("email")
+    if not email:
+        return Response({"error": "Email is required."},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    url = f"{settings.SUPABASE_URL}/auth/v1/admin/users"
+    headers = {
+        "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+    }
+
+    resp = requests.get(url, headers=headers)
+
+    if not resp.ok:
+        return Response({"error": "Failed to query Supabase."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    data = resp.json()
+    users = data.get("users", [])
+
+    # 👇 Check kung naa ba'y match sa email
+    user = next((u for u in users if u.get("email") == email), None)
+
+    if not user:
+        return Response({"exists": False, "error": "Email not registered."},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    return Response({"exists": True}, status=status.HTTP_200_OK)
+
+
+
+
+
+@api_view(["POST"])
+def reset_password(request):
+    email = request.data.get("email")
+    new_password = request.data.get("newPassword")
+
+    if not email or not new_password:
+        return Response({"error": "Email and new password are required."},
+                        status=status.HTTP_400_BAD_REQUEST)
+
+    # 1. Get all users from Supabase
+    url = f"{settings.SUPABASE_URL}/auth/v1/admin/users"
+    headers = {
+        "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+    }
+
+    resp = requests.get(url, headers=headers)
+    if not resp.ok:
+        return Response({"error": "Failed to query Supabase."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    data = resp.json()
+    users = data.get("users", [])
+
+    # 2. Find user by email
+    user = next((u for u in users if u.get("email") == email), None)
+    if not user:
+        return Response({"error": "Email not registered."},
+                        status=status.HTTP_404_NOT_FOUND)
+
+    user_id = user.get("id")
+
+    # 3. Update password
+    update_url = f"{settings.SUPABASE_URL}/auth/v1/admin/users/{user_id}"
+    payload = {"password": new_password}
+
+    update_resp = requests.put(update_url, headers=headers, json=payload)
+
+    if not update_resp.ok:
+        return Response({"error": "Failed to reset password."},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    return Response({"success": True, "message": "Password reset successful."},
+                    status=status.HTTP_200_OK)

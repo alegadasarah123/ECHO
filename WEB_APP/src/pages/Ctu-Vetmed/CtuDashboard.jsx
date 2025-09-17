@@ -132,8 +132,8 @@ const styles = {
     cursor: "pointer",
     display: "flex",
     flexDirection: "column",
-    alignItems: "center", // Center everything horizontally
-    textAlign: "center",   // Center text alignment
+    alignItems: "center",
+    textAlign: "center",
   },
   statCardHover: {
     transform: "translateY(-2px)",
@@ -146,7 +146,6 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
   },
-  
   
   pendingIcon: {
     backgroundColor: "#fef3c7",
@@ -213,6 +212,7 @@ const styles = {
     position: "relative",
     overflow: "hidden",
   },
+  // Enhanced color variations for activity cards
   activityCard0: {
     background: "linear-gradient(135deg, #fef2f2 0%, #fff 100%)",
     border: "1px solid #fca5a5",
@@ -237,6 +237,22 @@ const styles = {
     background: "linear-gradient(135deg, #f0f9ff 0%, #fff 100%)",
     border: "1px solid #7dd3fc",
   },
+  activityCard6: {
+    background: "linear-gradient(135deg, #f0fdf4 0%, #fff 100%)",
+    border: "1px solid #bbf7d0",
+  },
+  activityCard7: {
+    background: "linear-gradient(135deg, #fefce8 0%, #fff 100%)",
+    border: "1px solid #fde047",
+  },
+  activityCard8: {
+    background: "linear-gradient(135deg, #fdf2f8 0%, #fff 100%)",
+    border: "1px solid #f9a8d4",
+  },
+  activityCard9: {
+    background: "linear-gradient(135deg, #f3e8ff 0%, #fff 100%)",
+    border: "1px solid #d8b4fe",
+  },
   activityAvatar: {
     color: "white",
     fontWeight: "bold",
@@ -249,6 +265,7 @@ const styles = {
     fontSize: "12px",
     flexShrink: 0,
   },
+  // Enhanced color variations for avatars
   activityAvatar0: {
     background: "linear-gradient(135deg, #dc2626, #ef4444)",
     boxShadow: "0 2px 8px rgba(220, 38, 38, 0.3)",
@@ -272,6 +289,22 @@ const styles = {
   activityAvatar5: {
     background: "linear-gradient(135deg, #0891b2, #06b6d4)",
     boxShadow: "0 2px 8px rgba(8, 145, 178, 0.3)",
+  },
+  activityAvatar6: {
+    background: "linear-gradient(135deg, #15803d, #22c55e)",
+    boxShadow: "0 2px 8px rgba(21, 128, 61, 0.3)",
+  },
+  activityAvatar7: {
+    background: "linear-gradient(135deg, #a16207, #eab308)",
+    boxShadow: "0 2px 8px rgba(161, 98, 7, 0.3)",
+  },
+  activityAvatar8: {
+    background: "linear-gradient(135deg, #be185d, #ec4899)",
+    boxShadow: "0 2px 8px rgba(190, 24, 93, 0.3)",
+  },
+  activityAvatar9: {
+    background: "linear-gradient(135deg, #6b21a8, #a855f7)",
+    boxShadow: "0 2px 8px rgba(107, 33, 168, 0.3)",
   },
   activityInfo: {
     flex: 1,
@@ -503,37 +536,17 @@ function CtuDashboard() {
   const notificationDropdownRef = useRef(null)
   const logoutModalRef = useRef(null)
 
-  // Sample SOS Emergency data
-  const sampleSosData = [
-    {
-      id: 1,
-      type: "Medical Emergency",
-      contact: "Dr. Maria Santos",
-      phone: "+63 917 123 4567",
-      location: "CTU Veterinary Clinic - Room 205",
-      time: "2 minutes ago",
-      urgent: true,
-    },
-    {
-      id: 2,
-      type: "Animal Emergency",
-      contact: "Emergency Vet Team",
-      phone: "+63 918 765 4321",
-      location: "Main Campus - Building A",
-      time: "15 minutes ago",
-      urgent: false,
-    },
-    {
-      id: 3,
-      type: "Fire Emergency",
-      contact: "Fire Department",
-      phone: "911",
-      location: "Laboratory Building - 2nd Floor",
-      time: "45 minutes ago",
-      urgent: true,
-    },
-  ]
-
+  // Enhanced color assignment function
+  const getColorIndex = (activity, index) => {
+    // Use a combination of index and string hash for better distribution
+    const stringHash = activity.title
+      .split("")
+      .reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    
+    // Combine index and hash for better color distribution
+    return (index + stringHash) % 10
+  }
+  
   // Data loading functions
   const loadStats = useCallback(() => {
     console.log("Loading statistics...")
@@ -580,9 +593,66 @@ function CtuDashboard() {
   }, [])
 
   const loadSosEmergencies = useCallback(() => {
-    // For now, use sample data. Replace with actual API call later
-    setSosEmergencies(sampleSosData)
-  }, [])
+    console.log("Loading SOS emergencies...");
+
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/sos_requests/", {
+      method: "GET",
+      credentials: "include",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        console.log("Raw SOS data:", data);
+
+        let sosData = [];
+        if (Array.isArray(data)) sosData = data;
+        else if (data.sos_requests && Array.isArray(data.sos_requests))
+          sosData = data.sos_requests;
+        else if (data.results && Array.isArray(data.results)) sosData = data.results;
+        else {
+          console.warn("Unexpected data structure:", data);
+          setSosEmergencies([]);
+          return;
+        }
+
+        const formatted = sosData.map((item) => {
+          // Safe "time ago"
+          let timeAgo = "Unknown time";
+          try {
+            if (item.time || item.created_at) {
+              const createdDate = new Date(item.time || item.created_at);
+              const diffMs = Date.now() - createdDate.getTime();
+              const diffMin = Math.floor(diffMs / 60000);
+              if (diffMin < 1) timeAgo = "Just now";
+              else if (diffMin < 60) timeAgo = `${diffMin} min ago`;
+              else if (diffMin < 1440) timeAgo = `${Math.floor(diffMin / 60)} hr ago`;
+              else timeAgo = `${Math.floor(diffMin / 1440)} day(s) ago`;
+            }
+          } catch {
+            console.warn("Invalid timestamp:", item.time || item.created_at);
+          }
+
+          return {
+            id: item.id,
+            type: item.type || "Emergency",
+            contact: item.contact || "Unknown Contact",
+            phone: item.phone || "N/A",
+            location: item.location || "No location provided",
+            time: timeAgo,
+            urgent: item.urgent === true || item.status === "pending",
+            description: item.description || "No description provided",
+          };
+        });
+
+        console.log("Formatted SOS data:", formatted);
+        setSosEmergencies(formatted);
+      })
+      .catch((err) => {
+        console.error("Error fetching SOS emergencies:", err);
+      });
+  }, []);
 
   const loadDashboardData = useCallback(() => {
     loadStats()
@@ -747,17 +817,18 @@ function CtuDashboard() {
                       .join("")
                       .toUpperCase()
 
-                    const colorIndex = activity.title.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % 6
+                    // Enhanced color assignment
+                    const colorIndex = getColorIndex(activity, index)
 
-                    const getActivityCardStyle = (index) => {
+                    const getActivityCardStyle = (colorIndex) => {
                       const baseStyle = styles.activityCard
-                      const colorStyle = styles[`activityCard${index}`]
+                      const colorStyle = styles[`activityCard${colorIndex}`]
                       return { ...baseStyle, ...colorStyle }
                     }
 
-                    const getActivityAvatarStyle = (index) => {
+                    const getActivityAvatarStyle = (colorIndex) => {
                       const baseStyle = styles.activityAvatar
-                      const colorStyle = styles[`activityAvatar${index}`]
+                      const colorStyle = styles[`activityAvatar${colorIndex}`]
                       return { ...baseStyle, ...colorStyle }
                     }
 
@@ -801,7 +872,7 @@ function CtuDashboard() {
             </div>
 
             {/* SOS Emergency Widget */}
-            <div style={styles.sosWidget}>
+              <div style={styles.sosWidget}>
               <div style={styles.sosHeader}>
                 <h3 style={styles.sosTitle}>
                   <AlertTriangle size={24} />

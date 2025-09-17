@@ -1,10 +1,12 @@
 import { ArrowLeft, Eye, EyeOff, Lock, Mail, Stethoscope } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import ForgotPass from "./ForgotPass";
 
 
 function LogIn({ onBack }) {
   const [showPassword, setShowPassword] = useState(false)
+   const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -261,6 +263,20 @@ if (onBack) onBack(role);
   }
 };
 
+// Handle forgot password navigation
+  const handleForgotPasswordClick = (e) => {
+    e.preventDefault();
+    setShowForgotPassword(true);
+  };
+
+  const handleBackToLogin = () => {
+    setShowForgotPassword(false);
+  };
+
+  // If showing forgot password, render the ForgotPass component
+  if (showForgotPassword) {
+    return <ForgotPass onBack={handleBackToLogin} />;
+  }
 
   return (
     <div style={styles.container}>
@@ -352,14 +368,14 @@ if (onBack) onBack(role);
               <input type="checkbox" style={styles.checkbox} />
               <span style={{ color: "#6b7280" }}>Remember me</span>
             </label>
-            <a
-              href="#"
+            <span
               style={styles.forgotLink}
+              onClick={handleForgotPasswordClick}
               onMouseEnter={(e) => (e.target.style.color = "#a0612a")}
               onMouseLeave={(e) => (e.target.style.color = "#B8763E")}
             >
               Forgot password?
-            </a>
+            </span>
           </div>
 
           <button

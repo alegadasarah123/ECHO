@@ -1307,11 +1307,11 @@ def search_vet(request):
 @api_view(['GET'])
 def get_horses(request):
     """
-    Fetch all horses with owner info, current medical record,
+    Fetch all horses with owner info, ALL medical records,
     treatment history, and medrec history, flattened.
     """
     try:
-        # 1️⃣ Fetch horses with owner info and current medical record
+        # 1️⃣ Fetch horses with owner info and all medical records
         horses_response = sr_client.table("horse_profile").select("""
             horse_id,
             horse_name,
@@ -1365,13 +1365,14 @@ def get_horses(request):
             horse["status"] = user_info.get("status", "Unknown")
             horse["role"] = user_info.get("role", "N/A")
 
-            # Remove owner object
             if "horse_op_profile" in horse:
                 del horse["horse_op_profile"]
 
-            # --- Medical record ---
-            medrec = horse.get("horse_medrecord")
-            if medrec:
+            # --- Medical records (list) ---
+            medrecs = horse.get("horse_medrecord", [])
+            medrec_list = []
+
+            for medrec in medrecs:
                 # Flatten vet info
                 medrec["vet_name"] = " ".join(filter(None, [
                     medrec.get("vet_profile", {}).get("vet_fname"),
@@ -1432,8 +1433,10 @@ def get_horses(request):
                     treatments.append(t)
 
                 medrec["treatment_history"] = treatments
+                medrec_list.append(medrec)
 
-            horse["medical_record"] = medrec
+            # Replace horse_medrecord with processed list
+            horse["medical_records"] = medrec_list
             if "horse_medrecord" in horse:
                 del horse["horse_medrecord"]
 
@@ -1447,3 +1450,91 @@ def get_horses(request):
             {"error": "Internal server error", "details": str(e)},
             status=500
         )
+
+
+
+
+
+
+
+
+# -------------------- SOS REQUESTS ENDPOINT --------------------
+@api_view(["GET"])
+def get_sos_requests(request):
+    """
+    Fetch all SOS requests from Supabase 'sos_requests' table.
+    Handles Supabase/network errors gracefully.
+    """
+    try:
+        # Fetch all rows
+        response = sr_client.table("sos_requests").select("*").execute()
+
+        # Access data safely
+        data = getattr(response, "data", None)
+        if data is None:
+            return Response(
+                {"error": "Supabase returned no data or an unexpected response."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Format data for frontend
+        formatted_data = [
+            {
+                "id": item.get("id"),
+                "type": item.get("emergency_type", "Emergency"),
+                "contact": item.get("contact_name", "Unknown Contact"),
+                "phone": item.get("contact_number", "N/A"),
+                "location": item.get("location_text", "No location provided"),
+                "time": item.get("created_at"),
+                "urgent": item.get("status") == "pending" or item.get("urgent") is True,
+            }
+            for item in data
+        ]
+
+        return Response({"sos_requests": formatted_data}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        traceback.print_exc()
+        return Response(
+            {"error": f"An unexpected error occurred: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+@api_view(["POST"])
+def forgot_password(request):
+    email = request.data.get("email")
+    if not email:
+        return Response({"error": "Email is required"}, status=400)
+
+    # Lookup user in Supabase
+    user_resp = sr_client.table("users").select("*").eq("email", email).execute()
+    user_data = user_resp.data if hasattr(user_resp, "data") else []
+
+    if not user_data:
+        return Response({"error": "User not found"}, status=404)
+
+    # Generate password reset token (simple example)
+    reset_token = os.urandom(16).hex()
+    reset_link = f"http://localhost:3000/reset-password?token={reset_token}"
+
+    # Optionally, store token in Supabase (if you want to validate it later)
+    sr_client.table("password_resets").insert({
+        "email": email,
+        "token": reset_token,
+        "created_at": "now()"
+    }).execute()
+
+    # Send reset email
+    try:
+        send_mail(
+            "Reset Your Password",
+            f"Click this link to reset your password: {reset_link}",
+            "no-reply@echo.com",
+            [email],
+        )
+        return Response({"message": "Password reset email sent"})
+    except Exception as e:
+        return Response({"error": f"Failed to send email: {str(e)}"}, status=500)

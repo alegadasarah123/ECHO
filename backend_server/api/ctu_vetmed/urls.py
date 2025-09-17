@@ -53,6 +53,10 @@ urlpatterns = [
 
 
      path("get_horses/", views.get_horses, name="get_horses"),
+     
+      path("sos_requests/", views.get_sos_requests, name="get_sos_requests"),
+
+      path('forgot-password/', views.forgot_password, name='forgot-password'),
 
 
 ]
