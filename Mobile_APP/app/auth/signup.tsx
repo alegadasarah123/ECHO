@@ -35,6 +35,2222 @@ const scale = (size: number) => (width / 375) * size
 // const verticalScale = (size: number) => (height / 812) * size
 const moderateScale = (size: number, factor = 0.5) => size + (scale(size) - size) * factor
 
+// Philippines provinces and their cities/municipalities
+const philippinesData: Record<string, { cities: string[]; municipalities: string[] }> = {
+  Abra: {
+    cities: [],
+    municipalities: [
+      "Bangued",
+      "Boliney",
+      "Bucay",
+      "Bucloc",
+      "Daguioman",
+      "Danglas",
+      "Dolores",
+      "La Paz",
+      "Lacub",
+      "Lagangilang",
+      "Lagayan",
+      "Langiden",
+      "Licuan-Baay",
+      "Luba",
+      "Malibcong",
+      "Manabo",
+      "Peñarrubia",
+      "Pidigan",
+      "Pilar",
+      "Sallapadan",
+      "San Isidro",
+      "San Juan",
+      "San Quintin",
+      "Tayum",
+      "Tineg",
+      "Tubo",
+      "Villaviciosa",
+    ],
+  },
+  "Agusan del Norte": {
+    cities: ["Butuan City", "Cabadbaran City"],
+    municipalities: [
+      "Buenavista",
+      "Carmen",
+      "Jabonga",
+      "Kitcharao",
+      "Las Nieves",
+      "Magallanes",
+      "Nasipit",
+      "Remedios T. Romualdez",
+      "Santiago",
+      "Tubay",
+    ],
+  },
+  "Agusan del Sur": {
+    cities: ["Bayugan City"],
+    municipalities: [
+      "Bunawan",
+      "Esperanza",
+      "La Paz",
+      "Loreto",
+      "Prosperidad",
+      "Rosario",
+      "San Francisco",
+      "San Luis",
+      "Santa Josefa",
+      "Sibagat",
+      "Talacogon",
+      "Trento",
+      "Veruela",
+    ],
+  },
+  Aklan: {
+    cities: [],
+    municipalities: [
+      "Altavas",
+      "Balete",
+      "Banga",
+      "Batan",
+      "Buruanga",
+      "Ibajay",
+      "Kalibo",
+      "Lezo",
+      "Libacao",
+      "Madalag",
+      "Makato",
+      "Malay",
+      "Malinao",
+      "Nabas",
+      "New Washington",
+      "Numancia",
+      "Tangalan",
+    ],
+  },
+  Albay: {
+    cities: ["Legazpi City", "Ligao City", "Tabaco City"],
+    municipalities: [
+      "Bacacay",
+      "Camalig",
+      "Daraga",
+      "Guinobatan",
+      "Jovellar",
+      "Libon",
+      "Malilipot",
+      "Malinao",
+      "Manito",
+      "Oas",
+      "Polangui",
+      "Rapu-Rapu",
+      "Santo Domingo",
+      "Tiwi",
+    ],
+  },
+  Antique: {
+    cities: [],
+    municipalities: [
+      "Anini-y",
+      "Barbaza",
+      "Belison",
+      "Bugasong",
+      "Caluya",
+      "Culasi",
+      "Hamtic",
+      "Laua-an",
+      "Libertad",
+      "Pandan",
+      "Patnongon",
+      "San Jose",
+      "San Remigio",
+      "Sebaste",
+      "Sibalom",
+      "Tibiao",
+      "Tobias Fornier",
+      "Valderrama",
+    ],
+  },
+  Apayao: {
+    cities: [],
+    municipalities: ["Calanasan", "Conner", "Flora", "Kabugao", "Luna", "Pudtol", "Santa Marcela"],
+  },
+  Aurora: {
+    cities: [],
+    municipalities: [
+      "Baler",
+      "Casiguran",
+      "Dilasag",
+      "Dinalungan",
+      "Dingalan",
+      "Dipaculao",
+      "Maria Aurora",
+      "San Luis",
+    ],
+  },
+  Basilan: {
+    cities: ["Isabela City", "Lamitan City"],
+    municipalities: [
+      "Akbar",
+      "Al-Barka",
+      "Hadji Mohammad Ajul",
+      "Hadji Muhtamad",
+      "Lantawan",
+      "Maluso",
+      "Sumisip",
+      "Tabuan-Lasa",
+      "Tipo-Tipo",
+      "Tuburan",
+      "Ungkaya Pukan",
+    ],
+  },
+  Bataan: {
+    cities: ["Balanga City"],
+    municipalities: [
+      "Abucay",
+      "Bagac",
+      "Dinalupihan",
+      "Hermosa",
+      "Limay",
+      "Mariveles",
+      "Morong",
+      "Orani",
+      "Orion",
+      "Pilar",
+      "Samal",
+    ],
+  },
+  Batanes: {
+    cities: [],
+    municipalities: ["Basco", "Itbayat", "Ivana", "Mahatao", "Sabtang", "Uyugan"],
+  },
+  Batangas: {
+    cities: ["Batangas City", "Lipa City", "Tanauan City"],
+    municipalities: [
+      "Agoncillo",
+      "Alitagtag",
+      "Balayan",
+      "Balete",
+      "Bauan",
+      "Calaca",
+      "Calatagan",
+      "Cuenca",
+      "Ibaan",
+      "Laurel",
+      "Lemery",
+      "Lian",
+      "Lobo",
+      "Mabini",
+      "Malvar",
+      "Mataas na Kahoy",
+      "Nasugbu",
+      "Padre Garcia",
+      "Rosario",
+      "San Jose",
+      "San Juan",
+      "San Luis",
+      "San Nicolas",
+      "San Pascual",
+      "Santa Teresita",
+      "Santo Tomas",
+      "Taal",
+      "Talisay",
+      "Taysan",
+      "Tingloy",
+      "Tuy",
+    ],
+  },
+  Benguet: {
+    cities: ["Baguio City"],
+    municipalities: [
+      "Atok",
+      "Bakun",
+      "Bokod",
+      "Buguias",
+      "Itogon",
+      "Kabayan",
+      "Kapangan",
+      "Kibungan",
+      "La Trinidad",
+      "Mankayan",
+      "Sablan",
+      "Tuba",
+      "Tublay",
+    ],
+  },
+  Biliran: {
+    cities: [],
+    municipalities: ["Almeria", "Biliran", "Cabucgayan", "Caibiran", "Culaba", "Kawayan", "Maripipi", "Naval"],
+  },
+  Bohol: {
+    cities: ["Tagbilaran City"],
+    municipalities: [
+      "Alburquerque",
+      "Alicia",
+      "Anda",
+      "Antequera",
+      "Baclayon",
+      "Balilihan",
+      "Batuan",
+      "Bien Unido",
+      "Bilar",
+      "Buenavista",
+      "Calape",
+      "Candijay",
+      "Carmen",
+      "Catigbian",
+      "Clarin",
+      "Corella",
+      "Cortes",
+      "Dagohoy",
+      "Danao",
+      "Dauis",
+      "Dimiao",
+      "Duero",
+      "Garcia Hernandez",
+      "Guindulman",
+      "Hadji Panglima Tahil",
+      "Inabanga",
+      "Jagna",
+      "Jetafe",
+      "Lila",
+      "Loay",
+      "Loboc",
+      "Loon",
+      "Mabini",
+      "Maribojoc",
+      "Panglao",
+      "Pilar",
+      "President Carlos P. Garcia",
+      "Sagbayan",
+      "San Isidro",
+      "San Miguel",
+      "Sevilla",
+      "Sierra Bullones",
+      "Sikatuna",
+      "Talibon",
+      "Trinidad",
+      "Tubigon",
+      "Ubay",
+      "Valencia",
+    ],
+  },
+  Bukidnon: {
+    cities: ["Malaybalay City", "Valencia City"],
+    municipalities: [
+      "Baungon",
+      "Cabanglasan",
+      "Damulog",
+      "Dangcagan",
+      "Don Carlos",
+      "Impasugong",
+      "Kadingilan",
+      "Kalilangan",
+      "Kibawe",
+      "Kitaotao",
+      "Lantapan",
+      "Libona",
+      "Malitbog",
+      "Manolo Fortich",
+      "Maramag",
+      "Pangantucan",
+      "Quezon",
+      "San Fernando",
+      "Sumilao",
+      "Talakag",
+    ],
+  },
+  Bulacan: {
+    cities: ["Malolos City", "Meycauayan City", "San Jose del Monte City"],
+    municipalities: [
+      "Angat",
+      "Balagtas",
+      "Baliuag",
+      "Bocaue",
+      "Bulakan",
+      "Bustos",
+      "Calumpit",
+      "Doña Remedios Trinidad",
+      "Guiguinto",
+      "Hagonoy",
+      "Marilao",
+      "Norzagaray",
+      "Obando",
+      "Pandi",
+      "Paombong",
+      "Plaridel",
+      "Pulilan",
+      "San Ildefonso",
+      "San Miguel",
+      "San Rafael",
+      "Santa Maria",
+    ],
+  },
+  Cagayan: {
+    cities: ["Tuguegarao City"],
+    municipalities: [
+      "Abulug",
+      "Alcala",
+      "Allacapan",
+      "Amulung",
+      "Aparri",
+      "Baggao",
+      "Ballesteros",
+      "Buguey",
+      "Calayan",
+      "Camalaniugan",
+      "Claveria",
+      "Enrile",
+      "Gattaran",
+      "Gonzaga",
+      "Iguig",
+      "Lal-lo",
+      "Lasam",
+      "Pamplona",
+      "Peñablanca",
+      "Piat",
+      "Rizal",
+      "Sanchez-Mira",
+      "Santa Ana",
+      "Santa Praxedes",
+      "Santa Teresita",
+      "Santo Niño",
+      "Solana",
+      "Tuao",
+    ],
+  },
+  "Camarines Norte": {
+    cities: [],
+    municipalities: [
+      "Basud",
+      "Capalonga",
+      "Daet",
+      "Jose Panganiban",
+      "Labo",
+      "Mercedes",
+      "Paracale",
+      "San Lorenzo Ruiz",
+      "San Vicente",
+      "Santa Elena",
+      "Talisay",
+      "Vinzons",
+    ],
+  },
+  "Camarines Sur": {
+    cities: ["Iriga City", "Naga City"],
+    municipalities: [
+      "Baao",
+      "Balatan",
+      "Bato",
+      "Bombon",
+      "Buhi",
+      "Bula",
+      "Cabusao",
+      "Calabanga",
+      "Camaligan",
+      "Canaman",
+      "Caramoan",
+      "Del Gallego",
+      "Gainza",
+      "Garchitorena",
+      "Goa",
+      "Lagonoy",
+      "Libmanan",
+      "Lupi",
+      "Magarao",
+      "Milaor",
+      "Minalabac",
+      "Nabua",
+      "Ocampo",
+      "Pamplona",
+      "Pasacao",
+      "Pili",
+      "Presentacion",
+      "Ragay",
+      "Sagñay",
+      "San Fernando",
+      "San Jose",
+      "Sipocot",
+      "Siruma",
+      "Tigaon",
+      "Tinambac",
+    ],
+  },
+  Camiguin: {
+    cities: [],
+    municipalities: ["Catarman", "Guinsiliban", "Mahinog", "Mambajao", "Sagay"],
+  },
+  Capiz: {
+    cities: ["Roxas City"],
+    municipalities: [
+      "Cuartero",
+      "Dao",
+      "Dumalag",
+      "Dumarao",
+      "Ivisan",
+      "Jamindan",
+      "Ma-ayon",
+      "Mambusao",
+      "Panay",
+      "Panitan",
+      "Pilar",
+      "Pontevedra",
+      "President Roxas",
+      "Sapi-an",
+      "Sigma",
+      "Tapaz",
+    ],
+  },
+  Catanduanes: {
+    cities: [],
+    municipalities: [
+      "Bagamanoc",
+      "Baras",
+      "Bato",
+      "Caramoran",
+      "Gigmoto",
+      "Pandan",
+      "Panganiban",
+      "San Andres",
+      "San Miguel",
+      "Viga",
+      "Virac",
+    ],
+  },
+  Cavite: {
+    cities: [
+      "Bacoor City",
+      "Cavite City",
+      "Dasmariñas City",
+      "General Trias City",
+      "Imus City",
+      "Tagaytay City",
+      "Trece Martires City",
+    ],
+    municipalities: [
+      "Alfonso",
+      "Amadeo",
+      "Carmona",
+      "General Emilio Aguinaldo",
+      "General Mariano Alvarez",
+      "Indang",
+      "Kawit",
+      "Magallanes",
+      "Maragondon",
+      "Mendez",
+      "Naic",
+      "Noveleta",
+      "Rosario",
+      "Silang",
+      "Tanza",
+      "Ternate",
+    ],
+  },
+  Cebu: {
+    cities: ["Cebu City", "Danao City", "Lapu-Lapu City", "Mandaue City", "Talisay City", "Toledo City", "Carcar City"],
+    municipalities: [
+      "Alcantara",
+      "Alcoy",
+      "Alegria",
+      "Aloguinsan",
+      "Argao",
+      "Asturias",
+      "Badian",
+      "Balamban",
+      "Bantayan",
+      "Barili",
+      "Bogo",
+      "Boljoon",
+      "Borbon",
+      "Carmen",
+      "Catmon",
+      "Compostela",
+      "Consolacion",
+      "Cordova",
+      "Daanbantayan",
+      "Dalaguete",
+      "Dumanjug",
+      "Ginatilan",
+      "Liloan",
+      "Madridejos",
+      "Malabuyoc",
+      "Medellin",
+      "Minglanilla",
+      "Moalboal",
+      "Oslob",
+      "Pilar",
+      "Pinamungajan",
+      "Poro",
+      "Ronda",
+      "Samboan",
+      "San Fernando",
+      "San Francisco",
+      "San Remigio",
+      "Santa Fe",
+      "Santander",
+      "Sibonga",
+      "Sogod",
+      "Tabogon",
+      "Tabuelan",
+      "Tuburan",
+      "Tudela",
+    ],
+  },
+  Cotabato: {
+    cities: ["Kidapawan City"],
+    municipalities: [
+      "Alamada",
+      "Aleosan",
+      "Antipas",
+      "Arakan",
+      "Banisilan",
+      "Carmen",
+      "Kabacan",
+      "Libungan",
+      "M'lang",
+      "Magpet",
+      "Makilala",
+      "Matalam",
+      "Midsayap",
+      "Pigcawayan",
+      "Pikit",
+      "President Roxas",
+      "Tulunan",
+    ],
+  },
+  "Davao de Oro": {
+    cities: [],
+    municipalities: [
+      "Compostela",
+      "Laak",
+      "Mabini",
+      "Maco",
+      "Maragusan",
+      "Mawab",
+      "Monkayo",
+      "Montevista",
+      "Nabunturan",
+      "New Bataan",
+      "Pantukan",
+    ],
+  },
+  "Davao del Norte": {
+    cities: ["Island Garden City of Samal", "Panabo City", "Tagum City"],
+    municipalities: [
+      "Asuncion",
+      "Braulio E. Dujali",
+      "Carmen",
+      "Kapalong",
+      "New Corella",
+      "San Isidro",
+      "Santo Tomas",
+      "Talaingod",
+    ],
+  },
+  "Davao del Sur": {
+    cities: ["Davao City", "Digos City"],
+    municipalities: [
+      "Bansalan",
+      "Don Marcelino",
+      "Hagonoy",
+      "Jose Abad Santos",
+      "Kiblawan",
+      "Magsaysay",
+      "Malita",
+      "Matanao",
+      "Padada",
+      "Santa Cruz",
+      "Sulop",
+    ],
+  },
+  "Davao Occidental": {
+    cities: [],
+    municipalities: ["Don Marcelino", "Jose Abad Santos", "Malita", "Santa Maria", "Sarangani"],
+  },
+  "Davao Oriental": {
+    cities: ["Mati City"],
+    municipalities: [
+      "Baganga",
+      "Banaybanay",
+      "Boston",
+      "Caraga",
+      "Cateel",
+      "Governor Generoso",
+      "Lupon",
+      "Manay",
+      "San Isidro",
+      "Tarragona",
+    ],
+  },
+  "Dinagat Islands": {
+    cities: [],
+    municipalities: ["Basilisa", "Cagdianao", "Dinagat", "Libjo", "Loreto", "San Jose", "Tubajon"],
+  },
+  "Eastern Samar": {
+    cities: ["Borongan City"],
+    municipalities: [
+      "Arteche",
+      "Balangiga",
+      "Balangkayan",
+      "Can-avid",
+      "Dolores",
+      "General MacArthur",
+      "Giporlos",
+      "Guiuan",
+      "Hernani",
+      "Jipapad",
+      "Lawaan",
+      "Llorente",
+      "Maslog",
+      "Maydolong",
+      "Mercedes",
+      "Oras",
+      "Quinapondan",
+      "Salcedo",
+      "San Julian",
+      "San Policarpo",
+      "Sulat",
+      "Taft",
+    ],
+  },
+  Guimaras: {
+    cities: [],
+    municipalities: ["Buenavista", "Jordan", "Nueva Valencia", "San Lorenzo", "Sibunag"],
+  },
+  Ifugao: {
+    cities: [],
+    municipalities: [
+      "Aguinaldo",
+      "Alfonso Lista",
+      "Asipulo",
+      "Banaue",
+      "Hingyon",
+      "Hungduan",
+      "Kiangan",
+      "Lagawe",
+      "Lamut",
+      "Mayoyao",
+      "Tinoc",
+    ],
+  },
+  "Ilocos Norte": {
+    cities: ["Batac City", "Laoag City"],
+    municipalities: [
+      "Adams",
+      "Bacarra",
+      "Badoc",
+      "Bangui",
+      "Banna",
+      "Burgos",
+      "Carasi",
+      "Currimao",
+      "Dingras",
+      "Dumalneg",
+      "Marcos",
+      "Nueva Era",
+      "Pagudpud",
+      "Paoay",
+      "Pasuquin",
+      "Piddig",
+      "Pinili",
+      "San Nicolas",
+      "Sarrat",
+      "Solsona",
+      "Vintar",
+    ],
+  },
+  "Ilocos Sur": {
+    cities: ["Candon City", "Vigan City"],
+    municipalities: [
+      "Alilem",
+      "Banayoyo",
+      "Bantay",
+      "Burgos",
+      "Cabugao",
+      "Caoayan",
+      "Cervantes",
+      "Galimuyod",
+      "Gregorio del Pilar",
+      "Lidlidda",
+      "Magsingal",
+      "Nagbukel",
+      "Narvacan",
+      "Quirino",
+      "Salcedo",
+      "San Emilio",
+      "San Esteban",
+      "San Ildefonso",
+      "San Juan",
+      "San Vicente",
+      "Santa",
+      "Santa Catalina",
+      "Santa Cruz",
+      "Santa Lucia",
+      "Santa Maria",
+      "Santiago",
+      "Santo Domingo",
+      "Sigay",
+      "Sinait",
+      "Sugpon",
+      "Suyo",
+      "Tagudin",
+    ],
+  },
+  Iloilo: {
+    cities: ["Iloilo City", "Passi City"],
+    municipalities: [
+      "Ajuy",
+      "Alimodian",
+      "Anilao",
+      "Badiangan",
+      "Balasan",
+      "Banate",
+      "Barotac Nuevo",
+      "Barotac Viejo",
+      "Batad",
+      "Bingawan",
+      "Cabatuan",
+      "Calinog",
+      "Carles",
+      "Concepcion",
+      "Dingle",
+      "Dueñas",
+      "Dumangas",
+      "Estancia",
+      "Guimbal",
+      "Igbaras",
+      "Janiuay",
+      "Lambunao",
+      "Leganes",
+      "Lemery",
+      "Leon",
+      "Maasin",
+      "Miagao",
+      "Mina",
+      "New Lucena",
+      "Oton",
+      "Pavia",
+      "Pototan",
+      "San Dionisio",
+      "San Enrique",
+      "San Joaquin",
+      "San Miguel",
+      "San Rafael",
+      "Santa Barbara",
+      "Sara",
+      "Tigbauan",
+      "Tubungan",
+      "Zarraga",
+    ],
+  },
+  Isabela: {
+    cities: ["Cauayan City", "Ilagan City", "Santiago City"],
+    municipalities: [
+      "Alicia",
+      "Angadanan",
+      "Aurora",
+      "Benito Soliven",
+      "Burgos",
+      "Cabagan",
+      "Cabatuan",
+      "Cordon",
+      "Delfin Albano",
+      "Dinapigue",
+      "Divilacan",
+      "Echague",
+      "Gamu",
+      "Jones",
+      "Luna",
+      "Maconacon",
+      "Mallig",
+      "Naguilian",
+      "Palanan",
+      "Quezon",
+      "Quirino",
+      "Ramon",
+      "Reina Mercedes",
+      "Roxas",
+      "San Agustin",
+      "San Guillermo",
+      "San Isidro",
+      "San Manuel",
+      "San Mariano",
+      "San Mateo",
+      "San Pablo",
+      "Santa Maria",
+      "Santo Tomas",
+      "Tumauini",
+    ],
+  },
+  Kalinga: {
+    cities: [],
+    municipalities: ["Balbalan", "Lubuagan", "Pasil", "Pinukpuk", "Rizal", "Tabuk", "Tanudan", "Tinglayan"],
+  },
+  "La Union": {
+    cities: ["San Fernando City"],
+    municipalities: [
+      "Agoo",
+      "Aringay",
+      "Bacnotan",
+      "Bagulin",
+      "Balaoan",
+      "Bangar",
+      "Bauang",
+      "Burgos",
+      "Caba",
+      "Luna",
+      "Naguilian",
+      "Pugo",
+      "Rosario",
+      "San Gabriel",
+      "San Juan",
+      "Santo Tomas",
+      "Santol",
+      "Sudipen",
+      "Tubao",
+    ],
+  },
+  Laguna: {
+    cities: ["Biñan City", "Cabuyao City", "Calamba City", "San Pablo City", "San Pedro City", "Santa Rosa City"],
+    municipalities: [
+      "Alaminos",
+      "Bay",
+      "Calauan",
+      "Cavinti",
+      "Famy",
+      "Kalayaan",
+      "Liliw",
+      "Los Baños",
+      "Luisiana",
+      "Lumban",
+      "Mabitac",
+      "Magdalena",
+      "Majayjay",
+      "Nagcarlan",
+      "Paete",
+      "Pagsanjan",
+      "Pakil",
+      "Pangil",
+      "Pila",
+      "Rizal",
+      "San Antonio",
+      "Santa Cruz",
+      "Santa Maria",
+      "Siniloan",
+      "Victoria",
+    ],
+  },
+  "Lanao del Norte": {
+    cities: ["Iligan City"],
+    municipalities: [
+      "Bacolod",
+      "Baloi",
+      "Baroy",
+      "Kapatagan",
+      "Kauswagan",
+      "Kolambugan",
+      "Lala",
+      "Linamon",
+      "Magsaysay",
+      "Maigo",
+      "Matungao",
+      "Munai",
+      "Nunungan",
+      "Pantao Ragat",
+      "Pantar",
+      "Poona Piagapo",
+      "Salvador",
+      "Sapad",
+      "Sultan Naga Dimaporo",
+      "Tagoloan",
+      "Tangcal",
+      "Tubod",
+    ],
+  },
+  "Lanao del Sur": {
+    cities: ["Marawi City"],
+    municipalities: [
+      "Amai Manabilang",
+      "Bacolod-Kalawi",
+      "Balabagan",
+      "Balindong",
+      "Bayang",
+      "Binidayan",
+      "Buadiposo-Buntong",
+      "Bubong",
+      "Butig",
+      "Calanogas",
+      "Ditsaan-Ramain",
+      "Ganassi",
+      "Kapai",
+      "Kapatagan",
+      "Lumba-Bayabao",
+      "Lumbaca-Unayan",
+      "Lumbatan",
+      "Lumbayanague",
+      "Madalum",
+      "Madamba",
+      "Maguing",
+      "Malabang",
+      "Marantao",
+      "Marogong",
+      "Masiu",
+      "Mulondo",
+      "Pagayawan",
+      "Piagapo",
+      "Picong",
+      "Poona Bayabao",
+      "Pualas",
+      "Saguiaran",
+      "Sultan Dumalondong",
+      "Tagoloan II",
+      "Tamparan",
+      "Taraka",
+      "Tubaran",
+      "Tugaya",
+      "Wao",
+    ],
+  },
+  Leyte: {
+    cities: ["Baybay City", "Ormoc City", "Tacloban City"],
+    municipalities: [
+      "Abuyog",
+      "Alangalang",
+      "Albuera",
+      "Babatngon",
+      "Barugo",
+      "Bato",
+      "Calubian",
+      "Capoocan",
+      "Carigara",
+      "Dagami",
+      "Dulag",
+      "Hilongos",
+      "Hindang",
+      "Inopacan",
+      "Isabel",
+      "Jaro",
+      "Javier",
+      "Julita",
+      "Kananga",
+      "La Paz",
+      "Leyte",
+      "MacArthur",
+      "Mahaplag",
+      "Matag-ob",
+      "Matalom",
+      "Mayorga",
+      "Merida",
+      "Palo",
+      "Palompon",
+      "Pastrana",
+      "San Isidro",
+      "San Miguel",
+      "Santa Fe",
+      "Tabango",
+      "Tabontabon",
+      "Tanauan",
+      "Tolosa",
+      "Tunga",
+      "Villaba",
+    ],
+  },
+  Maguindanao: {
+    cities: [],
+    municipalities: [
+      "Ampatuan",
+      "Barira",
+      "Buldon",
+      "Buluan",
+      "Cotabato City",
+      "Datu Abdullah Sangki",
+      "Datu Anggal Midtimbang",
+      "Datu Blah T. Sinsuat",
+      "Datu Hoffer Ampatuan",
+      "Datu Montawal",
+      "Datu Odin Sinsuat",
+      "Datu Paglas",
+      "Datu Piang",
+      "Datu Salibo",
+      "Datu Saudi-Ampatuan",
+      "Datu Unsay",
+      "General Salipada K. Pendatun",
+      "Guindulungan",
+      "Kabuntalan",
+      "Mamasapano",
+      "Mangudadatu",
+      "Matanog",
+      "Northern Kabuntalan",
+      "Pagalungan",
+      "Paglat",
+      "Pandag",
+      "Parang",
+      "Rajah Buayan",
+      "Shariff Aguak",
+      "Shariff Saydona Mustapha",
+      "South Upi",
+      "Sultan Kudarat",
+      "Sultan Mastura",
+      "Sultan sa Barongis",
+      "Sultan Sumagka",
+      "Talayan",
+      "Talitay",
+      "Upi",
+    ],
+  },
+  Marinduque: {
+    cities: [],
+    municipalities: ["Boac", "Buenavista", "Gasan", "Mogpog", "Santa Cruz", "Torrijos"],
+  },
+  Masbate: {
+    cities: ["Masbate City"],
+    municipalities: [
+      "Aroroy",
+      "Baleno",
+      "Balud",
+      "Batuan",
+      "Cataingan",
+      "Cawayan",
+      "Claveria",
+      "Dimasalang",
+      "Esperanza",
+      "Mandaon",
+      "Milagros",
+      "Mobo",
+      "Monreal",
+      "Palanas",
+      "Pio V. Corpuz",
+      "Placer",
+      "San Fernando",
+      "San Jacinto",
+      "San Pascual",
+      "Uson",
+    ],
+  },
+  "Metro Manila": {
+    cities: [
+      "Caloocan City",
+      "Las Piñas City",
+      "Makati City",
+      "Malabon City",
+      "Mandaluyong City",
+      "Manila",
+      "Marikina City",
+      "Muntinlupa City",
+      "Navotas City",
+      "Parañaque City",
+      "Pasay City",
+      "Pasig City",
+      "Quezon City",
+      "San Juan City",
+      "Taguig City",
+      "Valenzuela City",
+    ],
+    municipalities: ["Pateros"],
+  },
+  "Misamis Occidental": {
+    cities: ["Oroquieta City", "Ozamiz City", "Tangub City"],
+    municipalities: [
+      "Aloran",
+      "Baliangao",
+      "Bonifacio",
+      "Calamba",
+      "Clarin",
+      "Concepcion",
+      "Don Victoriano Chiongbian",
+      "Jimenez",
+      "Lopez Jaena",
+      "Panaon",
+      "Plaridel",
+      "Sapang Dalaga",
+      "Sinacaban",
+      "Tudela",
+    ],
+  },
+  "Misamis Oriental": {
+    cities: ["Cagayan de Oro City", "El Salvador City", "Gingoog City"],
+    municipalities: [
+      "Alubijid",
+      "Balingasag",
+      "Balingoan",
+      "Binuangan",
+      "Claveria",
+      "Gitagum",
+      "Initao",
+      "Jasaan",
+      "Kinoguitan",
+      "Lagonglong",
+      "Laguindingan",
+      "Libertad",
+      "Lugait",
+      "Magsaysay",
+      "Manticao",
+      "Medina",
+      "Naawan",
+      "Opol",
+      "Salay",
+      "Sugbongcogon",
+      "Tagoloan",
+      "Talisayan",
+      "Villanueva",
+    ],
+  },
+  "Mountain Province": {
+    cities: [],
+    municipalities: [
+      "Barlig",
+      "Bauko",
+      "Besao",
+      "Bontoc",
+      "Natonin",
+      "Paracelis",
+      "Sabangan",
+      "Sadanga",
+      "Sagada",
+      "Tadian",
+    ],
+  },
+  "Negros Occidental": {
+    cities: [
+      "Bacolod City",
+      "Bago City",
+      "Cadiz City",
+      "Escalante City",
+      "Himamaylan City",
+      "Kabankalan City",
+      "La Carlota City",
+      "Sagay City",
+      "San Carlos City",
+      "Silay City",
+      "Sipalay City",
+      "Talisay City",
+      "Victorias City",
+    ],
+    municipalities: [
+      "Binalbagan",
+      "Calatrava",
+      "Candoni",
+      "Cauayan",
+      "Enrique B. Magalona",
+      "Hinigaran",
+      "Hinoba-an",
+      "Ilog",
+      "Isabela",
+      "La Castellana",
+      "Manapla",
+      "Moises Padilla",
+      "Murcia",
+      "Pontevedra",
+      "Pulupandan",
+      "Salvador Benedicto",
+      "San Enrique",
+      "Toboso",
+      "Valladolid",
+    ],
+  },
+  "Negros Oriental": {
+    cities: ["Bais City", "Bayawan City", "Canlaon City", "Dumaguete City", "Guihulngan City", "Tanjay City"],
+    municipalities: [
+      "Amlan",
+      "Ayungon",
+      "Bacong",
+      "Basay",
+      "Bindoy",
+      "Dauin",
+      "Jimalalud",
+      "La Libertad",
+      "Mabinay",
+      "Manjuyod",
+      "Pamplona",
+      "San Jose",
+      "Santa Catalina",
+      "Siaton",
+      "Sibulan",
+      "Tayasan",
+      "Valencia",
+      "Vallehermoso",
+      "Zamboanguita",
+    ],
+  },
+  "Northern Samar": {
+    cities: [],
+    municipalities: [
+      "Allen",
+      "Biri",
+      "Bobon",
+      "Capul",
+      "Catarman",
+      "Catubig",
+      "Gamay",
+      "Laoang",
+      "Lapinig",
+      "Las Navas",
+      "Lavezares",
+      "Lope de Vega",
+      "Mapanas",
+      "Mondragon",
+      "Palapag",
+      "Pambujan",
+      "Rosario",
+      "San Antonio",
+      "San Isidro",
+      "San Jose",
+      "San Roque",
+      "San Vicente",
+      "Silvino Lobos",
+      "Victoria",
+    ],
+  },
+  "Nueva Ecija": {
+    cities: ["Cabanatuan City", "Gapan City", "Muñoz City", "Palayan City", "San Jose City"],
+    municipalities: [
+      "Aliaga",
+      "Bongabon",
+      "Cabiao",
+      "Carranglan",
+      "Cuyapo",
+      "Gabaldon",
+      "General Mamerto Natividad",
+      "General Tinio",
+      "Guimba",
+      "Jaen",
+      "Laur",
+      "Licab",
+      "Llanera",
+      "Lupao",
+      "Nampicuan",
+      "Pantabangan",
+      "Peñaranda",
+      "Quezon",
+      "Rizal",
+      "San Antonio",
+      "San Isidro",
+      "San Leonardo",
+      "Santa Rosa",
+      "Santo Domingo",
+      "Talavera",
+      "Talugtug",
+      "Zaragoza",
+    ],
+  },
+  "Nueva Vizcaya": {
+    cities: [],
+    municipalities: [
+      "Alfonso Castañeda",
+      "Ambaguio",
+      "Aritao",
+      "Bagabag",
+      "Bambang",
+      "Bayombong",
+      "Diadi",
+      "Dupax del Norte",
+      "Dupax del Sur",
+      "Kasibu",
+      "Kayapa",
+      "Quezon",
+      "Santa Fe",
+      "Solano",
+      "Villaverde",
+    ],
+  },
+  "Occidental Mindoro": {
+    cities: [],
+    municipalities: [
+      "Abra de Ilog",
+      "Calintaan",
+      "Looc",
+      "Lubang",
+      "Magsaysay",
+      "Mamburao",
+      "Paluan",
+      "Rizal",
+      "Sablayan",
+      "San Jose",
+      "Santa Cruz",
+    ],
+  },
+  "Oriental Mindoro": {
+    cities: ["Calapan City"],
+    municipalities: [
+      "Baco",
+      "Bansud",
+      "Bongabong",
+      "Bulalacao",
+      "Gloria",
+      "Mansalay",
+      "Naujan",
+      "Pinamalayan",
+      "Pola",
+      "Puerto Galera",
+      "Roxas",
+      "San Teodoro",
+      "Socorro",
+      "Victoria",
+    ],
+  },
+  Palawan: {
+    cities: ["Puerto Princesa City"],
+    municipalities: [
+      "Aborlan",
+      "Agutaya",
+      "Araceli",
+      "Balabac",
+      "Bataraza",
+      "Brooke's Point",
+      "Busuanga",
+      "Cagayancillo",
+      "Coron",
+      "Culion",
+      "Cuyo",
+      "Dumaran",
+      "El Nido",
+      "Kalayaan",
+      "Linapacan",
+      "Magsaysay",
+      "Narra",
+      "Quezon",
+      "Rizal",
+      "Roxas",
+      "San Vicente",
+      "Sofronio Española",
+      "Taytay",
+    ],
+  },
+  Pampanga: {
+    cities: ["Angeles City", "Mabalacat City", "San Fernando City"],
+    municipalities: [
+      "Apalit",
+      "Arayat",
+      "Bacolor",
+      "Candaba",
+      "Floridablanca",
+      "Guagua",
+      "Lubao",
+      "Macabebe",
+      "Magalang",
+      "Masantol",
+      "Mexico",
+      "Porac",
+      "Sasmuan",
+      "Santa Ana",
+      "Santa Rita",
+      "Santo Tomas",
+      "Sta. Ana",
+    ],
+  },
+  Pangasinan: {
+    cities: ["Alaminos City", "Dagupan City", "San Carlos City", "Urdaneta City"],
+    municipalities: [
+      "Agno",
+      "Aguilar",
+      "Alcala",
+      "Anda",
+      "Asingan",
+      "Balungao",
+      "Bani",
+      "Basista",
+      "Bautista",
+      "Bayambang",
+      "Binalonan",
+      "Binmaley",
+      "Bolinao",
+      "Bugallon",
+      "Burgos",
+      "Calasiao",
+      "Dasol",
+      "Infanta",
+      "Labrador",
+      "Laoac",
+      "Lingayen",
+      "Mabini",
+      "Malasiqui",
+      "Manaoag",
+      "Mangaldan",
+      "Mangatarem",
+      "Mapandan",
+      "Natividad",
+      "Pozorrubio",
+      "Rosales",
+      "San Fabian",
+      "San Jacinto",
+      "San Manuel",
+      "San Nicolas",
+      "San Quintin",
+      "Santa Barbara",
+      "Santa Maria",
+      "Santo Tomas",
+      "Sison",
+      "Sual",
+      "Tayug",
+      "Umingan",
+      "Urbiztondo",
+      "Villasis",
+    ],
+  },
+  Quezon: {
+    cities: ["Lucena City", "Tayabas City"],
+    municipalities: [
+      "Agdangan",
+      "Alabat",
+      "Atimonan",
+      "Buenavista",
+      "Burdeos",
+      "Calauag",
+      "Candelaria",
+      "Catanauan",
+      "Dolores",
+      "General Luna",
+      "General Nakar",
+      "Guinayangan",
+      "Gumaca",
+      "Infanta",
+      "Jomalig",
+      "Lopez",
+      "Lucban",
+      "Macalelon",
+      "Mauban",
+      "Mulanay",
+      "Padre Burgos",
+      "Pagbilao",
+      "Panukulan",
+      "Patnanungan",
+      "Perez",
+      "Pitogo",
+      "Plaridel",
+      "Polillo",
+      "Quezon",
+      "Real",
+      "Sampaloc",
+      "San Andres",
+      "San Antonio",
+      "San Francisco",
+      "San Narciso",
+      "Sariaya",
+      "Tagkawayan",
+      "Tiaong",
+      "Unisan",
+    ],
+  },
+  Quirino: {
+    cities: [],
+    municipalities: ["Aglipay", "Cabarroguis", "Diffun", "Maddela", "Nagtipunan", "Saguday"],
+  },
+  Rizal: {
+    cities: ["Antipolo City"],
+    municipalities: [
+      "Angono",
+      "Baras",
+      "Binangonan",
+      "Cainta",
+      "Cardona",
+      "Jalajala",
+      "Morong",
+      "Pililla",
+      "Rodriguez",
+      "San Mateo",
+      "Tanay",
+      "Taytay",
+      "Teresa",
+    ],
+  },
+  Romblon: {
+    cities: [],
+    municipalities: [
+      "Alcantara",
+      "Banton",
+      "Cajidiocan",
+      "Calatrava",
+      "Concepcion",
+      "Corcuera",
+      "Ferrol",
+      "Looc",
+      "Magdiwang",
+      "Odiongan",
+      "Romblon",
+      "San Agustin",
+      "San Andres",
+      "San Fernando",
+      "San Jose",
+      "Santa Fe",
+      "Santa Maria",
+    ],
+  },
+  Samar: {
+    cities: ["Calbayog City", "Catbalogan City"],
+    municipalities: [
+      "Almagro",
+      "Basey",
+      "Calbiga",
+      "Daram",
+      "Gandara",
+      "Hinabangan",
+      "Jiabong",
+      "Marabut",
+      "Matuguinao",
+      "Motiong",
+      "Pagsanghan",
+      "Paranas",
+      "Pinabacdao",
+      "San Jorge",
+      "San Jose de Buan",
+      "San Sebastian",
+      "Santa Margarita",
+      "Santa Rita",
+      "Santo Niño",
+      "Tagapul-an",
+      "Talalora",
+      "Tarangnan",
+      "Villareal",
+      "Zumarraga",
+    ],
+  },
+  Sarangani: {
+    cities: [],
+    municipalities: ["Alabel", "Glan", "Kiamba", "Maasim", "Maitum", "Malapatan", "Malungon"],
+  },
+  Siquijor: {
+    cities: [],
+    municipalities: ["Enrique Villanueva", "Larena", "Lazi", "Maria", "San Juan", "Siquijor"],
+  },
+  Sorsogon: {
+    cities: ["Sorsogon City"],
+    municipalities: [
+      "Barcelona",
+      "Bulan",
+      "Bulusan",
+      "Casiguran",
+      "Castilla",
+      "Donsol",
+      "Gubat",
+      "Irosin",
+      "Juban",
+      "Magallanes",
+      "Matnog",
+      "Pilar",
+      "Prieto Diaz",
+      "Santa Magdalena",
+    ],
+  },
+  "South Cotabato": {
+    cities: ["General Santos City", "Koronadal City"],
+    municipalities: [
+      "Banga",
+      "Lake Sebu",
+      "Norala",
+      "Polomolok",
+      "Santo Niño",
+      "Surallah",
+      "T'Boli",
+      "Tampakan",
+      "Tantangan",
+      "Tupi",
+    ],
+  },
+  "Southern Leyte": {
+    cities: ["Maasin City"],
+    municipalities: [
+      "Anahawan",
+      "Bontoc",
+      "Hinunangan",
+      "Hinundayan",
+      "Libagon",
+      "Liloan",
+      "Limasawa",
+      "Macrohon",
+      "Malitbog",
+      "Padre Burgos",
+      "Pintuyan",
+      "Saint Bernard",
+      "San Francisco",
+      "San Juan",
+      "San Ricardo",
+      "Silago",
+      "Sogod",
+      "Tomas Oppus",
+    ],
+  },
+  "Sultan Kudarat": {
+    cities: ["Tacurong City"],
+    municipalities: [
+      "Bagumbayan",
+      "Columbio",
+      "Esperanza",
+      "Isulan",
+      "Kalamansig",
+      "Lambayong",
+      "Lebak",
+      "Lutayan",
+      "Palimbang",
+      "President Quirino",
+      "Senator Ninoy Aquino",
+    ],
+  },
+  Sulu: {
+    cities: ["Jolo"],
+    municipalities: [
+      "Hadji Panglima Tahil",
+      "Indanan",
+      "Kalingalan Caluang",
+      "Lugus",
+      "Luuk",
+      "Maimbung",
+      "Old Panamao",
+      "Omar",
+      "Pandami",
+      "Panglima Estino",
+      "Pangutaran",
+      "Parang",
+      "Pata",
+      "Patikul",
+      "Siasi",
+      "Talipao",
+      "Tapul",
+    ],
+  },
+  "Surigao del Norte": {
+    cities: ["Surigao City"],
+    municipalities: [
+      "Alegria",
+      "Bacuag",
+      "Burgos",
+      "Claver",
+      "Dapa",
+      "Del Carmen",
+      "General Luna",
+      "Gigaquit",
+      "Mainit",
+      "Malimono",
+      "Pilar",
+      "Placer",
+      "San Benito",
+      "San Francisco",
+      "San Isidro",
+      "Santa Monica",
+      "Sison",
+      "Socorro",
+      "Tagana-an",
+      "Tubod",
+    ],
+  },
+  "Surigao del Sur": {
+    cities: ["Bislig City", "Tandag City"],
+    municipalities: [
+      "Barobo",
+      "Bayabas",
+      "Cagwait",
+      "Cantilan",
+      "Carmen",
+      "Carrascal",
+      "Cortes",
+      "Hinatuan",
+      "Lanuza",
+      "Lianga",
+      "Lingig",
+      "Madrid",
+      "Marihatag",
+      "San Agustin",
+      "San Miguel",
+      "Tagbina",
+      "Tago",
+    ],
+  },
+  Tarlac: {
+    cities: ["Tarlac City"],
+    municipalities: [
+      "Anao",
+      "Bamban",
+      "Camotli",
+      "Capas",
+      "Concepcion",
+      "Gerona",
+      "La Paz",
+      "Mayantoc",
+      "Moncada",
+      "Paniqui",
+      "Pura",
+      "Ramos",
+      "San Clemente",
+      "San Jose",
+      "San Manuel",
+      "Santa Ignacia",
+      "Victoria",
+    ],
+  },
+  "Tawi-Tawi": {
+    cities: [],
+    municipalities: [
+      "Bongao",
+      "Languyan",
+      "Mapun",
+      "Panglima Sugala",
+      "Sapa-Sapa",
+      "Sibutu",
+      "Simunul",
+      "Sitangkai",
+      "South Ubian",
+      "Tandubas",
+      "Turtle Islands",
+    ],
+  },
+  Zambales: {
+    cities: ["Olongapo City"],
+    municipalities: [
+      "Botolan",
+      "Cabangan",
+      "Candelaria",
+      "Castillejos",
+      "Iba",
+      "Masinloc",
+      "Palauig",
+      "San Antonio",
+      "San Felipe",
+      "San Marcelino",
+      "San Narciso",
+      "Santa Cruz",
+      "Subic",
+    ],
+  },
+  "Zamboanga del Norte": {
+    cities: ["Dapitan City", "Dipolog City"],
+    municipalities: [
+      "Bacungan",
+      "Baliguian",
+      "Godod",
+      "Gutalac",
+      "Jose Dalman",
+      "Kalawit",
+      "Katipunan",
+      "La Libertad",
+      "Labason",
+      "Leon B. Postigo",
+      "Liloy",
+      "Manukan",
+      "Mutia",
+      "Piñan",
+      "Polanco",
+      "Pres. Manuel A. Roxas",
+      "Rizal",
+      "Salug",
+      "Sergio Osmeña Sr.",
+      "Siayan",
+      "Sibuco",
+      "Sibutad",
+      "Sindangan",
+      "Siocon",
+      "Sirawai",
+      "Tampilisan",
+    ],
+  },
+  "Zamboanga del Sur": {
+    cities: ["Pagadian City", "Zamboanga City"],
+    municipalities: [
+      "Aurora",
+      "Bayog",
+      "Dimataling",
+      "Dinas",
+      "Dumalinao",
+      "Dumingag",
+      "Guipos",
+      "Josefina",
+      "Kumalarang",
+      "Labangan",
+      "Lakewood",
+      "Lapuyan",
+      "Mahayag",
+      "Margosatubig",
+      "Midsalip",
+      "Molave",
+      "Pitogo",
+      "Ramon Magsaysay",
+      "San Miguel",
+      "San Pablo",
+      "Sominot",
+      "Tabina",
+      "Tambulig",
+      "Tigbao",
+      "Tukuran",
+      "Vincenzo A. Sagun",
+    ],
+  },
+  "Zamboanga Sibugay": {
+    cities: [],
+    municipalities: [
+      "Alicia",
+      "Buug",
+      "Diplahan",
+      "Imelda",
+      "Ipil",
+      "Kabasalan",
+      "Mabuhay",
+      "Malangas",
+      "Naga",
+      "Olutanga",
+      "Payao",
+      "Roseller Lim",
+      "Siay",
+      "Talusan",
+      "Titay",
+      "Tungawan",
+    ],
+  },
+}
+
+const barangayData: { [province: string]: { [cityMunicipality: string]: string[] } } = {
+  Cebu: {
+    "Cebu City": [
+      "Apas",
+      "Lahug",
+      "Capitol Site",
+      "Guadalupe",
+      "Mabolo",
+      "Banilad",
+      "Talamban",
+      "Kasambagan",
+      "Busay",
+      "Tisa",
+      "Pardo",
+      "Basak San Nicolas",
+      "Kamputhaw",
+      "Zapatera",
+      "Ermita",
+      "Carreta",
+      "Pahina Central",
+      "Pahina San Nicolas",
+      "Sambag I",
+      "Sambag II",
+      "Suba",
+      "Tejero",
+      "Tinago",
+      "Duljo Fatima",
+      "Mambaling",
+      "Pasil",
+      "Sawang Calero",
+      "Sinas",
+      "T. Padilla",
+      "Calamba",
+      "Cambinocot",
+      "Cogon Pardo",
+      "Inayawan",
+      "Kinasang-an",
+      "Labangon",
+      "Poblacion Pardo",
+      "Pulangbato",
+      "Quiot",
+      "San Nicolas Proper",
+      "Sapangdaku",
+      "Sudlon I",
+      "Sudlon II",
+      "Babag",
+      "Malubog",
+      "Pamutan",
+      "Pit-os",
+      "Bonbon",
+      "Budla-an",
+      "Buot-Taup",
+      "Guba",
+      "Kalunasan",
+      "Lusaran",
+      "Paril",
+      "Pulangbato",
+      "Toong",
+      "Adlaon",
+      "Agsungot",
+      "Bacayan",
+      "Buhisan",
+      "Bulacao",
+      "Cogon Ramos",
+      "Day-as",
+      "Hipodromo",
+      "Kalubihan",
+      "Kamagayan",
+      "Lorega San Miguel",
+      "Luz",
+      "Mabini",
+      "Pahina Central",
+      "Parian",
+      "Poblacion Pardo",
+      "Punta Princesa",
+      "Ramos",
+      "San Antonio",
+      "San Jose",
+      "Santa Cruz",
+      "Santo Niño",
+      "Sawang Calero",
+      "Sinsin",
+      "Suba Basbas",
+      "Sudlon I",
+      "Sudlon II",
+      "Tabucanal",
+      "Tagba-o",
+      "Taptap",
+      "Tejero",
+      "Tinago",
+      "Tisa",
+      "Toong",
+      "Zapatera",
+    ],
+    "Mandaue City": [
+      "Alang-alang",
+      "Bakilid",
+      "Banilad",
+      "Basak",
+      "Cabancalan",
+      "Canduman",
+      "Casili",
+      "Casuntingan",
+      "Centro",
+      "Cambaro",
+      "Cubacub",
+      "Guizo",
+      "Ibabao-Estancia",
+      "Jagobiao",
+      "Labogon",
+      "Looc",
+      "Maguikay",
+      "Mantuyong",
+      "Opao",
+      "Pakna-an",
+      "Pagsabungan",
+      "Subangdaku",
+      "Tabok",
+      "Tingub",
+      "Tipolo",
+      "Umapad",
+    ],
+    "Lapu-Lapu City": [
+      "Agus",
+      "Babag",
+      "Bankal",
+      "Basak",
+      "Buaya",
+      "Calawisan",
+      "Canjulao",
+      "Caubian",
+      "Cawhagan",
+      "Gun-ob",
+      "Ibo",
+      "Looc",
+      "Mactan",
+      "Maribago",
+      "Marigondon",
+      "Pajac",
+      "Pajo",
+      "Poblacion",
+      "Punta Engaño",
+      "Pusok",
+      "Sabang",
+      "San Vicente",
+      "Santa Rosa",
+      "Subabasbas",
+      "Talima",
+      "Tingo",
+      "Tugbongan",
+    ],
+    "Talisay City": [
+      "Biasong",
+      "Bulacao",
+      "Cadulawan",
+      "Camp Lapu-lapu",
+      "Candulawan",
+      "Cansojong",
+      "Dumlog",
+      "Jaclupan",
+      "Lagtang",
+      "Lawaan I",
+      "Lawaan II",
+      "Lawaan III",
+      "Linao",
+      "Maghaway",
+      "Manipis",
+      "Mohon",
+      "Poblacion",
+      "Pooc",
+      "San Isidro",
+      "San Roque",
+      "Tabunok",
+      "Tangke",
+    ],
+    "Toledo City": [
+      "Awihao",
+      "Bagakay",
+      "Bato",
+      "Biga",
+      "Bulongan",
+      "Calongcalong",
+      "Cambang-ug",
+      "Camp 8",
+      "Cantabaco",
+      "Capitan Claudio",
+      "Carmen",
+      "Daanglungsod",
+      "Don Andres Soriano",
+      "Dumaboc",
+      "Gen. Climaco",
+      "Hingatmonan",
+      "Ilihan",
+      "Inalad",
+      "Juan Climaco Sr.",
+      "Landahan",
+      "Loay",
+      "Luray I",
+      "Luray II",
+      "Magdugo",
+      "Media Once",
+      "Pangamihan",
+      "Poblacion",
+      "Poog",
+      "Putingbato",
+      "Sagay",
+      "Sam-ang",
+      "Sangi",
+      "Santo Niño",
+      "Subayon",
+      "Talavera",
+      "Tubod",
+      "Tungkay",
+    ],
+    "Danao City": [
+      "Baliang",
+      "Bayabas",
+      "Binaliw",
+      "Cabanawan",
+      "Cabungahan",
+      "Cagat-lamac",
+      "Cambanay",
+      "Cogon-cruz",
+      "Danasan",
+      "Dungga",
+      "Dunggoan",
+      "Guinacot",
+      "Guinsay",
+      "Ibo",
+      "Langosig",
+      "Lawaan",
+      "Licos",
+      "Looc",
+      "Magtagobtob",
+      "Malapoc",
+      "Manlayag",
+      "Masaba",
+      "Maslog",
+      "Nangka",
+      "Oguis",
+      "Pili",
+      "Poblacion",
+      "Sabang",
+      "Sacsac",
+      "Sandayong",
+      "Santa Rosa",
+      "Santican",
+      "Sibacan",
+      "Suba",
+      "Taboc",
+      "Tabok",
+      "Togonon",
+      "Tuburan",
+    ],
+    "Carcar City": [
+      "Bolinawan",
+      "Buenavista",
+      "Can-asujan",
+      "Guadalupe",
+      "Liburon",
+      "Napo",
+      "Ocaña",
+      "Perrelos",
+      "Poblacion I",
+      "Poblacion II",
+      "Poblacion III",
+      "Tuyom",
+      "Valladolid",
+    ],
+  },
+  // Add more provinces and their barangays as needed
+  "Metro Manila": {
+    Manila: [
+      "Binondo",
+      "Ermita",
+      "Intramuros",
+      "Malate",
+      "Paco",
+      "Pandacan",
+      "Port Area",
+      "Quiapo",
+      "Sampaloc",
+      "San Andres",
+      "San Miguel",
+      "San Nicolas",
+      "Santa Ana",
+      "Santa Cruz",
+      "Santa Mesa",
+      "Tondo",
+    ],
+    "Quezon City": [
+      "Bagbag",
+      "Bagong Pag-asa",
+      "Bahay Toro",
+      "Balingasa",
+      "Bungad",
+      "Commonwealth",
+      "Culiat",
+      "Fairview",
+      "Holy Spirit",
+      "Kamuning",
+      "Katipunan",
+      "La Loma",
+      "Libis",
+      "Loyola Heights",
+      "Malaya",
+      "Matandang Balara",
+      "Milagrosa",
+      "New Era",
+      "North Fairview",
+      "Novaliches Proper",
+      "Old Balara",
+      "Payatas",
+      "Project 6",
+      "Quirino District",
+      "San Bartolome",
+      "Santol",
+      "Sikatuna Village",
+      "Tandang Sora",
+      "Teachers Village",
+      "Ugong Norte",
+      "UP Campus",
+      "Veterans Village",
+      "West Triangle",
+    ],
+    "Makati City": [
+      "Bangkal",
+      "Bel-Air",
+      "Cembo",
+      "Comembo",
+      "Dasmariñas",
+      "East Rembo",
+      "Forbes Park",
+      "Guadalupe Nuevo",
+      "Guadalupe Viejo",
+      "Kasilawan",
+      "La Paz",
+      "Magallanes",
+      "Olympia",
+      "Palanan",
+      "Pembo",
+      "Pinagkaisahan",
+      "Pitogo",
+      "Poblacion",
+      "Post Proper Northside",
+      "Post Proper Southside",
+      "Rizal",
+      "San Antonio",
+      "San Isidro",
+      "San Lorenzo",
+      "Santa Cruz",
+      "Singkamas",
+      "South Cembo",
+      "Tejeros",
+      "Urdaneta",
+      "Valenzuela",
+      "West Rembo",
+    ],
+  },
+}
+
 // Cebu Province cities and municipalities
 const cebuCities = [
   "Cebu City",
@@ -112,13 +2328,13 @@ const sexOptions = ["Male", "Female", "Other", "Prefer not to say"]
 // Role options for the signup
 const roleOptions = [
   {
-    value: "Kutsero",
+    value: "kutsero",
     label: "Kutsero",
     description: "Driver of horse-drawn vehicle",
     icon: "🐴",
   },
   {
-    value: "Horse Operator", 
+    value: "horse_operator",
     label: "Horse Operator",
     description: "Owner/operator of horse business",
     icon: "🏇",
@@ -162,10 +2378,34 @@ interface ProfilePicture {
 
 // Updated API configuration
 const API_CONFIG = {
-  BASE_URL: 'http://172.20.10.2:8000/api/signup_mobile/',
+  BASE_URL: "http://192.168.1.7:8000/api/signup_mobile/",
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,
+}
+
+interface FormData {
+  firstName: string
+  lastName: string
+  middleName: string
+  email: string
+  password: string
+  confirmPassword: string
+  phoneNumber: string
+  birthDate: string
+  dateOfBirth: Date
+  facebook: string
+  profilePicture: ProfilePicture | null
+  sex: string
+  role: string
+  province: string
+  city: string
+  municipality: string
+  barangay: string
+  zipCode: string
+  houseAddress: string
+  route: string
+  to: string
 }
 
 export default function Signup() {
@@ -179,19 +2419,21 @@ export default function Signup() {
   const [isLoading, setIsLoading] = useState(false)
 
   // Form data states - REMOVED username field, now only 5 steps
-  const [formData, setFormData] = useState({
-    // Step 1 - Personal Info
+  const [formData, setFormData] = useState<FormData>({
     firstName: "",
-    middleName: "",
     lastName: "",
-    dateOfBirth: new Date(),
-    sex: "",
+    middleName: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
     phoneNumber: "",
-
-    // Step 2 - Role Selection
+    birthDate: "",
+    dateOfBirth: new Date(),
+    facebook: "",
+    profilePicture: null,
+    sex: "",
     role: "",
-
-    // Step 3 - Location (Cebu only)
+    province: "",
     city: "",
     municipality: "",
     barangay: "",
@@ -199,17 +2441,6 @@ export default function Signup() {
     houseAddress: "",
     route: "",
     to: "",
-
-    // Step 4 - Facebook Link
-    facebook: "",
-
-    // Step 5 -   l Login Credentials
-    email: "",
-    password: "",
-    confirmPassword: "",
-
-    // Step 6 - Profile Picture
-    profilePicture: null as ProfilePicture | null,
   })
 
   const updateFormData = (field: string, value: any) => {
@@ -277,43 +2508,43 @@ export default function Signup() {
     }
 
     launchCamera(options, (response: ImagePickerResponse) => {
-      console.log('Camera response:', response)
-      
+      console.log("Camera response:", response)
+
       if (response.didCancel) {
-        console.log('User cancelled camera')
+        console.log("User cancelled camera")
         return
       }
 
       if (response.errorMessage) {
-        console.log('Camera error:', response.errorMessage)
-        Alert.alert('Camera Error', response.errorMessage)
+        console.log("Camera error:", response.errorMessage)
+        Alert.alert("Camera Error", response.errorMessage)
         return
       }
 
       // Add proper null/undefined checks here
       if (response.assets && response.assets.length > 0) {
         const asset = response.assets[0]
-        
+
         // Check if uri exists before proceeding
         if (!asset.uri) {
-          Alert.alert('Error', 'No image was captured')
+          Alert.alert("Error", "No image was captured")
           return
         }
-        
+
         const imageUri = asset.uri
-        
-        console.log('Camera image selected:', imageUri)
+
+        console.log("Camera image selected:", imageUri)
         setSelectedImage(imageUri)
-        
+
         const profilePictureData: ProfilePicture = {
           uri: imageUri, // Now guaranteed to be string
           type: asset.type || "image/jpeg",
           name: asset.fileName || "profile_camera.jpg",
         }
-        
+
         updateFormData("profilePicture", profilePictureData)
       } else {
-        Alert.alert('Error', 'No image was captured')
+        Alert.alert("Error", "No image was captured")
       }
     })
   }
@@ -330,43 +2561,43 @@ export default function Signup() {
     }
 
     launchImageLibrary(options, (response: ImagePickerResponse) => {
-      console.log('Image library response:', response)
-      
+      console.log("Image library response:", response)
+
       if (response.didCancel) {
-        console.log('User cancelled image picker')
+        console.log("User cancelled image picker")
         return
       }
 
       if (response.errorMessage) {
-        console.log('Image picker error:', response.errorMessage)
-        Alert.alert('Image Picker Error', response.errorMessage)
+        console.log("Image picker error:", response.errorMessage)
+        Alert.alert("Image Picker Error", response.errorMessage)
         return
       }
 
       // Add proper null/undefined checks here
       if (response.assets && response.assets.length > 0) {
         const asset = response.assets[0]
-        
+
         // Check if uri exists before proceeding
         if (!asset.uri) {
-          Alert.alert('Error', 'No image was selected')
+          Alert.alert("Error", "No image was selected")
           return
         }
-        
+
         const imageUri = asset.uri
-        
-        console.log('Gallery image selected:', imageUri)
+
+        console.log("Gallery image selected:", imageUri)
         setSelectedImage(imageUri)
-        
+
         const profilePictureData: ProfilePicture = {
           uri: imageUri, // Now guaranteed to be string
           type: asset.type || "image/jpeg",
           name: asset.fileName || "profile_gallery.jpg",
         }
-        
+
         updateFormData("profilePicture", profilePictureData)
       } else {
-        Alert.alert('Error', 'No image was selected')
+        Alert.alert("Error", "No image was selected")
       }
     })
   }
@@ -385,7 +2616,7 @@ export default function Signup() {
       return
     }
 
-    if (!formData.email.includes('@')) {
+    if (!formData.email.includes("@")) {
       Alert.alert("Error", "Please enter a valid email address")
       return
     }
@@ -491,16 +2722,23 @@ export default function Signup() {
                 // Get the user role to determine navigation
                 const userRole = formData.role
                 console.log("Navigating based on user role:", userRole)
-                
+
                 // Reset form
                 setFormData({
                   firstName: "",
-                  middleName: "",
                   lastName: "",
-                  dateOfBirth: new Date(),
-                  sex: "",
+                  middleName: "",
+                  email: "",
+                  password: "",
+                  confirmPassword: "",
                   phoneNumber: "",
+                  birthDate: "",
+                  dateOfBirth: new Date(),
+                  facebook: "",
+                  profilePicture: null,
+                  sex: "",
                   role: "",
+                  province: "",
                   city: "",
                   municipality: "",
                   barangay: "",
@@ -508,30 +2746,13 @@ export default function Signup() {
                   houseAddress: "",
                   route: "",
                   to: "",
-                  facebook: "",
-                  email: "",
-                  password: "",
-                  confirmPassword: "",
-                  profilePicture: null,
                 })
                 setSelectedImage(null)
                 setCurrentStep(1)
-                
+
                 // Navigate to login page - let users log in with email/password
                 console.log("✅ Redirecting to Login")
                 router.replace("/auth/login")
-
-                // FIXED: Navigate to appropriate dashboard based on role
-                if (userRole === "Horse Oerator") {
-                  console.log("✅ Redirecting to Horse Operator dashboard")
-                  router.replace("/HORSE_OPERATOR/home")
-                } else if (userRole === "Kutsero") {
-                  console.log("✅ Redirecting to Kutsero dashboard")
-                  router.replace("/KUTSERO/dashboard")
-                } else {
-                  console.log("⚠️ Unknown role, redirecting to login")
-                  router.replace("/auth/login")
-                }
               },
             },
           ],
@@ -716,37 +2937,23 @@ export default function Signup() {
           {roleOptions.map((role) => (
             <TouchableOpacity
               key={role.value}
-              style={[
-                styles.roleCard,
-                formData.role === role.value && styles.roleCardSelected,
-              ]}
+              style={[styles.roleCard, formData.role === role.value && styles.roleCardSelected]}
               onPress={() => updateFormData("role", role.value)}
             >
               <View style={styles.roleIconContainer}>
                 <Text style={styles.roleIcon}>{role.icon}</Text>
               </View>
               <View style={styles.roleContent}>
-                <Text style={[
-                  styles.roleLabel,
-                  formData.role === role.value && styles.roleLabelSelected,
-                ]}>
+                <Text style={[styles.roleLabel, formData.role === role.value && styles.roleLabelSelected]}>
                   {role.label}
                 </Text>
-                <Text style={[
-                  styles.roleDescription,
-                  formData.role === role.value && styles.roleDescriptionSelected,
-                ]}>
+                <Text style={[styles.roleDescription, formData.role === role.value && styles.roleDescriptionSelected]}>
                   {role.description}
                 </Text>
               </View>
               <View style={styles.roleRadio}>
-                <View style={[
-                  styles.radioOuter,
-                  formData.role === role.value && styles.radioOuterSelected,
-                ]}>
-                  {formData.role === role.value && (
-                    <View style={styles.radioInner} />
-                  )}
+                <View style={[styles.radioOuter, formData.role === role.value && styles.radioOuterSelected]}>
+                  {formData.role === role.value && <View style={styles.radioInner} />}
                 </View>
               </View>
             </TouchableOpacity>
@@ -776,43 +2983,75 @@ export default function Signup() {
   }
 
   const renderStep3 = () => {
-    const availableMunicipalities = formData.city ? municipalitiesByCity[formData.city] || [] : []
+    const selectedProvinceData = formData.province ? philippinesData[formData.province] : null
+    const availableCities = selectedProvinceData
+      ? [...selectedProvinceData.cities, ...selectedProvinceData.municipalities].sort()
+      : []
+
+    const availableBarangays =
+      formData.province &&
+      formData.city &&
+      barangayData[formData.province] &&
+      barangayData[formData.province][formData.city]
+        ? barangayData[formData.province][formData.city]
+        : []
 
     return (
       <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
         <Text style={styles.stepTitle}>Tell us about yourself</Text>
         <Text style={styles.stepSubtitle}>Please complete the information below</Text>
 
-        <Text style={styles.sectionTitle}>ADDRESS IN CEBU PROVINCE</Text>
+        <Text style={styles.sectionTitle}>ADDRESS IN THE PHILIPPINES</Text>
+
+        <DropdownField
+          label="Province"
+          value={formData.province}
+          placeholder="Select Province"
+          options={Object.keys(philippinesData).sort()}
+          onSelect={(value) => {
+            updateFormData("province", value)
+            updateFormData("city", "")
+            updateFormData("municipality", "")
+            updateFormData("barangay", "")
+          }}
+        />
+
         <DropdownField
           label="City/Municipality"
           value={formData.city}
-          placeholder="Select City or Municipality in Cebu"
-          options={allCebuLocations}
-          onSelect={(value) => updateFormData("city", value)}
+          placeholder="Select City or Municipality"
+          options={availableCities}
+          onSelect={(value) => {
+            updateFormData("city", value)
+            updateFormData("municipality", "")
+            updateFormData("barangay", "")
+          }}
+          disabled={!formData.province}
         />
 
-        {availableMunicipalities.length > 0 && (
+        {availableBarangays.length > 0 && (
           <DropdownField
-            label="Barangay/District"
-            value={formData.municipality}
-            placeholder="Please Select"
-            options={availableMunicipalities}
-            onSelect={(value) => updateFormData("municipality", value)}
+            label="Barangay"
+            value={formData.barangay}
+            placeholder="Select Barangay"
+            options={availableBarangays}
+            onSelect={(value) => updateFormData("barangay", value)}
             disabled={!formData.city}
           />
         )}
 
-        <View style={styles.inputContainer}>
-          <Text style={styles.inputLabel}>Barangay</Text>
-          <TextInput
-            style={styles.textInput}
-            value={formData.barangay}
-            onChangeText={(value) => updateFormData("barangay", value)}
-            placeholder="Enter your barangay"
-            placeholderTextColor="#999"
-          />
-        </View>
+        {formData.city && availableBarangays.length === 0 && (
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputLabel}>Barangay</Text>
+            <TextInput
+              style={styles.textInput}
+              value={formData.barangay}
+              onChangeText={(value) => updateFormData("barangay", value)}
+              placeholder="Enter your barangay"
+              placeholderTextColor="#999"
+            />
+          </View>
+        )}
 
         <View style={styles.inputContainer}>
           <Text style={styles.inputLabel}>Zip Code</Text>
@@ -1119,43 +3358,22 @@ export default function Signup() {
           <Text style={styles.headerTitle}>Sign Up</Text>
           <View style={styles.placeholder} />
         </View>
-        
+
         {/* Progress Indicator - Shows 6 steps */}
         <View style={styles.progressContainer}>
           {[1, 2, 3, 4, 5, 6].map((step) => (
             <View key={step} style={styles.progressStep}>
-              <View
-                style={[
-                  styles.progressCircle,
-                  currentStep >= step && styles.progressCircleActive,
-                ]}
-              >
-                <Text
-                  style={[
-                    styles.progressText,
-                    currentStep >= step && styles.progressTextActive,
-                  ]}
-                >
-                  {step}
-                </Text>
+              <View style={[styles.progressCircle, currentStep >= step && styles.progressCircleActive]}>
+                <Text style={[styles.progressText, currentStep >= step && styles.progressTextActive]}>{step}</Text>
               </View>
-              {step < 6 && (
-                <View
-                  style={[
-                    styles.progressLine,
-                    currentStep > step && styles.progressLineActive,
-                  ]}
-                />
-              )}
+              {step < 6 && <View style={[styles.progressLine, currentStep > step && styles.progressLineActive]} />}
             </View>
           ))}
         </View>
       </View>
 
       {/* White Content Section */}
-      <View style={styles.contentSection}>
-        {renderCurrentStep()}
-      </View>
+      <View style={styles.contentSection}>{renderCurrentStep()}</View>
     </SafeAreaView>
   )
 }
@@ -1223,7 +3441,7 @@ const styles = StyleSheet.create({
     borderColor: "#FFFFFF",
   },
   progressText: {
-    color: "rgba(255, 255, 255, 0.8)",
+    color: "rgba(255, 255, 255, 0.😎",
     fontSize: moderateScale(10),
     fontWeight: "bold",
   },
@@ -1270,7 +3488,7 @@ const styles = StyleSheet.create({
     marginBottom: moderateScale(15),
     marginTop: moderateScale(10),
   },
-  
+
   // Role selection styles
   roleSelectionContainer: {
     marginBottom: moderateScale(30),
@@ -1345,7 +3563,7 @@ const styles = StyleSheet.create({
     borderRadius: moderateScale(5),
     backgroundColor: "#B8763E",
   },
-  
+
   // Rest of the existing styles...
   inputContainer: {
     marginBottom: moderateScale(15),

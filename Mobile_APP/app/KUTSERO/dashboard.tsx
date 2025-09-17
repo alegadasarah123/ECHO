@@ -4,7 +4,6 @@ import { useFocusEffect, useRouter } from "expo-router"
 import { useCallback, useEffect, useState } from "react"
 import {
   Alert,
-  Animated,
   Dimensions,
   Image,
   Modal,
@@ -14,7 +13,6 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   View,
   ActivityIndicator,
 } from "react-native"
@@ -64,9 +62,14 @@ const getSafeAreaPadding = () => {
 
 interface Comment {
   id: string
-  user: string
-  text: string
-  time: string
+  comment_text: string
+  comment_date: string
+  kutsero_id: string
+  announcement_id: string
+  kutsero_fname?: string
+  kutsero_lname?: string
+  kutsero_username?: string
+  user_email?: string
 }
 
 interface Horse {
@@ -104,43 +107,37 @@ interface UserData {
   user_status?: string
 }
 
-// Reaction types
-interface Reaction {
-  type: "like" | "love" | "haha" | "wow" | "sad" | "angry"
-  emoji: string
-  color: string
-  label: string
+interface Announcement {
+  id: string
+  announce_title: string
+  announce_content: string
+  announce_date: string
+  announce_status?: string
+  created_at?: string
+  comment_count?: number
+  user_name?: string
 }
-
-interface UserReaction {
-  userId: string
-  type: Reaction["type"]
-}
-
-const REACTIONS: Reaction[] = [
-  { type: "like", emoji: "👍", color: "#1877F2", label: "Like" },
-  { type: "love", emoji: "❤️", color: "#E2264D", label: "Love" },
-  { type: "haha", emoji: "😂", color: "#FFD93D", label: "Haha" },
-  { type: "wow", emoji: "😮", color: "#FFD93D", label: "Wow" },
-  { type: "sad", emoji: "😢", color: "#FFD93D", label: "Sad" },
-  { type: "angry", emoji: "😡", color: "#F25268", label: "Angry" },
-]
 
 // Backend API configuration
-const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
-
+const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
 
 export default function DashboardScreen() {
   const router = useRouter()
   const [searchText, setSearchText] = useState("")
   const [showCommentModal, setShowCommentModal] = useState(false)
   const [newComment, setNewComment] = useState("")
+  const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | null>(null)
 
   // Updated user state management
   const [currentUser, setCurrentUser] = useState("User") // Default fallback
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingHorse, setIsLoadingHorse] = useState(false)
+  const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(false)
+
+  // Announcements state
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
+  const [expandedAnnouncements, setExpandedAnnouncements] = useState<Set<string>>(new Set())
 
   const defaultHorse: Horse = {
     id: "default",
@@ -161,36 +158,12 @@ export default function DashboardScreen() {
   const [checkInTime, setCheckInTime] = useState<string | null>(null)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showSOSEmergency, setShowSOSEmergency] = useState(false)
-  // Reaction states
-  const [reactions, setReactions] = useState<UserReaction[]>([
-    { userId: "user1", type: "like" },
-    { userId: "user2", type: "love" },
-    { userId: "user3", type: "like" },
-    { userId: "user4", type: "haha" },
-  ])
-  const [userReaction, setUserReaction] = useState<Reaction["type"] | null>(null)
-  const [showReactionPicker, setShowReactionPicker] = useState(false)
-  const [reactionPickerPosition, setReactionPickerPosition] = useState({ x: 0, y: 0 })
-  const [reactionPickerScale] = useState(new Animated.Value(0))
+
   const safeArea = getSafeAreaPadding()
 
-  // Expanded comments with more sample data
-  const [comments, setComments] = useState<Comment[]>([
-    {
-      id: "1",
-      user: "Dr. Sarah Johnson",
-      text: "Great work by the veterinary team! Our horses are in excellent hands. The new treatment protocol is showing remarkable results.",
-      time: "1 hour ago",
-    },
-    {
-      id: "2",
-      user: "Mike Thompson",
-      text: "The care and attention to detail is outstanding. Thank you for keeping our horses healthy! Oscar looks fantastic today.",
-      time: "3 hours ago",
-    },
-  ])
-
-  const commentCount = comments.length
+  const [comments, setComments] = useState<{ [key: string]: Comment[] }>({})
+  const [isLoadingComments, setIsLoadingComments] = useState(false)
+  const [isPostingComment, setIsPostingComment] = useState(false)
 
   // Validate authentication token
   const validateAuthToken = async (token: string): Promise<boolean> => {
@@ -201,6 +174,33 @@ export default function DashboardScreen() {
     } catch (error) {
       console.error("Token validation error:", error)
       return false
+    }
+  }
+
+  // Fetch announcements from API
+  const fetchAnnouncements = async () => {
+    try {
+      setIsLoadingAnnouncements(true)
+      const response = await fetch(`${API_BASE_URL}/announcements/`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setAnnouncements(data.announcements || [])
+        console.log("Fetched announcements:", data.announcements?.length || 0)
+      } else {
+        console.error("Failed to fetch announcements:", response.status)
+        setAnnouncements([])
+      }
+    } catch (error) {
+      console.error("Error fetching announcements:", error)
+      setAnnouncements([])
+    } finally {
+      setIsLoadingAnnouncements(false)
     }
   }
 
@@ -290,6 +290,7 @@ export default function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       loadUserData()
+      fetchAnnouncements()
     }, []),
   )
 
@@ -404,78 +405,138 @@ export default function DashboardScreen() {
     ])
   }
 
-  // Reaction functions
-  const getReactionCounts = () => {
-    const counts: { [key: string]: number } = {}
-    reactions.forEach((reaction) => {
-      counts[reaction.type] = (counts[reaction.type] || 0) + 1
-    })
-    return counts
-  }
+  const fetchComments = async (announcementId: string) => {
+    setIsLoadingComments(true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/announcements/${announcementId}/comments/`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userData?.access_token}`,
+        },
+      })
 
-  const getTotalReactionCount = () => {
-    return reactions.length
-  }
-
-  const getTopReactions = () => {
-    const counts = getReactionCounts()
-    return Object.entries(counts)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 3)
-      .map(([type]) => REACTIONS.find((r) => r.type === type))
-      .filter(Boolean) as Reaction[]
-  }
-
-  const handleReactionPress = (event: any) => {
-    if (userReaction) {
-      // Remove current reaction
-      setReactions((prev) => prev.filter((r) => r.userId !== (userData?.id || currentUser)))
-      setUserReaction(null)
-    } else {
-      // Add like reaction
-      handleReactionSelect("like")
+      if (response.ok) {
+        const data = await response.json()
+        setComments((prev) => ({
+          ...prev,
+          [announcementId]: data.comments || [],
+        }))
+      } else {
+        console.error("Failed to fetch comments:", response.status)
+      }
+    } catch (error) {
+      console.error("Error fetching comments:", error)
+    } finally {
+      setIsLoadingComments(false)
     }
   }
 
-  const handleReactionLongPress = (event: any) => {
-    const { pageX, pageY } = event.nativeEvent
-    setReactionPickerPosition({ x: pageX - scale(150), y: pageY - scale(60) })
-    setShowReactionPicker(true)
-  }
+  // FIXED: This is the main fix for the undefined ID issue
+  const handleComment = (announcementId: string) => {
+    console.log("[v0] Opening comment modal for announcement:", announcementId)
+    console.log("[v0] Announcement ID type:", typeof announcementId)
 
-  const handleReactionSelect = (reactionType: Reaction["type"]) => {
-    const userId = userData?.id || currentUser
-    // Remove any existing reaction from this user
-    setReactions((prev) => prev.filter((r) => r.userId !== userId))
+    if (!announcementId || announcementId === "undefined") {
+      console.error("[v0] Invalid announcement ID:", announcementId)
+      Alert.alert("Error", "Unable to load comments. Please try again.")
+      return
+    }
 
-    // Add new reaction
-    setReactions((prev) => [...prev, { userId: userId, type: reactionType }])
-    setUserReaction(reactionType)
-
-    // Hide picker
-    hideReactionPicker()
-  }
-
-  const hideReactionPicker = () => {
-    setShowReactionPicker(false)
-  }
-
-  const handleComment = () => {
+    setSelectedAnnouncementId(announcementId)
     setShowCommentModal(true)
+    fetchComments(announcementId)
   }
 
-  const submitComment = () => {
-    if (newComment.trim()) {
-      const comment: Comment = {
-        id: Date.now().toString(),
-        user: currentUser, // Use the current user's display name
-        text: newComment.trim(),
-        time: "Just now",
+  const submitComment = async () => {
+    console.log("[v0] Submit comment called")
+    console.log("[v0] New comment:", newComment.trim())
+    console.log("[v0] Selected announcement ID:", selectedAnnouncementId)
+    console.log("[v0] User data:", userData)
+    console.log("[v0] Kutsero ID:", userData?.profile?.kutsero_id)
+    console.log("[v0] Access token exists:", !!userData?.access_token)
+
+    if (!newComment.trim()) {
+      Alert.alert("Error", "Please enter a comment before posting.")
+      return
+    }
+
+    if (!selectedAnnouncementId || selectedAnnouncementId === "undefined") {
+      console.error("[v0] Invalid announcement ID:", selectedAnnouncementId)
+      Alert.alert("Error", "Unable to post comment. Invalid announcement ID.")
+      return
+    }
+
+    if (!userData?.profile?.kutsero_id) {
+      console.error("[v0] Missing kutsero_id:", userData?.profile)
+      Alert.alert("Error", "User not properly authenticated. Please log in again.")
+      return
+    }
+
+    if (!userData?.access_token) {
+      console.error("[v0] Missing access token")
+      Alert.alert("Error", "Authentication token missing. Please log in again.")
+      return
+    }
+
+    setIsPostingComment(true)
+    try {
+      const requestUrl = `${API_BASE_URL}/announcements/${selectedAnnouncementId}/comments/`
+      console.log("[v0] Making POST request to:", requestUrl)
+
+      const requestBody = {
+        comment_text: newComment.trim(),
+        kutsero_id: userData.profile.kutsero_id,
       }
-      setComments((prev) => [comment, ...prev])
-      setNewComment("")
-      setShowCommentModal(false)
-      Alert.alert("Success", "Your comment has been posted!")
+      console.log("[v0] Request body:", requestBody)
+
+      const response = await fetch(requestUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userData.access_token}`,
+        },
+        body: JSON.stringify(requestBody),
+      })
+
+      console.log("[v0] Response status:", response.status)
+      console.log("[v0] Response ok:", response.ok)
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("[v0] Response data:", data)
+
+        // Add the new comment to local state
+        setComments((prev) => ({
+          ...prev,
+          [selectedAnnouncementId]: [data.comment, ...(prev[selectedAnnouncementId] || [])],
+        }))
+
+        setNewComment("")
+        setShowCommentModal(false)
+        setSelectedAnnouncementId(null)
+        Alert.alert("Success", "Your comment has been posted!")
+
+        // Refresh announcements to update comment count
+        fetchAnnouncements()
+      } else {
+        const errorText = await response.text()
+        console.error("[v0] Error response:", errorText)
+
+        let errorData
+        try {
+          errorData = JSON.parse(errorText)
+        } catch (e) {
+          errorData = { error: errorText }
+        }
+
+        Alert.alert("Error", errorData.error || `Failed to post comment (${response.status})`)
+      }
+    } catch (error) {
+      console.error("[v0] Network error posting comment:", error)
+      Alert.alert("Error", "Network error. Please check your connection and try again.")
+    } finally {
+      setIsPostingComment(false)
     }
   }
 
@@ -599,6 +660,22 @@ export default function DashboardScreen() {
     }
   }, [selectedHorse.id])
 
+  // Format date for display
+  const formatDate = (dateString: string) => {
+    try {
+      const date = new Date(dateString)
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    } catch (error) {
+      return dateString
+    }
+  }
+
   // Dashboard/Home Icon Component
   const DashboardIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
@@ -684,43 +761,6 @@ export default function DashboardScreen() {
     </View>
   )
 
-  // Reaction Picker Component
-  const ReactionPicker = () => {
-    if (!showReactionPicker) return null
-
-    return (
-      <Modal transparent visible={showReactionPicker} onRequestClose={hideReactionPicker}>
-        <TouchableWithoutFeedback onPress={hideReactionPicker}>
-          <View style={styles.reactionPickerOverlay}>
-            <View
-              style={[
-                styles.reactionPickerContainer,
-                {
-                  left: Math.max(scale(10), Math.min(reactionPickerPosition.x, width - scale(320))),
-                  top: Math.max(scale(50), reactionPickerPosition.y),
-                },
-              ]}
-            >
-              {REACTIONS.map((reaction, index) => (
-                <TouchableOpacity
-                  key={reaction.type}
-                  style={styles.reactionButton}
-                  onPress={() => handleReactionSelect(reaction.type)}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.reactionButtonInner}>
-                    <Text style={styles.reactionEmoji}>{reaction.emoji}</Text>
-                  </View>
-                  <Text style={styles.reactionLabel}>{reaction.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        </TouchableWithoutFeedback>
-      </Modal>
-    )
-  }
-
   // Get unread notifications count (simulated)
   const unreadNotificationsCount = 2
 
@@ -745,9 +785,32 @@ export default function DashboardScreen() {
     return <SOSEmergencyScreen onBack={() => setShowSOSEmergency(false)} />
   }
 
-  const topReactions = getTopReactions()
-  const totalReactions = getTotalReactionCount()
-  const currentUserReactionObj = userReaction ? REACTIONS.find((r) => r.type === userReaction) : null
+  const selectedAnnouncementComments = selectedAnnouncementId ? comments[selectedAnnouncementId] || [] : []
+  const commentCount = selectedAnnouncementComments.length
+
+  const toggleAnnouncement = (id: string) => {
+    const newExpanded = new Set(expandedAnnouncements)
+    if (newExpanded.has(id)) {
+      newExpanded.delete(id)
+    } else {
+      newExpanded.add(id)
+    }
+    setExpandedAnnouncements(newExpanded)
+  }
+
+  const getTruncatedContent = (content: string, id: string, maxLength = 150) => {
+    const isExpanded = expandedAnnouncements.has(id)
+    const needsTruncation = content.length > maxLength
+
+    if (!needsTruncation || isExpanded) {
+      return { text: content, showToggle: needsTruncation }
+    }
+
+    return {
+      text: content.substring(0, maxLength) + "...",
+      showToggle: true,
+    }
+  }
 
   return (
     <View style={styles.container}>
@@ -885,84 +948,84 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {/* Recent Activities Section */}
+          {/* Announcements Section */}
           <View style={styles.activitiesSection}>
-            <Text style={styles.sectionTitle}>Recent Activities</Text>
-            <View style={styles.activityCard}>
-              <View style={styles.activityHeader}>
-                <View style={styles.activityIconContainer}>
-                  <View style={styles.medicalCross}>
-                    <View style={styles.crossVertical} />
-                    <View style={styles.crossHorizontal} />
-                  </View>
-                </View>
-                <View style={styles.activityContent}>
-                  <Text style={styles.activityTitle}>Department of Veterinary Medicine and Pathology</Text>
-                  <Text style={styles.activitySubtitle}>Very Strong Care Board</Text>
-                  <Text style={styles.activityTime}>2 hours ago</Text>
-                </View>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Recent Announcements</Text>
+              {isLoadingAnnouncements && <ActivityIndicator size="small" color="#C17A47" />}
+            </View>
+
+            {announcements.length === 0 && !isLoadingAnnouncements ? (
+              <View style={styles.noAnnouncementsContainer}>
+                <Text style={styles.noAnnouncementsText}>No announcements available at this time.</Text>
               </View>
-              <Text style={styles.activityDescription}>
-                Let's Light Horse Equipment the health and well-being of our horses! The Department of Veterinary
-                Medicine and Pathology is committed to providing exceptional veterinary care and advancing the field
-                through research, education, and clinical excellence.
-              </Text>
-
-              {/* Reaction Summary */}
-              {totalReactions > 0 && (
-                <View style={styles.reactionSummary}>
-                  <View style={styles.reactionEmojis}>
-                    {topReactions.map((reaction, index) => (
-                      <View
-                        key={reaction.type}
-                        style={[styles.reactionEmojiContainer, { zIndex: topReactions.length - index }]}
-                      >
-                        <Text style={styles.reactionEmojiSmall}>{reaction.emoji}</Text>
-                      </View>
-                    ))}
-                  </View>
-                  <Text style={styles.reactionCount}>
-                    {totalReactions > 999 ? `${(totalReactions / 1000).toFixed(1)}k` : totalReactions}
-                  </Text>
-                </View>
-              )}
-
-              <View style={styles.activityActions}>
-                <TouchableOpacity
-                  style={styles.actionButton}
-                  onPress={handleReactionPress}
-                  onLongPress={handleReactionLongPress}
-                  delayLongPress={500}
+            ) : (
+              announcements.map((announcement, index) => (
+                <View
+                  key={announcement.id}
+                  style={[styles.facebookPostCard, index < announcements.length - 1 && styles.postCardMargin]}
                 >
-                  {currentUserReactionObj ? (
-                    <>
-                      <Text style={styles.reactionEmojiButton}>{currentUserReactionObj.emoji}</Text>
-                      <Text style={[styles.actionCount, { color: currentUserReactionObj.color }]}>
-                        {currentUserReactionObj.label}
-                      </Text>
-                    </>
-                  ) : (
-                    <>
+                  <View style={styles.postHeader}>
+                    <View style={styles.postIconContainer}>
+                      <View style={styles.announcementIcon}>
+                        <View style={styles.megaphoneBody} />
+                        <View style={styles.megaphoneCone} />
+                      </View>
+                    </View>
+                    <View style={styles.postHeaderContent}>
+                      <Text style={styles.postTitle}>{announcement.user_name || "CTU Announcement"}</Text>
+                      <Text style={styles.postTime}>{formatDate(announcement.announce_date)}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.postContent}>
+                    {(() => {
+                      const { text, showToggle } = getTruncatedContent(announcement.announce_content, announcement.id)
+                      return (
+                        <>
+                          <Text style={styles.postDescription}>{text}</Text>
+                          {showToggle && (
+                            <TouchableOpacity
+                              onPress={() => toggleAnnouncement(announcement.id)}
+                              style={styles.seeMoreButton}
+                            >
+                              <Text style={styles.seeMoreText}>
+                                {expandedAnnouncements.has(announcement.id) ? "See less" : "See more"}
+                              </Text>
+                            </TouchableOpacity>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </View>
+
+                  <View style={styles.postActions}>
+                    <TouchableOpacity
+                      style={styles.commentButton}
+                      onPress={() => {
+                        console.log("[v0] Announcement object:", announcement)
+                        console.log("[v0] Announcement ID:", announcement.id)
+
+                        // Ensure we have a valid ID before calling handleComment
+                        if (announcement.id) {
+                          handleComment(String(announcement.id))
+                        } else {
+                          console.error("[v0] No valid ID found in announcement:", announcement)
+                          Alert.alert("Error", "Unable to load comments. Invalid announcement ID.")
+                        }
+                      }}
+                    >
                       <Image
-                        source={require("../../assets/images/like.png")}
-                        style={[styles.actionIconImage, { tintColor: "#666" }]}
+                        source={require("../../assets/images/comment.png")}
+                        style={styles.commentIcon}
                         resizeMode="contain"
                       />
-                      <Text style={styles.actionCount}>Like</Text>
-                    </>
-                  )}
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.actionButton} onPress={handleComment}>
-                  <Image
-                    source={require("../../assets/images/comment.png")}
-                    style={styles.actionIconImage}
-                    resizeMode="contain"
-                  />
-                  <Text style={styles.actionCount}>{commentCount} comments</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+                      <Text style={styles.commentCount}>{announcement.comment_count || 0} comments</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
           </View>
         </ScrollView>
 
@@ -992,33 +1055,47 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* Reaction Picker */}
-      <ReactionPicker />
-
       {/* Comment Modal */}
       <Modal
         visible={showCommentModal}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowCommentModal(false)}
+        onRequestClose={() => {
+          setShowCommentModal(false)
+          setSelectedAnnouncementId(null)
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Comments ({comments.length})</Text>
-              <TouchableOpacity onPress={() => setShowCommentModal(false)}>
+              <Text style={styles.modalTitle}>Comments ({commentCount})</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setShowCommentModal(false)
+                  setSelectedAnnouncementId(null)
+                }}
+              >
                 <Text style={styles.closeButton}>✕</Text>
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.commentsContainer}>
-              {comments.length > 0 ? (
-                comments.map((comment) => (
+              {isLoadingComments ? (
+                <View style={styles.loadingCommentsContainer}>
+                  <ActivityIndicator size="small" color="#C17A47" />
+                  <Text style={styles.loadingCommentsText}>Loading comments...</Text>
+                </View>
+              ) : selectedAnnouncementComments.length > 0 ? (
+                selectedAnnouncementComments.map((comment) => (
                   <View key={comment.id} style={styles.commentItem}>
                     <View style={styles.commentHeader}>
-                      <Text style={styles.commentUser}>{comment.user}</Text>
-                      <Text style={styles.commentTime}>{comment.time}</Text>
+                      <Text style={styles.commentUser}>
+                        {comment.kutsero_fname && comment.kutsero_lname
+                          ? `${comment.kutsero_fname} ${comment.kutsero_lname}`
+                          : comment.kutsero_username || "Anonymous User"}
+                      </Text>
+                      <Text style={styles.commentTime}>{new Date(comment.comment_date).toLocaleString()}</Text>
                     </View>
-                    <Text style={styles.commentText}>{comment.text}</Text>
+                    <Text style={styles.commentText}>{comment.comment_text}</Text>
                   </View>
                 ))
               ) : (
@@ -1036,13 +1113,18 @@ export default function DashboardScreen() {
                 placeholderTextColor="#999"
                 multiline
                 maxLength={500}
+                editable={!isPostingComment}
               />
               <TouchableOpacity
-                style={[styles.submitButton, { opacity: newComment.trim() ? 1 : 0.5 }]}
+                style={[styles.submitButton, { opacity: newComment.trim() && !isPostingComment ? 1 : 0.5 }]}
                 onPress={submitComment}
-                disabled={!newComment.trim()}
+                disabled={!newComment.trim() || isPostingComment}
               >
-                <Text style={styles.submitButtonText}>Post</Text>
+                {isPostingComment ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Text style={styles.submitButtonText}>Post</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1291,168 +1373,42 @@ const styles = StyleSheet.create({
     borderRadius: scale(12),
     padding: scale(16),
   },
-  activityCard: {
-    paddingBottom: verticalScale(12),
-  },
-  activityHeader: {
-    flexDirection: "row",
-    marginBottom: verticalScale(10),
-  },
-  activityIconContainer: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: scale(18),
-    backgroundColor: "#E3F2FD",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: scale(10),
-  },
-  medicalCross: {
-    width: scale(14),
-    height: scale(14),
+  // Announcement icon styles
+  announcementIcon: {
+    width: scale(16),
+    height: scale(12),
     position: "relative",
   },
-  crossVertical: {
-    width: scale(2),
-    height: scale(14),
+  megaphoneBody: {
+    width: scale(8),
+    height: scale(8),
     backgroundColor: "#2196F3",
+    borderRadius: scale(2),
     position: "absolute",
-    left: scale(6),
+    left: 0,
+    top: scale(2),
   },
-  crossHorizontal: {
-    width: scale(14),
-    height: scale(2),
-    backgroundColor: "#2196F3",
+  megaphoneCone: {
+    width: 0,
+    height: 0,
+    borderTopWidth: scale(6),
+    borderBottomWidth: scale(6),
+    borderLeftWidth: scale(8),
+    borderTopColor: "transparent",
+    borderBottomColor: "transparent",
+    borderLeftColor: "#2196F3",
     position: "absolute",
-    top: scale(6),
+    right: 0,
+    top: 0,
   },
-  activityContent: {
-    flex: 1,
+  noAnnouncementsContainer: {
+    padding: scale(20),
+    alignItems: "center",
   },
-  activityTitle: {
-    fontSize: moderateScale(13),
-    fontWeight: "600",
-    color: "#333",
-    lineHeight: moderateScale(16),
-    marginBottom: verticalScale(2),
-  },
-  activitySubtitle: {
-    fontSize: moderateScale(11),
-    color: "#666",
-    marginBottom: verticalScale(2),
-  },
-  activityTime: {
-    fontSize: moderateScale(10),
+  noAnnouncementsText: {
+    fontSize: moderateScale(14),
     color: "#999",
-  },
-  activityDescription: {
-    fontSize: moderateScale(12),
-    color: "#666",
-    lineHeight: moderateScale(16),
-    marginBottom: verticalScale(10),
-  },
-  // Reaction Summary Styles
-  reactionSummary: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: verticalScale(8),
-    paddingHorizontal: scale(4),
-  },
-  reactionEmojis: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  reactionEmojiContainer: {
-    width: scale(20),
-    height: scale(20),
-    borderRadius: scale(10),
-    backgroundColor: "white",
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: scale(-4),
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-  },
-  reactionEmojiSmall: {
-    fontSize: moderateScale(10),
-  },
-  reactionCount: {
-    fontSize: moderateScale(11),
-    color: "#666",
-    fontWeight: "500",
-  },
-  activityActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: scale(20),
-    borderTopWidth: 1,
-    borderTopColor: "#F0F0F0",
-    paddingTop: verticalScale(8),
-  },
-  actionButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: scale(4),
-  },
-  actionIconImage: {
-    width: scale(18),
-    height: scale(18),
-    marginRight: scale(6),
-  },
-  reactionEmojiButton: {
-    fontSize: moderateScale(16),
-    marginRight: scale(6),
-  },
-  actionCount: {
-    fontSize: moderateScale(11),
-    color: "#666",
-    fontWeight: "500",
-  },
-  // Reaction Picker Styles
-  reactionPickerOverlay: {
-    flex: 1,
-    backgroundColor: "transparent",
-  },
-  reactionPickerContainer: {
-    position: "absolute",
-    flexDirection: "row",
-    backgroundColor: "white",
-    borderRadius: scale(25),
-    paddingHorizontal: scale(8),
-    paddingVertical: scale(4),
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-  },
-  reactionButton: {
-    alignItems: "center",
-    paddingHorizontal: scale(8),
-    paddingVertical: scale(4),
-  },
-  reactionButtonInner: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#F8F9FA",
-  },
-  reactionEmoji: {
-    fontSize: moderateScale(18),
-  },
-  reactionLabel: {
-    fontSize: moderateScale(8),
-    color: "#666",
-    marginTop: verticalScale(2),
-    fontWeight: "500",
+    textAlign: "center",
   },
   tabBar: {
     flexDirection: "row",
@@ -1625,6 +1581,17 @@ const styles = StyleSheet.create({
     color: "#666",
     lineHeight: moderateScale(16),
   },
+  loadingCommentsContainer: {
+    padding: scale(20),
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: scale(10),
+  },
+  loadingCommentsText: {
+    fontSize: moderateScale(12),
+    color: "#666",
+  },
   noCommentsContainer: {
     padding: scale(20),
     alignItems: "center",
@@ -1709,5 +1676,89 @@ const styles = StyleSheet.create({
     color: "white",
     fontSize: moderateScale(12),
     fontWeight: "600",
+  },
+  facebookPostCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: scale(12),
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: scale(2),
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: scale(4),
+    elevation: 3,
+    overflow: "hidden",
+  },
+  postCardMargin: {
+    marginBottom: scale(16),
+  },
+  postHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: scale(16),
+    paddingBottom: scale(12),
+  },
+  postIconContainer: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: "#E3F2FD",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: scale(12),
+  },
+  postHeaderContent: {
+    flex: 1,
+  },
+  postTitle: {
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+    color: "#1C1C1E",
+    marginBottom: scale(2),
+  },
+  postTime: {
+    fontSize: moderateScale(13),
+    color: "#8E8E93",
+  },
+  postContent: {
+    paddingHorizontal: scale(16),
+    paddingBottom: scale(16),
+  },
+  postDescription: {
+    fontSize: moderateScale(15),
+    color: "#1C1C1E",
+    lineHeight: moderateScale(22),
+  },
+  postActions: {
+    borderTopWidth: 1,
+    borderTopColor: "#F2F2F7",
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(12),
+  },
+  commentButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: scale(8),
+  },
+  commentIcon: {
+    width: scale(20),
+    height: scale(20),
+    marginRight: scale(8),
+    tintColor: "#8E8E93",
+  },
+  commentCount: {
+    fontSize: moderateScale(14),
+    color: "#8E8E93",
+    fontWeight: "500",
+  },
+  seeMoreButton: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+  },
+  seeMoreText: {
+    color: "#1976D2",
+    fontSize: 14,
+    fontWeight: "500",
   },
 })

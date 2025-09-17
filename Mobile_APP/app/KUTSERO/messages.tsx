@@ -502,17 +502,17 @@ export default function MessagesScreen() {
         } else {
           // Navigate directly without updating local state
           if (tabKey === "home") {
-            router.push("/(tabs)/dashboard")
+            router.push("./dashboard")
           } else if (tabKey === "horse") {
-            router.push("/(tabs)/horsecare")
+            router.push("./horsecare")
           } else if (tabKey === "chat") {
             // Stay on messages - already here
           } else if (tabKey === "calendar") {
-            router.push("/(tabs)/calendar")
+            router.push("./calendar")
           } else if (tabKey === "history") {
-            router.push("/(tabs)/history")
+            router.push("./history")
           } else if (tabKey === "profile") {
-            router.push("/(tabs)/profile")
+            router.push("./profile")
           }
         }
       }}
@@ -592,7 +592,12 @@ export default function MessagesScreen() {
       {/* Bottom Tab Navigation - Updated order: History before Profile */}
       <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
         <TabButton iconSource={null} label="Home" tabKey="home" isActive={false} />
-        <TabButton iconSource={require("../../assets/images/horse.png")} label="Horse" tabKey="horse" isActive={false} />
+        <TabButton
+          iconSource={require("../../assets/images/horse.png")}
+          label="Horse"
+          tabKey="horse"
+          isActive={false}
+        />
         <TabButton iconSource={require("../../assets/images/chat.png")} label="Chat" tabKey="chat" isActive={true} />
         <TabButton
           iconSource={require("../../assets/images/calendar.png")}

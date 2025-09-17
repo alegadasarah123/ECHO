@@ -88,7 +88,7 @@ interface UserData {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
 
 // Helper function to test API connectivity
 const testAPIConnection = async () => {
@@ -185,10 +185,10 @@ export default function HorseSelectionScreen() {
   }
 
   // FIXED: Updated loadCurrentAssignment function
-  const loadCurrentAssignment = async (kutserroId: string) => {
+  const loadCurrentAssignment = async (kutseroId: string) => {
     try {
-      console.log("Loading current assignment for kutsero ID:", kutserroId)
-      const response = await fetch(`${API_BASE_URL}/current_assignment/?kutsero_id=${kutserroId}`, {
+      console.log("Loading current assignment for kutsero ID:", kutseroId)
+      const response = await fetch(`${API_BASE_URL}/current_assignment/?kutsero_id=${kutseroId}`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -360,10 +360,10 @@ export default function HorseSelectionScreen() {
   const refreshData = async () => {
     setIsLoading(true)
     try {
-      const kutserroId = userData?.profile?.kutsero_id || userData?.id
-      if (kutserroId) {
+      const kutseroId = userData?.profile?.kutsero_id || userData?.id
+      if (kutseroId) {
         await loadAvailableHorses()
-        await loadCurrentAssignment(kutserroId)
+        await loadCurrentAssignment(kutseroId)
       }
     } catch (error) {
       console.error("Error refreshing data:", error)
@@ -400,6 +400,13 @@ export default function HorseSelectionScreen() {
       return
     }
 
+    Alert.alert("Confirm Selection", "Are you sure you want to select this horse?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "OK", onPress: () => proceedWithHorseSelection(horse) },
+    ])
+  }
+
+  const proceedWithHorseSelection = async (horse: Horse) => {
     // If user already has a horse assigned and it's different from the selected one
     if (selectedHorse && selectedHorse.id !== horse.id) {
       Alert.alert(
@@ -424,14 +431,14 @@ export default function HorseSelectionScreen() {
     setIsAssigning(true)
 
     try {
-      const kutserroId = userData?.profile?.kutsero_id || userData?.id
-      console.log("Assigning horse:", horse.name, "to kutsero:", kutserroId)
+      const kutseroId = userData?.profile?.kutsero_id || userData?.id
+      console.log("Assigning horse:", horse.name, "to kutsero:", kutseroId)
 
       // Store the previous horse ID before assignment
       const previousHorseId = selectedHorse?.id
 
       const assignmentData = {
-        kutsero_id: kutserroId,
+        kutsero_id: kutseroId,
         horse_id: horse.id,
         date_start: new Date().toISOString(), // FIXED: Use full ISO string
         force_switch: true,

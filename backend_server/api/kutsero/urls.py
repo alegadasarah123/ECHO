@@ -15,14 +15,11 @@ urlpatterns = [
     path('assignment_history/', views.get_assignment_history, name='get_assignment_history'),
     
     # Feed management endpoints
-    path('feeds/<str:user_id>/<str:horse_id>/', views.get_feeds, name='get_feeds'),
-    path('feeds/create-multiple/', views.create_multiple_feeds, name='create_multiple_feeds'),
-    path('feeds/complete/<str:feed_id>/', views.mark_feed_completed, name='mark_feed_completed'),
-    path('feeds/clear/<str:user_id>/<str:horse_id>/<str:meal_type>/', views.clear_meal_feeds, name='clear_meal_feeds'),
-    path('feeds/delete/<str:feed_id>/', views.delete_feed, name='delete_feed'),
-    path('feeds/log/<str:user_id>/<str:horse_id>/', views.get_feed_log, name='get_feed_log'),
-    path('feeds/statistics/<str:user_id>/<str:horse_id>/', views.get_feed_statistics, name='get_feed_statistics'),
-    path('feeds/bulk-update/', views.bulk_update_feeds, name='bulk_update_feeds'),
+    path('get_feeding_schedule/', views.get_feeding_schedule, name='get_feeding_schedule'),
+    path('save_feeding_schedule/', views.save_feeding_schedule, name='save_feeding_schedule'),
+    path('mark_meal_fed/', views.mark_meal_fed, name='mark_meal_fed'),
+    path('get_feeding_log/', views.get_feeding_log, name='get_feeding_log'),
+
 
      # Get single kutsero profile by kutsero_id (string identifier)
     path('profile/<str:kutsero_id>/', views.get_kutsero_profile, name='get_kutsero_profile'),
@@ -52,5 +49,21 @@ urlpatterns = [
     path('assignments/checkin/', views.check_in_horse, name='check_in_horse'),
     path('assignments/checkout/', views.check_out_horse, name='check_out_horse'),
 
-    path("announcements/", views.get_announcements, name="get_announcements"),
+    # Announcements
+    # Announcements
+    path('announcements/', views.get_announcements, name='get_announcements'),
+    path('announcements/<str:announcement_id>/comments/', views.announcement_comments_handler, name='announcement_comments'),
+
+    # Calendar endpoints
+    path('get-calendar-events/', views.get_calendar_events, name='get_calendar_events'),
+    path('create-calendar-event/', views.create_calendar_event, name='create_calendar_event'),
+    path('delete-calendar-event/<int:pk>/', views.delete_calendar_event, name='delete_calendar_event'),
+
+
+     path("sos/create/", views.create_sos_request, name="create_sos_request"),
+
+     path('debug/urls/', views.debug_urls, name='debug_urls'),
 ]
+
+
+

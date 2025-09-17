@@ -1,6 +1,4 @@
 "use client"
-
-import AsyncStorage from "@react-native-async-storage/async-storage"
 import { useFocusEffect } from "@react-navigation/native"
 import { useRouter } from "expo-router"
 import React, { useEffect, useState } from "react"
@@ -60,7 +58,7 @@ const getSafeAreaPadding = () => {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
 
 // Updated User data interface - Fixed to include kutsero_id at root level
 interface UserData {
@@ -130,39 +128,43 @@ function HelpSupport({ onBack }: HelpSupportProps) {
       <ScrollView style={styles.helpContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.helpSection}>
           <Text style={styles.helpSectionTitle}>Frequently Asked Questions</Text>
-          
+
           <View style={styles.helpItem}>
             <Text style={styles.helpQuestion}>How do I register my horse?</Text>
             <Text style={styles.helpAnswer}>
-              To register your horse, go to the Horse Care section and tap "Add Horse". Fill in all the required information including your horse's name, age, breed, and health details.
+              To register your horse, go to the Horse Care section and tap "Add Horse". Fill in all the required
+              information including your horse's name, age, breed, and health details.
             </Text>
           </View>
 
           <View style={styles.helpItem}>
             <Text style={styles.helpQuestion}>How do I update my profile information?</Text>
             <Text style={styles.helpAnswer}>
-              Go to Profile &gt; Profile Information. You can edit your personal details, location, and account information across three easy steps. Don't forget to save your changes.
+              Go to Profile &gt; Profile Information. You can edit your personal details, location, and account
+              information across three easy steps. Don't forget to save your changes.
             </Text>
           </View>
 
           <View style={styles.helpItem}>
             <Text style={styles.helpQuestion}>How do I schedule a veterinary appointment?</Text>
             <Text style={styles.helpAnswer}>
-              Use the Calendar section to view available appointments and schedule visits with veterinarians in your area.
+              Use the Calendar section to view available appointments and schedule visits with veterinarians in your
+              area.
             </Text>
           </View>
 
           <View style={styles.helpItem}>
             <Text style={styles.helpQuestion}>How do I contact support?</Text>
             <Text style={styles.helpAnswer}>
-              You can reach our support team through the contact information below or use the chat feature for immediate assistance.
+              You can reach our support team through the contact information below or use the chat feature for immediate
+              assistance.
             </Text>
           </View>
         </View>
 
         <View style={styles.helpSection}>
           <Text style={styles.helpSectionTitle}>Contact Information</Text>
-          
+
           <View style={styles.contactItem}>
             <Text style={styles.contactLabel}>Email:</Text>
             <Text style={styles.contactValue}>support@kutsero.app</Text>
@@ -217,47 +219,48 @@ function TermsPolicies({ onBack }: TermsPoliciesProps) {
         <View style={styles.termsSection}>
           <Text style={styles.termsSectionTitle}>Terms of Service</Text>
           <Text style={styles.termsText}>
-            Welcome to Kutsero App. By using our application, you agree to comply with and be bound by the following terms and conditions of use.
+            Welcome to Kutsero App. By using our application, you agree to comply with and be bound by the following
+            terms and conditions of use.
           </Text>
           <Text style={styles.termsText}>
-            1. The content of the pages of this app is for your general information and use only. It is subject to change without notice.
+            1. The content of the pages of this app is for your general information and use only. It is subject to
+            change without notice.
           </Text>
           <Text style={styles.termsText}>
-            2. Your use of any information or materials on this app is entirely at your own risk, for which we shall not be liable.
+            2. Your use of any information or materials on this app is entirely at your own risk, for which we shall not
+            be liable.
           </Text>
           <Text style={styles.termsText}>
-            3. This app contains material which is owned by or licensed to us. This material includes, but is not limited to, the design, layout, look, appearance and graphics.
+            3. This app contains material which is owned by or licensed to us. This material includes, but is not
+            limited to, the design, layout, look, appearance and graphics.
           </Text>
         </View>
 
         <View style={styles.termsSection}>
           <Text style={styles.termsSectionTitle}>Privacy Policy</Text>
           <Text style={styles.termsText}>
-            Your privacy is important to us. This Privacy Policy explains how we collect, use, and protect your information when you use the Kutsero App.
+            Your privacy is important to us. This Privacy Policy explains how we collect, use, and protect your
+            information when you use the Kutsero App.
           </Text>
           <Text style={styles.termsText}>
-            Information We Collect:
-            - Personal information (name, email, phone number)
-            - Location data for service delivery
-            - Horse care and health information
-            - Usage data and app interactions
+            Information We Collect: - Personal information (name, email, phone number) - Location data for service
+            delivery - Horse care and health information - Usage data and app interactions
           </Text>
           <Text style={styles.termsText}>
-            How We Use Your Information:
-            - To provide and maintain our service
-            - To notify you about changes to our service
-            - To provide customer support
-            - To gather analysis or valuable information to improve our service
+            How We Use Your Information: - To provide and maintain our service - To notify you about changes to our
+            service - To provide customer support - To gather analysis or valuable information to improve our service
           </Text>
         </View>
 
         <View style={styles.termsSection}>
           <Text style={styles.termsSectionTitle}>Data Protection</Text>
           <Text style={styles.termsText}>
-            We implement appropriate security measures to protect your personal information against unauthorized access, alteration, disclosure, or destruction.
+            We implement appropriate security measures to protect your personal information against unauthorized access,
+            alteration, disclosure, or destruction.
           </Text>
           <Text style={styles.termsText}>
-            Your data is stored securely and is only accessed by authorized personnel who need it to provide you with our services.
+            Your data is stored securely and is only accessed by authorized personnel who need it to provide you with
+            our services.
           </Text>
         </View>
 
@@ -266,10 +269,7 @@ function TermsPolicies({ onBack }: TermsPoliciesProps) {
           <Text style={styles.termsText}>
             If you have any questions about these Terms & Policies, please contact us at:
           </Text>
-          <Text style={styles.termsText}>
-            Email: legal@kutsero.app
-            Phone: +63 912 345 6789
-          </Text>
+          <Text style={styles.termsText}>Email: legal@kutsero.app Phone: +63 912 345 6789</Text>
         </View>
       </ScrollView>
     </View>
@@ -285,6 +285,7 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
 
   const safeArea = getSafeAreaPadding()
   const [currentStep, setCurrentStep] = useState(1)
+
   const [formData, setFormData] = useState({
     // Step 1 - Location Info
     city: "",
@@ -306,7 +307,13 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     email: "",
     facebook: "",
     username: "",
-    password: "••••••••••",
+  })
+
+  const [showChangePassword, setShowChangePassword] = useState(false)
+  const [passwordData, setPasswordData] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
   })
 
   // Store original form data to track changes
@@ -331,31 +338,30 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     email: "",
     facebook: "",
     username: "",
-    password: "••••••••••",
   })
 
   // Load user data and profile from backend
   const loadUserData = async () => {
     try {
       setIsLoading(true)
-      
+
       // Get the stored authentication data from SecureStore
-      const storedUserData = await SecureStore.getItemAsync('user_data')
-      const storedAccessToken = await SecureStore.getItemAsync('access_token')
-      
-      console.log('Stored user data raw:', storedUserData) // Debug log
-      
+      const storedUserData = await SecureStore.getItemAsync("user_data")
+      const storedAccessToken = await SecureStore.getItemAsync("access_token")
+
+      console.log("Stored user data raw:", storedUserData) // Debug log
+
       if (!storedUserData || !storedAccessToken) {
         Alert.alert("Error", "No user data found. Please log in again.")
         return
       }
 
       const parsedUserData = JSON.parse(storedUserData)
-      console.log('Parsed user data:', parsedUserData) // Debug log
-      
+      console.log("Parsed user data:", parsedUserData) // Debug log
+
       // Set userData immediately so it's available for fallback
       setUserData(parsedUserData)
-      
+
       // Set display name
       let displayName = "User"
       if (parsedUserData.profile) {
@@ -379,36 +385,36 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
       } else if (parsedUserData.id) {
         kutserroId = parsedUserData.id
       }
-      
-      console.log('Extracted kutsero_id:', kutserroId) // Debug log
-      
+
+      console.log("Extracted kutsero_id:", kutserroId) // Debug log
+
       if (kutserroId) {
         // Try to fetch detailed profile from backend
         try {
           const response = await fetch(`${API_BASE_URL}/profile/${kutserroId}/`, {
-            method: 'GET',
+            method: "GET",
             headers: {
-              'Content-Type': 'application/json',
+              "Content-Type": "application/json",
             },
           })
 
           if (response.ok) {
             const result = await response.json()
-            console.log('Backend API response:', result) // Debug log
-            
+            console.log("Backend API response:", result) // Debug log
+
             if (result.success && result.data) {
               // Map backend data to form data
               const profileData = result.data
-              console.log('Profile data from backend:', profileData) // Debug log
-              
+              console.log("Profile data from backend:", profileData) // Debug log
+
               const newFormData = {
                 // Step 1 - Location Info (mapped from kutsero_profile backend response)
                 city: profileData.city || "",
                 municipality: profileData.municipality || "",
                 barangay: profileData.barangay || "",
                 zipCode: profileData.zipCode || "",
-                houseNumber: profileData.houseNumber || "",
-                route: profileData.route || "",
+                houseNumber: profileData.houseNumber || profileData.house_number || profileData.houseNo || "",
+                route: profileData.route || profileData.street || profileData.road || profileData.address_line_1 || "",
                 to: profileData.to || "",
                 // Step 2 - Personal Info (mapped from kutsero_profile backend response)
                 firstName: profileData.firstName || "",
@@ -422,36 +428,34 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
                 email: profileData.email || "",
                 facebook: profileData.facebook || "",
                 username: profileData.username || "",
-                password: "••••••••••", // Never show real password
               }
-              
-              console.log('Mapped form data from API:', newFormData) // Debug log
+
+              console.log("Mapped form data from API:", newFormData) // Debug log
               setFormData(newFormData)
               setOriginalFormData(newFormData)
-              
-              console.log('Profile data loaded successfully from kutsero_profile table')
+
+              console.log("Profile data loaded successfully from kutsero_profile table")
               return // Exit early since we have API data
             }
           }
-          
+
           // If we get here, the API call failed or returned no data
           try {
             const errorData = await response.json()
-            console.log('Failed to fetch kutsero_profile:', errorData.message || 'Unknown error')
+            console.log("Failed to fetch kutsero_profile:", errorData.message || "Unknown error")
           } catch (e) {
-            console.log('Failed to fetch kutsero_profile: Unable to parse error response')
+            console.log("Failed to fetch kutsero_profile: Unable to parse error response")
           }
-          
         } catch (fetchError) {
-          console.error('Error fetching kutsero_profile:', fetchError)
+          console.error("Error fetching kutsero_profile:", fetchError)
         }
       }
-      
+
       // If we get here, either no kutsero_id or API call failed
       // Use stored profile data directly
-      console.log('Using stored profile data directly')
-      console.log('parsedUserData.profile:', parsedUserData.profile)
-      
+      console.log("Using stored profile data directly")
+      console.log("parsedUserData.profile:", parsedUserData.profile)
+
       if (parsedUserData.profile) {
         const profile = parsedUserData.profile
         const basicFormData = {
@@ -475,24 +479,36 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
           email: profile.kutsero_email || "",
           facebook: profile.kutsero_fb || "",
           username: profile.kutsero_username || "",
-          password: "••••••••••",
         }
-        
-        console.log('Basic form data from stored profile:', basicFormData) // Debug log
+
+        console.log("Basic form data from stored profile:", basicFormData) // Debug log
         setFormData(basicFormData)
         setOriginalFormData(basicFormData)
       } else {
-        console.log('No stored profile data available')
+        console.log("No stored profile data available")
         // Set empty form
         const emptyFormData = {
-          city: "", municipality: "", barangay: "", zipCode: "", houseNumber: "", route: "", to: "",
-          firstName: "", middleName: "", lastName: "", dateOfBirth: "", sex: "", phoneNumber: "", province: "",
-          email: "", facebook: "", username: "", password: "••••••••••",
+          city: "",
+          municipality: "",
+          barangay: "",
+          zipCode: "",
+          houseNumber: "",
+          route: "",
+          to: "",
+          firstName: "",
+          middleName: "",
+          lastName: "",
+          dateOfBirth: "",
+          sex: "",
+          phoneNumber: "",
+          province: "",
+          email: "",
+          facebook: "",
+          username: "",
         }
         setFormData(emptyFormData)
         setOriginalFormData(emptyFormData)
       }
-      
     } catch (error) {
       console.error("Error loading user data:", error)
       Alert.alert("Error", "Failed to load user data.")
@@ -564,13 +580,13 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
   const saveProfileChanges = async () => {
     try {
       setIsSaving(true)
-      
+
       // Add null check for userData - Fixed
       if (!userData) {
         Alert.alert("Error", "Unable to save: No user data found.")
         return
       }
-      
+
       // Get kutsero_id with proper type safety - Fixed
       let kutserroId: string | null = null
       if (userData.profile?.kutsero_id) {
@@ -580,32 +596,32 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
       } else if (userData.id) {
         kutserroId = userData.id
       }
-      
+
       if (!kutserroId) {
         Alert.alert("Error", "Unable to save: No kutsero ID found.")
         return
       }
 
-      console.log('Saving kutsero_profile for kutsero_id:', kutserroId)
-      console.log('Form data to save:', formData)
+      console.log("Saving kutsero_profile for kutsero_id:", kutserroId)
+      console.log("Form data to save:", formData)
 
       // Save to kutsero_profile table
       const response = await fetch(`${API_BASE_URL}/profile/${kutserroId}/`, {
-        method: 'PUT',
+        method: "PUT",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(formData),
       })
 
-      console.log('Save response status:', response.status)
+      console.log("Save response status:", response.status)
       const result = await response.json()
-      console.log('Save response data:', result)
-      
+      console.log("Save response data:", result)
+
       if (response.ok && result.success) {
         // Update the original form data to new values
         setOriginalFormData({ ...formData })
-        
+
         // Update stored user data with new profile information - Fixed null check
         if (userData) {
           const updatedUserData = {
@@ -626,21 +642,22 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
               kutsero_dob: formData.dateOfBirth,
               kutsero_sex: formData.sex,
               kutsero_fb: formData.facebook,
-            }
+            },
           }
-          
-          await SecureStore.setItemAsync('user_data', JSON.stringify(updatedUserData))
+
+          await SecureStore.setItemAsync("user_data", JSON.stringify(updatedUserData))
           setUserData(updatedUserData)
-          
+
           // Update display name
-          const displayName = formData.firstName && formData.lastName 
-            ? `${formData.firstName} ${formData.lastName}`
-            : formData.firstName || formData.username || "User"
+          const displayName =
+            formData.firstName && formData.lastName
+              ? `${formData.firstName} ${formData.lastName}`
+              : formData.firstName || formData.username || "User"
           setCurrentUser(displayName)
-          
-          console.log('Updated user data in SecureStore')
+
+          console.log("Updated user data in SecureStore")
         }
-        
+
         Alert.alert("Success", result.message || "Your profile information has been updated successfully!", [
           {
             text: "OK",
@@ -654,7 +671,7 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
         Alert.alert("Error", result.message || "Failed to update profile. Please try again.")
       }
     } catch (error) {
-      console.error('Error saving kutsero_profile:', error)
+      console.error("Error saving kutsero_profile:", error)
       Alert.alert("Error", "An error occurred while saving your profile. Please try again.")
     } finally {
       setIsSaving(false)
@@ -677,267 +694,267 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
   )
 
   const renderStepOne = () => (
-  <ScrollView
-    style={styles.formContainer}
-    showsVerticalScrollIndicator={false}
-    contentContainerStyle={styles.formScrollContent}
-    keyboardShouldPersistTaps="handled"
-  >
-    <View style={styles.profilePhotoContainer}>
-      <View style={styles.profilePhotoCircle}>
-        <Image
-          source={require("../../assets/images/horse.png")}
-          style={[styles.profileHorseIcon, { tintColor: "#C17A47" }]}
-          resizeMode="contain"
+    <ScrollView
+      style={styles.formContainer}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.formScrollContent}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.profilePhotoContainer}>
+        <View style={styles.profilePhotoCircle}>
+          <Image
+            source={require("../../assets/images/horse.png")}
+            style={[styles.profileHorseIcon, { tintColor: "#C17A47" }]}
+            resizeMode="contain"
+          />
+        </View>
+        <Text style={styles.stepTitle}>Location Information</Text>
+        <Text style={styles.stepSubtitle}>Please provide your address details</Text>
+      </View>
+
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionHeaderText}>ADDRESS IN THE PHILIPPINES</Text>
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Province</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.province}
+          onChangeText={(text) => setFormData({ ...formData, province: text })}
+          placeholder="Enter province"
+          placeholderTextColor="#999"
         />
       </View>
-      <Text style={styles.stepTitle}>Location Information</Text>
-      <Text style={styles.stepSubtitle}>Please provide your address details</Text>
-    </View>
 
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionHeaderText}>ADDRESS IN THE PHILIPPINES</Text>
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>City</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.city}
+          onChangeText={(text) => setFormData({ ...formData, city: text })}
+          placeholder="Enter city"
+          placeholderTextColor="#999"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>Province</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.province}
-        onChangeText={(text) => setFormData({ ...formData, province: text })}
-        placeholder="Enter province"
-        placeholderTextColor="#999"
-      />
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Municipality</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.municipality}
+          onChangeText={(text) => setFormData({ ...formData, municipality: text })}
+          placeholder="Enter municipality"
+          placeholderTextColor="#999"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>City</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.city}
-        onChangeText={(text) => setFormData({ ...formData, city: text })}
-        placeholder="Enter city"
-        placeholderTextColor="#999"
-      />
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Barangay</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.barangay}
+          onChangeText={(text) => setFormData({ ...formData, barangay: text })}
+          placeholder="Enter barangay"
+          placeholderTextColor="#999"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>Municipality</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.municipality}
-        onChangeText={(text) => setFormData({ ...formData, municipality: text })}
-        placeholder="Enter municipality"
-        placeholderTextColor="#999"
-      />
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Zip Code</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.zipCode}
+          onChangeText={(text) => setFormData({ ...formData, zipCode: text })}
+          placeholder="Enter zip code"
+          placeholderTextColor="#999"
+          keyboardType="numeric"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>Barangay</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.barangay}
-        onChangeText={(text) => setFormData({ ...formData, barangay: text })}
-        placeholder="Enter barangay"
-        placeholderTextColor="#999"
-      />
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>House Number</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.houseNumber}
+          onChangeText={(text) => setFormData({ ...formData, houseNumber: text })}
+          placeholder="Enter house number"
+          placeholderTextColor="#999"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>Zip Code</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.zipCode}
-        onChangeText={(text) => setFormData({ ...formData, zipCode: text })}
-        placeholder="Enter zip code"
-        placeholderTextColor="#999"
-        keyboardType="numeric"
-      />
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Route</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.route}
+          onChangeText={(text) => setFormData({ ...formData, route: text })}
+          placeholder="Enter route"
+          placeholderTextColor="#999"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>House Number</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.houseNumber}
-        onChangeText={(text) => setFormData({ ...formData, houseNumber: text })}
-        placeholder="Enter house number"
-        placeholderTextColor="#999"
-      />
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>To</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.to}
+          onChangeText={(text) => setFormData({ ...formData, to: text })}
+          placeholder="Enter destination"
+          placeholderTextColor="#999"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>Route</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.route}
-        onChangeText={(text) => setFormData({ ...formData, route: text })}
-        placeholder="Enter route"
-        placeholderTextColor="#999"
-      />
-    </View>
-
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>To</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.to}
-        onChangeText={(text) => setFormData({ ...formData, to: text })}
-        placeholder="Enter destination"
-        placeholderTextColor="#999"
-      />
-    </View>
-
-    <View style={styles.buttonContainer}>
-      <TouchableOpacity style={styles.previousButton} onPress={handlePrevious}>
-        <Text style={styles.previousButtonText}>Previous</Text>
-      </TouchableOpacity>
-      {hasChanges() && (
-        <TouchableOpacity 
-          style={[styles.saveButton, isSaving && styles.disabledButton]} 
-          onPress={handleEdit}
-          disabled={isSaving}
-        >
-          {isSaving ? (
-            <ActivityIndicator size="small" color="white" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save</Text>
-          )}
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity style={styles.previousButton} onPress={handlePrevious}>
+          <Text style={styles.previousButtonText}>Previous</Text>
         </TouchableOpacity>
-      )}
-      <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-        <Text style={styles.nextButtonText}>Next</Text>
-      </TouchableOpacity>
-    </View>
-  </ScrollView>
-)
+        {hasChanges() && (
+          <TouchableOpacity
+            style={[styles.saveButton, isSaving && styles.disabledButton]}
+            onPress={handleEdit}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save</Text>
+            )}
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
+          <Text style={styles.nextButtonText}>Next</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  )
 
   // After your renderStepOne function ends, add this:
 
-const renderStepTwo = () => (
-  <ScrollView
-    style={styles.formContainer}
-    showsVerticalScrollIndicator={false}
-    contentContainerStyle={styles.formScrollContent}
-    keyboardShouldPersistTaps="handled"
-  >
-    <View style={styles.profilePhotoContainer}>
-      <View style={styles.profilePhotoCircle}>
-        <Image
-          source={require("../../assets/images/horse.png")}
-          style={[styles.profileHorseIcon, { tintColor: "#C17A47" }]}
-          resizeMode="contain"
+  const renderStepTwo = () => (
+    <ScrollView
+      style={styles.formContainer}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.formScrollContent}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.profilePhotoContainer}>
+        <View style={styles.profilePhotoCircle}>
+          <Image
+            source={require("../../assets/images/horse.png")}
+            style={[styles.profileHorseIcon, { tintColor: "#C17A47" }]}
+            resizeMode="contain"
+          />
+        </View>
+        <Text style={styles.stepTitle}>Personal Information</Text>
+        <Text style={styles.stepSubtitle}>Please provide your personal details</Text>
+      </View>
+
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>First Name *</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.firstName}
+          onChangeText={(text) => setFormData({ ...formData, firstName: text })}
+          placeholder="Enter first name"
+          placeholderTextColor="#999"
         />
       </View>
-      <Text style={styles.stepTitle}>Personal Information</Text>
-      <Text style={styles.stepSubtitle}>Please provide your personal details</Text>
-    </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>First Name *</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.firstName}
-        onChangeText={(text) => setFormData({ ...formData, firstName: text })}
-        placeholder="Enter first name"
-        placeholderTextColor="#999"
-      />
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Middle Name</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.middleName}
+          onChangeText={(text) => setFormData({ ...formData, middleName: text })}
+          placeholder="Enter middle name"
+          placeholderTextColor="#999"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>Middle Name</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.middleName}
-        onChangeText={(text) => setFormData({ ...formData, middleName: text })}
-        placeholder="Enter middle name"
-        placeholderTextColor="#999"
-      />
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Last Name *</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.lastName}
+          onChangeText={(text) => setFormData({ ...formData, lastName: text })}
+          placeholder="Enter last name"
+          placeholderTextColor="#999"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>Last Name *</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.lastName}
-        onChangeText={(text) => setFormData({ ...formData, lastName: text })}
-        placeholder="Enter last name"
-        placeholderTextColor="#999"
-      />
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Date of Birth</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.dateOfBirth}
+          onChangeText={(text) => setFormData({ ...formData, dateOfBirth: text })}
+          placeholder="YYYY-MM-DD"
+          placeholderTextColor="#999"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>Date of Birth</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.dateOfBirth}
-        onChangeText={(text) => setFormData({ ...formData, dateOfBirth: text })}
-        placeholder="YYYY-MM-DD"
-        placeholderTextColor="#999"
-      />
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Sex</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.sex}
+          onChangeText={(text) => setFormData({ ...formData, sex: text })}
+          placeholder="Male/Female"
+          placeholderTextColor="#999"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>Sex</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.sex}
-        onChangeText={(text) => setFormData({ ...formData, sex: text })}
-        placeholder="Male/Female"
-        placeholderTextColor="#999"
-      />
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Phone Number *</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.phoneNumber}
+          onChangeText={(text) => setFormData({ ...formData, phoneNumber: text })}
+          placeholder="Enter phone number"
+          placeholderTextColor="#999"
+          keyboardType="phone-pad"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>Phone Number *</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.phoneNumber}
-        onChangeText={(text) => setFormData({ ...formData, phoneNumber: text })}
-        placeholder="Enter phone number"
-        placeholderTextColor="#999"
-        keyboardType="phone-pad"
-      />
-    </View>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionHeaderText}>ADDRESS IN THE PHILIPPINES</Text>
+      </View>
 
-    <View style={styles.sectionHeader}>
-      <Text style={styles.sectionHeaderText}>ADDRESS IN THE PHILIPPINES</Text>
-    </View>
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>Province</Text>
+        <TextInput
+          style={styles.textInput}
+          value={formData.province}
+          onChangeText={(text) => setFormData({ ...formData, province: text })}
+          placeholder="Enter province"
+          placeholderTextColor="#999"
+        />
+      </View>
 
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>Province</Text>
-      <TextInput
-        style={styles.textInput}
-        value={formData.province}
-        onChangeText={(text) => setFormData({ ...formData, province: text })}
-        placeholder="Enter province"
-        placeholderTextColor="#999"
-      />
-    </View>
-
-    <View style={styles.buttonContainer}>
-      <TouchableOpacity style={styles.previousButton} onPress={handlePrevious}>
-        <Text style={styles.previousButtonText}>Previous</Text>
-      </TouchableOpacity>
-      {hasChanges() && (
-        <TouchableOpacity 
-          style={[styles.saveButton, isSaving && styles.disabledButton]} 
-          onPress={handleEdit}
-          disabled={isSaving}
-        >
-          {isSaving ? (
-            <ActivityIndicator size="small" color="white" />
-          ) : (
-            <Text style={styles.saveButtonText}>Save</Text>
-          )}
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity style={styles.previousButton} onPress={handlePrevious}>
+          <Text style={styles.previousButtonText}>Previous</Text>
         </TouchableOpacity>
-      )}
-      <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-        <Text style={styles.nextButtonText}>Next</Text>
-      </TouchableOpacity>
-    </View>
-  </ScrollView>
-)
+        {hasChanges() && (
+          <TouchableOpacity
+            style={[styles.saveButton, isSaving && styles.disabledButton]}
+            onPress={handleEdit}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <ActivityIndicator size="small" color="white" />
+            ) : (
+              <Text style={styles.saveButtonText}>Save</Text>
+            )}
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
+          <Text style={styles.nextButtonText}>Next</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
+  )
 
   const renderStepThree = () => (
     <ScrollView
@@ -996,24 +1013,81 @@ const renderStepTwo = () => (
 
       <View style={styles.inputGroup}>
         <Text style={styles.inputLabel}>Password</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.password}
-          onChangeText={(text) => setFormData({ ...formData, password: text })}
-          placeholder="Enter password"
-          placeholderTextColor="#999"
-          secureTextEntry
-        />
-        <Text style={styles.inputHint}>Leave as dots to keep current password</Text>
+        <TouchableOpacity style={styles.changePasswordButton} onPress={() => setShowChangePassword(true)}>
+          <Text style={styles.changePasswordText}>Change Password</Text>
+        </TouchableOpacity>
       </View>
+
+      {showChangePassword && (
+        <View style={styles.passwordChangeContainer}>
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Current Password *</Text>
+            <TextInput
+              style={styles.textInput}
+              value={passwordData.currentPassword}
+              onChangeText={(text) => setPasswordData({ ...passwordData, currentPassword: text })}
+              placeholder="Enter current password"
+              placeholderTextColor="#999"
+              secureTextEntry
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>New Password *</Text>
+            <TextInput
+              style={styles.textInput}
+              value={passwordData.newPassword}
+              onChangeText={(text) => setPasswordData({ ...passwordData, newPassword: text })}
+              placeholder="Enter new password"
+              placeholderTextColor="#999"
+              secureTextEntry
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Confirm New Password *</Text>
+            <TextInput
+              style={styles.textInput}
+              value={passwordData.confirmPassword}
+              onChangeText={(text) => setPasswordData({ ...passwordData, confirmPassword: text })}
+              placeholder="Confirm new password"
+              placeholderTextColor="#999"
+              secureTextEntry
+            />
+          </View>
+
+          <View style={styles.passwordButtonContainer}>
+            <TouchableOpacity
+              style={styles.cancelPasswordButton}
+              onPress={() => {
+                setShowChangePassword(false)
+                setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" })
+              }}
+            >
+              <Text style={styles.cancelPasswordText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.savePasswordButton}
+              onPress={() => {
+                // Handle password change logic here
+                console.log("[v0] Password change requested")
+                setShowChangePassword(false)
+                setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" })
+              }}
+            >
+              <Text style={styles.savePasswordText}>Update Password</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={styles.previousButton} onPress={handlePrevious}>
           <Text style={styles.previousButtonText}>Previous</Text>
         </TouchableOpacity>
         {hasChanges() && (
-          <TouchableOpacity 
-            style={[styles.saveButton, isSaving && styles.disabledButton]} 
+          <TouchableOpacity
+            style={[styles.saveButton, isSaving && styles.disabledButton]}
             onPress={handleEdit}
             disabled={isSaving}
           >
@@ -1077,11 +1151,11 @@ export default function ProfileScreen() {
   const loadUserData = async () => {
     try {
       setIsLoading(true)
-      const storedUserData = await SecureStore.getItemAsync('user_data')
+      const storedUserData = await SecureStore.getItemAsync("user_data")
       if (storedUserData) {
         const parsedUserData = JSON.parse(storedUserData)
         setUserData(parsedUserData)
-        
+
         // Set display name
         let displayName = "User"
         if (parsedUserData.profile) {
@@ -1114,7 +1188,7 @@ export default function ProfileScreen() {
       loadUserData()
     }, []),
   )
-  
+
   const [showHelpSupport, setShowHelpSupport] = useState(false)
   const [showProfileInfo, setShowProfileInfo] = useState(false)
   const [showTermsPolicies, setShowTermsPolicies] = useState(false)
@@ -1143,15 +1217,15 @@ export default function ProfileScreen() {
         onPress: async () => {
           try {
             // Clear all user data from SecureStore
-            await SecureStore.deleteItemAsync('access_token')
-            await SecureStore.deleteItemAsync('refresh_token')
-            await SecureStore.deleteItemAsync('user_data')
-            await SecureStore.deleteItemAsync('selectedHorseData')
-            await SecureStore.deleteItemAsync('checkInData')
-            
+            await SecureStore.deleteItemAsync("access_token")
+            await SecureStore.deleteItemAsync("refresh_token")
+            await SecureStore.deleteItemAsync("user_data")
+            await SecureStore.deleteItemAsync("selectedHorseData")
+            await SecureStore.deleteItemAsync("checkInData")
+
             router.replace("../../pages/auth/login")
           } catch (error) {
-            console.error('Error during logout:', error)
+            console.error("Error during logout:", error)
             router.replace("../../pages/auth/login")
           }
         },
@@ -1273,9 +1347,7 @@ export default function ProfileScreen() {
         <Text style={styles.profileEmail} numberOfLines={1} adjustsFontSizeToFit>
           {userData?.profile?.kutsero_email || `${currentUser.toLowerCase().replace(/\s+/g, "")}@gmail.com`}
         </Text>
-        {userData?.user_status === 'pending' && (
-          <Text style={styles.statusText}>Account Status: Pending Approval</Text>
-        )}
+        {userData?.user_status === "pending" && <Text style={styles.statusText}>Account Status: Pending Approval</Text>}
       </View>
 
       {/* Menu Options */}
@@ -1329,7 +1401,12 @@ export default function ProfileScreen() {
       {/* Bottom Tab Navigation - Updated order: History before Profile */}
       <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
         <TabButton iconSource={null} label="Home" tabKey="home" isActive={false} />
-        <TabButton iconSource={require("../../assets/images/horse.png")} label="Horse" tabKey="horse" isActive={false} />
+        <TabButton
+          iconSource={require("../../assets/images/horse.png")}
+          label="Horse"
+          tabKey="horse"
+          isActive={false}
+        />
         <TabButton iconSource={require("../../assets/images/chat.png")} label="Chat" tabKey="chat" isActive={false} />
         <TabButton
           iconSource={require("../../assets/images/calendar.png")}
@@ -1901,5 +1978,59 @@ const styles = StyleSheet.create({
     lineHeight: moderateScale(20),
     marginBottom: verticalScale(12),
     textAlign: "justify",
+  },
+  // Change Password Styles
+  changePasswordButton: {
+    backgroundColor: "#f0f0f0",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  changePasswordText: {
+    color: "#C17A47",
+    fontSize: 16,
+    textAlign: "center",
+    fontWeight: "500",
+  },
+  passwordChangeContainer: {
+    backgroundColor: "#f9f9f9",
+    padding: 16,
+    borderRadius: 8,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+  },
+  passwordButtonContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 16,
+    gap: 12,
+  },
+  cancelPasswordButton: {
+    flex: 1,
+    backgroundColor: "#f0f0f0",
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  cancelPasswordText: {
+    color: "#666",
+    fontSize: 16,
+    textAlign: "center",
+    fontWeight: "500",
+  },
+  savePasswordButton: {
+    flex: 1,
+    backgroundColor: "#C17A47",
+    padding: 12,
+    borderRadius: 8,
+  },
+  savePasswordText: {
+    color: "white",
+    fontSize: 16,
+    textAlign: "center",
+    fontWeight: "500",
   },
 })
