@@ -18,8 +18,8 @@ urlpatterns = [
 
     path('recent-activity/', views.get_recent_activity, name='recent-activity'),
     path('status-counts/', views.get_status_counts, name='status-counts'),
-    path('get_dvmf_profiles/', views.get_dvmf_profiles, name='get_dvmf_profiles'),
-    path('save_dvmf_profile/', views.save_dvmf_profile, name='save_dvmf_profile'),
+    path('get_dvmf_user_profiles/', views.get_dvmf_user_profiles, name='get_dvmf_user_profiles'),
+    path('save_dvmf_user_profile/', views.save_dvmf_user_profile, name='save_dvmf_user_profile'),
     # api/ctu_vetmed/urls.py
      path("dvmf_change_password/", views.dvmf_change_password, name="dvmf_change_password"),
 
@@ -30,11 +30,11 @@ urlpatterns = [
         # urls.py
     path('get_directory_profiles/', views.get_directory_profiles, name='get_directory_profiles'),
 
-    path('display_dvmf_profiles/', views.display_dvmf_profiles, name='display_dvmf_profiles'),
+    path('display_ctu_profiles/', views.display_ctu_profiles, name='display_ctu_profiles'),
     path('get-account-counts/', views.get_account_counts, name='get_account_counts'),
     # Use str:vet_id for UUID strings
 
-    path('update_dvmf_profile/', views.update_dvmf_profile, name='update_dvmf_profile'),
+    path('update_dvmf_user_profile/', views.update_dvmf_user_profile, name='update_dvmf_user_profile'),
     path('ctu-profiles/<uuid:profile_id>/', views.update_ctu_profile, name='update_ctu_profile'),
 
      # Messages
@@ -52,7 +52,26 @@ urlpatterns = [
      path("search_vet/", views.search_vet, name="search_vet"),
 
 
-     path("get_horses/", views.get_horses, name="get_horses"),
+    path("get_horses/", views.get_horses, name="get_horses"),
+     
+    path("sos_requests/", views.get_sos_requests, name="get_sos_requests"),
+
+    path('medrec_access_requests/', views.get_access_requests, name='get_access_requests'),
+      # 🔹 New endpoints for approve / decline
+    path("access-requests/<uuid:request_id>/approve/", views.approve_access_request, name="approve_access_request"),
+    path(
+        "access-requests/<uuid:request_id>/decline/",
+        views.decline_access_request,
+        name="decline-access-request",
+    ),
+
+     path("edit-post/<uuid:post_id>/", views.edit_post, name="edit_post"),
+
+
+    
+      
+
+     
 
 
 ]

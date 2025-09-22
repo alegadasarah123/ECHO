@@ -1,7 +1,7 @@
 "use client"
 
 import Sidebar from "@/components/CtuSidebar"; // Assuming Sidebar component is imported
-import { BarChart3, Bell, LogOut } from "lucide-react";
+import { BarChart3, Bell } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import FloatingMessages from './CtuMessage';
@@ -1171,26 +1171,7 @@ const styles = {
 
       <FloatingMessages />
 
-      {/* Logout Modal */}
-      {isLogoutModalOpen && (
-        <div className="modal-overlay active" ref={logoutModalRef}>
-          <div className="logout-modal">
-            <div className="logout-modal-icon">
-              <LogOut size={25} color="#f59e0b" />
-            </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons">
-              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
-                No
-              </button>
-              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+   
     </div>
   )
 }

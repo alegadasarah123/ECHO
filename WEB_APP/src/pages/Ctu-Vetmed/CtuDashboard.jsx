@@ -9,7 +9,41 @@ import NotificationModal from "./CtuNotif"
 
 const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed";
 
+// Add skull loading styles
+const skullStyles = {
+  skullContainer: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9999,
+  },
+  skullAnimation: {
+    fontSize: "64px",
+    animation: "pulse 1.5s infinite",
+  },
+  loadingText: {
+    marginTop: "16px",
+    fontSize: "18px",
+    fontWeight: "bold",
+    color: "#b91c1c",
+  },
+  // Keyframes for the pulse animation
+  "@keyframes pulse": {
+    "0%": { transform: "scale(1)", opacity: 1 },
+    "50%": { transform: "scale(1.1)", opacity: 0.8 },
+    "100%": { transform: "scale(1)", opacity: 1 },
+  },
+};
+
 const styles = {
+  ...skullStyles,
   bodyWrapper: {
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     backgroundColor: "#f5f5f5",
@@ -348,7 +382,7 @@ const styles = {
     border: "1px solid #fbbf24",
   },
   activityRoleApproved: {
-    background: "#dcfce7",
+    background: "dcfce7",
     color: "#16a34a",
     border: "1px solid #4ade80",
   },
@@ -521,6 +555,7 @@ function CtuDashboard() {
   const [notifsOpen, setNotifsOpen] = useState(false)
   const [setIsLogoutModalOpen] = useState(false)
   const [setIsNotificationDropdownOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true) // Add loading state
 
   const [notifications, setNotifications] = useState([])
   const [recordCount, setrecordCount] = useState(0)
@@ -655,10 +690,19 @@ function CtuDashboard() {
   }, []);
 
   const loadDashboardData = useCallback(() => {
-    loadStats()
-    loadRecentActivities()
-    loadNotifications()
-    loadSosEmergencies()
+    setIsLoading(true); // Set loading to true when starting to load data
+    
+    Promise.all([
+      loadStats(),
+      loadRecentActivities(),
+      loadNotifications(),
+      loadSosEmergencies()
+    ]).then(() => {
+      setIsLoading(false); // Set loading to false when all data is loaded
+    }).catch((error) => {
+      console.error("Error loading dashboard data:", error);
+      setIsLoading(false); // Ensure loading is false even if there's an error
+    });
   }, [loadStats, loadRecentActivities, loadNotifications, loadSosEmergencies])
 
   const closeLogoutModal = () => {
@@ -733,8 +777,33 @@ function CtuDashboard() {
     // Handle emergency action here
   }
 
+  // Add CSS for the pulse animation
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes pulse {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.1); opacity: 0.8; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+
   return (
     <div style={styles.bodyWrapper}>
+      {/* Skull Loading Overlay */}
+      {isLoading && (
+        <div style={styles.skullContainer}>
+          <div style={styles.skullAnimation}></div>
+          <div style={styles.loadingText}>Loading Dashboard...</div>
+        </div>
+      )}
+      
       <Sidebar isOpen={isSidebarOpen} />
 
       <div style={styles.mainContent}>
@@ -798,78 +867,90 @@ function CtuDashboard() {
           </div>
 
           <div style={styles.mainGrid}>
-            <div style={styles.recentActivity}>
-              <h3 style={styles.activityHeader}>Recent Activity</h3>
-              <p style={styles.activitySubtitle}>Latest updates from the system</p>
+              <div style={styles.recentActivity}>
+                <h3 style={styles.activityHeader}>Recent Activity</h3>
+                <p style={styles.activitySubtitle}>Latest updates from the system</p>
 
-              {recentActivities.length === 0 ? (
-                <div style={styles.emptyState}>
-                  <ClipboardList size={48} />
-                  <h3 style={styles.emptyStateH3}>No recent activity</h3>
-                  <p style={styles.emptyStateP}>Activity will appear here when available</p>
-                </div>
-              ) : (
-                <div style={styles.activityCards}>
-                  {recentActivities.map((activity, index) => {
-                    const initials = activity.title
-                      .split(" ")
-                      .map((word) => word[0])
-                      .join("")
-                      .toUpperCase()
+                {recentActivities.filter(activity => {
+  const activityDate = new Date(activity.date)
+  const now = new Date()
+  const diffTime = now - activityDate
+  const diffDays = diffTime / (1000 * 60 * 60 * 24)
+  return diffDays <= 2
+}).length === 0 ? (
+  <div style={styles.emptyState}>
+    <ClipboardList size={48} style={{ color: "#6b7280" }} /> {/* neutral gray */}
+    <h3 style={styles.emptyStateH3}>No recent activity</h3>
+    <p style={styles.emptyStateP}>Activity will appear here when available</p>
+  </div>
+) : (
+  <div style={styles.activityCards}>
+    {recentActivities
+      .filter(activity => {
+        const activityDate = new Date(activity.date)
+        const now = new Date()
+        const diffTime = now - activityDate
+        const diffDays = diffTime / (1000 * 60 * 60 * 24)
+        return diffDays <= 2
+      })
+      .map((activity, index) => {
+        const initials = activity.title
+          .split(" ")
+          .map(word => word[0])
+          .join("")
+          .toUpperCase()
 
-                    // Enhanced color assignment
-                    const colorIndex = getColorIndex(activity, index)
+        const colorIndex = getColorIndex(activity, index)
 
-                    const getActivityCardStyle = (colorIndex) => {
-                      const baseStyle = styles.activityCard
-                      const colorStyle = styles[`activityCard${colorIndex}`]
-                      return { ...baseStyle, ...colorStyle }
-                    }
+        const getActivityCardStyle = colorIndex => ({
+          ...styles.activityCard,
+          ...styles[`activityCard${colorIndex}`],
+        })
 
-                    const getActivityAvatarStyle = (colorIndex) => {
-                      const baseStyle = styles.activityAvatar
-                      const colorStyle = styles[`activityAvatar${colorIndex}`]
-                      return { ...baseStyle, ...colorStyle }
-                    }
+        const getActivityAvatarStyle = colorIndex => ({
+          ...styles.activityAvatar,
+          ...styles[`activityAvatar${colorIndex}`],
+        })
 
-                    const getRoleStyle = (status) => {
-                      const baseStyle = styles.activityRole
-                      const statusStyle = styles[`activityRole${status.charAt(0).toUpperCase() + status.slice(1)}`]
-                      return { ...baseStyle, ...statusStyle }
-                    }
+        const getRoleStyle = status => ({
+          ...styles.activityRole,
+          ...styles[`activityRole${status.charAt(0).toUpperCase() + status.slice(1)}`],
+        })
 
-                    return (
-                      <div key={activity.id} style={getActivityCardStyle(colorIndex)}>
-                        <div style={getActivityAvatarStyle(colorIndex)}>{initials}</div>
-                        <div style={styles.activityInfo}>
-                          <div style={styles.activityName}>{activity.title}</div>
-                          <div style={styles.activityDetail}>
-                            <span style={styles.activityLabel}>Email</span>
-                            <span style={styles.activityValue}>
-                              {activity.email || `${activity.title.toLowerCase().replace(" ", "")}@gmail.com`}
-                            </span>
-                          </div>
-                          <div style={styles.activityDetail}>
-                            <span style={styles.activityLabel}>Description</span>
-                            <span style={styles.activityValue}>{activity.description || "System activity update"}</span>
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
-                          <span style={getRoleStyle(activity.status)}>{activity.status}</span>
-                          <span style={styles.activityDate}>
-                            {new Date(activity.date).toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })}
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+        return (
+          <div key={activity.id} style={getActivityCardStyle(colorIndex)}>
+            <div style={getActivityAvatarStyle(colorIndex)}>{initials}</div>
+            <div style={styles.activityInfo}>
+              <div style={styles.activityName}>{activity.title}</div>
+              <div style={styles.activityDetail}>
+                <span style={styles.activityLabel}>Email</span>
+                <span style={styles.activityValue}>{activity.email}</span>
+              </div>
+              <div style={styles.activityDetail}>
+                <span style={styles.activityLabel}>Description</span>
+                <span style={styles.activityValue}>
+                  {activity.description || "System activity update"}
+                </span>
+              </div>
             </div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+              <span style={getRoleStyle(activity.status)}>{activity.status}</span>
+              <span style={styles.activityDate}>
+                {new Date(activity.date).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </span>
+            </div>
+          </div>
+        )
+      })}
+  </div>
+)}
+
+              </div>
+
 
             {/* SOS Emergency Widget */}
               <div style={styles.sosWidget}>

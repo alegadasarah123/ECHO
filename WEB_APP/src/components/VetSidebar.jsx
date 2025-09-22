@@ -1,8 +1,13 @@
-import React, { useState } from 'react';
-import { 
-  BarChart3, Calendar, FileText, Heart, Clipboard, 
-  Settings, Menu, LogOut, X
+import {
+  BarChart3, Calendar,
+  Clipboard,
+  FileText, Heart,
+  LogOut,
+  Menu,
+  Settings,
+  X
 } from 'lucide-react';
+import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 const Sidebar = () => {

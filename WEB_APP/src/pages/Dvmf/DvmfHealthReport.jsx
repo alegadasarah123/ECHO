@@ -1,7 +1,7 @@
 "use client"
 
 import Sidebar from "@/components/DvmfSidebar"; // Assuming Sidebar component is imported
-import { BarChart3, Bell, LogOut } from "lucide-react";
+import { BarChart3, Bell } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import FloatingMessages from './DvmfMessage';
@@ -260,7 +260,7 @@ const styles = {
         }
 
         .search-input:focus {
-          border-color: #b91c1c;
+          border-color: #0F3D5A;
         }
 
         .search-icon {
@@ -312,7 +312,7 @@ const styles = {
           position: absolute;
           top: 2px;
           right: 2px;
-          background-color: #b91c1c;
+          background-color: #0F3D5A;
           color: white;
           font-size: 10px;
           width: 15px;
@@ -362,7 +362,7 @@ const styles = {
         .mark-all-read {
           background: none;
           border: none;
-          color: #b91c1c;
+          color: #0F3D5A;
           font-size: 12px;
           cursor: pointer;
           text-decoration: underline;
@@ -382,7 +382,7 @@ const styles = {
 
         .notification-item.unread {
           background-color: #f0f8ff;
-          border-left: 3px solid #b91c1c;
+          border-left: 3px solid #0F3D5A;
         }
 
         .notification-item:last-child {
@@ -544,7 +544,7 @@ const styles = {
         }
 
         .export-btn {
-          background: #b91c1c;
+          background: #0F3D5A;
           color: white;
           border: none;
           padding: 8px 16px;
@@ -694,7 +694,7 @@ const styles = {
           top: 20px;
           left: 20px;
           z-index: 1001;
-          background: #b91c1c;
+          background: #0F3D5A;
           color: white;
           border: none;
           padding: 12px;
@@ -711,61 +711,6 @@ const styles = {
           bottom: 24px;
           right: 24px;
           z-index: 1000;
-        }
-
-        /* Chat Button - Speech Bubble Design */
-        .chat-button {
-          width: 64px;
-          height: 64px;
-          background: #b91c1c;
-          border: none;
-          border-radius: 20px;
-          color: white;
-          cursor: pointer;
-          box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
-          transition: all 0.3s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          position: relative;
-        }
-
-        /* Speech bubble tail */
-        .chat-button::after {
-          content: "";
-          position: absolute;
-          bottom: -8px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 0;
-          height: 0;
-          border-left: 10px solid transparent;
-          border-right: 10px solid transparent;
-          border-top: 10px solid #b91c1c;
-        }
-
-        .chat-button:hover {
-          transform: scale(1.05);
-          box-shadow: 0 6px 16px rgba(185, 28, 28, 0.4);
-        }
-
-        .chat-button:hover::after {
-          border-top-color: #b91c1c;
-        }
-
-        /* Static three dots design */
-        .chat-dots {
-          display: flex;
-          gap: 6px;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .chat-dot {
-          width: 8px;
-          height: 8px;
-          background: white;
-          border-radius: 50%;
         }
 
         /* Logout Modal Styles */
@@ -1171,26 +1116,7 @@ const styles = {
 
       <FloatingMessages />
 
-      {/* Logout Modal */}
-      {isLogoutModalOpen && (
-        <div className="modal-overlay active" ref={logoutModalRef}>
-          <div className="logout-modal">
-            <div className="logout-modal-icon">
-              <LogOut size={25} color="#f59e0b" />
-            </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons">
-              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
-                No
-              </button>
-              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+   
     </div>
   )
 }

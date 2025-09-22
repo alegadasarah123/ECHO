@@ -16,15 +16,14 @@ import {
   User,
   UserCheck,
   UserX,
-  XCircle
+  XCircle,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
-
-const API_BASE = "http://127.0.0.1:8000/api/dvmf";
+const API_BASE = "http://127.0.0.1:8000/api/dvmf"
 
 function DvmfAccountApproval() {
   const navigate = useNavigate()
@@ -53,6 +52,13 @@ function DvmfAccountApproval() {
   const logoutModalRef = useRef(null)
   const [isSidebarsOpen, setIsSidebarsOpen] = useState(false)
   const [modalActiveTab, setModalActiveTab] = useState("personal")
+
+  const [declineReason, setDeclineReason] = useState("")
+
+  // State for managing pinned posts (if this component were to handle posts)
+  const [pinnedPosts, setPinnedPosts] = useState(new Set())
+  const [showDropdown, setShowDropdown] = useState({})
+  const [posts, setPosts] = useState([]) // Assuming 'posts' is relevant for some functionality
 
   // Helper to format time for notifications
   const formatTimeAgo = useCallback((timestamp) => {
@@ -85,7 +91,7 @@ function DvmfAccountApproval() {
   useEffect(() => {
     const fetchCounts = async () => {
       try {
-        const response = await  fetch("http://127.0.0.1:8000/api/dvmf/get-account-counts/")
+        const response = await fetch("http://127.0.0.1:8000/api/dvmf/get-account-counts/")
         if (!response.ok) throw new Error("Failed to fetch data")
         const data = await response.json()
         setCounts(data)
@@ -131,27 +137,25 @@ function DvmfAccountApproval() {
     setSelectedUser(null)
   }
 
- const showApproveConfirmation = (vetId) => {
-  setSelectedUser({ vet_id: vetId });
-  setConfirmationDetails({
-    title: "Confirm Approval",
-    message: "Are you sure you want to approve this registration?",
-    action: "approve",
-  });
-  setIsConfirmationModalOpen(true);
-};
+  const showApproveConfirmation = (vetId) => {
+    setSelectedUser({ vet_id: vetId })
+    setConfirmationDetails({
+      title: "Confirm Approval",
+      message: "Are you sure you want to approve this registration?",
+      action: "approve",
+    })
+    setIsConfirmationModalOpen(true)
+  }
 
-
-const showDeclineConfirmation = (vetId) => {
-  setSelectedUser({ vet_id: vetId });
-  setConfirmationDetails({
-    title: "Confirm Decline",
-    message: "Are you sure you want to decline this registration?",
-    action: "decline",
-  });
-  setIsConfirmationModalOpen(true);
-};
-
+  const showDeclineConfirmation = (vetId) => {
+    setSelectedUser({ vet_id: vetId })
+    setConfirmationDetails({
+      title: "Confirm Decline",
+      message: "Are you sure you want to decline this registration?",
+      action: "decline",
+    })
+    setIsConfirmationModalOpen(true)
+  }
 
   const showApproveConfirmationFromModal = () => {
     if (selectedUser && selectedUser.status === "pending") {
@@ -167,118 +171,118 @@ const showDeclineConfirmation = (vetId) => {
     }
   }
 
-
-
   const closeConfirmation = () => {
     setIsConfirmationModalOpen(false)
     setSelectedUser(null)
     setConfirmationDetails({ title: "", message: "", action: "" })
   }
 
-  
-
-
-
-
   const confirmAction = () => {
     if (confirmationDetails.action === "approve" && selectedUser) {
       approveUser(selectedUser.vet_id)
     } else if (confirmationDetails.action === "decline" && selectedUser) {
       declineUser(selectedUser.vet_id)
-    } 
+    }
     closeConfirmation()
   }
 
-// -------------------- Approve a single user --------------------
-const approveUser = async (vetId) => {
-  try {
-    // Optimistically update the UI first
-    setRegistrationData((prev) =>
-      prev.map((u) => (u.vet_id === vetId ? { ...u, status: "approved" } : u))
-    );
-    setMessage(`Approving user ${vetId}...`);
+  // -------------------- Approve a single user --------------------
+  const approveUser = async (vetId) => {
+    try {
+      // Optimistically update the UI first
+      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "approved" } : u)))
+      setMessage(`Approving user ${vetId}...`)
 
-    const response = await fetch(
-      `http://127.0.0.1:8000/api/dvmf/update-vet-status/${vetId}/`,
-      {
+      const response = await fetch(`http://127.0.0.1:8000/api/dvmf/update-vet-status/${vetId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "approved" }),
-      }
-    );
+        body: JSON.JSON.stringify({ status: "approved" }),
+      })
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Failed to approve user: ${text}`);
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(`Failed to approve user: ${text}`)
+      }
+
+      const data = await response.json()
+      setMessage(`User ${vetId} approved successfully!`)
+      console.log("User approved:", data)
+    } catch (err) {
+      console.error(err)
+      // Rollback UI if failed
+      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u)))
+      setMessage(`Error: ${err.message}`)
+    }
+  }
+  useEffect(() => {
+    if (activeTab === "approved") {
+      const interval = setInterval(() => {
+        const fetchApprovedUsers = async () => {
+          try {
+            const res = await fetch(`${API_BASE}/get-vet-profiles/`)
+            const data = await res.json()
+            const approved = data.filter((u) => u.status === "approved")
+            setRegistrationData((prev) => [...prev.filter((u) => u.status !== "approved"), ...approved])
+          } catch (err) {
+            console.error("Error refreshing approved users:", err)
+          }
+        }
+        fetchApprovedUsers()
+      }, 30000)
+
+      return () => clearInterval(interval)
+    }
+  }, [activeTab])
+
+  // -------------------- Decline a single user --------------------
+  const declineUser = async (vetId) => {
+    if (!declineReason) {
+      setMessage("Please enter a reason for decline.")
+      return
     }
 
-    const data = await response.json();
-    setMessage(`User ${vetId} approved successfully!`);
-    console.log("User approved:", data);
-  } catch (err) {
-    console.error(err);
-    // Rollback UI if failed
-    setRegistrationData((prev) =>
-      prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u))
-    );
-    setMessage(`Error: ${err.message}`);
-  }
-};
+    try {
+      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "declined" } : u)))
+      setMessage(`Declining user ${vetId}...`)
 
-// -------------------- Decline a single user --------------------
-const declineUser = async (vetId) => {
-  try {
-    // Optimistically update the UI first
-    setRegistrationData((prev) =>
-      prev.map((u) => (u.vet_id === vetId ? { ...u, status: "declined" } : u))
-    );
-    setMessage(`Declining user ${vetId}...`);
-
-    const response = await fetch(
-      `http://127.0.0.1:8000/api/dvmf/update-vet-status/${vetId}/`,
-      {
+      const response = await fetch(`http://127.0.0.1:8000/api/dvmf/update-vet-status/${vetId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "declined" }),
+        body: JSON.JSON.stringify({ status: "declined", decline_reason: declineReason }), // <-- fixed here
+      })
+
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(`Failed to decline user: ${text}`)
       }
-    );
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Failed to decline user: ${text}`);
+      const data = await response.json()
+      setMessage(`User ${vetId} declined successfully!`)
+      setDeclineReason("") // clear reason after successful decline
+      console.log("User declined:", data)
+    } catch (err) {
+      console.error(err)
+      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u)))
+      setMessage(`Error: ${err.message}`)
     }
-
-    const data = await response.json();
-    setMessage(`User ${vetId} declined successfully!`);
-    console.log("User declined:", data);
-  } catch (err) {
-    console.error(err);
-    // Rollback UI if failed
-    setRegistrationData((prev) =>
-      prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u))
-    );
-    setMessage(`Error: ${err.message}`);
   }
-};
 
-// -------------------- Approve all pending users --------------------
-const approveAllPending = async () => {
-  if (activeTab !== "pending") return;
+  // -------------------- Approve all pending users --------------------
+  const approveAllPending = async () => {
+    if (activeTab !== "pending") return
 
-  const pendingUsers = registrationData.filter((u) => u.status === "pending");
-  if (pendingUsers.length === 0) return;
+    const pendingUsers = registrationData.filter((u) => u.status === "pending")
+    if (pendingUsers.length === 0) return
 
-  try {
-    await Promise.all(pendingUsers.map((u) => approveUser(u.vet_id)));
-    setMessage("All pending users approved successfully!");
-  } catch (err) {
-    setMessage(`Error approving users: ${err.message}`);
+    try {
+      await Promise.all(pendingUsers.map((u) => approveUser(u.vet_id)))
+      setMessage("All pending users approved successfully!")
+    } catch (err) {
+      setMessage(`Error approving users: ${err.message}`)
+    }
   }
-}
-
-
 
   const handleSearchInput = (e) => {
     setSearchTerm(e.target.value.toLowerCase())
@@ -287,9 +291,6 @@ const approveAllPending = async () => {
   const handleRecentFilterChange = (e) => {
     setRecentFilter(e.target.value)
   }
-
- 
-
 
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
@@ -331,12 +332,10 @@ const approveAllPending = async () => {
 
     const interval = setInterval(() => {
       loadNotifications()
-    }, 30000) // 30 seconds
+    }, 10000) // 30 seconds
 
     return () => clearInterval(interval)
   }, [loadNotifications])
-
-
 
   const loadDashboardData = useCallback(() => {
     loadStats()
@@ -344,61 +343,63 @@ const approveAllPending = async () => {
     loadNotifications()
   }, [loadStats, loadRecentActivities, loadNotifications])
 
-  const confirmLogout = () => {
-    console.log("User logged out")
-    localStorage.removeItem("currentUser")
-    localStorage.removeItem("loginTime")
-    navigate("/login")
-    closeLogoutModal()
-  }
+  useEffect(() => {
+    const controller = new AbortController() // for cancelling fetch on unmount
 
-useEffect(() => {
-  const loadVetProfiles = async () => {
-    try {
-      const response = await fetch("http://127.0.0.1:8000/api/dvmf/get-vet-profiles/");
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+    const loadVetProfiles = async () => {
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/dvmf/get-vet-profiles/", {
+          signal: controller.signal,
+        })
 
-      const data = await response.json();
-      console.log("Fetched vet profiles:", data);
-
-      // Process each item safely
-      const processedData = data.map((item, index) => {
-        // Safely access joined 'status' field
-        let statusValue = item.status;
-        // If backend join returned nested object, try to get it
-        if (!statusValue && item.vet && item.vet.status) {
-          statusValue = item.vet.status;
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
         }
 
-        return {
-          ...item,
-          status: statusValue || "pending", // fallback if still undefined
-          type: item.type || "Veterinarian",
-        };
-      });
+        const data = await response.json()
+        console.log("Fetched vet profiles:", data)
 
-      // Log processed items
-      processedData.forEach((item, index) => {
-        console.log(`[Processed Item ${index}]`, {
-          id: item.vet_id,
-          name: `${item.vet_fname} ${item.vet_lname}`,
-          status: item.status,
-          type: item.type,
-          allFields: Object.keys(item),
-        });
-      });
+        // Process each item safely
+        const processedData = data.map((item, index) => {
+          let statusValue = item.status
+          if (!statusValue && item.vet && item.vet.status) {
+            statusValue = item.vet.status
+          }
 
-      setRegistrationData(processedData);
+          return {
+            ...item,
+            status: statusValue || "pending",
+            type: item.type || "Veterinarian",
+          }
+        })
 
-    } catch (error) {
-      console.error("Failed to fetch vet profiles:", error);
+        // Log processed items
+        processedData.forEach((item, index) => {
+          console.log(`[Processed Item ${index}]`, {
+            id: item.vet_id,
+            name: `${item.vet_fname} ${item.vet_lname}`,
+            status: item.status,
+            type: item.type,
+            allFields: Object.keys(item),
+          })
+        })
+
+        setRegistrationData(processedData)
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          console.error("Failed to fetch vet profiles:", error)
+        }
+      }
     }
-  };
 
-  loadVetProfiles();
-}, []);
+    loadVetProfiles() // initial load
+    const interval = setInterval(loadVetProfiles, 10000) // refresh every 10s
+
+    return () => {
+      clearInterval(interval)
+      controller.abort() // cancel fetch if component unmounts
+    }
+  }, [])
 
   // Effects
   useEffect(() => {
@@ -442,54 +443,53 @@ useEffect(() => {
   const filteredRegistrations = filterRegistrations()
 
   const togglePin = (postId) => {
-  setPinnedPosts((prev) => {
-    const updated = new Set(prev);
-    updated.add(postId); // only add, never delete
-    return updated;
-  });
+    setPinnedPosts((prev) => {
+      const updated = new Set(prev)
+      updated.add(postId) // only add, never delete
+      return updated
+    })
 
-  setShowDropdown((prev) => ({ ...prev, [postId]: false }));
+    setShowDropdown((prev) => ({ ...prev, [postId]: false }))
 
-  // Reorder posts: pinned posts first, then regular posts by timestamp
-  setPosts((prev) => {
-    const pinned = [];
-    const unpinned = [];
+    // Reorder posts: pinned posts first, then regular posts by timestamp
+    setPosts((prev) => {
+      const pinned = []
+      const unpinned = []
 
-    prev.forEach((post) => {
-      if (post.id === postId || pinnedPosts.has(post.id)) {
-        pinned.push(post);
-      } else {
-        unpinned.push(post);
-      }
-    });
+      prev.forEach((post) => {
+        if (post.id === postId || pinnedPosts.has(post.id)) {
+          pinned.push(post)
+        } else {
+          unpinned.push(post)
+        }
+      })
 
-    return [
-      ...pinned.sort((a, b) => b.timestamp - a.timestamp),
-      ...unpinned.sort((a, b) => b.timestamp - a.timestamp),
-    ];
-  });
-};
-
+      return [
+        ...pinned.sort((a, b) => b.timestamp - a.timestamp),
+        ...unpinned.sort((a, b) => b.timestamp - a.timestamp),
+      ]
+    })
+  }
 
   const styles = {
     notificationBtn: {
-        position: "relative",
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-    padding: "8px",
-    borderRadius: "50%",
+      position: "relative",
+      background: "transparent",
+      border: "none",
+      cursor: "pointer",
+      padding: "8px",
+      borderRadius: "50%",
     },
     notificationBadge: {
       position: "absolute",
-    top: "2px",
-    right: "2px",
-    backgroundColor: "#ef4444",
-    color: "#fff",
-    borderRadius: "50%",
-    padding: "2px 6px",
-    fontSize: "12px",
-    fontWeight: "bold",
+      top: "2px",
+      right: "2px",
+      backgroundColor: "#ef4444",
+      color: "#fff",
+      borderRadius: "50%",
+      padding: "2px 6px",
+      fontSize: "12px",
+      fontWeight: "bold",
     },
     bodyWrapper: {
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
@@ -650,61 +650,61 @@ useEffect(() => {
       lineHeight: "1.4",
     },
     tabsContainer: {
-    display: "flex",
-    gap: "16px",
-    background: "#e5e2e2ff",
-    padding: "0 8px",
-    borderRadius: "24px",
-    height: "48px",
-    width: "370px",
-    alignItems: "center",
-    marginTop: "20px",
-  },
-  tab: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-    height: "100%",
-    padding: "0 12px",
-    background: "none",
-    border: "none",
-    fontSize: "14px",
-    fontWeight: "500",
-    color: "#374151",
-    cursor: "pointer",
-    position: "relative",
-    borderRadius: "24px",
-    transition: "all 0.2s ease",
-  },
-  tabHover: {
-    backgroundColor: "#ffffff",
-    color: "#111827",
-  },
-  tabActive: {
-    fontWeight: "600",
-  },
-  badge: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: "22px",
-    height: "22px",
-    padding: "0 6px",
-    borderRadius: "50%",
-    fontSize: "12px",
-    fontWeight: "600",
-    color: "#fff",
-  },
-  badgePending: {
-    backgroundColor: "#f59e0b", // orange
-  },
-  badgeApproved: {
-    backgroundColor: "#22c55e", // green
-  },
-  badgeDeclined: {
-    backgroundColor: "#ef4444", // red
-  },
+      display: "flex",
+      gap: "16px",
+      background: "#e5e2e2ff",
+      padding: "0 8px",
+      borderRadius: "24px",
+      height: "48px",
+      width: "370px",
+      alignItems: "center",
+      marginTop: "20px",
+    },
+    tab: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: "8px",
+      height: "100%",
+      padding: "0 12px",
+      background: "none",
+      border: "none",
+      fontSize: "14px",
+      fontWeight: "500",
+      color: "#374151",
+      cursor: "pointer",
+      position: "relative",
+      borderRadius: "24px",
+      transition: "all 0.2s ease",
+    },
+    tabHover: {
+      backgroundColor: "#ffffff",
+      color: "#111827",
+    },
+    tabActive: {
+      fontWeight: "600",
+    },
+    badge: {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      minWidth: "22px",
+      height: "22px",
+      padding: "0 6px",
+      borderRadius: "50%",
+      fontSize: "12px",
+      fontWeight: "600",
+      color: "#fff",
+    },
+    badgePending: {
+      backgroundColor: "#f59e0b", // orange
+    },
+    badgeApproved: {
+      backgroundColor: "#22c55e", // green
+    },
+    badgeDeclined: {
+      backgroundColor: "#ef4444", // red
+    },
     controlsRow: {
       display: "flex",
       justifyContent: "space-between",
@@ -864,7 +864,7 @@ useEffect(() => {
     },
     btnDecline: {
       backgroundColor: "#fa1d15ff",
-      color: "#000",
+      color: "#fff",
     },
     btnDeclineHover: {
       backgroundColor: "rgba(232, 44, 44, 1)ff",
@@ -891,12 +891,13 @@ useEffect(() => {
       left: "0",
       width: "100%",
       height: "100%",
-      background: "rgba(0, 0, 0, 0.5)",
+      background: "rgba(0, 0, 0, 0.7)",
       display: "none",
       justifyContent: "center",
       alignItems: "center",
       zIndex: "1000",
       padding: "20px",
+       backdropFilter: "blur(8px)", // added blur
     },
     modalOverlayActive: {
       display: "flex",
@@ -1208,7 +1209,7 @@ useEffect(() => {
     modalBtnsHover: {
       opacity: "0.9",
     },
-  
+
     modalStatusWrapper: {
       display: "flex",
       alignItems: "center",
@@ -1351,9 +1352,9 @@ useEffect(() => {
       borderBottom: "none",
     },
     tabButtonHover: {
-  backgroundColor: "transparent",
-  color: "inherit", // keeps the original text color
-  },
+      backgroundColor: "transparent",
+      color: "inherit", // keeps the original text color
+    },
 
     documentsContainer: {
       display: "flex",
@@ -1407,25 +1408,20 @@ useEffect(() => {
           </h1>
 
           {/* 🔔 Notification Bell */}
-            <button
-              style={styles.notificationBtn}
-              onClick={() => setNotifsOpen(!notifsOpen)}
-            >
-              <Bell size={24} color="#374151" />
-              {notifications.length > 0 && (
-                <span style={styles.notificationBadge}>{notifications.length}</span>
-              )}
-            </button>
+          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
+            <Bell size={24} color="#374151" />
+            {notifications.length > 0 && <span style={styles.notificationBadge}>{notifications.length}</span>}
+          </button>
 
-            {/* 📩 Notification Modal */}
-            <NotificationModal
-              isOpen={notifsOpen}
-              onClose={() => setNotifsOpen(false)}
-              notifications={notifications.map((n) => ({
-                message: n.message,
-                date: n.date,
-              }))}
-            />
+          {/* 📩 Notification Modal */}
+          <NotificationModal
+            isOpen={notifsOpen}
+            onClose={() => setNotifsOpen(false)}
+            notifications={notifications.map((n) => ({
+              message: n.message,
+              date: n.date,
+            }))}
+          />
         </header>
         <div className="content-area" style={styles.contentArea}>
           <div className="page-header" style={styles.pageHeader}>
@@ -1447,14 +1443,12 @@ useEffect(() => {
                 onClick={() => setActiveTab("pending")}
                 style={{
                   ...styles.tab,
-                  ...(activeTab === "pending" ? styles.tabActive : styles.tabHover),
+                  ...(activeTab === "pending" ? styles.tabHover : {}),
+                  ...(activeTab === "pending" ? styles.tabActive : {}),
                 }}
               >
                 Pending{" "}
-                <span
-                  className="badge badge-pending"
-                  style={{ ...styles.badge, ...styles.badgePending }}
-                >
+                <span className="badge badge-pending" style={{ ...styles.badge, ...styles.badgePending }}>
                   {counts.pending}
                 </span>
               </button>
@@ -1465,14 +1459,12 @@ useEffect(() => {
                 onClick={() => setActiveTab("approved")}
                 style={{
                   ...styles.tab,
-                  ...(activeTab === "approved" ? styles.tabActive : styles.tabHover),
+                  ...(activeTab === "approved" ? styles.tabHover : {}),
+                  ...(activeTab === "approved" ? styles.tabActive : {}),
                 }}
               >
                 Approved{" "}
-                <span
-                  className="badge badge-approved"
-                  style={{ ...styles.badge, ...styles.badgeApproved }}
-                >
+                <span className="badge badge-approved" style={{ ...styles.badge, ...styles.badgeApproved }}>
                   {counts.approved}
                 </span>
               </button>
@@ -1483,19 +1475,16 @@ useEffect(() => {
                 onClick={() => setActiveTab("declined")}
                 style={{
                   ...styles.tab,
-                  ...(activeTab === "declined" ? styles.tabActive : styles.tabHover),
+                  ...(activeTab === "declined" ? styles.tabHover : {}),
+                  ...(activeTab === "declined" ? styles.tabActive : {}),
                 }}
               >
                 Declined{" "}
-                <span
-                  className="badge badge-declined"
-                  style={{ ...styles.badge, ...styles.badgeDeclined }}
-                >
+                <span className="badge badge-declined" style={{ ...styles.badge, ...styles.badgeDeclined }}>
                   {counts.declined}
                 </span>
               </button>
             </div>
-
           </div>
           <div className="controls-row" style={styles.controlsRow}>
             <div className="filter-controls" style={styles.filterControls}>
@@ -1511,15 +1500,6 @@ useEffect(() => {
                 <option value="month">This Month</option>
               </select>
             </div>
-            {activeTab === "pending" && (
-              <button
-                className="approve-all-btn"
-                onClick={approveAllPending}
-                style={{ ...styles.approveAllBtn, ...styles.approveAllBtnHover }}
-              >
-                Approve All
-              </button>
-            )}
 
             {/* For Approved Tab */}
             {activeTab === "approved"}
@@ -1568,6 +1548,9 @@ useEffect(() => {
                     </div>
                     <div className="user-details" style={styles.userDetails}>
                       {user.vet_city}, {user.vet_province}
+                      {user.users?.status === "declined" && user.decline_reason
+                        ? ` - Reason: ${user.decline_reason}`
+                        : ""}
                     </div>
                   </div>
 
@@ -1602,11 +1585,9 @@ useEffect(() => {
                       </>
                     )}
 
-                    {(user.users?.status === "approved" || user.users?.status === "declined") && (
-                    // No delete button anymore
-                    null
-                  )}
-
+                    {(user.users?.status === "approved" || user.users?.status === "declined") &&
+                      // No delete button anymore
+                      null}
                   </div>
                 </div>
               ))
@@ -1937,24 +1918,14 @@ useEffect(() => {
             </div>
 
             <div className="modal-footer" style={styles.modalFooter}>
-              <button
-                className="modal-btns close"
-                onClick={closeModal}
-                style={{ ...styles.modalBtns, ...styles.modalBtnsClose }}
-              >
-                <SquareX size={16} style={{ marginRight: "1px" }} />
-                Close
-              </button>
-
-              {(registrationData.find((u) => u.id === selectedUser.id)?.users?.status || selectedUser.users?.status) ===
-                "pending" && (
+              {selectedUser?.users?.status === "pending" && (
                 <>
                   <button
                     className="modal-btns approve"
                     onClick={showApproveConfirmationFromModal}
                     style={{ ...styles.modalBtns, ...styles.modalBtnsApprove }}
                   >
-                    <CheckCircle size={16} style={{ marginRight: "1px" }} />
+                    <CheckCircle size={16} style={{ marginRight: "4px" }} />
                     Approve
                   </button>
                   <button
@@ -1962,16 +1933,27 @@ useEffect(() => {
                     onClick={showDeclineConfirmationFromModal}
                     style={{ ...styles.modalBtns, ...styles.modalBtnsDecline }}
                   >
-                    <XCircle size={16} style={{ marginRight: "1px" }} />
+                    <XCircle size={16} style={{ marginRight: "4px" }} />
                     Decline
                   </button>
                 </>
               )}
+
+              {/* Close button always visible */}
+              <button
+                className="modal-btns close"
+                onClick={closeModal}
+                style={{ ...styles.modalBtns, ...styles.modalBtnsClose }}
+              >
+                <SquareX size={16} style={{ marginRight: "4px" }} />
+                Close
+              </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* Confirmation Modal */}
       {/* Confirmation Modal */}
       {isConfirmationModalOpen && (
         <div
@@ -1986,6 +1968,24 @@ useEffect(() => {
             <p id="confirmationMessage" style={styles.confirmationModalP}>
               {confirmationDetails.message}
             </p>
+
+            {/* Decline Reason Input */}
+            {confirmationDetails.action === "decline" && (
+              <textarea
+                placeholder="Enter reason for decline..."
+                value={declineReason}
+                onChange={(e) => setDeclineReason(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  marginTop: "10px",
+                  borderRadius: "5px",
+                  border: "1px solid #ccc",
+                  resize: "vertical",
+                }}
+              />
+            )}
+
             <div className="confirmation-buttons" style={styles.confirmationButtons}>
               <button
                 className="confirmation-btn cancel"
@@ -2007,13 +2007,10 @@ useEffect(() => {
               >
                 {confirmationDetails.action === "approve" ? "Approve" : "Decline"}
               </button>
-
             </div>
           </div>
         </div>
       )}
-
-      
     </div>
   )
 }

@@ -4,12 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 
-import { Bell, Edit, Mail, MapPin, MessageCircle, MoreVertical, Phone, Pin, Send, Trash, Upload } from "lucide-react"
+import { Bell, Edit, Mail, MapPin, MessageCircle, MoreVertical, Phone, Pin, Send, Upload } from "lucide-react"
 import NotificationModal from "./CtuNotif"
 
 const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
 
-const CTUAnnouncement = () => {
+const CtuAnnouncement = () => {
   const navigate = useNavigate()
 
   // State for sidebar and modals
@@ -126,7 +126,7 @@ const CTUAnnouncement = () => {
       overflowY: "auto",
     },
     postCard: {
-      backgroundColor: "#fff",
+      backgroundColor: "#f5f5f5",
       borderRadius: "8px",
       padding: "20px",
       marginBottom: "20px",
@@ -440,7 +440,7 @@ const CTUAnnouncement = () => {
         title: result?.post?.announce_title || "CTU Announcement",
         content: result?.post?.announce_content || "",
         photos: result?.post?.announce_img ? [{ id: `photo-${now.getTime()}`, url: result.post.announce_img }] : [],
-        author: "CTU VET-MED",
+        author: "CTU Announcement",
         date: now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
         timestamp: now,
         comments: [],
@@ -471,7 +471,8 @@ const CTUAnnouncement = () => {
           id: announcement.announce_id,
           content: announcement.announce_content,
           photos: announcement.announce_img ? [{ id: 1, url: announcement.announce_img }] : [],
-          author: "CTU VET-MED",
+          author: announcement.announce_title,
+
           timestamp: new Date(announcement.announce_date),
           date: new Date(announcement.announce_date).toLocaleDateString("en-US", {
             year: "numeric",
@@ -1384,7 +1385,7 @@ flex: 1;
 
 .services-column li::before {
   content: "•";
-  color: #b91c1c;
+  color:#b91c1c;
   font-weight: bold;
   position: absolute;
   left: 0;
@@ -2005,7 +2006,7 @@ flex: 1;
 .comments-more-btn {
   background: none;
   border: none;
-  color: #b91c1c;
+  color:#b91c1c ;
   font-size: 14px;
   cursor: pointer;
   padding: 4px 8px;
@@ -2862,7 +2863,7 @@ flex: 1;
 .announcement-title {
           font-size: 22px;
           font-weight: bold;
-          color: #da2424ff;
+          color: #b91c1c;
         }
 
       `}</style>
@@ -2899,7 +2900,7 @@ flex: 1;
             </div>
 
             <div className="profile-details">
-              <h1>Cebu City CTU</h1>
+              <h1>Cebu City Ctu-Vetmed</h1>
 
               <div className="detail-item">
                 <MapPin size={18} style={{ marginRight: "8px" }} />
@@ -2939,7 +2940,7 @@ flex: 1;
               <div className="description-box">
                 <h3>Description</h3>
                 <p>
-                  The College of Technological University Veterinary Medical (CTU VET-MED) is responsible for ensuring
+                  The College of Technological University Veterinary Medical (CTU) is responsible for ensuring
                   the health and welfare of animals within the city limits, including horses used by kutseros for
                   transportation.
                 </p>
@@ -3190,41 +3191,7 @@ flex: 1;
                                 Edit post
                               </div>
 
-                              {/* Delete Post */}
-                              <div
-                                style={{
-                                  padding: "12px 16px",
-                                  fontSize: "14px",
-                                  color: "#e53935",
-                                  cursor: "pointer",
-                                  display: "flex",
-                                  alignItems: "center",
-                                  gap: "10px",
-                                }}
-                                onClick={async () => {
-                                  if (window.confirm("Are you sure you want to delete this post?")) {
-                                    try {
-                                      const res = await fetch(
-                                        `http://localhost:8000/api/ctu_vetmed/delete-post/${post.id}/`,
-                                        {
-                                          method: "DELETE",
-                                          credentials: "include",
-                                        },
-                                      )
-                                      if (!res.ok) throw new Error("Failed to delete post")
-                                      setPosts((prev) => prev.filter((p) => p.id !== post.id))
-                                    } catch (err) {
-                                      console.error(err)
-                                      alert("Failed to delete post. Try again.")
-                                    }
-                                  }
-                                }}
-                                onMouseEnter={(e) => (e.target.style.backgroundColor = "#fceaea")}
-                                onMouseLeave={(e) => (e.target.style.backgroundColor = "transparent")}
-                              >
-                                <Trash size={18} />
-                                Delete post
-                              </div>
+                              
                             </div>
                           )}
                         </div>
@@ -3386,4 +3353,4 @@ flex: 1;
   )
 }
 
-export default CTUAnnouncement
+export default CtuAnnouncement

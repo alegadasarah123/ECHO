@@ -126,7 +126,7 @@ const DvmfAnnouncement = () => {
       overflowY: "auto",
     },
     postCard: {
-      backgroundColor: "#fff",
+      backgroundColor: "#f5f5f5",
       borderRadius: "8px",
       padding: "20px",
       marginBottom: "20px",
@@ -414,7 +414,7 @@ const DvmfAnnouncement = () => {
     try {
       // Only include the image if selected
       const bodyData = {
-        announce_title: "Dvmf Announcement",
+        announce_title: "DVMF Announcement",
         announce_content: postText,
       }
       if (selectedPhotos.length > 0) {
@@ -437,10 +437,10 @@ const DvmfAnnouncement = () => {
       const now = new Date()
       const newPost = {
         id: result?.post?.announce_id || `temp-${now.getTime()}`,
-        title: result?.post?.announce_title || "Dvmf Announcement",
+        title: result?.post?.announce_title || "DVMF Announcement",
         content: result?.post?.announce_content || "",
         photos: result?.post?.announce_img ? [{ id: `photo-${now.getTime()}`, url: result.post.announce_img }] : [],
-        author: "Dvmf",
+        author: "DVMF Announcement",
         date: now.toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" }),
         timestamp: now,
         comments: [],
@@ -471,7 +471,7 @@ const DvmfAnnouncement = () => {
           id: announcement.announce_id,
           content: announcement.announce_content,
           photos: announcement.announce_img ? [{ id: 1, url: announcement.announce_img }] : [],
-          author: "Dvmf",
+          author: announcement.announce_title,
           timestamp: new Date(announcement.announce_date),
           date: new Date(announcement.announce_date).toLocaleDateString("en-US", {
             year: "numeric",
@@ -997,7 +997,7 @@ body {
 }
 
 .search-input:focus {
-  border-color:#0F3D5A;
+  border-color: #0F3D5A;
 }
 
 .search-icon {
@@ -1384,7 +1384,7 @@ flex: 1;
 
 .services-column li::before {
   content: "•";
-  color:#0F3D5A;
+  color: #0F3D5A;
   font-weight: bold;
   position: absolute;
   left: 0;
@@ -1484,7 +1484,7 @@ flex: 1;
 }
 
 .post-btn:hover {
-  background: #991b1b;
+  background: #0F3D5A;
 }
 
 .post-btn:disabled {
@@ -1574,7 +1574,7 @@ flex: 1;
 }
 
 .photo-remove:hover {
-  background: rgba(239, 68, 68, 0.8);
+  background: rgba(68, 91, 239, 0.8);
 }
 
 .post-item {
@@ -2005,7 +2005,7 @@ flex: 1;
 .comments-more-btn {
   background: none;
   border: none;
-  color: #0F3D5A;
+  color:#0F3D5A ;
   font-size: 14px;
   cursor: pointer;
   padding: 4px 8px;
@@ -2067,65 +2067,7 @@ flex: 1;
   min-width: 44px;
 }
 
-/* Chat Widget */
-.chat-widget {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 1000;
-}
 
-.chat-button {
-  width: 64px;
-  height: 64px;
-  background: #0F3D5A;
-  border: none;
-  border-radius: 20px;
-  color: white;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-.chat-button::after {
-  content: "";
-  position: absolute;
-  bottom: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-top: 10px solid #0F3D5A;
-}
-
-.chat-button:hover {
-  transform: scale(1.05);
-  box-shadow: 0 6px 16px rgba(185, 28, 28, 0.4);
-}
-
-.chat-button:hover::after {
-  border-top-color: #0F3D5A;
-}
-
-.chat-dots {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  justify-content: center;
-}
-
-.chat-dot {
-  width: 8px;
-  height: 8px;
-  background: white;
-  border-radius: 50%;
-}
 
 /* Logout Modal Styles */
 .modal-overlay {
@@ -2198,12 +2140,12 @@ flex: 1;
 }
 
 .confirmation-btn.confirm {
-  background: #ef4444;
+  background: #0F3D5A;
   color: white;
 }
 
 .confirmation-btn.confirm:hover {
-  background: #dc2626;
+  background: #0F3D5A;
 }
 
 /* Image Modal */
@@ -2331,135 +2273,7 @@ flex: 1;
   background: #dc2626;
 }
 
-/* Tablet */
-@media (max-width: 1024px) {
-  .hours-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .services-container {
-    grid-template-columns: 1fr;
-  }
-  .notification-dropdown {
-    width: 280px;
-  }
-}
 
-/* Mobile */
-@media (max-width: 768px) {
-  .mobile-menu-btn {
-    display: block;
-  }
- 
-  .main-content {
-    margin-left: 0;
-    width: 100%;
-  }
- 
-  .search-containers {
-    margin-right: 10px;
-    min-width: 150px;
-  }
-  .profile-section {
-    flex-direction: column;
-    align-items: flex-start;
-    text-align: center;
-  }
-  .profile-details {
-    width: 100%;
-  }
-  .hours-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .services-container {
-    grid-template-columns: 1fr;
-  }
-  .post-actions {
-    gap: 10px;
-  }
-  .chat-widget {
-    bottom: 16px;
-    right: 16px;
-  }
-  .chat-button {
-    width: 56px;
-    height: 56px;
-    border-radius: 18px;
-  }
-  .chat-button::after {
-    bottom: -6px;
-    border-left-width: 8px;
-    border-right-width: 8px;
-    border-top-width: 8px;
-  }
-  .confirmation-buttons {
-    flex-direction: column;
-  }
-  .post-images .post-image img {
-    height: 150px;
-  }
-  .post-images.triple .post-image img {
-    min-height: 308px;
-  }
-  .reaction-popup {
-    left: 50%;
-    transform: translateX(-50%) translateY(10px);
-  }
-  .reaction-popup.active {
-    transform: translateX(-50%) translateY(0);
-  }
-}
-
-/* Small Mobile */
-@media (max-width: 480px) {
-  
-  .search-containers {
-    margin-right: 0;
-    min-width: auto;
-  }
-  .notification-bell {
-    align-self: flex-end;
-    margin-right: 0;
-  }
-  .mobile-menu-btn {
-    top: 15px;
-    left: 15px;
-    padding: 10px;
-  }
-  .hours-grid {
-    grid-template-columns: 1fr;
-  }
-  .post-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .post-media-controls {
-    flex-wrap: wrap;
-  }
-  .post-actions-bar {
-    flex-direction: column;
-    gap: 10px;
-    align-items: stretch;
-  }
-  .notification-dropdown {
-    width: calc(100vw - 20px);
-    right: -10px;
-  }
-}
-
-/* Touch devices */
-@media (hover: none) and (pointer: coarse) {
-  .nav-item,
-  .logout-btn {
-    min-height: 48px;
-  }
-  .tab-button {
-    min-height: 48px;
-  }
-  .action-btn {
-    min-height: 44px;
-    padding: 12px 16px;
-  }
-}
 
 /* Add these styles to your existing CtuAnnouncement.css file */
 
@@ -2913,7 +2727,7 @@ flex: 1;
 
               <div className="detail-item">
                 <Mail size={18} style={{ marginRight: "8px" }} />
-                <span>ctu.city@dvmf.edu.ph</span>
+                <span>cebu.city@dvmf.edu.ph</span>
               </div>
             </div>
           </div>
@@ -2935,19 +2749,19 @@ flex: 1;
 
           {activeTab === "information" && (
             <div className="content-section" id="information-content">
-              <div className="section-title">About CTU</div>
+              <div className="section-title">About DVMF</div>
               <div className="description-box">
                 <h3>Description</h3>
                 <p>
-                  The College of Technological University Veterinary Medical (Dvmf) is responsible for ensuring
-                  the health and welfare of animals within the city limits, including horses used by kutseros for
-                  transportation.
+                  The Department of Veterinary Medicine & Fisheries (DVMF) safeguards animal welfare, food safety, and public health in Cebu City. 
+                  Through sustainable veterinary services, strict meat and fishery inspections, and disease prevention programs, DVMF ensures quality care for both animals and consumers. 
+                  Committed to excellence, the department upholds international standards with honesty, resilience, and sincerity.
                 </p>
               </div>
               <div className="section-title">Location</div>
               <div className="location-box">
                 <p>
-                  <strong>M. J. Cuenco Ave, Cebu City</strong>
+                  <strong>Xiamen St., Mabolo, Cebu City</strong>
                   <br />
                   Cebu, Philippines 6000
                 </p>
@@ -2976,7 +2790,7 @@ flex: 1;
                 </div>
                 <div className="hours-item">
                   <div className="day">Saturday</div>
-                  <div className="time">8:00 AM - 12:00 PM</div>
+                  <div className="time">Closed</div>
                 </div>
                 <div className="hours-item">
                   <div className="day">Sunday</div>
@@ -2987,9 +2801,9 @@ flex: 1;
               <div className="services-container">
                 <div className="services-column">
                   <ul>
-                    <li>Horse health examinations</li>
-                    <li>Vaccinations</li>
-                    <li>Parasite control</li>
+                    <li>Livestock disease management & treatment</li>
+                    <li>Equine Infectious Anemia surveillance</li>
+                    <li>Livestock disease monitoring & surveillance</li>
                   </ul>
                 </div>
                 <div className="services-column">

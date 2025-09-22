@@ -133,3 +133,14 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 APPEND_SLASH = False
 
 
+
+# ---------------- EMAIL SETTINGS ----------------
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.gmail.com"
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+
+EMAIL_HOST_USER = "echosys.ph@gmail.com"
+EMAIL_HOST_PASSWORD = "olbe yxbd wbhr gmod"   # ✅ imong App Password
+DEFAULT_FROM_EMAIL = "ECHOSys Admin <echosys.ph@gmail.com>"
+

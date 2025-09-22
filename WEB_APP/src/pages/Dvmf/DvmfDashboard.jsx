@@ -9,7 +9,41 @@ import NotificationModal from "./DvmfNotif"
 
 const API_BASE = "http://127.0.0.1:8000/api/dvmf";
 
+// Add skull loading styles
+const skullStyles = {
+  skullContainer: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 9999,
+  },
+  skullAnimation: {
+    fontSize: "64px",
+    animation: "pulse 1.5s infinite",
+  },
+  loadingText: {
+    marginTop: "16px",
+    fontSize: "18px",
+    fontWeight: "bold",
+    color: "#0F3D5A",
+  },
+  // Keyframes for the pulse animation
+  "@keyframes pulse": {
+    "0%": { transform: "scale(1)", opacity: 1 },
+    "50%": { transform: "scale(1.1)", opacity: 0.8 },
+    "100%": { transform: "scale(1)", opacity: 1 },
+  },
+};
+
 const styles = {
+  ...skullStyles,
   bodyWrapper: {
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
     backgroundColor: "#f5f5f5",
@@ -132,8 +166,8 @@ const styles = {
     cursor: "pointer",
     display: "flex",
     flexDirection: "column",
-    alignItems: "center", // Center everything horizontally
-    textAlign: "center",   // Center text alignment
+    alignItems: "center",
+    textAlign: "center",
   },
   statCardHover: {
     transform: "translateY(-2px)",
@@ -146,7 +180,6 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
   },
-  
   
   pendingIcon: {
     backgroundColor: "#fef3c7",
@@ -213,6 +246,7 @@ const styles = {
     position: "relative",
     overflow: "hidden",
   },
+  // Enhanced color variations for activity cards
   activityCard0: {
     background: "linear-gradient(135deg, #fef2f2 0%, #fff 100%)",
     border: "1px solid #fca5a5",
@@ -237,6 +271,22 @@ const styles = {
     background: "linear-gradient(135deg, #f0f9ff 0%, #fff 100%)",
     border: "1px solid #7dd3fc",
   },
+  activityCard6: {
+    background: "linear-gradient(135deg, #f0fdf4 0%, #fff 100%)",
+    border: "1px solid #bbf7d0",
+  },
+  activityCard7: {
+    background: "linear-gradient(135deg, #fefce8 0%, #fff 100%)",
+    border: "1px solid #fde047",
+  },
+  activityCard8: {
+    background: "linear-gradient(135deg, #fdf2f8 0%, #fff 100%)",
+    border: "1px solid #f9a8d4",
+  },
+  activityCard9: {
+    background: "linear-gradient(135deg, #f3e8ff 0%, #fff 100%)",
+    border: "1px solid #d8b4fe",
+  },
   activityAvatar: {
     color: "white",
     fontWeight: "bold",
@@ -249,6 +299,7 @@ const styles = {
     fontSize: "12px",
     flexShrink: 0,
   },
+  // Enhanced color variations for avatars
   activityAvatar0: {
     background: "linear-gradient(135deg, #dc2626, #ef4444)",
     boxShadow: "0 2px 8px rgba(220, 38, 38, 0.3)",
@@ -272,6 +323,22 @@ const styles = {
   activityAvatar5: {
     background: "linear-gradient(135deg, #0891b2, #06b6d4)",
     boxShadow: "0 2px 8px rgba(8, 145, 178, 0.3)",
+  },
+  activityAvatar6: {
+    background: "linear-gradient(135deg, #15803d, #22c55e)",
+    boxShadow: "0 2px 8px rgba(21, 128, 61, 0.3)",
+  },
+  activityAvatar7: {
+    background: "linear-gradient(135deg, #a16207, #eab308)",
+    boxShadow: "0 2px 8px rgba(161, 98, 7, 0.3)",
+  },
+  activityAvatar8: {
+    background: "linear-gradient(135deg, #be185d, #ec4899)",
+    boxShadow: "0 2px 8px rgba(190, 24, 93, 0.3)",
+  },
+  activityAvatar9: {
+    background: "linear-gradient(135deg, #6b21a8, #a855f7)",
+    boxShadow: "0 2px 8px rgba(107, 33, 168, 0.3)",
   },
   activityInfo: {
     flex: 1,
@@ -315,7 +382,7 @@ const styles = {
     border: "1px solid #fbbf24",
   },
   activityRoleApproved: {
-    background: "#dcfce7",
+    background: "dcfce7",
     color: "#16a34a",
     border: "1px solid #4ade80",
   },
@@ -488,6 +555,7 @@ function DvmfDashboard() {
   const [notifsOpen, setNotifsOpen] = useState(false)
   const [setIsLogoutModalOpen] = useState(false)
   const [setIsNotificationDropdownOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true) // Add loading state
 
   const [notifications, setNotifications] = useState([])
   const [recordCount, setrecordCount] = useState(0)
@@ -503,37 +571,17 @@ function DvmfDashboard() {
   const notificationDropdownRef = useRef(null)
   const logoutModalRef = useRef(null)
 
-  // Sample SOS Emergency data
-  const sampleSosData = [
-    {
-      id: 1,
-      type: "Medical Emergency",
-      contact: "Dr. Maria Santos",
-      phone: "+63 917 123 4567",
-      location: "Dvmf Veterinary Clinic - Room 205",
-      time: "2 minutes ago",
-      urgent: true,
-    },
-    {
-      id: 2,
-      type: "Animal Emergency",
-      contact: "Emergency Vet Team",
-      phone: "+63 918 765 4321",
-      location: "Main Campus - Building A",
-      time: "15 minutes ago",
-      urgent: false,
-    },
-    {
-      id: 3,
-      type: "Fire Emergency",
-      contact: "Fire Department",
-      phone: "911",
-      location: "Laboratory Building - 2nd Floor",
-      time: "45 minutes ago",
-      urgent: true,
-    },
-  ]
-
+  // Enhanced color assignment function
+  const getColorIndex = (activity, index) => {
+    // Use a combination of index and string hash for better distribution
+    const stringHash = activity.title
+      .split("")
+      .reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    
+    // Combine index and hash for better color distribution
+    return (index + stringHash) % 10
+  }
+  
   // Data loading functions
   const loadStats = useCallback(() => {
     console.log("Loading statistics...")
@@ -580,15 +628,81 @@ function DvmfDashboard() {
   }, [])
 
   const loadSosEmergencies = useCallback(() => {
-    // For now, use sample data. Replace with actual API call later
-    setSosEmergencies(sampleSosData)
-  }, [])
+    console.log("Loading SOS emergencies...");
+
+    fetch("http://127.0.0.1:8000/api/dvmf/sos_requests/", {
+      method: "GET",
+      credentials: "include",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        console.log("Raw SOS data:", data);
+
+        let sosData = [];
+        if (Array.isArray(data)) sosData = data;
+        else if (data.sos_requests && Array.isArray(data.sos_requests))
+          sosData = data.sos_requests;
+        else if (data.results && Array.isArray(data.results)) sosData = data.results;
+        else {
+          console.warn("Unexpected data structure:", data);
+          setSosEmergencies([]);
+          return;
+        }
+
+        const formatted = sosData.map((item) => {
+          // Safe "time ago"
+          let timeAgo = "Unknown time";
+          try {
+            if (item.time || item.created_at) {
+              const createdDate = new Date(item.time || item.created_at);
+              const diffMs = Date.now() - createdDate.getTime();
+              const diffMin = Math.floor(diffMs / 60000);
+              if (diffMin < 1) timeAgo = "Just now";
+              else if (diffMin < 60) timeAgo = `${diffMin} min ago`;
+              else if (diffMin < 1440) timeAgo = `${Math.floor(diffMin / 60)} hr ago`;
+              else timeAgo = `${Math.floor(diffMin / 1440)} day(s) ago`;
+            }
+          } catch {
+            console.warn("Invalid timestamp:", item.time || item.created_at);
+          }
+
+          return {
+            id: item.id,
+            type: item.type || "Emergency",
+            contact: item.contact || "Unknown Contact",
+            phone: item.phone || "N/A",
+            location: item.location || "No location provided",
+            time: timeAgo,
+            urgent: item.urgent === true || item.status === "pending",
+            description: item.description || "No description provided",
+          };
+        });
+
+        console.log("Formatted SOS data:", formatted);
+        setSosEmergencies(formatted);
+      })
+      .catch((err) => {
+        console.error("Error fetching SOS emergencies:", err);
+      });
+  }, []);
 
   const loadDashboardData = useCallback(() => {
-    loadStats()
-    loadRecentActivities()
-    loadNotifications()
-    loadSosEmergencies()
+    setIsLoading(true); // Set loading to true when starting to load data
+    
+    Promise.all([
+      loadStats(),
+      loadRecentActivities(),
+      loadNotifications(),
+      loadSosEmergencies()
+    ]).then(() => {
+      setIsLoading(false); // Set loading to false when all data is loaded
+    }).catch((error) => {
+      console.error("Error loading dashboard data:", error);
+      setIsLoading(false); // Ensure loading is false even if there's an error
+    });
   }, [loadStats, loadRecentActivities, loadNotifications, loadSosEmergencies])
 
   const closeLogoutModal = () => {
@@ -663,8 +777,33 @@ function DvmfDashboard() {
     // Handle emergency action here
   }
 
+  // Add CSS for the pulse animation
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `
+      @keyframes pulse {
+        0% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.1); opacity: 0.8; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+    `;
+    document.head.appendChild(style);
+    
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
+
   return (
     <div style={styles.bodyWrapper}>
+      {/* Skull Loading Overlay */}
+      {isLoading && (
+        <div style={styles.skullContainer}>
+          <div style={styles.skullAnimation}></div>
+          <div style={styles.loadingText}>Loading Dashboard...</div>
+        </div>
+      )}
+      
       <Sidebar isOpen={isSidebarOpen} />
 
       <div style={styles.mainContent}>
@@ -728,80 +867,93 @@ function DvmfDashboard() {
           </div>
 
           <div style={styles.mainGrid}>
-            <div style={styles.recentActivity}>
-              <h3 style={styles.activityHeader}>Recent Activity</h3>
-              <p style={styles.activitySubtitle}>Latest updates from the system</p>
+              <div style={styles.recentActivity}>
+                <h3 style={styles.activityHeader}>Recent Activity</h3>
+                <p style={styles.activitySubtitle}>Latest updates from the system</p>
 
-              {recentActivities.length === 0 ? (
-                <div style={styles.emptyState}>
-                  <ClipboardList size={48} />
-                  <h3 style={styles.emptyStateH3}>No recent activity</h3>
-                  <p style={styles.emptyStateP}>Activity will appear here when available</p>
-                </div>
-              ) : (
-                <div style={styles.activityCards}>
-                  {recentActivities.map((activity, index) => {
-                    const initials = activity.title
-                      .split(" ")
-                      .map((word) => word[0])
-                      .join("")
-                      .toUpperCase()
+                {recentActivities.filter(activity => {
+  const activityDate = new Date(activity.date)
+  const now = new Date()
+  const diffTime = now - activityDate
+  const diffDays = diffTime / (1000 * 60 * 60 * 24)
+  return diffDays <= 2
+}).length === 0 ? (
+  <div style={styles.emptyState}>
+    <ClipboardList size={48} style={{ color: "#6b7280" }} /> {/* neutral gray */}
+    <h3 style={styles.emptyStateH3}>No recent activity</h3>
+    <p style={styles.emptyStateP}>Activity will appear here when available</p>
+  </div>
+) : (
+  <div style={styles.activityCards}>
+    {recentActivities
+      .filter(activity => {
+        const activityDate = new Date(activity.date)
+        const now = new Date()
+        const diffTime = now - activityDate
+        const diffDays = diffTime / (1000 * 60 * 60 * 24)
+        return diffDays <= 2
+      })
+      .map((activity, index) => {
+        const initials = activity.title
+          .split(" ")
+          .map(word => word[0])
+          .join("")
+          .toUpperCase()
 
-                    const colorIndex = activity.title.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) % 6
+        const colorIndex = getColorIndex(activity, index)
 
-                    const getActivityCardStyle = (index) => {
-                      const baseStyle = styles.activityCard
-                      const colorStyle = styles[`activityCard${index}`]
-                      return { ...baseStyle, ...colorStyle }
-                    }
+        const getActivityCardStyle = colorIndex => ({
+          ...styles.activityCard,
+          ...styles[`activityCard${colorIndex}`],
+        })
 
-                    const getActivityAvatarStyle = (index) => {
-                      const baseStyle = styles.activityAvatar
-                      const colorStyle = styles[`activityAvatar${index}`]
-                      return { ...baseStyle, ...colorStyle }
-                    }
+        const getActivityAvatarStyle = colorIndex => ({
+          ...styles.activityAvatar,
+          ...styles[`activityAvatar${colorIndex}`],
+        })
 
-                    const getRoleStyle = (status) => {
-                      const baseStyle = styles.activityRole
-                      const statusStyle = styles[`activityRole${status.charAt(0).toUpperCase() + status.slice(1)}`]
-                      return { ...baseStyle, ...statusStyle }
-                    }
+        const getRoleStyle = status => ({
+          ...styles.activityRole,
+          ...styles[`activityRole${status.charAt(0).toUpperCase() + status.slice(1)}`],
+        })
 
-                    return (
-                      <div key={activity.id} style={getActivityCardStyle(colorIndex)}>
-                        <div style={getActivityAvatarStyle(colorIndex)}>{initials}</div>
-                        <div style={styles.activityInfo}>
-                          <div style={styles.activityName}>{activity.title}</div>
-                          <div style={styles.activityDetail}>
-                            <span style={styles.activityLabel}>Email</span>
-                            <span style={styles.activityValue}>
-                              {activity.email || `${activity.title.toLowerCase().replace(" ", "")}@gmail.com`}
-                            </span>
-                          </div>
-                          <div style={styles.activityDetail}>
-                            <span style={styles.activityLabel}>Description</span>
-                            <span style={styles.activityValue}>{activity.description || "System activity update"}</span>
-                          </div>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
-                          <span style={getRoleStyle(activity.status)}>{activity.status}</span>
-                          <span style={styles.activityDate}>
-                            {new Date(activity.date).toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })}
-                          </span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
+        return (
+          <div key={activity.id} style={getActivityCardStyle(colorIndex)}>
+            <div style={getActivityAvatarStyle(colorIndex)}>{initials}</div>
+            <div style={styles.activityInfo}>
+              <div style={styles.activityName}>{activity.title}</div>
+              <div style={styles.activityDetail}>
+                <span style={styles.activityLabel}>Email</span>
+                <span style={styles.activityValue}>{activity.email}</span>
+              </div>
+              <div style={styles.activityDetail}>
+                <span style={styles.activityLabel}>Description</span>
+                <span style={styles.activityValue}>
+                  {activity.description || "System activity update"}
+                </span>
+              </div>
             </div>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
+              <span style={getRoleStyle(activity.status)}>{activity.status}</span>
+              <span style={styles.activityDate}>
+                {new Date(activity.date).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </span>
+            </div>
+          </div>
+        )
+      })}
+  </div>
+)}
+
+              </div>
+
 
             {/* SOS Emergency Widget */}
-            <div style={styles.sosWidget}>
+              <div style={styles.sosWidget}>
               <div style={styles.sosHeader}>
                 <h3 style={styles.sosTitle}>
                   <AlertTriangle size={24} />

@@ -52,11 +52,26 @@ urlpatterns = [
      path("search_vet/", views.search_vet, name="search_vet"),
 
 
-     path("get_horses/", views.get_horses, name="get_horses"),
+    path("get_horses/", views.get_horses, name="get_horses"),
      
-      path("sos_requests/", views.get_sos_requests, name="get_sos_requests"),
+    path("sos_requests/", views.get_sos_requests, name="get_sos_requests"),
 
-      path('forgot-password/', views.forgot_password, name='forgot-password'),
+    path('medrec_access_requests/', views.get_access_requests, name='get_access_requests'),
+      # 🔹 New endpoints for approve / decline
+    path("access-requests/<uuid:request_id>/approve/", views.approve_access_request, name="approve_access_request"),
+    path(
+        "access-requests/<uuid:request_id>/decline/",
+        views.decline_access_request,
+        name="decline-access-request",
+    ),
+
+     path("edit-post/<uuid:post_id>/", views.edit_post, name="edit_post"),
+
+
+    
+      
+
+     
 
 
 ]

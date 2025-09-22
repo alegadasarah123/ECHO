@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from "react"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed";
+const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
 
 const CtuSettings = () => {
   const [activeTab, setActiveTab] = useState("profile")
@@ -14,8 +14,8 @@ const CtuSettings = () => {
   const [notifsOpen, setNotifsOpen] = useState(false)
   const [errors, setErrors] = useState({})
   const [editing, setEditing] = useState(false)
-  const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState("All");
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState("All")
 
   const [profileExists, setProfileExists] = useState(false)
   const [passwordErrors, setPasswordErrors] = useState({})
@@ -25,19 +25,15 @@ const CtuSettings = () => {
     ctu_lname: "",
     ctu_email: "",
     ctu_phonenum: "",
-     ctu_role: "",
+    ctu_role: "",
   })
 
-  const [alert, setAlert] = useState({ show: false, message: "", type: "" });
+  const [alert, setAlert] = useState({ show: false, message: "", type: "" })
 
-const showAlert = (message, type = "success") => {
-  setAlert({ show: true, message, type });
-  setTimeout(() => setAlert({ show: false, message: "", type: "" }), 3000);
-};
-
-
-  
-
+  const showAlert = (message, type = "success") => {
+    setAlert({ show: true, message, type })
+    setTimeout(() => setAlert({ show: false, message: "", type: "" }), 3000)
+  }
 
   const [passwordVisibility, setPasswordVisibility] = useState({
     current_password: false,
@@ -48,19 +44,19 @@ const showAlert = (message, type = "success") => {
   const [activeUserTab, setActiveUserTab] = useState("addNew")
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(null)
-// State for new user
-const [newUser, setNewUser] = useState({
-  firstname: "",
-  lastname: "",
-  email: "",
-  phone: "",
-  role: "Ctu-Vetmed", // force this role
-  password: "" // optional, won't be saved in DB
-});
+  // State for new user
+  const [newUser, setNewUser] = useState({
+    firstname: "",
+    lastname: "",
+    email: "",
+    phone: "",
+    role: "Ctu-Vetmed", // force this role
+    password: "", // optional, won't be saved in DB
+  })
 
-  const [error, setError] = useState("");
-  const [activeSettingsView, setActiveSettingsView] = useState("userManagement");
-  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("")
+  const [activeSettingsView, setActiveSettingsView] = useState("userManagement")
+  const [isLoading, setIsLoading] = useState(false)
   const [users, setUsers] = useState([])
   const [profiles, setProfiles] = useState([])
   const [passwords, setPasswords] = useState({
@@ -75,145 +71,138 @@ const [newUser, setNewUser] = useState({
   }
 
   // Save first-time CTU Vet profile
-const handleSave = async (e) => {
-  e.preventDefault();
-  setErrors({});
+  const handleSave = async (e) => {
+    e.preventDefault()
+    setErrors({})
 
-  try {
-    const res = await fetch(`${API_BASE}/save_ctu_vet_profile/`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ctu_fname: profile.ctu_fname,
-        ctu_lname: profile.ctu_lname,
-        ctu_email: profile.ctu_email,
-        ctu_phonenum: profile.ctu_phonenum,
-      }),
-    });
+    try {
+      const res = await fetch(`${API_BASE}/save_ctu_vet_profile/`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ctu_fname: profile.ctu_fname,
+          ctu_lname: profile.ctu_lname,
+          ctu_email: profile.ctu_email,
+          ctu_phonenum: profile.ctu_phonenum,
+        }),
+      })
 
-    const data = await res.json();
+      const data = await res.json()
 
-    if (res.ok) {
-      alert("Profile saved successfully!");
-      setEditing(false);
-      setProfileExists(true);
-    } else if (data.errors) {
-      // Display validation errors next to inputs
-      setErrors(data.errors);
-    } else {
-      // Any other server error
-      alert(data.error || "Failed to save profile");
+      if (res.ok) {
+        window.alert("Profile saved successfully!")
+        setEditing(false)
+        setProfileExists(true)
+      } else if (data.errors) {
+        // Display validation errors next to inputs
+        setErrors(data.errors)
+      } else {
+        // Any other server error
+        window.alert(data.error || "Failed to save profile")
+      }
+    } catch (error) {
+      console.error("Error saving profile:", error)
+      window.alert("Something went wrong. Please try again.")
     }
-  } catch (error) {
-    console.error("Error saving profile:", error);
-    alert("Something went wrong. Please try again.");
   }
-};
 
-// Update existing CTU Vet profile
-const handleUpdate = async (e) => {
-  e.preventDefault();
-  setErrors({});
+  // Update existing CTU Vet profile
+  const handleUpdate = async (e) => {
+    e.preventDefault()
+    setErrors({})
 
-  try {
-    const res = await fetch("http://localhost:8000/api/ctu_vetmed/update_ctu_vet_profile/", {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ctu_fname: profile.ctu_fname,
-        ctu_lname: profile.ctu_lname,
-        ctu_email: profile.ctu_email,
-        ctu_phonenum: profile.ctu_phonenum,
-      }),
-    });
+    try {
+      const res = await fetch("http://localhost:8000/api/ctu_vetmed/update_ctu_vet_profile/", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ctu_fname: profile.ctu_fname,
+          ctu_lname: profile.ctu_lname,
+          ctu_email: profile.ctu_email,
+          ctu_phonenum: profile.ctu_phonenum,
+        }),
+      })
 
-    const data = await res.json();
+      const data = await res.json()
 
-    if (res.ok) {
-      alert("Profile updated successfully!");
-      setEditing(false);
-    } else if (data.errors) {
-      setErrors(data.errors);
-    } else {
-      alert(data.error || "Failed to update profile");
+      if (res.ok) {
+        window.alert("Profile updated successfully!")
+        setEditing(false)
+      } else if (data.errors) {
+        setErrors(data.errors)
+      } else {
+        window.alert(data.error || "Failed to update profile")
+      }
+    } catch (error) {
+      console.error("Error updating profile:", error)
+      window.alert("Something went wrong. Please try again.")
     }
-  } catch (error) {
-    console.error("Error updating profile:", error);
-    alert("Something went wrong. Please try again.");
   }
-};
-
 
   const handlePasswordChange = (e) => {
     const { name, value } = e.target
     setPasswords((prev) => ({ ...prev, [name]: value }))
   }
 
+  const handlePasswordUpdate = async (e) => {
+    e.preventDefault()
+    setPasswordErrors({})
 
-const handlePasswordUpdate = async (e) => {
-  e.preventDefault();
-  setPasswordErrors({});
+    // 1️⃣ Check if new passwords match
+    if (passwords.new_password !== passwords.confirm_new_password) {
+      setPasswordErrors({ confirm_new_password: "Passwords do not match" })
+      return
+    }
 
-  // 1️⃣ Check if new passwords match
-  if (passwords.new_password !== passwords.confirm_new_password) {
-    setPasswordErrors({ confirm_new_password: "Passwords do not match" });
-    return;
+    try {
+      // 2️⃣ Make API request with credentials included (JWT cookie)
+      const res = await fetch("http://localhost:8000/api/ctu_vetmed/ctu_change_password/", {
+        method: "POST",
+        credentials: "include", // send access_token cookie
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ctu_email: profile.ctu_email, // 👈 use ctu_email instead of pres_email
+          current_password: passwords.current_password,
+          new_password: passwords.new_password,
+        }),
+      })
+
+      const data = await res.json()
+
+      // 3️⃣ Handle Unauthorized (401)
+      if (res.status === 401) {
+        window.alert("Session expired or not logged in. Please log in again.")
+        window.location.href = "/login"
+        return
+      }
+
+      // 4️⃣ Handle successful password update
+      if (res.ok) {
+        window.alert("Password updated successfully!")
+        setPasswords({ current_password: "", new_password: "", confirm_new_password: "" })
+        return
+      }
+
+      // 5️⃣ Handle field-specific errors
+      if (data.errors) {
+        setPasswordErrors(data.errors)
+        return
+      }
+
+      // 6️⃣ Handle general errors
+      window.alert(data.error || "Failed to update password")
+    } catch (err) {
+      console.error("Password update error:", err)
+      window.alert("Something went wrong. Please try again later.")
+    }
   }
 
-  try {
-    // 2️⃣ Make API request with credentials included (JWT cookie)
-    const res = await fetch("http://localhost:8000/api/ctu_vetmed/ctu_change_password/", {
-      method: "POST",
-      credentials: "include", // send access_token cookie
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ctu_email: profile.ctu_email,   // 👈 use ctu_email instead of pres_email
-        current_password: passwords.current_password,
-        new_password: passwords.new_password,
-      }),
-    });
-
-    const data = await res.json();
-
-    // 3️⃣ Handle Unauthorized (401)
-    if (res.status === 401) {
-      alert("Session expired or not logged in. Please log in again.");
-      window.location.href = "/login"; 
-      return;
-    }
-
-    // 4️⃣ Handle successful password update
-    if (res.ok) {
-      alert("Password updated successfully!");
-      setPasswords({ current_password: "", new_password: "", confirm_new_password: "" });
-      return;
-    }
-
-    // 5️⃣ Handle field-specific errors
-    if (data.errors) {
-      setPasswordErrors(data.errors); 
-      return;
-    }
-
-    // 6️⃣ Handle general errors
-    alert(data.error || "Failed to update password");
-
-  } catch (err) {
-    console.error("Password update error:", err);
-    alert("Something went wrong. Please try again later.");
+  // Handle input changes
+  const handleNewUserChange = (field, value) => {
+    setNewUser((prev) => ({ ...prev, [field]: value }))
   }
-};
-
-
-
-
-
-// Handle input changes
-const handleNewUserChange = (field, value) => {
-  setNewUser((prev) => ({ ...prev, [field]: value }));
-};
 
   const togglePasswordVisibility = (field) => {
     setPasswordVisibility((prev) => ({
@@ -226,184 +215,168 @@ const handleNewUserChange = (field, value) => {
     setIsPasswordVisible(!isPasswordVisible)
   }
 
-// Add new user function
-const addNewUser = async () => {
-  const { firstname, lastname, email, phone, password, role } = newUser;
+  // Add new user function
+  const addNewUser = async () => {
+    const { firstname, lastname, email, phone, password, role } = newUser
 
-  // 1️⃣ Validate input
-  if (!firstname || !lastname || !email || !phone || !password || !role) {
-    alert("Please fill in all required fields.");
-    return;
-  }
-
-  // 2️⃣ Validate email
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email.trim())) {
-    window.alert("Please enter a valid email address.");
-    return;
-  }
-
-  // 3️⃣ Validate phone: must start with 09 and be 11 digits
-  const phoneRegex = /^09\d{9}$/;
-  if (!phoneRegex.test(phone.trim())) {
-    window.alert("Phone number must start with 09 and be 11 digits long.");
-    return;
-  }
-
-  try {
-    // 4️⃣ Call backend signup endpoint
-    const response = await fetch("http://localhost:8000/api/ctu_vetmed/signup/", {
-      method: "POST",
-      credentials: "include", // send cookies if needed
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: email.trim().toLowerCase(),
-        password: password.trim(),
-        firstName: firstname.trim(),
-        lastName: lastname.trim(),
-        phoneNumber: phone.trim(),
-        role: role.trim(), // send role to backend
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      window.alert(data.error || "Failed to create user.");
-      return;
+    // 1️⃣ Validate input
+    if (!firstname || !lastname || !email || !phone || !password || !role) {
+      alert("Please fill in all required fields.")
+      return
     }
 
-    // 5️⃣ Update UI with new user
-    setUsers((prev) => [
-      ...prev,
-      {
-        id: data.user.ctu_id || data.user.id,
-        firstname,
-        lastname,
-        email,
-        phone,
-        role: data.user.ctu_role || role, // backend response or fallback
-        status: "Active",
-      },
-    ]);
+    // 2️⃣ Validate email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email.trim())) {
+      window.alert("Please enter a valid email address.")
+      return
+    }
 
-    // 6️⃣ Clear form
-    setNewUser({
-      firstname: "",
-      lastname: "",
-      email: "",
-      phone: "",
-      password: "",
-      role: "Ctu-Vetmed", // reset default
-    });
+    // 3️⃣ Validate phone: must start with 09 and be 11 digits
+    const phoneRegex = /^09\d{9}$/
+    if (!phoneRegex.test(phone.trim())) {
+      window.alert("Phone number must start with 09 and be 11 digits long.")
+      return
+    }
 
-   window.alert("✅ User created successfully!");
-  } catch (err) {
-    console.error("Error adding user:", err);
-    alert("Failed to add user. Make sure the backend server is running.");
-  }
-};
-
-// -------------------- DEACTIVATE USER --------------------
-const deactivateUser = async (id) => {
-  try {
-    const res = await fetch(`${API_BASE}/users/deactivate/${id}/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (!res.ok) throw new Error("Failed to deactivate user");
-
-    const data = await res.json();
-    console.log("Deactivated:", data);
-
-    setProfiles((prev) =>
-      prev.map((p) =>
-        p.id === id ? { ...p, status: "deactivated" } : p
-      )
-    );
-
-    showAlert("User deactivated successfully!", "success");
-  } catch (err) {
-    console.error("Error deactivating user:", err);
-    showAlert("Error deactivating user", "error");
-  }
-};
-
-
-// -------------------- REACTIVATE USER --------------------
-const reactivateUser = async (id) => {
-  try {
-    const res = await fetch(`${API_BASE}/users/reactivate/${id}/`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (!res.ok) throw new Error("Failed to reactivate user");
-
-    const data = await res.json();
-    console.log("Reactivated:", data);
-
-    setProfiles((prev) =>
-      prev.map((p) =>
-        p.id === id ? { ...p, status: "approved" } : p
-      )
-    );
-
-    showAlert("User reactivated successfully!", "success");
-  } catch (err) {
-    console.error("Error reactivating user:", err);
-    showAlert("Error reactivating user", "error");
-  }
-};
-
-
-
-
-
- const toggleDropdown = (id) => {
-    setDropdownOpen(dropdownOpen === id ? null : id);
-  };
-
-
-// Fetch CTU Vet profile
-useEffect(() => {
-  const fetchProfile = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/ctu_vetmed/get_ctu_vet_profiles/", {
-        method: "GET",
-        credentials: "include", // include HttpOnly cookie
-      });
+      // 4️⃣ Call backend signup endpoint
+      const response = await fetch("http://localhost:8000/api/ctu_vetmed/signup/", {
+        method: "POST",
+        credentials: "include", // send cookies if needed
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password: password.trim(),
+          firstName: firstname.trim(),
+          lastName: lastname.trim(),
+          phoneNumber: phone.trim(),
+          role: role.trim(), // send role to backend
+        }),
+      })
 
-      const data = await res.json();
+      const data = await response.json()
 
-      if (!res.ok) {
-        console.error("Failed to fetch profile:", data.error || "Unknown error");
-        return;
+      if (!response.ok) {
+        window.alert(data.error || "Failed to create user.")
+        return
       }
 
-      // Set profile state
-      setProfile({
-        ctu_fname: data.ctu_fname || "",
-        ctu_lname: data.ctu_lname || "",
-        ctu_email: data.ctu_email || "",
-        ctu_phonenum: data.ctu_phonenum || "",
-        ctu_role: data.ctu_role || "",
-      });
+      // 5️⃣ Update UI with new user
+      setUsers((prev) => [
+        ...prev,
+        {
+          id: data.user.ctu_id || data.user.id,
+          firstname,
+          lastname,
+          email,
+          phone,
+          role: data.user.ctu_role || role, // backend response or fallback
+          status: "Active",
+        },
+      ])
 
-      if (data.ctu_fname || data.ctu_lname || data.ctu_phonenum) {
-        setProfileExists(true);
-      }
+      // 6️⃣ Clear form
+      setNewUser({
+        firstname: "",
+        lastname: "",
+        email: "",
+        phone: "",
+        password: "",
+        role: "Ctu-Vetmed", // reset default
+      })
 
+      window.alert("✅ User created successfully!")
     } catch (err) {
-      console.error("Error fetching profile:", err);
+      console.error("Error adding user:", err)
+      alert("Failed to add user. Make sure the backend server is running.")
     }
-  };
+  }
 
-  fetchProfile();
-}, []);
+  // -------------------- DEACTIVATE USER --------------------
+  const deactivateUser = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/users/deactivate/${id}/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
 
- // ✅ Fetch notifications from backend
+      if (!res.ok) throw new Error("Failed to deactivate user")
+
+      const data = await res.json()
+      console.log("Deactivated:", data)
+
+      setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, status: "deactivated" } : p)))
+
+      showAlert("User deactivated successfully!", "success")
+    } catch (err) {
+      console.error("Error deactivating user:", err)
+      showAlert("Error deactivating user", "error")
+    }
+  }
+
+  // -------------------- REACTIVATE USER --------------------
+  const reactivateUser = async (id) => {
+    try {
+      const res = await fetch(`${API_BASE}/users/reactivate/${id}/`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      })
+
+      if (!res.ok) throw new Error("Failed to reactivate user")
+
+      const data = await res.json()
+      console.log("Reactivated:", data)
+
+      setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, status: "approved" } : p)))
+
+      showAlert("User reactivated successfully!", "success")
+    } catch (err) {
+      console.error("Error reactivating user:", err)
+      showAlert("Error reactivating user", "error")
+    }
+  }
+
+  const toggleDropdown = (id) => {
+    setDropdownOpen(dropdownOpen === id ? null : id)
+  }
+  // Fetch CTU Vet profile
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const res = await fetch("http://localhost:8000/api/ctu_vetmed/get_ctu_vet_profiles/", {
+          method: "GET",
+          credentials: "include", // include HttpOnly cookie
+        })
+
+        const data = await res.json()
+
+        if (!res.ok) {
+          console.error("Failed to fetch profile:", data.error || "Unknown error")
+          return
+        }
+
+        // Set profile state
+        setProfile({
+          ctu_fname: data.ctu_fname || "",
+          ctu_lname: data.ctu_lname || "",
+          ctu_email: data.ctu_email || "",
+          ctu_phonenum: data.ctu_phonenum || "",
+          ctu_role: data.ctu_role || "",
+        })
+
+        if (data.ctu_fname || data.ctu_lname || data.ctu_phonenum) {
+          setProfileExists(true)
+        }
+      } catch (err) {
+        console.error("Error fetching profile:", err)
+      }
+    }
+
+    fetchProfile()
+  }, [])
+
+  // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
@@ -434,39 +407,40 @@ useEffect(() => {
     return () => clearInterval(interval)
   }, [loadNotifications])
 
-// Fetch users from backend
-const fetchUsers = async () => {
-  try {
-    setLoading(true);
-    const res = await fetch("http://localhost:8000/api/ctu_vetmed/users/", {
-      method: "GET",
-      credentials: "include",
-    });
-    const data = await res.json();
-    if (res.ok) setProfiles(data); // admins see all
-    else console.error("Error fetching users:", data.error);
-  } catch (err) {
-    console.error("Fetch error:", err);
-  } finally {
-    setLoading(false);
+  // Fetch users from backend
+  const fetchUsers = async () => {
+    try {
+      setLoading(true)
+      const res = await fetch("http://localhost:8000/api/ctu_vetmed/users/", {
+        method: "GET",
+        credentials: "include",
+      })
+      const data = await res.json()
+      if (res.ok)
+        setProfiles(data) // admins see all
+      else console.error("Error fetching users:", data.error)
+    } catch (err) {
+      console.error("Fetch error:", err)
+    } finally {
+      setLoading(false)
+    }
   }
-};
 
+  useEffect(() => {
+    fetchUsers()
+  }, [])
 
-  
+  const validatePassword = (password) => {
+    return {
+      length: password.length >= 8,
+      uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
+      number: /[0-9]/.test(password),
+      special: /[!@#$%^&*]/.test(password),
+    }
+  }
 
-useEffect(() => {
-    fetchUsers();
-  }, []);
-
-
-
-
-
-
-
-
-
+  const passwordValidation = validatePassword(passwords.new_password || "")
 
   return (
     <div style={styles.layout}>
@@ -475,14 +449,9 @@ useEffect(() => {
         <div style={styles.header}>
           <h1 style={styles.title}>Settings</h1>
           <div style={{ position: "relative" }}>
-            <button
-              style={styles.notificationBtn}
-              onClick={() => setNotifsOpen(!notifsOpen)}
-            >
+            <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
               <Bell size={24} color="#374151" />
-              {notifications.length > 0 && (
-                <span style={styles.badge}>{notifications.length}</span>
-              )}
+              {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
             </button>
           </div>
           {/* Notification Modal */}
@@ -497,10 +466,10 @@ useEffect(() => {
         </div>
 
         <div style={styles.tabs}>
-         {["profile", "security", "userManagement"].map((tab) => {
+          {["profile", "security", "userManagement"].map((tab) => {
             // Only show "userManagement" if user is Ctu-Admin
             if (tab === "userManagement" && profile?.ctu_role?.trim().toLowerCase() !== "ctu-admin") {
-              return null;
+              return null
             }
 
             return (
@@ -512,13 +481,10 @@ useEffect(() => {
                 }}
                 onClick={() => setActiveTab(tab)}
               >
-                {tab === "userManagement"
-                  ? "User Management"
-                  : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === "userManagement" ? "User Management" : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
-            );
+            )
           })}
-
         </div>
 
         <div style={styles.content}>
@@ -553,7 +519,6 @@ useEffect(() => {
                           name="ctu_fname"
                           value={profile.ctu_fname}
                           onChange={handleChange}
-                         
                           readOnly={profileExists && !editing}
                           style={{
                             ...styles.nameInput,
@@ -566,7 +531,6 @@ useEffect(() => {
                           name="ctu_lname"
                           value={profile.ctu_lname}
                           onChange={handleChange}
-                         
                           readOnly={profileExists && !editing}
                           style={{
                             ...styles.nameInput,
@@ -671,7 +635,10 @@ useEffect(() => {
 
                 <form onSubmit={handlePasswordUpdate}>
                   {[
-                    { label: "Current Password", name: "current_password" },
+                    {
+                      label: "Current Password",
+                      name: "current_password",
+                    },
                     { label: "New Password", name: "new_password" },
                     { label: "Confirm New Password", name: "confirm_new_password" },
                   ].map((field) => (
@@ -736,305 +703,311 @@ useEffect(() => {
                 <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "15px" }}>Password Requirements</h3>
                 <ul style={{ listStyle: "none", paddingLeft: "0", lineHeight: "1.8" }}>
                   {[
-                    "At least 8 characters",
-                    "1 uppercase letter (A-Z)",
-                    "1 lowercase letter (a-z)",
-                    "1 number (0-9)",
-                    "1 special character (!@#$%^&*)",
-                  ].map((rule) => (
-                    <li
-                      key={rule}
-                      style={{ display: "flex", alignItems: "center", gap: "8px", color: "#374151", fontSize: "14px" }}
-                    >
-                      <span
+                    {
+                      rule: "At least 8 characters",
+                      key: "length",
+                    },
+                    { rule: "1 uppercase letter (A-Z)", key: "uppercase" },
+                    { rule: "1 lowercase letter (a-z)", key: "lowercase" },
+                    { rule: "1 number (0-9)", key: "number" },
+                    { rule: "1 special character (!@#$%^&*)", key: "special" },
+                  ].map((item) => {
+                    const isValid = passwordValidation[item.key]
+                    return (
+                      <li
+                        key={item.rule}
                         style={{
-                          display: "inline-block",
-                          width: "16px",
-                          height: "16px",
-                          borderRadius: "50%",
-                          backgroundColor: "#e5e7eb",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          color: isValid ? "#059669" : "#374151",
+                          fontSize: "14px",
+                          transition: "color 0.2s ease",
                         }}
-                      ></span>
-                      {rule}
-                    </li>
-                  ))}
+                      >
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            width: "16px",
+                            height: "16px",
+                            borderRadius: "50%",
+                            backgroundColor: isValid ? "#10b981" : "#e5e7eb",
+                            color: isValid ? "white" : "transparent",
+                            fontSize: "10px",
+                            fontWeight: "bold",
+                            transition: "all 0.2s ease",
+                          }}
+                        >
+                          {isValid ? "✓" : ""}
+                        </span>
+                        {item.rule}
+                      </li>
+                    )
+                  })}
                 </ul>
                 <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "10px" }}>
-                  Make sure your password meets all the requirements for a strong and secure account.
+                  {Object.values(passwordValidation).every(Boolean) && passwords.new_password
+                    ? "✅ Your password meets all requirements!"
+                    : "Make sure your password meets all the requirements for a strong and secure account."}
                 </p>
               </div>
             </div>
           )}
 
-              {activeTab === "userManagement" ? (
-                profile ? (
-                  profile.ctu_role?.trim().toLowerCase() === "ctu-admin" ? (
-                    <div style={styles.box}>
-                      <h2 style={styles.boxTitle}>User Management</h2>
+          {activeTab === "userManagement" ? (
+            profile ? (
+              profile.ctu_role?.trim().toLowerCase() === "ctu-admin" ? (
+                <div style={styles.box}>
+                  <h2 style={styles.boxTitle}>User Management</h2>
 
-                      {/* Tabs for Add New / Existing Users */}
-                      <div style={styles.userTabs}>
-                        <button
-                          style={{
-                            ...styles.userTab,
-                            ...(activeUserTab === "addNew" ? styles.userTabActive : {}),
-                          }}
-                          onClick={() => setActiveUserTab("addNew")}
-                        >
-                          Add New User
-                        </button>
-                        <button
-                          style={{
-                            ...styles.userTab,
-                            ...(activeUserTab === "existing" ? styles.userTabActive : {}),
-                          }}
-                          onClick={() => setActiveUserTab("existing")}
-                        >
-                          Existing Users
-                        </button>
+                  {/* Tabs for Add New / Existing Users */}
+                  <div style={styles.userTabs}>
+                    <button
+                      style={{
+                        ...styles.userTab,
+                        ...(activeUserTab === "addNew" ? styles.userTabActive : {}),
+                      }}
+                      onClick={() => setActiveUserTab("addNew")}
+                    >
+                      Add New User
+                    </button>
+                    <button
+                      style={{
+                        ...styles.userTab,
+                        ...(activeUserTab === "existing" ? styles.userTabActive : {}),
+                      }}
+                      onClick={() => setActiveUserTab("existing")}
+                    >
+                      Existing Users
+                    </button>
+                  </div>
+
+                  {/* Add New User Form */}
+                  {activeUserTab === "addNew" && (
+                    <div style={styles.userSection}>
+                      <div style={styles.formRow}>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>First Name</label>
+                          <input
+                            type="text"
+                            style={styles.input}
+                            placeholder="Enter first name"
+                            value={newUser.firstname}
+                            onChange={(e) => handleNewUserChange("firstname", e.target.value)}
+                          />
+                        </div>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>Last Name</label>
+                          <input
+                            type="text"
+                            style={styles.input}
+                            placeholder="Enter last name"
+                            value={newUser.lastname}
+                            onChange={(e) => handleNewUserChange("lastname", e.target.value)}
+                          />
+                        </div>
                       </div>
 
-                      {/* Add New User Form */}
-                      {activeUserTab === "addNew" && (
-                        <div style={styles.userSection}>
-                          <div style={styles.formRow}>
-                            <div style={styles.formGroup}>
-                              <label style={styles.label}>First Name</label>
-                              <input
-                                type="text"
-                                style={styles.input}
-                                placeholder="Enter first name"
-                                value={newUser.firstname}
-                                onChange={(e) => handleNewUserChange("firstname", e.target.value)}
-                              />
-                            </div>
-                            <div style={styles.formGroup}>
-                              <label style={styles.label}>Last Name</label>
-                              <input
-                                type="text"
-                                style={styles.input}
-                                placeholder="Enter last name"
-                                value={newUser.lastname}
-                                onChange={(e) => handleNewUserChange("lastname", e.target.value)}
-                              />
-                            </div>
-                          </div>
+                      <div style={styles.formRow}>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>Email</label>
+                          <input
+                            type="email"
+                            style={styles.input}
+                            placeholder="Enter email"
+                            value={newUser.email}
+                            onChange={(e) => handleNewUserChange("email", e.target.value)}
+                          />
+                        </div>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>Phone Number</label>
+                          <input
+                            type="tel"
+                            style={styles.input}
+                            placeholder="Enter phone number"
+                            value={newUser.phone}
+                            onChange={(e) => handleNewUserChange("phone", e.target.value)}
+                          />
+                        </div>
+                      </div>
 
-                          <div style={styles.formRow}>
-                            <div style={styles.formGroup}>
-                              <label style={styles.label}>Email</label>
-                              <input
-                                type="email"
-                                style={styles.input}
-                                placeholder="Enter email"
-                                value={newUser.email}
-                                onChange={(e) => handleNewUserChange("email", e.target.value)}
-                              />
-                            </div>
-                            <div style={styles.formGroup}>
-                              <label style={styles.label}>Phone Number</label>
-                              <input
-                                type="tel"
-                                style={styles.input}
-                                placeholder="Enter phone number"
-                                value={newUser.phone}
-                                onChange={(e) => handleNewUserChange("phone", e.target.value)}
-                              />
-                            </div>
-                          </div>
-
-                          <div style={styles.formRow}>
-                            <div style={styles.formGroup}>
-                              <label style={styles.label}>Role</label>
-                              <select
-                                style={styles.input}
-                                value={newUser.ctu_role}
-                                onChange={(e) => handleNewUserChange("role", e.target.value)}
-                              >
-                                <option value="">Select role</option>
-                                <option value="Ctu-Vetmed">Ctu-Vetmed</option>
-                                <option value="Dvmf">Dvmf</option>
-                              </select>
-                            </div>
-                            <div style={styles.formGroup}>
-                              <label style={styles.label}>Password</label>
-                              <div style={{ display: "flex", alignItems: "center" }}>
-                                <input
-                                  type={isPasswordVisible ? "text" : "password"}
-                                  style={styles.passwordInput}
-                                  placeholder="Enter password"
-                                  value={newUser.password}
-                                  onChange={(e) => handleNewUserChange("password", e.target.value)}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={toggleNewUserPasswordVisibility}
-                                  style={{
-                                    marginLeft: "5px",
-                                    cursor: "pointer",
-                                    border: "none",
-                                    background: "transparent",
-                                  }}
-                                >
-                                  {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div style={{ marginTop: "20px", textAlign: "left" }}>
+                      <div style={styles.formRow}>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>Role</label>
+                          <select
+                            style={styles.input}
+                            value={newUser.ctu_role}
+                            onChange={(e) => handleNewUserChange("role", e.target.value)}
+                          >
+                            <option value="">Select role</option>
+                            <option value="Ctu-Vetmed">Ctu-Vetmed</option>
+                            <option value="Dvmf">Dvmf</option>
+                          </select>
+                        </div>
+                        <div style={styles.formGroup}>
+                          <label style={styles.label}>Password</label>
+                          <div style={{ display: "flex", alignItems: "center" }}>
+                            <input
+                              type={isPasswordVisible ? "text" : "password"}
+                              style={styles.passwordInput}
+                              placeholder="Enter password"
+                              value={newUser.password}
+                              onChange={(e) => handleNewUserChange("password", e.target.value)}
+                            />
                             <button
                               type="button"
-                              style={styles.addUserBtn}
-                              onClick={addNewUser}
+                              onClick={toggleNewUserPasswordVisibility}
+                              style={{
+                                marginLeft: "5px",
+                                cursor: "pointer",
+                                border: "none",
+                                background: "transparent",
+                              }}
                             >
-                              Add User
-                              <Plus size={16} />
+                              {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                             </button>
                           </div>
                         </div>
-                      )}
-{/* ALERT UI */}
-{alert.show && (
-  <div
-    style={{
-      ...styles.alertBox,
-      ...(alert.type === "success" ? styles.alertSuccess : styles.alertError),
-    }}
-  >
-    {alert.message}
-  </div>
-)}
-
-{/* Existing Users Table */}
-{activeUserTab === "existing" && (
-  <div style={styles.userSection}>
-    {profiles.filter(
-      (p) =>
-        (p.status === "approved" || p.status === "deactivated") &&
-        p.role !== "Ctu-Admin" // exclude Ctu-Admin from display
-    ).length === 0 ? (
-      <div style={styles.emptyState}>
-        <Users size={48} />
-        <h3>No users found</h3>
-        <p>Add your first user to get started</p>
-      </div>
-    ) : (
-      <div style={styles.usersTable}>
-        <div style={styles.tableHeader}>
-          <div style={styles.tableHeaderCell}>First Name</div>
-          <div style={styles.tableHeaderCell}>Last Name</div>
-          <div style={styles.tableHeaderCell}>Email</div>
-          <div style={styles.tableHeaderCell}>Phone</div>
-          <div style={styles.tableHeaderCell}>Role</div>
-          <div style={styles.tableHeaderCell}>Status</div>
-          <div style={styles.tableHeaderCell}>Actions</div>
-        </div>
-
-        {profiles
-          .filter(
-            (p) =>
-              (p.status === "approved" || p.status === "deactivated") &&
-              p.role !== "Ctu-Admin"
-          )
-          .map((p) => {
-            let displayStatus = p.status === "approved" ? "active" : p.status;
-
-            return (
-              <div key={p.id} style={styles.tableRow}>
-                <div style={styles.tableCell}>{p.ctu_fname || "-"}</div>
-                <div style={styles.tableCell}>{p.ctu_lname || "-"}</div>
-                <div style={styles.tableCell}>{p.ctu_email || "-"}</div>
-                <div style={styles.tableCell}>{p.ctu_phonenum || "-"}</div>
-                <div style={styles.tableCell}>
-                  <span style={styles.roleBadge}>{p.role || "-"}</span>
-                </div>
-                <div style={styles.tableCell}>
-                  <span
-                    style={{
-                      ...styles.statusBadge,
-                      backgroundColor:
-                        p.status === "approved"
-                          ? "green"
-                          : p.status === "deactivated"
-                          ? "red"
-                          : "gray",
-                    }}
-                  >
-                    {displayStatus}
-                  </span>
-                </div>
-                <div style={styles.tableCell}>
-                  <div style={styles.dropdown}>
-                    <button
-                      style={styles.dropdownBtn}
-                      onClick={() => toggleDropdown(p.id)}
-                    >
-                      <MoreVertical size={16} />
-                    </button>
-
-                    {dropdownOpen === p.id && (
-                      <div style={styles.dropdownMenu}>
-                        {p.status === "approved" && (
-                          <button
-                            style={styles.dropdownItem}
-                            onClick={async () => {
-                              await deactivateUser(p.id);
-                              showAlert("User deactivated successfully!", "success");
-                              setDropdownOpen(null);
-                            }}
-                          >
-                            <Eye size={16} />
-                            Deactivate
-                          </button>
-                        )}
-
-                        {p.status === "deactivated" && (
-                          <button
-                            style={{
-                              ...styles.dropdownItem,
-                              ...styles.dropdownItemDanger,
-                            }}
-                            onClick={async () => {
-                              await reactivateUser(p.id);
-                              showAlert("User reactivated successfully!", "success");
-                              setDropdownOpen(null);
-                            }}
-                          >
-                            <Check size={16} />
-                            Reactivate
-                          </button>
-                        )}
-
-                        
                       </div>
-                    )}
-                  </div>
+
+                      <div style={{ marginTop: "20px", textAlign: "left" }}>
+                        <button type="button" style={styles.addUserBtn} onClick={addNewUser}>
+                          Add User
+                          <Plus size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {/* ALERT UI */}
+                  {alert.show && (
+                    <div
+                      style={{
+                        ...styles.alertBox,
+                        ...(alert.type === "success" ? styles.alertSuccess : styles.alertError),
+                      }}
+                    >
+                      {alert.message}
+                    </div>
+                  )}
+
+                  {/* Existing Users Table */}
+                  {activeUserTab === "existing" && (
+                    <div style={styles.userSection}>
+                      {profiles.filter(
+                        (p) => (p.status === "approved" || p.status === "deactivated") && p.role !== "Ctu-Admin", // exclude Ctu-Admin from display
+                      ).length === 0 ? (
+                        <div style={styles.emptyState}>
+                          <Users size={48} />
+                          <h3>No users found</h3>
+                          <p>Add your first user to get started</p>
+                        </div>
+                      ) : (
+                        <div style={styles.usersTable}>
+                          <div style={styles.tableHeader}>
+                            <div style={styles.tableHeaderCell}>First Name</div>
+                            <div style={styles.tableHeaderCell}>Last Name</div>
+                            <div style={styles.tableHeaderCell}>Email</div>
+                            <div style={styles.tableHeaderCell}>Phone</div>
+                            <div style={styles.tableHeaderCell}>Role</div>
+                            <div style={styles.tableHeaderCell}>Status</div>
+                            <div style={styles.tableHeaderCell}>Actions</div>
+                          </div>
+
+                          {profiles
+                            .filter(
+                              (p) => (p.status === "approved" || p.status === "deactivated") && p.role !== "Ctu-Admin",
+                            )
+                            .map((p) => {
+                              const displayStatus = p.status === "approved" ? "active" : p.status
+
+                              return (
+                                <div key={p.id} style={styles.tableRow}>
+                                  <div style={styles.tableCell}>{p.ctu_fname || "-"}</div>
+                                  <div style={styles.tableCell}>{p.ctu_lname || "-"}</div>
+                                  <div style={styles.tableCell}>{p.ctu_email || "-"}</div>
+                                  <div style={styles.tableCell}>{p.ctu_phonenum || "-"}</div>
+                                  <div style={styles.tableCell}>
+                                    <span style={styles.roleBadge}>{p.role || "-"}</span>
+                                  </div>
+                                  <div style={styles.tableCell}>
+                                    <span
+                                      style={{
+                                        ...styles.statusBadge,
+                                        backgroundColor:
+                                          p.status === "approved"
+                                            ? "green"
+                                            : p.status === "deactivated"
+                                              ? "red"
+                                              : "gray",
+                                      }}
+                                    >
+                                      {displayStatus}
+                                    </span>
+                                  </div>
+                                  <div style={styles.tableCell}>
+                                    <div style={styles.dropdown}>
+                                      <button style={styles.dropdownBtn} onClick={() => toggleDropdown(p.id)}>
+                                        <MoreVertical size={16} />
+                                      </button>
+
+                                      {dropdownOpen === p.id && (
+                                        <div style={styles.dropdownMenu}>
+                                          {p.status === "approved" && (
+                                            <button
+                                              style={styles.dropdownItem}
+                                              onClick={async () => {
+                                                await deactivateUser(p.id)
+                                                showAlert("User deactivated successfully!", "success")
+                                                setDropdownOpen(null)
+                                              }}
+                                            >
+                                              <Eye size={16} />
+                                              Deactivate
+                                            </button>
+                                          )}
+
+                                          {p.status === "deactivated" && (
+                                            <button
+                                              style={{
+                                                ...styles.dropdownItem,
+                                                ...styles.dropdownItemDanger,
+                                              }}
+                                              onClick={async () => {
+                                                await reactivateUser(p.id)
+                                                showAlert("User reactivated successfully!", "success")
+                                                setDropdownOpen(null)
+                                              }}
+                                            >
+                                              <Check size={16} />
+                                              Reactivate
+                                            </button>
+                                          )}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              </div>
-            );
-          })}
-      </div>
-    )}
-  </div>
-)}
-
-
-
-                    </div>
-                  ) : (
-                    // ❌ Non-admin: restricted message
-                    <div style={styles.emptyState}>
-                      <Users size={48} />
-                      <h3>Restricted Access</h3>
-                      <p>You do not have permission to view this section.</p>
-                    </div>
-                  )
-                ) : (
-                  <p>Loading...</p>
-                )
-              ) : null}
-
+              ) : (
+                // Non-admin: restricted message
+                <div style={styles.emptyState}>
+                  <Users size={48} />
+                  <h3>Restricted Access</h3>
+                  <p>You do not have permission to view this section.</p>
+                </div>
+              )
+            ) : (
+              <p>Loading...</p>
+            )
+          ) : null}
 
           <FloatingMessages />
         </div>
@@ -1358,14 +1331,13 @@ const styles = {
     color: "#6b7280",
     gap: "10px",
   },
-usersTable: {
-  border: "1px solid #e5e7eb",
-  borderRadius: "8px",
-  overflow: "hidden",
-  maxHeight: "400px", // adjust height as needed
-  overflowY: "auto",  // enables vertical scrolling
-},
-
+  usersTable: {
+    border: "1px solid #e5e7eb",
+    borderRadius: "8px",
+    overflow: "hidden",
+    maxHeight: "400px", // adjust height as needed
+    overflowY: "auto", // enables vertical scrolling
+  },
   tableHeader: {
     display: "grid",
     gridTemplateColumns: "1fr 1fr 2fr 1fr 1fr 1fr 80px",
@@ -1401,12 +1373,11 @@ usersTable: {
   },
   statusBadge: {
     padding: "4px 8px",
-
     borderRadius: "12px",
     fontSize: "12px",
     fontWeight: "500",
-    color: status === "deactivated" ? "#ff4d4f" : "#fff", // red for deactivated
-    backgroundColor: status === "deactivated" ? "#fff1f0" : "#52c41a", // green for active
+    color: "#fff", // red for deactivated
+    backgroundColor: "#52c41a", // green for active
   },
   dropdown: {
     position: "relative",
@@ -1445,29 +1416,28 @@ usersTable: {
     color: "#dc2626",
   },
   alertBox: {
-  position: "fixed",
-  top: "20px",
-  left: "50%",
-  transform: "translateX(-50%)",
-  padding: "14px 24px",
-  borderRadius: "12px",
-  fontSize: "15px",
-  fontWeight: "600",
-  color: "white",
-  boxShadow: "0 6px 14px rgba(0,0,0,0.2)",
-  zIndex: 1000,
-  textAlign: "center",
-  minWidth: "250px",
-  maxWidth: "500px",
-  transition: "opacity 0.3s ease-in-out",
-},
-alertSuccess: {
-  backgroundColor: "#16a34a", // green
-},
-alertError: {
-  backgroundColor: "#dc2626", // red
-},
-
+    position: "fixed",
+    top: "20px",
+    left: "50%",
+    transform: "translateX(-50%)",
+    padding: "14px 24px",
+    borderRadius: "12px",
+    fontSize: "15px",
+    fontWeight: "600",
+    color: "white",
+    boxShadow: "0 6px 14px rgba(0,0,0,0.2)",
+    zIndex: 1000,
+    textAlign: "center",
+    minWidth: "250px",
+    maxWidth: "500px",
+    transition: "opacity 0.3s ease-in-out",
+  },
+  alertSuccess: {
+    backgroundColor: "#16a34a", // green
+  },
+  alertError: {
+    backgroundColor: "#dc2626", // red
+  },
 }
 
 export default CtuSettings
