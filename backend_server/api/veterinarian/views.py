@@ -723,7 +723,7 @@ def update_profile_photo(request):
     except Exception as e:
         print(f"[ERROR] Profile photo update failed: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+
 # ---------------- DELETE PROFILE PHOTO ----------------
 @api_view(["DELETE"])
 @login_required
@@ -794,7 +794,8 @@ def delete_profile_photo(request):
     except Exception as e:
         print(f"[ERROR] Profile photo deletion failed: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+
+
 # -------------------- GET ALL RELEVANT APPOINTMENTS --------------------
 @api_view(["GET"])
 @login_required

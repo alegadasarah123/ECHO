@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-=======
 import React, { useState, useEffect } from 'react';
 import {
   Calendar, Search, Bell, Eye, Grid, Clock, CheckCircle, 
@@ -7,25 +5,10 @@ import {
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useNavigate } from "react-router-dom";
->>>>>>> 2f518546479e092f571cff740b2cd7809e78f0fe
 import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
-import NotificationModal from '@/components/modal/notificationModal';
 import ProfileModal from '@/components/modal/profileModal';
-import {
-  AlertCircle,
-  Bell,
-  Calendar as CalendarIcon,
-  CheckCircle,
-  Clock,
-  Eye,
-  Filter,
-  Grid,
-  Search,
-  X
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useNavigate } from "react-router-dom";
+import NotificationModal from '@/components/modal/notificationModal';
 
 const VetAppointmentRequest = () => {
   const [appointments, setAppointments] = useState([]);
@@ -221,27 +204,31 @@ const fetchAppointments = async () => {
     { value: "Completed", label: "Completed" }
   ];
 
-  // Skeleton loading component
+  // Fixed Skeleton loading component
   const SkeletonRow = () => (
     <tr className="animate-pulse">
-      <td className="px-4 py-4">
-        <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-        <div className="h-3 bg-gray-200 rounded w-1/2 mt-2"></div>
+      <td className="px-4 py-4 text-center">
+        <div className="flex flex-col items-center justify-center">
+          <div className="h-4 bg-gray-200 rounded w-24 mb-2"></div>
+          <div className="h-3 bg-gray-200 rounded w-16"></div>
+        </div>
       </td>
-      <td className="px-4 py-4">
-        <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+      <td className="px-4 py-4 text-center">
+        <div className="h-4 bg-gray-200 rounded w-32 mx-auto"></div>
       </td>
-      <td className="px-4 py-4">
-        <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+      <td className="px-4 py-4 text-center">
+        <div className="h-4 bg-gray-200 rounded w-24 mx-auto"></div>
       </td>
-      <td className="px-4 py-4">
-        <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+      <td className="px-4 py-4 text-center">
+        <div className="h-4 bg-gray-200 rounded w-28 mx-auto"></div>
       </td>
-      <td className="px-4 py-4">
-        <div className="h-6 w-20 bg-gray-200 rounded"></div>
+      <td className="px-4 py-4 text-center">
+        <div className="h-6 bg-gray-200 rounded-full w-20 mx-auto"></div>
       </td>
-      <td className="px-4 py-4">
-        <div className="h-8 w-8 bg-gray-200 rounded mx-auto"></div>
+      <td className="px-4 py-4 text-center">
+        <div className="flex justify-center">
+          <div className="h-8 bg-gray-200 rounded-lg w-20 mx-auto"></div>
+        </div>
       </td>
     </tr>
   );
@@ -386,8 +373,8 @@ const fetchAppointments = async () => {
         <div className="flex-1 p-6 overflow-auto">
           <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
             <div className="overflow-auto">
-              <table className="min-w-full  divide-gray-200">
-                <thead className="bg-gray-50 ">
+              <table className="min-w-full divide-gray-200">
+                <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
@@ -397,7 +384,7 @@ const fetchAppointments = async () => {
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-gray-200">
+                <tbody className="bg-white divide-y divide-gray-200">
                   {loading ? (
                     // Show skeleton loading when data is being fetched
                     Array.from({ length: 5 }).map((_, index) => (
@@ -421,13 +408,11 @@ const fetchAppointments = async () => {
                       return (
                         <tr key={appointment.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-4 text-center">
-                            <div className="flex flex-col">
-                              <div>
-                                <div className="font-medium text-gray-900">{appointment.date}</div>
-                                <div className="text-gray-500 text-sm mt-1 flex items-center justify-center">
-                                  <Clock className="w-3 h-3 mr-1" />
-                                  {appointment.time}
-                                </div>
+                            <div className="flex flex-col items-center justify-center">
+                              <div className="font-medium text-gray-900">{appointment.date}</div>
+                              <div className="text-gray-500 text-sm mt-1 flex items-center">
+                                <Clock className="w-3 h-3 mr-1" />
+                                {appointment.time}
                               </div>
                             </div>
                           </td>                      
@@ -448,7 +433,7 @@ const fetchAppointments = async () => {
                             </span>
                           </td>
                           <td className="px-4 py-4 text-center">
-                            <div className="flex justify-center space-x-2">
+                            <div className="flex justify-center">
                               <button 
                                 onClick={() => handleViewAppointment(appointment)}
                                 className="cursor-pointer flex items-center text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-900 px-3 py-2 rounded-lg transition-colors"
@@ -520,7 +505,7 @@ const fetchAppointments = async () => {
                         onClick={() => paginate(number)}
                         className={`w-8 h-8 flex items-center justify-center rounded-md border text-sm ${
                           currentPage === number
-                            ? "bg-green-500 text-white border-blue-500"
+                            ? "bg-green-500 text-white border-green-500"
                             : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
                         }`}
                       >
