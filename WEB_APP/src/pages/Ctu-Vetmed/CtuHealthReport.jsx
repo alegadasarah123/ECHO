@@ -1,42 +1,37 @@
 "use client"
 
-import Sidebar from "@/components/CtuSidebar"; // Assuming Sidebar component is imported
-import { BarChart3, Bell, LogOut } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import FloatingMessages from './CtuMessage';
-import NotificationModal from "./CtuNotif";
+import Sidebar from "@/components/CtuSidebar"
+import jsPDF from "jspdf"
+import { Bell, Download } from "lucide-react"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useNavigate } from "react-router-dom"
+import FloatingMessages from "./CtuMessage"
+import NotificationModal from "./CtuNotif"
 
 function CtuHealthReport() {
   const navigate = useNavigate()
 
-  // State for sidebar and modals
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Added state for sidebar open/close
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
   const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
   const [notifsOpen, setNotifsOpen] = useState(false)
 
-  // State for data
   const [notifications, setNotifications] = useState([])
   const [statistics, setStatistics] = useState({
     totalHorses: 0,
     healthy: 0,
-    warning: 0,
-    poorHealth: 0,
+    sick: 0,
+    unhealthy: 0,
   })
-  const [healthData, setHealthData] = useState([]) // Data for the chart
+  const [monthlyData, setMonthlyData] = useState([])
+  const [exportLoading, setExportLoading] = useState(false)
 
-  // State for filters and search
-  const [timeFilter, setTimeFilter] = useState("all")
-  const [searchTerm, setSearchTerm] = useState("")
-
-  // Refs for click outside functionality
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
   const logoutModalRef = useRef(null)
   const sidebarRef = useRef(null)
+  const chartRef = useRef(null)
 
-  // Helper to format time for notifications
   const formatTimeAgo = useCallback((timestamp) => {
     const now = new Date()
     const diffInMinutes = Math.floor((now.getTime() - timestamp.getTime()) / (1000 * 60))
@@ -46,11 +41,6 @@ function CtuHealthReport() {
     return `${Math.floor(diffInMinutes / 1440)}d ago`
   }, [])
 
-  
-  
-
-
- // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
@@ -70,48 +60,240 @@ function CtuHealthReport() {
       .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
-  // ✅ Auto-refresh every 30s
   useEffect(() => {
-    loadNotifications() // load once
-
+    loadNotifications()
     const interval = setInterval(() => {
       loadNotifications()
-    }, 30000) // 30 seconds
-
+    }, 30000)
     return () => clearInterval(interval)
   }, [loadNotifications])
 
-
-
   const loadStatistics = useCallback(() => {
-    // Placeholder for fetching statistics from backend
-    setStatistics({})
+    // Fetch statistics based on horse_status
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_horse_statistics/")
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch statistics")
+        return res.json()
+      })
+      .then((data) => {
+        console.log("Monthly data received:", data); // Debug log
+        
+        // Calculate totals from monthly data
+        const totalHorses = data.reduce((sum, month) => sum + month.total, 0)
+        const healthy = data.reduce((sum, month) => sum + month.healthy, 0)
+        const sick = data.reduce((sum, month) => sum + month.sick, 0)
+        const unhealthy = data.reduce((sum, month) => sum + month.unhealthy, 0)
+        
+        setStatistics({
+          totalHorses,
+          healthy,
+          sick,
+          unhealthy,
+        })
+        
+        // Set monthly data for the chart
+        setMonthlyData(data)
+      })
+      .catch((err) => console.error("Failed to fetch statistics:", err))
   }, [])
 
-  const loadHealthData = useCallback((filter = "all") => {
-    console.log(`Loading health data for: ${filter}`)
-    // Placeholder for fetching chart data from backend based on filter
-    setHealthData([])
-  }, [])
+  const handleExport = async () => {
+    setExportLoading(true);
+    
+    try {
+      const pdf = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4",
+      });
 
-  const handleTimeFilterChange = (e) => {
-    setTimeFilter(e.target.value)
-    loadHealthData(e.target.value)
-  }
+      let yPosition = 20;
 
-  const handleSearchInput = (e) => {
-    setSearchTerm(e.target.value.toLowerCase())
-    // Implement search logic here if needed for the dashboard
-  }
+      // Add title
+      pdf.setFontSize(20);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text("Horse Health Report", 20, yPosition);
+      yPosition += 15;
 
-  const handleExport = () => {
-    console.log("Exporting health reports data")
-    alert("Health reports data would be exported here")
-  }
+      // Add date
+      pdf.setFontSize(12);
+      pdf.setTextColor(100, 100, 100);
+      pdf.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, yPosition);
+      yPosition += 20;
 
-  const handleStatCardClick = (label, count) => {
-    console.log(`${label} clicked: ${count}`)
-    alert(`${label}: ${count}\n\nClick to view detailed statistics`)
+      // Add statistics section
+      pdf.setFontSize(16);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text("Health Statistics", 20, yPosition);
+      yPosition += 15;
+
+      // Statistics table
+      pdf.setFontSize(12);
+      const stats = [
+        { label: "Total Horses:", value: statistics.totalHorses },
+        { label: "Healthy:", value: statistics.healthy, color: [40, 167, 69] },
+        { label: "Sick:", value: statistics.sick, color: [253, 126, 20] },
+        { label: "Unhealthy:", value: statistics.unhealthy, color: [220, 53, 69] },
+      ];
+
+      stats.forEach((stat, index) => {
+        const x = 20;
+        const rowY = yPosition + (index * 8);
+        
+        if (stat.color) {
+          pdf.setFillColor(stat.color[0], stat.color[1], stat.color[2]);
+          pdf.circle(x, rowY - 1, 1.5, 'F');
+        }
+        
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(stat.label, x + 5, rowY);
+        
+        pdf.setTextColor(100, 100, 100);
+        pdf.text(stat.value.toString(), 80, rowY);
+      });
+
+      yPosition += 40;
+
+      // Add monthly bar chart section
+      pdf.setFontSize(16);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text("Monthly Health Status", 20, yPosition);
+      yPosition += 15;
+
+      // Create bar chart in PDF
+      if (monthlyData.length > 0) {
+        const chartWidth = 150;
+        const chartHeight = 80;
+        const chartX = 30;
+        const chartY = yPosition;
+        const groupWidth = chartWidth / monthlyData.length * 0.8;
+        const barWidth = groupWidth / 3 * 0.8;
+        const maxValue = Math.max(...monthlyData.map(m => Math.max(m.healthy, m.sick, m.unhealthy)));
+
+        // Draw axes
+        pdf.setDrawColor(0, 0, 0);
+        pdf.setLineWidth(0.5);
+        pdf.line(chartX, chartY, chartX, chartY + chartHeight); // Y-axis
+        pdf.line(chartX, chartY + chartHeight, chartX + chartWidth, chartY + chartHeight); // X-axis
+
+        // Draw Y-axis labels (0, 5, 10, etc.)
+        pdf.setFontSize(8);
+        pdf.setTextColor(0, 0, 0);
+        const ySteps = Math.ceil(maxValue / 5) * 5 || 10; // Round up to nearest 5, minimum 10
+        for (let i = 0; i <= 4; i++) {
+          const value = Math.round((i / 4) * ySteps);
+          const y = chartY + chartHeight - (i / 4) * chartHeight;
+          pdf.text(value.toString(), chartX - 8, y + 2);
+        }
+
+        // Draw bars for each month
+        monthlyData.forEach((monthData, index) => {
+          const groupX = chartX + (index * (chartWidth / monthlyData.length)) + (groupWidth * 0.1);
+          
+          // Calculate bar heights
+          const healthyHeight = (monthData.healthy / ySteps) * chartHeight;
+          const sickHeight = (monthData.sick / ySteps) * chartHeight;
+          const unhealthyHeight = (monthData.unhealthy / ySteps) * chartHeight;
+
+          // Draw bars side by side
+          pdf.setFillColor(40, 167, 69); // Green for healthy
+          pdf.rect(groupX, chartY + chartHeight - healthyHeight, barWidth, healthyHeight, 'F');
+          
+          pdf.setFillColor(253, 126, 20); // Orange for sick
+          pdf.rect(groupX + barWidth, chartY + chartHeight - sickHeight, barWidth, sickHeight, 'F');
+          
+          pdf.setFillColor(220, 53, 69); // Red for unhealthy
+          pdf.rect(groupX + barWidth * 2, chartY + chartHeight - unhealthyHeight, barWidth, unhealthyHeight, 'F');
+
+          // Month labels
+          pdf.setFontSize(8);
+          pdf.setTextColor(0, 0, 0);
+          pdf.text(monthData.month, groupX + groupWidth/2 - 4, chartY + chartHeight + 5);
+        });
+
+        yPosition += chartHeight + 30;
+
+        // Add legend
+        const legendX = 30;
+        let legendY = yPosition;
+
+        pdf.setFontSize(10);
+        pdf.setFillColor(40, 167, 69);
+        pdf.rect(legendX, legendY, 4, 4, 'F');
+        pdf.setTextColor(0, 0, 0);
+        pdf.text("Healthy", legendX + 8, legendY + 3);
+        
+        pdf.setFillColor(253, 126, 20);
+        pdf.rect(legendX + 40, legendY, 4, 4, 'F');
+        pdf.text("Sick", legendX + 48, legendY + 3);
+        
+        pdf.setFillColor(220, 53, 69);
+        pdf.rect(legendX + 70, legendY, 4, 4, 'F');
+        pdf.text("Unhealthy", legendX + 78, legendY + 3);
+
+      } else {
+        pdf.setTextColor(100, 100, 100);
+        pdf.text("No monthly data available", 20, yPosition + 20);
+        yPosition += 30;
+      }
+
+      // Add summary section
+      yPosition += 20;
+      pdf.setFontSize(14);
+      pdf.setTextColor(0, 0, 0);
+      pdf.text("Summary", 20, yPosition);
+      yPosition += 10;
+
+      pdf.setFontSize(11);
+      pdf.setTextColor(80, 80, 80);
+      
+      if (statistics.totalHorses > 0) {
+        const healthyPercent = ((statistics.healthy / statistics.totalHorses) * 100).toFixed(1);
+        const sickPercent = ((statistics.sick / statistics.totalHorses) * 100).toFixed(1);
+        const unhealthyPercent = ((statistics.unhealthy / statistics.totalHorses) * 100).toFixed(1);
+        
+        const summaryText = [
+          `Total horses monitored: ${statistics.totalHorses}`,
+          `• ${statistics.healthy} horses (${healthyPercent}%) are in healthy condition`,
+          `• ${statistics.sick} horses (${sickPercent}%) require medical attention`,
+          `• ${statistics.unhealthy} horses (${unhealthyPercent}%) need immediate care`
+        ];
+
+        summaryText.forEach((line, index) => {
+          pdf.text(line, 25, yPosition + (index * 6));
+        });
+      } else {
+        pdf.text("No health data available for analysis.", 25, yPosition);
+      }
+
+      // Add footer
+      // Add footer (right side)
+const pageWidth = pdf.internal.pageSize.getWidth();
+pdf.setFontSize(10);
+pdf.setTextColor(150, 150, 150);
+
+// Align text to the right by subtracting its width
+const footerText = "CTU Veterinary Medicine System";
+const textWidth = pdf.getTextWidth(footerText);
+pdf.text(footerText, pageWidth - textWidth - 20, 290);
+
+
+      // Generate filename with current date
+      const date = new Date().toISOString().split('T')[0];
+      pdf.save(`health-report-${date}.pdf`);
+      
+      console.log("PDF export completed successfully");
+      
+    } catch (err) {
+      console.error("Error exporting PDF:", err);
+      alert("Failed to export PDF. Please try again.");
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleStatCardClick = (statType, count) => {
+    console.log(`Clicked on ${statType}: ${count}`)
   }
 
   const openLogoutModal = (e) => {
@@ -132,21 +314,16 @@ function CtuHealthReport() {
     window.location.reload()
   }
 
-  // Effects for initial data loading
   useEffect(() => {
     loadNotifications()
     loadStatistics()
-    loadHealthData()
-  }, [loadNotifications, loadStatistics, loadHealthData])
+  }, [loadNotifications, loadStatistics])
 
-  // Effects for click outside and resize
   useEffect(() => {
     const handleClickOutside = (event) => {
-      // Close notification dropdown
       if (isNotificationDropdownOpen && !event.target.closest(".notification-dropdown")) {
         setIsNotificationDropdownOpen(false)
       }
-      // Close logout modal
       if (isLogoutModalOpen && !event.target.closest(".logout-modal")) {
         closeLogoutModal()
       }
@@ -157,916 +334,50 @@ function CtuHealthReport() {
     }
   }, [isNotificationDropdownOpen, isLogoutModalOpen])
 
+  // Calculate Y-axis scale with proper increments (0, 5, 10, etc.)
+  const getYAxisScale = () => {
+    if (monthlyData.length === 0) return { maxValue: 10, steps: [0, 5, 10] };
+    
+    const maxValue = Math.max(...monthlyData.map(month => Math.max(month.healthy, month.sick, month.unhealthy)));
+    
+    // Round up to nearest 5, with minimum of 5
+    const roundedMax = Math.max(5, Math.ceil(maxValue / 5) * 5);
+    
+    // Generate steps: 0, 5, 10, etc. up to roundedMax
+    const steps = [];
+    for (let i = 0; i <= roundedMax; i += 5) {
+      steps.push(i);
+    }
+    
+    return { maxValue: roundedMax, steps };
+  };
 
-
-    // Define the styles object at the top of your file or before the return
-const styles = {
-  notificationBtn: {position: "relative",background: "transparent",border: "none",cursor: "pointer",padding: "8px",borderRadius: "50%",},
-  badge: {position: "absolute",top: "2px",right: "2px",backgroundColor: "#ef4444",color: "#fff",borderRadius: "50%",padding: "2px 6px",fontSize: "12px",fontWeight: "bold",
-    },
-  }
-
+  const { maxValue: yAxisMax, steps: yAxisSteps } = getYAxisScale();
 
   return (
-    <div className="bodyWrapper">
-      <style>{`
-        /* General Styles */
-        body {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-
-        .bodyWrapper {
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-          background-color: #f5f5f5;
-          display: flex;
-          height: 100vh;
-          overflow-x: hidden;
-          width: 100%;
-        }
-
-        /* Sidebar Styles */
-       
-        .logouts {
-          padding: 10px;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .logout-btns {
-          display: flex;
-          align-items: center;
-          color: white;
-          text-decoration: none;
-          font-size: clamp(13px, 2vw, 15px);
-          font-weight: 500;
-          cursor: pointer;
-          padding: 14px 40px;
-          border-radius: 25px;
-          transition: all 0.3s ease;
-          min-height: 44px;
-        }
-
-        .logout-btns:hover {
-          background-color: rgba(255, 255, 255, 0.1);
-        }
-
-        .logout-icons {
-          width: 20px;
-          height: 20px;
-          margin-right: 15px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 16px;
-          flex-shrink: 0;
-        }
-
-        .main-content {
-   
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          width: calc(100% - 250px);
-        }
-
-        .headers {
-          background: white;
-          padding: 18px 24px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          flex-wrap: wrap;
-          gap: 16px;
-        }
-
-        .search-containers {
-          flex: 1;
-          max-width: 400px;
-          margin-right: 20px;
-          position: relative;
-          min-width: 200px;
-        }
-
-        .search-input {
-          width: 100%;
-          padding: 8px 16px 8px 40px;
-          border: 2px solid #e5e7eb;
-          border-radius: 8px;
-          font-size: clamp(12px, 2vw, 14px);
-          outline: none;
-          min-height: 40px;
-        }
-
-        .search-input:focus {
-          border-color: #b91c1c;
-        }
-
-        .search-icon {
-          position: absolute;
-          left: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          width: 16px;
-          height: 16px;
-        }
-
-        .search-icon::before {
-          content: "";
-          position: absolute;
-          width: 10px;
-          height: 10px;
-          border: 2px solid #6b7280;
-          border-radius: 50%;
-          top: 0;
-          left: 0;
-        }
-
-        .search-icon::after {
-          content: "";
-          position: absolute;
-          width: 2px;
-          height: 5px;
-          background: #6b7280;
-          transform: rotate(45deg);
-          bottom: 1px;
-          right: 1px;
-        }
-
-        .notification-bell {
-          font-size: clamp(18px, 3vw, 20px);
-          color: #666;
-          cursor: pointer;
-          position: relative;
-          margin-right: 20px;
-          padding: 8px;
-          min-height: 44px;
-          min-width: 44px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .notification-count {
-          position: absolute;
-          top: 2px;
-          right: 2px;
-          background-color: #b91c1c;
-          color: white;
-          font-size: 10px;
-          width: 15px;
-          height: 15px;
-          border-radius: 50%;
-          display: none;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .notification-dropdown {
-          position: absolute;
-          top: 100%;
-          right: 0;
-          width: min(350px, 90vw);
-          background-color: white;
-          border: 1px solid #ccc;
-          border-radius: 8px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-          z-index: 100;
-          display: none;
-          max-height: 400px;
-          overflow-y: auto;
-        }
-
-        .notification-dropdown.show {
-          display: block;
-        }
-
-        .notification-header {
-          padding: 15px 20px;
-          border-bottom: 1px solid #eee;
-          background: #f8f9fa;
-          border-radius: 8px 8px 0 0;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .notification-header h3 {
-          font-size: 16px;
-          font-weight: 600;
-          color: #333;
-          margin: 0;
-        }
-
-        .mark-all-read {
-          background: none;
-          border: none;
-          color: #b91c1c;
-          font-size: 12px;
-          cursor: pointer;
-          text-decoration: underline;
-        }
-
-        .notification-item {
-          padding: 15px 20px;
-          border-bottom: 1px solid #eee;
-          cursor: pointer;
-          transition: background-color 0.2s;
-          position: relative;
-        }
-
-        .notification-item:hover {
-          background-color: #f8f9fa;
-        }
-
-        .notification-item.unread {
-          background-color: #f0f8ff;
-          border-left: 3px solid #b91c1c;
-        }
-
-        .notification-item:last-child {
-          border-bottom: none;
-        }
-
-        .notification-title {
-          font-weight: 600;
-          font-size: 14px;
-          margin-bottom: 5px;
-          color: #333;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .notification-message {
-          font-size: 13px;
-          color: #666;
-          margin-bottom: 5px;
-          line-height: 1.4;
-        }
-
-        .notification-time {
-          font-size: 11px;
-          color: #999;
-        }
-
-        .notification-icon {
-          width: 16px;
-          height: 16px;
-          flex-shrink: 0;
-        }
-
-        .notification-icon.info {
-          color: #3b82f6;
-        }
-        .notification-icon.success {
-          color: #10b981;
-        }
-        .notification-icon.warning {
-          color: #f59e0b;
-        }
-        .notification-icon.error {
-          color: #ef4444;
-        }
-
-        .notification-actions {
-          position: absolute;
-          top: 10px;
-          right: 15px;
-          display: flex;
-          gap: 5px;
-        }
-
-        .notification-action {
-          background: none;
-          border: none;
-          color: #999;
-          cursor: pointer;
-          padding: 2px;
-          border-radius: 3px;
-          font-size: 12px;
-        }
-
-        .notification-action:hover {
-          background: #f0f0f0;
-          color: #666;
-        }
-
-        .content-areas {
-         flex: 1;
-          padding: 24px;
-          background: #f5f5f5;
-          overflow-y: auto;
-        }
-
-        .page-header {
-          margin-bottom: 24px;
-        }
-
-        .page-title {
-          font-size: clamp(20px, 4vw, 24px);
-          font-weight: 700;
-          color: #111827;
-          margin-bottom: 20px;
-        }
-
-        .stats-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-          gap: 20px;
-          margin-bottom: 30px;
-        }
-
-        .stat-card {
-          background: white;
-          padding: 20px;
-          border-radius: 8px;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          text-align: center;
-          transition: transform 0.2s;
-          cursor: pointer;
-        }
-
-        .stat-card:hover {
-          transform: translateY(-2px);
-        }
-
-        .stat-number {
-          font-size: clamp(28px, 6vw, 36px);
-          font-weight: 700;
-          color: #111827;
-          margin-bottom: 8px;
-        }
-
-        .stat-label {
-          font-size: clamp(12px, 2vw, 14px);
-          color: #6b7280;
-          font-weight: 500;
-        }
-
-        .chart-section {
-          background: white;
-          border-radius: 8px;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          padding: clamp(16px, 3vw, 24px);
-        }
-
-        .chart-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 20px;
-          flex-wrap: wrap;
-          gap: 16px;
-        }
-
-        .chart-title {
-          font-size: clamp(16px, 3vw, 18px);
-          font-weight: 600;
-          color: #111827;
-        }
-
-        .chart-controls {
-          display: flex;
-          gap: 12px;
-          align-items: center;
-          flex-wrap: wrap;
-        }
-
-        .time-filter {
-          padding: 8px 12px;
-          border: 1px solid #d1d5db;
-          border-radius: 6px;
-          font-size: clamp(12px, 2vw, 14px);
-          background: white;
-          min-height: 40px;
-        }
-
-        .export-btn {
-          background: #b91c1c;
-          color: white;
-          border: none;
-          padding: 8px 16px;
-          border-radius: 6px;
-          font-size: clamp(12px, 2vw, 14px);
-          font-weight: 500;
-          cursor: pointer;
-          transition: background-color 0.2s;
-          min-height: 40px;
-        }
-
-        .export-btn:hover {
-          background: #991b1b;
-        }
-
-        .chart-container {
-          position: relative;
-          height: 300px;
-          margin-top: 20px;
-        }
-
-        .chart-legend {
-          display: flex;
-          gap: 20px;
-          margin-bottom: 20px;
-          justify-content: center;
-          flex-wrap: wrap;
-        }
-
-        .legend-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: clamp(10px, 1.8vw, 12px);
-          color: #6b7280;
-        }
-
-        .legend-color {
-          width: 12px;
-          height: 12px;
-          border-radius: 2px;
-          flex-shrink: 0;
-        }
-
-        .legend-healthy {
-          background: #22c55e;
-        }
-        .legend-warning {
-          background: #eab308;
-        }
-        .legend-poor {
-          background: #ef4444;
-        }
-
-        .chart-bars {
-          display: flex;
-          align-items: flex-end;
-          justify-content: space-around;
-          height: 250px;
-          padding: 0 20px;
-          overflow-x: auto;
-          gap: 10px;
-        }
-
-        .bar-group {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 8px;
-          min-width: 80px;
-          flex-shrink: 0;
-        }
-
-        .bars {
-          display: flex;
-          align-items: flex-end;
-          gap: 4px;
-          height: 200px;
-        }
-
-        .bar {
-          width: 20px;
-          border-radius: 2px 2px 0 0;
-          transition: opacity 0.2s;
-          min-width: 16px;
-        }
-
-        .bar:hover {
-          opacity: 0.8;
-        }
-
-        .bar-healthy {
-          background: #22c55e;
-        }
-        .bar-warning {
-          background: #eab308;
-        }
-        .bar-poor {
-          background: #ef4444;
-        }
-
-        .area-label {
-          font-size: clamp(10px, 1.8vw, 12px);
-          color: #6b7280;
-          text-align: center;
-          max-width: 80px;
-          word-wrap: break-word;
-          line-height: 1.2;
-        }
-
-        .empty-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center; /* centers horizontally */
-          justify-content: center; /* centers vertically (if parent has height) */
-          text-align: center;
-          padding: 2rem;
-        }
-
-        .icon-wrapper {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin-bottom: 1rem;
-        }
-
-        .empty-state i {
-          font-size: 48px;
-          margin-bottom: 16px;
-          opacity: 0.5;
-        }
-
-        .empty-state h3 {
-          font-size: 18px;
-          margin-bottom: 8px;
-          color: #374151;
-        }
-
-        .empty-state p {
-          font-size: 14px;
-        }
-
-        /* Mobile Menu Button */
-        .mobile-menu-btn {
-          display: none;
-          position: fixed;
-          top: 20px;
-          left: 20px;
-          z-index: 1001;
-          background: #b91c1c;
-          color: white;
-          border: none;
-          padding: 12px;
-          border-radius: 8px;
-          font-size: 18px;
-          cursor: pointer;
-          min-height: 44px;
-          min-width: 44px;
-        }
-
-        /* Chat Widget Styling - Button Only */
-        .chat-widget {
-          position: fixed;
-          bottom: 24px;
-          right: 24px;
-          z-index: 1000;
-        }
-
-        /* Chat Button - Speech Bubble Design */
-        .chat-button {
-          width: 64px;
-          height: 64px;
-          background: #b91c1c;
-          border: none;
-          border-radius: 20px;
-          color: white;
-          cursor: pointer;
-          box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
-          transition: all 0.3s ease;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          position: relative;
-        }
-
-        /* Speech bubble tail */
-        .chat-button::after {
-          content: "";
-          position: absolute;
-          bottom: -8px;
-          left: 50%;
-          transform: translateX(-50%);
-          width: 0;
-          height: 0;
-          border-left: 10px solid transparent;
-          border-right: 10px solid transparent;
-          border-top: 10px solid #b91c1c;
-        }
-
-        .chat-button:hover {
-          transform: scale(1.05);
-          box-shadow: 0 6px 16px rgba(185, 28, 28, 0.4);
-        }
-
-        .chat-button:hover::after {
-          border-top-color: #b91c1c;
-        }
-
-        /* Static three dots design */
-        .chat-dots {
-          display: flex;
-          gap: 6px;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .chat-dot {
-          width: 8px;
-          height: 8px;
-          background: white;
-          border-radius: 50%;
-        }
-
-        /* Logout Modal Styles */
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.5);
-          display: none;
-          justify-content: center;
-          align-items: center;
-          z-index: 2000;
-          padding: 20px;
-        }
-
-        .modal-overlay.active {
-          display: flex;
-        }
-
-        .confirmation-modal {
-          background: white;
-          border-radius: 8px;
-          padding: clamp(20px, 4vw, 24px);
-          width: 90%;
-          max-width: 400px;
-          text-align: center;
-        }
-
-        .confirmation-modal h3 {
-          font-size: clamp(16px, 3vw, 18px);
-          font-weight: 600;
-          color: #111827;
-          margin-bottom: 12px;
-        }
-
-        .confirmation-modal p {
-          font-size: clamp(12px, 2vw, 14px);
-          color: #6b7280;
-          margin-bottom: 24px;
-          line-height: 1.5;
-        }
-
-        .confirmation-buttons {
-          display: flex;
-          gap: 12px;
-          justify-content: center;
-          flex-wrap: wrap;
-        }
-
-        .confirmation-btn {
-          padding: 8px 20px;
-          border: none;
-          border-radius: 6px;
-          font-size: clamp(12px, 2vw, 14px);
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-          min-width: 80px;
-          min-height: 40px;
-        }
-
-        .confirmation-btn.cancel {
-          background: #6b7280;
-          color: white;
-        }
-
-        .confirmation-btn.cancel:hover {
-          background: #4b5563;
-        }
-
-        .confirmation-btn.confirm {
-          background: #ef4444;
-          color: white;
-        }
-
-        .confirmation-btn.confirm:hover {
-          background: #dc2626;
-        }
-
-        .logout-modal {
-          background: white;
-          border-radius: 12px;
-          padding: 32px;
-          width: 90%;
-          max-width: 400px;
-          text-align: center;
-          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-        }
-
-        .logout-modal-icon {
-          width: 64px;
-          height: 64px;
-          background: #fef3c7;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          margin: 0 auto 20px;
-        }
-
-        .logout-modal-icon i {
-          font-size: 28px;
-          color: #f59e0b;
-        }
-
-        .logout-modal h3 {
-          font-size: 20px;
-          font-weight: 600;
-          color: #111827;
-          margin-bottom: 12px;
-        }
-
-        .logout-modal p {
-          font-size: 16px;
-          color: #6b7280;
-          margin-bottom: 32px;
-          line-height: 1.5;
-        }
-
-        .logout-modal-buttons {
-          display: flex;
-          gap: 12px;
-          justify-content: center;
-          flex-wrap: wrap;
-        }
-
-        .logout-modal-btn {
-          padding: 12px 24px;
-          border: none;
-          border-radius: 8px;
-          font-size: 14px;
-          font-weight: 500;
-          cursor: pointer;
-          transition: all 0.2s;
-          min-width: 100px;
-          min-height: 44px;
-        }
-
-        .logout-modal-btn.cancel {
-          background: #f3f4f6;
-          color: #374151;
-        }
-
-        .logout-modal-btn.cancel:hover {
-          background: #e5e7eb;
-        }
-
-        .logout-modal-btn.confirm {
-          background: #ef4444;
-          color: white;
-        }
-
-        .logout-modal-btn.confirm:hover {
-          background: #dc2626;
-        }
-
-        /* Tablet */
-        @media (max-width: 1024px) {
-          .stats-grid {
-            grid-template-columns: repeat(2, 1fr);
-          }
-          .chart-header {
-            flex-direction: column;
-            gap: 12px;
-            align-items: stretch;
-          }
-          .chart-controls {
-            justify-content: center;
-          }
-        }
-
-        /* Mobile */
-        @media (max-width: 768px) {
-          .mobile-menu-btn {
-            display: block;
-          }
-         
-          .main-content {
-            margin-left: 0;
-            width: 100%;
-          }
-          .headers {
-            margin-left: 60px;
-            padding: 12px 16px;
-          }
-          .search-containers {
-            margin-right: 10px;
-            min-width: 150px;
-          }
-          .content-areas {
-            padding: 16px;
-          }
-          .stats-grid {
-            grid-template-columns: 1fr;
-            gap: 16px;
-          }
-          .chart-bars {
-            padding: 0 10px;
-            gap: 8px;
-          }
-          .bar-group {
-            min-width: 60px;
-          }
-          .bar {
-            width: 16px;
-            min-width: 12px;
-          }
-          .area-label {
-            font-size: 10px;
-            max-width: 60px;
-          }
-          .chat-widget {
-            bottom: 16px;
-            right: 16px;
-          }
-          .chat-button {
-            width: 56px;
-            height: 56px;
-            border-radius: 18px;
-          }
-          .chat-button::after {
-            bottom: -6px;
-            border-left-width: 8px;
-            border-right-width: 8px;
-            border-top-width: 8px;
-          }
-          .confirmation-buttons {
-            flex-direction: column;
-          }
-        }
-
-        /* Small Mobile */
-        @media (max-width: 480px) {
-          .headers {
-            flex-direction: column;
-            align-items: stretch;
-            gap: 12px;
-            margin-left: 50px;
-          }
-          .search-containers {
-            margin-right: 0;
-            min-width: auto;
-          }
-          .notification-bell {
-            align-self: flex-end;
-            margin-right: 0;
-          }
-          .mobile-menu-btn {
-            top: 15px;
-            left: 15px;
-            padding: 10px;
-          }
-          .chart-container {
-            height: 250px;
-          }
-          .chart-bars {
-            height: 200px;
-          }
-          .bars {
-            height: 150px;
-          }
-        }
-
-        /* Touch devices */
-        @media (hover: none) and (pointer: coarse) {
-          .nav-item,
-          .logout-btn {
-            min-height: 48px;
-          }
-          .stat-card {
-            min-height: 100px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-          }
-        }
-
-        .dashboard-title {
-          font-size: 22px;
-          font-weight: bold;
-          color: #da2424ff;
-        }
-      `}</style>
-
+    <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full m-0 p-0 box-border">
       <div className="sidebars" id="sidebars">
         <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
       </div>
 
-      <div className="main-content">
-        <header className="headers">
+      <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
+        <header className="bg-white py-[18px] px-6 flex items-center justify-between shadow-sm flex-wrap gap-4">
           <div className="dashboard-container">
-            <h2 className="dashboard-title">Health Reports</h2>
+            <h2 className="text-[22px] font-bold text-black">Health Reports</h2>
           </div>
-          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
+
+          <button
+            className="relative bg-transparent border-none cursor-pointer p-2 rounded-full"
+            onClick={() => setNotifsOpen(!notifsOpen)}
+          >
             <Bell size={24} color="#374151" />
-            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
+            {notifications.length > 0 && (
+              <span className="absolute top-[2px] right-[2px] bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[15px] min-h-[15px] flex items-center justify-center">
+                {notifications.length}
+              </span>
+            )}
           </button>
 
-          {/* Notification Modal */}
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
@@ -1077,92 +388,183 @@ const styles = {
           />
         </header>
 
-        <div className="content-areas">
-          <div className="page-header">
-           
+        <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
+          <div className="mb-6">
+            {/* Stat Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-[30px]">
+              <div
+                className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer"
+                onClick={() => handleStatCardClick("Total Horses", statistics.totalHorses)}
+              >
+                <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
+                  {statistics.totalHorses}
+                </div>
+                <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Total Horses</div>
+              </div>
 
-            <div className="stats-grid">
-              <div className="stat-card" onClick={() => handleStatCardClick("Total Horses", statistics.totalHorses)}>
-                <div className="stat-number">{statistics.totalHorses}</div>
-                <div className="stat-label">Total Horses</div>
+              <div
+                className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer"
+                onClick={() => handleStatCardClick("Healthy", statistics.healthy)}
+              >
+                <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
+                  {statistics.healthy}
+                </div>
+                <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Healthy</div>
               </div>
-              <div className="stat-card" onClick={() => handleStatCardClick("Healthy", statistics.healthy)}>
-                <div className="stat-number">{statistics.healthy}</div>
-                <div className="stat-label">Healthy</div>
+
+              <div
+                className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer"
+                onClick={() => handleStatCardClick("Sick", statistics.sick)}
+              >
+                <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
+                  {statistics.sick}
+                </div>
+                <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Sick</div>
               </div>
-              <div className="stat-card" onClick={() => handleStatCardClick("Warning", statistics.warning)}>
-                <div className="stat-number">{statistics.warning}</div>
-                <div className="stat-label">Warning</div>
-              </div>
-              <div className="stat-card" onClick={() => handleStatCardClick("Poor Health", statistics.poorHealth)}>
-                <div className="stat-number">{statistics.poorHealth}</div>
-                <div className="stat-label">Poor Health</div>
+
+              <div
+                className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer"
+                onClick={() => handleStatCardClick("Unhealthy", statistics.unhealthy)}
+              >
+                <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
+                  {statistics.unhealthy}
+                </div>
+                <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Unhealthy</div>
               </div>
             </div>
 
-            <div className="chart-section">
-              <div className="chart-header">
-                <h2 className="chart-title">Health Status by Area</h2>
-                <div className="chart-controls">
-                  <select className="time-filter" id="timeFilter" value={timeFilter} onChange={handleTimeFilterChange}>
-                    <option value="all">All Time</option>
-                    <option value="month">This Month</option>
-                    <option value="year">This Year</option>
-                  </select>
-                  <button className="export-btn" id="exportBtn" onClick={handleExport}>
-                    Export
-                  </button>
-                </div>
+            {/* Bar Chart Section */}
+            <div 
+              ref={chartRef}
+              className="bg-white rounded-lg shadow-sm p-4 lg:p-6"
+            >
+              <div className="flex justify-between items-center mb-5 flex-wrap gap-4">
+                <h2 className="text-lg lg:text-[18px] font-semibold text-gray-900">
+                  Monthly Health Status
+                </h2>
+                <button
+                  className="bg-red-700 text-white border-none py-2 px-4 rounded-md text-sm lg:text-[14px] font-medium cursor-pointer transition-colors hover:bg-red-800 min-h-[40px] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={handleExport}
+                  disabled={exportLoading || statistics.totalHorses === 0}
+                >
+                  {exportLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  ) : (
+                    <Download size={16} />
+                  )}
+                  {exportLoading ? 'Exporting...' : 'Export PDF'}
+                </button>
               </div>
 
-              <div className="chart-legend">
-                <div className="legend-item">
-                  <div className="legend-color legend-healthy"></div>
+              {/* Legend */}
+              <div className="flex gap-5 mb-5 justify-center flex-wrap">
+                <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500">
+                  <div className="w-3 h-3 rounded-sm bg-green-500"></div>
                   <span>Healthy</span>
                 </div>
-                <div className="legend-item">
-                  <div className="legend-color legend-warning"></div>
-                  <span>Warning</span>
+                <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500">
+                  <div className="w-3 h-3 rounded-sm bg-orange-500"></div>
+                  <span>Sick</span>
                 </div>
-                <div className="legend-item">
-                  <div className="legend-color legend-poor"></div>
-                  <span>Poor Health</span>
+                <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500">
+                  <div className="w-3 h-3 rounded-sm bg-red-500"></div>
+                  <span>Unhealthy</span>
                 </div>
               </div>
 
-              <div className="chart-container">
-                {healthData.length === 0 ? (
-                  <div className="empty-state" id="chartEmptyState">
-                    <BarChart3 size={48} />
-                    <h3>No health data available</h3>
-                    <p>Health statistics will appear here when data is available</p>
-                  </div>
-                ) : (
-                  <div className="chart-bars" id="chartBars">
-                    {healthData.map((data, index) => (
-                      <div className="bar-group" key={index}>
-                        <div className="bars">
-                          <div
-                            className="bar bar-healthy"
-                            style={{ height: `${(data.healthy / (data.healthy + data.warning + data.poor)) * 100}%` }}
-                            title={`Healthy: ${data.healthy}`}
-                          ></div>
-                          <div
-                            className="bar bar-warning"
-                            style={{ height: `${(data.warning / (data.healthy + data.warning + data.poor)) * 100}%` }}
-                            title={`Warning: ${data.warning}`}
-                          ></div>
-                          <div
-                            className="bar bar-poor"
-                            style={{ height: `${(data.poor / (data.healthy + data.warning + data.poor)) * 100}%` }}
-                            title={`Poor Health: ${data.poor}`}
-                          ></div>
+              {/* Bar Chart */}
+              <div className="w-full overflow-x-auto">
+                <div className="min-w-[600px]">
+                  {/* Chart Container */}
+                  <div className="relative h-64 mt-8">
+                    {/* Y-axis labels */}
+                    <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-xs text-gray-500">
+                      {yAxisSteps.map((value, index) => (
+                        <div 
+                          key={value} 
+                          className="text-right pr-2"
+                          style={{ 
+                            position: 'absolute',
+                            right: '0',
+                            top: `${(1 - (value / yAxisMax)) * 100}%`,
+                            transform: 'translateY(-50%)'
+                          }}
+                        >
+                          {value}
                         </div>
-                        <div className="area-label">{data.area}</div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
+
+                    {/* Chart area */}
+                  <div className="ml-10 pl-5 h-full flex items-end justify-start gap-6 px-0 border-b border-l border-gray-300">
+
+
+                      {monthlyData.map((monthData, index) => {
+                        // Calculate bar heights based on Y-axis scale
+                        const healthyHeight = (monthData.healthy / yAxisMax) * 80;
+                        const sickHeight = (monthData.sick / yAxisMax) * 80;
+                        const unhealthyHeight = (monthData.unhealthy / yAxisMax) * 80;
+
+                        return (
+                         <div key={index} className="flex flex-col items-center w-12">
+
+                            {/* Three separate bars side by side */}
+                            <div className="flex items-end justify-center space-x-1 h-48 relative">
+                              {/* Healthy bar */}
+                              <div 
+                                className="w-3 bg-green-500 relative cursor-pointer group transition-all hover:w-4 rounded-t border border-green-600"
+                                style={{ height: `${healthyHeight}%`, minHeight: monthData.healthy > 0 ? '2px' : '0' }}
+                                title={`Healthy: ${monthData.healthy}`}
+                              >
+                                <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap">
+                                  Healthy: {monthData.healthy}
+                                </div>
+                              </div>
+                              
+                              {/* Sick bar */}
+                              <div 
+                                className="w-3 bg-orange-500 relative cursor-pointer group transition-all hover:w-4 rounded-t border border-orange-600"
+                                style={{ height: `${sickHeight}%`, minHeight: monthData.sick > 0 ? '2px' : '0' }}
+                                title={`Sick: ${monthData.sick}`}
+                              >
+                                <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap">
+                                  Sick: {monthData.sick}
+                                </div>
+                              </div>
+                              
+                              {/* Unhealthy bar */}
+                              <div 
+                                className="w-3 bg-red-500 relative cursor-pointer group transition-all hover:w-4 rounded-t border border-red-600"
+                                style={{ height: `${unhealthyHeight}%`, minHeight: monthData.unhealthy > 0 ? '2px' : '0' }}
+                                title={`Unhealthy: ${monthData.unhealthy}`}
+                              >
+                                <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap">
+                                  Unhealthy: {monthData.unhealthy}
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Month label */}
+                            <div className="text-xs text-gray-600 mt-2 font-medium text-center">
+                              {monthData.month}
+                            </div>
+                            
+                            {/* Total count */}
+                            <div className="text-xs text-gray-500 mt-1">
+                              Total: {monthData.total}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                )}
+
+                  {monthlyData.length === 0 && (
+                    <div className="text-center text-gray-500 py-8">
+                      No monthly data available
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -1170,27 +572,6 @@ const styles = {
       </div>
 
       <FloatingMessages />
-
-      {/* Logout Modal */}
-      {isLogoutModalOpen && (
-        <div className="modal-overlay active" ref={logoutModalRef}>
-          <div className="logout-modal">
-            <div className="logout-modal-icon">
-              <LogOut size={25} color="#f59e0b" />
-            </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons">
-              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
-                No
-              </button>
-              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
-                Yes
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }

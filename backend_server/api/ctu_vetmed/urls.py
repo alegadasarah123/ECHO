@@ -7,7 +7,8 @@ urlpatterns = [
     path("test-cookie/", views.test_cookie, name="test_cookie"),
     path('signup/', views.signup, name='signup'),
    
-    path('get-vet-profiles/', views.get_vet_profiles, name='get-vet-profiles'),
+     path("get-vet-profiles/", views.get_vet_profiles, name="get_vet_profiles"),
+    path("get_vetnotifications/", views.get_vetnotifications, name="get_vetnotifications"),
     path("update-vet-status/<str:vet_profile_id>/", views.update_vet_status, name="update-vet-status"),
 
     path('users/', views.fetch_users, name='fetch-users'), 
@@ -26,7 +27,7 @@ urlpatterns = [
 
 
     path('get-users/', views.get_users, name='get-users'),
-    path('get_vetnotifications/', views.get_vetnotifications, name='get_vetnotifications'),
+    
         # urls.py
     path('get_directory_profiles/', views.get_directory_profiles, name='get_directory_profiles'),
 
@@ -52,7 +53,30 @@ urlpatterns = [
      path("search_vet/", views.search_vet, name="search_vet"),
 
 
-     path("get_horses/", views.get_horses, name="get_horses"),
+    path("get_horses/", views.get_horses, name="get_horses"),
+     
+    path("sos_requests/", views.get_sos_requests, name="get_sos_requests"),
+
+    path('medrec_access_requests/', views.get_access_requests, name='get_access_requests'),
+      # 🔹 New endpoints for approve / decline
+    path("access-requests/<uuid:request_id>/approve/", views.approve_access_request, name="approve_access_request"),
+    path(
+        "access-requests/<uuid:request_id>/decline/",
+        views.decline_access_request,
+        name="decline-access-request",
+    ),
+
+     path("edit_post/<uuid:post_id>/", views.edit_post, name="edit_post"),
+     path("get_horse_statistics/", views.get_horse_statistics, name="get_horse_statistics"),
+
+    path("comments/", views.add_comment, name="add_comment"),  # POST
+    path("comments/<uuid:post_id>/", views.get_comments, name="get_comments")
+
+
+    
+      
+
+     
 
 
 ]

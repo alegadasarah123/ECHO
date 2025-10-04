@@ -15,6 +15,7 @@ from rest_framework.permissions import IsAuthenticated
 import re
 from supabase import create_client 
 from django.http import JsonResponse
+from django.utils import timezone
 
 # -------------------- SUPABASE CLIENT --------------------
 # Environment config
@@ -54,7 +55,7 @@ def generate_sequential_id():
     Generate a sequential ID starting from 1, ensuring it contains the digit 2
     and does not collide with existing IDs in ctu_vet_profile.
     """
-    existing = sr_client.table("ctu_vet_profile").select("id").execute()
+    existing = sr_client.table("dvmf_user_profile").select("id").execute()
     existing_ids = [r["id"] for r in getattr(existing, "data", [])]
 
     new_id = 1
@@ -63,8 +64,6 @@ def generate_sequential_id():
             return new_id
         new_id += 1
 
-
-# -------------------- SIGNUP ENDPOINT --------------------
 
 
 # -------------------- SIGNUP ENDPOINT --------------------
@@ -77,7 +76,7 @@ def signup(request):
         first_name = request.data.get("firstName", "").strip()
         last_name = request.data.get("lastName", "").strip()
         phone_number = str(request.data.get("phoneNumber", "")).strip()
-        role = request.data.get("role", "Dvmf-Vetmed").strip()   # Default = Dvmf-Vetmed
+        role = request.data.get("role", "Dvmf").strip()   # Default = Ctu-Vetmed
 
         if not all([email, password, first_name, last_name, phone_number]):
             return Response({"error": "All fields are required"}, status=400)
@@ -115,14 +114,14 @@ def signup(request):
         # 5️⃣ Insert/Update central users table
         user_record = {
             "id": user_id,         # must match auth.users.id
-            "role": role,          # "Dvmf-Vetmed" or "Dvmf-Admin"
+            "role": role,          # "Ctu-Vetmed" or "Ctu-Admin"
             "status": "approved"   # could also be "pending"
         }
-        users_res = sr_client.table("dvmf_users").upsert(user_record).execute()
+        users_res = sr_client.table("users").upsert(user_record).execute()
         if getattr(users_res, "error", None):
-            return Response({"error": "Failed to insert into DVMF users table", "details": users_res.error}, status=400)
+            return Response({"error": "Failed to insert into users table", "details": users_res.error}, status=400)
 
-        # 6️⃣ Insert into DVMF Vet profile
+        # 6️⃣ Insert into CTU Vet profile
         profile_payload = {
             "dvmf_id": user_id,
             "dvmf_fname": first_name,
@@ -152,7 +151,6 @@ def signup(request):
 
 
 
-
 # -------------------- GET VET PROFILES --------------------
 @api_view(['GET'])
 def get_vet_profiles(request):
@@ -170,45 +168,138 @@ def get_vet_profiles(request):
 
 
 # -------------------- UPDATE STATUS --------------------
+# views.py
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from django.core.mail import send_mail
+from django.conf import settings
+import logging
+
+# assume sr_client is already created at module top
+# sr_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
 @api_view(['PATCH'])
 def update_vet_status(request, vet_profile_id):
     """
     Update the status of a vet user (pending, approved, declined)
+    and send a modern HTML email notification on approved or declined.
     """
     new_status = request.data.get("status")
-    allowed_statuses = ["pending", "approved", "declined"]
+    decline_reason = request.data.get("decline_reason")  # Get decline reason from request
+    reason_text = decline_reason if decline_reason else "Not provided"
 
+    allowed_statuses = ["pending", "approved", "declined"]
     if new_status not in allowed_statuses:
         return Response({"error": f"Invalid status. Allowed: {allowed_statuses}"}, status=400)
 
-    service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-    # Get vet_id from vet_profile
-    # Fix: use correct column name instead of 'id'
-    # Assuming your primary key column in vet_profile is 'vet_id'
-    vet_profile_res = service_client.table("vet_profile").select("vet_id").eq("vet_id", str(vet_profile_id)).execute()
+    # Get vet profile
+    vet_profile_res = sr_client.table("vet_profile")\
+        .select("vet_id, vet_email, vet_fname, vet_lname")\
+        .eq("vet_id", str(vet_profile_id)).execute()
 
     if not vet_profile_res.data:
         return Response({"error": "Vet profile not found"}, status=404)
-    
-    vet_id = vet_profile_res.data[0]["vet_id"]
 
-    # Update user status
-    update_res = service_client.table("users").update({"status": new_status}).eq("id", vet_id).execute()
+    vet_data = vet_profile_res.data[0]
+    vet_id = vet_data["vet_id"]
+    vet_email = vet_data.get("vet_email")
+    vet_name = f"{vet_data.get('vet_fname','')} {vet_data.get('vet_lname','')}".strip() or "User"
 
+    # Update user status and save decline_reason in users table
+    update_data = {"status": new_status}
+    if new_status == "declined":
+        update_data["decline_reason"] = reason_text
+
+    update_res = sr_client.table("users").update(update_data).eq("id", vet_id).execute()
     if not update_res.data:
         return Response({"error": "User not found"}, status=404)
 
-    return Response({"message": f"Status updated to {new_status}", "data": update_res.data[0]}, status=200)
+    # Send email when approved or declined
+    if vet_email and new_status in ["approved", "declined"]:
+        if new_status == "approved":
+            subject = "Your Veterinarian Account Has Been Approved"
+            plain_message = f"Hello {vet_name},\n\nYour veterinarian account has been approved. You can now log in and start using the system.\n\nBest regards,\nECHOSys Team"
+            html_message = f"""
+            <html>
+              <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
+                <div style="max-width:600px; margin:auto; background:white; border-radius:12px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+                  <div style="background-color:#8B4513; padding:20px; text-align:center; color:white;">
+                    <h1 style="margin:0; font-size:24px;">Account Approved ✅</h1>
+                  </div>
+                  <div style="padding:30px; color:#333; font-size:16px; line-height:1.5;">
+                    <p>Hello {vet_name},</p>
+                    <p>Good news! Your veterinarian account has been approved by the admin. You can now log in and start using the system.</p>
+                    <div style="text-align:center; margin:30px 0;">
+                      <a href="http://localhost:5173/login" style="background-color:#8B4513; color:white; text-decoration:none; padding:12px 25px; border-radius:6px; font-weight:bold;">Login Now</a>
+                    </div>
+                    <p>Best regards,<br>ECHOSys Team</p>
+                  </div>
+                </div>
+              </body>
+            </html>
+            """
+        else:  # declined
+            subject = "Your Veterinarian Account Has Been Declined"
+            plain_message = f"Hello {vet_name},\n\nWe’re sorry to inform you that your veterinarian account request has been declined by the admin. The reason: {reason_text}. Please contact support if needed.\n\nBest regards,\nECHOSys Team"
+            html_message = f"""
+            <html>
+              <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
+                <div style="max-width:600px; margin:auto; background:white; border-radius:12px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+                  <div style="background-color:#8B4513; padding:20px; text-align:center; color:white;">
+                    <h1 style="margin:0; font-size:24px;">Account Declined ⚠️</h1>
+                  </div>
+                  <div style="padding:30px; color:#333; font-size:16px; line-height:1.5;">
+                    <p>Hello {vet_name},</p>
+                    <p>We’re sorry to inform you that your veterinarian account request has been declined by the admin. The reason: <strong>{reason_text}</strong>.</p>
+                    
+                    <p>Best regards,<br>ECHOSys Team</p>
+                  </div>
+                </div>
+              </body>
+            </html>
+            """
+
+        # Send the email
+        try:
+            send_mail(
+                subject=subject,
+                message=plain_message,
+                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                recipient_list=[vet_email],
+                fail_silently=False,
+                html_message=html_message
+            )
+        except Exception as e:
+            logging.exception("Failed to send vet status email")
+            return Response({
+                "message": f"Status updated to {new_status}, but email failed to send",
+                "error": str(e)
+            }, status=200)
+
+    return Response({
+        "message": f"Status updated to {new_status}",
+        "data": update_res.data[0]
+    }, status=200)
+
+
+
+
+
+
+
 
     
+# -------------------- DASHBOARD RECENTLY ACTIVITIES --------------------
 # -------------------- DASHBOARD RECENTLY ACTIVITIES --------------------
 @api_view(["GET"])
 def get_recent_activity(request):
     try:
         response = (
             sr_client.table("vet_profile")
-            .select("vet_id, vet_fname, vet_lname, created_at, users!vet_profile_vet_id_fkey(status)")  
+            .select(
+                "vet_id, vet_fname, vet_lname, vet_email, created_at, "
+                "users!vet_profile_vet_id_fkey(status)"
+            )
             .order("created_at", desc=True)
             .limit(10)
             .execute()
@@ -230,18 +321,20 @@ def get_recent_activity(request):
             initials = "".join([w[0] for w in full_name.split() if w]).upper()
 
             activities.append({
-                "id": row["vet_id"],   # use vet_id instead of id
-                "title": full_name,
-                "initials": initials,
+                "id": row["vet_id"],                  # vet_id
+                "title": full_name,                   # full name
+                "initials": initials,                 # initials
                 "description": f"User is currently {user_status.capitalize()}",
-                "status": user_status,
-                "date": row.get("created_at"),
+                "status": user_status,                # status
+                "date": row.get("created_at"),        # created_at
+                "email": row.get("vet_email")         # vet_email
             })
 
         return Response(activities, status=200)
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
 
 
 # -------------------- DASHBOARD TOTAL COUNT --------------------
@@ -275,7 +368,7 @@ def get_status_counts(request):
 # -------------------- GET PROFILES IN SETTINGS --------------------
 @api_view(["GET"])
 @login_required
-def get_dvmf_profiles(request):
+def get_dvmf_user_profiles(request):
     token = request.COOKIES.get("access_token")
     if not token:
         return Response({"error": "Authentication required"}, status=401)
@@ -288,7 +381,6 @@ def get_dvmf_profiles(request):
     except Exception:
         return Response({"error": "Invalid token"}, status=401)
 
-    # Fetch DVMF profile
     res = sr_client.table("dvmf_user_profile").select("*").eq("dvmf_id", user_id).execute()
     profile = res.data[0] if res.data else None
 
@@ -303,19 +395,18 @@ def get_dvmf_profiles(request):
         "dvmf_lname": profile.get("dvmf_lname", ""),
         "dvmf_phonenum": profile.get("dvmf_phonenum", ""),
         "dvmf_role": profile.get("dvmf_role", "")
+        
     })
 
-# Assuming you have your Supabase client setup as sr_client
-# -------------------- SAVE CTU VET PROFILE --------------------
+
+
+# -------------------- UPDATE CTU VET PROFILE --------------------
 @api_view(["POST"])
-def save_dvmf_profile(request):
+def update_dvmf_user_profile(request):
     """
-    Save first-time DVMF Vet profile:
-    - fname, lname, phone, email
-    - Uses Supabase table 'dvmf_user_profile'
+    Update existing CTU Vet profile
     """
     try:
-        # 1️⃣ Get token to identify user
         token = request.COOKIES.get("access_token")
         if not token:
             return Response({"error": "Authentication required"}, status=401)
@@ -325,66 +416,47 @@ def save_dvmf_profile(request):
         if not dvmf_id:
             return Response({"error": "Invalid token"}, status=401)
 
-        # 2️⃣ Get input values
-        dvmf_fname = request.data.get("dvmf_fname", "").strip()
-        dvmf_lname = request.data.get("dvmf_lname", "").strip()
-        dvmf_email = request.data.get("dvmf_email", "").strip()
-        dvmf_phonenum = request.data.get("dvmf_phonenum", "").strip()
+        data = request.data
+        update_data = {}
 
-        # 3️⃣ Validate required fields
-        errors = {}
-        if not dvmf_fname:
-            errors["dvmf_fname"] = "First name is required."
-        if not dvmf_lname:
-            errors["dvmf_lname"] = "Last name is required."
-        if not dvmf_email:
-            errors["dvmf_email"] = "Email is required."
-        if not dvmf_phonenum:
-            errors["dvmf_phonenum"] = "Phone number is required."
+        if "dvmf_fname" in data:
+            update_data["dvmf_fname"] = data["dvmf_fname"].strip()
+        if "dvmf_lname" in data:
+            update_data["dvmf_lname"] = data["dvmf_lname"].strip()
+        if "dvmf_email" in data:
+            update_data["dvmf_email"] = data["dvmf_email"].strip()
+        if "dvmf_phonenum" in data:
+            update_data["dvmf_phonenum"] = data["dvmf_phonenum"]
 
-        if errors:
-            return Response({"errors": errors}, status=400)
+        if not update_data:
+            return Response({"error": "No fields provided to update"}, status=400)
 
-        # 4️⃣ Upsert profile in Supabase
-        profile_data = {
-            "dvmf_id": dvmf_id,
-            "dvmf_fname": dvmf_fname,
-            "dvmf_lname": dvmf_lname,
-            "dvmf_email": dvmf_email,
-            "dvmf_phonenum": dvmf_phonenum,
-        }
-
-        response = sr_client.table("dvmf_user_profile").upsert(
-            profile_data, on_conflict="dvmf_id"
-        ).execute()
+        # Supabase update
+        response = sr_client.table("dvmf_user_profile").update(update_data).eq("dvmf_id", dvmf_id).execute()
 
         # ✅ Safe handling
-        profile_error = getattr(response, "error", None)
-        profile_result = getattr(response, "data", None)
+        update_error = getattr(response, "error", None)
+        update_result = getattr(response, "data", None)
 
-        if profile_error:
-            return Response({"error": str(profile_error)}, status=500)
-        if not profile_result:
-            return Response({"error": "Failed to save profile"}, status=400)
+        if update_error:
+            return Response({"error": str(update_error)}, status=500)
+        if not update_result:
+            return Response({"error": "Profile not found"}, status=404)
 
         return Response({
-            "message": "Profile saved successfully",
-            "profile": profile_result[0]
+            "message": "Profile updated successfully",
+            "profile": update_result[0]
         })
 
     except Exception as e:
         return Response({"error": f"Server error: {str(e)}"}, status=500)
-
-
-
 # -------------------- SAVE CTU VET PROFILE --------------------
-# -------------------- SAVE DVMF PROFILE --------------------
 @api_view(["POST"])
-def save_dvmf_profile(request):
+def save_dvmf_user_profile(request):
     """
-    Save first-time DVMF Vet profile:
+    Save first-time CTU Vet profile:
     - fname, lname, phone, email
-    - Uses Supabase table 'dvmf_vet_profile'
+    - Uses Supabase table 'ctu_vet_profile'
     """
     try:
         # 1️⃣ Get token to identify user
@@ -446,60 +518,6 @@ def save_dvmf_profile(request):
         return Response({"error": f"Server error: {str(e)}"}, status=500)
 
 
-# -------------------- UPDATE CTU VET PROFILE --------------------
-# -------------------- UPDATE DVMF PROFILE -------------------- 
-@api_view(["POST"])
-def update_dvmf_profile(request):
-    """
-    Update existing DVMF Vet profile
-    """
-    try:
-        token = request.COOKIES.get("access_token")
-        if not token:
-            return Response({"error": "Authentication required"}, status=401)
-
-        payload = jwt.decode(token, options={"verify_signature": False})
-        dvmf_id = payload.get("sub")
-        if not dvmf_id:
-            return Response({"error": "Invalid token"}, status=401)
-
-        data = request.data
-        update_data = {}
-
-        if "dvmf_fname" in data:
-            update_data["dvmf_fname"] = data["dvmf_fname"].strip()
-        if "dvmf_lname" in data:
-            update_data["dvmf_lname"] = data["dvmf_lname"].strip()
-        if "dvmf_email" in data:
-            update_data["dvmf_email"] = data["dvmf_email"].strip()
-        if "dvmf_phonenum" in data:
-            update_data["dvmf_phonenum"] = data["dvmf_phonenum"]
-
-        if not update_data:
-            return Response({"error": "No fields provided to update"}, status=400)
-
-        # Supabase update
-        response = sr_client.table("dvmf_user_profile").update(update_data).eq("dvmf_id", dvmf_id).execute()
-
-        # ✅ Safe handling
-        update_error = getattr(response, "error", None)
-        update_result = getattr(response, "data", None)
-
-        if update_error:
-            return Response({"error": str(update_error)}, status=500)
-        if not update_result:
-            return Response({"error": "Profile not found"}, status=404)
-
-        return Response({
-            "message": "Profile updated successfully",
-            "profile": update_result[0]
-        })
-
-    except Exception as e:
-        return Response({"error": f"Server error: {str(e)}"}, status=500)
-
-
-
 
 
 
@@ -523,8 +541,8 @@ def get_users(request):
 
         query = sr_client.table("dvmf_user_profile").select("*")
 
-        if current_user_role != "Dvmf-Admin":
-            query = query.eq("dvmf_id", current_user_id)
+        if current_user_role != "Ctu-Admin":
+            query = query.eq("ctu_id", current_user_id)
 
         response = query.execute()
 
@@ -546,7 +564,6 @@ def get_users(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
     
 
 # --------------------NOTIFICATIONS--------------------
@@ -554,94 +571,93 @@ def get_users(request):
 @api_view(["GET"])
 def get_vetnotifications(request):
     """
-    Fetch notifications related only to veterinarians:
-    - New registration
+    Fetch notifications related ONLY to veterinarians and med record access:
+    - New registration (pending)
     - Approved
     - Declined
-    - Vet actions on horses
+    - Pending medical record access requests
     """
     try:
         manila_tz = datetime.timezone(datetime.timedelta(hours=8))
 
-        # 1️⃣ Fetch all vet profiles joined with users (status + role)
+        # 1️⃣ Fetch vet profiles with user info
         vets_res = sr_client.table("vet_profile") \
             .select("vet_id, vet_fname, vet_lname, created_at, users(status, role)") \
             .execute()
 
-        # 2️⃣ Get existing notifications to avoid duplicates
-        existing_res = sr_client.table("notification").select("id").execute()
-        existing_ids = {row["id"] for row in (existing_res.data or [])}
+        # 2️⃣ Get existing vet-related notification IDs only
+        existing_res = sr_client.table("notification") \
+            .select("id, notif_message") \
+            .execute()
+
+        existing_ids = {
+            row["id"] for row in (existing_res.data or [])
+            if "veterinarian" in row.get("notif_message", "").lower()
+               or "vet." in row.get("notif_message", "").lower()
+        }
 
         notifications_to_insert = []
 
-        # ✅ Pending veterinarians
-        pending_vets = [
-            v for v in (vets_res.data or [])
-            if v.get("users", {}).get("status", "").lower() == "pending" and
-               v.get("users", {}).get("role", "").lower() == "veterinarian"
-        ]
-        for vet in pending_vets:
+        # ---------------- VETS ---------------- #
+        def add_vet_notif(vet, status_label, message_prefix):
             vet_id = str(vet.get("vet_id"))
             if vet_id in existing_ids:
-                continue
+                return
             vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
             created_at = vet.get("created_at")
             dt_ph = (datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
                      .astimezone(manila_tz)) if created_at else datetime.datetime.now(manila_tz)
             notifications_to_insert.append({
                 "id": vet_id,
-                "notif_message": f"New veterinarian registered: Dr. {vet_name}.",
+                "notif_message": f"{message_prefix} Dr. {vet_name}.",
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
             })
 
-        # ✅ Approved veterinarians
-        approved_vets = [
-            v for v in (vets_res.data or [])
-            if v.get("users", {}).get("status", "").lower() == "approved" and
-               v.get("users", {}).get("role", "").lower() == "veterinarian"
-        ]
-        for vet in approved_vets:
-            vet_id = str(vet.get("vet_id"))
-            if vet_id in existing_ids:
+        for vet in (vets_res.data or []):
+            role = vet.get("users", {}).get("role", "").lower()
+            status = vet.get("users", {}).get("status", "").lower()
+            if role != "veterinarian":
                 continue
-            vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
-            created_at = vet.get("created_at")
-            dt_ph = (datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                     .astimezone(manila_tz)) if created_at else datetime.datetime.now(manila_tz)
-            notifications_to_insert.append({
-                "id": vet_id,
-                "notif_message": f"New veterinarian approved: Dr. {vet_name}.",
-                "notif_date": dt_ph.strftime("%Y-%m-%d"),
-                "notif_time": dt_ph.strftime("%H:%M:%S"),
-            })
+            if status == "pending":
+                add_vet_notif(vet, status, "New veterinarian registered:")
+            elif status == "approved":
+                add_vet_notif(vet, status, "New veterinarian approved:")
+            elif status == "declined":
+                add_vet_notif(vet, status, "Veterinarian declined:")
 
-        # ✅ Declined veterinarians
-        declined_vets = [
-            v for v in (vets_res.data or [])
-            if v.get("users", {}).get("status", "").lower() == "declined" and
-               v.get("users", {}).get("role", "").lower() == "veterinarian"
+        # ---------------- MEDICAL RECORD ACCESS REQUESTS ---------------- #
+        medreq_res = sr_client.table("medrec_access_request") \
+            .select("request_id, vet_id, horse_id, request_status, requested_at, vet_profile(vet_fname, vet_lname), horse_profile(horse_name)") \
+            .execute()
+
+        pending_requests = [
+            r for r in (medreq_res.data or [])
+            if r.get("request_status", "").lower() == "pending"
         ]
-        for vet in declined_vets:
-            vet_id = str(vet.get("vet_id"))
-            if vet_id in existing_ids:
+
+        for req in pending_requests:
+            req_id = str(req.get("request_id"))
+            if req_id in existing_ids:
                 continue
-            vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
-            created_at = vet.get("created_at")
-            dt_ph = (datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                     .astimezone(manila_tz)) if created_at else datetime.datetime.now(manila_tz)
+            vet_name = f"{req.get('vet_profile', {}).get('vet_fname','')} {req.get('vet_profile', {}).get('vet_lname','')}".strip()
+            horse_name = req.get("horse_profile", {}).get("horse_name", "Unknown Horse")
+            requested_at = req.get("requested_at")
+            dt_ph = (datetime.datetime.fromisoformat(requested_at.replace("Z", "+00:00"))
+                     .astimezone(manila_tz)) if requested_at else datetime.datetime.now(manila_tz)
+
             notifications_to_insert.append({
-                "id": vet_id,
-                "notif_message": f"Veterinarian declined: Dr. {vet_name}.",
+                "id": req_id,
+                "notif_message": f"Vet. {vet_name} requested access to {horse_name}'s medical records.",
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
             })
 
-        # ✅ Insert notifications for vets only
+        # ---------------- INSERT NEW NOTIFS ---------------- #
         for notif in notifications_to_insert:
             sr_client.table("notification").insert(notif).execute()
 
-        # 3️⃣ Fetch all notifications (latest first)
+        # 3️⃣ Fetch all vet-related notifications (latest first)
         all_notifs_res = sr_client.table("notification") \
             .select("*") \
             .order("notif_date", desc=True) \
@@ -651,10 +667,9 @@ def get_vetnotifications(request):
         notifications = []
         for row in (all_notifs_res.data or []):
             notif_msg = row.get("notif_message", "")
-            # Only include veterinarian messages
-            if "veterinarian" not in notif_msg.lower():
+            # Only include if message is clearly vet-related
+            if "veterinarian" not in notif_msg.lower() and "vet." not in notif_msg.lower():
                 continue
-
             date_iso = f"{row['notif_date']}T{row['notif_time']}+08:00"
             notifications.append({
                 "id": row["id"],
@@ -667,6 +682,7 @@ def get_vetnotifications(request):
     except Exception as e:
         print("Error in get_vetnotifications:", e)
         return Response({"error": str(e)}, status=500)
+
 
 
 
@@ -725,20 +741,20 @@ def get_directory_profiles(request):
 
 
 @api_view(['GET'])
-def display_dvmf_profiles(request):
+def display_ctu_profiles(request):
     """
-    Fetch all DVMF VetMed profiles.
+    Fetch all CTU VetMed profiles.
     Non-admin users only get their own profile.
     """
     user_id = request.GET.get("user_id")
     role = request.GET.get("role", "")
 
     try:
-        query = sr_client.table("dvmf_user_profile").select("*")
+        query = sr_client.table("ctu_vet_profile").select("*")
 
         # Non-admin users only see their own record
         if role != "admin" and user_id:
-            query = query.eq("dvmf_id", user_id)
+            query = query.eq("ctu_id", user_id)
 
         response = query.execute()
         data = response.data or []
@@ -747,19 +763,19 @@ def display_dvmf_profiles(request):
         profiles = []
         for p in data:
             profiles.append({
-                "id": p.get("dvmf_id"),
+                "id": p.get("ctu_id"),
                 "dvmf_fname": p.get("dvmf_fname"),
                 "dvmf_lname": p.get("dvmf_lname"),
                 "dvmf_email": p.get("dvmf_email"),
-                "dvmf_phonenum": p.get("dvmf_phonenum"),
-                "role": p.get("role") or "Dvmf-VetMed",
+                "ctu_phonenum": p.get("ctu_phonenum"),
+                "role": p.get("role") or "Dvmf",
                 "status": p.get("status") or "pending"
             })
 
         return Response(profiles, status=status.HTTP_200_OK)
 
     except Exception as e:
-        print("Error fetching DVMF profiles:", e)
+        print("Error fetching CTU profiles:", e)
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -865,7 +881,7 @@ def update_ctu_profile(request):
 @api_view(["POST"])
 def dvmf_change_password(request):
     """
-    Change password for the logged-in DVMF VetMed user
+    Change password for the logged-in CTU VetMed user
     """
     try:
         # 🔑 Get token from cookies
@@ -954,7 +970,7 @@ def get_current_user(request):
 def fetch_users(request):
     try:
         # kuha sa profiles
-        profiles_res = sr_client.table("ctu_vet_profile").select("*").execute()
+        profiles_res = sr_client.table("dvmf_user_profile").select("*").execute()
 
         # kuha sa users (id, role, status)
         users_res = sr_client.table("users").select("id, role, status").execute()
@@ -962,13 +978,13 @@ def fetch_users(request):
 
         profiles = []
         for p in profiles_res.data or []:
-            user_data = users_map.get(p.get("ctu_id"), {})
+            user_data = users_map.get(p.get("dvmf_id"), {})
             profiles.append({
-                "id": p.get("ctu_id"),
-                "ctu_fname": p.get("ctu_fname"),
-                "ctu_lname": p.get("ctu_lname"),
-                "ctu_email": p.get("ctu_email"),
-                "ctu_phonenum": p.get("ctu_phonenum"),
+                "id": p.get("dvmf_id"),
+                "dvmf_fname": p.get("dvmf_fname"),
+                "dvmf_lname": p.get("dvmf_lname"),
+                "dvmf_email": p.get("dvmf_email"),
+                "dvmf_phonenum": p.get("dvmf_phonenum"),
                 # override role + status with data from users table
                 "role": user_data.get("role", "N/A"),
                 "status": user_data.get("status", "pending"),
@@ -987,19 +1003,19 @@ def fetch_users(request):
 from django.http import JsonResponse
 from rest_framework.decorators import api_view
 
-# -------------------- Deactivate DVMF User --------------------
+# -------------------- Deactivate User --------------------
 @api_view(['POST'])
 def deactivate_user(request, user_id):
     try:
         # Check if user exists
-        result = sr_client.table("dvmf_user_profile").select("*").eq("dvmf_id", user_id).execute()
+        result = sr_client.table("users").select("*").eq("id", user_id).execute()
         user = result.data[0] if result.data else None
 
         if not user:
             return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
 
         # Update status
-        sr_client.table("dvmf_user_profile").update({"status": "deactivated"}).eq("dvmf_id", user_id).execute()
+        sr_client.table("users").update({"status": "deactivated"}).eq("id", user_id).execute()
 
         return JsonResponse({"message": "User deactivated successfully"}, status=200)
 
@@ -1007,18 +1023,20 @@ def deactivate_user(request, user_id):
         return JsonResponse({"error": str(e)}, status=500)
 
 
-# -------------------- Reactivate DVMF User --------------------
+
+
+# -------------------- Reactivate User --------------------
 @api_view(['POST'])
 def reactivate_user(request, user_id):
     try:
-        result = sr_client.table("dvmf_user_profile").select("*").eq("dvmf_id", user_id).execute()
+        result = sr_client.table("users").select("*").eq("id", user_id).execute()
         user = result.data[0] if result.data else None
 
         if not user:
             return JsonResponse({"error": f"User with id {user_id} not found"}, status=404)
 
         # Update to approved (active)
-        sr_client.table("dvmf_user_profile").update({"status": "approved"}).eq("dvmf_id", user_id).execute()
+        sr_client.table("users").update({"status": "approved"}).eq("id", user_id).execute()
 
         return JsonResponse({"message": "User reactivated successfully"}, status=200)
 
@@ -1132,6 +1150,7 @@ def search_vets(request):
 # -------------------- CREATE POST --------------------
 
 
+# -------------------- HELPER FUNCTIONS --------------------
 def _get_user_from_cookie(request):
     token = request.COOKIES.get("access_token")
     if not token:
@@ -1156,65 +1175,141 @@ def _get_user_from_cookie(request):
         logging.exception("Supabase auth request failed")
         return None, Response({"error": "Auth service unavailable"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-
+# -------------------- CREATE ANNOUNCEMENT --------------------
 @api_view(["POST"])
 def create_post(request):
-    """Create a post in Supabase announcement table"""
+    """
+    Create an announcement with optional images.
+    Images are uploaded to Supabase 'announcement-img' bucket.
+    Timestamps use UTC.
+    """
+    import json
+    import base64
+    import random
+    import logging
+    from datetime import datetime, timezone
 
-    # 🔐 Get user from cookie (Supabase auth)
     user_id, error_response = _get_user_from_cookie(request)
     if error_response:
-        return error_response  # return 401 if not authenticated
+        return error_response
 
-    # 📌 Request data
     title = (request.data.get("announce_title") or "CTU Announcement").strip()
     content = (request.data.get("announce_content") or "").strip()
-    image = request.data.get("announce_img")  # now None if not provided
+    images_data = request.data.get("announce_img", [])
 
-    if not content and not image:
-        return Response({"error": "Content or image is required"},
-                        status=status.HTTP_400_BAD_REQUEST)
+    if not content and not images_data:
+        return Response({"error": "Content or image is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    from datetime import datetime, timezone
     now_iso = datetime.now(timezone.utc).isoformat()
+    image_urls = []
 
-    # 📌 Insert row
+    for idx, img_b64 in enumerate(images_data):
+        try:
+            # Validate base64 image
+            if ";base64," not in img_b64:
+                logging.warning(f"Skipping invalid image at index {idx}")
+                continue
+
+            format, imgstr = img_b64.split(";base64,")
+            ext = format.split("/")[-1]
+            timestamp = int(datetime.now().timestamp())
+            file_name = f"{user_id}_{timestamp}_{random.randint(1000,9999)}.{ext}"
+            file_bytes = base64.b64decode(imgstr)
+
+            # Optional: delete first if exists to mimic overwrite
+            try:
+                sr_client.storage.from_("announcement-img").remove([file_name])
+            except Exception:
+                pass  # ignore if file does not exist
+
+            # Upload to Supabase
+            print(f"[DEBUG] Uploading file: {file_name}")
+            upload_res = sr_client.storage.from_("announcement-img").upload(
+                file_name,
+                file_bytes,
+                {"content-type": f"image/{ext}"}
+            )
+            print(f"[DEBUG] Upload response: {upload_res}")
+
+            # Get public URL
+            public_url = sr_client.storage.from_("announcement-img").get_public_url(file_name)
+            print(f"[DEBUG] Public URL: {public_url}")
+
+            if public_url and public_url.strip():
+                image_urls.append(public_url)
+            else:
+                logging.error(f"Failed to get public URL for {file_name}")
+
+        except Exception as e:
+            logging.exception(f"Image processing/upload failed at index {idx}: {e}")
+            continue
+
+    # Prepare row for insert
     row = {
-    # "announce_id": str(user_id),  # REMOVE THIS
-    "announce_title": title,
-    "announce_content": content,
-    "announce_img": request.data.get("announce_img"),  # or None if not provided
-    "announce_date": now_iso,
-    "user_id": user_id,  # ✅ Required to satisfy NOT NULL constraint
-}
+        "announce_title": title,
+        "announce_content": content,
+        "announce_img": json.dumps(image_urls),  # Convert list to JSON string
+        "announce_date": now_iso,
+        "user_id": user_id,
+    }
 
+    print(f"[DEBUG] Row to insert: {row}")
 
     try:
         result = sr_client.table("announcement").insert(row).execute()
+        print(f"[DEBUG] Insert result: {result}")
+
         if getattr(result, "data", None):
             return Response({"post": result.data[0]}, status=status.HTTP_201_CREATED)
-        return Response({"error": "Failed to create post"},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": "Failed to create post"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     except Exception:
         logging.exception("Supabase insert failed")
-        return Response({"error": "Failed to create post"},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": "Failed to create post"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# -------------------- GET ANNOUNCEMENTS --------------------
 @api_view(["GET"])
 def get_announcements(request):
+    import json
+    import logging
+
     try:
-        # Fetch all rows from Supabase announcement table
         result = sr_client.table("announcement").select("*").execute()
         data = result.data or []
 
-        return Response({"data": data}, status=200)
+        for row in data:
+            imgs = row.get("announce_img", "[]")  # default to JSON empty array
+            normalized_urls = []
+
+            # Decode JSON string if needed
+            if isinstance(imgs, str):
+                try:
+                    imgs_list = json.loads(imgs)
+                except json.JSONDecodeError:
+                    imgs_list = []
+            elif isinstance(imgs, list):
+                imgs_list = imgs
+            else:
+                imgs_list = []
+
+            # Normalize each image URL
+            for img in imgs_list:
+                if isinstance(img, str) and img.strip():
+                    if img.startswith("http"):
+                        normalized_urls.append(img)
+                    else:
+                        # If stored as filename, get public URL
+                        public_url = sr_client.storage.from_("announcement-img").get_public_url(img)
+                        if public_url:
+                            normalized_urls.append(public_url)
+
+            row["announce_img"] = normalized_urls  # Always a list
+
+        return Response({"data": data}, status=status.HTTP_200_OK)
+
     except Exception:
         logging.exception("Failed to fetch announcements")
-        return Response({"error": "Failed to fetch announcements"}, status=500)
-    
-
-
+        return Response({"error": "Failed to fetch announcements"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # -------------------- SEARCH VETS --------------------
 # -------------------- SEARCH VETS --------------------
@@ -1263,11 +1358,10 @@ def search_vet(request):
 @api_view(['GET'])
 def get_horses(request):
     """
-    Fetch all horses with owner info, current medical record,
-    treatment history, and medrec history, flattened.
+    Fetch all horses with owner info only.
     """
     try:
-        # 1️⃣ Fetch horses with owner info and current medical record
+        # Fetch horses with owner info only
         horses_response = sr_client.table("horse_profile").select("""
             horse_id,
             horse_name,
@@ -1288,22 +1382,6 @@ def get_horses(request):
                 op_city,
                 op_municipality,
                 users (status, role)
-            ),
-            horse_medrecord (
-                medrec_id,
-                medrec_date,
-                medrec_heart_rate,
-                medrec_resp_rate,
-                medrec_bodytemp,
-                medrec_concern,
-                medrec_clinical_sign,
-                medrec_lab_results,
-                medrec_lab_img,
-                medrec_diagnosis,
-                medrec_treatment,
-                medrec_remark,
-                vet_id,
-                vet_profile (vet_fname, vet_lname)
             )
         """).execute()
 
@@ -1321,85 +1399,204 @@ def get_horses(request):
             horse["status"] = user_info.get("status", "Unknown")
             horse["role"] = user_info.get("role", "N/A")
 
-            # Remove owner object
             if "horse_op_profile" in horse:
                 del horse["horse_op_profile"]
-
-            # --- Medical record ---
-            medrec = horse.get("horse_medrecord")
-            if medrec:
-                # Flatten vet info
-                medrec["vet_name"] = " ".join(filter(None, [
-                    medrec.get("vet_profile", {}).get("vet_fname"),
-                    medrec.get("vet_profile", {}).get("vet_lname")
-                ]))
-                if "vet_profile" in medrec:
-                    del medrec["vet_profile"]
-
-                medrec_id = medrec.get("medrec_id")
-
-                # --- Fetch medrec_history ---
-                histories_response = sr_client.table("medrec_history").select("""
-                    history_id,
-                    change_date,
-                    prev_heart_rate,
-                    prev_resp_rate,
-                    prev_bodytemp,
-                    prev_concern,
-                    prev_clinical_sign,
-                    prev_lab_results,
-                    prev_lab_img,
-                    prev_diagnosis,
-                    prev_remark,
-                    vet_id,
-                    vet_profile (vet_fname, vet_lname)
-                """).eq("medrec_id", medrec_id).execute()
-
-                medrec_histories = []
-                for h in histories_response.data:
-                    h["vet_name"] = " ".join(filter(None, [
-                        h.get("vet_profile", {}).get("vet_fname"),
-                        h.get("vet_profile", {}).get("vet_lname")
-                    ]))
-                    if "vet_profile" in h:
-                        del h["vet_profile"]
-                    medrec_histories.append(h)
-
-                medrec["medrec_history"] = medrec_histories
-
-                # --- Fetch treatment_history ---
-                treatments_response = sr_client.table("treatment_history").select("""
-                    treatment_id,
-                    treatment_date,
-                    treatment_info,
-                    treatment_remark,
-                    vet_id,
-                    vet_profile (vet_fname, vet_lname)
-                """).eq("medrec_id", medrec_id).execute()
-
-                treatments = []
-                for t in treatments_response.data:
-                    t["vet_name"] = " ".join(filter(None, [
-                        t.get("vet_profile", {}).get("vet_fname"),
-                        t.get("vet_profile", {}).get("vet_lname")
-                    ]))
-                    if "vet_profile" in t:
-                        del t["vet_profile"]
-                    treatments.append(t)
-
-                medrec["treatment_history"] = treatments
-
-            horse["medical_record"] = medrec
-            if "horse_medrecord" in horse:
-                del horse["horse_medrecord"]
 
             horse_list.append(horse)
 
         return Response(horse_list, status=200)
 
     except Exception as e:
-        logging.exception("Error fetching horses with histories")
+        logging.exception("Error fetching horses")
         return Response(
             {"error": "Internal server error", "details": str(e)},
             status=500
         )
+
+
+
+
+
+# -------------------- SOS REQUESTS ENDPOINT --------------------
+@api_view(["GET"])
+def get_sos_requests(request):
+    """
+    Fetch all SOS requests from Supabase 'sos_requests' table.
+    Handles Supabase/network errors gracefully.
+    """
+    try:
+        # Fetch all rows
+        response = sr_client.table("sos_requests").select("*").execute()
+
+        # Access data safely
+        data = getattr(response, "data", None)
+        if data is None:
+            return Response(
+                {"error": "Supabase returned no data or an unexpected response."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Format data for frontend
+        formatted_data = [
+            {
+                "id": item.get("id"),
+                "type": item.get("emergency_type", "Emergency"),
+                "contact": item.get("contact_name", "Unknown Contact"),
+                "phone": item.get("contact_number", "N/A"),
+                "location": item.get("location_text", "No location provided"),
+                "time": item.get("created_at"),
+                "urgent": item.get("status") == "pending" or item.get("urgent") is True,
+            }
+            for item in data
+        ]
+
+        return Response({"sos_requests": formatted_data}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        traceback.print_exc()
+        return Response(
+            {"error": f"An unexpected error occurred: {str(e)}"},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+# -------------------- Access Requests -------------------- #
+@api_view(['GET'])
+def get_access_requests(request):
+    """Fetch all access requests with vet and horse details"""
+    try:
+        # Select all access requests
+        response = sr_client.table("medrec_access_request") \
+            .select(
+                """
+                request_id,
+                request_status,
+                requested_at,
+                approved_at,
+                approved_by,
+                note,
+                vet_id (
+                    vet_fname,
+                    vet_mname,
+                    vet_lname
+                ),
+                horse_id (
+                    horse_name,
+                    horse_breed,
+                    horse_dob
+                )
+                """
+            ).execute()
+
+        # Format data
+        formatted_data = []
+        for req in response.data:
+            formatted_data.append({
+                "request_id": req.get("request_id"),
+                "status": req.get("request_status"),
+                "requested_at": req.get("requested_at"),
+                "approved_at": req.get("approved_at"),
+                "approved_by": req.get("approved_by"),
+                "note": req.get("note") or "",
+                "vet_name": " ".join(filter(None, [
+                    req["vet_id"].get("vet_fname"),
+                    req["vet_id"].get("vet_mname"),
+                    req["vet_id"].get("vet_lname")
+                ])) if req.get("vet_id") else None,
+                "horse_name": req["horse_id"].get("horse_name") if req.get("horse_id") else None,
+                "horse_breed": req["horse_id"].get("horse_breed") if req.get("horse_id") else None,
+                "horse_dob": req["horse_id"].get("horse_dob") if req.get("horse_id") else None,
+            })
+
+        return Response(formatted_data)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+# -------------------- APPROVE REQUEST --------------------
+@api_view(['PATCH'])
+def approve_access_request(request, request_id):
+    """Approve an access request"""
+    try:
+        # Update the request to approved
+        response = sr_client.table("medrec_access_request") \
+            .update({
+                "request_status": "approved",
+                "approved_at": timezone.now().isoformat(),
+                "approved_by": "CTU-VET"   # 👈 force approver name
+            }) \
+            .eq("request_id", str(request_id)) \
+            .execute()
+
+        if not response.data:
+            return Response({"error": "Request not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(
+            {
+                "message": "Access request successfully approved ✅",
+                "data": response.data[0]
+            },
+            status=status.HTTP_200_OK
+        )
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# -------------------- DECLINE REQUEST --------------------
+@api_view(['PATCH'])
+def decline_access_request(request, request_id):
+    """Decline an access request"""
+    try:
+        response = sr_client.table("medrec_access_request") \
+            .update({
+                "request_status": "declined",
+                "approved_at": timezone.now().isoformat(),
+                "approved_by": request.user.id if request.user.is_authenticated else None,
+                "note": request.data.get("note", "")
+            }) \
+            .eq("request_id", str(request_id)) \
+            .execute()
+
+        if not response.data:
+            return Response({"error": "Request not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response({"message": "Access request declined", "data": response.data[0]})
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+
+
+
+
+
+
+
+
+@api_view(["PATCH"])
+
+def edit_post(request, post_id):
+    try:
+        new_content = request.data.get("announce_content")
+        if not new_content:
+            return Response({"error": "No content provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Update Supabase announcement
+        result = sr_client.table("announcement").update(
+            {"announce_content": new_content}
+        ).eq("announce_id", str(post_id)).execute()
+
+        if result.data:
+            return Response(
+                {"message": "Post updated successfully", "data": result.data},
+                status=status.HTTP_200_OK,
+            )
+        else:
+            return Response({"error": "Post not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,17 +1,100 @@
 import React, { useState, useEffect } from 'react';
-import {Calendar, FileText, Search, Clock, Bell, Eye, Trash2, PawPrint, User, Phone, X, AlertTriangle, Tag, Clock10Icon} from 'lucide-react';
+import {Calendar, FileText, Search, Clock, Bell, Eye, Trash2, PawPrint, User, Phone, X, AlertTriangle, Tag, Clock10Icon, CheckCircle, XCircle, MessageCircle, ChevronLeft, ChevronRight, RefreshCw} from 'lucide-react';
 import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
 import ProfileModal from '@/components/modal/profileModal';
+import NotificationModal from '@/components/modal/notificationModal';
 
 const API_BASE = "http://localhost:8000/api/veterinarian";
+
+// Alert Component - Compact version
+const Alert = ({ message, type = 'success', onClose, duration = 5000 }) => {
+  useEffect(() => {
+    if (duration > 0) {
+      const timer = setTimeout(() => {
+        onClose();
+      }, duration);
+      return () => clearTimeout(timer);
+    }
+  }, [duration, onClose]);
+
+  const getAlertStyles = () => {
+    const baseStyles = "fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] px-4 py-3 rounded-xl shadow-lg border backdrop-blur-sm transition-all duration-300 ease-in-out flex items-center space-x-3 max-w-sm";
+    
+    switch (type) {
+      case 'success':
+        return `${baseStyles} bg-green-50 border-green-200 text-green-800`;
+      case 'error':
+        return `${baseStyles} bg-red-50 border-red-200 text-red-800`;
+      case 'warning':
+        return `${baseStyles} bg-yellow-50 border-yellow-200 text-yellow-800`;
+      case 'info':
+        return `${baseStyles} bg-blue-50 border-blue-200 text-blue-800`;
+      default:
+        return `${baseStyles} bg-gray-50 border-gray-200 text-gray-800`;
+    }
+  };
+
+  const getIcon = () => {
+    switch (type) {
+      case 'success':
+        return <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />;
+      case 'error':
+        return <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />;
+      case 'warning':
+        return <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0" />;
+      case 'info':
+        return <Clock className="w-5 h-5 text-blue-600 flex-shrink-0" />;
+      default:
+        return <Bell className="w-5 h-5 text-gray-600 flex-shrink-0" />;
+    }
+  };
+
+  return (
+    <div className={getAlertStyles()}>
+      {getIcon()}
+      <span className="font-medium text-sm whitespace-nowrap">{message}</span>
+      <button
+        onClick={onClose}
+        className="flex-shrink-0 p-1 hover:bg-black/10 rounded-full transition-colors duration-200 ml-2"
+      >
+        <X className="w-4 h-4" />
+      </button>
+    </div>
+  );
+};
+
+const SkeletonTableRow = () => (
+  <tr className="animate-pulse">
+    <td className="px-6 py-4 text-center">
+      <div className="h-4 bg-gray-200 rounded mx-auto w-3/4"></div>
+      <div className="h-3 bg-gray-200 rounded mx-auto w-1/2 mt-2"></div>
+    </td>
+    <td className="px-6 py-4 text-center">
+      <div className="h-4 bg-gray-200 rounded mx-auto w-2/3"></div>
+    </td>
+    <td className="px-6 py-4 text-center">
+      <div className="h-4 bg-gray-200 rounded mx-auto w-2/3"></div>
+    </td>
+    <td className="px-6 py-4 text-center">
+      <div className="h-4 bg-gray-200 rounded mx-auto w-2/3"></div>
+    </td>
+    <td className="px-6 py-4 text-center">
+      <div className="h-6 bg-gray-200 rounded-full mx-auto w-20"></div>
+    </td>
+    <td className="px-6 py-4 text-center">
+      <div className="flex justify-center space-x-2">
+        <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+        <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+      </div>
+    </td>
+  </tr>
+);
 
 const VetAppointmentRequest = () => {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [selectedAppointment, setSelectedAppointment] = useState(null);
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
-  const [deleteAppointment, setDeleteAppointment] = useState(null);
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [searchFocus, setSearchFocus] = useState(false);
@@ -19,8 +102,26 @@ const VetAppointmentRequest = () => {
   const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false);
   const [declineReason, setDeclineReason] = useState(""); 
   const [selectedDeclineReason, setSelectedDeclineReason] = useState("");
-
+  const [isLoading, setIsLoading] = useState(true);
   const [appointments, setAppointments] = useState([]);
+  const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [alert, setAlert] = useState({ show: false, message: '', type: 'success' });
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  // Show alert function
+  const showAlert = (message, type = 'success') => {
+    setAlert({ show: true, message, type });
+  };
+
+  // Hide alert function
+  const hideAlert = () => {
+    setAlert(prev => ({ ...prev, show: false }));
+  };
 
   useEffect(() => {
     fetchAppointments();
@@ -44,7 +145,14 @@ const VetAppointmentRequest = () => {
     fetchVetProfile();
   }, []);
 
+  // Reset to first page when filters or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedFilter, searchTerm]);
+
 const fetchAppointments = async () => {
+  setIsLoading(true);
+  setIsRefreshing(true);
   try {
     const response = await fetch(`${API_BASE}/get_all_appointments/`, {
       method: 'GET',
@@ -65,7 +173,7 @@ const fetchAppointments = async () => {
         time: app.app_time,
         type: app.app_service,
         status: app.app_status,
-        notes: app.app_note,
+        complain: app.app_complain,
         declineReason: app.decline_reason || "",
       }));
 
@@ -81,8 +189,17 @@ const fetchAppointments = async () => {
     }
   } catch (err) {
     console.error("Failed to fetch appointments:", err);
+    showAlert('Failed to fetch appointments', 'error');
+  } finally {
+    setIsLoading(false);
+    setIsRefreshing(false);
   }
 };
+
+  const handleRefresh = () => {
+    fetchAppointments();
+    showAlert('Appointments refreshed', 'success');
+  };
 
   const handleDeclineWithReason = async (appointmentId, reason) => {
     try {
@@ -96,7 +213,7 @@ const fetchAppointments = async () => {
       });
       const data = await response.json();
       if (response.ok) {
-        alert("Appointment declined successfully");
+        showAlert("Appointment declined", 'success');
         // Close both modals
         setIsDeclineModalOpen(false);
         setIsDetailsModalOpen(false);
@@ -106,11 +223,11 @@ const fetchAppointments = async () => {
         // Refresh appointments if needed
         fetchAppointments();
       } else {
-        alert(data.error || "Failed to decline appointment");
+        showAlert(data.error || "Failed to decline appointment", 'error');
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      showAlert("Something went wrong", 'error');
     }
   };
 
@@ -122,59 +239,17 @@ const fetchAppointments = async () => {
       });
       const data = await response.json();
       if (response.ok) {
-        alert("Appointment approved successfully");
+        showAlert("Appointment approved", 'success');
         setIsDetailsModalOpen(false);
         setSelectedAppointment(null);
         fetchAppointments();
       } else {
-        alert(data.error || "Failed to approve appointment");
+        showAlert(data.error || "Failed to approve appointment", 'error');
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      showAlert("Something went wrong", 'error');
     }
-  };
-
-const confirmDeleteAppointment = async () => {
-  if (!deleteAppointment) return;
-
-  try {
-    const response = await fetch(`${API_BASE}/delete_appointment/${deleteAppointment.id}/`,
-      {
-        method: "PUT",
-        credentials: "include",
-      }
-    );
-
-    const contentType = response.headers.get("content-type");
-    let data = null;
-
-    if (contentType && contentType.includes("application/json")) {
-      data = await response.json();
-      console.log("JSON response data:", data);
-    } else {
-      const text = await response.text();
-      alert("Server returned an unexpected response. Check console for details.");
-      return;
-    }
-
-    if (response.ok) {
-      alert("Appointment deleted successfully");
-      setAppointments(prev => prev.filter(a => a.id !== deleteAppointment.id));
-      setIsDeleteModalOpen(false);
-      setDeleteAppointment(null);
-    } else {
-      alert(data.error || "Failed to delete appointment");
-    }
-  } catch (err) {
-    console.error(err);
-    alert("Something went wrong");
-  }
-};
-
-  const handleDeleteAppointment = (appointment) => {
-    setDeleteAppointment(appointment);
-    setIsDeleteModalOpen(true);
   };
 
   const handleViewAppointment = (appointment) => {
@@ -193,7 +268,36 @@ const confirmDeleteAppointment = async () => {
       default:
         return 'bg-gray-100 text-gray-700 border-gray-200'; 
     }
-};
+  };
+
+  // ---------------- GET PROFILE DISPLAY ----------------
+  const getProfileDisplay = () => {
+    if (!vetProfile) {
+      return {
+        type: 'initials',
+        content: ''
+      };
+    }
+
+    // Check if there's a valid profile photo
+    if (vetProfile.vet_profile_photo && 
+        vetProfile.vet_profile_photo.trim() !== '' && 
+        !vetProfile.vet_profile_photo.includes('default') &&
+        vetProfile.vet_profile_photo.startsWith('http')) {
+      return {
+        type: 'photo',
+        content: vetProfile.vet_profile_photo
+      };
+    }
+
+    // Fallback to initials
+    const firstInitial = vetProfile.vet_fname?.[0] || '';
+    const lastInitial = vetProfile.vet_lname?.[0] || '';
+    return {
+      type: 'initials',
+      content: (firstInitial + lastInitial).toUpperCase() || 'V'
+    };
+  };
 
 const filteredAppointments = appointments
   .filter(appointment => appointment.status !== "deleted" && appointment.status !== "approved") 
@@ -214,6 +318,32 @@ const filteredAppointments = appointments
     );
   });
 
+  // Pagination logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredAppointments.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredAppointments.length / itemsPerPage);
+
+  const paginate = (pageNumber) => setCurrentPage(pageNumber);
+
+  const nextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const prevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  // Generate page numbers for pagination
+  const pageNumbers = [];
+  for (let i = 1; i <= totalPages; i++) {
+    pageNumbers.push(i);
+  }
+
   const filterOptions = [
     { key: 'all', label: 'All Requests', count: appointments.filter(a => a.status !== 'confirmed' && a.status !== 'approved').length },
     { key: 'pending', label: 'Pending Approval', count: appointments.filter(a => a.status === 'pending').length },
@@ -221,9 +351,21 @@ const filteredAppointments = appointments
     { key: 'cancelled', label: 'Cancelled', count: appointments.filter(a => a.status === 'cancelled').length },
   ];
 
+  const profileDisplay = getProfileDisplay();
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-       <Sidebar/>
+      {/* Alert Component */}
+      {alert.show && (
+        <Alert 
+          message={alert.message} 
+          type={alert.type} 
+          onClose={hideAlert}
+          duration={5000}
+        />
+      )}
+      
+      <Sidebar/>
 
     {/* Main Content */}
     <div className="flex-1 flex flex-col">
@@ -235,19 +377,42 @@ const filteredAppointments = appointments
         </div>
 
           <div className="flex items-center space-x-4">
-            <button className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl transition-all duration-200 relative">
+            <button 
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+            <button 
+              onClick={() => setIsNotificationModalOpen(!isNotificationModalOpen)} 
+              className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl relative"
+            >
               <Bell className="w-5 h-5" />
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
-            </button>
-            <button
+            </button>            <button
               onClick={() => setIsProfileModalOpen(true)}
             >
-              <div className="cursor-pointer w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md">
-                <span className="text-white font-semibold text-sm">
-                  {vetProfile ? `${vetProfile.vet_fname?.[0] || ""}${vetProfile.vet_lname?.[0] || ""}` : ""}
-                </span>
+              <div className="cursor-pointer w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md overflow-hidden">
+                {profileDisplay.type === 'photo' ? (
+                  <img 
+                    src={profileDisplay.content} 
+                    alt="Profile" 
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // If image fails to load, fall back to initials
+                      console.error('Profile image failed to load:', profileDisplay.content);
+                      e.target.style.display = 'none';
+                      // The initials will show as fallback due to the gradient background
+                    }}
+                  />
+                ) : (
+                  <span className="text-white font-semibold text-sm">
+                    {profileDisplay.content}
+                  </span>
+                )}
               </div>
-
             </button>
           </div>
         </div>
@@ -255,153 +420,257 @@ const filteredAppointments = appointments
 
       {/* Appointments Content */}
       <div className="flex-1 p-6 overflow-auto">
-        {/* ✅ Search + Filters in same row */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-          {/* Search */}
-          <div
-            className={`relative w-[350px] max-w-full flex items-center bg-white rounded-xl shadow-md overflow-hidden transition-transform duration-200 ${
-              searchFocus ? "scale-105 shadow-xl" : "shadow"
-            }`}
-          >
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 transition-all duration-200" />
-            <input
-              type="text"
-              placeholder="Search horse name or owner name..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onFocus={() => setSearchFocus(true)}
-              onBlur={() => setSearchFocus(false)}
-              className="w-full pl-12 pr-4 py-3 border-none outline-none text-sm text-gray-900 bg-transparent placeholder-gray-400"
-            />
-          </div>
+        
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+            {/* Search */}
+            <div
+              className={`relative w-[350px] max-w-full flex items-center bg-white rounded-xl shadow-md overflow-hidden transition-transform duration-200 ${
+                searchFocus ? "scale-105 shadow-xl" : "shadow"
+              }`}
+            >
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 transition-all duration-200" />
+              <input
+                type="text"
+                placeholder="Search horse name or owner name..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                onFocus={() => setSearchFocus(true)}
+                onBlur={() => setSearchFocus(false)}
+                className="w-full pl-12 pr-4 py-3 border-none outline-none text-sm text-gray-900 bg-transparent placeholder-gray-400"
+              />
+            </div>
 
-          {/* Filters */}
-          <div className="flex items-center justify-between md:justify-end flex-1 space-x-4">
-            <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-md rounded-xl p-1 border border-gray-200">
-              {filterOptions.map((option) => (
-                <button
-                  key={option.key}
-                  onClick={() => setSelectedFilter(option.key)}
-                  className={`cursor-pointer px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 flex items-center space-x-2 ${
-                    selectedFilter === option.key
-                      ? "bg-green-500 text-white shadow-md"
-                      : "text-gray-600 hover:bg-gray-100"
-                  }`}
-                >
-                  <span>{option.label}</span>
-                  <span
-                    className={`cursor-pointer px-2 py-1 rounded-full text-xs ${
+            {/* Filters */}
+            <div className="flex items-center justify-between md:justify-end flex-1 space-x-4">
+              <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-md rounded-xl p-1 border border-gray-200">
+                {filterOptions.map((option) => (
+                  <button
+                    key={option.key}
+                    onClick={() => setSelectedFilter(option.key)}
+                    className={`cursor-pointer px-4 py-2 rounded-lg font-medium text-sm transition-all duration-200 flex items-center space-x-2 ${
                       selectedFilter === option.key
-                        ? "bg-white/20 text-white"
-                        : "bg-gray-100 text-gray-500"
+                        ? "bg-green-500 text-white shadow-md"
+                        : "text-gray-600 hover:bg-gray-100"
                     }`}
                   >
-                    {option.count}
-                  </span>
-                </button>
-              ))}
+                    <span>{option.label}</span>
+                    <span
+                      className={`cursor-pointer px-2 py-1 rounded-full text-xs ${
+                        selectedFilter === option.key
+                          ? "bg-white/20 text-white"
+                          : "bg-gray-100 text-gray-500"
+                      }`}
+                    >
+                      {option.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
       
 
-          {/* Appointments Table */}
-          <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-gray-100 overflow-auto">
+          {/* Appointments Table with Pagination Attached */}
+          <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+            <div className="overflow-auto">
               <table className="min-w-full border-collapse">              
-              <thead className="bg-gray-50 sticky top-0 z-10">
-                <tr>
-                  <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Date & Time</th>
-                  <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Owner Name</th>
-                  <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Horse Name</th>
-                  <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Appointment Type</th>
-                  <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {filteredAppointments.length === 0 ? (
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
-                      <div className="flex flex-col items-center justify-center">
-                        {/* Small Icon */}
-                        <Calendar className="w-12 h-12 text-gray-400 mb-3" />
-                        
-                        {/* Message */}
-                        <p className="text-lg font-medium text-gray-700">No appointment requests found</p>
-                        <p className="text-sm text-gray-500">New requests will appear here when clients book appointments.</p>
-                      </div>
-                    </td>
+                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Date & Time</th>
+                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Owner Name</th>
+                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Horse Name</th>
+                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Appointment Type</th>
+                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Actions</th>
                   </tr>
-                ) : (
-                  filteredAppointments.map((appointment) => (
-                    <tr key={appointment.id} className="hover:bg-gray-50 transition-colors border-b border-gray-100">
-                      <td className="px-6 py-4 text-base text-gray-700 text-center">
-                        <div className="font-medium text-gray-600">{appointment.date}</div>
-                        <div className="text-gray-500 text-sm mt-1">{appointment.time}</div>
-                      </td>                      
-                      <td className="px-6 py-4 text-base text-gray-700 text-center">{appointment.ownerName}</td>
-                      <td className="px-6 py-4 text-base text-gray-900 text-center">{appointment.petName}</td>
-                      <td className="px-6 py-4 text-base text-gray-700 text-center">{appointment.type}</td>
-                      <td className="px-6 py-4 text-center">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(appointment.status)}`}>
-                          {appointment.status === 'pending' ? 'Needs Approval' : appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex justify-center items-center space-x-2 w-full">
-                          {/* View button always visible */}
-                          <button 
-                            onClick={() => handleViewAppointment(appointment)}
-                            className="cursor-pointer p-2 hover:bg-blue-100 rounded-lg transition-colors flex items-center justify-center"
-                            title="View"
-                          >
-                            <Eye className="w-5 h-5 text-gray-400 hover:text-blue-600" />
-                          </button>
-
-                          {/* Delete button only for declined or cancelled, if filter is not 'all' */}
-                          {selectedFilter !== 'all' && (appointment.status === 'declined' || appointment.status === 'cancelled') && (
-                            <button 
-                              onClick={() => handleDeleteAppointment(appointment)}
-                              className="cursor-pointer p-2 hover:bg-red-100 rounded-lg transition-colors flex items-center justify-center"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-5 h-5 text-gray-400 hover:text-red-600" />
-                            </button>
-                          )}
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {isLoading ? (
+                    // Show skeleton rows when loading
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <SkeletonTableRow key={index} />
+                    ))
+                  ) : filteredAppointments.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                        <div className="flex flex-col items-center justify-center">
+                          {/* Small Icon */}
+                          <Calendar className="w-12 h-12 text-gray-400 mb-3" />
+                          
+                          {/* Message */}
+                          <p className="text-lg font-medium text-gray-700">No appointment requests found</p>
+                          <p className="text-sm text-gray-500">New requests will appear here when clients book appointments.</p>
                         </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    currentItems.map((appointment) => (
+                      <tr key={appointment.id} className="hover:bg-gray-50 transition-colors border-b border-gray-100">
+                        <td className="px-6 py-4 text-base text-gray-700 text-center">
+                          <div className="font-medium text-gray-600">{appointment.date}</div>
+                          <div className="text-gray-500 text-sm mt-1">{appointment.time}</div>
+                        </td>                      
+                        <td className="px-6 py-4 text-base text-gray-700 text-center">{appointment.ownerName}</td>
+                        <td className="px-6 py-4 text-base text-gray-900 text-center">{appointment.petName}</td>
+                        <td className="px-6 py-4 text-base text-gray-700 text-center">{appointment.type}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(appointment.status)}`}>
+                            {appointment.status === 'pending' ? 'Needs Approval' : appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex justify-center items-center space-x-2 w-full">
+                            {/* View button always visible */}
+                            <button 
+                              onClick={() => handleViewAppointment(appointment)}
+                              className="cursor-pointer p-2 hover:bg-blue-100 rounded-lg transition-colors flex items-center justify-center"
+                              title="View"
+                            >
+                              <Eye className="w-5 h-5 text-gray-400 hover:text-blue-600" />
+                            </button>
+
+                            {/* Delete button only for declined or cancelled, if filter is not 'all' */}
+                            {selectedFilter !== 'all' && (appointment.status === 'declined' || appointment.status === 'cancelled') && (
+                              <button 
+                                onClick={() => handleDeleteAppointment(appointment)}
+                                className="cursor-pointer p-2 hover:bg-red-100 rounded-lg transition-colors flex items-center justify-center"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-5 h-5 text-gray-400 hover:text-red-600" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls - Attached directly to table */}
+            {filteredAppointments.length > 0 && !isLoading && (
+              <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
+                <div className="text-sm text-gray-600 mb-4 sm:mb-0">
+                  Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to{" "}
+                  <span className="font-medium">
+                    {indexOfLastItem > filteredAppointments.length 
+                      ? filteredAppointments.length 
+                      : indexOfLastItem}
+                  </span> of{" "}
+                  <span className="font-medium">{filteredAppointments.length}</span> results
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  {/* Items per page selector */}
+                  <div className="flex items-center mr-4">
+                    <span className="text-sm text-gray-600 mr-2">Show:</span>
+                    <select
+                      value={itemsPerPage}
+                      onChange={(e) => {
+                        setItemsPerPage(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="border border-gray-300 rounded-md px-2 py-1 text-sm"
+                    >
+                      <option value="5">5</option>
+                      <option value="10">10</option>
+                      <option value="20">20</option>
+                      <option value="50">50</option>
+                    </select>
+                  </div>
+
+                  {/* Previous button */}
+                  <button
+                    onClick={prevPage}
+                    disabled={currentPage === 1}
+                    className={`p-2 rounded-md border ${
+                      currentPage === 1
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  {/* Page numbers */}
+                  <div className="flex space-x-1">
+                    {pageNumbers.map((number) => (
+                      <button
+                        key={number}
+                        onClick={() => paginate(number)}
+                        className={`w-8 h-8 flex items-center justify-center rounded-md border text-sm ${
+                          currentPage === number
+                            ? "bg-green-500 text-white border-green-500"
+                            : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        {number}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Next button */}
+                  <button
+                    onClick={nextPage}
+                    disabled={currentPage === totalPages}
+                    className={`p-2 rounded-md border ${
+                      currentPage === totalPages
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-    {/* Appointment Details Modal */}
+    {/* Appointment Details Modal*/}
     {isDetailsModalOpen && (
-    <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-white shadow-2xl max-w-2xl w-full max-h-[85vh] overflow-hidden border border-gray-200/50">
-
+      <div className="fixed inset-0 z-1000 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="bg-white shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden rounded-2xl border border-gray-200/50 flex flex-col">
+          
           {/* Modal Header */}
-          <div className="bg-white text-gray-800 p-6 sticky top-0 z-10 shadow-sm border-b border-gray-200">
+          <div className="bg-gradient-to-r from-green-50 to-emerald-50 text-gray-800 p-6 sticky top-0 z-10 border-b border-gray-200/60">
             <div className="flex items-center justify-between w-full">
               <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                  <User className="w-6 h-6 text-gray" />
+                <div className="w-12 h-12 bg-white/80 rounded-full flex items-center justify-center shadow-sm border border-gray-200">
+                  <User className="w-6 h-6 text-emerald-600" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold">{selectedAppointment?.ownerName || "Owner Name"}</h2>
-                  <p className="text-gray/80 text-sm">Appointment Details</p>
+                  <h2 className="text-2xl font-bold text-gray-800">{selectedAppointment?.ownerName || "Owner Name"}</h2>
+                  <p className="text-gray-600 text-sm flex items-center gap-1 mt-1">
+                    <Phone className="w-3 h-3" />
+                    {selectedAppointment?.ownerPhone || "No phone provided"}
+                  </p>
                 </div>
               </div>
 
               <div className="flex items-center space-x-3">
                 {/* Status Badge in Header */}
-                <span className={`px-4 py-2 rounded-full text-sm font-medium border ${getStatusColor(selectedAppointment.status)}`}>
-                  {selectedAppointment.status === 'pending' ? 'Needs Approval' :
-                  selectedAppointment.status.charAt(0).toUpperCase() + selectedAppointment.status.slice(1)}
+                <span className={`px-3 py-1.5 rounded-full text-xs font-medium border ${getStatusColor(selectedAppointment.status)} flex items-center gap-1`}>
+                  {selectedAppointment.status === 'pending' ? (
+                    <>
+                      <Clock className="w-3.5 h-3.5" />
+                      Needs Approval
+                    </>
+                  ) : selectedAppointment.status === 'declined' ? (
+                    <>
+                      <XCircle className="w-3.5 h-3.5" />
+                      Declined
+                    </>
+                  ) : selectedAppointment.status === 'cancelled' ? (
+                    <>
+                      <XCircle className="w-3.5 h-3.5" />
+                      Cancelled
+                    </>
+                  ) : (
+                    selectedAppointment.status.charAt(0).toUpperCase() + selectedAppointment.status.slice(1)
+                  )}
                 </span>
 
                 <button 
@@ -409,160 +678,178 @@ const filteredAppointments = appointments
                     setIsDetailsModalOpen(false);
                     setSelectedAppointment(null);
                   }}
-                  className="cursor-pointer p-2 hover:bg-white/20 rounded-full transition-all duration-200 hover:scale-110"
+                  className="cursor-pointer p-2 hover:bg-white rounded-full transition-all duration-200 hover:scale-110"
                 >
-                    <X className="w-6 h-6 text-gray-600 hover:text-red-500" />
-                  </button>
+                  <X className="w-5 h-5 text-gray-500 hover:text-red-500" />
+                </button>
               </div>
             </div>
           </div>
 
-
           {/* Modal Content - Scrollable */}
-          <div className="overflow-y-auto max-h-[calc(85vh-88px)] custom-scrollbar">
-              {selectedAppointment && (
+          <div className="overflow-y-auto flex-1 custom-scrollbar">
+            {selectedAppointment && (
               <div className="p-6 space-y-6">
-
-                  {/* Appointment Information */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {/* Appointment Information */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
-                      <h3 className="text-lg font-semibold text-gray-800 mb-3">Appointment Info</h3>
-                      <div className="flex items-center space-x-3">
-                      <Calendar className="w-5 h-5 text-gray-400" />
+                    <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                      Appointment Info
+                    </h3>
+                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
                       <div>
-                          <p className="text-sm text-gray-500">Date</p>
-                          <p className="font-medium text-gray-800">{selectedAppointment.date}</p>
-                      </div>
-                      </div>
-                      <div className="flex items-center space-x-3">
-                      <Clock className="w-5 h-5 text-gray-400" />
-                      <div>
-                          <p className="text-sm text-gray-500">Time</p>
-                          <p className="font-medium text-gray-800">{selectedAppointment.time}</p>
-                      </div>
-                      </div>
-                      <div className="flex items-center space-x-3">
-                      <FileText className="w-5 h-5 text-gray-400" />
-                      <div>
-                          <p className="text-sm text-gray-500">Appointment Type</p>
-                          <p className="font-medium text-gray-800">{selectedAppointment.type}</p>
-                      </div>
-                      </div>
-                  </div>
-
-                  <div className="space-y-4">
-                      <h3 className="text-lg font-semibold text-gray-800 mb-3">Pet Info</h3>
-                      <div className="flex items-center space-x-3">
-                      <PawPrint className="w-5 h-5 text-gray-400" />
-                      <div>
-                          <p className="text-sm text-gray-500">Pet Name</p>
-                          <p className="font-medium text-gray-800">{selectedAppointment.petName}</p>
-                      </div>
-                      </div>
-                      <div className="flex items-center space-x-3">
-                      <Tag className="w-5 h-5 text-gray-400" />
-                      <div>
-                          <p className="text-sm text-gray-500">Pet Breed</p>
-                          <p className="font-medium text-gray-800">{selectedAppointment.petBreed}</p>
-                      </div>
-                      </div>
-                      <div className="flex items-center space-x-3">
-                      <Clock10Icon className="w-5 h-5 text-gray-400" />
-                      <div>
-                          <p className="text-sm text-gray-500">Pet Age</p>
-                          <p className="font-medium text-gray-800">{selectedAppointment.petAge}</p>
-                      </div>
-                  </div>
-
-                      {selectedAppointment.createdBy === 'client' && selectedAppointment.requestedDate && (
-                      <div className="flex items-center space-x-3">
-                          <Calendar className="w-5 h-5 text-gray-400" />
-                          <div>
-                          <p className="text-sm text-gray-500">Request Date</p>
-                          <p className="font-medium text-gray-800">{selectedAppointment.requestedDate}</p>
-                          </div>
-                      </div>
-                      )}
-                  </div>
-                  </div>
-
-                  {/* Notes */}
-                  <div>
-                  <h3 className="text-lg font-semibold text-gray-800 mb-3">Appointment Notes</h3>
-                  <div className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-gray-700">{selectedAppointment.notes}</p>
-                  </div>
-                  </div>
-                  {/* Decline Reason */}
-                  {selectedAppointment.status === 'declined' && selectedAppointment.declineReason && (
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-800 mb-2">Reason for Decline</h3>
-                      <div className="bg-red-50 text-red-700 rounded-lg p-4 border border-red-200">
-                        <p>{selectedAppointment.declineReason}</p>
+                        <p className="text-sm text-gray-500">Date</p>
+                        <p className="font-medium text-gray-800">{selectedAppointment.date}</p>
                       </div>
                     </div>
-                  )}
-
-                  {/* ✅ Added Approve / Decline Buttons */}
-                  {selectedAppointment.status === 'pending' && (
-                  <div className="flex justify-end space-x-3 mt-4">
-                      <button 
-                      onClick={() => handleApproveAppointment(selectedAppointment.id)}
-                      className="cursor-pointer px-4 py-2 bg-green-50 border border-green-200 text-green-600 rounded-lg hover:bg-green-100 transition-colors"
-                      >
-                      Approve
-                      </button>
-                      <button
-                        onClick={() => setIsDeclineModalOpen(true)}
-                        className="cursor-pointer px-4 py-2 bg-red-50 border border-red-200 text-red-600 rounded-lg hover:bg-red-100 transition-colors"
-                      >
-                        Decline
-                      </button>
+                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm text-gray-500">Time</p>
+                        <p className="font-medium text-gray-800">{selectedAppointment.time}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm text-gray-500">Appointment Type</p>
+                        <p className="font-medium text-gray-800">{selectedAppointment.type}</p>
+                      </div>
+                    </div>
                   </div>
-                  )}
+
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                      Horse Info
+                    </h3>
+                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm text-gray-500">Horse Name</p>
+                        <p className="font-medium text-gray-800">{selectedAppointment.petName}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm text-gray-500">Breed</p>
+                        <p className="font-medium text-gray-800">{selectedAppointment.petBreed}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
+                      <div>
+                        <p className="text-sm text-gray-500">Age</p>
+                        <p className="font-medium text-gray-800">{selectedAppointment.petAge}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Chief Complaint */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                    <MessageCircle className="w-5 h-5 text-emerald-600" />
+                    Chief Complaint
+                  </h3>
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <p className="text-gray-700">{selectedAppointment.complain}</p>
+                  </div>
+                </div>
+                
+                {/* Decline Reason */}
+                {selectedAppointment.status === 'declined' && selectedAppointment.declineReason && (
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                      <AlertTriangle className="w-5 h-5 text-amber-500" />
+                      Reason for Decline
+                    </h3>
+                    <div className="bg-red-50 text-red-800 rounded-lg p-4 border border-red-200">
+                      <p>{selectedAppointment.declineReason}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                {selectedAppointment.status === 'pending' && (
+                  <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+                    <button 
+                      onClick={() => handleApproveAppointment(selectedAppointment.id)}
+                      className="cursor-pointer px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg transition-colors flex items-center gap-2 shadow-md hover:shadow-lg"
+                    >
+                      <CheckCircle className="w-4 h-4" />
+                      Approve Appointment
+                    </button>
+                    <button
+                      onClick={() => setIsDeclineModalOpen(true)}
+                      className="cursor-pointer px-5 py-2.5 bg-white border border-red-300 text-red-600 hover:bg-red-50 rounded-lg transition-colors flex items-center gap-2"
+                    >
+                      <XCircle className="w-4 h-4" />
+                      Decline
+                    </button>
+                  </div>
+                )}
               </div>
-              )}
+            )}
           </div>
-          </div>
+        </div>
       </div>
-      )}
+    )}
 
-          {isDeclineModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 border border-gray-200">
-            
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Reason for Declining</h3>
-
+    {/* Decline Reason Modal*/}
+    {isDeclineModalOpen && (
+      <div className="fixed inset-0 z-1000 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-gray-200">
+          
+          {/* Modal Header */}
+          <div className="bg-gradient-to-r from-red-50 to-rose-50 p-5 border-b border-red-100">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-red-100 rounded-full">
+                <AlertTriangle className="w-6 h-6 text-red-600" />
+              </div>
+              <h3 className="text-xl font-semibold text-gray-800">Reason for Declining</h3>
+            </div>
+            <p className="text-sm text-gray-600 mt-2 ml-11">Please provide a reason for declining this appointment.</p>
+          </div>
+          
+          {/* Modal Content */}
+          <div className="p-5">
             {/* Predefined choices */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Select a reason</label>
             <select
-              value={selectedDeclineReason}
-              onChange={(e) => setSelectedDeclineReason(e.target.value)}
-              className="w-full mb-4 p-2 border border-gray-300 rounded-lg"
-            >
-              <option value="">-- Select a reason --</option>
-              <option value="Schedule conflict">Schedule conflict</option>
-              <option value="Emergency not available">Emergency not available</option>
-              <option value="Other">Other</option>
-            </select>
+                value={selectedDeclineReason}
+                onChange={(e) => setSelectedDeclineReason(e.target.value)}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              >
+                <option value="">-- Select a reason --</option>
+                <option value="Schedule conflict">Schedule conflict</option>
+                <option value="Not my specialty">Not my specialty</option>
+                <option value="Emergency not available">Emergency not available</option>
+                <option value="Fully booked">Fully booked</option>
+                <option value="Other">Other (please specify)</option>
+              </select>
+            </div>
 
             {/* Text field for custom reason */}
             {(selectedDeclineReason === "Other" || !selectedDeclineReason) && (
-              <textarea
-                value={declineReason}
-                onChange={(e) => setDeclineReason(e.target.value)}
-                placeholder="Type custom reason here..."
-                className="w-full p-2 border border-gray-300 rounded-lg mb-4"
-              />
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  {selectedDeclineReason === "Other" ? "Please specify" : "Or provide your own reason"}
+                </label>
+                <textarea
+                  value={declineReason}
+                  onChange={(e) => setDeclineReason(e.target.value)}
+                  placeholder="Type your reason here..."
+                  rows={3}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                />
+              </div>
             )}
 
-            <div className="flex justify-end space-x-3">
+            <div className="flex justify-end space-x-3 pt-2">
               <button
                 onClick={() => {
                   setIsDeclineModalOpen(false);
                   setDeclineReason("");
                   setSelectedDeclineReason("");
                 }}
-                className="cursor-pointer px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+                className="cursor-pointer px-4 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
               >
                 Cancel
               </button>
@@ -572,72 +859,32 @@ const filteredAppointments = appointments
                   const reason = selectedDeclineReason === "Other" || !selectedDeclineReason
                     ? declineReason
                     : selectedDeclineReason;
-                  if (!reason) return alert("Please provide a reason.");
+                  
+                  if (!reason.trim()) {
+                    showAlert("Please provide a reason for declining.", 'warning');
+                    return;
+                  }
+                  
                   handleDeclineWithReason(selectedAppointment.id, reason);
-                  setIsDeclineModalOpen(false);
-                  setDeclineReason("");
-                  setSelectedDeclineReason("");
                 }}
-                className="cursor-pointer px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                className="cursor-pointer px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
               >
-                Decline
+                <XCircle className="w-4 h-4" />
+                Decline Appointment
               </button>
             </div>
-
           </div>
         </div>
-      )}
-
-      {/* Delete Confirmation Modal */}
-      {isDeleteModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/45 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100">
-            <div className="flex items-center space-x-2 mb-4">
-              <AlertTriangle className="w-5 h-5 text-red-500" />
-              <h3 className="text-lg font-semibold">Delete Appointment</h3>
-            </div>
-            <div className="space-y-4">
-              <p className="text-gray-600">Are you sure you want to delete this appointment? This action cannot be undone.</p>
-              {deleteAppointment && (
-                <div className="p-3 bg-gray-50 rounded-lg">
-                  <p className="font-medium text-gray-800">
-                    {deleteAppointment.petName} - {deleteAppointment.ownerName}
-                  </p>
-                  <p className="text-sm text-gray-600">
-                    {deleteAppointment.date} at {deleteAppointment.time}
-                  </p>
-                </div>
-              )}
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => {
-                    setIsDeleteModalOpen(false);
-                    setDeleteAppointment(null);
-                  }}
-                  className="cursor-pointer px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={confirmDeleteAppointment}
-                  className="cursor-pointer px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-                >
-                  Delete Appointment
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-        {/* Profile Modal */}
-      {console.log('ProfileModal isOpen:', isProfileModalOpen)}
-      <ProfileModal
-        isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
-      />
-      
-         {/* Floating Messages Component */}
-      <FloatingMessages />
+      </div>
+    )}
+    {/* Profile Modal */}
+    <ProfileModal
+      isOpen={isProfileModalOpen}
+      onClose={() => setIsProfileModalOpen(false)}
+    />
+    <NotificationModal isOpen={isNotificationModalOpen} onClose={() => setIsNotificationModalOpen(false)} notifications={notifications} />
+    {/* Floating Messages Component */}
+    <FloatingMessages />
     </div>
     
   );

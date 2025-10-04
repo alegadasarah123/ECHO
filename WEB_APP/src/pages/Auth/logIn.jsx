@@ -1,10 +1,11 @@
-import { ArrowLeft, Eye, EyeOff, Lock, Mail, Stethoscope } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-
+import ForgotPass from "./ForgotPass";
 
 function LogIn({ onBack }) {
   const [showPassword, setShowPassword] = useState(false)
+  const [showForgotPassword, setShowForgotPassword] = useState(false)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
@@ -62,15 +63,9 @@ function LogIn({ onBack }) {
       gap: "0.75rem",
       marginBottom: "1rem",
     },
-    logoIcon: {
-      width: "3rem",
+    logoImage: {
       height: "3rem",
-      backgroundColor: "#B8763E",
-      borderRadius: "0.75rem",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      boxShadow: "0 8px 25px rgba(184, 118, 62, 0.3)",
+      width: "auto",
     },
     logoText: {
       fontSize: "2rem",
@@ -148,29 +143,15 @@ function LogIn({ onBack }) {
       borderRadius: "0.375rem",
       lineHeight: "1.4",
     },
-    rememberForgot: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      fontSize: "0.875rem",
-      paddingTop: "0.25rem",
-    },
-    checkboxWrapper: {
-      display: "flex",
-      alignItems: "center",
-      gap: "0.5rem",
-      cursor: "pointer",
-    },
-    checkbox: {
-      width: "1rem",
-      height: "1rem",
-      accentColor: "#B8763E",
-    },
     forgotLink: {
       color: "#B8763E",
       textDecoration: "none",
       fontWeight: "500",
       transition: "color 0.2s ease",
+      cursor: "pointer",
+      textAlign: "right",
+      fontSize: "0.875rem",
+      paddingTop: "0.25rem",
     },
     button: {
       padding: "1rem 1.5rem",
@@ -213,54 +194,102 @@ function LogIn({ onBack }) {
     },
   }
 
- const handleLogin = async (e) => {
-  e.preventDefault();
-  setError("");
-  setIsLoading(true);
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setError("");
+    setIsLoading(true);
 
-  try {
-    const response = await fetch("http://localhost:8000/api/login/", { 
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email, password }),
-      credentials: "include"
-    });
+    try {
+      const response = await fetch("http://localhost:8000/api/login/", { 
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+        credentials: "include"
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (!response.ok) {
-      setError(data.error || "Login failed");
-      return;
-    }
-
-    console.log("Login successful:", data);
-const role = data.role.trim(); // keep original case from DB
-
-if (role === "Veterinarian") {
-  navigate("/VetDashboard");
-} else if (role === "Ctu-Vetmed" || role === "Ctu-Admin") {
-  navigate("/CtuDashboard");
-} else if (role === "Dvmf" || role === "Dvmf-Admin")  {
-  navigate("/DvmfDashboard");
-} else {
-  navigate("/KutDashboard");
+      if (!response.ok) {
+        // Handle specific error cases
+        if (response.status === 401) {
+          // Check if it's an invalid credentials error from Supabase
+          if (data.details && data.details.msg) {
+            const supabaseError = data.details.msg.toLowerCase();
+            if (supabaseError.includes("invalid login credentials")) {
+              // Check if email exists by making a separate call
+              try {
+                const checkEmailResponse = await fetch(`http://localhost:8000/api/check-email/?email=${encodeURIComponent(email)}`);
+                if (checkEmailResponse.ok) {
+                  const emailData = await checkEmailResponse.json();
+                  if (emailData.exists) {
+                    setError("The password you entered is incorrect. Please try again.");
+                  } else {
+                    setError("This email address is not registered with our system. Please verify your email or register for a new account.");                  
 }
+                } else {
+                  setError("The password you entered is incorrect. Please try again.");
+                }
+              } catch (emailErr) {
+                // If email check fails, default to incorrect password
+                setError("The password you entered is incorrect. Please try again.");
+              }
+            } else {
+              setError(data.details.msg);
+            }
+          } else {
+            setError("Incorrect password");
+          }
+        } else if (response.status === 403) {
+          // Account declined or pending approval
+          setError(data.error || "Account access restricted");
+        } else if (response.status === 404) {
+          // User profile not found
+          setError("Email does not exist");
+        } else {
+          setError(data.error || "Login failed. Please try again.");
+        }
+        return;
+      }
 
+      console.log("Login successful:", data);
+      const role = data.role.trim(); // keep original case from DB
 
+      if (role === "Veterinarian") {
+        navigate("/VetDashboard");
+      } else if (role === "Ctu-Vetmed" || role === "Ctu-Admin") {
+        navigate("/CtuDashboard");
+      } else if (role === "Dvmf" || role === "Dvmf-Admin")  {
+        navigate("/DvmfDashboard");
+      } else {
+        navigate("/KutDashboard");
+      }
 
-if (onBack) onBack(role);
+      if (onBack) onBack(role);
 
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("Network error: Unable to connect to server. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  } catch (err) {
-    console.error("Login error:", err);
-    setError("Login failed. Please try again.");
-  } finally {
-    setIsLoading(false);
+  // Handle forgot password navigation
+  const handleForgotPasswordClick = (e) => {
+    e.preventDefault();
+    setShowForgotPassword(true);
+  };
+
+  const handleBackToLogin = () => {
+    setShowForgotPassword(false);
+  };
+
+  // If showing forgot password, render the ForgotPass component
+  if (showForgotPassword) {
+    return <ForgotPass onBack={handleBackToLogin} />;
   }
-};
-
 
   return (
     <div style={styles.container}>
@@ -285,13 +314,13 @@ if (onBack) onBack(role);
       <div style={styles.card}>
         <div style={styles.header}>
           <div style={styles.logo}>
-            <div style={styles.logoIcon}>
-              <Stethoscope size={24} color="white" />
-            </div>
-            <span style={styles.logoText}>Echo</span>
+            <img 
+              src="/Images/echo.png" 
+              alt="Echo Logo" 
+              style={styles.logoImage}
+            />
           </div>
-          <h1 style={styles.title}>Welcome Back</h1>
-          <p style={styles.subtitle}>Sign in to your Echo account</p>
+          <p style={styles.subtitle}>Sign in to your account</p>
         </div>
 
         <form style={styles.form} onSubmit={handleLogin}>
@@ -347,19 +376,15 @@ if (onBack) onBack(role);
 
           {error && <div style={styles.error}>{error}</div>}
 
-          <div style={styles.rememberForgot}>
-            <label style={styles.checkboxWrapper}>
-              <input type="checkbox" style={styles.checkbox} />
-              <span style={{ color: "#6b7280" }}>Remember me</span>
-            </label>
-            <a
-              href="#"
+          <div>
+            <span
               style={styles.forgotLink}
+              onClick={handleForgotPasswordClick}
               onMouseEnter={(e) => (e.target.style.color = "#a0612a")}
               onMouseLeave={(e) => (e.target.style.color = "#B8763E")}
             >
               Forgot password?
-            </a>
+            </span>
           </div>
 
           <button
@@ -384,26 +409,26 @@ if (onBack) onBack(role);
               }
             }}
           >
-            {isLoading ? "Signing In..." : "Sign In to Echo"}
+            {isLoading ? "Signing In..." : "Sign In "}
           </button>
         </form>
 
         <div style={styles.signupLink}>
           <p>
-            Don't have an account?{" "}
+            Are you a licensed veterinarian?{" "}
             <Link
               to="/signup"
               style={styles.signupLinkAnchor}
               onMouseEnter={(e) => (e.target.style.color = "#a0612a")}
               onMouseLeave={(e) => (e.target.style.color = "#B8763E")}
             >
-              Sign up for Echo
+              Sign up here
             </Link>
           </p>
         </div>
 
         <div style={styles.footer}>
-          <p>© 2025 Echo Portal. All rights reserved.</p>
+          <p>© 2025 ECHO</p>
         </div>
       </div>
     </div>

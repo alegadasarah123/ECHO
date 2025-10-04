@@ -1,13 +1,73 @@
 "use client"
 import Sidebar from "@/components/CtuSidebar"
-import { AlertTriangle, Bell, CheckCircle, FileText, Info, LogOut, Search, XCircle } from "lucide-react"
+import {
+  AlertTriangle,
+  Award,
+  Bell,
+  Building,
+  Calendar,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  FileText,
+  Heart,
+  Info,
+  Mail,
+  Phone,
+  RefreshCw,
+  Search,
+  User,
+  X,
+  XCircle,
+} from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import FloatingMessages from './CtuMessage'
+import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed";
+const API_BASE_URL = "http://127.0.0.1:8000/api/ctu_vetmed"
 
+const SkeletonLoader = ({ activeTab }) => {
+  const getGridConfig = () => {
+    switch (activeTab) {
+      case "PENDING":
+        return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
+      case "APPROVED":
+        return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
+      case "DECLINED":
+        return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
+      default:
+        return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
+    }
+  }
+
+  const gridConfig = getGridConfig()
+
+  return (
+    <div className="animate-pulse bg-white rounded-lg shadow-sm overflow-hidden">
+      <div className={`bg-gray-50 grid ${gridConfig} px-6 py-4 font-semibold text-gray-700 text-sm border-b border-gray-200 gap-4`}>
+        <div className="h-4 bg-gray-300 rounded"></div>
+        <div className="h-4 bg-gray-300 rounded"></div>
+        <div className="h-4 bg-gray-300 rounded"></div>
+        <div className="h-4 bg-gray-300 rounded"></div>
+        <div className="h-4 bg-gray-300 rounded"></div>
+      </div>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div
+          key={i}
+          className={`grid ${gridConfig} px-6 py-4 border-b border-gray-100 gap-4 min-h-[60px] items-center`}
+        >
+          <div className="h-4 bg-gray-200 rounded"></div>
+          <div className="h-4 bg-gray-200 rounded"></div>
+          <div className="h-6 bg-gray-200 rounded-xl w-20"></div>
+          <div className="h-4 bg-gray-200 rounded"></div>
+          <div className="h-8 bg-gray-200 rounded w-20"></div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function CtuAccessRequest() {
   const navigate = useNavigate()
@@ -18,11 +78,26 @@ function CtuAccessRequest() {
   const [isActionModalOpen, setIsActionModalOpen] = useState(false)
   const [actionDetails, setActionDetails] = useState({ title: "", message: "", action: "" })
   const [currentRequestId, setCurrentRequestId] = useState(null)
-  const [accessRequests, setAccessRequests] = useState([]) // Placeholder for access request data
-  const [activeTab, setActiveTab] = useState("pending") // Changed default from "all" to "pending"
+  const [accessRequests, setAccessRequests] = useState([])
+  const [activeTab, setActiveTab] = useState("PENDING")
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
   const [deleteRequestId, setDeleteRequestId] = useState(null)
-  const [windowWidth, setWindowWidth] = useState(window.innerWidth)
+
+  const [showDeclineModal, setShowDeclineModal] = useState(false)
+  const [declineReason, setDeclineReason] = useState("")
+  const [selectedRequestId, setSelectedRequestId] = useState(null)
+  const [searchTerm, setSearchTerm] = useState("")
+  const [filterBy, setFilterBy] = useState("all")
+  const [isDeclineModalOpen, setIsDeclineModalOpen] = useState(false)
+  const [declineNote, setDeclineNote] = useState("")
+
+  const [isViewModalOpen, setIsViewModalOpen] = useState(false)
+  const [selectedRequest, setSelectedRequest] = useState(null)
+  const [isLoading, setIsLoading] = useState(true)
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
 
   const sidebarRef = useRef(null)
   const [notifsOpen, setNotifsOpen] = useState(false)
@@ -83,7 +158,7 @@ function CtuAccessRequest() {
       .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
- // ✅ Auto-refresh every 30s
+  // ✅ Auto-refresh every 30s
   useEffect(() => {
     loadNotifications() // load once
 
@@ -94,114 +169,221 @@ function CtuAccessRequest() {
     return () => clearInterval(interval)
   }, [loadNotifications])
 
-
+  // Fetch access requests
   const loadAccessRequests = useCallback(() => {
-    console.log("Loading access requests...")
-    setAccessRequests([])
+    setIsLoading(true)
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/medrec_access_requests/")
+      .then((res) => res.json())
+      .then((data) => {
+        const formatted = data.map((req) => ({
+          id: req.request_id,
+          requestedBy: req.vet_name,
+          status: req.status.toUpperCase(),
+          dateRequested: new Date(req.requested_at),
+          approvedAt: req.approved_at ? new Date(req.approved_at) : null,
+          approvedBy: req.approved_by,
+          note: req.note,
+          horse: req.horse_name,
+          breed: req.horse_breed,
+          birthdate: req.horse_dob,
+          vetEmail: req.vet_email ,
+          vetPhone: req.vet_phone_num|| "+1 (555) 123-4567",
+          vetLicense: req.vet_license_num|| "VET-" + Math.random().toString(36).substr(2, 9).toUpperCase(),
+          vetClinic: req.vet_specialization,
+        }))
+
+        setAccessRequests(formatted)
+        setIsLoading(false)
+      })
+      .catch((err) => {
+        console.error("Failed to load access requests:", err)
+        setIsLoading(false)
+      })
   }, [])
 
-  const toggleNotificationDropdown = () => {
-    setIsNotificationDropdownOpen((prev) => !prev)
-  }
-
-  const toggleSidebar = () => {
-    setIsSidebarsOpen((prev) => !prev)
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    setIsLoading(true)
+    try {
+      await loadAccessRequests()
+      await loadNotifications()
+    } catch (error) {
+      console.error("Failed to refresh data:", error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
   }
 
-  const confirmLogout = () => {
-    console.log("User logged out")
-    localStorage.removeItem("currentUser")
-    localStorage.removeItem("loginTime")
-    closeLogoutModal()
-    navigate("/")
-    window.location.reload()
-  }
-
   const approveRequest = (requestId) => {
-    setCurrentRequestId(requestId)
-    setActionDetails({
-      title: "Approve Request",
-      message: `Are you sure you want to approve request ${requestId}?`,
-      action: "approve",
+    fetch(`http://127.0.0.1:8000/api/ctu_vetmed/access-requests/${requestId}/approve/`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
     })
-    setIsActionModalOpen(true)
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.message) {
+          alert(data.message)
+        }
+        console.log("Approved:", data)
+        loadAccessRequests()
+        setIsViewModalOpen(false)
+      })
+      .catch((err) => console.error("Approve failed:", err))
   }
 
-  const declineRequest = (requestId) => {
-    setCurrentRequestId(requestId)
-    setActionDetails({
-      title: "Decline Request",
-      message: `Are you sure you want to decline request ${requestId}?`,
-      action: "decline",
-    })
-    setIsActionModalOpen(true)
+  const handleDecline = (id) => {
+    setCurrentRequestId(id)
+    setIsDeclineModalOpen(true)
+  }
+
+  const cancelDecline = () => {
+    setShowDeclineModal(false)
+    setDeclineReason("")
+    setSelectedRequestId(null)
   }
 
   const closeActionModal = () => {
     setIsActionModalOpen(false)
     setCurrentRequestId(null)
     setActionDetails({ title: "", message: "", action: "" })
+    setDeclineReason("")
   }
 
   const confirmAction = () => {
     if (actionDetails.action === "approve" && currentRequestId) {
       console.log(`Approving request: ${currentRequestId}`)
       setAccessRequests((prev) =>
-        prev.map((req) => (req.id === currentRequestId ? { ...req, status: "approved" } : req)),
+        prev.map((req) => (req.id === currentRequestId ? { ...req, status: "APPROVED" } : req)),
       )
     } else if (actionDetails.action === "decline" && currentRequestId) {
-      console.log(`Declining request: ${currentRequestId}`)
+      console.log(`Declining request: ${currentRequestId} with reason: ${declineReason}`)
       setAccessRequests((prev) =>
-        prev.map((req) => (req.id === currentRequestId ? { ...req, status: "declined" } : req)),
+        prev.map((req) => (req.id === currentRequestId ? { ...req, status: "DECLINED", note: declineReason } : req)),
       )
     }
     closeActionModal()
   }
 
- 
-
-  const handleSearchInput = (e) => {
-    const searchTerm = e.target.value.toLowerCase()
-    console.log(`Searching for: ${searchTerm}`)
+  const handleSearch = (searchValue) => {
+    setSearchTerm(searchValue.toLowerCase())
+    setCurrentPage(1) // Reset to first page when searching
   }
 
-  const deleteRequest = (requestId) => {
-    setDeleteRequestId(requestId)
-    setIsDeleteModalOpen(true)
+  const declineRequest = (requestId) => {
+    setCurrentRequestId(requestId)
+    setIsDeclineModalOpen(true)
   }
 
-  const closeDeleteModal = () => {
-    setIsDeleteModalOpen(false)
-    setDeleteRequestId(null)
+  const closeDeclineModal = () => {
+    setIsDeclineModalOpen(false)
+    setCurrentRequestId(null)
+    setDeclineNote("")
   }
 
-  const confirmDelete = () => {
-    if (deleteRequestId) {
-      console.log(`Deleting request: ${deleteRequestId}`)
-      setAccessRequests((prev) => prev.filter((req) => req.id !== deleteRequestId))
+  const openViewModal = (request) => {
+    setSelectedRequest(request)
+    setIsViewModalOpen(true)
+  }
+
+  const closeViewModal = () => {
+    setIsViewModalOpen(false)
+    setSelectedRequest(null)
+  }
+
+  // Confirm decline
+  const confirmDeclineModal = async () => {
+    if (!declineNote.trim()) {
+      alert("Please provide a reason for declining this request.")
+      return
     }
-    closeDeleteModal()
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:8000/api/ctu_vetmed/access-requests/${currentRequestId}/decline/`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ note: declineNote.trim() }),
+        },
+      )
+
+      const data = await response.json()
+      console.log("Decline response:", response.status, data)
+
+      if (response.ok) {
+        alert("Request declined successfully")
+        closeDeclineModal()
+        setIsViewModalOpen(false)
+        loadAccessRequests()
+      } else {
+        alert("Failed to decline request: " + (data.error || "Unknown error"))
+      }
+    } catch (err) {
+      console.error("Error declining request:", err)
+      alert("Error declining request. Check console for details.")
+    }
   }
 
   const getFilteredAndSortedRequests = () => {
     let filtered = accessRequests
 
-    filtered = filtered.filter((request) => request.status === activeTab)
+    filtered = filtered.filter((request) => {
+      if (activeTab === "APPROVED") {
+        return request.status === "APPROVED"
+      }
+      if (activeTab === "DECLINED") {
+        return request.status === "DECLINED"
+      }
+      return request.status === "PENDING"
+    })
+
+    // Apply search filter
+    if (searchTerm) {
+      filtered = filtered.filter((request) => {
+        switch (filterBy) {
+          case "vet":
+            return request.requestedBy.toLowerCase().includes(searchTerm)
+          case "horse":
+            return request.horse.toLowerCase().includes(searchTerm)
+          case "date":
+            return request.dateRequested.toLocaleDateString().toLowerCase().includes(searchTerm)
+          default: // "all"
+            return (
+              request.requestedBy.toLowerCase().includes(searchTerm) ||
+              request.horse.toLowerCase().includes(searchTerm) ||
+              request.dateRequested.toLocaleDateString().toLowerCase().includes(searchTerm)
+            )
+        }
+      })
+    }
 
     // Sort by most recent (dateRequested descending)
     return filtered.sort((a, b) => new Date(b.dateRequested) - new Date(a.dateRequested))
   }
 
+  // Get paginated data
+  const getPaginatedData = () => {
+    const filteredRequests = getFilteredAndSortedRequests()
+    const startIndex = (currentPage - 1) * itemsPerPage
+    const endIndex = startIndex + itemsPerPage
+    return filteredRequests.slice(startIndex, endIndex)
+  }
+
   const getFilterCounts = () => {
     return {
-      pending: accessRequests.filter((req) => req.status === "pending").length,
-      approved: accessRequests.filter((req) => req.status === "approved").length,
-      declined: accessRequests.filter((req) => req.status === "declined").length,
+      pending: accessRequests.filter((req) => req.status === "PENDING").length,
+      approved: accessRequests.filter((req) => req.status === "APPROVED").length,
+      declined: accessRequests.filter((req) => req.status === "DECLINED").length,
     }
+  }
+
+  const closeDeleteModal = () => {
+    setIsDeleteModalOpen(false)
+    setDeleteRequestId(null)
   }
 
   useEffect(() => {
@@ -231,1099 +413,485 @@ function CtuAccessRequest() {
       if (isDeleteModalOpen && event.target.classList.contains("modal-overlay")) {
         closeDeleteModal()
       }
+
+      if (isDeclineModalOpen && event.target.classList.contains("modal-overlay")) {
+        closeDeclineModal()
+      }
+
+      if (isViewModalOpen && event.target.classList.contains("modal-overlay")) {
+        closeViewModal()
+      }
     }
 
     document.addEventListener("mousedown", handleClickOutside)
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
     }
-  }, [isNotificationDropdownOpen, isLogoutModalOpen, isActionModalOpen, isDeleteModalOpen])
-
-  useEffect(() => {
-    const handleResize = () => {
-      setWindowWidth(window.innerWidth)
-    }
-    window.addEventListener("resize", handleResize)
-    return () => window.removeEventListener("resize", handleResize)
-  }, [])
+  }, [
+    isNotificationDropdownOpen,
+    isLogoutModalOpen,
+    isActionModalOpen,
+    isDeleteModalOpen,
+    isDeclineModalOpen,
+    isViewModalOpen,
+  ])
 
   const filteredRequests = getFilteredAndSortedRequests()
+  const paginatedRequests = getPaginatedData()
+  const totalPages = Math.ceil(filteredRequests.length / itemsPerPage)
   const filterCounts = getFilterCounts()
 
-  // Define the styles object at the top of your file or before the return
-  const styles = {
-     notificationBtn: {
-    position: "relative",
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-    padding: "8px",
-    borderRadius: "50%",
-  },
-  badge: {
-    position: "absolute",
-    top: "2px",
-    right: "2px",
-    backgroundColor: "#ef4444",
-    color: "#fff",
-    borderRadius: "50%",
-    padding: "2px 6px",
-    fontSize: "12px",
-    fontWeight: "bold",
-  },
-    titleStyle: {
-      fontSize: "25px",
-      fontWeight: "bold",
-      color: "#da2424ff",
-    },
+  // Pagination handlers
+  const goToPage = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page)
+    }
   }
+
+  const handleItemsPerPageChange = (e) => {
+    setItemsPerPage(Number(e.target.value))
+    setCurrentPage(1) // Reset to first page when changing items per page
+  }
+
+  // Simplified grid configuration - same for all tabs
+  const getGridConfig = () => {
+    return "grid-cols-[1fr_1fr_1fr_1fr_120px] gap-4"
+  }
+
+  const gridConfig = getGridConfig()
 
   return (
-    <div className="bodyWrapper">
-      {/* Internal CSS here */}
-      <style>{`
-        /* Replacing entire CSS file with user's comprehensive styling */
-/* General Styles */
-body {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-.bodyWrapper {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background-color: #f5f5f5;
-  display: flex;
-  height: 100vh;
-  overflow-x: hidden;
-  width: 100%;
-}
-
-.logouts {
-  padding: 10px;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.logout-btns {
-  display: flex;
-  align-items: center;
-  color: white;
-  text-decoration: none;
-  font-size: clamp(13px, 2vw, 15px);
-  font-weight: 500;
-  cursor: pointer;
-  padding: 14px 40px;
-  border-radius: 25px;
-  transition: all 0.3s ease;
-  min-height: 44px;
-}
-
-.logout-btns:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.logout-icons {
-  width: 20px;
-  height: 20px;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 16px;
-  flex-shrink: 0;
-}
-
-.main-content {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  width: calc(100% - 250px);
-}
-
-.headers {
-  background: white;
-  padding: 18px 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-/* New styles for the sidebarToggleBtn in the header */
-.headers .sidebarToggleBtn {
-  background: none;
-  border: none;
-  color: #666; /* Or whatever color fits the header */
-  font-size: 20px; /* Adjust size as needed */
-  cursor: pointer;
-  padding: 8px; /* Adjust padding */
-  min-height: 44px;
-  min-width: 44px;
-  display: flex; /* Ensure icon is centered */
-  align-items: center;
-  justify-content: center;
-  transition: color 0.2s;
-}
-
-.headers .sidebarToggleBtn:hover {
-  color: #333; /* Darker on hover */
-}
-
-.search-container {
-  flex: 1;
-  max-width: 400px;
-  margin-right: 20px;
-  position: relative;
-  min-width: 200px;
-}
-
-.search-input {
-  width: 100%;
-  padding: 8px 16px 8px 40px;
-  border: 2px solid #fff;
-  border-radius: 8px;
-  font-size: clamp(12px, 2vw, 14px);
-  outline: none;
-  min-height: 50px;
-  background: #fff;
-}
-
-
-.search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
-}
-
-.notification-bell {
-  font-size: 20px;
-  color: #666;
-  cursor: pointer;
-  position: relative;
-  margin-right: 20px;
-  padding: 8px;
-  min-height: 44px;
-  min-width: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.notification-count {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  background-color: #b91c1c;
-  color: white;
-  font-size: 10px;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  display: none;
-  align-items: center;
-  justify-content: center;
-}
-
-.notification-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  width: min(350px, 90vw);
-  background-color: white;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 100;
-  display: none;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.notification-dropdown.show {
-  display: block;
-}
-
-.notification-header {
-  padding: 15px 20px;
-  border-bottom: 1px solid #eee;
-  background: #f8f9fa;
-  border-radius: 8px 8px 0 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.notification-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
-  margin: 0;
-}
-
-.mark-all-read {
-  background: none;
-  border: none;
-  color: #b91c1c;
-  font-size: 12px;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.notification-item {
-  padding: 15px 20px;
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  position: relative;
-}
-
-.notification-item:hover {
-  background-color: #f8f9fa;
-}
-
-.notification-item.unread {
-  background-color: #f0f8ff;
-  border-left: 3px solid #b91c1c;
-}
-
-.notification-item:last-child {
-  border-bottom: none;
-}
-
-.notification-title {
-  font-weight: 600;
-  font-size: 14px;
-  margin-bottom: 5px;
-  color: #333;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.notification-message {
-  font-size: 13px;
-  color: #666;
-  margin-bottom: 5px;
-  line-height: 1.4;
-}
-
-.notification-time {
-  font-size: 11px;
-  color: #999;
-}
-
-.notification-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.notification-icon.info {
-  color: #3b82f6;
-}
-
-.notification-icon.success {
-  color: #10b981;
-}
-
-.notification-icon.warning {
-  color: #f59e0b;
-}
-
-.notification-icon.error {
-  color: #ef4444;
-}
-
-.notification-actions {
-  position: absolute;
-  top: 10px;
-  right: 15px;
-  display: flex;
-  gap: 5px;
-}
-
-.notification-action {
-  background: none;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  padding: 2px;
-  border-radius: 3px;
-  font-size: 12px;
-}
-
-.notification-action:hover {
-  background: #f0f0f0;
-  color: #666;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center; /* centers horizontally */
-  justify-content: center; /* centers vertically (if parent has height) */
-  text-align: center;
-  padding: 2rem;
-}
-
-.icon-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 1rem;
-}
-
-.empty-state i {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.empty-state h3 {
-  font-size: 18px;
-  margin-bottom: 8px;
-  color: #374151;
-}
-
-.empty-state p {
-  font-size: 14px;
-}
-
-.content-areas {
-flex: 1;
-          padding: 24px;
-          background: #f5f5f5;
-          overflow-y: auto;
-}
-
-.page-headers {
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: clamp(20px, 4vw, 24px);
-  font-weight: 700;
-  color: #111827;
-  margin-bottom: 20px;
-}
-
-.access-table {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-}
-
-/* Added styles for status filter tabs */
-.tabs-container {
-  display: flex;
-  gap: 16px;
-  background: #e5e2e2ff;
-  padding: 0 8px; /* remove vertical padding so tabs fill height */
-  border-radius: 24px;
-  height: 48px;
-  width: 370px;
-  align-items: center; /* center tabs vertically */
-  margin-top:20px;
-  margin-bottom:20px;
-}
-
-.tab {
-        
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  height: 100%; /* match container height */
-  padding: 0 12px;
-  background: none;
-  border: none;
-  font-size: 14px;
-  font-weight: 500;
-  color: #374151;
-  cursor: pointer;
-  position: relative;
-  border-radius: 24px; /* pill shape */
-  transition: all 0.2s ease;
-}
-
-.tab:hover {
-  background-color: #ffffff;
-  color: #111827;
-}
-
-
-
-.tab.active {
-  font-weight: 600;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 22px;
-  height: 22px;
-  padding: 0 6px;
-  border-radius: 50%;
-  font-size: 12px;
-  font-weight: 600;
-  color: #fff;
-}
-
-.badge-pending {
-  background-color: #f59e0b; /* orange */
-}
-
-.badge-approved {
-  background-color: #22c55e; /* green */
-}
-
-.badge-declined {
-  background-color: #ef4444; /* red */
-}
-
-.table-headerss {
-  background: #f8f9fa;
-  display: grid;
-  grid-template-columns: 130px 140px 150px 240px 155px 160px 150px;
-  padding: 16px 20px;
-  font-weight: 600;
-  color: #374151;
-  font-size: clamp(12px, 2vw, 14px);
-  border-bottom: 1px solid #e5e7eb;
-  gap: 10px;
-}
-
-.table-rows {
-  display: grid;
-  grid-template-columns: 130px 140px 150px 240px 155px 160px 150px;
-  padding: 16px 20px;
-  border-bottom: 1px solid #f3f4f6;
-  transition: background-color 0.2s;
-  align-items: center;
-  gap: 10px;
-  min-height: 60px;
-}
-
-.status-badge {
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: clamp(10px, 1.8vw, 12px);
-  font-weight: 500;
-}
-
-.status-pending {
-  background: #fef3c7;
-  color: #92400e;
-}
-
-.status-approved {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.status-declined {
-  background: #fecaca;
-  color: #991b1b;
-}
-
-.action-buttons {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.action-btns {
-  border: none;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: clamp(10px, 1.8vw, 12px);
-  font-weight: 500; /* use a valid weight */
-  cursor: pointer;
-  transition: all 0.2s;
-  display: inline-block;
-}
-
-/* Approve button */
-.action-btns.approve-btn {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.action-btns.approve-btn:hover {
-  background: #bbf7d0;
-}
-
-/* Decline button */
-.action-btns.decline-btn {
-  background: #fecaca;
-  color: #991b1b;
-}
-
-.action-btns.decline-btn:hover {
-  background: #fca5a5;
-}
-
-/* Delete button */
-.action-btns.delete-btn {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.action-btns.delete-btn:hover {
-  background: #fecaca;
-}
-
-/* Mobile Menu Button */
-.mobile-menu-btn {
-  display: none; /* Hidden by default, shown on mobile */
-  position: fixed;
-  top: 20px;
-  left: 20px;
-  z-index: 1001;
-  background: #b91c1c;
-  color: white;
-  border: none;
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 18px;
-  cursor: pointer;
-  min-height: 44px;
-  min-width: 44px;
-}
-
-/* Chat Widget Styling - Button Only */
-.chat-widget {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 999;
-}
-
-.chat-button {
-  width: 64px;
-  height: 64px;
-  background: #b91c1c;
-  border: none;
-  border-radius: 20px;
-  color: white;
-  cursor: pointer;
-  box-shadow: 0 4px 12px rgba(28, 44, 185, 0.3);
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-}
-
-.chat-button::after {
-  content: "";
-  position: absolute;
-  bottom: -8px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-top: 10px solid #b91c1c;
-}
-
-.chat-button:hover {
-  transform: scale(1.05);
-  box-shadow: 0 6px 16px rgba(28, 78, 185, 0.4);
-}
-
-.chat-button:hover::after {
-  border-top-color: #b91c1c;
-}
-
-.chat-dots {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  justify-content: center;
-}
-
-.chat-dot {
-  width: 8px;
-  height: 8px;
-  background: white;
-  border-radius: 50%;
-}
-
-/* Modal Styles */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.5);
-  display: none;
-  justify-content: center;
-  align-items: center;
-  z-index: 2000;
-  padding: 20px;
-}
-
-.modal-overlay.active {
-  display: flex;
-}
-
-.confirmation-modal {
-  background: white;
-  border-radius: 8px;
-  padding: clamp(20px, 4vw, 24px);
-  width: 90%;
-  max-width: 400px;
-  text-align: center;
-}
-
-.confirmation-modal h3 {
-  font-size: clamp(16px, 3vw, 18px);
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 12px;
-}
-
-.confirmation-modal p {
-  font-size: clamp(12px, 2vw, 14px);
-  color: #6b7280;
-  margin-bottom: 24px;
-  line-height: 1.5;
-}
-
-.confirmation-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.confirmation-btn {
-  padding: 8px 20px;
-  border: none;
-  border-radius: 6px;
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 80px;
-  min-height: 40px;
-}
-
-.confirmation-btn.cancel {
-  background: #6b7280;
-  color: white;
-}
-
-.confirmation-btn.cancel:hover {
-  background: #4b5563;
-}
-
-.confirmation-btns.confirm {
-  background: #22c55e;
-  color: white;
-}
-
-.confirmation-btns.confirm:hover {
-  background: #16a34a;
-}
-
-.confirmation-btns.confirm.decline {
-  background: #ef4444;
-}
-
-.confirmation-btns.confirm.decline:hover {
-  background: #dc2626;
-}
-
-/* Logout Modal Styles */
-.logout-modal {
-  background: white;
-  border-radius: 12px;
-  padding: 32px;
-  width: 90%;
-  max-width: 400px;
-  text-align: center;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
-}
-
-.logout-modal-icon {
-  width: 64px;
-  height: 64px;
-  background: #fef3c7;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto 20px;
-}
-
-.logout-modal-icon i {
-  font-size: 28px;
-  color: #f59e0b;
-}
-
-.logout-modal h3 {
-  font-size: 20px;
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 12px;
-}
-
-.logout-modal p {
-  font-size: 16px;
-  color: #6b7280;
-  margin-bottom: 32px;
-  line-height: 1.5;
-}
-
-.logout-modal-buttons {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.logout-modal-btn {
-  padding: 12px 24px;
-  border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-width: 100px;
-  min-height: 44px;
-}
-
-.logout-modal-btn.cancel {
-  background: #f3f4f6;
-  color: #374151;
-}
-
-.logout-modal-btn.cancel:hover {
-  background: #e5e7eb;
-}
-
-.logout-modal-btn.confirm {
-  background: #ef4444;
-  color: white;
-}
-
-.logout-modal-btn.confirm:hover {
-  background: #dc2626;
-}
-
-/* Tablet */
-@media (max-width: 1024px) {
-  .table-headers,
-  .table-rows {
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 8px;
-  }
-
-  
-
-  .filter-tab {
-    padding: 10px 16px;
-    font-size: 13px;
-  }
-}
-
-/* Mobile */
-@media (max-width: 768px) {
-  .mobile-menu-btn {
-    display: block;
-  }
-
-  .main-content {
-    margin-left: 0;
-    width: 100%;
-  }
-
-  .headers {
-    margin-left: 60px;
-    padding: 12px 16px;
-  }
-
-  .search-container {
-    margin-right: 10px;
-    min-width: auto;
-  }
-
-  .content-areas {
-    padding: 16px;
-  }
-
-  .table-headers,
-  .table-rows {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    text-align: left;
-  }
-
-  .table-rows {
-    border: 1px solid #e5e7eb;
-    margin-bottom: 12px;
-    border-radius: 8px;
-    padding: 16px;
-  }
-
-  .action-buttons {
-    justify-content: flex-start;
-    margin-top: 8px;
-  }
-
-  
-
-/* Small Mobile */
-@media (max-width: 480px) {
-  .headers {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    margin-left: 50px;
-  }
-
-  .search-container {
-    margin-right: 0;
-    min-width: auto;
-  }
-
-  .notification-bell {
-    align-self: flex-end;
-    margin-right: 0;
-  }
-
-  .mobile-menu-btn {
-    top: 15px;
-    left: 15px;
-    padding: 10px;
-  }
-}
-
-/* Touch devices */
-@media (hover: none) and (pointer: coarse) {
-  .nav-item,
-  .logout-btn {
-    min-height: 48px;
-  }
-
-  .action-btn {
-    min-height: 30px;
-    padding: 8px 12px;
-  }
-}
-
-.search-container {
-  flex: 1;
-  max-width: 400px;
-  margin-right: 20px;
-  position: relative;
-  min-width: 200px;
-  margin-bottom: 10px;
-}
-
-.search-input {
-  width: 100%;
-  padding: 8px 16px 8px 40px;
-  border: 2px solid #fff;
-  border-radius: 8px;
-  font-size: clamp(12px, 2vw, 14px);
-  outline: none;
-  min-height: 50px;
-  background: #fff;
-}
-
-.search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
-  color: #6b7280;
-}
-
-      `}</style>
-
+    <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
       <div className="sidebars" id="sidebars" ref={sidebarRef}>
         <Sidebar isOpen={isSidebarsOpen} />
       </div>
 
-      <div className="main-content">
-        <header className="headers">
-          <h1 style={styles.titleStyle}>Access Request</h1>
+      <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
+        <header className="bg-white px-6 py-4 flex items-center justify-between shadow-sm flex-wrap gap-4">
+          <h1 className="text-2xl font-bold text-black">Access Request</h1>
 
-          {/* 🔔 Notification Bell */}
+          <div className="flex items-center gap-4">
+            {/* Manual Refresh Icon */}
             <button
-              style={styles.notificationBtn}
+              onClick={handleManualRefresh}
+              disabled={isLoading}
+              className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Refresh Data"
+            >
+              <RefreshCw 
+                size={24} 
+                color="#374151" 
+                className={isLoading ? "animate-spin" : ""} 
+              />
+            </button>
+
+            {/* 🔔 Notification Bell */}
+            <button
+              className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
               onClick={() => setNotifsOpen(!notifsOpen)}
             >
               <Bell size={24} color="#374151" />
               {notifications.length > 0 && (
-                <span style={styles.badge}>{notifications.length}</span>
+                <span className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[15px] h-[15px] flex items-center justify-center">
+                  {notifications.length}
+                </span>
               )}
             </button>
+          </div>
 
-            {/* 📩 Notification Modal */}
-            <NotificationModal
-              isOpen={notifsOpen}
-              onClose={() => setNotifsOpen(false)}
-              notifications={notifications.map((n) => ({
-                message: n.message,
-                date: n.date,
-              }))}
-            />
+          {/* 📩 Notification Modal */}
+          <NotificationModal
+            isOpen={notifsOpen}
+            onClose={() => setNotifsOpen(false)}
+            notifications={notifications.map((n) => ({
+              message: n.message,
+              date: n.date,
+            }))}
+          />
         </header>
 
-        <div className="content-areas">
-          <div className="page-headers">
-            <div className="search-container">
-              <Search className="search-icon" size={18} />
-              <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
+        <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
+          <div className="mb-6">
+            <div className="flex-1 max-w-md mb-4 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input
+                type="text"
+                className="w-full pl-10 pr-4 py-3 border-2 border-white rounded-lg text-sm outline-none bg-white"
+                placeholder="Search requests..."
+                onChange={(e) => handleSearch(e.target.value)}
+              />
             </div>
-            <div className="tabs-container">
+
+            <div className="flex gap-2 bg-gray-300 p-2 rounded-3xl h-14 w-fit items-center mb-5">
               <button
-                className={`tab ${activeTab === "pending" ? "active" : ""}`}
-                onClick={() => setActiveTab("pending")}
+                className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
+                  activeTab === "PENDING"
+                    ? "font-semibold bg-white text-gray-900 shadow-sm"
+                    : "hover:bg-white/70 hover:text-gray-900"
+                }`}
+                onClick={() => {
+                  setActiveTab("PENDING")
+                  setCurrentPage(1)
+                }}
               >
-                Pending <span className="badge badge-pending">{filterCounts.pending}</span>
+                Pending{" "}
+                <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-yellow-500">
+                  {filterCounts.pending}
+                </span>
               </button>
               <button
-                className={`tab ${activeTab === "approved" ? "active" : ""}`}
-                onClick={() => setActiveTab("approved")}
+                className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
+                  activeTab === "APPROVED"
+                    ? "font-semibold bg-white text-gray-900 shadow-sm"
+                    : "hover:bg-white/70 hover:text-gray-900"
+                }`}
+                onClick={() => {
+                  setActiveTab("APPROVED")
+                  setCurrentPage(1)
+                }}
               >
-                Approved <span className="badge badge-approved">{filterCounts.approved}</span>
+                Approved{" "}
+                <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-green-500">
+                  {filterCounts.approved}
+                </span>
               </button>
               <button
-                className={`tab ${activeTab === "declined" ? "active" : ""}`}
-                onClick={() => setActiveTab("declined")}
+                className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
+                  activeTab === "DECLINED"
+                    ? "font-semibold bg-white text-gray-900 shadow-sm"
+                    : "hover:bg-white/70 hover:text-gray-900"
+                }`}
+                onClick={() => {
+                  setActiveTab("DECLINED")
+                  setCurrentPage(1)
+                }}
               >
-                Declined <span className="badge badge-declined">{filterCounts.declined}</span>
+                Declined{" "}
+                <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-red-500">
+                  {filterCounts.declined}
+                </span>
               </button>
             </div>
-            <div className="access-table">
-              <div className="table-headerss">
-                <div>Request ID</div>
-                <div>Horse Name</div>
-                <div>Requested by (Vet)</div>
-                <div>Reason for Access</div>
-                <div>Date Requested</div>
-                <div>Status</div>
-                <div>Action</div>
-              </div>
-              {filteredRequests.length === 0 ? (
-                <div className="empty-state">
-                  <FileText size={48} />
-                  <h3>No access requests</h3>
-                  <p>No {activeTab} requests found</p>
-                </div>
+
+            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+              {isLoading ? (
+                <SkeletonLoader activeTab={activeTab} />
               ) : (
-                filteredRequests.map((request) => (
-                  <div key={request.id} className="table-rows">
-                    <div>{request.id}</div>
-                    <div>{request.horseName}</div>
-                    <div>{request.requestedBy}</div>
-                    <div>{request.reason}</div>
-                    <div>{request.dateRequested.toLocaleDateString()}</div>
-                    <div>
-                      <span className={`status-badge status-${request.status}`}>{request.status}</span>
-                    </div>
-                    <div className="action-buttons">
-                      {request.status === "pending" && (
-                        <>
-                          <button className="action-btns approve-btn" onClick={() => approveRequest(request.id)}>
-                            Approve
-                          </button>
-                          <button className="action-btns decline-btn" onClick={() => declineRequest(request.id)}>
-                            Decline
-                          </button>
-                        </>
-                      )}
-                      {(request.status === "approved" || request.status === "declined") && (
-                        <button className="action-btns delete-btn" onClick={() => deleteRequest(request.id)}>
-                          Delete
-                        </button>
-                      )}
-                    </div>
+                <>
+                  {/* Table Headers */}
+                  <div className={`bg-gray-50 grid ${gridConfig} px-6 py-4 font-semibold text-gray-700 text-sm border-b border-gray-200`}>
+                    <div>Requested By</div>
+                    <div>Horse</div>
+                    <div>Status</div>
+                    <div>Date Requested</div>
+                    <div className="text-center">Actions</div>
                   </div>
-                ))
+
+                  {paginatedRequests.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center text-center p-8">
+                      <FileText size={48} className="mb-4 opacity-50" />
+                      <h3 className="text-lg mb-2 text-gray-700">No access requests</h3>
+                      <p className="text-sm text-gray-500">
+                        No {activeTab.toLowerCase()} requests found{searchTerm && ` for "${searchTerm}"`}
+                      </p>
+                    </div>
+                  ) : (
+                    paginatedRequests.map((request) => (
+                      <div
+                        key={request.id}
+                        className={`grid ${gridConfig} px-6 py-4 border-b border-gray-100 transition-colors items-center min-h-[60px] hover:bg-gray-50`}
+                      >
+                        <div className="font-medium text-gray-900">{request.requestedBy}</div>
+                        <div className="text-gray-700">{request.horse}</div>
+                        <div>
+                          <span
+                            className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                              request.status === "PENDING"
+                                ? "bg-yellow-100 text-yellow-800"
+                                : request.status === "APPROVED"
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-red-100 text-red-800"
+                            }`}
+                          >
+                            {request.status}
+                          </span>
+                        </div>
+                        <div className="text-gray-600 text-sm">{request.dateRequested.toLocaleDateString()}</div>
+                        <div className="flex justify-center">
+                          <button
+                            className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px]"
+                            onClick={() => openViewModal(request)}
+                          >
+                            <Eye size={14} />
+                            View
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </>
               )}
             </div>
+
+            {/* Pagination Controls */}
+            {filteredRequests.length > 0 && !isLoading && (
+              <div className="flex justify-between items-center bg-gray-50 px-5 py-3 rounded-lg border border-gray-200 mt-4">
+                <div className="text-sm text-gray-600 flex items-center gap-3">
+                  Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                  {Math.min(currentPage * itemsPerPage, filteredRequests.length)} of {filteredRequests.length} results
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm">Show:</span>
+                    <select
+                      value={itemsPerPage}
+                      onChange={handleItemsPerPageChange}
+                      className="px-3 py-2 border border-gray-300 rounded bg-white text-sm"
+                    >
+                      <option value="5">5</option>
+                      <option value="10">10</option>
+                      <option value="20">20</option>
+                      <option value="50">50</option>
+                    </select>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      className="flex items-center justify-center w-10 h-10 border border-gray-300 bg-white text-gray-700 rounded-md cursor-pointer transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => goToPage(currentPage - 1)}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+
+                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                      let pageNum
+                      if (totalPages <= 5) {
+                        pageNum = i + 1
+                      } else if (currentPage <= 3) {
+                        pageNum = i + 1
+                      } else if (currentPage >= totalPages - 2) {
+                        pageNum = totalPages - 4 + i
+                      } else {
+                        pageNum = currentPage - 2 + i
+                      }
+
+                      return (
+                        <button
+                          key={pageNum}
+                          className={`flex items-center justify-center min-w-[40px] h-10 px-3 border border-gray-300 rounded-md text-sm cursor-pointer transition-all duration-200 ${
+                            currentPage === pageNum
+                              ? "bg-red-700 text-white border-red-700"
+                              : "bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
+                          }`}
+                          onClick={() => goToPage(pageNum)}
+                        >
+                          {pageNum}
+                        </button>
+                      )
+                    })}
+
+                    <button
+                      className="flex items-center justify-center w-10 h-10 border border-gray-300 bg-white text-gray-700 rounded-md cursor-pointer transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={() => goToPage(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       <FloatingMessages />
 
-      {/* Logout Modal */}
-      {isLogoutModalOpen && (
-        <div className="modal-overlay active" ref={logoutModalRef}>
-          <div className="logout-modal">
-            <div className="logout-modal-icon">
-              <LogOut size={25} color="#f59e0b" />
-            </div>
-            <h3>Confirm Logout</h3>
-            <p>Are you sure you want to log out of your account?</p>
-            <div className="logout-modal-buttons">
-              <button className="logout-modal-btn cancel" onClick={closeLogoutModal}>
-                No
-              </button>
-              <button className="logout-modal-btn confirm" onClick={confirmLogout}>
-                Yes
+      {isViewModalOpen && selectedRequest && (
+        <div className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay">
+          <div className="bg-white rounded-lg w-[90%] max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
+            {/* Modal Header with Close Button */}
+            <div className="flex items-center justify-between p-6 border-b border-gray-200">
+              <h3 className="text-xl font-semibold text-gray-900">Request Details</h3>
+              <button onClick={closeViewModal} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+                <X size={20} className="text-gray-500" />
               </button>
             </div>
+
+            {/* Modal Content */}
+            <div className="p-6">
+              {/* Horse Details Section */}
+              <div className="mb-6">
+                <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                  <Heart size={20} className="text-amber-600" />
+                  Horse Details
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-lg">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Horse Name</label>
+                    <p className="text-gray-900 font-medium">{selectedRequest.horse}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Breed</label>
+                    <p className="text-gray-900">{selectedRequest.breed || "Not specified"}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Birth Date</label>
+                    <p className="text-gray-900">{selectedRequest.birthdate || "Not specified"}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1">Status</label>
+                    <span
+                      className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
+                        selectedRequest.status === "PENDING"
+                          ? "bg-yellow-100 text-yellow-800"
+                          : selectedRequest.status === "APPROVED"
+                            ? "bg-green-100 text-green-800"
+                            : "bg-red-100 text-red-800"
+                      }`}
+                    >
+                      {selectedRequest.status}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Veterinarian Details Section */}
+              <div className="mb-6">
+                <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                  <User size={20} className="text-blue-600" />
+                  Veterinarian Details
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-blue-50 p-4 rounded-lg">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                      <User size={14} />
+                      Name
+                    </label>
+                    <p className="text-gray-900 font-medium">{selectedRequest.requestedBy}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                      <Mail size={14} />
+                      Email
+                    </label>
+                    <p className="text-gray-900">{selectedRequest.vetEmail}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                      <Phone size={14} />
+                      Phone
+                    </label>
+                    <p className="text-gray-900">{selectedRequest.vetPhone}</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                      <Award size={14} />
+                      License Number
+                    </label>
+                    <p className="text-gray-900">{selectedRequest.vetLicense}</p>
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                      <Building size={14} />
+                      Specialization
+                    </label>
+                    <p className="text-gray-900">{selectedRequest.vetClinic}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Request Information */}
+              <div className="mb-6">
+                <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
+                  <FileText size={20} className="text-green-600" />
+                  Request Information
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-green-50 p-4 rounded-lg">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                      <Calendar size={14} />
+                      Date Requested
+                    </label>
+                    <p className="text-gray-900">{selectedRequest.dateRequested.toLocaleDateString()}</p>
+                  </div>
+                  {selectedRequest.approvedAt && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                        <Calendar size={14} />
+                        Date Approved
+                      </label>
+                      <p className="text-gray-900">{selectedRequest.approvedAt.toLocaleDateString()}</p>
+                    </div>
+                  )}
+                  {selectedRequest.approvedBy && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-600 mb-1 flex items-center gap-1">
+                        <User size={14} />
+                        Approved By
+                      </label>
+                      <p className="text-gray-900">{selectedRequest.approvedBy}</p>
+                    </div>
+                  )}
+                  {selectedRequest.note && (
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-gray-600 mb-1">Notes</label>
+                      <p className="text-gray-900 bg-white p-3 rounded border">{selectedRequest.note}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer with Action Buttons (only for pending requests) */}
+            {selectedRequest.status === "PENDING" && (
+              <div className="flex gap-3 justify-end p-6 border-t border-gray-200 bg-gray-50">
+                <button
+                  className="px-6 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all duration-200 bg-green-500 text-white flex items-center gap-2 hover:bg-green-600"
+                  onClick={() => approveRequest(selectedRequest.id)}
+                >
+                  <CheckCircle size={16} />
+                  Approve
+                </button>
+                <button
+                  className="px-6 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all duration-200 bg-red-500 text-white flex items-center gap-2 hover:bg-red-600"
+                  onClick={() => handleDecline(selectedRequest.id)}
+                >
+                  <XCircle size={16} />
+                  Not Approved
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
 
-      {isActionModalOpen && (
-        <div
-          className="modal-overlay active"
-          id="actionModal"
-          ref={actionModalRef}
-          onClick={(e) => e.target === actionModalRef.current && closeActionModal()}
-        >
-          <div className="confirmation-modal">
-            <h3 id="actionTitle">{actionDetails.title}</h3>
-            <p id="actionMessage">{actionDetails.message}</p>
-            <div className="confirmation-buttons">
-              <button className="confirmation-btn cancel" onClick={closeActionModal}>
+      {isDeclineModalOpen && (
+        <div className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay">
+          <div className="bg-white rounded-lg p-6 w-[90%] max-w-lg">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Not Approved Request</h3>
+            <p className="mb-4 text-gray-700">Please provide a reason for declining this request:</p>
+            <textarea
+              className="w-full min-h-[100px] p-3 border-2 border-gray-200 rounded-md text-sm resize-y mb-5 focus:outline-none focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)]"
+              placeholder="Enter reason for declining..."
+              value={declineNote}
+              onChange={(e) => setDeclineNote(e.target.value)}
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                className="px-5 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all duration-200 bg-gray-600 text-white hover:bg-gray-500"
+                onClick={closeDeclineModal}
+              >
                 Cancel
               </button>
               <button
-                className={`confirmation-btns confirm ${actionDetails.action === "decline" ? "decline" : ""}`}
-                onClick={confirmAction}
+                className="px-5 py-2.5 border-none rounded-md text-sm font-medium cursor-pointer transition-all duration-200 bg-red-500 text-white hover:bg-red-600 disabled:bg-gray-400 disabled:cursor-not-allowed"
+                onClick={confirmDeclineModal}
+                disabled={!declineNote.trim()}
               >
-                {actionDetails.action === "approve" ? "Approve" : "Decline"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {isDeleteModalOpen && (
-        <div className="modal-overlay active">
-          <div className="confirmation-modal">
-            <h3>Delete Request</h3>
-            <p>Are you sure you want to delete request {deleteRequestId}? This action cannot be undone.</p>
-            <div className="confirmation-buttons">
-              <button className="confirmation-btn cancel" onClick={closeDeleteModal}>
-                Cancel
-              </button>
-              <button className="confirmation-btns confirm decline" onClick={confirmDelete}>
-                Delete
+                Decline
               </button>
             </div>
           </div>

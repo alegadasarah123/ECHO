@@ -10,21 +10,36 @@ import {
   FileText,
   Info,
   MapPin,
+  RefreshCw,
   Search,
-  SquareX,
   Stethoscope,
   User,
   UserCheck,
   UserX,
-  XCircle
+  XCircle,
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
+const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed";
+const SkeletonLoader = () => (
+  <div className="animate-pulse">
+    <div className="flex items-center p-4 border-b border-gray-100">
+      <div className="w-10 h-10 rounded-full bg-gray-300 mr-4 flex-shrink-0"></div>
+      <div className="flex-1 min-w-0">
+        <div className="h-4 bg-gray-300 rounded mb-2 w-3/4"></div>
+        <div className="h-3 bg-gray-300 rounded mb-1 w-1/2"></div>
+        <div className="h-3 bg-gray-300 rounded w-2/3"></div>
+      </div>
+      <div className="flex gap-2 ml-4">
+        <div className="h-8 w-16 bg-gray-300 rounded"></div>
+      </div>
+    </div>
+  </div>
+)
 
 function CtuAccountApproval() {
   const navigate = useNavigate()
@@ -36,7 +51,12 @@ function CtuAccountApproval() {
   const [activeTab, setActiveTab] = useState("pending")
   const [recentFilter, setRecentFilter] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchResults, setSearchResults] = useState([])
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
+
+  const [isLoading, setIsLoading] = useState(true)
+  const [isLoadingCounts, setIsLoadingCounts] = useState(true)
 
   const [notifications, setNotifications] = useState([])
   const [notifsOpen, setNotifsOpen] = useState(false)
@@ -53,6 +73,13 @@ function CtuAccountApproval() {
   const logoutModalRef = useRef(null)
   const [isSidebarsOpen, setIsSidebarsOpen] = useState(false)
   const [modalActiveTab, setModalActiveTab] = useState("personal")
+
+  const [declineReason, setDeclineReason] = useState("")
+
+  // State for managing pinned posts (if this component were to handle posts)
+  const [pinnedPosts, setPinnedPosts] = useState(new Set())
+  const [showDropdown, setShowDropdown] = useState({})
+  const [posts, setPosts] = useState([]) // Assuming 'posts' is relevant for some functionality
 
   // Helper to format time for notifications
   const formatTimeAgo = useCallback((timestamp) => {
@@ -81,21 +108,47 @@ function CtuAccountApproval() {
     declined: 0,
   })
 
-  // Fetch counts from backend
   useEffect(() => {
     const fetchCounts = async () => {
+      setIsLoadingCounts(true)
       try {
-        const response = await  fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-account-counts/")
+        const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-account-counts/")
         if (!response.ok) throw new Error("Failed to fetch data")
-        const data = await response.json()
-        setCounts(data)
+        const result = await response.json()
+        setCounts(result.data || result)
       } catch (error) {
         console.error("Error fetching counts:", error)
+      } finally {
+        setIsLoadingCounts(false)
       }
     }
 
     fetchCounts()
   }, [])
+
+  useEffect(() => {
+    const debounceTimer = setTimeout(() => {
+      if (searchTerm) {
+        setIsSearching(true)
+        // Simulate search delay
+        setTimeout(() => {
+          const filtered = registrationData.filter(
+            (user) =>
+              user.vet_fname.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              user.vet_lname.toLowerCase().includes(searchTerm.toLowerCase()) ||
+              user.vet_email.toLowerCase().includes(searchTerm.toLowerCase()),
+          )
+          setSearchResults(filtered)
+          setIsSearching(false)
+        }, 300)
+      } else {
+        setSearchResults([])
+        setIsSearching(false)
+      }
+    }, 500)
+
+    return () => clearTimeout(debounceTimer)
+  }, [searchTerm, registrationData])
 
   const filterRegistrations = useCallback(() => {
     let filtered = registrationData
@@ -106,9 +159,9 @@ function CtuAccountApproval() {
     if (searchTerm) {
       filtered = filtered.filter(
         (user) =>
-          user.vet_fname.toLowerCase().includes(searchTerm) ||
-          user.vet_lname.toLowerCase().includes(searchTerm) ||
-          user.vet_email.toLowerCase().includes(searchTerm),
+          user.vet_fname.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          user.vet_lname.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          user.vet_email.toLowerCase().includes(searchTerm.toLowerCase()),
       )
     }
 
@@ -131,27 +184,25 @@ function CtuAccountApproval() {
     setSelectedUser(null)
   }
 
- const showApproveConfirmation = (vetId) => {
-  setSelectedUser({ vet_id: vetId });
-  setConfirmationDetails({
-    title: "Confirm Approval",
-    message: "Are you sure you want to approve this registration?",
-    action: "approve",
-  });
-  setIsConfirmationModalOpen(true);
-};
+  const showApproveConfirmation = (vetId) => {
+    setSelectedUser({ vet_id: vetId })
+    setConfirmationDetails({
+      title: "Confirm Approval",
+      message: "Are you sure you want to approve this registration?",
+      action: "approve",
+    })
+    setIsConfirmationModalOpen(true)
+  }
 
-
-const showDeclineConfirmation = (vetId) => {
-  setSelectedUser({ vet_id: vetId });
-  setConfirmationDetails({
-    title: "Confirm Decline",
-    message: "Are you sure you want to decline this registration?",
-    action: "decline",
-  });
-  setIsConfirmationModalOpen(true);
-};
-
+  const showDeclineConfirmation = (vetId) => {
+    setSelectedUser({ vet_id: vetId })
+    setConfirmationDetails({
+      title: "Confirm Decline",
+      message: "Are you sure you want to decline this registration?",
+      action: "decline",
+    })
+    setIsConfirmationModalOpen(true)
+  }
 
   const showApproveConfirmationFromModal = () => {
     if (selectedUser && selectedUser.status === "pending") {
@@ -167,129 +218,101 @@ const showDeclineConfirmation = (vetId) => {
     }
   }
 
-
-
   const closeConfirmation = () => {
     setIsConfirmationModalOpen(false)
     setSelectedUser(null)
     setConfirmationDetails({ title: "", message: "", action: "" })
   }
 
-  
-
-
-
-
   const confirmAction = () => {
     if (confirmationDetails.action === "approve" && selectedUser) {
       approveUser(selectedUser.vet_id)
     } else if (confirmationDetails.action === "decline" && selectedUser) {
       declineUser(selectedUser.vet_id)
-    } 
+    }
     closeConfirmation()
   }
 
-// -------------------- Approve a single user --------------------
-const approveUser = async (vetId) => {
-  try {
-    // Optimistically update the UI first
-    setRegistrationData((prev) =>
-      prev.map((u) => (u.vet_id === vetId ? { ...u, status: "approved" } : u))
-    );
-    setMessage(`Approving user ${vetId}...`);
+  // -------------------- Approve a single user --------------------
+  const approveUser = async (vetId) => {
+    try {
+      // Optimistically update the UI first
+      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "approved" } : u)))
+      setMessage(`Approving user ${vetId}...`)
 
-    const response = await fetch(
-      `http://127.0.0.1:8000/api/ctu_vetmed/update-vet-status/${vetId}/`,
-      {
+      const response = await fetch(`http://127.0.0.1:8000/api/ctu_vetmed/update-vet-status/${vetId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "approved" }),
-      }
-    );
+      })
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Failed to approve user: ${text}`);
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(`Failed to approve user: ${text}`)
+      }
+
+      const data = await response.json()
+      setMessage(`User ${vetId} approved successfully!`)
+      
+      // Refresh counts after approval
+      fetchCounts()
+      console.log("User approved:", data)
+    } catch (err) {
+      console.error(err)
+      // Rollback UI if failed
+      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u)))
+      setMessage(`Error: ${err.message}`)
+    }
+  }
+
+  // -------------------- Decline a single user --------------------
+  const declineUser = async (vetId) => {
+    if (!declineReason) {
+      setMessage("Please enter a reason for decline.")
+      return
     }
 
-    const data = await response.json();
-    setMessage(`User ${vetId} approved successfully!`);
-    console.log("User approved:", data);
-  } catch (err) {
-    console.error(err);
-    // Rollback UI if failed
-    setRegistrationData((prev) =>
-      prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u))
-    );
-    setMessage(`Error: ${err.message}`);
-  }
-};
+    try {
+      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "declined" } : u)))
+      setMessage(`Declining user ${vetId}...`)
 
-// -------------------- Decline a single user --------------------
-const declineUser = async (vetId) => {
-  try {
-    // Optimistically update the UI first
-    setRegistrationData((prev) =>
-      prev.map((u) => (u.vet_id === vetId ? { ...u, status: "declined" } : u))
-    );
-    setMessage(`Declining user ${vetId}...`);
-
-    const response = await fetch(
-      `http://127.0.0.1:8000/api/ctu_vetmed/update-vet-status/${vetId}/`,
-      {
+      const response = await fetch(`http://127.0.0.1:8000/api/ctu_vetmed/update-vet-status/${vetId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "declined" }),
+        body: JSON.stringify({ status: "declined", decline_reason: declineReason }),
+      })
+
+      if (!response.ok) {
+        const text = await response.text()
+        throw new Error(`Failed to decline user: ${text}`)
       }
-    );
 
-    if (!response.ok) {
-      const text = await response.text();
-      throw new Error(`Failed to decline user: ${text}`);
+      const data = await response.json()
+      setMessage(`User ${vetId} declined successfully!`)
+      setDeclineReason("") // clear reason after successful decline
+      
+      // Refresh counts after decline
+      fetchCounts()
+      console.log("User declined:", data)
+    } catch (err) {
+      console.error(err)
+      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u)))
+      setMessage(`Error: ${err.message}`)
     }
-
-    const data = await response.json();
-    setMessage(`User ${vetId} declined successfully!`);
-    console.log("User declined:", data);
-  } catch (err) {
-    console.error(err);
-    // Rollback UI if failed
-    setRegistrationData((prev) =>
-      prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u))
-    );
-    setMessage(`Error: ${err.message}`);
   }
-};
-
-// -------------------- Approve all pending users --------------------
-const approveAllPending = async () => {
-  if (activeTab !== "pending") return;
-
-  const pendingUsers = registrationData.filter((u) => u.status === "pending");
-  if (pendingUsers.length === 0) return;
-
-  try {
-    await Promise.all(pendingUsers.map((u) => approveUser(u.vet_id)));
-    setMessage("All pending users approved successfully!");
-  } catch (err) {
-    setMessage(`Error approving users: ${err.message}`);
-  }
-}
-
-
 
   const handleSearchInput = (e) => {
-    setSearchTerm(e.target.value.toLowerCase())
+    setSearchTerm(e.target.value)
+    if (e.target.value) {
+      setIsSearching(true)
+    }
   }
 
   const handleRecentFilterChange = (e) => {
     setRecentFilter(e.target.value)
   }
-
- 
-
 
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
@@ -314,7 +337,9 @@ const approveAllPending = async () => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
       })
-      .then((data) => {
+      .then((result) => {
+        // Extract data from response if needed
+        const data = result.data || result
         const formatted = data.map((notif) => ({
           id: notif.id,
           message: notif.message,
@@ -325,18 +350,28 @@ const approveAllPending = async () => {
       .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
-  // ✅ Auto-refresh every 30s
+  // ✅ Refresh counts function
+  const fetchCounts = async () => {
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-account-counts/")
+      if (!response.ok) throw new Error("Failed to fetch data")
+      const result = await response.json()
+      setCounts(result.data || result)
+    } catch (error) {
+      console.error("Error fetching counts:", error)
+    }
+  }
+
+  // ✅ Auto-refresh notifications every 60s (reduced from 10s)
   useEffect(() => {
     loadNotifications() // load once
 
     const interval = setInterval(() => {
       loadNotifications()
-    }, 30000) // 30 seconds
+    }, 60000) // 60 seconds
 
     return () => clearInterval(interval)
   }, [loadNotifications])
-
-
 
   const loadDashboardData = useCallback(() => {
     loadStats()
@@ -344,61 +379,71 @@ const approveAllPending = async () => {
     loadNotifications()
   }, [loadStats, loadRecentActivities, loadNotifications])
 
-  const confirmLogout = () => {
-    console.log("User logged out")
-    localStorage.removeItem("currentUser")
-    localStorage.removeItem("loginTime")
-    navigate("/login")
-    closeLogoutModal()
-  }
+  useEffect(() => {
+    const controller = new AbortController() // for cancelling fetch on unmount
 
-useEffect(() => {
-  const loadVetProfiles = async () => {
-    try {
-      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-vet-profiles/");
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+    const loadVetProfiles = async () => {
+      setIsLoading(true)
+      try {
+        const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-vet-profiles/", {
+          signal: controller.signal,
+        })
 
-      const data = await response.json();
-      console.log("Fetched vet profiles:", data);
-
-      // Process each item safely
-      const processedData = data.map((item, index) => {
-        // Safely access joined 'status' field
-        let statusValue = item.status;
-        // If backend join returned nested object, try to get it
-        if (!statusValue && item.vet && item.vet.status) {
-          statusValue = item.vet.status;
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`)
         }
 
-        return {
-          ...item,
-          status: statusValue || "pending", // fallback if still undefined
-          type: item.type || "Veterinarian",
-        };
-      });
+        const result = await response.json()
+        console.log("Fetched vet profiles response:", result)
 
-      // Log processed items
-      processedData.forEach((item, index) => {
-        console.log(`[Processed Item ${index}]`, {
-          id: item.vet_id,
-          name: `${item.vet_fname} ${item.vet_lname}`,
-          status: item.status,
-          type: item.type,
-          allFields: Object.keys(item),
-        });
-      });
+        // Extract the data array from the response
+        const data = result.data || []
+        console.log("Extracted vet profiles data:", data)
 
-      setRegistrationData(processedData);
+        // Process each item safely
+        const processedData = data.map((item, index) => {
+          let statusValue = item.status
+          if (!statusValue && item.users && item.users.status) {
+            statusValue = item.users.status
+          }
 
-    } catch (error) {
-      console.error("Failed to fetch vet profiles:", error);
+          return {
+            ...item,
+            status: statusValue || "pending",
+            type: item.type || "Veterinarian",
+          }
+        })
+
+        // Log processed items
+        processedData.forEach((item, index) => {
+          console.log(`[Processed Item ${index}]`, {
+            id: item.vet_id,
+            name: `${item.vet_fname} ${item.vet_lname}`,
+            status: item.status,
+            type: item.type,
+            allFields: Object.keys(item),
+          })
+        })
+
+        setRegistrationData(processedData)
+      } catch (error) {
+        if (error.name !== "AbortError") {
+          console.error("Failed to fetch vet profiles:", error)
+        }
+      } finally {
+        setIsLoading(false)
+      }
     }
-  };
 
-  loadVetProfiles();
-}, []);
+    loadVetProfiles() // initial load only
+    
+    // REMOVED auto-refresh interval for vet profiles
+    // Only manual refreshes now
+
+    return () => {
+      controller.abort() // cancel fetch if component unmounts
+    }
+  }, [])
 
   // Effects
   useEffect(() => {
@@ -442,1068 +487,223 @@ useEffect(() => {
   const filteredRegistrations = filterRegistrations()
 
   const togglePin = (postId) => {
-  setPinnedPosts((prev) => {
-    const updated = new Set(prev);
-    updated.add(postId); // only add, never delete
-    return updated;
-  });
+    setPinnedPosts((prev) => {
+      const updated = new Set(prev)
+      updated.add(postId) // only add, never delete
+      return updated
+    })
 
-  setShowDropdown((prev) => ({ ...prev, [postId]: false }));
+    setShowDropdown((prev) => ({ ...prev, [postId]: false }))
 
-  // Reorder posts: pinned posts first, then regular posts by timestamp
-  setPosts((prev) => {
-    const pinned = [];
-    const unpinned = [];
+    // Reorder posts: pinned posts first, then regular posts by timestamp
+    setPosts((prev) => {
+      const pinned = []
+      const unpinned = []
 
-    prev.forEach((post) => {
-      if (post.id === postId || pinnedPosts.has(post.id)) {
-        pinned.push(post);
-      } else {
-        unpinned.push(post);
+      prev.forEach((post) => {
+        if (post.id === postId || pinnedPosts.has(post.id)) {
+          pinned.push(post)
+        } else {
+          unpinned.push(post)
+        }
+      })
+
+      return [
+        ...pinned.sort((a, b) => b.timestamp - a.timestamp),
+        ...unpinned.sort((a, b) => b.timestamp - a.timestamp),
+      ]
+    })
+  }
+
+  const handleTabChange = (tabName) => {
+    setActiveTab(tabName)
+    setIsLoading(true)
+    // Simulate loading delay for tab change
+    setTimeout(() => {
+      setIsLoading(false)
+    }, 500)
+  }
+
+  // Function to parse documents array from string
+  const parseDocuments = (documents) => {
+    if (!documents) return [];
+    try {
+      if (typeof documents === 'string') {
+        return JSON.parse(documents);
       }
-    });
+      return documents;
+    } catch (error) {
+      console.error('Error parsing documents:', error);
+      return [];
+    }
+  };
 
-    return [
-      ...pinned.sort((a, b) => b.timestamp - a.timestamp),
-      ...unpinned.sort((a, b) => b.timestamp - a.timestamp),
-    ];
-  });
-};
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-vet-profiles/")
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+      
+      const result = await response.json()
+      const data = result.data || []
+      
+      const processedData = data.map((item) => {
+        let statusValue = item.status
+        if (!statusValue && item.users && item.users.status) {
+          statusValue = item.users.status
+        }
 
+        return {
+          ...item,
+          status: statusValue || "pending",
+          type: item.type || "Veterinarian",
+        }
+      })
 
-  const styles = {
-    notificationBtn: {
-        position: "relative",
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-    padding: "8px",
-    borderRadius: "50%",
-    },
-    notificationBadge: {
-      position: "absolute",
-    top: "2px",
-    right: "2px",
-    backgroundColor: "#ef4444",
-    color: "#fff",
-    borderRadius: "50%",
-    padding: "2px 6px",
-    fontSize: "12px",
-    fontWeight: "bold",
-    },
-    bodyWrapper: {
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-      backgroundColor: "#f5f5f5",
-      display: "flex",
-      height: "100vh",
-      overflowX: "hidden",
-      width: "100%",
-    },
-    logouts: {
-      padding: "10px",
-      borderTop: "1px solid rgba(255, 255, 255, 0.1)",
-    },
-    logoutBtns: {
-      display: "flex",
-      alignItems: "center",
-      color: "white",
-      textDecoration: "none",
-      fontSize: "clamp(13px, 2vw, 15px)",
-      fontWeight: "500",
-      cursor: "pointer",
-      padding: "14px 40px",
-      borderRadius: "25px",
-      transition: "all 0.3s ease",
-      minHeight: "44px",
-    },
-    logoutBtnsHover: {
-      backgroundColor: "rgba(255, 255, 255, 0.1)",
-    },
-    logoutIcons: {
-      width: "20px",
-      height: "20px",
-      marginRight: "15px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontSize: "16px",
-      flexShrink: "0",
-    },
-    mainContent: {
-      flex: "1",
-      display: "flex",
-      flexDirection: "column",
-      width: "calc(100% - 250px)",
-      transition: "margin-left 0.3s ease",
-    },
-    headers: {
-      background: "white",
-      padding: "18px 24px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "space-between",
-      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-      flexWrap: "wrap",
-      gap: "16px",
-    },
-    sidebarToggleBtn: {
-      background: "none",
-      border: "none",
-      color: "#666",
-      fontSize: "20px",
-      cursor: "pointer",
-      padding: "8px",
-      minHeight: "44px",
-      minWidth: "44px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      transition: "color 0.2s",
-    },
-    sidebarToggleBtnHover: {
-      color: "#333",
-    },
-    searchContainers: {
-      flex: "1",
-      maxWidth: "400px",
-      marginRight: "20px",
-      position: "relative",
-      minWidth: "200px",
-      marginBottom: "10px",
-    },
-    searchInput: {
-      width: "100%",
-      padding: "8px 16px 8px 40px",
-      border: "2px solid #fff",
-      borderRadius: "8px",
-      fontSize: "clamp(12px, 2vw, 14px)",
-      outline: "none",
-      minHeight: "50px",
-      background: "#fff",
-    },
-    searchIcon: {
-      position: "absolute",
-      left: "12px",
-      top: "50%",
-      transform: "translateY(-50%)",
-      width: "16px",
-      height: "16px",
-      color: "#6b7280",
-    },
-    markAllRead: {
-      background: "none",
-      border: "none",
-      color: "#b91c1c",
-      fontSize: "12px",
-      cursor: "pointer",
-      textDecoration: "underline",
-    },
-    emptyState: {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      textAlign: "center",
-      padding: "2rem",
-    },
-    iconWrapper: {
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: "1rem",
-    },
-    emptyStateIcon: {
-      fontSize: "48px",
-      marginBottom: "16px",
-      opacity: "0.5",
-    },
-    emptyStateH3: {
-      fontSize: "18px",
-      marginBottom: "8px",
-      color: "#374151",
-    },
-    emptyStateP: {
-      fontSize: "14px",
-    },
-    contentArea: {
-      flex: "1",
-      padding: "24px",
-      background: "#f5f5f5",
-      overflowY: "auto",
-    },
-    pageHeader: {
-      marginBottom: "24px",
-    },
-    h1: {
-      fontSize: "clamp(20px, 4vw, 24px)",
-      fontWeight: "700",
-      color: "#111827",
-      marginBottom: "8px",
-      lineHeight: "1.2",
-    },
-    h2: {
-      fontSize: "clamp(14px, 2.5vw, 16px)",
-      fontWeight: "500",
-      color: "#6b7280",
-      marginTop: "25px",
-      marginBottom: "16px",
-      lineHeight: "1.4",
-    },
-    tabsContainer: {
-    display: "flex",
-    gap: "16px",
-    background: "#e5e2e2ff",
-    padding: "0 8px",
-    borderRadius: "24px",
-    height: "48px",
-    width: "370px",
-    alignItems: "center",
-    marginTop: "20px",
-  },
-  tab: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "8px",
-    height: "100%",
-    padding: "0 12px",
-    background: "none",
-    border: "none",
-    fontSize: "14px",
-    fontWeight: "500",
-    color: "#374151",
-    cursor: "pointer",
-    position: "relative",
-    borderRadius: "24px",
-    transition: "all 0.2s ease",
-  },
-  tabHover: {
-    backgroundColor: "#ffffff",
-    color: "#111827",
-  },
-  tabActive: {
-    fontWeight: "600",
-  },
-  badge: {
-    display: "inline-flex",
-    alignItems: "center",
-    justifyContent: "center",
-    minWidth: "22px",
-    height: "22px",
-    padding: "0 6px",
-    borderRadius: "50%",
-    fontSize: "12px",
-    fontWeight: "600",
-    color: "#fff",
-  },
-  badgePending: {
-    backgroundColor: "#f59e0b", // orange
-  },
-  badgeApproved: {
-    backgroundColor: "#22c55e", // green
-  },
-  badgeDeclined: {
-    backgroundColor: "#ef4444", // red
-  },
-    controlsRow: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: "20px",
-      flexWrap: "wrap",
-      gap: "16px",
-    },
-    filterControls: {
-      display: "flex",
-      gap: "12px",
-      alignItems: "center",
-      flexWrap: "wrap",
-    },
-    filterSelect: {
-      padding: "8px 12px",
-      border: "1px solid #d1d5db",
-      borderRadius: "6px",
-      fontSize: "clamp(12px, 2vw, 14px)",
-      background: "white",
-      minHeight: "40px",
-    },
-    approveAllBtn: {
-      background: "#22c55e",
-      color: "white",
-      border: "none",
-      padding: "8px 16px",
-      borderRadius: "6px",
-      fontSize: "clamp(12px, 2vw, 14px)",
-      fontWeight: "500",
-      cursor: "pointer",
-      transition: "background-color 0.2s",
-      minHeight: "40px",
-    },
-    approveAllBtnHover: {
-      background: "#16a34a",
-    },
-    registrationTable: {
-      background: "white",
-      borderRadius: "8px",
-      boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-      overflow: "hidden",
-    },
-    registrationItem: {
-      display: "flex",
-      alignItems: "center",
-      padding: "16px 20px",
-      borderBottom: "1px solid #f3f4f6",
-      transition: "background-color 0.2s",
-      minHeight: "80px",
-      overflowY: "auto",
-    },
-    registrationItemHover: {
-      background: "#f9fafb",
-    },
-    registrationItemLast: {
-      borderBottom: "none",
-    },
-    userAvatar: {
-      width: "40px",
-      height: "40px",
-      borderRadius: "50%",
-      background: "#6b7280",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      color: "white",
-      fontWeight: "600",
-      fontSize: "16px",
-      marginRight: "16px",
-      flexShrink: "0",
-    },
-    userInfo: {
-      flex: "1",
-      minWidth: "0",
-    },
-    userName: {
-      fontWeight: "600",
-      color: "#111827",
-      fontSize: "clamp(12px, 2vw, 14px)",
-      marginBottom: "2px",
-      wordWrap: "break-word",
-    },
-    userEmail: {
-      color: "#6b7280",
-      fontSize: "clamp(10px, 1.8vw, 12px)",
-      marginBottom: "2px",
-      wordWrap: "break-word",
-    },
-    userDetails: {
-      color: "#6b7280",
-      fontSize: "clamp(10px, 1.8vw, 12px)",
-      wordWrap: "break-word",
-    },
-    userTypeBadge: {
-      display: "inline-block",
-      padding: "2px 8px",
-      borderRadius: "12px",
-      fontSize: "clamp(9px, 1.5vw, 10px)",
-      fontWeight: "500",
-      marginLeft: "8px",
-      color: "#000",
-    },
-    userTypeBadgeApproved: {
-      backgroundColor: "#539953ff",
-      color: "#fff",
-    },
-    userTypeBadgePending: {
-      backgroundColor: "#ffa500",
-      color: "#fff",
-    },
-    userTypeBadgeDeclined: {
-      backgroundColor: "#ff4c4c",
-      color: "#fff",
-    },
-    badgeKutsero: {
-      background: "#dbeafe",
-      color: "#1d4ed8",
-    },
-    badgeVeterinarian: {
-      background: "#dcfce7",
-      color: "#166534",
-    },
-    actionButtons: {
-      display: "flex",
-      gap: "8px",
-      marginLeft: "16px",
-      flexWrap: "wrap",
-    },
-    actionBtn: {
-      display: "inline-flex",
-      alignItems: "center",
-      gap: "6px",
-      padding: "6px 12px",
-      border: "none",
-      borderRadius: "4px",
-      fontSize: "clamp(10px, 1.8vw, 12px)",
-      fontWeight: "500",
-      cursor: "pointer",
-      transition: "all 0.2s",
-      minHeight: "32px",
-    },
-    btnView: {
-      background: "#30487a",
-      color: "white",
-    },
-    btnViewHover: {
-      background: "#6e7c9b",
-    },
-
-    btnApprove: {
-      backgroundColor: "#22c55e",
-      color: "#fff",
-    },
-    btnApproveHover: {
-      backgroundColor: "#16a34a",
-    },
-    btnDecline: {
-      backgroundColor: "#fa1d15ff",
-      color: "#000",
-    },
-    btnDeclineHover: {
-      backgroundColor: "rgba(232, 44, 44, 1)ff",
-    },
-    mobileMenuBtn: {
-      display: "none",
-      position: "fixed",
-      top: "20px",
-      left: "20px",
-      zIndex: "1001",
-      background: "#b91c1c",
-      color: "white",
-      border: "none",
-      padding: "12px",
-      borderRadius: "8px",
-      fontSize: "18px",
-      cursor: "pointer",
-      minHeight: "44px",
-      minWidth: "44px",
-    },
-    modalOverlay: {
-      position: "fixed",
-      top: "0",
-      left: "0",
-      width: "100%",
-      height: "100%",
-      background: "rgba(0, 0, 0, 0.5)",
-      display: "none",
-      justifyContent: "center",
-      alignItems: "center",
-      zIndex: "1000",
-      padding: "20px",
-    },
-    modalOverlayActive: {
-      display: "flex",
-    },
-    modalContents: {
-      background: "white",
-      borderRadius: "8px",
-      padding: "clamp(20px, 4vw, 32px)",
-      width: "90%",
-      maxWidth: "1200px",
-      maxHeight: "90vh",
-      overflowY: "auto",
-      position: "relative",
-    },
-    modalBody: {
-      marginBottom: "20px",
-    },
-    modalSection: {
-      marginBottom: "24px",
-    },
-    modalSectionBox: {
-      background: "#f9fafb",
-      border: "1px solid #e5e7eb",
-      borderRadius: "8px",
-      padding: "16px",
-      marginBottom: "16px",
-      transition: "box-shadow 0.2s ease",
-    },
-    modalSectionBoxHover: {
-      boxShadow: "0 2px 8px rgba(0, 0, 0, 0.1)",
-    },
-    sectionHeader: {
-      display: "flex",
-      alignItems: "center",
-      marginBottom: "16px",
-      paddingBottom: "8px",
-      borderBottom: "1px solid #e5e7eb",
-    },
-    sectionIcon: {
-      color: "#b91c1c",
-      marginRight: "8px",
-      fontSize: "16px",
-      width: "20px",
-      textAlign: "center",
-    },
-    sectionHeaderH4: {
-      fontSize: "clamp(14px, 2.5vw, 16px)",
-      fontWeight: "600",
-      color: "#111827",
-      margin: "0",
-    },
-    modalGrid: {
-      display: "grid",
-      gridTemplateColumns: "1fr 1fr",
-      gap: "16px",
-    },
-    modalField: {
-      display: "flex",
-      justifyContent: "flex-start",
-      alignItems: "flex-start",
-      marginBottom: "12px",
-      gap: "4px",
-    },
-    modalFieldFullWidth: {
-      gridColumn: "1 / -1",
-    },
-    modalLabel: {
-      fontSize: "clamp(10px, 1.8vw, 12px)",
-      color: "#6b7280",
-      flexShrink: "0",
-      minWidth: "120px",
-    },
-    modalValue: {
-      fontSize: "clamp(12px, 2vw, 14px)",
-      fontWeight: "500",
-      color: "#111827",
-      wordWrap: "break-word",
-      flexShrink: "0",
-      marginRight: "100%",
-    },
-    modalClose: {
-      position: "absolute",
-      top: "16px",
-      right: "16px",
-      background: "none",
-      border: "none",
-      fontSize: "24px",
-      color: "#6b7280",
-      cursor: "pointer",
-      padding: "4px",
-      lineHeight: "1",
-      minHeight: "32px",
-      minWidth: "32px",
-    },
-    modalCloseHover: {
-      color: "#374151",
-    },
-    modalFooter: {
-      display: "flex",
-      justifyContent: "flex-end",
-      paddingTop: "16px",
-      borderTop: "1px solid #e5e7eb",
-      gap: "12px",
-      flexWrap: "wrap",
-    },
-    modalFooterCloseOnly: {
-      justifyContent: "flex-end",
-    },
-    modalBtn: {
-      background: "#6b7280",
-      color: "white",
-      border: "none",
-      padding: "8px 16px",
-      borderRadius: "6px",
-      fontSize: "clamp(12px, 2vw, 14px)",
-      fontWeight: "500",
-      cursor: "pointer",
-      transition: "background-color 0.2s",
-      flex: "1",
-      minHeight: "40px",
-    },
-    modalBtnHover: {
-      background: "#4b5563",
-    },
-    modalBtnApprove: {
-      background: "#22c55e",
-      color: "white",
-    },
-    modalBtnApproveHover: {
-      background: "#16a34a",
-    },
-    modalBtnDecline: {
-      background: "#ef4444",
-      color: "white",
-    },
-    modalBtnDeclineHover: {
-      background: "#dc2626",
-    },
-    confirmationModal: {
-      background: "white",
-      borderRadius: "8px",
-      padding: "clamp(20px, 4vw, 30px)",
-      textAlign: "center",
-      maxWidth: "400px",
-      width: "90%",
-    },
-    confirmationModalH3: {
-      fontSize: "clamp(16px, 3vw, 18px)",
-      fontWeight: "600",
-      color: "#111827",
-      marginBottom: "12px",
-    },
-    confirmationModalP: {
-      fontSize: "clamp(14px, 2.5vw, 16px)",
-      color: "#6b7280",
-      marginBottom: "24px",
-      lineHeight: "1.4",
-    },
-    confirmationButtons: {
-      display: "flex",
-      gap: "12px",
-      justifyContent: "center",
-      flexWrap: "wrap",
-    },
-    confirmationBtn: {
-      padding: "8px 16px",
-      border: "none",
-      borderRadius: "6px",
-      fontSize: "clamp(12px, 2vw, 14px)",
-      fontWeight: "500",
-      cursor: "pointer",
-      transition: "background-color 0.2s",
-      minHeight: "40px",
-      flex: "1",
-      minWidth: "80px",
-    },
-    confirmationBtnCancel: {
-      background: "#6b7280",
-      color: "white",
-    },
-    confirmationBtnCancelHover: {
-      background: "#4b5563",
-    },
-    confirmationBtnConfirm: {
-      background: "#22c55e",
-      color: "white",
-    },
-    confirmationBtnConfirmHover: {
-      background: "#16a34a",
-    },
-    confirmationBtnConfirmDecline: {
-      background: "#ef4444",
-    },
-    confirmationBtnConfirmDeclineHover: {
-      background: "#dc2626",
-    },
-    modalUserBadge: {
-      backgroundColor: "#52e577ff",
-      color: "white",
-      padding: "4px 10px",
-      borderRadius: "12px",
-      fontSize: "0.9rem",
-      fontWeight: "bold",
-      display: "inline-block",
-      textTransform: "capitalize",
-    },
-    logoutModal: {
-      background: "white",
-      borderRadius: "12px",
-      padding: "32px",
-      width: "90%",
-      maxWidth: "400px",
-      textAlign: "center",
-      boxShadow: "0 10px 25px rgba(0, 0, 0, 0.2)",
-    },
-    logoutModalIcon: {
-      width: "64px",
-      height: "64px",
-      background: "#fef3c7",
-      borderRadius: "50%",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      margin: "0 auto 20px",
-    },
-    logoutModalIconI: {
-      fontSize: "28px",
-      color: "#f59e0b",
-    },
-    logoutModalH3: {
-      fontSize: "20px",
-      fontWeight: "600",
-      color: "#111827",
-      marginBottom: "12px",
-    },
-    logoutModalP: {
-      fontSize: "16px",
-      color: "#6b7280",
-      marginBottom: "32px",
-      lineHeight: "1.5",
-    },
-    logoutModalButtons: {
-      display: "flex",
-      gap: "12px",
-      justifyContent: "center",
-      flexWrap: "wrap",
-    },
-    logoutModalBtn: {
-      padding: "12px 24px",
-      border: "none",
-      borderRadius: "8px",
-      fontSize: "14px",
-      fontWeight: "500",
-      cursor: "pointer",
-      transition: "all 0.2s",
-      minWidth: "100px",
-      minHeight: "44px",
-    },
-    logoutModalBtnCancel: {
-      background: "#f3f4f6",
-      color: "#374151",
-    },
-    logoutModalBtnCancelHover: {
-      background: "#e5e7eb",
-    },
-    logoutModalBtnConfirm: {
-      background: "#ef4444",
-      color: "white",
-    },
-    logoutModalBtnConfirmHover: {
-      background: "#dc2626",
-    },
-    modalAvatar: {
-      width: "60px",
-      height: "60px",
-      borderRadius: "50%",
-      backgroundColor: "#6b7280",
-      color: "white",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontWeight: "bold",
-      fontSize: "20px",
-      position: "relative",
-    },
-    modalBtns: {
-      display: "inline-flex",
-      alignItems: "center",
-      gap: "6px",
-      padding: "8px 18px",
-      border: "none",
-      borderRadius: "5px",
-      cursor: "pointer",
-      fontWeight: "500",
-      fontSize: "14px",
-    },
-    modalBtnsApprove: {
-      backgroundColor: "#27ae60",
-      color: "white",
-    },
-    modalBtnsDecline: {
-      backgroundColor: "#e74c3c",
-      color: "white",
-    },
-    modalBtnsClose: {
-      backgroundColor: "#73797a",
-      color: "white",
-    },
-    modalBtnsHover: {
-      opacity: "0.9",
-    },
-  
-    modalStatusWrapper: {
-      display: "flex",
-      alignItems: "center",
-      position: "absolute",
-      bottom: "0",
-      right: "-60px",
-      gap: "4px",
-    },
-    modalStatusCircle: {
-      width: "16px",
-      height: "16px",
-      borderRadius: "50%",
-      border: "2px solid white",
-    },
-    modalStatusText: {
-      fontSize: "12px",
-      fontWeight: "600",
-      textTransform: "capitalize",
-    },
-    modalStatusCirclePending: {
-      backgroundColor: "#ffe066",
-    },
-    modalStatusCircleApproved: {
-      backgroundColor: "#2ecc71",
-    },
-    modalStatusCircleDeclined: {
-      backgroundColor: "#e74c3c",
-    },
-    modalStatusTextPending: {
-      color: "#856404",
-    },
-    modalStatusTextApproved: {
-      color: "#155724",
-    },
-    modalStatusTextDeclined: {
-      color: "#721c24",
-    },
-
-    modalHeaders: {
-      display: "flex",
-      justifyContent: "center",
-      alignItems: "center",
-      padding: "32px 16px",
-      borderBottom: "1px solid #e5e7eb",
-      backgroundColor: "#fff",
-    },
-    profileSection: {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      textAlign: "center",
-      gap: "16px",
-    },
-    profileAvatarContainer: {
-      display: "flex",
-      justifyContent: "center",
-      marginBottom: "8px",
-    },
-    profileAvatarCircle: {
-      width: "120px",
-      height: "120px",
-      border: "2px solid #e5e7eb",
-      borderRadius: "50%",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      backgroundColor: "#fff",
-    },
-    profileText: {
-      fontSize: "16px",
-      fontWeight: "500",
-      color: "#6b7280",
-    },
-    profileInfo: {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: "8px",
-    },
-    profileName: {
-      fontSize: "20px",
-      fontWeight: "600",
-      color: "#111827",
-      margin: "0",
-    },
-    profileRole: {
-      fontSize: "16px",
-      color: "#6b7280",
-      margin: "0",
-    },
-    profileStatus: {
-      display: "flex",
-      alignItems: "center",
-      gap: "8px",
-      marginTop: "4px",
-    },
-    statusLabel: {
-      fontSize: "14px",
-      color: "#111827",
-      fontWeight: "500",
-    },
-    statusBadge: {
-      padding: "4px 12px",
-      borderRadius: "16px",
-      fontSize: "12px",
-      fontWeight: "600",
-      textTransform: "uppercase",
-    },
-    statusBadgePending: {
-      backgroundColor: "#fef3c7",
-      color: "#d97706",
-    },
-    statusBadgeApproved: {
-      backgroundColor: "#d1fae5",
-      color: "#059669",
-    },
-    statusBadgeDeclined: {
-      backgroundColor: "#fee2e2",
-      color: "#dc2626",
-    },
-    modalTabs: {
-      display: "flex",
-      borderBottom: "1px solid #e5e7eb",
-    },
-    tabButton: {
-      padding: "12px 24px",
-      background: "none",
-      border: "none",
-      fontSize: "clamp(12px, 2vw, 14px)",
-      fontWeight: "500",
-      color: "#6b7280",
-      cursor: "pointer",
-      borderBottom: "2px solid transparent",
-      transition: "all 0.2s",
-      whiteSpace: "nowrap",
-      minHeight: "44px",
-    },
-    tabButtonActive: {
-      color: "#b91c1c",
-      borderBottom: "none",
-    },
-    tabButtonHover: {
-  backgroundColor: "transparent",
-  color: "inherit", // keeps the original text color
-  },
-
-    documentsContainer: {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: "20px",
-      border: "1px dashed #ccc",
-      borderRadius: "8px",
-      textAlign: "center",
-    },
-    documentImageContainer: {
-      position: "relative",
-      width: "100%",
-      maxWidth: "400px",
-    },
-    documentImage: {
-      width: "100%",
-      height: "auto",
-      borderRadius: "8px",
-      display: "block",
-    },
-    documentPlaceholder: {
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      color: "#999",
-    },
-    documentPlaceholderSvg: {
-      marginBottom: "10px",
-    },
-    accountTitle: {
-      fontSize: "25px",
-      fontWeight: "bold",
-      color: "#da2424ff",
-    },
+      setRegistrationData(processedData)
+      await fetchCounts() // Also refresh counts
+    } catch (error) {
+      console.error("Failed to refresh data:", error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
-    <div style={styles.bodyWrapper}>
-      {/* Internal CSS here */}
-
+    <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
       <div className="sidebars" id="sidebasr">
         <Sidebar isOpen={isSidebarsOpen} />
       </div>
-      <div className="main-content" style={styles.mainContent}>
-        <header className="headers" style={styles.headers}>
-          <h1 className="account-title" style={styles.accountTitle}>
-            Account Approval
-          </h1>
 
-          {/* 🔔 Notification Bell */}
+      <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
+        <header className="bg-white px-6 py-[18px] flex items-center justify-between shadow-sm flex-wrap gap-4">
+          <h1 className="text-2xl font-bold text-black">Account Approval</h1>
+
+          <div className="flex items-center gap-4">
+            {/* Manual Refresh Icon */}
             <button
-              style={styles.notificationBtn}
+              onClick={handleManualRefresh}
+              disabled={isLoading}
+              className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Refresh Data"
+            >
+              <RefreshCw 
+                size={24} 
+                color="#374151" 
+                className={isLoading ? "animate-spin" : ""} 
+              />
+            </button>
+
+            {/* 🔔 Notification Bell */}
+            <button
+              className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
               onClick={() => setNotifsOpen(!notifsOpen)}
             >
               <Bell size={24} color="#374151" />
               {notifications.length > 0 && (
-                <span style={styles.notificationBadge}>{notifications.length}</span>
+                <span className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[20px] text-center">
+                  {notifications.length}
+                </span>
               )}
             </button>
+          </div>
 
-            {/* 📩 Notification Modal */}
-            <NotificationModal
-              isOpen={notifsOpen}
-              onClose={() => setNotifsOpen(false)}
-              notifications={notifications.map((n) => ({
-                message: n.message,
-                date: n.date,
-              }))}
-            />
+          {/* 📩 Notification Modal */}
+          <NotificationModal
+            isOpen={notifsOpen}
+            onClose={() => setNotifsOpen(false)}
+            notifications={notifications.map((n) => ({
+              message: n.message,
+              date: n.date,
+            }))}
+          />
         </header>
-        <div className="content-area" style={styles.contentArea}>
-          <div className="page-header" style={styles.pageHeader}>
-            <div className="search-containers" style={styles.searchContainers}>
-              <Search className="search-icon" size={18} style={styles.searchIcon} />
+
+        <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
+          <div className="mb-6">
+            <div className="flex-1 max-w-md mr-5 relative min-w-[200px] mb-2.5">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
               <input
                 type="text"
-                className="search-input"
-                placeholder="Search......"
+                className="w-full py-2 px-4 pl-10 border-2 border-white rounded-lg text-sm outline-none min-h-[50px] bg-white"
+                placeholder={isSearching ? "Searching..." : "Search by name or email..."}
                 onChange={handleSearchInput}
-                style={styles.searchInput}
+                value={searchTerm}
               />
+              {isSearching && (
+                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500"></div>
+                </div>
+              )}
             </div>
 
-            <div className="tabs-container" style={styles.tabsContainer}>
+            <div className="flex gap-2 bg-gray-300 p-2 rounded-3xl h-14 w-fit items-center mb-5">
               {/* Pending Tab */}
               <button
-                className={`tab ${activeTab === "pending" ? "active" : ""}`}
-                onClick={() => setActiveTab("pending")}
-                style={{
-                  ...styles.tab,
-                  ...(activeTab === "pending" ? styles.tabActive : styles.tabHover),
-                }}
+                className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
+                  activeTab === "pending"
+                    ? "bg-white text-gray-900 font-semibold shadow-sm"
+                    : "hover:bg-white hover:text-gray-900"
+                }`}
+                onClick={() => handleTabChange("pending")}
               >
                 Pending{" "}
-                <span
-                  className="badge badge-pending"
-                  style={{ ...styles.badge, ...styles.badgePending }}
-                >
-                  {counts.pending}
-                </span>
+                {isLoadingCounts ? (
+                  <div className="animate-pulse bg-gray-300 rounded-full w-6 h-6"></div>
+                ) : (
+                  <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-yellow-500">
+                    {counts.pending}
+                  </span>
+                )}
               </button>
 
               {/* Approved Tab */}
               <button
-                className={`tab ${activeTab === "approved" ? "active" : ""}`}
-                onClick={() => setActiveTab("approved")}
-                style={{
-                  ...styles.tab,
-                  ...(activeTab === "approved" ? styles.tabActive : styles.tabHover),
-                }}
+                className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
+                  activeTab === "approved"
+                    ? "bg-white text-gray-900 font-semibold shadow-sm"
+                    : "hover:bg-white hover:text-gray-900"
+                }`}
+                onClick={() => handleTabChange("approved")}
               >
                 Approved{" "}
-                <span
-                  className="badge badge-approved"
-                  style={{ ...styles.badge, ...styles.badgeApproved }}
-                >
-                  {counts.approved}
-                </span>
+                {isLoadingCounts ? (
+                  <div className="animate-pulse bg-gray-300 rounded-full w-6 h-6"></div>
+                ) : (
+                  <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-green-500">
+                    {counts.approved}
+                  </span>
+                )}
               </button>
 
               {/* Declined Tab */}
               <button
-                className={`tab ${activeTab === "declined" ? "active" : ""}`}
-                onClick={() => setActiveTab("declined")}
-                style={{
-                  ...styles.tab,
-                  ...(activeTab === "declined" ? styles.tabActive : styles.tabHover),
-                }}
+                className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
+                  activeTab === "declined"
+                    ? "bg-white text-gray-900 font-semibold shadow-sm"
+                    : "hover:bg-white hover:text-gray-900"
+                }`}
+                onClick={() => handleTabChange("declined")}
               >
                 Declined{" "}
-                <span
-                  className="badge badge-declined"
-                  style={{ ...styles.badge, ...styles.badgeDeclined }}
-                >
-                  {counts.declined}
-                </span>
+                {isLoadingCounts ? (
+                  <div className="animate-pulse bg-gray-300 rounded-full w-6 h-6"></div>
+                ) : (
+                  <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-red-500">
+                    {counts.declined}
+                  </span>
+                )}
               </button>
             </div>
-
           </div>
-          <div className="controls-row" style={styles.controlsRow}>
-            <div className="filter-controls" style={styles.filterControls}>
+
+          <div className="flex justify-between items-center mb-5 flex-wrap gap-4">
+            <div className="flex gap-3 items-center flex-wrap">
               <select
-                className="filter-select"
+                className="py-2 px-3 border border-gray-300 rounded-md text-sm bg-white min-h-[40px]"
                 value={recentFilter}
                 onChange={handleRecentFilterChange}
-                style={styles.filterSelect}
               >
                 <option value="all">Most Recent</option>
                 <option value="today">Today</option>
@@ -1511,31 +711,31 @@ useEffect(() => {
                 <option value="month">This Month</option>
               </select>
             </div>
-            {activeTab === "pending" && (
-              <button
-                className="approve-all-btn"
-                onClick={approveAllPending}
-                style={{ ...styles.approveAllBtn, ...styles.approveAllBtnHover }}
-              >
-                Approve All
-              </button>
-            )}
 
             {/* For Approved Tab */}
             {activeTab === "approved"}
           </div>
-          <div className="registration-table" id="registrationTable" style={styles.registrationTable}>
-            {filteredRegistrations.length === 0 ? (
-              <div className="empty-state" style={styles.emptyState}>
+
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+            {isLoading ? (
+              <div>
+                {[...Array(5)].map((_, index) => (
+                  <SkeletonLoader key={index} />
+                ))}
+              </div>
+            ) : filteredRegistrations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center text-center p-8">
                 {activeTab === "pending" ? (
-                  <Clock size={48} style={styles.emptyStateIcon} />
+                  <Clock size={48} className="mb-4 opacity-50" />
                 ) : activeTab === "approved" ? (
-                  <UserCheck size={48} style={styles.emptyStateIcon} />
+                  <UserCheck size={48} className="mb-4 opacity-50" />
                 ) : (
-                  <UserX size={48} style={styles.emptyStateIcon} />
+                  <UserX size={48} className="mb-4 opacity-50" />
                 )}
-                <h3 style={styles.emptyStateH3}>No {activeTab === "pending" ? "pending" : activeTab} registrations</h3>
-                <p style={styles.emptyStateP}>
+                <h3 className="text-lg mb-2 text-gray-700">
+                  No {activeTab === "pending" ? "pending" : activeTab} registrations
+                </h3>
+                <p className="text-sm text-gray-500">
                   {activeTab === "pending"
                     ? "New registration requests will appear here"
                     : `${activeTab} registrations will appear here`}
@@ -1543,70 +743,66 @@ useEffect(() => {
               </div>
             ) : (
               filteredRegistrations.map((user) => (
-                <div key={user.vet_id} className="registration-item" style={styles.registrationItem}>
-                  <div className="user-avatar" style={styles.userAvatar}>
-                    {user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}
+                <div
+                  key={user.vet_id}
+                  className="flex items-center p-4 border-b border-gray-100 transition-colors duration-200 min-h-[80px] overflow-y-auto hover:bg-gray-50 last:border-b-0"
+                >
+                  {/* Profile Photo */}
+                  <div className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center text-white font-semibold text-base mr-4 flex-shrink-0 overflow-hidden">
+                    {user.vet_profile_photo ? (
+                      <img 
+                        src={user.vet_profile_photo} 
+                        alt={`${user.vet_fname} ${user.vet_lname}`}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          // If image fails to load, show initials as fallback
+                          e.target.style.display = 'none';
+                          const fallback = document.createElement('div');
+                          fallback.className = 'w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold';
+                          fallback.textContent = user.vet_fname.charAt(0) + user.vet_lname.charAt(0);
+                          e.target.parentNode.appendChild(fallback);
+                        }}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold">
+                        {user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}
+                      </div>
+                    )}
                   </div>
 
-                  <div className="user-info" style={styles.userInfo}>
-                    <div className="user-name" style={styles.userName}>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-semibold text-gray-900 text-sm mb-0.5 break-words">
                       {user.vet_fname} {user.vet_mname} {user.vet_lname}
                       <span
-                        className={`user-type-badge badge-${user.users?.status}`}
-                        style={{
-                          ...styles.userTypeBadge,
-                          ...(user.users?.status === "approved" ? styles.userTypeBadgeApproved : {}),
-                          ...(user.users?.status === "pending" ? styles.userTypeBadgePending : {}),
-                          ...(user.users?.status === "declined" ? styles.userTypeBadgeDeclined : {}),
-                        }}
+                        className={`inline-block py-1 px-2 rounded-xl text-xs font-medium ml-2 text-black ${
+                          user.users?.status === "approved"
+                            ? "bg-green-600 text-white"
+                            : user.users?.status === "pending"
+                              ? "bg-orange-500 text-white"
+                              : user.users?.status === "declined"
+                                ? "bg-red-500 text-white"
+                                : ""
+                        }`}
                       >
                         {user.users?.status}
                       </span>
                     </div>
-                    <div className="user-email" style={styles.userEmail}>
-                      {user.vet_email}
-                    </div>
-                    <div className="user-details" style={styles.userDetails}>
+                    <div className="text-gray-500 text-xs mb-0.5 break-words">{user.vet_email}</div>
+                    <div className="text-gray-500 text-xs break-words">
                       {user.vet_city}, {user.vet_province}
+                      {user.users?.status === "declined" && user.decline_reason
+                        ? ` - Reason: ${user.decline_reason}`
+                        : ""}
                     </div>
                   </div>
 
-                  <div className="action-buttons" style={styles.actionButtons}>
+                  <div className="flex gap-2 ml-4 flex-wrap">
                     <button
-                      className="action-btn btn-view"
+                      className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px] "
                       onClick={() => viewDetails(user.vet_id, user.status)}
-                      style={{ ...styles.actionBtn, ...styles.btnView }}
                     >
-                      <Eye size={16} style={{ marginRight: "6px" }} />
-                      View
+                      <Eye size={16} />
                     </button>
-
-                    {user.users?.status === "pending" && (
-                      <>
-                        <button
-                          className="action-btn btn-approve"
-                          onClick={() => showApproveConfirmation(user.vet_id)}
-                          style={{ ...styles.actionBtn, ...styles.btnApprove }}
-                        >
-                          <CheckCircle size={16} style={{ marginRight: "6px" }} />
-                          Approve
-                        </button>
-                        <button
-                          className="action-btn btn-decline"
-                          onClick={() => showDeclineConfirmation(user.vet_id)}
-                          style={{ ...styles.actionBtn, ...styles.btnDecline }}
-                        >
-                          <XCircle size={16} style={{ marginRight: "6px" }} />
-                          Decline
-                        </button>
-                      </>
-                    )}
-
-                    {(user.users?.status === "approved" || user.users?.status === "declined") && (
-                    // No delete button anymore
-                    null
-                  )}
-
                   </div>
                 </div>
               ))
@@ -1614,48 +810,65 @@ useEffect(() => {
           </div>
         </div>
       </div>
+
       <FloatingMessages />
+
       {/* View Details Modal */}
       {isViewDetailsModalOpen && selectedUser && (
         <div
-          className="modal-overlay active"
+          className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay"
           ref={viewDetailsModalOverlayRef}
-          style={{ ...styles.modalOverlay, ...styles.modalOverlayActive }}
         >
-          <div className="modal-contents" style={styles.modalContents}>
-            <button className="modal-close" onClick={closeModal} style={styles.modalClose}>
+          <div className="bg-white rounded-lg p-8 w-[90%] max-w-6xl max-h-[90vh] overflow-y-auto relative">
+            <button
+              className="absolute top-4 right-4 bg-none border-none text-2xl text-gray-500 cursor-pointer p-1 leading-none min-h-[32px] min-w-[32px] hover:text-gray-700"
+              onClick={closeModal}
+            >
               &times;
             </button>
 
-            <div className="modal-headers" style={styles.modalHeaders}>
-              <div className="profile-section" style={styles.profileSection}>
-                <div className="profile-avatar-container" style={styles.profileAvatarContainer}>
-                  <div className="profile-avatar-circle" style={styles.profileAvatarCircle}>
-                    <span className="profile-text" style={styles.profileText}>
-                      Profile
-                    </span>
-                  </div>
+            <div className="flex justify-center items-center p-8 border-b border-gray-200 bg-white">
+              <div className="flex flex-col items-center text-center gap-4">
+                <div className="flex justify-center mb-2">
+                  {selectedUser.vet_profile_photo ? (
+                    <div className="w-[120px] h-[120px] border-2 border-gray-200 rounded-full flex items-center justify-center bg-white overflow-hidden">
+                      <img 
+                        src={selectedUser.vet_profile_photo} 
+                        alt="Profile" 
+                        className="w-full h-full object-cover rounded-full"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'flex';
+                        }}
+                      />
+                      <div className="hidden w-full h-full items-center justify-center bg-gray-100 rounded-full">
+                        <span className="text-base font-medium text-gray-500">Profile</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-[120px] h-[120px] border-2 border-gray-200 rounded-full flex items-center justify-center bg-gray-100">
+                      <span className="text-base font-medium text-gray-500">Profile</span>
+                    </div>
+                  )}
                 </div>
 
-                <div className="profile-info" style={styles.profileInfo}>
-                  <h3 className="profile-name" style={styles.profileName}>
+                <div className="flex flex-col items-center gap-2">
+                  <h3 className="text-xl font-semibold text-gray-900 m-0">
                     {selectedUser.vet_fname} {selectedUser.vet_mname} {selectedUser.vet_lname}
                   </h3>
-                  <p className="profile-role" style={styles.profileRole}>
-                    {selectedUser.type}
-                  </p>
-                  <div className="profile-status" style={styles.profileStatus}>
-                    <span className="status-label" style={styles.statusLabel}>
-                      Current Status:
-                    </span>
+                  <p className="text-base text-gray-500 m-0">{selectedUser.type}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-sm text-gray-900 font-medium">Current Status:</span>
                     <span
-                      className={`status-badge status-${selectedUser.users?.status}`}
-                      style={{
-                        ...styles.statusBadge,
-                        ...(selectedUser.users?.status === "pending" ? styles.statusBadgePending : {}),
-                        ...(selectedUser.users?.status === "approved" ? styles.statusBadgeApproved : {}),
-                        ...(selectedUser.users?.status === "declined" ? styles.statusBadgeDeclined : {}),
-                      }}
+                      className={`py-1 px-3 rounded-2xl text-xs font-semibold uppercase ${
+                        selectedUser.users?.status === "pending"
+                          ? "bg-yellow-100 text-yellow-700"
+                          : selectedUser.users?.status === "approved"
+                            ? "bg-green-100 text-green-700"
+                            : selectedUser.users?.status === "declined"
+                              ? "bg-red-100 text-red-700"
+                              : ""
+                      }`}
                     >
                       {selectedUser.users?.status.charAt(0).toUpperCase() + selectedUser.users?.status.slice(1)}
                     </span>
@@ -1664,185 +877,137 @@ useEffect(() => {
               </div>
             </div>
 
-            <div className="modal-tabs" style={styles.modalTabs}>
+            <div className="flex border-b border-gray-200">
               <button
-                className={`tab-button ${modalActiveTab === "personal" ? "active" : ""}`}
+                className={`py-3 px-6 bg-none border-none text-sm font-medium text-gray-500 cursor-pointer border-b-2 border-transparent transition-all duration-200 whitespace-nowrap min-h-[44px] ${
+                  modalActiveTab === "personal" ? "text-red-700 border-b-2 border-red-700" : ""
+                }`}
                 onClick={() => setModalActiveTab("personal")}
-                style={{
-                  ...styles.tabButton,
-                  ...(modalActiveTab === "personal" ? styles.tabButtonActive : {}),
-                  ...(modalActiveTab === "personal" ? {} : styles.tabButtonHover),
-                }}
               >
                 Personal Information
               </button>
               <button
-                className={`tab-button ${modalActiveTab === "professional" ? "active" : ""}`}
+                className={`py-3 px-6 bg-none border-none text-sm font-medium text-gray-500 cursor-pointer border-b-2 border-transparent transition-all duration-200 whitespace-nowrap min-h-[44px] ${
+                  modalActiveTab === "professional" ? "text-red-700 border-b-2 border-red-700" : ""
+                }`}
                 onClick={() => setModalActiveTab("professional")}
-                style={{
-                  ...styles.tabButton,
-                  ...(modalActiveTab === "professional" ? styles.tabButtonActive : {}),
-                  ...(modalActiveTab === "professional" ? {} : styles.tabButtonHover),
-                }}
               >
                 Professional Info
               </button>
               <button
-                className={`tab-button ${modalActiveTab === "documents" ? "active" : ""}`}
+                className={`py-3 px-6 bg-none border-none text-sm font-medium text-gray-500 cursor-pointer border-b-2 border-transparent transition-all duration-200 whitespace-nowrap min-h-[44px] ${
+                  modalActiveTab === "documents" ? "text-red-700 border-b-2 border-red-700" : ""
+                }`}
                 onClick={() => setModalActiveTab("documents")}
-                style={{
-                  ...styles.tabButton,
-                  ...(modalActiveTab === "documents" ? styles.tabButtonActive : {}),
-                  ...(modalActiveTab === "documents" ? {} : styles.tabButtonHover),
-                }}
               >
                 Documents
               </button>
             </div>
 
-            <div className="modal-body" style={styles.modalBody}>
+            <div className="mb-5">
               {modalActiveTab === "personal" && (
                 <>
-                  <div className="modal-section-box" style={styles.modalSectionBox}>
-                    <div className="section-header" style={styles.sectionHeader}>
-                      <User className="section-icon" size={20} style={styles.sectionIcon} />
-                      <h4 style={styles.sectionHeaderH4}>Name Information</h4>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
+                    <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
+                      <User className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
+                      <h4 className="text-base font-semibold text-gray-900 m-0">Name Information</h4>
                     </div>
-                    <div className="modal-grid" style={styles.modalGrid}>
-                      <div className="modal-field" style={styles.modalField}>
-                        <span className="modal-label" style={styles.modalLabel}>
-                          First Name:
-                        </span>
-                        <div className="modal-value" style={styles.modalValue}>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">First Name:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
                           {selectedUser.vet_fname}
                         </div>
                       </div>
-                      <div className="modal-field" style={styles.modalField}>
-                        <span className="modal-label" style={styles.modalLabel}>
-                          Middle Name:
-                        </span>
-                        <div className="modal-value" style={styles.modalValue}>
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Middle Name:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
                           {selectedUser.vet_mname}
                         </div>
                       </div>
-                      <div className="modal-field" style={styles.modalField}>
-                        <span className="modal-label" style={styles.modalLabel}>
-                          Last Name:
-                        </span>
-                        <div className="modal-value" style={styles.modalValue}>
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Last Name:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
                           {selectedUser.vet_lname}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="modal-section-box" style={styles.modalSectionBox}>
-                    <div className="section-header" style={styles.sectionHeader}>
-                      <CreditCard className="section-icon" size={20} style={styles.sectionIcon} />
-                      <h4 style={styles.sectionHeaderH4}>Personal Information</h4>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
+                    <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
+                      <CreditCard className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
+                      <h4 className="text-base font-semibold text-gray-900 m-0">Personal Information</h4>
                     </div>
-                    <div className="modal-grid" style={styles.modalGrid}>
-                      <div className="modal-field" style={styles.modalField}>
-                        <span className="modal-label" style={styles.modalLabel}>
-                          Date of Birth:
-                        </span>
-                        <div className="modal-value" style={styles.modalValue}>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Date of Birth:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
                           {selectedUser.vet_dob}
                         </div>
                       </div>
-                      <div className="modal-field" style={styles.modalField}>
-                        <span className="modal-label" style={styles.modalLabel}>
-                          Sex:
-                        </span>
-                        <div className="modal-value" style={styles.modalValue}>
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Sex:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
                           {selectedUser.vet_sex || "Not specified"}
                         </div>
                       </div>
-                      <div
-                        className="modal-field full-width"
-                        style={{ ...styles.modalField, ...styles.modalFieldFullWidth }}
-                      >
-                        <span className="modal-label" style={styles.modalLabel}>
-                          Phone Number:
-                        </span>
-                        <div className="modal-value" style={styles.modalValue}>
+                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Phone Number:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
                           {selectedUser.vet_phone_num}
                         </div>
                       </div>
-                      <div
-                        className="modal-field full-width"
-                        style={{ ...styles.modalField, ...styles.modalFieldFullWidth }}
-                      >
-                        <span className="modal-label" style={styles.modalLabel}>
-                          Email:
-                        </span>
-                        <div className="modal-value" style={styles.modalValue}>
+                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Email:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
                           {selectedUser.vet_email}
                         </div>
                       </div>
-                      <div
-                        className="modal-field full-width"
-                        style={{ ...styles.modalField, ...styles.modalFieldFullWidth }}
-                      >
-                        <span className="modal-label" style={styles.modalLabel}>
-                          Facebook:
-                        </span>
-                        <div className="modal-value" style={styles.modalValue}>
+                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Facebook:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
                           {selectedUser.facebook}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="modal-section-box" style={styles.modalSectionBox}>
-                    <div className="section-header" style={styles.sectionHeader}>
-                      <MapPin className="section-icon" size={20} style={styles.sectionIcon} />
-                      <h4 style={styles.sectionHeaderH4}>Address Information</h4>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
+                    <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
+                      <MapPin className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
+                      <h4 className="text-base font-semibold text-gray-900 m-0">Address Information</h4>
                     </div>
-                    <div className="modal-grid" style={styles.modalGrid}>
-                      <div className="modal-field" style={styles.modalField}>
-                        <span className="modal-label" style={styles.modalLabel}>
-                          Province:
-                        </span>
-                        <div className="modal-value" style={styles.modalValue}>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Province:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
                           {selectedUser.vet_province}
                         </div>
                       </div>
-                      <div className="modal-field" style={styles.modalField}>
-                        <span className="modal-label" style={styles.modalLabel}>
-                          City:
-                        </span>
-                        <div className="modal-value" style={styles.modalValue}>
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">City:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
                           {selectedUser.vet_city}
                         </div>
                       </div>
-                      <div className="modal-field" style={styles.modalField}>
-                        <span className="modal-label" style={styles.modalLabel}>
-                          Barangay:
-                        </span>
-                        <div className="modal-value" style={styles.modalValue}>
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Barangay:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
                           {selectedUser.vet_brgy}
                         </div>
                       </div>
-                      <div className="modal-field" style={styles.modalField}>
-                        <span className="modal-label" style={styles.modalLabel}>
-                          Zip Code:
-                        </span>
-                        <div className="modal-value" style={styles.modalValue}>
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Zip Code:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
                           {selectedUser.vet_zipcode}
                         </div>
                       </div>
-                      <div
-                        className="modal-field full-width"
-                        style={{ ...styles.modalField, ...styles.modalFieldFullWidth }}
-                      >
-                        <span className="modal-label" style={styles.modalLabel}>
-                          Complete Address:
-                        </span>
-                        <div
-                          className="modal-value"
-                          style={styles.modalValue}
-                        >{`${selectedUser.vet_brgy}, ${selectedUser.vet_city}, ${selectedUser.vet_province}`}</div>
+                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Complete Address:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
+                          {`${selectedUser.vet_brgy}, ${selectedUser.vet_city}, ${selectedUser.vet_province}`}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1850,119 +1015,170 @@ useEffect(() => {
               )}
 
               {modalActiveTab === "professional" && (
-                <div className="modal-section-box" style={styles.modalSectionBox}>
-                  <div className="section-header" style={styles.sectionHeader}>
-                    <Stethoscope className="section-icon" size={20} style={styles.sectionIcon} />
-                    <h4 style={styles.sectionHeaderH4}>Professional Information</h4>
-                  </div>
-                  <div className="modal-grid" style={styles.modalGrid}>
-                    <div className="modal-field" style={styles.modalField}>
-                      <span className="modal-label" style={styles.modalLabel}>
-                        License Number:
-                      </span>
-                      <div className="modal-value" style={styles.modalValue}>
-                        {selectedUser.vet_license_num || "Not provided"}
-                      </div>
+                <>
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
+                    <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
+                      <Stethoscope className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
+                      <h4 className="text-base font-semibold text-gray-900 m-0">Professional Information</h4>
                     </div>
-                    <div className="modal-field" style={styles.modalField}>
-                      <span className="modal-label" style={styles.modalLabel}>
-                        Experience Years:
-                      </span>
-                      <div className="modal-value" style={styles.modalValue}>
-                        {selectedUser.vet_exp_yr || "Not specified"}
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">License Number:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
+                          {selectedUser.vet_license_num || "Not provided"}
+                        </div>
                       </div>
-                    </div>
-                    <div
-                      className="modal-field full-width"
-                      style={{ ...styles.modalField, ...styles.modalFieldFullWidth }}
-                    >
-                      <span className="modal-label" style={styles.modalLabel}>
-                        Specialization:
-                      </span>
-                      <div className="modal-value" style={styles.modalValue}>
-                        {selectedUser.vet_specialization || "Not specified"}
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Experience Years:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
+                          {selectedUser.vet_exp_yr || "Not specified"}
+                        </div>
                       </div>
-                    </div>
-                    <div
-                      className="modal-field full-width"
-                      style={{ ...styles.modalField, ...styles.modalFieldFullWidth }}
-                    >
-                      <span className="modal-label" style={styles.modalLabel}>
-                        Organization:
-                      </span>
-                      <div className="modal-value" style={styles.modalValue}>
-                        {selectedUser.vet_org || "Not specified"}
+                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Specialization:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
+                          {selectedUser.vet_specialization || "Not specified"}
+                        </div>
+                      </div>
+                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Organization:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
+                          {selectedUser.vet_org || "Not specified"}
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
+
+                  {/* Clinic Address Section */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
+                    <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
+                      <MapPin className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
+                      <h4 className="text-base font-semibold text-gray-900 m-0">Clinic Address</h4>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Clinic Province:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
+                          {selectedUser.vet_clinic_province || "Not specified"}
+                        </div>
+                      </div>
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Clinic City:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
+                          {selectedUser.vet_clinic_city || "Not specified"}
+                        </div>
+                      </div>
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Clinic Barangay:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
+                          {selectedUser.vet_clinic_brgy || "Not specified"}
+                        </div>
+                      </div>
+                      <div className="flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Clinic Zip Code:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
+                          {selectedUser.vet_clinic_zipcode || "Not specified"}
+                        </div>
+                      </div>
+                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Complete Clinic Address:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
+                          {selectedUser.vet_clinic_province && selectedUser.vet_clinic_city && selectedUser.vet_clinic_brgy 
+                            ? `${selectedUser.vet_clinic_brgy}, ${selectedUser.vet_clinic_city}, ${selectedUser.vet_clinic_province}`
+                            : "Not specified"}
+                        </div>
+                      </div>
+                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
+                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Address is Clinic:</span>
+                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
+                          {selectedUser.vet_address_is_clinic ? "Yes" : "No"}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
               )}
 
               {modalActiveTab === "documents" && (
-                <div className="modal-section-box" style={styles.modalSectionBox}>
-                  <div className="section-header" style={styles.sectionHeader}>
-                    <FileText className="section-icon" size={20} style={styles.sectionIcon} />
-                    <h4 style={styles.sectionHeaderH4}>Documents</h4>
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
+                  <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
+                    <FileText className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
+                    <h4 className="text-base font-semibold text-gray-900 m-0">Documents</h4>
                   </div>
-                  <div className="documents-container" style={styles.documentsContainer}>
-                    {selectedUser.vet_doc_image ? (
-                      <div className="document-image-container" style={styles.documentImageContainer}>
-                        <img
-                          src={selectedUser.vet_doc_image || "/placeholder.svg"}
-                          alt="Veterinarian License Document"
-                          className="document-image"
-                          style={styles.documentImage}
-                          onError={(e) => {
-                            e.target.style.display = "none"
-                            e.target.nextSibling.style.display = "block"
-                          }}
-                        />
-                        <div
-                          className="document-placeholder"
-                          style={{ ...styles.documentPlaceholder, display: "none" }}
-                        >
-                          <FileText size={48} style={styles.documentPlaceholderSvg} />
-                          <p style={styles.emptyStateP}>Document image not available</p>
+                  
+                  {/* Profile Photo REMOVED from documents section - now only displayed in profile */}
+
+                  {/* License Documents */}
+                  <div>
+                    <h5 className="text-sm font-semibold text-gray-700 mb-3">License Documents</h5>
+                    <div className="flex flex-col items-center justify-center p-5 border border-dashed border-gray-300 rounded-lg text-center">
+                      {selectedUser.vet_documents && parseDocuments(selectedUser.vet_documents).length > 0 ? (
+                        <div className="w-full">
+                          {parseDocuments(selectedUser.vet_documents).map((docUrl, index) => (
+                            <div key={index} className="mb-4 last:mb-0">
+                              <div className="relative w-full max-w-md mx-auto">
+                                {/* Check if it's an image or PDF */}
+                                {docUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/) ? (
+                                  <img
+                                    src={docUrl}
+                                    alt={`License Document ${index + 1}`}
+                                    className="w-full h-auto rounded-lg block max-h-64 object-contain"
+                                    onError={(e) => {
+                                      e.target.style.display = "none"
+                                      e.target.nextSibling.style.display = "block"
+                                    }}
+                                  />
+                                ) : (
+                                  <div className="flex flex-col items-center justify-center p-8 border border-gray-200 rounded-lg bg-gray-50">
+                                    <FileText size={48} className="mb-2.5 text-gray-400" />
+                                    <p className="text-sm text-gray-500 mb-2">PDF Document</p>
+                                    <a 
+                                      href={docUrl} 
+                                      target="_blank" 
+                                      rel="noopener noreferrer"
+                                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                    >
+                                      View PDF Document
+                                    </a>
+                                  </div>
+                                )}
+                                <div className="flex flex-col items-center justify-center text-gray-400 hidden p-8">
+                                  <FileText size={48} className="mb-2.5" />
+                                  <p className="text-sm text-gray-500">Document not available</p>
+                                </div>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-2">Document {index + 1}</p>
+                            </div>
+                          ))}
                         </div>
-                      </div>
-                    ) : (
-                      <div className="document-placeholder" style={styles.documentPlaceholder}>
-                        <FileText size={48} style={styles.documentPlaceholderSvg} />
-                        <p style={styles.emptyStateP}>No document provided</p>
-                      </div>
-                    )}
+                      ) : (
+                        <div className="flex flex-col items-center justify-center text-gray-400 p-8">
+                          <FileText size={48} className="mb-2.5" />
+                          <p className="text-sm text-gray-500">No documents provided</p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
             </div>
 
-            <div className="modal-footer" style={styles.modalFooter}>
-              <button
-                className="modal-btns close"
-                onClick={closeModal}
-                style={{ ...styles.modalBtns, ...styles.modalBtnsClose }}
-              >
-                <SquareX size={16} style={{ marginRight: "1px" }} />
-                Close
-              </button>
-
-              {(registrationData.find((u) => u.id === selectedUser.id)?.users?.status || selectedUser.users?.status) ===
-                "pending" && (
+            <div className="flex justify-end pt-4 border-t border-gray-200 gap-3 flex-wrap">
+              {selectedUser?.users?.status === "pending" && (
                 <>
                   <button
-                    className="modal-btns approve"
-                    onClick={showApproveConfirmationFromModal}
-                    style={{ ...styles.modalBtns, ...styles.modalBtnsApprove }}
+                    className="inline-flex items-center gap-1.5 py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 flex-1 min-h-[40px] bg-green-500 text-white hover:bg-green-600"
+                    onClick={() => showApproveConfirmation(selectedUser.vet_id)}
                   >
-                    <CheckCircle size={16} style={{ marginRight: "1px" }} />
+                    <CheckCircle size={16} />
                     Approve
                   </button>
+
                   <button
-                    className="modal-btns decline"
-                    onClick={showDeclineConfirmationFromModal}
-                    style={{ ...styles.modalBtns, ...styles.modalBtnsDecline }}
+                    className="inline-flex items-center gap-1.5 py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 flex-1 min-h-[40px] bg-red-500 text-white hover:bg-red-600"
+                    onClick={() => showDeclineConfirmation(selectedUser.vet_id)}
                   >
-                    <XCircle size={16} style={{ marginRight: "1px" }} />
+                    <XCircle size={16} />
                     Decline
                   </button>
                 </>
@@ -1975,45 +1191,44 @@ useEffect(() => {
       {/* Confirmation Modal */}
       {isConfirmationModalOpen && (
         <div
-          className="modal-overlay active"
+          className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay"
           ref={confirmationOverlayRef}
-          style={{ ...styles.modalOverlay, ...styles.modalOverlayActive }}
         >
-          <div className="confirmation-modal" style={styles.confirmationModal}>
-            <h3 id="confirmationTitle" style={styles.confirmationModalH3}>
-              {confirmationDetails.title}
-            </h3>
-            <p id="confirmationMessage" style={styles.confirmationModalP}>
-              {confirmationDetails.message}
-            </p>
-            <div className="confirmation-buttons" style={styles.confirmationButtons}>
+          <div className="bg-white rounded-lg p-8 text-center max-w-md w-[90%]">
+            <h3 className="text-lg font-semibold text-gray-900 mb-3">{confirmationDetails.title}</h3>
+            <p className="text-base text-gray-500 mb-6 leading-relaxed">{confirmationDetails.message}</p>
+
+            {/* Decline Reason Input */}
+            {confirmationDetails.action === "decline" && (
+              <textarea
+                placeholder="Enter reason for decline..."
+                value={declineReason}
+                onChange={(e) => setDeclineReason(e.target.value)}
+                className="w-full p-2 mt-2.5 rounded border border-gray-300 resize-y"
+              />
+            )}
+
+            <div className="flex gap-3 justify-center flex-wrap">
               <button
-                className="confirmation-btn cancel"
+                className="py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 min-h-[40px] flex-1 min-w-[80px] bg-gray-500 text-white hover:bg-gray-600"
                 onClick={closeConfirmation}
-                style={{ ...styles.confirmationBtn, ...styles.confirmationBtnCancel }}
               >
                 Cancel
               </button>
               <button
-                className={`confirmation-btn confirm ${confirmationDetails.action === "decline" ? "decline" : ""}`}
+                className={`py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 min-h-[40px] flex-1 min-w-[80px] ${
+                  confirmationDetails.action === "approve"
+                    ? "bg-green-500 text-white hover:bg-green-600"
+                    : "bg-red-500 text-white hover:bg-red-600"
+                }`}
                 onClick={confirmAction}
-                style={{
-                  ...styles.confirmationBtn,
-                  ...(confirmationDetails.action === "approve" ? styles.confirmationBtnConfirm : {}),
-                  ...(confirmationDetails.action === "decline"
-                    ? { ...styles.confirmationBtnConfirm, ...styles.confirmationBtnConfirmDecline }
-                    : {}),
-                }}
               >
                 {confirmationDetails.action === "approve" ? "Approve" : "Decline"}
               </button>
-
             </div>
           </div>
         </div>
       )}
-
-      
     </div>
   )
 }

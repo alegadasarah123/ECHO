@@ -1,183 +1,459 @@
-import React, { useState } from 'react';
-import { BarChart3, Users, Heart, LogOut, Menu, UserCheck, Settings } from 'lucide-react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { BarChart3, Users, Heart, LogOut, Menu, UserCheck, Settings, X } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
 const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
+  
+  // Get initial state from localStorage or default to false
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebarCollapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
 
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  // Save to localStorage whenever state changes
+  useEffect(() => {
+    localStorage.setItem('sidebarCollapsed', JSON.stringify(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
 
   const handleLogout = () => {
-    localStorage.clear();
     navigate('/');
+  };
+
+  const handleToggleSidebar = () => {
+    setIsSidebarCollapsed(!isSidebarCollapsed);
+  };
+
+  // Navigation doesn't affect sidebar state
+  const handleNavigation = (path) => {
+    navigate(path);
+    // Sidebar state remains the same
   };
 
   const sidebarItems = [
     { icon: BarChart3, label: 'Dashboard', path: '/KutDashboard' },
-    { icon: UserCheck, label: 'User Approval', path: '/KutUserManagement' },
-    { icon: Users, label: 'User Accounts', path: '/KutUserAccount' },
+    { icon: Users, label: 'User Management', path: '/KutUserManagement' },
     { icon: Settings, label: 'Settings', path: '/KutSettings' },
   ];
 
   return (
     <>
-      {/* Internal CSS */}
       <style>{`
-        /* Container */
+        /* Global & Basic Styles */
         .sidebar {
-          background-image: linear-gradient(to bottom, white, white);
-          color: #D2691E;
-          transition: all 0.3s ease;
+          background-color: #FFFFFF;
+          color: #362205;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
           position: relative;
+          z-index: 1000;
           height: 100vh;
-          box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1),
-                      0 4px 6px -2px rgba(0,0,0,0.05);
+          display: flex;
+          flex-direction: column;
+          box-shadow: 0 0 60px -15px rgba(0, 0, 0, 0.25);
+          overflow: hidden;
         }
-        .sidebar-expanded { width: 16rem; }
-        .sidebar-collapsed { width: 4rem; }
+
+        .sidebar-expanded { width: 250px; }
+        .sidebar-collapsed { width: 70px; }
 
         /* Header */
         .sidebar-header {
-          padding: 1rem;
-          border-bottom: 1px solid rgba(210,105,30,0.3); 
+          padding: 24px 20px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          background: #FFFFFF;
         }
-        .sidebar-header-content { display: flex; align-items: center; }
+
+        .sidebar-logo-container {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          overflow: hidden;
+        }
+
         .sidebar-logo {
-          width: 2.5rem; height: 2.5rem;
-          background-color: rgba(210,105,30,0.1);
-          backdrop-filter: blur(4px);
-          border-radius: 0.75rem;
-          display: flex; align-items: center; justify-content: center;
-          box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1),
-                      0 4px 6px -2px rgba(0,0,0,0.05);
-        }
-        .sidebar-logo-icon { width: 1.5rem; height: 1.5rem; color: #D2691E; }
-        .sidebar-brand { margin-left: 0.75rem; overflow: hidden; transition: all 0.3s ease; white-space: nowrap; }
-        .sidebar-brand-title { font-weight: 700; font-size: 1.125rem; display: block; color: #D2691E; }
-        .sidebar-brand-subtitle { font-size: 0.75rem; color: #D2691E; }
-
-        /* Nav */
-        .sidebar-nav { margin-top: 1.5rem; padding: 0 0.5rem; }
-        .sidebar-nav-item {
-          display: flex; align-items: center;
-          padding: 0.75rem; margin-bottom: 0.25rem;
-          border-radius: 0.5rem; transition: all 0.2s ease;
-          text-decoration: none; color: #D2691E;
-        }
-        .sidebar-nav-item:hover { background-color: rgba(210,105,30,0.1); }
-        .sidebar-nav-item-active {
-          background-color: rgba(210,105,30,0.2);
-          backdrop-filter: blur(4px);
-          box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1),
-                      0 4px 6px -2px rgba(0,0,0,0.05);
-          border-right: 4px solid #D2691E;
-        }
-        .sidebar-nav-icon { width: 1.25rem; height: 1.25rem; flex-shrink: 0; color: #D2691E; }
-        .sidebar-nav-label { margin-left: 0.75rem; transition: all 0.3s ease; overflow: hidden; white-space: nowrap; color: #D2691E; }
-
-        /* Logout */
-        .sidebar-logout { position: absolute; bottom: 1rem; left: 0; right: 0; padding: 0 1rem; }
-        .sidebar-logout-button {
-          display: flex; align-items: center;
-          padding: 0.75rem; cursor: pointer;
-          border-radius: 0.5rem; transition: all 0.2s ease;
-          color: #D2691E;
-        }
-        .sidebar-logout-button:hover { background-color: rgba(210,105,30,0.1); }
-
-        /* Modal */
-        .logout-modal-overlay {
-          position: fixed; inset: 0;
-          background-color: rgba(0,0,0,0.4);
-          z-index: 9999; display: flex; align-items: center; justify-content: center;
-        }
-        .logout-modal {
-          background-color: #ffffff;
-          border-radius: 0.75rem;
-          padding: 1.5rem;
-          box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
-          width: 100%; max-width: 24rem;
-        }
-        .logout-modal-title { font-size: 1.125rem; font-weight: 600; color: #D2691E; margin-bottom: 1rem; }
-        .logout-modal-text { font-size: 0.875rem; color: #D2691E; margin-bottom: 1.5rem; }
-        .logout-modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
-        .logout-modal-cancel {
-          padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500;
-          color: #D2691E; border-radius: 0.5rem; border: none; background: none;
-          cursor: pointer; transition: background-color 0.2s ease;
-        }
-        .logout-modal-cancel:hover { background-color: #f3f4f6; }
-        .logout-modal-confirm {
-          padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 500;
-          color: #fff; background-color: red;
-          border-radius: 0.5rem; border: none; cursor: pointer; transition: background-color 0.2s ease;
-        }
-        .logout-modal-confirm:hover { background-color: #a0521f; }
-
-        .menu-button {
-          background: none;
-          border: none;
-          cursor: pointer;
-          padding: 0.5rem;
+          max-width: 160px;
+          height: auto;
           display: flex;
           align-items: center;
           justify-content: center;
-        }
-        .menu-icon {
-          width: 1.5rem;
-          height: 1.5rem;
-          color: #D2691E;
-        }
-        .menu-button-right {
-          margin-left: auto;
+          flex-shrink: 0;
+          overflow: hidden;
         }
 
-        /* Responsive */
-        @media (max-width: 768px) {
-          .sidebar-collapsed { width: 3rem; }
-          .sidebar-expanded { width: 14rem; }
-          .logout-modal { margin: 1rem; max-width: calc(100% - 2rem); }
+        .sidebar-logo-img {
+          width: 100%;
+          height: auto;
+          object-fit: contain;
+          filter: contrast(1.3) brightness(1.1);
         }
-        @media (max-width: 480px) {
-          .sidebar-collapsed { width: 2.5rem; }
-          .sidebar-nav-item { padding: 0.5rem; }
-          .sidebar-logout-button { padding: 0.5rem; }
+
+        .sidebar-brand {
+          overflow: hidden;
+          transition: all 0.3s ease;
+          white-space: nowrap;
+        }
+
+        .sidebar-brand-title {
+          font-weight: 700;
+          font-size: 18px;
+          display: block;
+          color: #362205;
+          letter-spacing: 0.5px;
+        }
+
+        .sidebar-brand-subtitle {
+          font-size: 12px;
+          color: #614624;
+          margin-top: 2px;
+        }
+
+        .menu-button {
+          background: #F0F0F0;
+          border: none;
+          cursor: pointer;
+          padding: 8px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 8px;
+          transition: all 0.2s ease;
+          color: #362205;
+        }
+
+        .menu-button:hover {
+          background: #F0F0F0;
+          color: #D2691E;
+          transform: rotate(90deg);
+        }
+
+        .menu-icon {
+          width: 20px;
+          height: 20px;
+        }
+
+        /* Navigation */
+        .sidebar-nav {
+          flex: 1;
+          padding: 24px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .sidebar-nav-item {
+          display: flex;
+          align-items: center;
+          padding: 14px 16px;
+          border-radius: 10px;
+          transition: all 0.2s ease;
+          text-decoration: none;
+          color: #362205;
+          position: relative;
+          overflow: hidden;
+          cursor: pointer;
+        }
+
+        /* Fix for collapsed state */
+        .sidebar-collapsed .sidebar-nav-item {
+          justify-content: center;
+          padding: 14px;
+        }
+
+        .sidebar-nav-item:before {
+          content: '';
+          position: absolute;
+          left: 0;
+          top: 0;
+          height: 100%;
+          width: 4px;
+          background: linear-gradient(to bottom, #A0522D, #CD853F);
+          opacity: 0;
+          transition: opacity 0.3s ease;
+        }
+
+        .sidebar-nav-item:hover {
+          background: #F0F0F0;
+          transform: scale(1.02);         
+        }
+
+        .sidebar-nav-item:hover:before {
+          opacity: 1;
+        }
+
+        .sidebar-nav-item:hover .sidebar-nav-label {
+          color: #D2691E; 
+        }
+        .sidebar-nav-item:hover .sidebar-nav-icon {
+          color: #D2691E; 
+        }
+        .sidebar-nav-item-active {
+          background-color: #F8F8F8;
+          color: #D2691E;
+          font-weight: 600;
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+        }
+
+        .sidebar-nav-item-active:before {
+          opacity: 1;
+          background: #A0522D;
+          box-shadow: none;
+        }
+        
+        .sidebar-nav-item-active .sidebar-nav-icon {
+          color: #D2691E;
+        }
+
+        .sidebar-nav-icon {
+          width: 20px;
+          height: 20px;
+          flex-shrink: 0;
+          transition: all 0.2s ease;
+        }
+
+        .sidebar-nav-label {
+          margin-left: 14px;
+          transition: all 0.3s ease;
+          overflow: hidden;
+          white-space: nowrap;
+          font-size: 15px;
+          font-weight: 500;
+        }
+
+        /* Hide labels when sidebar is collapsed */
+        .sidebar-collapsed .sidebar-nav-label {
+          display: none;
+        }
+
+        /* Show labels on hover when collapsed */
+        .sidebar-collapsed .sidebar-nav-item:hover .sidebar-nav-label {
+          display: block;
+          position: absolute;
+          left: 100%;
+          top: 50%;
+          transform: translateY(-50%) translateX(12px);
+          background: #362205;
+          color: white;
+          padding: 8px 14px;
+          border-radius: 6px;
+          white-space: nowrap;
+          font-size: 13px;
+          z-index: 1000;
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+          border: 1px solid rgba(0, 0, 0, 0.3);
+        }
+
+        .sidebar-collapsed .sidebar-nav-item:hover .sidebar-nav-label::before {
+          content: '';
+          position: absolute;
+          right: 100%;
+          top: 50%;
+          transform: translateY(-50%);
+          border-width: 6px;
+          border-style: solid;
+          border-color: transparent #362205 transparent transparent;
+        }
+
+        /* Logout */
+        .sidebar-logout {
+          padding: 20px;
+          border-top: 1px solid #E0E0E0;
+        }
+
+        .sidebar-logout-button {
+          display: flex;
+          align-items: center;
+          padding: 14px 16px;
+          cursor: pointer;
+          border-radius: 10px;
+          transition: all 0.2s ease;
+          color: #362205;
+          position: relative;
+        }
+
+        /* Fix for collapsed logout button */
+        .sidebar-collapsed .sidebar-logout-button {
+          justify-content: center;
+          padding: 14px;
+        }
+
+        .sidebar-logout-button:hover {
+          background: #F0F0F0;
+          color: #120A01;
+          transform: translateX(4px);
+        }
+
+        /* Hide logout text when collapsed */
+        .sidebar-collapsed .sidebar-logout-button .sidebar-nav-label {
+          display: none;
+        }
+
+        /* Show logout label on hover when collapsed */
+        .sidebar-collapsed .sidebar-logout-button:hover .sidebar-nav-label {
+          display: block;
+          position: absolute;
+          left: 100%;
+          top: 50%;
+          transform: translateY(-50%) translateX(12px);
+          background: #362205;
+          color: white;
+          padding: 8px 14px;
+          border-radius: 6px;
+          white-space: nowrap;
+          font-size: 13px;
+          z-index: 1000;
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+          border: 1px solid rgba(0, 0, 0, 0.3);
+        }
+
+        .sidebar-collapsed .sidebar-logout-button:hover .sidebar-nav-label::before {
+          content: '';
+          position: absolute;
+          right: 100%;
+          top: 50%;
+          transform: translateY(-50%);
+          border-width: 6px;
+          border-style: solid;
+          border-color: transparent #362205 transparent transparent;
+        }
+
+        /* Hide logo when collapsed */
+        .sidebar-collapsed .sidebar-logo {
+          display: none;
+        }
+
+        /* Modal */
+        .logout-modal-overlay {
+          position: fixed;
+          inset: 0;
+          background-color: rgba(0, 0, 0, 0.7);
+          z-index: 10000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          animation: fadeIn 0.2s ease;
+          backdrop-filter: blur(4px);
+        }
+
+        .logout-modal {
+          background-color: #FFFFFF;
+          border-radius: 16px;
+          padding: 28px;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+          width: 100%;
+          max-width: 420px;
+          animation: scaleIn 0.2s ease;
+          border: 1px solid #E0E0E0;
+        }
+
+        .logout-modal-header {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          margin-bottom: 20px;
+        }
+
+        .logout-modal-title {
+          font-size: 20px;
+          font-weight: 600;
+          color: #362205;
+        }
+
+        .logout-modal-close {
+          background: #F0F0F0;
+          border: none;
+          cursor: pointer;
+          padding: 6px;
+          border-radius: 8px;
+          color: #362205;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s ease;
+        }
+
+        .logout-modal-close:hover {
+          background: #E0E0E0;
+          color: #120A01;
+        }
+
+        .logout-modal-text {
+          font-size: 15px;
+          color: #614624;
+          margin-bottom: 28px;
+          line-height: 1.6;
+        }
+
+        .logout-modal-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 14px;
+        }
+
+        .logout-modal-cancel {
+          padding: 12px 20px;
+          font-size: 14px;
+          font-weight: 500;
+          color: #362205;
+          border-radius: 10px;
+          border: 1px solid #D0D0D0;
+          background: #E8E8E8;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .logout-modal-cancel:hover {
+          background: #D8D8D8;
+          color: #120A01;
+        }
+
+        .logout-modal-confirm {
+          padding: 12px 20px;
+          font-size: 14px;
+          font-weight: 500;
+          color: white;
+          background: linear-gradient(135deg, #FF6B6B 0%, #EE5A24 100%);
+          border-radius: 10px;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+        }
+
+        .logout-modal-confirm:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 6px 16px rgba(255, 107, 107, 0.5);
+          background: linear-gradient(135deg, #FF5252 0%, #E84118 100%);
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        @keyframes scaleIn {
+          from { transform: scale(0.95); opacity: 0; }
+          to { transform: scale(1); opacity: 1; }
         }
       `}</style>
 
-      <div
-        className={`sidebar ${isSidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}`}
-      >
+      <div className={`sidebar ${isSidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}`}>
         {/* Header */}
         <div className="sidebar-header">
-          <div className="sidebar-header-content">
-            {isSidebarCollapsed ? (
-              <button
-                className="menu-button"
-                onClick={() => setIsSidebarCollapsed(false)}
-              >
-                <Menu className="menu-icon" />
-              </button>
-            ) : (
-              <>
-                <div className="sidebar-logo">
-                  <Heart className="sidebar-logo-icon" />
-                </div>
-                <div className="sidebar-brand">
-                  <span className="sidebar-brand-title">ECHO</span>
-                  <p className="sidebar-brand-subtitle">Kutsero President</p>
-                </div>
-                <button
-                  className="menu-button menu-button-right"
-                  onClick={() => setIsSidebarCollapsed(true)}
-                >
-                  <Menu className="menu-icon" />
-                </button>
-              </>
-            )}
+          <div className="sidebar-logo-container">
+            <div className="sidebar-logo">
+              <img src="/Images/echo.png" alt="ECHO Logo" className="sidebar-logo-img" />
+            </div>
           </div>
+          <button
+            className="menu-button"
+            onClick={handleToggleSidebar}
+          >
+            <Menu className="menu-icon" />
+          </button>
         </div>
 
         {/* Navigation */}
@@ -185,14 +461,15 @@ const Sidebar = () => {
           {sidebarItems.map(({ icon: Icon, label, path }, index) => {
             const isActive = location.pathname === path;
             return (
-              <Link
+              <div
                 key={index}
-                to={path}
+                onClick={() => handleNavigation(path)}
                 className={`sidebar-nav-item ${isActive ? 'sidebar-nav-item-active' : ''}`}
               >
                 <Icon className="sidebar-nav-icon" />
-                {!isSidebarCollapsed && <span className="sidebar-nav-label">{label}</span>}
-              </Link>
+                {/* ALWAYS render the label - CSS will handle showing/hiding it */}
+                <span className="sidebar-nav-label">{label}</span>
+              </div>
             );
           })}
         </nav>
@@ -204,17 +481,26 @@ const Sidebar = () => {
             className="sidebar-logout-button"
           >
             <LogOut className="sidebar-nav-icon" />
-            {!isSidebarCollapsed && <span className="sidebar-nav-label">Log Out</span>}
+            {/* ALWAYS render the label - CSS will handle showing/hiding it */}
+            <span className="sidebar-nav-label">Log Out</span>
           </div>
         </div>
       </div>
 
       {/* Logout Modal */}
       {showLogoutModal && (
-        <div className="logout-modal-overlay">
-          <div className="logout-modal">
-            <h2 className="logout-modal-title">Confirm Logout</h2>
-            <p className="logout-modal-text">Are you sure you want to log out of your account?</p>
+        <div className="logout-modal-overlay" onClick={() => setShowLogoutModal(false)}>
+          <div className="logout-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="logout-modal-header">
+              <h2 className="logout-modal-title">Confirm Logout</h2>
+              <button
+                className="logout-modal-close"
+                onClick={() => setShowLogoutModal(false)}
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <p className="logout-modal-text">Are you sure you want to log out your account? You'll need to sign in again to access your dashboard.</p>
             <div className="logout-modal-actions">
               <button
                 onClick={() => setShowLogoutModal(false)}
