@@ -298,7 +298,7 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
   );
 };
 
-// Medical Records Table Component - UPDATED WITH FIXES
+// Medical Records Table Component - FIXED WITH ADD FIRST RECORD BUTTON
 const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddRecord, onEditRecord, onViewRecord, hasAccess, onRequestAccess, accessRequested }) => {
   const [filteredRecords, setFilteredRecords] = useState(records || []);
   const [dateFilter, setDateFilter] = useState({ from: "", to: "" });
@@ -461,7 +461,19 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
               : "No medical records available for this horse."
             }
           </p>
-          {/* NO BUTTON DISPLAYED WHEN FILTER HAS NO RECORDS */}
+          
+          {/* ADD FIRST RECORD BUTTON - SHOWN WHEN NO RECORDS EXIST AND NO FILTERS APPLIED */}
+          {!(dateFilter.from || dateFilter.to) && (
+            <Button 
+              onClick={onAddRecord}
+              className="cursor-pointer px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-xl text-white shadow-sm hover:shadow-md transition-all duration-200"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Add First Record
+            </Button>
+          )}
+          
+          {/* CLEAR FILTERS BUTTON - SHOWN WHEN FILTERS ARE APPLIED */}
           {(dateFilter.from || dateFilter.to) && (
             <Button 
               onClick={clearFilter} 
