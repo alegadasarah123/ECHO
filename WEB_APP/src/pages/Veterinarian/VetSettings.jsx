@@ -214,193 +214,103 @@ const SecuritySettings = ({
   );
 };
 
-// Extracted HelpSupport component
+// Extracted HelpSupport component - SIMPLIFIED TO EMAIL ONLY
 const HelpSupport = () => (
   <div className="space-y-8">
-    {/* Support Channels */}
+    {/* Support Channels - EMAIL ONLY */}
     <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-gray-100 p-6">
       <div className="flex items-center space-x-3 mb-6">
         <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center">
           <HelpCircle className="w-5 h-5 text-blue-600" />
         </div>
         <div>
-          <h3 className="text-xl font-bold text-gray-800">Support Channels</h3>
+          <h3 className="text-xl font-bold text-gray-800">Support</h3>
           <p className="text-gray-600 text-sm">Get help when you need it</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200/50 hover:shadow-lg transition-all duration-200">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center">
-              <MessageCircle className="w-5 h-5 text-white" />
+      <div className="flex justify-center">
+        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-8 border border-green-200/50 hover:shadow-lg transition-all duration-200 max-w-md w-full">
+          <div className="flex items-center space-x-3 mb-4 justify-center">
+            <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
+              <Mail className="w-6 h-6 text-white" />
             </div>
-            <h4 className="font-semibold text-blue-800">Live Chat</h4>
           </div>
-          <p className="text-blue-700 text-sm mb-4">Get instant help from our support team</p>
-          <button className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full">
-            Start Chat
-          </button>
-        </div>
-
-        <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200/50 hover:shadow-lg transition-all duration-200">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center">
-              <Mail className="w-5 h-5 text-white" />
-            </div>
-            <h4 className="font-semibold text-green-800">Email Support</h4>
-          </div>
-          <p className="text-green-700 text-sm mb-4">Send us a detailed message</p>
-          <button className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full">
-            Send Email
-          </button>
-        </div>
-
-        <div className="bg-gradient-to-br from-orange-50 to-orange-100 rounded-xl p-6 border border-orange-200/50 hover:shadow-lg transition-all duration-200">
-          <div className="flex items-center space-x-3 mb-4">
-            <div className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center">
-              <Phone className="w-5 h-5 text-white" />
-            </div>
-            <h4 className="font-semibold text-orange-800">Phone Support</h4>
-          </div>
-          <p className="text-orange-700 text-sm mb-4">Call us for immediate assistance</p>
-          <button className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors w-full">
-            Call Now
-          </button>
+          <h4 className="font-semibold text-green-800 text-center text-lg mb-2">Email Support</h4>
+          <p className="text-green-700 text-sm mb-6 text-center">Contact us for any assistance</p>
+          <a 
+            href="mailto:echosys.ph@gmail.com"
+            className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-lg font-medium transition-colors w-full block text-center"
+          >
+            echosys.ph@gmail.com
+          </a>
         </div>
       </div>
     </div>
 
-    {/* Knowledge Base */}
+    {/* Terms & Conditions */}
     <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-gray-100 p-6">
       <div className="flex items-center space-x-3 mb-6">
         <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center">
           <FileText className="w-5 h-5 text-purple-600" />
         </div>
         <div>
-          <h3 className="text-xl font-bold text-gray-800">Knowledge Base</h3>
-          <p className="text-gray-600 text-sm">Find answers to common questions</p>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-4">
-          <a href="#" className="flex items-center justify-between p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200/50 hover:shadow-md transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <FileText className="w-5 h-5 text-gray-600" />
-              <div>
-                <span className="font-medium text-gray-800">Getting Started Guide</span>
-                <p className="text-sm text-gray-600">Learn the basics of VetCare</p>
-              </div>
-            </div>
-            <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-          </a>
-
-          <a href="#" className="flex items-center justify-between p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200/50 hover:shadow-md transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <HelpCircle className="w-5 h-5 text-gray-600" />
-              <div>
-                <span className="font-medium text-gray-800">Frequently Asked Questions</span>
-                <p className="text-sm text-gray-600">Common questions and answers</p>
-              </div>
-            </div>
-            <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-          </a>
-
-          <a href="#" className="flex items-center justify-between p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200/50 hover:shadow-md transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <Download className="w-5 h-5 text-gray-600" />
-              <div>
-                <span className="font-medium text-gray-800">User Manual</span>
-                <p className="text-sm text-gray-600">Complete user documentation</p>
-              </div>
-            </div>
-            <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-          </a>
-        </div>
-
-        <div className="space-y-4">
-          <a href="#" className="flex items-center justify-between p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200/50 hover:shadow-md transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <SettingsIcon className="w-5 h-5 text-gray-600" />
-              <div>
-                <span className="font-medium text-gray-800">System Requirements</span>
-                <p className="text-sm text-gray-600">Technical specifications</p>
-              </div>
-            </div>
-            <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-          </a>
-
-          <a href="#" className="flex items-center justify-between p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200/50 hover:shadow-md transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <RefreshCw className="w-5 h-5 text-gray-600" />
-              <div>
-                <span className="font-medium text-gray-800">Updates & Releases</span>
-                <p className="text-sm text-gray-600">Latest features and improvements</p>
-              </div>
-            </div>
-            <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-          </a>
-
-          <a href="#" className="flex items-center justify-between p-4 bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl border border-gray-200/50 hover:shadow-md transition-all duration-200 group">
-            <div className="flex items-center space-x-3">
-              <Shield className="w-5 h-5 text-gray-600" />
-              <div>
-                <span className="font-medium text-gray-800">Privacy & Security</span>
-                <p className="text-sm text-gray-600">Data protection information</p>
-              </div>
-            </div>
-            <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-gray-600" />
-          </a>
-        </div>
-      </div>
-    </div>
-
-    {/* Contact Information */}
-    <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-gray-100 p-6">
-      <div className="flex items-center space-x-3 mb-6">
-        <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
-          <Info className="w-5 h-5 text-green-600" />
-        </div>
-        <div>
-          <h3 className="text-xl font-bold text-gray-800">Contact Information</h3>
-          <p className="text-gray-600 text-sm">Get in touch with our team</p>
+          <h3 className="text-xl font-bold text-gray-800">Terms & Conditions</h3>
+          <p className="text-gray-600 text-sm">Read our terms of service</p>
         </div>
       </div>
 
       <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-xl p-6 border border-gray-200/50">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="text-center">
-            <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Phone className="w-6 h-6 text-white" />
-            </div>
-            <h4 className="font-semibold text-gray-800 mb-2">Phone</h4>
-            <p className="text-gray-600 text-sm">+1 (555) 123-4567</p>
-            <p className="text-gray-500 text-xs">Mon-Fri, 9AM-6PM EST</p>
-          </div>
+        <div className="prose prose-sm max-w-none">
+          <h4 className="font-semibold text-gray-800 mb-4">VetCare Platform Terms of Service</h4>
+          <div className="text-gray-600 space-y-4 text-sm">
+            <h5 className="font-semibold text-amber-700">1. Account Registration and Verification</h5>
+            <p>
+              By registering as a veterinarian on Echo Portal, you agree to provide accurate and complete information about your professional credentials, including your license number, specialization, and years of experience. All information submitted will be verified by our administrative team.
+            </p>
 
-          <div className="text-center">
-            <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-3">
-              <Mail className="w-6 h-6 text-white" />
-            </div>
-            <h4 className="font-semibold text-gray-800 mb-2">Email</h4>
-            <p className="text-gray-600 text-sm">support@vetcare.com</p>
-            <p className="text-gray-500 text-xs">24/7 Support Available</p>
-          </div>
+            <h5 className="font-semibold text-amber-700">2. Professional Conduct</h5>
+            <p>
+              You agree to maintain professional standards of conduct while using the platform. This includes providing accurate medical advice, maintaining client confidentiality, and adhering to veterinary ethics and regulations in the Philippines.
+            </p>
 
-          <div className="text-center">
-            <div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center mx-auto mb-3">
-              <MessageCircle className="w-6 h-6 text-white" />
-            </div>
-            <h4 className="font-semibold text-gray-800 mb-2">Live Chat</h4>
-            <p className="text-gray-600 text-sm">chat.vetcare.com</p>
-            <p className="text-gray-500 text-xs">Instant Support</p>
+            <h5 className="font-semibold text-amber-700">3. Data Privacy and Confidentiality</h5>
+            <p>
+              We are committed to protecting your personal and professional information. Your data will be stored securely and used only for platform functionality, verification purposes, and communication related to your account.
+            </p>
+
+            <h5 className="font-semibold text-amber-700">4. Platform Usage</h5>
+            <p>
+              The Echo Portal is designed for professional veterinary use. You agree not to misuse the platform for unauthorized purposes, including but not limited to spam, fraudulent activities, or distribution of harmful content.
+            </p>
+
+            <h5 className="font-semibold text-amber-700">5. Account Approval and Suspension</h5>
+            <p>
+              Account approval is subject to verification of your credentials. Echo Portal reserves the right to suspend or terminate accounts that violate these terms or provide false information. You will be notified of any account status changes.
+            </p>
+
+            <h5 className="font-semibold text-amber-700">6. Intellectual Property</h5>
+            <p>
+              All content and materials on the Echo Portal are protected by intellectual property laws. You may not reproduce, distribute, or create derivative works without explicit permission.
+            </p>
+
+            <h5 className="font-semibold text-amber-700">7. Limitation of Liability</h5>
+            <p>
+              Echo Portal provides the platform as a service and is not liable for any direct or indirect damages arising from the use of the platform. Veterinary professionals are responsible for their own professional decisions and advice.
+            </p>
+
+            <h5 className="font-semibold text-amber-700">8. Amendments to Terms</h5>
+            <p>
+              We reserve the right to modify these terms and conditions at any time. Continued use of the platform after changes constitutes acceptance of the modified terms.
+            </p>
+
           </div>
         </div>
       </div>
     </div>
   </div>
 );
+
 // Main Settings component
 const Settings = () => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -453,6 +363,35 @@ const Settings = () => {
     weeklyReports: true,
     emergencyAlerts: true
   });
+
+  // Profile display function
+  const getProfileDisplay = () => {
+    if (!vetProfile) {
+      return {
+        type: 'initials',
+        content: ''
+      };
+    }
+
+    // Check if there's a valid profile photo
+    if (vetProfile.vet_profile_photo && 
+        vetProfile.vet_profile_photo.trim() !== '' && 
+        !vetProfile.vet_profile_photo.includes('default') &&
+        vetProfile.vet_profile_photo.startsWith('http')) {
+      return {
+        type: 'photo',
+        content: vetProfile.vet_profile_photo
+      };
+    }
+
+    // Fallback to initials
+    const firstInitial = vetProfile.vet_fname?.[0] || '';
+    const lastInitial = vetProfile.vet_lname?.[0] || '';
+    return {
+      type: 'initials',
+      content: (firstInitial + lastInitial).toUpperCase() || 'V'
+    };
+  };
 
   // Check password requirements
   const checkPasswordRequirements = (password) => {
@@ -541,6 +480,8 @@ const Settings = () => {
     { id: 'help', label: 'Help & Support', icon: HelpCircle }
   ];
 
+  const profileDisplay = getProfileDisplay();
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Sidebar
@@ -563,10 +504,24 @@ const Settings = () => {
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
             </button>
             <button onClick={() => setIsProfileModalOpen(true)}>
-              <div className="cursor-pointer w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md">
-                <span className="text-white font-semibold text-sm">
-                  {vetProfile ? `${vetProfile.vet_fname?.[0] || ""}${vetProfile.vet_lname?.[0] || ""}` : ""}
-                </span>
+              <div className="cursor-pointer w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md overflow-hidden">
+                {profileDisplay.type === 'photo' ? (
+                  <img 
+                    src={profileDisplay.content} 
+                    alt="Profile" 
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // If image fails to load, fall back to initials
+                      console.error('Profile image failed to load:', profileDisplay.content);
+                      e.target.style.display = 'none';
+                      // The initials will show as fallback due to the gradient background
+                    }}
+                  />
+                ) : (
+                  <span className="text-white font-semibold text-sm">
+                    {profileDisplay.content}
+                  </span>
+                )}
               </div>
             </button>
           </div>

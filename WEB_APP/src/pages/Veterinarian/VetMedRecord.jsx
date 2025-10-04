@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {FileText,Heart,Search,Menu,MessageCircle,Bell,PawPrint,User,Phone,MapPin,CheckCircle,AlertCircle,RefreshCw,X,Clock3,Shield,Clock,
+import {FileText,Heart,Search,Menu,MessageCircle,Bell,PawPrint,User,Phone,MapPin,CheckCircle,AlertCircle,RefreshCw,X,Clock3,Shield,Clock, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
@@ -15,9 +15,14 @@ const VetAccessRequests = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [searchFocus, setSearchFocus] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [medicalRecords, setMedicalRecords] = useState([]);
   const [error, setError] = useState(null);
   
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+
   // ---------------- FETCH VET PROFILE ----------------
   const fetchProfile = async () => {
     try {
@@ -33,10 +38,40 @@ const VetAccessRequests = () => {
     }
   };
 
+  // ---------------- GET PROFILE DISPLAY ----------------
+  const getProfileDisplay = () => {
+    if (!vetProfile) {
+      return {
+        type: 'initials',
+        content: ''
+      };
+    }
+
+    // Check if there's a valid profile photo
+    if (vetProfile.vet_profile_photo && 
+        vetProfile.vet_profile_photo.trim() !== '' && 
+        !vetProfile.vet_profile_photo.includes('default') &&
+        vetProfile.vet_profile_photo.startsWith('http')) {
+      return {
+        type: 'photo',
+        content: vetProfile.vet_profile_photo
+      };
+    }
+
+    // Fallback to initials
+    const firstInitial = vetProfile.vet_fname?.[0] || '';
+    const lastInitial = vetProfile.vet_lname?.[0] || '';
+    return {
+      type: 'initials',
+      content: (firstInitial + lastInitial).toUpperCase() || 'V'
+    };
+  };
+
   // ---------------- FETCH MEDICAL RECORDS ----------------
   const fetchMedicalRecords = async () => {
     try {
       setLoading(true);
+      setIsRefreshing(true);
       setError(null);
       const res = await fetch('http://localhost:8000/api/veterinarian/get_medrec_access/', {
         method: 'GET',
@@ -57,13 +92,23 @@ const VetAccessRequests = () => {
       setError('Failed to load medical records. Please try again later.');
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchMedicalRecords();
   };
   
   useEffect(() => {
     fetchProfile();
     fetchMedicalRecords();
   }, []);
+
+  // Reset to first page when filters or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedFilter, searchTerm]);
 
   const handleViewRecord = (record) => {
     setSelectedRecord(record);
@@ -105,6 +150,32 @@ const VetAccessRequests = () => {
     return true;
   });
 
+  // Pagination logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredRecords.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredRecords.length / itemsPerPage);
+
+  const paginate = (pageNumber) => setCurrentPage(pageNumber);
+
+  const nextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const prevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  // Generate page numbers for pagination
+  const pageNumbers = [];
+  for (let i = 1; i <= totalPages; i++) {
+    pageNumbers.push(i);
+  }
+
   const approvedCount = medicalRecords.filter(r => r.status === 'approved').length;
   const completedCount = medicalRecords.filter(r => r.status === 'completed').length;
   const declinedCount = medicalRecords.filter(r => r.status === 'declined').length;
@@ -142,6 +213,8 @@ const VetAccessRequests = () => {
     </tr>
   );
 
+  const profileDisplay = getProfileDisplay();
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Sidebar/>
@@ -153,6 +226,14 @@ const VetAccessRequests = () => {
           <h1 className="text-2xl font-bold text-gray-800 mb-1">Medical Records</h1>
           <div className="flex items-center space-x-4">
             <button 
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+            <button 
               onClick={() => setIsNotificationModalOpen(!isNotificationModalOpen)} 
               className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl relative"
             >
@@ -160,10 +241,24 @@ const VetAccessRequests = () => {
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
             </button>
             <button onClick={() => setIsProfileModalOpen(true)}>
-              <div className="cursor-pointer w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md">
-                <span className="text-white font-semibold text-sm">
-                  {vetProfile ? `${vetProfile.vet_fname?.[0] || ""}${vetProfile.vet_lname?.[0] || ""}` : ""}
-                </span>
+              <div className="cursor-pointer w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md overflow-hidden">
+                {profileDisplay.type === 'photo' ? (
+                  <img 
+                    src={profileDisplay.content} 
+                    alt="Profile" 
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // If image fails to load, fall back to initials
+                      console.error('Profile image failed to load:', profileDisplay.content);
+                      e.target.style.display = 'none';
+                      // The initials will show as fallback due to the gradient background
+                    }}
+                  />
+                ) : (
+                  <span className="text-white font-semibold text-sm">
+                    {profileDisplay.content}
+                  </span>
+                )}
               </div>
             </button>
           </div>
@@ -228,7 +323,6 @@ const VetAccessRequests = () => {
               ))}
             </div>
           </div>
-
           {/* Medical Records Table */}
           <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
             <div className="overflow-x-auto">
@@ -254,7 +348,7 @@ const VetAccessRequests = () => {
                     </>
                   ) : filteredRecords.length > 0 ? (
                     // Show actual data when loaded
-                    filteredRecords.map((record) => (
+                    currentItems.map((record) => (
                       <tr key={record.id} className="hover:bg-gray-50/50 transition-colors">
                         <td className="text-center px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">{record.accessDate}</div>
@@ -298,13 +392,91 @@ const VetAccessRequests = () => {
                 </tbody>
               </table>
             </div>
+
+            {/* Pagination Controls - Attached directly to table */}
+            {filteredRecords.length > 0 && !loading && (
+              <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
+                <div className="text-sm text-gray-600 mb-4 sm:mb-0">
+                  Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to{" "}
+                  <span className="font-medium">
+                    {indexOfLastItem > filteredRecords.length 
+                      ? filteredRecords.length 
+                      : indexOfLastItem}
+                  </span> of{" "}
+                  <span className="font-medium">{filteredRecords.length}</span> results
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  {/* Items per page selector */}
+                  <div className="flex items-center mr-4">
+                    <span className="text-sm text-gray-600 mr-2">Show:</span>
+                    <select
+                      value={itemsPerPage}
+                      onChange={(e) => {
+                        setItemsPerPage(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="border border-gray-300 rounded-md px-2 py-1 text-sm"
+                    >
+                      <option value="5">5</option>
+                      <option value="10">10</option>
+                      <option value="20">20</option>
+                      <option value="50">50</option>
+                    </select>
+                  </div>
+
+                  {/* Previous button */}
+                  <button
+                    onClick={prevPage}
+                    disabled={currentPage === 1}
+                    className={`p-2 rounded-md border ${
+                      currentPage === 1
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  {/* Page numbers */}
+                  <div className="flex space-x-1">
+                    {pageNumbers.map((number) => (
+                      <button
+                        key={number}
+                        onClick={() => paginate(number)}
+                        className={`w-8 h-8 flex items-center justify-center rounded-md border text-sm ${
+                          currentPage === number
+                            ? "bg-green-500 text-white border-green-500"
+                            : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        {number}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Next button */}
+                  <button
+                    onClick={nextPage}
+                    disabled={currentPage === totalPages}
+                    className={`p-2 rounded-md border ${
+                      currentPage === totalPages
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       {/* Modal */}
       {isModalOpen && selectedRecord && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-1000 p-4 backdrop-blur-sm">
           <div className="bg-white rounded-3xl shadow-2xl max-w-5xl w-full max-h-[85vh] overflow-hidden border border-gray-200/50">
             {/* Modal Header  */}
             <div className="bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 text-white p-6 sticky top-0 z-10 shadow-lg">
@@ -318,7 +490,7 @@ const VetAccessRequests = () => {
                     <p className="text-blue-100 text-sm">
                       {selectedRecord.status === 'pending' 
                         ? 'Pending approval' 
-                        : `Approved by ${selectedRecord.approvedBy}, Accessed by ${selectedRecord.accessedBy}`
+                        : `Approved by ${selectedRecord.approvedBy}`
                       }
                     </p>
                   </div>

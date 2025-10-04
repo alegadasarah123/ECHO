@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from "react-router-dom";   
-import { Users, Users2, UserPlus, User, Bell, XCircle, CheckCircle, AlertCircle } from 'lucide-react';
+import { Users, Users2, UserPlus, User, Bell, XCircle, CheckCircle, AlertCircle, Calendar, Clock } from 'lucide-react';
 import Sidebar from '@/components/KutSidebar';
 import FloatingMessages from './KutMessages';
 import NotificationModal from './KutNotif';
@@ -17,10 +17,20 @@ const KutseroDashboard = () => {
     approved_horse_operator_count: 0,
   });
   const [notifOpen, setNotifOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState({
+    auth: true,
+    users: true,
+    counts: true,
+    notifications: false
+  });
   
   const pendingUsers = users.filter(u => u.status === "pending");
   const declinedUsers = users.filter(u => u.status === "declined");
   
+  // Calculate unread notifications count from notifications state
+  const unreadNotificationsCount = notifications.filter(n => !n.read).length;
+
   // Authentication verification
   useEffect(() => {
     const checkAuth = async () => {
@@ -37,10 +47,54 @@ const KutseroDashboard = () => {
       } catch (err) {
         console.error("Authentication verification failed:", err);
         navigate("/login");
+      } finally {
+        setLoading(prev => ({ ...prev, auth: false }));
       }
     };
     checkAuth();
   }, []);
+
+  // Fetch notifications from backend - UPDATED to use actual read status
+  const fetchNotifications = async () => {
+    try {
+      setLoading(prev => ({ ...prev, notifications: true }));
+      const res = await fetch(`${API_BASE}/get_notifications/`, {
+        method: "GET",
+        credentials: "include", 
+      });
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
+      const data = await res.json();
+      
+      // ✅ FIXED: Use the actual read status from backend
+      const formattedNotifications = data.map(notification => ({
+        id: notification.id,
+        message: notification.message,
+        date: notification.date,
+        read: notification.read || false // Use the actual read status from backend
+      }));
+      
+      setNotifications(formattedNotifications);
+    } catch (err) {
+      console.error("Error fetching notifications:", err);
+      // Fallback to user-based notifications if API fails
+      const userNotifications = users
+        .filter(u => u.status === "pending")
+        .map(u => ({
+          id: u.id,
+          message: `${u.name} (${getRoleDisplayName(u.role)}) is pending approval`,
+          date: u.created_at !== "N/A" ? new Date(u.created_at) : new Date(),
+          read: false,
+          type: 'user_approval'
+        }));
+      setNotifications(userNotifications);
+    } finally {
+      setLoading(prev => ({ ...prev, notifications: false }));
+    }
+  };
 
   // Data fetching
   useEffect(() => {
@@ -63,6 +117,8 @@ const KutseroDashboard = () => {
         setPendingCount(data.pending_count);
       } catch (err) {
         console.error("Error fetching users:", err);
+      } finally {
+        setLoading(prev => ({ ...prev, users: false }));
       }
     };
 
@@ -76,24 +132,89 @@ const KutseroDashboard = () => {
         setApprovedCounts(data);
       } catch (err) {
         console.error("Error fetching approved counts:", err);
+      } finally {
+        setLoading(prev => ({ ...prev, counts: false }));
       }
     };
 
     if (authorized) {
       fetchUsers();
       fetchApprovedCounts();
+      fetchNotifications();
     }
   }, [authorized]);
+
+  // Refresh notifications when modal opens
+  useEffect(() => {
+    if (notifOpen && authorized) {
+      fetchNotifications();
+    }
+  }, [notifOpen, authorized]);
+
+  // Handle mark all as read from the modal
+  const handleMarkAllAsRead = () => {
+    setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+  };
+
+  // Handle individual notification click - UPDATED to navigate to UserManagement with notification data
+  const handleNotificationClick = (notification) => {
+    setNotifications(prev => 
+      prev.map(n => 
+        n.id === notification.id ? { ...n, read: true } : n
+      )
+    );
+    
+    // ✅ Navigate to UserManagement with notification data when notification is clicked
+    console.log('Notification clicked, navigating to UserManagement:', notification);
+    navigate('/KutUserManagement', { 
+      state: { 
+        highlightedNotification: notification,
+        shouldHighlight: true // Add this flag
+      } 
+    });
+  };
+
+  // Function to handle opening Kutsero Management (UserManagement) with notification data
+  const handleOpenKutseroManagement = (notification = null) => {
+    console.log('Opening Kutsero Management from dashboard notification:', notification);
+    if (notification) {
+      navigate('/KutUserManagement', { 
+        state: { 
+          highlightedNotification: notification,
+          shouldHighlight: true // Add this flag
+        } 
+      });
+    } else {
+      navigate('/KutUserManagement');
+    }
+  };
 
   // Helper functions
   const todayDate = new Date().toLocaleDateString();
   const todayRegistrations = users.filter(u => u.created_at === todayDate);
+  
+  const currentTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const currentDate = new Date().toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    year: 'numeric', 
+    month: 'long', 
+    day: 'numeric' 
+  });
 
   const getRoleColor = (role) => {
     switch (role?.toLowerCase()) {
-      case 'kutsero': return '#16a34a';
-      case 'horse_operator': return '#3b82f6';
-      default: return '#6b7280';
+      case 'kutsero': return 'text-green-600 bg-green-50 border-green-200';
+      case 'horse_operator': return 'text-blue-600 bg-blue-50 border-blue-200';
+      default: return 'text-gray-600 bg-gray-50 border-gray-200';
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'approved': return 'text-green-600 bg-green-50 border-green-200';
+      case 'pending': return 'text-amber-600 bg-amber-50 border-amber-200';
+      case 'declined': return 'text-red-600 bg-red-50 border-red-200';
+      default: return 'text-gray-600 bg-gray-50 border-gray-200';
     }
   };
 
@@ -105,163 +226,312 @@ const KutseroDashboard = () => {
     }
   };
 
-  return (
-    <div style={styles.layout}>
-      <Sidebar />
-      <div style={styles.dashboard}>
-        {/* Header Section */}
-        <div style={styles.header}>
-          <div style={styles.headerContent}>
-            <h1 style={styles.title}>Dashboard</h1>
-            <p style={styles.subtitle}>Monitor and manage user registrations</p>
-          </div>
+  const getStatusIcon = (status) => {
+    switch (status?.toLowerCase()) {
+      case 'approved': return CheckCircle;
+      case 'pending': return AlertCircle;
+      case 'declined': return XCircle;
+      default: return AlertCircle;
+    }
+  };
 
-          {/* Notification Bell */}
-          <div style={{ position: "relative" }}>
-            <button
-              style={styles.notificationBtn}
-              onClick={() => setNotifOpen(!notifOpen)}
-              aria-label="Notifications"
-            >
-              <Bell size={24} color="#4B5563" />
-              {pendingUsers.length > 0 && (
-                <span style={styles.badge}>{pendingUsers.length}</span>
-              )}
-            </button>
+  // Skeleton Loading Components (for main content only)
+  const StatCardSkeleton = () => (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex items-center gap-4">
+      <div className="w-12 h-12 bg-gray-200 rounded-lg animate-pulse"></div>
+      <div className="flex flex-col gap-2">
+        <div className="w-16 h-8 bg-gray-200 rounded animate-pulse"></div>
+        <div className="w-24 h-4 bg-gray-200 rounded animate-pulse"></div>
+      </div>
+    </div>
+  );
 
-            <NotificationModal
-              isOpen={notifOpen}
-              onClose={() => setNotifOpen(false)}
-              notifications={pendingUsers.map(u => ({
-                message: `${u.name} (${getRoleDisplayName(u.role)}) is pending approval`,
-                date: u.created_at !== "N/A" ? new Date(u.created_at) : new Date()
-              }))}
-            />
-          </div>
+  const UserItemSkeleton = () => (
+    <div className="flex gap-3 p-3 border border-gray-100 rounded-lg bg-gray-50 items-center">
+      <div className="w-9 h-9 rounded-full bg-gray-200 animate-pulse"></div>
+      <div className="flex-1 flex justify-between items-center">
+        <div className="w-24 h-4 bg-gray-200 rounded animate-pulse"></div>
+        <div className="w-16 h-6 bg-gray-200 rounded animate-pulse"></div>
+      </div>
+    </div>
+  );
+
+  const RecentUserSkeleton = () => (
+    <div className="flex gap-3 p-3 border border-gray-100 rounded-lg bg-gray-50">
+      <div className="w-9 h-9 rounded-full bg-gray-200 animate-pulse shrink-0"></div>
+      <div className="flex-1 flex flex-col gap-2 min-w-0">
+        <div className="flex justify-between items-center">
+          <div className="w-32 h-4 bg-gray-200 rounded animate-pulse"></div>
+          <div className="w-20 h-6 bg-gray-200 rounded animate-pulse"></div>
         </div>
+        <div className="flex justify-between">
+          <div className="w-20 h-3 bg-gray-200 rounded animate-pulse"></div>
+          <div className="w-16 h-3 bg-gray-200 rounded animate-pulse"></div>
+        </div>
+      </div>
+    </div>
+  );
 
-        {/* Main Content */}
-        <div style={styles.mainContent}>
-          {/* Statistics Cards */}
-          <div style={styles.statsSection}>
-            <div style={styles.statCard}>
-              <div style={styles.statIconContainer}>
-                <Users size={28} color="#16a34a" />
-              </div>
-              <div style={styles.statContent}>
-                <p style={styles.statValue}>
-                  {approvedCounts.approved_kutsero_count + approvedCounts.approved_horse_operator_count}
-                </p>
-                <h3 style={styles.statLabel}>Total Approved Users</h3>
+  const isDataLoading = loading.auth || loading.users || loading.counts;
+
+  if (loading.auth) {
+    return (
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar />
+        <div className="flex-1 flex flex-col h-screen overflow-hidden">
+          <header className="bg-white shadow-sm border-b border-gray-200 px-8 py-4 flex items-center justify-between shrink-0">
+            <div className="flex flex-col gap-1">
+              <h1 className="text-2xl font-semibold text-[#D2691E]">Welcome!</h1>
+              <div className="flex items-center gap-4 text-sm text-gray-600">
+                <div className="flex items-center gap-1">
+                  <Calendar size={16} />
+                  <span>{currentDate}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Clock size={16} />
+                  <span>{currentTime}</span>
+                </div>
               </div>
             </div>
+            <div className="w-10 h-10 bg-gray-200 rounded-full animate-pulse"></div>
+          </header>
 
-            <div style={styles.statCard}>
-              <div style={styles.statIconContainer}>
-                <Users2 size={28} color="#3b82f6" />
+          <main className="flex-1 p-8 flex flex-col gap-6 bg-gray-50 overflow-hidden">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+              <StatCardSkeleton />
+            </div>
+
+            {/* Skeleton Data Sections */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 overflow-hidden">
+              {/* Today's Registrations Skeleton */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col gap-4 overflow-hidden">
+                <div className="flex justify-between items-center pb-3 border-b border-gray-100 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="w-40 h-6 bg-gray-200 rounded animate-pulse"></div>
+                  </div>
+                  <div className="w-16 h-6 bg-gray-200 rounded-full animate-pulse"></div>
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                  <UserItemSkeleton />
+                  <UserItemSkeleton />
+                  <UserItemSkeleton />
+                </div>
               </div>
-              <div style={styles.statContent}>
-                <p style={styles.statValue}>{pendingCount}</p> 
-                <h3 style={styles.statLabel}>Pending Verifications</h3>
+
+              {/* Recent Registrations Skeleton */}
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col gap-4 overflow-hidden">
+                <div className="flex justify-between items-center pb-3 border-b border-gray-100 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="w-6 h-6 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="w-40 h-6 bg-gray-200 rounded animate-pulse"></div>
+                  </div>
+                  <div className="w-24 h-4 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+                <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                  <RecentUserSkeleton />
+                  <RecentUserSkeleton />
+                  <RecentUserSkeleton />
+                  <RecentUserSkeleton />
+                  <RecentUserSkeleton />
+                </div>
               </div>
             </div>
-            
-            <div style={styles.statCard}>
-              <div style={styles.statIconContainer}>
-                <XCircle size={28} color="#dc2626" />
+          </main>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex min-h-screen bg-gray-50">
+      <Sidebar />
+      
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col h-screen overflow-hidden">
+        <header className="bg-white shadow-sm border-b border-gray-200 px-8 py-4 flex items-center justify-between shrink-0">
+          <div className="flex flex-col gap-1">
+              <h1 className="text-2xl font-semibold text-[#D2691E] m-0">Welcome!</h1>
+            <div className="flex items-center gap-4 text-sm text-gray-600">
+              <div className="flex items-center gap-1">
+                <Calendar size={16} />
+                <span>{currentDate}</span>
               </div>
-              <div style={styles.statContent}>
-                <p style={styles.statValue}>{declinedUsers.length}</p> 
-                <h3 style={styles.statLabel}>Declined Users</h3>
+              <div className="flex items-center gap-1">
+                <Clock size={16} />
+                <span>{currentTime}</span>
               </div>
             </div>
           </div>
 
-          {/* Data Sections */}
-          <div style={styles.contentGrid}>
-            {/* Today's Registrations */}
-            <div style={styles.contentCard}>
-              <div style={styles.cardHeader}>
-                <div style={styles.cardTitleContainer}>
-                  <UserPlus size={24} color="#4B5563" />
-                  <h2 style={styles.cardTitle}>Today's Registrations</h2>
+          {/* Notification Bell and Quick Stats */}
+          <div className="flex items-center gap-6">
+            {/* Notification Bell */}
+            <div className="relative">
+              <button
+                onClick={() => setNotifOpen(!notifOpen)}
+                className="cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors duration-200 relative"
+                aria-label="Notifications"
+                disabled={loading.notifications}
+              >
+                <Bell size={24} className={`${loading.notifications ? 'text-gray-300' : 'text-gray-500'}`} />
+                {!loading.notifications && unreadNotificationsCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center font-bold">
+                    {unreadNotificationsCount}
+                  </span>
+                )}
+                {loading.notifications && (
+                  <span className="absolute -top-1 -right-1 bg-gray-300 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center font-bold">
+                    ...
+                  </span>
+                )}
+              </button>
+
+              <NotificationModal
+                isOpen={notifOpen}
+                onClose={() => setNotifOpen(false)}
+                onNotificationClick={handleNotificationClick}
+                notifications={notifications}
+                onMarkAllAsRead={handleMarkAllAsRead}
+                onOpenKutseroManagement={handleOpenKutseroManagement} // ✅ Add this prop
+              />
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content Area */}
+        <main className="flex-1 p-8 flex flex-col gap-6 bg-gray-50 overflow-hidden">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
+            {isDataLoading ? (
+              <>
+                <StatCardSkeleton />
+                <StatCardSkeleton />
+                <StatCardSkeleton />
+              </>
+            ) : (
+              <>
+                {/* Total Approved Users */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex items-center gap-4 hover:shadow-md transition-shadow duration-200">
+                  <div className="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center">
+                    <Users size={28} className="text-green-600" />
+                  </div>
+                  <div className="flex flex-col">
+                    <p className="text-3xl font-bold text-gray-900">
+                      {approvedCounts.approved_kutsero_count + approvedCounts.approved_horse_operator_count}
+                    </p>
+                    <h3 className="text-sm font-medium text-gray-600">Total Approved Users</h3>
+                  </div>
                 </div>
-                <span style={styles.todayCountPill}>{todayRegistrations.length} today</span>
+
+                {/* Pending Verifications */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex items-center gap-4 hover:shadow-md transition-shadow duration-200">
+                  <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
+                    <Users2 size={28} className="text-blue-600" />
+                  </div>
+                  <div className="flex flex-col">
+                    <p className="text-3xl font-bold text-gray-900">{pendingCount}</p>
+                    <h3 className="text-sm font-medium text-gray-600">Pending Verifications</h3>
+                  </div>
+                </div>
+
+                {/* Declined Users */}
+                <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex items-center gap-4 hover:shadow-md transition-shadow duration-200">
+                  <div className="w-12 h-12 bg-red-50 rounded-lg flex items-center justify-center">
+                    <XCircle size={28} className="text-red-600" />
+                  </div>
+                  <div className="flex flex-col">
+                    <p className="text-3xl font-bold text-gray-900">{declinedUsers.length}</p>
+                    <h3 className="text-sm font-medium text-gray-600">Declined Users</h3>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Data Sections Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 overflow-hidden">
+            {/* Today's Registrations */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col gap-4 overflow-hidden">
+              <div className="flex justify-between items-center pb-3 border-b border-gray-100 shrink-0">
+                <div className="flex items-center gap-3">
+                  <UserPlus size={24} className="text-gray-500" />
+                  <h2 className="text-lg font-semibold text-gray-900">Today's Registrations</h2>
+                </div>
+                <span className="bg-red-500 text-white px-3 py-1 rounded-full text-sm font-medium">
+                  {todayRegistrations.length} today
+                </span>
               </div>
 
-              <div style={styles.activitiesListScrollable}>
-                {todayRegistrations.length > 0 ? (
+              <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                {loading.users ? (
+                  <>
+                    <UserItemSkeleton />
+                    <UserItemSkeleton />
+                    <UserItemSkeleton />
+                  </>
+                ) : todayRegistrations.length > 0 ? (
                   todayRegistrations.map((u) => (
-                    <div key={u.id} style={styles.activityItem}>
-                      <div style={styles.activityIcon}>
-                        <div style={{ ...styles.iconCircle, backgroundColor: `${getRoleColor(u.role)}15` }}>
-                          <User size={16} color={getRoleColor(u.role)} />
-                        </div>
+                    <div key={u.id} className="flex gap-3 p-3 border border-gray-100 rounded-lg bg-gray-50 items-center hover:bg-gray-100 transition-colors duration-150">
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center bg-green-50">
+                        <User size={16} className="text-green-600" />
                       </div>
-                      <div style={styles.activityDetails}>
-                        <span style={styles.userName}>{u.name}</span>
-                        <span style={{ ...styles.roleBadge, backgroundColor: `${getRoleColor(u.role)}15`, color: getRoleColor(u.role) }}>
+                      <div className="flex-1 flex justify-between items-center">
+                        <span className="font-medium text-gray-900">{u.name}</span>
+                        <span className={`px-2 py-1 rounded-md text-xs font-medium border ${getRoleColor(u.role)}`}>
                           {getRoleDisplayName(u.role)}
                         </span>
                       </div>
                     </div>
                   ))
                 ) : (
-                  <div style={styles.noResults}>No registrations today.</div>
+                  <div className="flex items-center justify-center h-full text-gray-500 italic text-sm">
+                    No registrations today.
+                  </div>
                 )}
               </div>
             </div>
 
             {/* Recent Registrations */}
-            <div style={styles.contentCard}>
-              <div style={styles.cardHeader}>
-                <div style={styles.cardTitleContainer}>
-                  <AlertCircle size={24} color="#4B5563" />
-                  <h2 style={styles.cardTitle}>Recent Registrations</h2>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col gap-4 overflow-hidden">
+              <div className="flex justify-between items-center pb-3 border-b border-gray-100 shrink-0">
+                <div className="flex items-center gap-3">
+                  <AlertCircle size={24} className="text-gray-500" />
+                  <h2 className="text-lg font-semibold text-gray-900">Recent Registrations</h2>
                 </div>
+                <span className="text-sm text-gray-500">Last 5 registrations</span>
               </div>
-              <div style={styles.activitiesListScrollable}>
-                {users.length > 0 ? (
+
+              <div className="flex-1 overflow-y-auto space-y-3 pr-2">
+                {loading.users ? (
+                  <>
+                    <RecentUserSkeleton />
+                    <RecentUserSkeleton />
+                    <RecentUserSkeleton />
+                    <RecentUserSkeleton />
+                    <RecentUserSkeleton />
+                  </>
+                ) : users.length > 0 ? (
                   users
                     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
                     .slice(0, 5)
                     .map((u) => {
-                      let statusColor = "#666";
-                      let StatusIcon = AlertCircle;
-                      switch(u.status.toLowerCase()) {
-                        case "approved": 
-                          statusColor = "#16a34a"; 
-                          StatusIcon = CheckCircle;
-                          break;
-                        case "pending": 
-                          statusColor = "#f59e0b"; 
-                          StatusIcon = AlertCircle;
-                          break;
-                        case "declined": 
-                          statusColor = "#dc2626"; 
-                          StatusIcon = XCircle;
-                          break;
-                        default: 
-                          statusColor = "#6b7280";
-                          StatusIcon = AlertCircle;
-                      }
-
+                      const StatusIcon = getStatusIcon(u.status);
                       return (
-                        <div key={u.id} style={styles.activityItem}>
-                          <div style={styles.activityIcon}>
-                            <div style={{ ...styles.iconCircle, backgroundColor: `${getRoleColor(u.role)}15` }}>
-                              <User size={16} color={getRoleColor(u.role)} />
-                            </div>
+                        <div key={u.id} className="flex gap-3 p-3 border border-gray-100 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors duration-150">
+                          <div className="w-9 h-9 rounded-full flex items-center justify-center bg-green-50 shrink-0">
+                            <User size={16} className="text-green-600" />
                           </div>
-                          <div style={styles.activityDetailsFull}>
-                            <div style={styles.activityRow}>
-                              <span style={styles.userName}>{u.name}</span>
-                              <span style={{ ...styles.statusBadge, backgroundColor: `${statusColor}20`, color: statusColor }}>
-                                <StatusIcon size={12} style={{ marginRight: "4px" }} />
+                          <div className="flex-1 flex flex-col gap-1 min-w-0">
+                            <div className="flex justify-between items-center">
+                              <span className="font-medium text-gray-900 truncate">{u.name}</span>
+                              <span className={`px-2 py-1 rounded-md text-xs font-medium border flex items-center gap-1 shrink-0 ${getStatusColor(u.status)}`}>
+                                <StatusIcon size={12} />
                                 {u.status.charAt(0).toUpperCase() + u.status.slice(1)}
                               </span>
                             </div>
-                            <div style={styles.activityMeta}>
+                            <div className="flex justify-between text-xs text-gray-500">
                               <span>{getRoleDisplayName(u.role)}</span>
                               <span>{u.created_at}</span>
                             </div>
@@ -270,53 +540,19 @@ const KutseroDashboard = () => {
                       );
                     })
                 ) : (
-                  <div style={styles.noResults}>No recent registrations.</div>
+                  <div className="flex items-center justify-center h-full text-gray-500 italic text-sm">
+                    No recent registrations.
+                  </div>
                 )}
               </div>
             </div>
           </div>
-        </div>
+        </main>
       </div>
+      
       <FloatingMessages />
     </div>
   );
-};
-
-// Styles (loading styles removed)
-const styles = {
-  layout: { display: "flex", minHeight: "100vh", backgroundColor: "#f5f5f5"},
-  dashboard: { flex: 1, fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", display: "flex", flexDirection: "column", height: "100vh", overflow: "hidden" },
-  header: { padding: "16px 32px", backgroundColor: "#fff", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", borderBottom: "1px solid #eaeaea", display: "flex", alignItems: "center", justifyContent: "space-between", background: "#ffffff", flexShrink: 0 },
-  headerContent: { display: "flex", flexDirection: "column", gap: "4px" },
-  title: { fontSize: "24px", fontWeight: "600", color: "#D2691E", margin: 0 },
-  subtitle: { fontSize: "14px", color: "#666", margin: 0, fontWeight: "400" },
-  mainContent: { flex: 1, padding: "24px 32px", display: "flex", flexDirection: "column", gap: "24px", backgroundColor: "#fafafa", overflow: "hidden" },
-  statsSection: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", flexShrink: 0 },
-  statCard: { backgroundColor: "#fff", padding: "20px", borderRadius: "12px", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", border: "1px solid #eaeaea", display: "flex", alignItems: "center", gap: "16px", transition: "all 0.2s ease" },
-  statIconContainer: { display: "flex", alignItems: "center", justifyContent: "center", width: "48px", height: "48px", borderRadius: "8px", backgroundColor: "#f8f9fa" },
-  statContent: { display: "flex", flexDirection: "column", gap: "4px" },
-  statValue: { fontSize: "28px", fontWeight: "700", color: "#1a1a1a", margin: 0 },
-  statLabel: { fontSize: "14px", fontWeight: "500", color: "#666", margin: 0 },
-  contentGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(400px, 1fr))", gap: "20px", flex: 1, overflow: "hidden" },
-  contentCard: { backgroundColor: "#fff", borderRadius: "12px", boxShadow: "0 1px 3px rgba(0, 0, 0, 0.05)", border: "1px solid #eaeaea", padding: "20px", display: "flex", flexDirection: "column", gap: "16px", overflow: "hidden" },
-  cardHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px", paddingBottom: "12px", borderBottom: "1px solid #f0f0f0", flexShrink: 0 },
-  cardTitleContainer: { display: "flex", alignItems: "center", gap: "10px" },
-  cardTitle: { fontSize: "16px", fontWeight: "600", color: "#1a1a1a", margin: 0 },
-  activitiesListScrollable: { flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: "10px", paddingRight: "4px", scrollbarWidth: "thin", scrollbarColor: "#cbd5e1 #f1f5f9" },
-  activityItem: { display: "flex", gap: "12px", padding: "12px", border: "1px solid #f0f0f0", borderRadius: "8px", alignItems: "center", backgroundColor: "#fafafa", flexShrink: 0 },
-  activityIcon: { display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 },
-  iconCircle: { width: "36px", height: "36px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" },
-  activityDetails: { flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center" },
-  activityDetailsFull: { flex: 1, display: "flex", flexDirection: "column", gap: "4px" },
-  activityRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
-  activityMeta: { display: "flex", justifyContent: "space-between", fontSize: "12px", color: "#888" },
-  userName: { fontWeight: "500", color: "#1a1a1a" },
-  noResults: { padding: "32px 16px", textAlign: "center", color: "#999", fontStyle: "italic", fontSize: "14px", flexShrink: 0 },
-  todayCountPill: { backgroundColor: "#e53e3e", color: "#fff", padding: "4px 10px", borderRadius: "12px", fontSize: "12px", fontWeight: "500" },
-  statusBadge: { padding: "4px 8px", borderRadius: "6px", fontSize: "11px", fontWeight: "500", display: "flex", alignItems: "center", gap: "4px" },
-  roleBadge: { borderRadius: "6px", padding: "4px 8px", fontSize: "11px", fontWeight: "500", display: "inline-block" },
-  notificationBtn: { background: "none", border: "none", cursor: "pointer", padding: "8px", borderRadius: "50%", position: "relative", transition: "background-color 0.2s ease" },
-  badge: { position: "absolute", top: "-4px", right: "-4px", backgroundColor: "#ef4444", color: "white", borderRadius: "50%", width: "18px", height: "18px", fontSize: "10px", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: "bold" }
 };
 
 export default KutseroDashboard;

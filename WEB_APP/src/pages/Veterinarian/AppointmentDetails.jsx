@@ -2,79 +2,152 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useNavigate, useParams } from "react-router-dom";
-import Sidebar from "@/components/VetSidebar";
 import {
-  Bell, FileText, Heart, Thermometer, Activity, Calendar,
-  User, Phone, Mail, MapPin, Plus, X, Upload, Image, AlertCircle, Lock, Key, Clock
+  Bell, FileText, Heart, Thermometer, Activity, Calendar, User, Phone, Mail, MapPin, 
+  Plus, X, Upload, Image, AlertCircle, Lock, Key, Search, Filter, Eye, ClipboardList, 
+  StickyNote, Shield, RefreshCw, CheckCircle, Edit
 } from "lucide-react";
+import MedicalRecords from "./MedicalRecord";
+import TreatmentRecords from "./TreatmentRecord";
+import MedicalRecordDetails from "./MedicalRecordDetails";
 
-// Confirmation Modal Component
-const ConfirmationModal = ({ isOpen, onClose, onConfirm, title, message }) => {
-  if (!isOpen) return null;
+// Success Message Component
+const SuccessMessage = ({ message, onDismiss }) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onDismiss();
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, [onDismiss]);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-        <div className="flex items-center mb-4">
-          <div className="w-10 h-10 bg-yellow-100 rounded-full flex items-center justify-center mr-3">
-            <AlertCircle className="w-5 h-5 text-yellow-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
-        </div>
-        
-        <p className="text-gray-600 mb-6">{message}</p>
-        
-        <div className="flex justify-end gap-3">
-          <Button 
-            variant="outline" 
-            onClick={onClose}
-            className="px-4 py-2 border-gray-300 hover:bg-gray-100 rounded-xl"
-          >
-            Cancel
-          </Button>
-          <Button 
-            onClick={onConfirm}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-xl"
-          >
-            Confirm
-          </Button>
-        </div>
+    <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-2000 animate-fade-in-down">
+      <div className="bg-green-100 border border-green-400 text-green-700 px-6 py-4 rounded-xl shadow-lg flex items-center">
+        <CheckCircle className="w-5 h-5 mr-2" />
+        <span>{message}</span>
+        <button 
+          onClick={onDismiss}
+          className="ml-4 text-green-700 hover:text-green-900"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );
 };
 
-// Access Denied Modal Component
-const AccessDeniedModal = ({ isOpen, onClose, recordVetName, onRequestAccess }) => {
+// Error Message Component with Retry
+const ErrorMessage = ({ error, onRetry, onDismiss }) => {
+  return (
+    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl relative mb-4">
+      <div className="flex items-center">
+        <AlertCircle className="w-5 h-5 mr-2" />
+        <span>{error}</span>
+      </div>
+      <div className="flex gap-2 mt-2">
+        <Button 
+          onClick={onRetry}
+          size="sm"
+          className="cursor-pointer bg-red-600 hover:bg-red-700 text-white"
+        >
+          <RefreshCw className="w-4 h-4 mr-1" />
+          Retry
+        </Button>
+        <Button 
+          onClick={onDismiss}
+          variant="outline"
+          size="sm"
+          className="cursor-pointer border-red-300 text-red-700 hover:bg-red-50"
+        >
+          Dismiss
+        </Button>
+      </div>
+    </div>
+  );
+};
+
+// Add Record Button Component
+const AddRecordButton = ({ onClick, hasAccess, accessRequested, onRequestAccess, className = "" }) => {
+  const [isHovered, setIsHovered] = useState(false);
+  if (accessRequested) {
+    return null; 
+  }
+
+  if (!hasAccess) {
+    return (
+      <div className={`relative inline-flex ${className}`}>
+        <Button 
+          onClick={onRequestAccess}
+          className="cursor-pointer px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-xl text-white shadow-sm hover:shadow-md transition-all duration-200"
+        >
+          <Shield className="w-4 h-4 mr-2" />
+          Request Access
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div 
+      className={`relative inline-flex ${className}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <Button 
+        onClick={onClick}
+        className="cursor-pointer px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-xl text-white shadow-sm hover:shadow-md transition-all duration-200 group"
+      >
+        <Plus className="w-4 h-4 mr-2" />
+        Add Record
+      </Button>
+      
+      {/* Hover Tooltip */}
+      {isHovered && (
+        <div className="absolute -top-10 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs px-2 py-1 rounded-md whitespace-nowrap z-10">
+          Add Medical Record
+          <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 translate-y-1 w-2 h-2 bg-gray-800 rotate-45"></div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Access Request Modal Component
+const AccessRequestModal = ({ isOpen, onClose, onRequestAccess, horseInfo }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-1000 p-4">
       <div className="bg-white rounded-2xl p-6 w-full max-w-md">
         <div className="flex items-center mb-4">
-          <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center mr-3">
-            <Lock className="w-5 h-5 text-red-600" />
+          <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+            <Shield className="w-5 h-5 text-blue-600" />
           </div>
           <h3 className="text-lg font-semibold text-gray-800">Access Required</h3>
         </div>
         
-        <p className="text-gray-600 mb-6">
-          This medical record was created by {recordVetName}. You need access permissions to view this record.
+        <p className="text-gray-600 mb-4">
+          You need permission to access {horseInfo?.name || "this horse"}'s medical records.
+          An access request will be sent to the administrator.
+        </p>
+        
+        <p className="text-sm text-gray-500 mb-6">
+          You'll be able to view records once your request is approved.
         </p>
         
         <div className="flex justify-end gap-3">
           <Button 
-            variant="outline"
+            variant="outline" 
             onClick={onClose}
-            className="px-4 py-2 border-gray-300 hover:bg-gray-100 rounded-xl"
+            className="cursor-pointer px-4 py-2 border-gray-300 hover:bg-gray-100 rounded-xl"
           >
             Cancel
           </Button>
           <Button 
             onClick={onRequestAccess}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-xl flex items-center gap-2"
+            className="cursor-pointer px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-xl text-white"
           >
-            <Key className="w-4 h-4" /> Request Access
+            Request Access
           </Button>
         </div>
       </div>
@@ -82,283 +155,727 @@ const AccessDeniedModal = ({ isOpen, onClose, recordVetName, onRequestAccess }) 
   );
 };
 
-// Access Requested Modal Component
-const AccessRequestedModal = ({ isOpen, onClose, recordVetName }) => {
+// Medical Records Modal Component - ONLY FOR ADDING/EDITING
+const MedicalRecordsModal = ({ isOpen, onClose, record, vetProfile, horseInfo, onRefresh, isNew, appointmentId, hasAccess, isViewMode }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md">
-        <div className="flex items-center mb-4">
-          <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
-            <Key className="w-5 h-5 text-blue-600" />
-          </div>
-          <h3 className="text-lg font-semibold text-gray-800">Access Requested</h3>
-        </div>
-        
-        <p className="text-gray-600 mb-6">
-          Your request to access {recordVetName}'s medical record has been sent. You'll be notified when access is granted.
-        </p>
-        
-        <div className="flex justify-end">
-          <Button 
-            onClick={onClose}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-xl"
-          >
-            OK
-          </Button>
-        </div>
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-1000 p-4 overflow-auto">
+      <MedicalRecords 
+        medicalRecords={[]} 
+        vetProfile={vetProfile} 
+        horseInfo={horseInfo} 
+        onRefresh={onRefresh}
+        recordData={isNew ? null : record}
+        isModal={true}
+        onCloseModal={onClose}
+        appointmentId={appointmentId}
+        hasAccess={hasAccess}
+        isViewMode={isViewMode}
+      />
+    </div>
+  );
+};
+
+// Treatment Records Modal Component
+const TreatmentRecordsModal = ({ isOpen, onClose, record, vetProfile, horseInfo, onRefresh, isNew, hasAccess }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-1000 p-4 overflow-auto">
+      <div className="p-6">
+        <TreatmentRecords 
+          treatmentRecords={[]} 
+          vetProfile={vetProfile} 
+          horseInfo={horseInfo} 
+          onRefresh={onRefresh}
+          recordData={isNew ? null : record}
+          isModal={true}
+          onCloseModal={onClose}
+          hasAccess={hasAccess}
+        />
       </div>
     </div>
   );
 };
 
-const AppointmentNotToday = ({ appointmentDate }) => {
-  // Append 'T00:00:00' to force valid ISO format
-  const date = new Date(`${appointmentDate}T00:00:00`);
-  const formattedDate = date.toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-
+// Pagination Component
+const Pagination = ({ currentPage, totalPages, onPageChange }) => {
+  const pages = [];
+  const maxVisiblePages = 5;
+  
+  let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+  let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+  
+  if (endPage - startPage + 1 < maxVisiblePages) {
+    startPage = Math.max(1, endPage - maxVisiblePages + 1);
+  }
+  
+  for (let i = startPage; i <= endPage; i++) {
+    pages.push(i);
+  }
+  
   return (
-    <Card className="bg-gradient-to-br shadow-2xl rounded-3xl border border-white/50 backdrop-blur-sm">
-      <CardContent className="p-8">
-        <div className="text-center py-12">
-          <div className="w-16 h-16 bg-yellow-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
-            <Clock className="w-8 h-8 text-yellow-600" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-800 mb-2">Appointment Scheduled</h3>
-          <p className="text-gray-600 mb-6">
-            This appointment is scheduled for <span className="font-semibold text-blue-600">{formattedDate}</span>.
-          </p>
-          <p className="text-gray-500">
-            Medical records can only be added on the day of the appointment.
-          </p>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="flex items-center justify-center mt-6">
+      <nav className="flex items-center gap-2">
+        <Button
+          onClick={() => onPageChange(currentPage - 1)}
+          disabled={currentPage === 1}
+          variant="outline"
+          size="sm"
+          className="cursor-pointer"
+        >
+          Previous
+        </Button>
+        
+        {startPage > 1 && (
+          <>
+            <Button
+              onClick={() => onPageChange(1)}
+              variant="outline"
+              size="sm"
+              className="cursor-pointer"
+            >
+              1
+            </Button>
+            {startPage > 2 && <span className="px-2">...</span>}
+          </>
+        )}
+        
+        {pages.map(page => (
+          <Button
+            key={page}
+            onClick={() => onPageChange(page)}
+            variant={currentPage === page ? "default" : "outline"}
+            size="sm"
+            className="cursor-pointer"
+          >
+            {page}
+          </Button>
+        ))}
+        
+        {endPage < totalPages && (
+          <>
+            {endPage < totalPages - 1 && <span className="px-2">...</span>}
+            <Button
+              onClick={() => onPageChange(totalPages)}
+              variant="outline"
+              size="sm"
+              className="cursor-pointer"
+            >
+              {totalPages}
+            </Button>
+          </>
+        )}
+        
+        <Button
+          onClick={() => onPageChange(currentPage + 1)}
+          disabled={currentPage === totalPages}
+          variant="outline"
+          size="sm"
+          className="cursor-pointer"
+        >
+          Next
+        </Button>
+      </nav>
+    </div>
   );
 };
 
-// Separate Medical Record Form Component
-const MedicalRecordForm = ({ 
-  formData, 
-  imagePreview, 
-  onInputChange, 
-  onFileChange, 
-  onSubmit, 
-  onCancel,
-  onSaveConfirm
-}) => {
+// Medical Records Table Component - UPDATED WITH INLINE VIEW
+const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddRecord, onEditRecord, hasAccess, onRequestAccess, accessRequested }) => {
+  const [filteredRecords, setFilteredRecords] = useState(records || []);
+  const [dateFilter, setDateFilter] = useState({ from: "", to: "" });
+  const [currentPage, setCurrentPage] = useState(1);
+  const [expandedRecordId, setExpandedRecordId] = useState(null); // Track which record is expanded
+  const recordsPerPage = 5;
+
+  useEffect(() => {
+    setFilteredRecords(records || []);
+    setCurrentPage(1);
+  }, [records]);
+
+  const handleDateFilter = () => {
+    const recordsArray = records || [];
+    if (!dateFilter.from && !dateFilter.to) {
+      setFilteredRecords(recordsArray);
+      return;
+    }
+
+    const filtered = recordsArray.filter(record => {
+      const recordDate = new Date(record.date);
+      const fromDate = dateFilter.from ? new Date(dateFilter.from) : null;
+      const toDate = dateFilter.to ? new Date(dateFilter.to) : null;
+      
+      if (fromDate && toDate) {
+        return recordDate >= fromDate && recordDate <= toDate;
+      } else if (fromDate) {
+        return recordDate >= fromDate;
+      } else if (toDate) {
+        return recordDate <= toDate;
+      }
+      return true;
+    });
+
+    setFilteredRecords(filtered);
+    setCurrentPage(1);
+  };
+
+  const clearFilter = () => {
+    setDateFilter({ from: "", to: "" });
+    setFilteredRecords(records || []);
+    setCurrentPage(1);
+  };
+
+  // Check if record belongs to current vet
+  const isCurrentVetRecord = (record) => {
+    if (!vetProfile || !record.veterinarian) return false;
+    const currentVetName = `${vetProfile.first_name} ${vetProfile.last_name}`;
+    return record.veterinarian === currentVetName;
+  };
+
+  // Handle view details click
+  const handleViewDetails = (recordId) => {
+    if (expandedRecordId === recordId) {
+      setExpandedRecordId(null); // Collapse if already expanded
+    } else {
+      setExpandedRecordId(recordId); // Expand the clicked record
+    }
+  };
+
+  // Calculate pagination
+  const indexOfLastRecord = currentPage * recordsPerPage;
+  const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
+  const currentRecords = filteredRecords.slice(indexOfFirstRecord, indexOfLastRecord);
+  const totalPages = Math.ceil(filteredRecords.length / recordsPerPage);
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+    setExpandedRecordId(null); // Collapse details when changing page
+  };
+
   return (
-    <Card className="bg-gradient-to-br from-white to-blue-50 shadow-2xl rounded-3xl border border-blue-100 backdrop-blur-sm">
-      <CardContent className="p-8">        
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">Add Medical Record</h2>
-          <Button 
-            variant="outline" 
-            onClick={onCancel}
-            className="flex items-center gap-2 border-gray-300 hover:bg-gray-100 rounded-xl"
-          >
-            <X className="w-4 h-4" /> Back to Records
-          </Button>
-        </div>
-
-        <form onSubmit={(e) => {
-          e.preventDefault();
-          onSaveConfirm();
-        }} className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="heartRate" className="block text-sm font-medium text-gray-700 mb-2">Heart Rate (bpm)</label>
-                <input
-                  type="text"
-                  id="heartRate"
-                  name="heartRate"
-                  value={formData.heartRate}
-                  onChange={onInputChange}
-                  placeholder="e.g., 40"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white/80 backdrop-blur-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="respRate" className="block text-sm font-medium text-gray-700 mb-2">Respiration Rate (breaths/min)</label>
-                <input
-                  type="text"
-                  id="respRate"
-                  name="respRate"
-                  value={formData.respRate}
-                  onChange={onInputChange}
-                  placeholder="e.g., 16"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white/80 backdrop-blur-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="temperature" className="block text-sm font-medium text-gray-700 mb-2">Temperature (°F)</label>
-                <input
-                  type="text"
-                  id="temperature"
-                  name="temperature"
-                  value={formData.temperature}
-                  onChange={onInputChange}
-                  placeholder="e.g., 100.5"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white/80 backdrop-blur-sm"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="concern" className="block text-sm font-medium text-gray-700 mb-2">Primary Concern</label>
-                <input
-                  type="text"
-                  id="concern"
-                  name="concern"
-                  value={formData.concern}
-                  onChange={onInputChange}
-                  placeholder="e.g., Lameness in front leg"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 bg-white/80 backdrop-blur-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="clinicalSigns" className="block text-sm font-medium text-gray-700 mb-2">Clinical Signs</label>
-                <textarea
-                  id="clinicalSigns"
-                  name="clinicalSigns"
-                  value={formData.clinicalSigns}
-                  onChange={onInputChange}
-                  placeholder="Describe observed clinical signs"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 min-h-[100px] bg-white/80 backdrop-blur-sm"
-                  required
-                />
-              </div>
-
-              <div>
-                <label htmlFor="labResult" className="block text-sm font-medium text-gray-700 mb-2">Lab Results (Optional)</label>
-                <textarea
-                  id="labResult"
-                  name="labResult"
-                  value={formData.labResult}
-                  onChange={onInputChange}
-                  placeholder="Lab test results if available"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 min-h-[80px] bg-white/80 backdrop-blur-sm"
-                />
-              </div>
-            </div>
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-300">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-blue-100 rounded-xl">
+            <FileText className="w-5 h-5 text-blue-600" />
           </div>
-
-          {/* Lab Image Upload Section */}
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 border border-gray-200/50">
-            <h3 className="text-lg font-semibold text-gray-800 mb-4">Lab Image Upload</h3>
-            <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-2xl bg-gray-50/50">
-              {imagePreview ? (
-                <div className="text-center">
-                  <img 
-                    src={imagePreview} 
-                    alt="Lab preview" 
-                    className="max-h-48 mx-auto rounded-lg mb-4"
-                  />
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => {
-                      onInputChange({ target: { name: 'labImage', value: null } });
-                    }}
-                    className="mt-2"
-                  >
-                    Remove Image
-                  </Button>
-                </div>
-              ) : (
-                <>
-                  <Upload className="w-12 h-12 text-gray-400 mb-4" />
-                  <div className="flex text-sm text-gray-600">
-                    <label htmlFor="labImage" className="relative cursor-pointer bg-white rounded-md font-medium text-blue-600 hover:blue-blue-500 focus-within:outline-none">
-                      <span>Upload an image</span>
-                      <input 
-                        id="labImage" 
-                        name="labImage" 
-                        type="file" 
-                        className="sr-only" 
-                        onChange={onFileChange}
-                        accept="image/*"
-                      />
-                    </label>
-                    <p className="pl-1">or drag and drop</p>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">PNG, JPG, GIF up to 10MB</p>
-                </>
+          <div>
+            <h3 className="text-xl font-bold text-gray-800">Medical Records</h3>
+            <p className="text-sm text-gray-500">
+              {filteredRecords.length} record{filteredRecords.length !== 1 ? 's' : ''} found
+            </p>
+          </div>
+        </div>
+        
+        {hasAccess && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
+                <Calendar className="w-4 h-4 text-gray-500" />
+                <input
+                  type="date"
+                  value={dateFilter.from}
+                  onChange={(e) => setDateFilter({...dateFilter, from: e.target.value})}
+                  className="bg-transparent text-sm outline-none min-w-[120px]"
+                  placeholder="From"
+                />
+              </div>
+              
+              <span className="text-gray-400">to</span>
+              
+              <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
+                <Calendar className="w-4 h-4 text-gray-500" />
+                <input
+                  type="date"
+                  value={dateFilter.to}
+                  onChange={(e) => setDateFilter({...dateFilter, to: e.target.value})}
+                  className="bg-transparent text-sm outline-none min-w-[120px]"
+                  placeholder="To"
+                />
+              </div>
+            </div>
+            
+            <div className="flex gap-2">
+              <Button 
+                onClick={handleDateFilter} 
+                className="cursor-pointer text-white px-4 py-2 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-xl transition-all duration-200 shadow-sm hover:shadow-md"
+              >
+                <Filter className="w-4 h-4 mr-2" />
+                Filter
+              </Button>
+              
+              {(dateFilter.from || dateFilter.to) && (
+                <Button 
+                  onClick={clearFilter} 
+                  variant="outline" 
+                  className="cursor-pointer px-4 py-2 rounded-xl border-gray-300 hover:bg-gray-50"
+                >
+                  Clear
+                </Button>
               )}
             </div>
           </div>
+        )}
+      </div>
 
-          <div className="space-y-4">
-            <div>
-              <label htmlFor="diagnosis" className="block text-sm font-medium text-gray-700 mb-2">Diagnosis</label>
-              <textarea
-                id="diagnosis"
-                name="diagnosis"
-                value={formData.diagnosis}
-                onChange={onInputChange}
-                placeholder="Diagnosis based on examination"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 min-h-[100px] bg-white/80 backdrop-blur-sm"
-                required
-              />
+      {!hasAccess ? (
+        <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-xl">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-200">
+            <Lock className="w-8 h-8 text-gray-400" />
+          </div>
+          <p className="mb-3 text-lg font-medium">
+            {accessRequested 
+              ? "Access Request Pending" 
+              : "Access Required"
+            }
+          </p>
+          <p className="mb-6 max-w-md mx-auto text-gray-600">
+            {accessRequested 
+              ? "Your request to view medical records is pending administrator approval."
+              : "You need permission to view this horse's medical records."
+            }
+          </p>
+          <AddRecordButton 
+            onClick={onAddRecord}
+            hasAccess={hasAccess}
+            accessRequested={accessRequested}
+            onRequestAccess={onRequestAccess}
+          />   
+     </div>
+      ) : (filteredRecords.length === 0) ? (
+        <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-xl">
+          <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-100">
+            <FileText className="w-8 h-8 text-blue-400" />
+          </div>
+          <p className="mb-3 text-lg font-medium text-gray-600">No medical records found</p>
+          <p className="mb-6 text-gray-500">Get started by adding the first medical record</p>
+          <AddRecordButton 
+            onClick={onAddRecord}
+            hasAccess={hasAccess}
+            accessRequested={accessRequested}
+            onRequestAccess={onRequestAccess}
+          />        
+      </div>
+      ) : (
+        <>
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-gray-600">Showing {currentRecords.length} of {filteredRecords.length} records</p>
+
+            <AddRecordButton 
+              onClick={onAddRecord}
+              hasAccess={hasAccess}
+              accessRequested={accessRequested}
+              onRequestAccess={onRequestAccess}
+            />
+          </div>
+          
+          <div className="overflow-x-auto rounded-xl border border-gray-200">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Date</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Clinical Signs</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Diagnosis</th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Veterinarian</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {currentRecords.map((record, index) => {
+                  const isCurrentVet = isCurrentVetRecord(record);
+                  const isExpanded = expandedRecordId === record.id;
+                  
+                  return (
+                    <React.Fragment key={index}>
+                      <tr 
+                        className={`
+                          transition-all duration-200 group
+                          ${isCurrentVet 
+                            ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-l-blue-500' 
+                            : 'hover:bg-gray-50'
+                          }
+                          ${isExpanded ? 'bg-blue-25' : ''}
+                        `}
+                      >
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors duration-200 ${
+                              isCurrentVet ? 'bg-blue-100' : 'bg-gray-50'
+                            }`}>
+                              <Calendar className={`w-4 h-4 ${isCurrentVet ? 'text-blue-600' : 'text-gray-600'}`} />
+                            </div>
+                            <div>
+                              <div className={`font-medium ${isCurrentVet ? 'text-blue-900' : 'text-gray-900'}`}>
+                                {new Date(record.date).toLocaleDateString('en-US', { 
+                                  year: 'numeric', 
+                                  month: 'short', 
+                                  day: 'numeric' 
+                                })}
+                              </div>
+                              <div className={`text-sm ${isCurrentVet ? 'text-blue-700' : 'text-gray-500'}`}>
+                                {new Date(record.date).toLocaleDateString('en-US', { 
+                                  weekday: 'short' 
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 max-w-xs">
+                          <div className={`font-medium line-clamp-2 ${isCurrentVet ? 'text-blue-900' : 'text-gray-900'}`}>
+                            {record.clinicalSigns || "N/A"}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 max-w-xs">
+                          <div className={`font-medium line-clamp-2 ${isCurrentVet ? 'text-blue-900' : 'text-gray-900'}`}>
+                            {record.diagnosis || "N/A"}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                              isCurrentVet ? 'bg-blue-200' : 'bg-green-100'
+                            }`}>
+                              <User className={`w-3 h-3 ${isCurrentVet ? 'text-blue-700' : 'text-green-600'}`} />
+                            </div>
+                            <span className={`font-medium ${isCurrentVet ? 'text-blue-900' : 'text-gray-900'}`}>
+                              {record.veterinarian || "N/A"}
+                              {isCurrentVet && (
+                                <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                                  You
+                                </span>
+                              )}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex justify-center gap-2">
+                            <Button 
+                              onClick={() => handleViewDetails(record.id)}
+                              variant="outline" 
+                              size="sm"
+                              className={`
+                                cursor-pointer flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 shadow-sm hover:shadow-md
+                                ${isCurrentVet 
+                                  ? 'border-blue-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-blue-700' 
+                                  : 'border-gray-300 bg-white hover:bg-gray-50 hover:border-gray-400 text-gray-700'
+                                }
+                                ${isExpanded ? 'bg-blue-100 border-blue-400' : ''}
+                              `}
+                            >
+                              <Eye className="w-4 h-4" />
+                              <span>{isExpanded ? 'Hide Details' : 'View Details'}</span>
+                            </Button>
+                          </div>
+                        </td>                  
+                      </tr>
+                      
+                      {/* Expanded Details Row */}
+                      {isExpanded && (
+                        <tr>
+                          <td colSpan="5" className="p-0">
+                            <MedicalRecordDetails 
+                              record={record}
+                              onClose={() => setExpandedRecordId(null)}
+                              onEdit={onEditRecord}
+                              vetProfile={vetProfile}
+                              horseInfo={horseInfo}
+                              hasAccess={hasAccess}
+                              medicalRecords={records} // Add this line to pass all records for follow-up checking
+                            />
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          
+          {totalPages > 1 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+// Treatment Records Table Component
+const TreatmentRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onViewRecord, hasAccess }) => {
+  const [filteredRecords, setFilteredRecords] = useState(records || []);
+  const [dateFilter, setDateFilter] = useState({ from: "", to: "" });
+  const [currentPage, setCurrentPage] = useState(1);
+  const recordsPerPage = 5;
+
+  useEffect(() => {
+    setFilteredRecords(records || []);
+    setCurrentPage(1);
+  }, [records]);
+
+  const handleDateFilter = () => {
+    const recordsArray = records || [];
+    if (!dateFilter.from && !dateFilter.to) {
+      setFilteredRecords(recordsArray);
+      return;
+    }
+
+    const filtered = recordsArray.filter(record => {
+      const recordDate = new Date(record.followUpDate || record.date);
+      const fromDate = dateFilter.from ? new Date(dateFilter.from) : null;
+      const toDate = dateFilter.to ? new Date(dateFilter.to) : null;
+      
+      if (fromDate && toDate) {
+        return recordDate >= fromDate && recordDate <= toDate;
+      } else if (fromDate) {
+        return recordDate >= fromDate;
+      } else if (toDate) {
+        return recordDate <= toDate;
+      }
+      return true;
+    });
+
+    setFilteredRecords(filtered);
+    setCurrentPage(1);
+  };
+
+  const clearFilter = () => {
+    setDateFilter({ from: "", to: "" });
+    setFilteredRecords(records || []);
+    setCurrentPage(1);
+  };
+
+  // Check if record belongs to current vet
+  const isCurrentVetRecord = (record) => {
+    if (!vetProfile || !record.veterinarian) return false;
+    const currentVetName = `${vetProfile.first_name} ${vetProfile.last_name}`;
+    return record.veterinarian === currentVetName;
+  };
+
+  // Calculate pagination
+  const indexOfLastRecord = currentPage * recordsPerPage;
+  const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
+  const currentRecords = filteredRecords.slice(indexOfFirstRecord, indexOfLastRecord);
+  const totalPages = Math.ceil(filteredRecords.length / recordsPerPage);
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-300">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-green-100 rounded-xl">
+            <Activity className="w-5 h-5 text-green-600" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-800">Treatment Records</h3>
+            <p className="text-sm text-gray-500">
+              {filteredRecords.length} record{filteredRecords.length !== 1 ? 's' : ''} found
+            </p>
+          </div>
+        </div>
+        
+        {hasAccess && (
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
+                <Calendar className="w-4 h-4 text-gray-500" />
+                <input
+                  type="date"
+                  value={dateFilter.from}
+                  onChange={(e) => setDateFilter({...dateFilter, from: e.target.value})}
+                  className="bg-transparent text-sm outline-none min-w-[120px]"
+                  placeholder="From"
+                />
+              </div>
+              
+              <span className="text-gray-400">to</span>
+              
+              <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
+                <Calendar className="w-4 h-4 text-gray-500" />
+                <input
+                  type="date"
+                  value={dateFilter.to}
+                  onChange={(e) => setDateFilter({...dateFilter, to: e.target.value})}
+                  className="bg-transparent text-sm outline-none min-w-[120px]"
+                  placeholder="To"
+                />
+              </div>
             </div>
-
-            <div>
-              <label htmlFor="treatment" className="block text-sm font-medium text-gray-700 mb-2">Treatment</label>
-              <textarea
-                id="treatment"
-                name="treatment"
-                value={formData.treatment}
-                onChange={onInputChange}
-                placeholder="Prescribed treatment plan"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 min-h-[100px] bg-white/80 backdrop-blur-sm"
-                required
-              />
-            </div>
-
-            <div>
-              <label htmlFor="remarks" className="block text-sm font-medium text-gray-700 mb-2">Remarks</label>
-              <textarea
-                id="remarks"
-                name="remarks"
-                value={formData.remarks}
-                onChange={onInputChange}
-                placeholder="Additional notes or follow-up instructions"
-                className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 min-h-[80px] bg-white/80 backdrop-blur-sm"
-                required
-              />
+            
+            <div className="flex gap-2">
+              <Button 
+                onClick={handleDateFilter} 
+                className="cursor-pointer text-white px-4 py-2 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 rounded-xl transition-all duration-200 shadow-sm hover:shadow-md"
+              >
+                <Filter className="w-4 h-4 mr-2" />
+                Filter
+              </Button>
+              
+              {(dateFilter.from || dateFilter.to) && (
+                <Button 
+                  onClick={clearFilter} 
+                  variant="outline" 
+                  className="cursor-pointer px-4 py-2 rounded-xl border-gray-300 hover:bg-gray-50"
+                >
+                  Clear
+                </Button>
+              )}
             </div>
           </div>
+        )}
+      </div>
 
-          <div className="flex justify-end gap-4 pt-4">
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={onCancel}
-              className="px-6 py-3 border-gray-300 hover:bg-gray-100 rounded-xl"
-            >
-              Cancel
-            </Button>
-            <Button type="submit" className="px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl">
-              <Plus className="w-4 h-4 mr-2" /> Add Record
-            </Button>
+      {!hasAccess ? (
+        <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-xl">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 border border-gray-200">
+            <Lock className="w-8 h-8 text-gray-400" />
           </div>
-        </form>
-      </CardContent>
-    </Card>
+          <p className="mb-3 text-lg font-medium">Access Required</p>
+          <p className="mb-3 text-gray-600">You don't have access to view treatment records</p>
+          <p className="text-sm text-gray-500 max-w-md mx-auto">
+            Treatment records become available once medical record access is approved by the administrator.
+          </p>
+        </div>
+      ) : (filteredRecords.length === 0) ? (
+        <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-xl">
+          <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-green-100">
+            <Activity className="w-8 h-8 text-green-400" />
+          </div>
+          <p className="mb-3 text-lg font-medium text-gray-600">No treatment records found</p>
+          <p className="text-gray-500">Treatment records will appear here once they are added to medical records.</p>
+        </div>
+      ) : (
+        <>
+          <div className="flex justify-between items-center mb-4">
+            <p className="text-gray-600">Showing {currentRecords.length} of {filteredRecords.length} records</p>
+          </div>
+          
+          <div className="overflow-x-auto rounded-xl border border-gray-200">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Follow-up Date</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Diagnosis</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Medication</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Dosage</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Duration</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {currentRecords.map((record, index) => {
+                  const isCurrentVet = isCurrentVetRecord(record);
+                  return (
+                    <tr 
+                      key={index} 
+                      className={`
+                        transition-all duration-200 group
+                        ${isCurrentVet 
+                          ? 'bg-gradient-to-r from-green-50 to-emerald-50 border-l-4 border-l-green-500' 
+                          : 'hover:bg-gray-50'
+                        }
+                      `}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center group-hover:bg-green-100 transition-colors duration-200 ${
+                            isCurrentVet ? 'bg-green-100' : 'bg-gray-50'
+                          }`}>
+                            <Calendar className={`w-4 h-4 ${isCurrentVet ? 'text-green-600' : 'text-gray-600'}`} />
+                          </div>
+                          <div>
+                            <div className={`font-medium ${isCurrentVet ? 'text-green-900' : 'text-gray-900'}`}>
+                              {record.followUpDate ? new Date(record.followUpDate).toLocaleDateString('en-US', { 
+                                year: 'numeric', 
+                                month: 'short', 
+                                day: 'numeric' 
+                              }) : "No Follow-up"}
+                            </div>
+                            <div className={`text-sm ${isCurrentVet ? 'text-green-700' : 'text-gray-500'}`}>
+                              {record.followUpDate ? new Date(record.followUpDate).toLocaleDateString('en-US', { 
+                                weekday: 'short' 
+                              }) : ""}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className={`font-medium max-w-xs line-clamp-2 ${isCurrentVet ? 'text-green-900' : 'text-gray-900'}`}>
+                          {record.diagnosis || "N/A"}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                            isCurrentVet ? 'bg-green-200' : 'bg-blue-100'
+                          }`}>
+                            <Activity className={`w-3 h-3 ${isCurrentVet ? 'text-green-700' : 'text-blue-600'}`} />
+                          </div>
+                          <span className={`font-medium ${isCurrentVet ? 'text-green-900' : 'text-gray-900'}`}>
+                            {record.name || "N/A"}
+                            {isCurrentVet && (
+                              <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                                You
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className={`font-medium ${isCurrentVet ? 'text-green-900' : 'text-gray-900'}`}>
+                          {record.dosage || "N/A"}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className={`font-medium ${isCurrentVet ? 'text-green-900' : 'text-gray-900'}`}>
+                          {record.duration || "N/A"}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex justify-center">
+                          <Button 
+                            onClick={() => onViewRecord(record)}
+                            variant="outline" 
+                            size="sm"
+                            className={`
+                              cursor-pointer flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 shadow-sm hover:shadow-md
+                              ${isCurrentVet 
+                                ? 'border-green-300 bg-white hover:bg-green-50 hover:border-green-400 text-green-700' 
+                                : 'border-gray-300 bg-white hover:bg-gray-50 hover:border-gray-400 text-gray-700'
+                              }
+                            `}
+                          >
+                            <Eye className="w-4 h-4" />
+                            <span>View Details</span>
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          
+          {totalPages > 1 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={handlePageChange}
+            />
+          )}
+        </>
+      )}
+    </div>
   );
 };
 
@@ -371,29 +888,25 @@ const AppointmentDetails = () => {
   const [horseInfo, setHorseInfo] = useState(null);
   const [ownerInfo, setOwnerInfo] = useState(null);
   const [medicalRecords, setMedicalRecords] = useState([]);
-  const [selectedRecord, setSelectedRecord] = useState(null);
-  const [showAddRecordForm, setShowAddRecordForm] = useState(false);
+  const [treatmentRecords, setTreatmentRecords] = useState([]);
+  const [activeTab, setActiveTab] = useState("medical");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showConfirmation, setShowConfirmation] = useState(false);
-  const [showAccessDenied, setShowAccessDenied] = useState(false);
-  const [showAccessRequested, setShowAccessRequested] = useState(false);
-  const [recordVetName, setRecordVetName] = useState("");
-  const [recordToAccess, setRecordToAccess] = useState(null);
-  const [formData, setFormData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    heartRate: "",
-    respRate: "",
-    temperature: "",
-    concern: "",
-    clinicalSigns: "",
-    labResult: "",
-    labImage: null,
-    diagnosis: "",
-    treatment: "",
-    remarks: ""
-  });
-  const [imagePreview, setImagePreview] = useState(null);
+  const [successMessage, setSuccessMessage] = useState(null);
+  
+  // Modal states - NOW ONLY FOR ADDING/EDITING
+  const [medicalModalOpen, setMedicalModalOpen] = useState(false);
+  const [treatmentModalOpen, setTreatmentModalOpen] = useState(false);
+  const [selectedMedicalRecord, setSelectedMedicalRecord] = useState(null);
+  const [selectedTreatmentRecord, setSelectedTreatmentRecord] = useState(null);
+  const [isNewRecord, setIsNewRecord] = useState(false);
+  const [isViewMode, setIsViewMode] = useState(false);
+
+  // Access control states
+  const [hasAccess, setHasAccess] = useState(false);
+  const [accessRequested, setAccessRequested] = useState(false);
+  const [accessModalOpen, setAccessModalOpen] = useState(false);
+  const [checkingAccess, setCheckingAccess] = useState(true);
 
   useEffect(() => {
     fetchVetProfile();
@@ -411,13 +924,13 @@ const AppointmentDetails = () => {
       setVetProfile(data.profile);
     } catch (err) {
       console.error(err);
-      setError("Failed to load veterinarian profile");
     }
   };
 
   const fetchAppointmentDetails = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await fetch(
         `http://localhost:8000/api/veterinarian/get_appointment_details/${id}/`,
         { method: "GET", credentials: "include" }
@@ -428,178 +941,166 @@ const AppointmentDetails = () => {
       setAppointment(data.appointment || {});
       setHorseInfo(data.horseInfo || {});
       setOwnerInfo(data.ownerInfo || {});
-      setMedicalRecords(data.medicalRecords || []);
+      setMedicalRecords(data.medical_records || []);
+      setTreatmentRecords(data.treatment_records || []);  
+
+      // Check access status for this horse
+      await checkAccessStatus(data.horseInfo?.id);
+
     } catch (err) {
       console.error(err);
       setError("Failed to load appointment details");
     } finally {
       setLoading(false);
+      setCheckingAccess(false);
     }
   };
 
-  // Check if appointment date is today
-  const isAppointmentToday = () => {
-    if (!appointment || !appointment.date) return false;
+  const checkAccessStatus = async (horseId) => {
+    if (!horseId) {
+      setHasAccess(false);
+      return;
+    }
     
-    const appointmentDate = new Date(appointment.date);
-    const today = new Date();
-    
-    return (
-      appointmentDate.getDate() === today.getDate() &&
-      appointmentDate.getMonth() === today.getMonth() &&
-      appointmentDate.getFullYear() === today.getFullYear()
-    );
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/veterinarian/check_horse_access/${horseId}/`,
+        { method: "GET", credentials: "include" }
+      );
+      
+      if (response.ok) {
+        const data = await response.json();
+        const accessGranted = data.has_access || false;
+        setHasAccess(accessGranted);
+        setAccessRequested(data.access_requested || false);
+        
+        // Automatically fetch both medical and treatment records if access is granted
+        if (accessGranted && horseId) {
+          await fetchMedicalRecords(horseId);
+          await fetchTreatmentRecords(horseId);
+        }
+      } else {
+        setHasAccess(false);
+      }
+    } catch (err) {
+      console.error("Error checking access status:", err);
+      setHasAccess(false);
+    }
   };
 
-  const handleAddMedicalRecord = async () => {
+  const requestAccess = async () => {
+    if (!horseInfo?.id) return;
+    
     try {
-      const formDataToSend = new FormData();
-      formDataToSend.append('horse_id', horseInfo.id);
-      formDataToSend.append('date', formData.date);
-      formDataToSend.append('heartRate', formData.heartRate);
-      formDataToSend.append('respRate', formData.respRate);
-      formDataToSend.append('temperature', formData.temperature);
-      formDataToSend.append('concern', formData.concern);
-      formDataToSend.append('clinicalSigns', formData.clinicalSigns);
-      formDataToSend.append('labResult', formData.labResult);
-      formDataToSend.append('diagnosis', formData.diagnosis);
-      formDataToSend.append('treatment', formData.treatment);
-      formDataToSend.append('remarks', formData.remarks);
-      
-      if (formData.labImage) {
-        formDataToSend.append('labImage', formData.labImage);
-      }
-
       const response = await fetch(
-        "http://localhost:8000/api/veterinarian/add_medical_record/",
-        {
-          method: "POST",
+        `http://localhost:8000/api/veterinarian/request_horse_access/${horseInfo.id}/`,
+        { 
+          method: "POST", 
           credentials: "include",
-          body: formDataToSend,
+          headers: {
+            'Content-Type': 'application/json',
+          },
         }
       );
       
-      if (!response.ok) throw new Error("Failed to add medical record");
-      
-      // Refresh the appointment details to show the new record
-      fetchAppointmentDetails();
-      setShowAddRecordForm(false);
-      setFormData({
-        date: new Date().toISOString().split('T')[0],
-        heartRate: "",
-        respRate: "",
-        temperature: "",
-        concern: "",
-        clinicalSigns: "",
-        labResult: "",
-        labImage: null,
-        diagnosis: "",
-        treatment: "",
-        remarks: ""
-      });
-      setImagePreview(null);
-      setShowConfirmation(false);
+      if (response.ok) {
+        setAccessRequested(true);
+        setAccessModalOpen(false);
+        setSuccessMessage("Access request sent successfully!");
+      } else {
+        setError("Failed to request access");
+      }
     } catch (err) {
-      console.error(err);
-      setError("Failed to add medical record");
-      setShowConfirmation(false);
+      console.error("Error requesting access:", err);
+      setError("Failed to request access");
     }
   };
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
-  };
-
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      setFormData(prev => ({
-        ...prev,
-        labImage: file
-      }));
-      
-      // Create a preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreview(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleCancelForm = () => {
-    setShowAddRecordForm(false);
-    setFormData({
-      date: new Date().toISOString().split('T')[0],
-      heartRate: "",
-      respRate: "",
-      temperature: "",
-      concern: "",
-      clinicalSigns: "",
-      labResult: "",
-      labImage: null,
-      diagnosis: "",
-      treatment: "",
-      remarks: ""
-    });
-    setImagePreview(null);
-  };
-
-  const handleSaveConfirm = () => {
-    setShowConfirmation(true);
-  };
-
-  const handleViewRecord = (record) => {
-    // Check if the record belongs to the current vet
-    if (record.vet_id && vetProfile && record.vet_id !== vetProfile.id) {
-      // Show access denied modal
-      setRecordVetName(record.veterinarian || "another veterinarian");
-      setRecordToAccess(record);
-      setShowAccessDenied(true);
-    } else {
-      // Allow viewing if it's the current vet's record
-      setSelectedRecord(record);
-    }
-  };
-
-  const handleRequestAccess = async () => {
+  const fetchMedicalRecords = async (horseId) => {
     try {
-      // In a real application, this would send a request to the server
-      // to notify the record owner about the access request
-      console.log("Requesting access to record:", recordToAccess);
+      const response = await fetch(
+        `http://localhost:8000/api/veterinarian/get_horse_medical_records/${horseId}/`,
+        { method: "GET", credentials: "include" }
+      );
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      if (!response.ok) throw new Error("Failed to fetch medical records");
       
-      // Show access requested confirmation
-      setShowAccessDenied(false);
-      setShowAccessRequested(true);
+      const data = await response.json();
+      setMedicalRecords(data.medicalRecords || data.medical_records || []);
     } catch (err) {
-      console.error("Failed to request access:", err);
-      setError("Failed to request access to this record");
+      console.error("Error fetching medical records:", err);
+      setMedicalRecords([]);
     }
   };
 
-  // ✅ Skeleton Loader
-  const renderSkeleton = () => (
-    <div className="space-y-6 animate-pulse">
-      <div className="h-10 w-40 bg-gray-200 rounded-lg"></div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="h-60 bg-gray-200 rounded-2xl"></div>
-        <div className="h-60 bg-gray-200 rounded-2xl"></div>
-      </div>
-      <div className="h-80 bg-gray-200 rounded-2xl"></div>
-    </div>
-  );
+  const fetchTreatmentRecords = async (horseId) => {
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/veterinarian/get_horse_treatment_records/${horseId}/`,
+        { method: "GET", credentials: "include" }
+      );
+      
+      if (!response.ok) throw new Error("Failed to fetch treatment records");
+      
+      const data = await response.json();
+      setTreatmentRecords(data.treatmentRecords || data.treatment_records || []);
+    } catch (err) {
+      console.error("Error fetching treatment records:", err);
+      setTreatmentRecords([]);
+    }
+  };
+
+  // FIXED: Updated handlers for new functionality
+  const handleAddRecord = () => {
+    if (!hasAccess) {
+      setAccessModalOpen(true);
+      return;
+    }
+    
+    setSelectedMedicalRecord(null);
+    setIsNewRecord(true);
+    setIsViewMode(false);
+    setMedicalModalOpen(true);
+  };
+
+  const handleEditRecord = (record) => {
+    setSelectedMedicalRecord(record);
+    setIsNewRecord(false);
+    setIsViewMode(false);
+    setMedicalModalOpen(true);
+  };
+
+  // Handle treatment record view/add
+  const handleTreatmentRecordAction = (record = null, isNew = false) => {
+    if (!hasAccess) {
+      setAccessModalOpen(true);
+      return;
+    }
+    
+    setSelectedTreatmentRecord(record);
+    setIsNewRecord(isNew);
+    setTreatmentModalOpen(true);
+  };
+
+  // Handle retry for failed operations
+  const handleRetry = () => {
+    setError(null);
+    fetchAppointmentDetails();
+  };
+
+  // Handle dismiss error
+  const handleDismissError = () => {
+    setError(null);
+  };
+
+  // Handle dismiss success message
+  const handleDismissSuccess = () => {
+    setSuccessMessage(null);
+  };
 
   // Format phone number for display
   const formatPhoneNumber = (phone) => {
     if (!phone) return "N/A";
-    // Simple formatting for US numbers
     const cleaned = phone.replace(/\D/g, '');
     const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
     if (match) {
@@ -608,75 +1109,54 @@ const AppointmentDetails = () => {
     return phone;
   };
 
+  // Skeleton Loader
+  const renderSkeleton = () => (
+    <div className="space-y-6 animate-pulse">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="h-60 bg-gray-200 rounded-2xl"></div>
+        <div className="h-60 bg-gray-200 rounded-2xl"></div>
+      </div>
+      <div className="h-80 bg-gray-200 rounded-2xl"></div>
+    </div>
+  );
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-      <Sidebar />
-
-      {/* Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={showConfirmation}
-        onClose={() => setShowConfirmation(false)}
-        onConfirm={handleAddMedicalRecord}
-        title="Confirm Medical Record"
-        message="Are you sure you want to add this medical record? This action cannot be undone."
-      />
-
-      {/* Access Denied Modal */}
-      <AccessDeniedModal
-        isOpen={showAccessDenied}
-        onClose={() => setShowAccessDenied(false)}
-        onRequestAccess={handleRequestAccess}
-        recordVetName={recordVetName}
-      />
-
-      {/* Access Requested Modal */}
-      <AccessRequestedModal
-        isOpen={showAccessRequested}
-        onClose={() => setShowAccessRequested(false)}
-        recordVetName={recordVetName}
-      />
-
       <div className="flex-1 flex flex-col">
-        {/* Header */}
-        <div className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-800">Appointment Details</h1>
-            <div className="flex items-center space-x-3">
-              <button className="p-2 hover:bg-gray-100 rounded-xl relative">
-                <Bell className="w-5 h-5" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Main Content */}
-        <main className="p-6 space-y-6 overflow-y-auto">
+        {/* Back Button (top-left, no header container) */}
+        <div className="px-6 pt-4">
           <Button
             onClick={() => navigate(-1)}
-            className="mb-6 bg-gradient-to-r from-white to-gray-50 text-gray-700 px-6 py-3 rounded-2xl shadow-lg hover:shadow-xl border border-gray-200/50 hover:bg-gradient-to-r hover:from-gray-50 hover:to-white transition-all duration-300 hover:-translate-y-0.5"
+            className="cursor-pointer bg-gradient-to-r from-white to-gray-50 text-gray-700 px-6 py-3 rounded-2xl shadow-lg hover:shadow-xl border border-gray-200/50 hover:bg-gradient-to-r hover:from-gray-50 hover:to-white transition-all duration-300 hover:-translate-y-0.5"
           >
             ← Back to Appointments
           </Button>
+        </div>
 
+        {/* Success Message */}
+        {successMessage && (
+          <SuccessMessage 
+            message={successMessage} 
+            onDismiss={handleDismissSuccess} 
+          />
+        )}
+
+        {/* Main Content */}
+        <main className="p-6 space-y-6 overflow-y-auto">
           {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-xl relative">
-              {error}
-              <button 
-                onClick={() => setError(null)}
-                className="absolute top-0 right-0 p-2"
-              >
-                ×
-              </button>
-            </div>
+            <ErrorMessage 
+              error={error} 
+              onRetry={handleRetry} 
+              onDismiss={handleDismissError} 
+            />
           )}
 
           {/* Show Skeleton while loading */}
-          {loading ? (
+          {loading || checkingAccess ? (
             renderSkeleton()
           ) : (
             <>
-              {/* Combined Horse + Owner Info */}
+              {/* Combined Horse + Owner Info + Appointment Details */}
               <Card className="bg-gradient-to-br from-white via-blue-50/30 shadow-lg rounded-2xl border border-white/50 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
                 <CardContent className="p-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -693,9 +1173,16 @@ const AppointmentDetails = () => {
                             e.target.src = "/horse-placeholder.jpg";
                           }}
                         />
+                        
+                        {/* Status Badge */}
+                        <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
+                          <span className="bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full border border-green-200 shadow-sm">
+                            {appointment?.status || "Active"}
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="flex-1 mt-4 md:mt-0 flex flex-col justify-start text-left">
+                      <div className="flex-1 mt-6 md:mt-0 flex flex-col justify-start text-left">
                         <h2 className="text-2xl font-bold text-gray-800">{horseInfo?.name || "Unknown Horse"}</h2>
                         <div className="flex items-center space-x-4 mt-1">
                           <span className="text-indigo-600 font-semibold">{horseInfo?.breed || "Unknown Breed"}</span>
@@ -706,8 +1193,8 @@ const AppointmentDetails = () => {
                         <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-gray-600 text-sm mt-4">
                           <span>DOB: <strong>{horseInfo?.dob || "Unknown"}</strong></span>
                           <span>Age: <strong>{horseInfo?.age || "Unknown"}</strong></span>
-                          <span>Weight: <strong>{horseInfo?.weight || "Unknown"}</strong></span>
                           <span>Height: <strong>{horseInfo?.height || "Unknown"}</strong></span>
+                          <span>Weight: <strong>{horseInfo?.weight || "Unknown"}</strong></span>
                         </div>
                       </div>
                     </div>
@@ -752,240 +1239,129 @@ const AppointmentDetails = () => {
                     </div>
 
                   </div>
+
+                  <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+              
+                    {/* Chief Complaint */}
+                    <div>
+                      <div className="flex items-center space-x-2 mb-4">
+                        <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-600 rounded-xl flex items-center justify-center shadow-md">
+                          <StickyNote className="w-4 h-4 text-white" />
+                        </div>
+                        <h2 className="text-lg font-bold text-gray-800">Chief Complaint</h2>
+                      </div>
+                      <div className="bg-amber-50/50 p-4 rounded-xl">
+                        <p className="text-gray-800">
+                          {appointment?.app_complain || "No chief complaint available for this appointment"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
 
-              {/* Medical Records Section */}
-              {showAddRecordForm ? (
-                <MedicalRecordForm
-                  formData={formData}
-                  imagePreview={imagePreview}
-                  onInputChange={handleInputChange}
-                  onFileChange={handleFileChange}
-                  onSubmit={handleAddMedicalRecord}
-                  onCancel={handleCancelForm}
-                  onSaveConfirm={handleSaveConfirm}
-                />
-              ) : !selectedRecord ? (
-                <Card className="bg-gradient-to-br shadow-2xl rounded-3xl border border-white/50 backdrop-blur-sm">
-                  <CardContent className="p-8">
-                    <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-xl font-bold text-gray-800">Medical Records</h2>
-                      <div className="flex items-center gap-4">
-                        <span className="text-gray-500">{medicalRecords.length} records found</span>
-                        {isAppointmentToday() && (
-                          <Button 
-                            onClick={() => setShowAddRecordForm(true)}
-                            className="flex items-center gap-2 rounded-xl"
-                          >
-                            <Plus className="w-4 h-4" /> Add Record
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                    
-                    {/* Check if appointment is today */}
-                    {!isAppointmentToday() && medicalRecords.length === 0 ? (
-                      <AppointmentNotToday appointmentDate={appointment?.date} />
-                    ) : medicalRecords.length > 0 ? (
-                      <div className="bg-white/80 border border-gray-200/50 rounded-3xl overflow-hidden shadow-xl backdrop-blur-sm">
-                        <table className="w-full">
-                          <thead className="bg-gray-50">
-                            <tr>
-                              <th className="px-8 py-6 text-center text-sm font-bold text-gray-700 uppercase tracking-wider">Date</th>
-                              <th className="px-8 py-6 text-center text-sm font-bold text-gray-700 uppercase tracking-wider">Diagnosis</th>
-                              <th className="px-8 py-6 text-center text-sm font-bold text-gray-700 uppercase tracking-wider">Veterinarian</th>
-                              <th className="px-8 py-6 text-center text-sm font-bold text-gray-700 uppercase tracking-wider">Treatment</th>
-                              <th className="px-8 py-6 text-center text-sm font-bold text-gray-700 uppercase tracking-wider">Action</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-gray-100/50">
-                            {medicalRecords.map((record, index) => (
-                              <tr key={record.id || index}>
-                                <td className="px-8 py-6 text-center">{record.date || "N/A"}</td>
-                                <td className="px-8 py-6 text-center">{record.diagnosis || "No diagnosis"}</td>
-                                <td className="px-8 py-6 text-center">
-                                  {record.veterinarian || "Unknown"}
-                                  {record.vet_id && vetProfile && record.vet_id !== vetProfile.id && (
-                                    <span className="ml-2 text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                                      External
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="px-8 py-6 text-center">{record.treatment || "No treatment"}</td>
-                                <td className="px-8 py-6 text-center">
-                                  <Button 
-                                    onClick={() => handleViewRecord(record)}
-                                    className="bg-blue-100 text-blue-700 hover:bg-blue-200 rounded-xl"
-                                  >
-                                    View Details
-                                  </Button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+              {/* Tabs for Medical and Treatment Records */}
+              <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50">
+                <div className="flex border-b border-gray-200">
+                  <button
+                    className={`cursor-pointer px-6 py-3 font-medium text-sm rounded-t-lg transition-all ${
+                      activeTab === "medical"
+                        ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50/50"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                    onClick={() => setActiveTab("medical")}
+                  >
+                    Medical Records
+                  </button>
+                  <button
+                    className={`cursor-pointer px-6 py-3 font-medium text-sm rounded-t-lg transition-all ${
+                      activeTab === "treatment"
+                        ? "text-green-600 border-b-2 border-green-600 bg-green-50/50"
+                        : "text-gray-500 hover:text-gray-700"
+                    }`}
+                    onClick={() => setActiveTab("treatment")}
+                  >
+                    Treatment Records
+                  </button>
+                </div>
+
+                <div className="mt-4">
+                  {activeTab === "medical" ? (
+                    <MedicalRecordsTable
+                      records={medicalRecords}
+                      vetProfile={vetProfile}
+                      horseInfo={horseInfo}
+                      onRefresh={fetchAppointmentDetails}
+                      onAddRecord={handleAddRecord}
+                      onEditRecord={handleEditRecord} // Updated prop
+                      hasAccess={hasAccess}
+                      accessRequested={accessRequested}
+                      onRequestAccess={() => setAccessModalOpen(true)}
+                    />                  
                     ) : (
-                      <div className="text-center py-12 bg-white/50 rounded-2xl">
-                        <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                        <p className="text-gray-500 mb-4">No medical records available</p>
-                        {isAppointmentToday() && (
-                          <Button 
-                            onClick={() => setShowAddRecordForm(true)}
-                            className="bg-blue-600 text-white hover:bg-blue-700 rounded-xl"
-                          >
-                            <Plus className="w-4 h-4 mr-2" /> Add First Medical Record
-                          </Button>
-                        )}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              ) : (
-                <Card className="bg-gradient-to-b shadow-2xl rounded-3xl border border-white/50 backdrop-blur-sm">
-                  <CardContent className="p-8">
-                    <Button
-                      variant="outline"
-                      onClick={() => setSelectedRecord(null)}
-                      className="mb-8 bg-white/80 text-gray-700 border-gray-200/50 px-6 py-3 rounded-2xl hover:bg-gray-50/80 hover:shadow-lg transition-all duration-200 hover:-translate-y-0.5"
-                    >
-                      ← Back to Records
-                    </Button>
-
-                    <div className="flex items-center space-x-4 mb-8">
-                      <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">
-                        <FileText className="w-6 h-6 text-white" />
-                      </div>
-                      <div>
-                        <h2 className="text-2xl font-bold text-gray-800">Medical Record Details</h2>
-                        <p className="text-gray-500">Comprehensive examination report</p>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                      <div className="space-y-6">
-                        <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6">
-                          <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-                            <Calendar className="w-5 h-5 text-blue-600" />
-                            <span>Basic Information</span>
-                          </h3>
-                          <div className="space-y-3">
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-600">Date:</span>
-                              <span className="font-semibold text-gray-800">{selectedRecord.date || "N/A"}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-600">Veterinarian:</span>
-                              <span className="font-semibold text-gray-800">{selectedRecord.veterinarian || "Unknown"}</span>
-                            </div>
-                            <div className="flex justify-between items-center">
-                              <span className="text-gray-600">Concern:</span>
-                              <span className="font-semibold text-gray-800">{selectedRecord.concern || "Not specified"}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6">
-                          <h3 className="text-lg font-semibold text-gray-800 mb-4 flex items-center space-x-2">
-                            <Activity className="w-5 h-5 text-red-600" />
-                            <span>Vital Signs</span>
-                          </h3>
-                          <div className="grid grid-cols-1 gap-4">
-                            <div className="flex items-center justify-between p-3 bg-red-50/50 rounded-xl">
-                              <div className="flex items-center space-x-3">
-                                <Heart className="w-5 h-5 text-red-500" />
-                                <span className="text-gray-700">Heart Rate</span>
-                              </div>
-                              <span className="font-bold text-red-700">{selectedRecord.heartRate ? `${selectedRecord.heartRate} bpm` : "N/A"}</span>
-                            </div>
-                            <div className="flex items-center justify-between p-3 bg-blue-50/50 rounded-xl">
-                              <div className="flex items-center space-x-3">
-                                <Activity className="w-5 h-5 text-blue-500" />
-                                <span className="text-gray-700">Respiration</span>
-                              </div>
-                              <span className="font-bold text-blue-700">{selectedRecord.respRate ? `${selectedRecord.respRate} breaths/min` : "N/A"}</span>
-                            </div>
-                            <div className="flex items-center justify-between p-3 bg-orange-50/50 rounded-xl">
-                              <div className="flex items-center space-x-3">
-                                <Thermometer className="w-5 h-5 text-orange-500" />
-                                <span className="text-gray-700">Temperature</span>
-                              </div>
-                              <span className="font-bold text-orange-700">{selectedRecord.temperature ? `${selectedRecord.temperature} °F` : "N/A"}</span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="space-y-6">
-                        <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6">
-                          <h3 className="text-lg font-semibold text-gray-800 mb-4">Clinical Observations</h3>
-                          <div className="space-y-4">
-                            <div>
-                              <label className="text-sm font-medium text-gray-600 uppercase tracking-wide">Clinical Signs</label>
-                              <p className="mt-1 text-gray-800 font-medium">{selectedRecord.clinicalSigns || "No clinical signs recorded"}</p>
-                            </div>
-                            <div>
-                              <label className="text-sm font-medium text-gray-600 uppercase tracking-wide">Lab Result</label>
-                              <p className="mt-1 text-gray-800 font-medium">{selectedRecord.labResult || "No lab results"}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Lab Image Card - Always show even if no image */}
-                        <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6">
-                          <h3 className="text-lg font-semibold text-gray-800 mb-4">Lab Image</h3>
-                          {selectedRecord.labImage ? (
-                            <img
-                              src={selectedRecord.labImage}
-                              alt="Lab Result"
-                              className="w-full h-48 rounded-xl border-4 border-white shadow-lg object-cover"
-                              onError={(e) => {
-                                e.target.style.display = 'none';
-                                e.target.nextSibling.style.display = 'block';
-                              }}
-                            />
-                          ) : (
-                            <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50/50">
-                              <Image className="w-12 h-12 text-gray-400 mb-4" />
-                              <p className="text-gray-500">No image uploaded</p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Treatment & Follow-up - Now with separate lines for each section */}
-                    <div className="mt-8 bg-gradient-to-r from-green-50/80 to-emerald-50/80 backdrop-blur-sm rounded-2xl p-6 border border-green-200/50">
-                      <h3 className="text-lg font-semibold text-gray-800 mb-4">Treatment & Follow-up</h3>
-                      <div className="space-y-6">
-                        <div>
-                          <label className="text-sm font-medium text-green-700 uppercase tracking-wide block mb-2">Diagnosis</label>
-                          <p className="text-gray-800 font-semibold text-lg bg-white/70 p-4 rounded-xl border border-green-200/50">
-                            {selectedRecord.diagnosis || "No diagnosis provided"}
-                          </p>
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium text-green-700 uppercase tracking-wide block mb-2">Treatment</label>
-                          <p className="text-gray-800 font-medium bg-white/70 p-4 rounded-xl border border-green-200/50">
-                            {selectedRecord.treatment || "No treatment prescribed"}
-                          </p>
-                        </div>
-                        <div>
-                          <label className="text-sm font-medium text-green-700 uppercase tracking-wide block mb-2">Remarks</label>
-                          <p className="text-gray-800 font-medium bg-white/70 p-4 rounded-xl border border-green-200/50">
-                            {selectedRecord.remarks || "No remarks"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+                    <TreatmentRecordsTable
+                      records={treatmentRecords}
+                      vetProfile={vetProfile}
+                      horseInfo={horseInfo}
+                      onRefresh={fetchAppointmentDetails}
+                      onViewRecord={handleTreatmentRecordAction}
+                      hasAccess={hasAccess}
+                    />
+                  )}
+                </div>
+              </div>
             </>
           )}
         </main>
       </div>
+
+      <AccessRequestModal
+        isOpen={accessModalOpen}
+        onClose={() => setAccessModalOpen(false)}
+        onRequestAccess={requestAccess}
+        horseInfo={horseInfo}
+      />
+      
+      {/* Medical Records Modal - NOW ONLY FOR ADDING/EDITING */}
+      <MedicalRecordsModal
+        isOpen={medicalModalOpen}
+        onClose={() => {
+          setMedicalModalOpen(false);
+          setSelectedMedicalRecord(null);
+          setIsViewMode(false);
+        }}
+        record={selectedMedicalRecord}
+        vetProfile={vetProfile}
+        horseInfo={horseInfo}
+        onRefresh={() => {
+          fetchAppointmentDetails();
+          setMedicalModalOpen(false);
+          setSelectedMedicalRecord(null);
+          setIsViewMode(false);
+        }}
+        isNew={isNewRecord}
+        isViewMode={isViewMode}
+        appointmentId={id}
+        hasAccess={hasAccess}
+      />
+      
+      <TreatmentRecordsModal
+        isOpen={treatmentModalOpen}
+        onClose={() => {
+          setTreatmentModalOpen(false);
+          setSelectedTreatmentRecord(null);
+        }}
+        record={selectedTreatmentRecord}
+        vetProfile={vetProfile}
+        horseInfo={horseInfo}
+        onRefresh={() => {
+          fetchAppointmentDetails();
+          setTreatmentModalOpen(false);
+          setSelectedTreatmentRecord(null);
+        }}
+        isNew={isNewRecord}
+        hasAccess={hasAccess}
+      />
     </div>
   );
 };

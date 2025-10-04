@@ -1,43 +1,69 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 
 const NotificationModal = ({ isOpen, onClose, notifications = [] }) => {
   const [appointmentReminders, setAppointmentReminders] = useState([]);
-  
+  const [medicalAccessNotifs, setMedicalAccessNotifs] = useState([]);
+  const navigate = useNavigate();
+
   useEffect(() => {
     if (isOpen) {
       fetchAppointmentReminders();
+      fetchMedicalAccessNotifs();
     }
   }, [isOpen]);
 
+  // Fetch appointment reminders
   const fetchAppointmentReminders = async () => {
     try {
-      // Fetch approved appointments from backend
-      const response = await fetch('http://localhost:8000/api/veterinarian/get_approved_appointments/');
+      const response = await fetch("http://localhost:8000/api/veterinarian/get_approved_appointments/");
       const appointments = await response.json();
-      
-      // Filter for appointments happening tomorrow
+
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
-      const tomorrowString = tomorrow.toISOString().split('T')[0];
-      
-      const tomorrowAppointments = appointments.filter(app => {
-        const appointmentDate = new Date(app.date).toISOString().split('T')[0];
+      const tomorrowString = tomorrow.toISOString().split("T")[0];
+
+      const tomorrowAppointments = appointments.filter((app) => {
+        const appointmentDate = new Date(app.date).toISOString().split("T")[0];
         return appointmentDate === tomorrowString;
       });
-      
-      // Create reminder notifications
-      const reminders = tomorrowAppointments.map(app => 
-        `Reminder: You have an appointment with ${app.clientName} tomorrow at ${app.time}`
-      );
-      
+
+      const reminders = tomorrowAppointments.map((app) => ({
+        message: `Reminder: You have an appointment with ${app.clientName} tomorrow at ${app.time}`,
+        link: `/appointments/${app.id}`,
+      }));
+
       setAppointmentReminders(reminders);
     } catch (error) {
       console.error("Error fetching appointments:", error);
     }
   };
 
-  // Combine existing notifications with appointment reminders
-  const allNotifications = [...notifications, ...appointmentReminders];
+  // Fetch medical access approved notifications
+  const fetchMedicalAccessNotifs = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/veterinarian/get_medical_access_approved/");
+      const approvals = await response.json();
+
+      const accessNotifs = approvals.map((access) => ({
+        message: `Access approved: You can now view records for ${access.horseName}`,
+        link: `/medical-records/${access.horseId}`,
+      }));
+
+      setMedicalAccessNotifs(accessNotifs);
+    } catch (error) {
+      console.error("Error fetching medical access approvals:", error);
+    }
+  };
+
+  // Combine all notifications
+  const allNotifications = [
+    ...notifications.map((n) =>
+      typeof n === "string" ? { message: n, link: null } : n
+    ),
+    ...appointmentReminders,
+    ...medicalAccessNotifs,
+  ];
 
   if (!isOpen) return null;
 
@@ -61,9 +87,15 @@ const NotificationModal = ({ isOpen, onClose, notifications = [] }) => {
             {allNotifications.map((note, idx) => (
               <li
                 key={idx}
-                className="p-3 bg-gray-50 rounded-lg shadow-sm text-gray-700 text-sm"
+                onClick={() => {
+                  if (note.link) {
+                    onClose();
+                    navigate(note.link);
+                  }
+                }}
+                className="p-3 bg-gray-50 rounded-lg shadow-sm text-gray-700 text-sm cursor-pointer hover:bg-gray-100 transition"
               >
-                {note}
+                {note.message}
               </li>
             ))}
           </ul>

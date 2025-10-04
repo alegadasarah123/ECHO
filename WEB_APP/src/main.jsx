@@ -29,10 +29,10 @@ import VetAppointmentRequest from"./pages/Veterinarian/VetAppRequest";
 import VetMedRecord from "./pages/Veterinarian/VetMedRecord.jsx";
 import VetSettings from "./pages/Veterinarian/VetSettings.jsx";
 import AppointmentDetails from "./pages/Veterinarian/AppointmentDetails.jsx";
+import MedicalRecords from "./pages/Veterinarian/AppointmentDetails.jsx";
+import TreatmentRecords from "./pages/Veterinarian/TreatmentRecord.jsx";
 import ScheduleCalendar from "./pages/Veterinarian/VetScheduleCalendar.jsx";
 import KutDashboard from "./pages/KutseroPresident/KutDashboard.jsx";
-import KutUserApproval from "./pages/KutseroPresident/KutUserApproval.jsx";
-import KutUserAccount from "./pages/KutseroPresident/KutUserAcc.jsx";
 import KutSettings from "./pages/KutseroPresident/KutSettings.jsx"
 import KutMessages from "./pages/KutseroPresident/KutMessages.jsx"
 import KutUserManagement from "./pages/KutseroPresident/KutUserManagement.jsx";
@@ -45,8 +45,6 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <Route path="/login" element={<LogIn />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/KutDashboard" element={<KutDashboard />} />
-        <Route path="/KutUserApproval" element={<KutUserApproval />} />
-        <Route path="/KutUserAccount" element={<KutUserAccount />} />
         <Route path="/KutSettings" element={<KutSettings />} />
         <Route path="/KutMessages" element={<KutMessages />} />
         <Route path="/KutUserManagement" element={<KutUserManagement />} />
@@ -56,6 +54,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <Route path="/VetAppointmentDetails/:id" element={<AppointmentDetails />} />
         <Route path="/VetScheduleCalendar" element={<ScheduleCalendar />} />
         <Route path="/VetMedRecord" element={<VetMedRecord />} />
+        <Route path="/MedicalRecords" element={<MedicalRecords />} />
+        <Route path="/TreatmentRecords" element={<TreatmentRecords />} />
         <Route path="/VetSettings" element={<VetSettings />} />
         <Route path="/CtuDashboard" element={<CtuDashboard />} />
         <Route path="/CtuAccountApproval" element={<AccountApproval />} />

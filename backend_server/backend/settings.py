@@ -13,8 +13,7 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 SUPABASE_URL = os.getenv('SUPABASE_URL')
 SUPABASE_ANON_KEY = os.getenv('SUPABASE_ANON_KEY')
 SUPABASE_SERVICE_ROLE_KEY = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-STREAM_API_KEY = os.environ.get("STREAM_API_KEY")
-STREAM_API_SECRET = os.environ.get("STREAM_API_SECRET")
+
 
 DEBUG = True
 ALLOWED_HOSTS = ['*']
@@ -143,6 +142,9 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 
 EMAIL_HOST_USER = "echosys.ph@gmail.com"
-EMAIL_HOST_PASSWORD = "olbe yxbd wbhr gmod"   # ✅ imong App Password
+EMAIL_HOST_PASSWORD = "olbe yxbd wbhr gmod"   
 DEFAULT_FROM_EMAIL = "ECHOSys Admin <echosys.ph@gmail.com>"
 
+# --------------- UPLOAD SETTINGS ----------------
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
