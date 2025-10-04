@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {Calendar, FileText, Search, Clock, Bell, Eye, Trash2, PawPrint, User, Phone, X, AlertTriangle, Tag, Clock10Icon, CheckCircle, XCircle, MessageCircle, ChevronLeft, ChevronRight, RefreshCw} from 'lucide-react';
+import {Calendar, FileText, Search, Clock, Bell, Eye, PawPrint, User, Phone, X, AlertTriangle, Tag, Clock10Icon, CheckCircle, XCircle, MessageCircle, ChevronLeft, ChevronRight, RefreshCw} from 'lucide-react';
 import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
 import ProfileModal from '@/components/modal/profileModal';
@@ -64,6 +64,7 @@ const Alert = ({ message, type = 'success', onClose, duration = 5000 }) => {
   );
 };
 
+// Skeleton Table Row Component
 const SkeletonTableRow = () => (
   <tr className="animate-pulse">
     <td className="px-6 py-4 text-center">
@@ -84,8 +85,7 @@ const SkeletonTableRow = () => (
     </td>
     <td className="px-6 py-4 text-center">
       <div className="flex justify-center space-x-2">
-        <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
-        <div className="w-8 h-8 bg-gray-200 rounded-lg"></div>
+        <div className="w-16 h-8 bg-gray-200 rounded-lg"></div>
       </div>
     </td>
   </tr>
@@ -198,7 +198,6 @@ const fetchAppointments = async () => {
 
   const handleRefresh = () => {
     fetchAppointments();
-    showAlert('Appointments refreshed', 'success');
   };
 
   const handleDeclineWithReason = async (appointmentId, reason) => {
@@ -476,12 +475,12 @@ const filteredAppointments = appointments
               <table className="min-w-full border-collapse">              
                 <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Date & Time</th>
-                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Owner Name</th>
-                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Horse Name</th>
-                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Appointment Type</th>
-                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Status</th>
-                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Actions</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Owner Name</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Horse Name</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Appointment Type</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
@@ -521,24 +520,14 @@ const filteredAppointments = appointments
                         <td className="px-6 py-4 text-center">
                           <div className="flex justify-center items-center space-x-2 w-full">
                             {/* View button always visible */}
-                            <button 
-                              onClick={() => handleViewAppointment(appointment)}
-                              className="cursor-pointer p-2 hover:bg-blue-100 rounded-lg transition-colors flex items-center justify-center"
-                              title="View"
-                            >
-                              <Eye className="w-5 h-5 text-gray-400 hover:text-blue-600" />
-                            </button>
-
-                            {/* Delete button only for declined or cancelled, if filter is not 'all' */}
-                            {selectedFilter !== 'all' && (appointment.status === 'declined' || appointment.status === 'cancelled') && (
                               <button 
-                                onClick={() => handleDeleteAppointment(appointment)}
-                                className="cursor-pointer p-2 hover:bg-red-100 rounded-lg transition-colors flex items-center justify-center"
-                                title="Delete"
+                                onClick={() => handleViewAppointment(appointment)}
+                                className="cursor-pointer flex items-center text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-900 px-3 py-2 rounded-lg transition-colors"
+                                title="View Details"
                               >
-                                <Trash2 className="w-5 h-5 text-gray-400 hover:text-red-600" />
+                                <Eye className="w-4 h-4 mr-1" />
+                                View
                               </button>
-                            )}
                           </div>
                         </td>
                       </tr>

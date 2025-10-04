@@ -220,9 +220,6 @@ const RecordForm = ({
         <h2 className="text-2xl font-bold text-gray-800">
           Add Medical Record
         </h2>
-        <div className="text-sm text-gray-600 bg-green-100 px-3 py-1 rounded-full">
-          Adding New Record
-        </div>
       </div>
 
       <form onSubmit={onSubmit} className="space-y-6">
