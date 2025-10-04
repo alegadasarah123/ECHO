@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load environment variables from .env file in BASE_DIR
@@ -61,9 +62,9 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",
 ]
-
+CSRF_TRUSTED_ORIGINS = ["http://localhost:5173"]
 SESSION_COOKIE_SAMESITE = "None"   # or "Lax" if only same-origin
-SESSION_COOKIE_SECURE = False   
+SESSION_COOKIE_SECURE = True  
 ROOT_URLCONF = 'backend.urls'
 
 TEMPLATES = [
@@ -132,7 +133,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 APPEND_SLASH = False
 
-
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # ---------------- EMAIL SETTINGS ----------------
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"

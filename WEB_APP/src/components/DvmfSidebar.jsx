@@ -406,7 +406,7 @@ const DvmfSidebars = () => {
             {!isSidebarCollapsed && (
               <div className="sidebar-brand">
                 <span className="sidebar-brand-title">ECHO</span>
-                <p className="sidebar-brand-subtitle">Ctu-Vetmed</p>
+                <p className="sidebar-brand-subtitle">DVMF</p>
               </div>
             )}
           </div>

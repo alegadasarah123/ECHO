@@ -40,7 +40,7 @@ function CtuDirectory() {
   const [directoryData, setDirectoryData] = useState(initialDirectoryData)
   const [filteredDirectoryData, setFilteredDirectoryData] = useState(initialDirectoryData)
 
-  // Separate state for sidebar navigation active state
+  // Fixed tab state - using consistent values
   const [currentPage, setCurrentPage] = useState(1)
   const [currentTab, setCurrentTab] = useState("all")
 
@@ -50,12 +50,12 @@ function CtuDirectory() {
   const [notifications, setNotifications] = useState(initialNotifications)
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Added state for sidebar open/close
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
-  const sidebarRef = useRef(null) // Added ref for sidebar
+  const sidebarRef = useRef(null)
   const [directory, setDirectory] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true) // Changed to true initially
   const [error, setError] = useState(null)
 
   // State for profile modal
@@ -117,13 +117,13 @@ function CtuDirectory() {
     return () => clearInterval(interval)
   }, [loadNotifications])
 
-  // Apply all filters and search
+  // ✅ FIXED: Apply all filters and search - CORRECTED TAB FILTERING
   const applyFiltersAndSearch = useCallback(() => {
     let filtered = directoryData
 
     filtered = filtered.filter((item) => item.status?.toLowerCase() === "approved")
 
-    // Apply tab filter
+    // ✅ FIXED: Proper tab filtering logic
     switch (currentTab) {
       case "veterinarian":
         filtered = filtered.filter((item) => item.type?.toLowerCase() === "veterinarian")
@@ -131,12 +131,11 @@ function CtuDirectory() {
       case "kutsero":
         filtered = filtered.filter((item) => item.type?.toLowerCase() === "kutsero")
         break
-      case "horses-operator":
-        // This would require special handling for grouping horses by owner
+      case "horse operator":
         filtered = filtered.filter((item) => item.type?.toLowerCase() === "horse operator")
         break
       default:
-        // 'all' tab
+        // "all" tab - show everything
         break
     }
 
@@ -253,6 +252,7 @@ function CtuDirectory() {
   // Load data from backend
   const loadDirectoryData = async () => {
     try {
+      setLoading(true)
       const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
@@ -267,7 +267,7 @@ function CtuDirectory() {
       const combinedData = [
         ...data.vets.map((vet) => ({
           name: `${vet.vet_fname} ${vet.vet_lname}`,
-          type: "Veterinarian",
+          type: "veterinarian",
           email: vet.vet_email || "N/A",
           status: vet.users?.status || "Unknown",
           date_of_birth: vet.vet_dob || "N/A",
@@ -282,7 +282,7 @@ function CtuDirectory() {
         })),
         ...data.kutseros.map((k) => ({
           name: `${k.kutsero_fname} ${k.kutsero_lname}`,
-          type: "Kutsero",
+          type: "kutsero",
           email: k.kutsero_email || "N/A",
           status: k.users?.status || "Unknown",
           date_of_birth: k.kutsero_dob || "N/A",
@@ -296,7 +296,7 @@ function CtuDirectory() {
         })),
         ...data.horse_operators.map((h) => ({
           name: `${h.op_fname} ${h.op_mname || ""} ${h.op_lname}`.trim(),
-          type: "Horse Operator",
+          type: "horse operator",
           email: h.op_email || "N/A",
           status: h.users?.status || "Unknown",
           date_of_birth: h.op_dob || "N/A",
@@ -318,32 +318,59 @@ function CtuDirectory() {
     }
   }
 
-  // Define the styles object at the top of your file or before the return
-  const styles = {
-    notificationBtn: {
-      position: "relative",
-      background: "transparent",
-      border: "none",
-      cursor: "pointer",
-      padding: "8px",
-      borderRadius: "50%",
-    },
-    badge: {
-      position: "absolute",
-      top: "2px",
-      right: "2px",
-      backgroundColor: "#ef4444",
-      color: "#fff",
-      borderRadius: "50%",
-      padding: "2px 6px",
-      fontSize: "12px",
-      fontWeight: "bold",
-    },
-  }
-
   useEffect(() => {
     loadDirectoryData()
   }, [])
+
+  // Skeleton Loader Component for Table Rows
+  const TableSkeleton = () => {
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                Name
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                Role
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                Email
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                Status
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: itemsPerPagePagination }).map((_, index) => (
+              <tr key={index} className="border-b border-gray-100">
+                <td className="px-4 py-4">
+                  <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+                </td>
+                <td className="px-4 py-4">
+                  <div className="h-6 w-16 bg-gray-200 rounded animate-pulse"></div>
+                </td>
+                <td className="px-4 py-4">
+                  <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+                </td>
+                <td className="px-4 py-4">
+                  <div className="h-6 w-16 bg-gray-200 rounded animate-pulse"></div>
+                </td>
+                <td className="px-4 py-4">
+                  <div className="h-8 w-16 bg-gray-200 rounded animate-pulse"></div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
 
   const ProfileModal = ({ person, onClose }) => {
     if (!person) return null
@@ -354,7 +381,7 @@ function CtuDirectory() {
     const normalizedPerson = (() => {
       if (person.vet_fname) {
         return {
-          type: "Veterinarian",
+          type: "veterinarian",
           name: `${person.vet_fname} ${person.vet_mname || ""} ${person.vet_lname}`.trim(),
           email: person.vet_email,
           fb: person.vet_fb || "N/A",
@@ -375,7 +402,7 @@ function CtuDirectory() {
 
       if (person.kutsero_fname) {
         return {
-          type: "Kutsero",
+          type: "kutsero",
           name: `${person.kutsero_fname} ${person.kutsero_mname || ""} ${person.kutsero_lname}`.trim(),
           email: person.kutsero_email,
           fb: person.kutsero_fb || "N/A",
@@ -392,7 +419,7 @@ function CtuDirectory() {
 
       if (person.op_fname) {
         return {
-          type: "Horse Operator",
+          type: "horse operator",
           name: `${person.op_fname} ${person.op_mname || ""} ${person.op_lname}`.trim(),
           email: person.op_email,
           fb: person.op_fb || "N/A",
@@ -411,15 +438,9 @@ function CtuDirectory() {
       return person
     })()
 
-    const typeClassMap = {
-      Veterinarian: "veterinarian",
-      Kutsero: "kutsero",
-      "Horse Operator": "horse-operator",
-    }
-
     const InfoItem = ({ icon: Icon, label, value }) => (
-      <div className="info-item">
-        <Icon size={14} />
+      <div className="flex items-center gap-2 py-2 text-slate-600 text-sm">
+        <Icon size={14} className="text-indigo-500 flex-shrink-0" />
         <span>
           {label}: {value || "N/A"}
         </span>
@@ -427,11 +448,11 @@ function CtuDirectory() {
     )
 
     const renderPersonalInfo = () => (
-      <div className="profile-section">
-        <h4 className="section-title">
+      <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-slate-200">
+        <h4 className="flex items-center gap-2 text-base font-semibold text-slate-800 mb-4">
           <User size={16} /> Personal Information
         </h4>
-        <div className="info-grid">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <InfoItem icon={User} label="Name" value={normalizedPerson.name} />
           <InfoItem icon={Calendar} label="Date of Birth" value={normalizedPerson.date_of_birth} />
           <InfoItem icon={User} label="Gender" value={normalizedPerson.gender} />
@@ -440,7 +461,19 @@ function CtuDirectory() {
             icon={CheckSquare}
             label="Status"
             value={
-              <span className={`status-badge ${normalizedPerson.status.toLowerCase()}`}>{normalizedPerson.status}</span>
+              <span
+                className={`inline-block px-2 py-1 rounded-xl text-xs font-medium ${
+                  normalizedPerson.status.toLowerCase() === "approved"
+                    ? "bg-green-100 text-green-800"
+                    : normalizedPerson.status.toLowerCase() === "declined"
+                      ? "bg-red-100 text-red-800"
+                      : normalizedPerson.status.toLowerCase() === "pending"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-gray-100 text-gray-800"
+                }`}
+              >
+                {normalizedPerson.status.toUpperCase()}
+              </span>
             }
           />
         </div>
@@ -448,11 +481,11 @@ function CtuDirectory() {
     )
 
     const renderSocialMediaInfo = () => (
-      <div className="profile-section">
-        <h4 className="section-title">
+      <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-slate-200">
+        <h4 className="flex items-center gap-2 text-base font-semibold text-slate-800 mb-4">
           <Globe size={16} /> Social Media
         </h4>
-        <div className="info-grid">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <InfoItem icon={Mail} label="Email" value={normalizedPerson.email} />
           <InfoItem icon={Facebook} label="Facebook" value={normalizedPerson.fb} />
         </div>
@@ -460,11 +493,11 @@ function CtuDirectory() {
     )
 
     const renderAddressInfo = () => (
-      <div className="profile-section">
-        <h4 className="section-title">
+      <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-slate-200">
+        <h4 className="flex items-center gap-2 text-base font-semibold text-slate-800 mb-4">
           <MapPin size={16} /> Address Information
         </h4>
-        <div className="info-grid">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <InfoItem icon={MapPin} label="Province" value={normalizedPerson.province} />
           <InfoItem icon={MapPin} label="City" value={normalizedPerson.city} />
           <InfoItem icon={MapPin} label="Barangay" value={normalizedPerson.barangay} />
@@ -474,14 +507,14 @@ function CtuDirectory() {
     )
 
     const renderProfessionalInfo = () => {
-      if (normalizedPerson.type !== "Veterinarian") return null
+      if (normalizedPerson.type !== "veterinarian") return null
 
       return (
-        <div className="profile-section">
-          <h4 className="section-title">
+        <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-slate-200">
+          <h4 className="flex items-center gap-2 text-base font-semibold text-slate-800 mb-4">
             <Award size={16} /> Professional Details
           </h4>
-          <div className="info-grid">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <InfoItem icon={Award} label="License" value={normalizedPerson.license} />
             <InfoItem icon={Award} label="Experience (Years)" value={normalizedPerson.experience} />
             <InfoItem icon={Award} label="Specialization" value={normalizedPerson.specialization} />
@@ -492,21 +525,41 @@ function CtuDirectory() {
     }
 
     return (
-      <div className="modal-overlay active" onClick={onClose}>
-        <div className="profile-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="profile-modal-header">
-            <div className="profile-header-content">
-              <h3>{normalizedPerson.name}</h3>
-              <span className={`user-type-badge ${typeClassMap[normalizedPerson.type]}`}>
+      <div
+        className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay"
+        onClick={onClose}
+      >
+        <div
+          className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-bottom-10 duration-400"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="bg-red-700 p-8 text-white relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-white/5 pointer-events-none"></div>
+            <div className="relative z-10">
+              <h3 className="text-2xl font-semibold mb-2">{normalizedPerson.name}</h3>
+              <span
+                className={`inline-block px-3 py-1 rounded-full text-xs font-medium backdrop-blur-sm ${
+                  normalizedPerson.type === "veterinarian"
+                    ? "bg-green-500 text-white"
+                    : normalizedPerson.type === "kutsero"
+                      ? "bg-amber-600 text-white"
+                      : normalizedPerson.type === "horse operator"
+                        ? "bg-orange-500 text-white"
+                        : "bg-white/20 text-white"
+                }`}
+              >
                 {normalizedPerson.type?.replace("_", " ")}
               </span>
             </div>
-            <button className="close-button" onClick={onClose}>
+            <button
+              className="absolute top-5 right-5 w-10 h-10 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl flex items-center justify-center text-white hover:bg-white/30 hover:border-white/50 hover:scale-105 transition-all duration-300 z-20"
+              onClick={onClose}
+            >
               <X size={20} />
             </button>
           </div>
 
-          <div className="profile-modal-body">
+          <div className="p-8 bg-slate-50 overflow-y-auto">
             {renderPersonalInfo()}
             {renderSocialMediaInfo()}
             {renderAddressInfo()}
@@ -539,765 +592,23 @@ function CtuDirectory() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <style>{`
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
-
-        body {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-
-        .main-content {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          width: calc(100% - 250px);
-        }
-
-        .headers {
-          background: #ffffff;
-          padding: 8px 24px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          flex-wrap: wrap;
-          gap: 16px;
-        }
-
-        .notification-bell {
-          font-size: clamp(18px, 3vw, 20px);
-          color: #666;
-          cursor: pointer;
-          position: relative;
-          margin-right: 20px;
-          padding: 8px;
-          min-height: 44px;
-          min-width: 44px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .notification-count {
-          position: absolute;
-          top: 2px;
-          right: 2px;
-          background-color: #b91c1c;
-          color: white;
-          font-size: 10px;
-          width: 15px;
-          height: 15px;
-          border-radius: 50%;
-          display: none;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .notification-dropdown {
-          position: absolute;
-          top: 100%;
-          right: 0;
-          width: min(350px, 90vw);
-          background-color: #ffffff;
-          border: 1px solid #ccc;
-          border-radius: 8px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-          z-index: 100;
-          display: none;
-          max-height: 400px;
-          overflow-y: auto;
-        }
-
-        .notification-dropdown.show {
-          display: block;
-        }
-
-        .notification-header {
-          padding: 15px 20px;
-          border-bottom: 1px solid #eee;
-          background: #f8f9fa;
-          border-radius: 8px 8px 0 0;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .notification-header h3 {
-          font-size: 16px;
-          font-weight: 600;
-          color: #333;
-          margin: 0;
-        }
-
-        .mark-all-read {
-          background: none;
-          border: none;
-          color: #b91c1c;
-          font-size: 12px;
-          cursor: pointer;
-          text-decoration: underline;
-        }
-
-        .notification-item {
-          padding: 15px 20px;
-          border-bottom: 1px solid #eee;
-          cursor: pointer;
-          transition: background-color 0.2s;
-          position: relative;
-        }
-
-        .notification-item:hover {
-          background-color: #f8f9fa;
-        }
-
-        .notification-item.unread {
-          background-color: #f0f8ff;
-          border-left: 3px solid #b91c1c;
-        }
-
-        .notification-item:last-child {
-          border-bottom: none;
-        }
-
-        .notification-title {
-          font-weight: 600;
-          font-size: 14px;
-          margin-bottom: 5px;
-          color: #333;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .notification-message {
-          font-size: 13px;
-          color: #666;
-          margin-bottom: 5px;
-          line-height: 1.4;
-        }
-
-        .notification-time {
-          font-size: 11px;
-          color: #999;
-        }
-
-        .notification-icon {
-          width: 16px;
-          height: 16px;
-          flex-shrink: 0;
-        }
-
-        .notification-icon.info {
-          color: #3b82f6;
-        }
-        .notification-icon.success {
-          color: #10b981;
-        }
-        .notification-icon.warning {
-          color: #f59e0b;
-        }
-        .notification-icon.error {
-          color: #ef4444;
-        }
-
-        .notification-actions {
-          position: absolute;
-          top: 10px;
-          right: 15px;
-          display: flex;
-          gap: 5px;
-        }
-
-        .notification-action {
-          background: none;
-          border: none;
-          color: #999;
-          cursor: pointer;
-          padding: 2px;
-          border-radius: 3px;
-          font-size: 12px;
-        }
-
-        .notification-action:hover {
-          background: #f0f0f0;
-          color: #666;
-        }
-
-        .content-area {
-          flex: 1;
-          padding: 24px;
-          background: #f5f5f5;
-          overflow-y: auto;
-          
-        }
-
-        .directory-container {
-          background: #ffffff;
-          border-radius: 8px;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          overflow: hidden;
-          margin-bottom: 20px;
-        }
-
-        .tab-navigation {
-          display: flex;
-          border-bottom: 1px solid #e5e7eb;
-          background: #f8f9fa;
-          overflow-x: auto;
-        }
-
-        .tab-item {
-          padding: clamp(10px, 2vw, 12px) clamp(16px, 3vw, 24px);
-          font-size: clamp(12px, 2vw, 14px);
-          font-weight: 500;
-          color: #6b7280;
-          cursor: pointer;
-          border-bottom: 2px solid transparent;
-          transition: all 0.2s;
-          white-space: nowrap;
-          min-height: 44px;
-          display: flex;
-          align-items: center;
-        }
-
-        .tab-item.active {
-          color: #111827;
-          background: #e5e7eb;
-          border-bottom-color: #b91c1c;
-        }
-
-        .tab-item:hover:not(.active) {
-          color: #374151;
-          background: #f3f4f6;
-        }
-
-        .directory-content {
-          padding: clamp(16px, 3vw, 20px);
-        }
-
-        .directory-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: clamp(12px, 2vw, 14px);
-        }
-
-        .table-header {
-          background: #f8f9fa;
-        }
-
-        .table-header th {
-          padding: clamp(8px, 2vw, 12px) clamp(12px, 2vw, 16px);
-          text-align: left;
-          font-weight: 600;
-          color: #374151;
-          font-size: clamp(12px, 2vw, 14px);
-          border-bottom: 1px solid #e5e7eb;
-        }
-
-        .table-row {
-          border-bottom: 1px solid #f3f4f6;
-          transition: background-color 0.2s;
-        }
-
-        .table-row:hover {
-          background: #f8f9fa;
-        }
-
-        .table-row:last-child {
-          border-bottom: none;
-        }
-
-        .table-row td {
-          padding: clamp(12px, 2vw, 16px);
-          font-size: clamp(12px, 2vw, 14px);
-          color: #111827;
-          word-wrap: break-word;
-        }
-
-        .status-badge {
-          display: inline-block;
-          padding: 4px 8px;
-          border-radius: 12px;
-          font-size: clamp(10px, 1.8vw, 12px);
-          font-weight: 500;
-          white-space: nowrap;
-        }
-
-        .status-approved {
-          background: #dcfce7;
-          color: #166534;
-        }
-
-        .status-active {
-          background: #dbeafe;
-          color: #1d4ed8;
-        }
-
-        .status-declined {
-          background: #fef2f2;
-          color: #dc2626;
-        }
-        .status-deactivated {
-          background: #fef2f2;
-          color: #4e0920ff;
-        }
-        .status-available {
-          background: #d1fae5;
-          color: #065f46;
-        }
-
-        .status-pending {
-          background: #fef3c7;
-          color: #92400e;
-        }
-
-        .status-offline {
-          background: #f3f4f6;
-          color: #374151;
-        }
-
-        .status-on-duty {
-          background: #e0e7ff;
-          color: #3730a3;
-        }
-
-        .status-off-duty {
-          background: #fce7f3;
-          color: #be185d;
-        }
-
-        .status-unknown {
-          background: #f9fafb;
-          color: #6b7280;
-          border: 1px solid #d1d5db;
-        }
-
-        .role-badge {
-          display: inline-block;
-          padding: 4px 8px;
-          border-radius: 8px;
-          font-size: clamp(10px, 1.8vw, 12px);
-          font-weight: 500;
-          white-space: nowrap;
-        }
-
-        .role-veterinarian {
-          background: #dcfce7;
-          color: #166534;
-          border: 1px solid #bbf7d0;
-        }
-
-        .role-kutsero {
-          background: #fef3c7;
-          color: #92400e;
-          border: 1px solid #fde68a;
-        }
-
-        .role-horse-operator {
-          background: #fef7ed;
-          color: #c2410c;
-          border: 1px solid #fed7aa;
-        }
-
-        .view-button {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          padding: 6px 12px;
-          background: #dbeafe;
-          color: #1d4ed8;
-          border: 1px solid #bfdbfe;
-          border-radius: 6px;
-          font-size: clamp(10px, 1.8vw, 12px);
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .view-button:hover {
-          background: #bfdbfe;
-          border-color: #93c5fd;
-        }
-
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.7);
-          backdrop-filter: blur(8px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          opacity: 0;
-          visibility: hidden;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          padding: 20px;
-        }
-
-        .modal-overlay.active {
-          opacity: 1;
-          visibility: visible;
-        }
-
-        .profile-modal {
-          background: #ffffff;
-          border-radius: 24px;
-          width: 100%;
-          max-width: 900px;
-          max-height: 90vh; /* limit modal height */
-          overflow: hidden; /* hide overflow at modal level */
-          box-shadow:
-            0 25px 50px -12px rgba(0, 0, 0, 0.25),
-            0 0 0 1px rgba(255, 255, 255, 0.1);
-          animation: modalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-          position: relative;
-          display: flex;
-          flex-direction: column; /* so header stays on top and body scrolls */
-        }
-
-        @keyframes modalSlideIn {
-          from {
-            opacity: 0;
-            transform: scale(0.9) translateY(-40px);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-          }
-        }
-
-        .profile-modal-header {
-          background: #b91c1c;
-          padding: 32px;
-          color: white;
-          position: relative;
-          overflow: hidden;
-        }
-
-        .profile-modal-header ::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background:
-            radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
-            radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
-          pointer-events: none;
-        }
-
-        .profile-header-content h3 {
-          font-size: 24px;
-          font-weight: 600;
-          margin: 0 0 8px 0;
-        }
-
-        /* Status badge colors */
-        .status-approved {
-          background-color: #4caf50; /* green */
-          color: white;
-          padding: 3px 8px;
-          border-radius: 12px;
-          font-size: 0.8rem;
-        }
-        .status-badge.approved { background-color: #4caf50; color: white; }
-        .status-badge.declined { background-color: #f44336; color: white; }
-        .status-badge.pending { background-color: #ff9800; color: white; }
-
-        .header-subinfo {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .user-type-badge {
-          background: rgba(255, 255, 255, 0.2);
-          padding: 4px 12px;
-          border-radius: 20px;
-          font-size: 12px;
-          text-transform: capitalize;
-          backdrop-filter: blur(10px);
-        }
-
-        /* Type-specific colors */
-        .user-type-badge.veterinarian {
-          background-color: #4caf50; /* green */
-          color: white;
-        }
-
-        .user-type-badge.kutsero {
-          background-color: #8b4513; /* brown */
-          color: white;
-        }
-
-        .user-type-badge.horse-operator {
-          background-color: #ff9800; /* orange */
-          color: white;
-        }
-
-        .close-button {
-          position: absolute;
-          top: 20px;
-          right: 20px;
-          background: rgba(255, 255, 255, 0.2);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 12px;
-          width: 40px;
-          height: 40px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          color: white;
-          z-index: 3;
-        }
-
-        .close-button:hover {
-          background: rgba(255, 255, 255, 0.3);
-          border-color: rgba(255, 255, 255, 0.5);
-          transform: scale(1.05);
-        }
-
-        .profile-modal-body {
-          padding: 32px;
-          background: #f8fafc;
-          overflow-y: auto;
-        }
-
-        .profile-section {
-          background: white;
-          border-radius: 16px;
-          padding: 24px;
-          margin-bottom: 24px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-          border: 1px solid #e2e8f0;
-        }
-
-        .profile-section:last-child {
-          margin-bottom: 0;
-        }
-
-        .section-title {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 16px;
-          font-weight: 600;
-          color: #1e293b;
-          margin-bottom: 16px;
-        }
-
-        .info-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-          gap: 12px;
-        }
-
-        .info-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 0;
-          color: #475569;
-          font-size: 14px;
-        }
-
-        .info-item svg {
-          color: #667eea;
-          flex-shrink: 0;
-        }
-
-        @media (max-width: 1024px) {
-          .filter-select {
-            min-width: auto;
-          }
-        }
-
-        .dashboard-container {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px 20px;
-          background: transparent;
-        }
-
-        .directory-title {
-          font-size: 25px;
-          font-weight: bold;
-          color: #da2424ff;
-        }
-
-        .search-containers {
-          flex: 1;
-          max-width: 400px;
-          margin-right: 20px;
-          position: relative;
-          min-width: 200px;
-          margin-bottom: 10px;
-        }
-
-        .search-input {
-          width: 100%;
-          padding: 8px 16px 8px 40px;
-          border: 2px solid #fff;
-          border-radius: 8px;
-          font-size: clamp(12px, 2vw, 14px);
-          outline: none;
-          min-height: 50px;
-          background: #fff;
-        }
-
-        .search-icon {
-          position: absolute;
-          left: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          width: 16px;
-          height: 16px;
-          color: #6b7280;
-        }
-
-        .empty-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center; /* centers horizontally */
-          justify-content: center; /* centers vertically */
-          text-align: center; /* centers text inside */
-          padding: 40px 20px;
-          height: 100%; /* optional, if you want it vertically centered in parent */
-          gap: 12px; /* spacing between icon, heading, and paragraph */
-          color: #555; /* optional text color */
-        }
-
-        /* Pagination Styles */
-        .pagination-container {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background-color: #f9fafb;
-          padding: 10px 20px;
-          border-radius: 8px;
-          border: 1px solid #e5e7eb;
-          font-family: sans-serif;
-        }
-
-        .pagination-info {
-          font-size: 14px;
-          color: #6b7280;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .pagination-controls {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .items-per-page {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .items-per-page select {
-          padding: 6px 10px;
-          border: 1px solid #d1d5db;
-          border-radius: 4px;
-          background-color: white;
-          font-size: 14px;
-        }
-
-        .pagination-buttons {
-          display: flex;
-          gap: 5px;
-        }
-
-        .pagination-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          min-width: 36px;
-          height: 36px;
-          padding: 0 8px;
-          border: 1px solid #d1d5db;
-          background-color: white;
-          color: #374151;
-          border-radius: 6px;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .pagination-btn:hover:not(:disabled) {
-          background-color: #f9fafb;
-          border-color: #9ca3af;
-        }
-
-        .pagination-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .pagination-btn.active {
-          background-color: #b91c1c;
-          color: white;
-          border-color: #b91c1c;
-        }
-
-        .pagination-nav-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px;
-          height: 36px;
-          border: 1px solid #d1d5db;
-          background-color: white;
-          color: #374151;
-          border-radius: 6px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .pagination-nav-btn:hover:not(:disabled) {
-          background-color: #f9fafb;
-          border-color: #9ca3af;
-        }
-
-        .pagination-nav-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .pagination-ellipsis {
-          margin: 0 5px;
-          color: #6b7280;
-        }
-      `}</style>
-
       <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
 
-      <div className="main-content">
-        <header className="headers">
-          <div className="dashboard-container">
-            <h2 className="directory-title">Directory</h2>
+      <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
+        <header className="bg-white px-6 py-2 flex items-center justify-between shadow-sm flex-wrap gap-4">
+          <div className="flex items-center justify-between py-3 px-5 bg-transparent">
+            <h2 className="text-2xl font-bold text-black">Directory</h2>
           </div>
-          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
-            <Bell size={24} color="#374151" />
-            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
+          <button
+            className="relative bg-transparent border-none cursor-pointer p-2 rounded-full"
+            onClick={() => setNotifsOpen(!notifsOpen)}
+          >
+            <Bell size={24} className="text-gray-700" />
+            {notifications.length > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 bg-red-600 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold">
+                {notifications.length}
+              </span>
+            )}
           </button>
 
           {/* Notification Modal */}
@@ -1311,105 +622,126 @@ function CtuDirectory() {
           />
         </header>
 
-        <div className="content-area">
-          <div className="search-containers">
-            <Search className="search-icon" size={18} />
+        <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
+          <div className="flex-1 max-w-md relative mb-4">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
             <input
               type="text"
-              className="search-input"
+              className="w-full pl-10 pr-4 py-3 border-2 border-white rounded-lg text-sm outline-none min-h-[50px] bg-white"
               placeholder="Search directory..."
               onChange={handleSearchInput}
               value={searchTerm}
             />
           </div>
-          <div className="directory-container">
-            <div className="tab-navigation">
-              <div
-                className={`tab-item ${currentTab === "all" ? "active" : ""}`}
-                onClick={() => setCurrentTab("all")}
-                data-tab="all"
-              >
-                All
-              </div>
-              <div
-                className={`tab-item ${currentTab === "veterinarian" ? "active" : ""}`}
-                onClick={() => setCurrentTab("veterinarian")}
-                data-tab="veterinarian"
-              >
-                Veterinarian
-              </div>
-              <div
-                className={`tab-item ${currentTab === "horses-operator" ? "active" : ""}`}
-                onClick={() => setCurrentTab("horses-operator")}
-                data-tab="horses-operator"
-              >
-                Horses Operator
-              </div>
-              <div
-                className={`tab-item ${currentTab === "kutsero" ? "active" : ""}`}
-                onClick={() => setCurrentTab("kutsero")}
-                data-tab="kutsero"
-              >
-                Kutsero
-              </div>
-            </div>
 
-            <div className="directory-content">
-              {filteredDirectoryData.length === 0 ? (
-                <div className="empty-state">
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-5">
+            
+
+            <div className="p-5">
+              {loading ? (
+                // Show skeleton loader while loading
+                <TableSkeleton />
+              ) : filteredDirectoryData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center py-10 gap-3 text-gray-600">
                   <Folder size={48} />
-                  <h3>No approved directory entries found</h3>
-                  <p>Only approved entries will appear here</p>
+                  <h3 className="text-lg font-medium">No approved directory entries found</h3>
+                  <p className="text-sm">Only approved entries will appear here</p>
                 </div>
               ) : (
-                <table className="directory-table">
-                  <thead className="table-header">
-                    <tr>
-                      <th>Name</th>
-                      <th>Role</th>
-                      <th>Email</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {getPaginatedData().map((person) => (
-                      <tr key={person.email} className="table-row">
-                        <td>{person.name}</td>
-                        <td>
-                          <span className={`role-badge role-${person.type?.toLowerCase().replace(/\s+/g, "-")}`}>
-                            {person.type}
-                          </span>
-                        </td>
-                        <td>{person.email}</td>
-                        <td>
-                          <span className={`status-badge status-${person.status?.toLowerCase()}`}>{person.status}</span>
-                        </td>
-                        <td>
-                          <button className="view-button" onClick={() => handleView(person)}>
-                            <Eye size={16} /> View
-                          </button>
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                          Name
+                        </th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                          Role
+                        </th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                          Email
+                        </th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                          Status
+                        </th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                          Actions
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {getPaginatedData().map((person) => (
+                        <tr
+                          key={person.email}
+                          className="border-b border-gray-100 hover:bg-gray-50 transition-colors duration-200"
+                        >
+                          <td className="px-4 py-4 text-sm text-gray-900">{person.name}</td>
+                          <td className="px-4 py-4">
+                            <span
+                              className={`inline-block px-2 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${
+                                person.type?.toLowerCase() === "veterinarian"
+                                  ? "bg-green-100 text-green-800 border border-green-200"
+                                  : person.type?.toLowerCase() === "kutsero"
+                                    ? "bg-yellow-100 text-yellow-800 border border-yellow-200"
+                                    : person.type?.toLowerCase().includes("horse")
+                                      ? "bg-orange-100 text-orange-800 border border-orange-200"
+                                      : "bg-gray-100 text-gray-800 border border-gray-200"
+                              }`}
+                            >
+                              {/* ✅ FIXED: Capitalize first letter of role */}
+                              {person.type && person.type.charAt(0).toUpperCase() + person.type.slice(1)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 text-sm text-gray-900 break-words">{person.email}</td>
+                          <td className="px-4 py-4">
+                            <span
+                              className={`inline-block px-2 py-1 rounded-xl text-xs font-medium whitespace-nowrap ${
+                                person.status?.toLowerCase() === "approved"
+                                  ? "bg-green-100 text-green-800"
+                                  : person.status?.toLowerCase() === "declined"
+                                    ? "bg-red-100 text-red-800"
+                                    : person.status?.toLowerCase() === "pending"
+                                      ? "bg-yellow-100 text-yellow-800"
+                                      : "bg-gray-100 text-gray-800"
+                              }`}
+                            >
+                              {person.status?.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <button
+                              className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md text-xs cursor-pointer hover:bg-blue-100 hover:border-blue-300 transition-all duration-200"
+                              onClick={() => handleView(person)}
+                            >
+                              <Eye size={16} /> View
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
 
-            {/* Pagination Controls */}
-            {filteredDirectoryData.length > 0 && (
-              <div className="pagination-container" style={{ marginTop: "2rem" }}>
-                <div className="pagination-info">
-                  Showing {(currentPagePagination - 1) * itemsPerPagePagination + 1} to{" "}
-                  {Math.min(currentPagePagination * itemsPerPagePagination, filteredDirectoryData.length)} of{" "}
-                  {filteredDirectoryData.length} results
+            {!loading && filteredDirectoryData.length > 0 && (
+              <div className="flex justify-between items-center bg-gray-50 px-5 py-3 border-t border-gray-200 text-sm">
+                <div className="text-gray-600 flex items-center gap-3">
+                  <span>
+                    Showing {(currentPagePagination - 1) * itemsPerPagePagination + 1} to{" "}
+                    {Math.min(currentPagePagination * itemsPerPagePagination, filteredDirectoryData.length)} of{" "}
+                    {filteredDirectoryData.length} results
+                  </span>
                 </div>
 
-                <div className="pagination-controls">
-                  <div className="items-per-page">
-                    <span>Show:</span>
-                    <select value={itemsPerPagePagination} onChange={handleItemsPerPageChange}>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-600">Show:</span>
+                    <select
+                      value={itemsPerPagePagination}
+                      onChange={handleItemsPerPageChange}
+                      className="px-2 py-1 border border-gray-300 rounded bg-white text-sm"
+                    >
                       <option value="5">5</option>
                       <option value="10">10</option>
                       <option value="20">20</option>
@@ -1417,9 +749,9 @@ function CtuDirectory() {
                     </select>
                   </div>
 
-                  <div className="pagination-buttons">
+                  <div className="flex gap-1">
                     <button
-                      className="pagination-nav-btn"
+                      className="flex items-center justify-center w-8 h-8 border border-gray-300 bg-white text-gray-700 rounded hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                       onClick={() => goToPage(currentPagePagination - 1)}
                       disabled={currentPagePagination === 1}
                     >
@@ -1441,7 +773,11 @@ function CtuDirectory() {
                       return (
                         <button
                           key={pageNum}
-                          className={`pagination-btn ${currentPagePagination === pageNum ? "active" : ""}`}
+                          className={`flex items-center justify-center min-w-[32px] h-8 px-2 border rounded text-sm transition-all duration-200 ${
+                            currentPagePagination === pageNum
+                              ? "bg-red-700 text-white border-red-700"
+                              : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
+                          }`}
                           onClick={() => goToPage(pageNum)}
                         >
                           {pageNum}
@@ -1450,7 +786,7 @@ function CtuDirectory() {
                     })}
 
                     <button
-                      className="pagination-nav-btn"
+                      className="flex items-center justify-center w-8 h-8 border border-gray-300 bg-white text-gray-700 rounded hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                       onClick={() => goToPage(currentPagePagination + 1)}
                       disabled={currentPagePagination === totalPages}
                     >

@@ -328,7 +328,7 @@ const CtuSettings = () => {
       const data = await res.json()
       console.log("Reactivated:", data)
 
-      setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, status: "approved" } : p)))
+      setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, status: "Approved" } : p)))
 
       showAlert("User reactivated successfully!", "success")
     } catch (err) {
@@ -443,15 +443,22 @@ const CtuSettings = () => {
   const passwordValidation = validatePassword(passwords.new_password || "")
 
   return (
-    <div style={styles.layout}>
+    <div className="flex min-h-screen bg-gray-100">
       <Sidebar />
-      <div style={styles.dashboard}>
-        <div style={styles.header}>
-          <h1 style={styles.title}>Settings</h1>
-          <div style={{ position: "relative" }}>
-            <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
+      <div className="flex-1 font-sans flex flex-col h-screen overflow-hidden">
+        <div className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+          <h1 className="text-2xl font-bold text-black">Settings</h1>
+          <div className="relative">
+            <button
+              className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100"
+              onClick={() => setNotifsOpen(!notifsOpen)}
+            >
               <Bell size={24} color="#374151" />
-              {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
+              {notifications.length > 0 && (
+                <span className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold">
+                  {notifications.length}
+                </span>
+              )}
             </button>
           </div>
           {/* Notification Modal */}
@@ -465,7 +472,7 @@ const CtuSettings = () => {
           />
         </div>
 
-        <div style={styles.tabs}>
+        <div className="flex gap-6 mb-6 mt-5 ml-5">
           {["profile", "security", "userManagement"].map((tab) => {
             // Only show "userManagement" if user is Ctu-Admin
             if (tab === "userManagement" && profile?.ctu_role?.trim().toLowerCase() !== "ctu-admin") {
@@ -475,10 +482,11 @@ const CtuSettings = () => {
             return (
               <button
                 key={tab}
-                style={{
-                  ...styles.tab,
-                  ...(activeTab === tab ? styles.tabActive : {}),
-                }}
+                className={`py-1.5 px-0 bg-transparent border-none cursor-pointer text-base text-gray-600 transition-all duration-200 ${
+                  activeTab === tab
+                    ? "font-bold border-b-2 border-red-700 transform scale-105 text-red-700"
+                    : "hover:text-red-700"
+                }`}
                 onClick={() => setActiveTab(tab)}
               >
                 {tab === "userManagement" ? "User Management" : tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -487,44 +495,45 @@ const CtuSettings = () => {
           })}
         </div>
 
-        <div style={styles.content}>
+        <div className="flex-1 overflow-y-auto">
           {activeTab === "profile" && (
-            <div style={styles.box}>
-              <div style={styles.profileContainer}>
-                <div style={styles.profileSection}>
-                  <div style={styles.avatar}>
+            <div className="bg-white rounded-xl p-5 mb-5 shadow-sm ml-5 mr-10">
+              <div className="flex gap-20 items-start">
+                <div className="flex flex-col items-center min-w-[200px] flex-none mr-24">
+                  <div className="w-36 h-36 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-3xl font-semibold border-2 border-gray-100 mt-12 ml-24">
                     {profile.ctu_fname?.charAt(0)?.toUpperCase() || "J"}
                     {profile.ctu_lname?.charAt(0)?.toUpperCase() || "S"}
                   </div>
-                  <div style={styles.profileInfo}>
-                    <h3 style={styles.profileName}>
+                  <div className="text-center ml-24 mt-4">
+                    <h3 className="text-xl font-semibold m-0 text-gray-800">
                       {profile.ctu_fname} {profile.ctu_lname}
                     </h3>
-                    <p style={styles.profileUsername}></p>
+                    <p className="text-sm text-gray-500 m-0 font-normal"></p>
                   </div>
                 </div>
 
-                <div style={styles.formSection}>
-                  <div style={styles.sectionHeader}>
-                    <h2 style={styles.sectionTitle}>Personal Information</h2>
-                    <div style={styles.sectionDivider}></div>
+                <div className="flex-1 min-w-[400px]">
+                  <div className="mb-6">
+                    <h2 className="text-lg font-semibold text-orange-600 mb-2">Personal Information</h2>
+                    <div className="h-0.5 bg-orange-600 w-full rounded"></div>
                   </div>
 
                   <form onSubmit={profileExists ? handleUpdate : handleSave}>
-                    <div style={styles.formGroup}>
-                      <label style={styles.label}>Full Name:</label>
-                      <div style={styles.nameRow}>
+                    <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative mb-6">
+                      <label className="font-medium mb-1">Full Name:</label>
+                      <div className="flex gap-3">
                         <input
                           type="text"
                           name="ctu_fname"
                           value={profile.ctu_fname}
                           onChange={handleChange}
                           readOnly={profileExists && !editing}
-                          style={{
-                            ...styles.nameInput,
-                            backgroundColor: profileExists && !editing ? "#f9fafb" : "#fff",
-                            cursor: profileExists && !editing ? "not-allowed" : "text",
-                          }}
+                          className={`flex-1 px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
+                            profileExists && !editing
+                              ? "bg-gray-50 cursor-not-allowed"
+                              : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          }`}
+                          placeholder="First Name"
                         />
                         <input
                           type="text"
@@ -532,60 +541,66 @@ const CtuSettings = () => {
                           value={profile.ctu_lname}
                           onChange={handleChange}
                           readOnly={profileExists && !editing}
-                          style={{
-                            ...styles.nameInput,
-                            backgroundColor: profileExists && !editing ? "#f9fafb" : "#fff",
-                            cursor: profileExists && !editing ? "not-allowed" : "text",
-                          }}
+                          className={`flex-1 px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
+                            profileExists && !editing
+                              ? "bg-gray-50 cursor-not-allowed"
+                              : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                          }`}
+                          placeholder="Last Name"
                         />
                       </div>
                       {(errors.ctu_fname || errors.ctu_lname) && (
-                        <p style={styles.errorText}>{errors.ctu_fname || errors.ctu_lname}</p>
+                        <p className="text-red-500 text-xs absolute -bottom-4 right-0 m-0">
+                          {errors.ctu_fname || errors.ctu_lname}
+                        </p>
                       )}
                     </div>
 
-                    <div style={styles.formGroup}>
-                      <label style={styles.label}>Email Address:</label>
+                    <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative mb-6">
+                      <label className="font-medium mb-1">Email Address:</label>
                       <input
                         type="email"
                         name="ctu_email"
                         value={profile.ctu_email}
                         onChange={handleChange}
                         readOnly={true}
-                        style={{
-                          ...styles.fullWidthInput,
-                          backgroundColor: "#f9fafb",
-                          cursor: "not-allowed",
-                        }}
+                        className="w-full px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 bg-gray-50 cursor-not-allowed"
                       />
-                      {errors.ctu_email && <p style={styles.errorText}>{errors.ctu_email}</p>}
+                      {errors.ctu_email && (
+                        <p className="text-red-500 text-xs absolute -bottom-4 right-0 m-0">{errors.ctu_email}</p>
+                      )}
                     </div>
 
-                    <div style={styles.formGroup}>
-                      <label style={styles.label}>Phone Number:</label>
+                    <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative mb-6">
+                      <label className="font-medium mb-1">Phone Number:</label>
                       <input
                         type="text"
                         name="ctu_phonenum"
                         value={profile.ctu_phonenum}
                         onChange={handleChange}
                         readOnly={profileExists && !editing}
-                        style={{
-                          ...styles.fullWidthInput,
-                          backgroundColor: profileExists && !editing ? "#f9fafb" : "#fff",
-                          cursor: profileExists && !editing ? "not-allowed" : "text",
-                        }}
+                        className={`w-full px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
+                          profileExists && !editing
+                            ? "bg-gray-50 cursor-not-allowed"
+                            : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                        }`}
                       />
-                      {errors.ctu_phonenum && <p style={styles.errorText}>{errors.ctu_phonenum}</p>}
+                      {errors.ctu_phonenum && (
+                        <p className="text-red-500 text-xs absolute -bottom-4 right-0 m-0">{errors.ctu_phonenum}</p>
+                      )}
                     </div>
 
                     {!profileExists && (
-                      <div style={{ display: "flex", justifyContent: "flex-start", gap: "8px" }}>
-                        <button type="submit" style={styles.saveBtn}>
+                      <div className="flex justify-start gap-2 mt-5">
+                        <button
+                          type="submit"
+                          className="px-4 py-1.5 bg-green-700 text-white border-none rounded-2xl font-bold text-sm cursor-pointer transition-all duration-200 hover:bg-green-800"
+                        >
                           Save Changes
                         </button>
                         <button
                           type="button"
-                          style={styles.cancelBtn}
+                          className="px-4 py-1.5 bg-gray-400 text-white border-none rounded-2xl font-bold text-sm cursor-pointer ml-2 transition-all duration-200 hover:bg-gray-500"
                           onClick={() => {
                             setProfile({ ctu_fname: "", ctu_lname: "", ctu_email: "", ctu_phonenum: "" })
                             setErrors({})
@@ -596,20 +611,31 @@ const CtuSettings = () => {
                       </div>
                     )}
 
-                    <div style={{ textAlign: "left" }}>
+                    <div className="text-left">
                       {profileExists && !editing && (
-                        <button type="button" style={styles.editBtn} onClick={() => setEditing(true)}>
+                        <button
+                          type="button"
+                          className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 text-white border-none rounded-2xl font-bold text-sm cursor-pointer mt-5 hover:bg-amber-600 transition-all duration-200"
+                          onClick={() => setEditing(true)}
+                        >
                           <Edit2 size={16} /> Edit Profile
                         </button>
                       )}
                     </div>
 
                     {editing && (
-                      <div style={{ display: "flex", justifyContent: "flex-start", gap: "8px" }}>
-                        <button type="submit" style={styles.saveBtn}>
+                      <div className="flex justify-start gap-2 mt-5">
+                        <button
+                          type="submit"
+                          className="px-4 py-1.5 bg-green-700 text-white border-none rounded-2xl font-bold text-sm cursor-pointer transition-all duration-200 hover:bg-green-800"
+                        >
                           Save Changes
                         </button>
-                        <button type="button" style={styles.cancelBtn} onClick={() => setEditing(false)}>
+                        <button
+                          type="button"
+                          className="px-4 py-1.5 bg-gray-400 text-white border-none rounded-2xl font-bold text-sm cursor-pointer transition-all duration-200 hover:bg-gray-500"
+                          onClick={() => setEditing(false)}
+                        >
                           Cancel
                         </button>
                       </div>
@@ -621,17 +647,10 @@ const CtuSettings = () => {
           )}
 
           {activeTab === "security" && (
-            <div
-              style={{
-                ...styles.box,
-                display: "flex",
-                gap: "30px",
-                flexWrap: "wrap",
-              }}
-            >
-              <div style={{ flex: 1, minWidth: "300px" }}>
-                <h3 style={styles.boxTitle}>Change Password</h3>
-                <p style={styles.boxText}>Update your password to keep your account secure.</p>
+            <div className="bg-white rounded-xl p-5 mb-5 shadow-sm ml-5 mr-10 flex gap-8 flex-wrap">
+              <div className="flex-1 min-w-[300px]">
+                <h3 className="text-xl font-semibold mb-2">Change Password</h3>
+                <p className="text-gray-600 mb-2 italic text-sm">Update your password to keep your account secure.</p>
 
                 <form onSubmit={handlePasswordUpdate}>
                   {[
@@ -642,39 +661,46 @@ const CtuSettings = () => {
                     { label: "New Password", name: "new_password" },
                     { label: "Confirm New Password", name: "confirm_new_password" },
                   ].map((field) => (
-                    <div style={styles.formGroup} key={field.name}>
-                      <label style={styles.label}>{field.label}</label>
+                    <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative mb-6" key={field.name}>
+                      <label className="font-medium mb-1">{field.label}</label>
 
                       {/* Password input with toggle */}
-                      <div style={styles.passwordContainer}>
+                      <div className="relative w-full">
                         <input
                           type={passwordVisibility[field.name] ? "text" : "password"}
                           name={field.name}
                           value={passwords[field.name]}
                           onChange={handlePasswordChange}
-                          style={styles.passwordInput}
+                          className="w-full pr-9 pl-3 py-3 border border-gray-300 rounded-md text-sm outline-none box-border transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                         />
                         <button
                           type="button"
                           onClick={() => togglePasswordVisibility(field.name)}
-                          style={styles.passwordToggle}
+                          className="absolute top-1/2 right-3 transform -translate-y-1/2 bg-transparent border-none cursor-pointer text-gray-500 p-0 leading-none flex items-center justify-center hover:text-gray-700"
                         >
                           {passwordVisibility[field.name] ? <EyeOff size={16} /> : <Eye size={16} />}
                         </button>
                       </div>
 
                       {/* Error message */}
-                      {passwordErrors[field.name] && <p style={styles.errorText}>{passwordErrors[field.name]}</p>}
+                      {passwordErrors[field.name] && (
+                        <p className="text-red-500 text-xs absolute -bottom-4 right-0 m-0">
+                          {passwordErrors[field.name]}
+                        </p>
+                      )}
                     </div>
                   ))}
 
                   {/* Action buttons */}
-                  <button type="submit" style={{ ...styles.saveBtn, backgroundColor: "#2e7d32" }}>
+                  <button
+                    type="submit"
+                    className="px-4 py-1.5 bg-green-700 text-white border-none rounded-2xl font-bold text-sm cursor-pointer transition-all duration-200 hover:bg-green-800 mr-2"
+                  >
                     Save Changes
                   </button>
                   <button
                     type="button"
-                    style={styles.cancelBtn}
+                    className="px-4 py-1.5 bg-gray-400 text-white border-none rounded-2xl font-bold text-sm cursor-pointer transition-all duration-200 hover:bg-gray-500"
                     onClick={() =>
                       setPasswords({
                         current_password: "",
@@ -688,20 +714,9 @@ const CtuSettings = () => {
                 </form>
               </div>
 
-              <div
-                style={{
-                  flex: 1,
-                  minWidth: "250px",
-                  backgroundColor: "#f3f4f6",
-                  borderRadius: "12px",
-                  padding: "20px",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
-                  alignSelf: "flex-start",
-                  marginTop: "45px",
-                }}
-              >
-                <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "15px" }}>Password Requirements</h3>
-                <ul style={{ listStyle: "none", paddingLeft: "0", lineHeight: "1.8" }}>
+              <div className="flex-1 min-w-[250px] bg-gray-100 rounded-xl p-5 shadow-sm self-start mt-11">
+                <h3 className="text-base font-semibold mb-4">Password Requirements</h3>
+                <ul className="list-none pl-0 leading-7">
                   {[
                     {
                       rule: "At least 8 characters",
@@ -716,29 +731,14 @@ const CtuSettings = () => {
                     return (
                       <li
                         key={item.rule}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "8px",
-                          color: isValid ? "#059669" : "#374151",
-                          fontSize: "14px",
-                          transition: "color 0.2s ease",
-                        }}
+                        className={`flex items-center gap-2 text-sm transition-colors duration-200 ${
+                          isValid ? "text-green-600" : "text-gray-700"
+                        }`}
                       >
                         <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            width: "16px",
-                            height: "16px",
-                            borderRadius: "50%",
-                            backgroundColor: isValid ? "#10b981" : "#e5e7eb",
-                            color: isValid ? "white" : "transparent",
-                            fontSize: "10px",
-                            fontWeight: "bold",
-                            transition: "all 0.2s ease",
-                          }}
+                          className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-xs font-bold transition-all duration-200 ${
+                            isValid ? "bg-green-500 text-white" : "bg-gray-300 text-transparent"
+                          }`}
                         >
                           {isValid ? "✓" : ""}
                         </span>
@@ -747,7 +747,7 @@ const CtuSettings = () => {
                     )
                   })}
                 </ul>
-                <p style={{ fontSize: "12px", color: "#6b7280", marginTop: "10px" }}>
+                <p className="text-xs text-gray-500 mt-2">
                   {Object.values(passwordValidation).every(Boolean) && passwords.new_password
                     ? "✅ Your password meets all requirements!"
                     : "Make sure your password meets all the requirements for a strong and secure account."}
@@ -759,25 +759,27 @@ const CtuSettings = () => {
           {activeTab === "userManagement" ? (
             profile ? (
               profile.ctu_role?.trim().toLowerCase() === "ctu-admin" ? (
-                <div style={styles.box}>
-                  <h2 style={styles.boxTitle}>User Management</h2>
+                <div className="bg-white rounded-xl p-5 mb-5 shadow-sm ml-5 mr-10">
+                  
 
                   {/* Tabs for Add New / Existing Users */}
-                  <div style={styles.userTabs}>
+                  <div className="flex border-b border-gray-200 mb-6">
                     <button
-                      style={{
-                        ...styles.userTab,
-                        ...(activeUserTab === "addNew" ? styles.userTabActive : {}),
-                      }}
+                      className={`px-6 py-3 bg-transparent border-none cursor-pointer text-sm font-medium transition-all duration-200 ${
+                        activeUserTab === "addNew"
+                          ? "text-red-700 border-b-2 border-red-700 bg-red-50"
+                          : "text-gray-600 hover:text-red-700"
+                      }`}
                       onClick={() => setActiveUserTab("addNew")}
                     >
                       Add New User
                     </button>
                     <button
-                      style={{
-                        ...styles.userTab,
-                        ...(activeUserTab === "existing" ? styles.userTabActive : {}),
-                      }}
+                      className={`px-6 py-3 bg-transparent border-none cursor-pointer text-sm font-medium transition-all duration-200 ${
+                        activeUserTab === "existing"
+                          ? "text-red-700 border-b-2 border-red-700 bg-red-50"
+                          : "text-gray-600 hover:text-red-700"
+                      }`}
                       onClick={() => setActiveUserTab("existing")}
                     >
                       Existing Users
@@ -786,23 +788,23 @@ const CtuSettings = () => {
 
                   {/* Add New User Form */}
                   {activeUserTab === "addNew" && (
-                    <div style={styles.userSection}>
-                      <div style={styles.formRow}>
-                        <div style={styles.formGroup}>
-                          <label style={styles.label}>First Name</label>
+                    <div className="py-4">
+                      <div className="flex gap-5 mb-5 flex-wrap">
+                        <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative">
+                          <label className="font-medium mb-1">First Name</label>
                           <input
                             type="text"
-                            style={styles.input}
+                            className="px-3 py-2 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                             placeholder="Enter first name"
                             value={newUser.firstname}
                             onChange={(e) => handleNewUserChange("firstname", e.target.value)}
                           />
                         </div>
-                        <div style={styles.formGroup}>
-                          <label style={styles.label}>Last Name</label>
+                        <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative">
+                          <label className="font-medium mb-1">Last Name</label>
                           <input
                             type="text"
-                            style={styles.input}
+                            className="px-3 py-2 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                             placeholder="Enter last name"
                             value={newUser.lastname}
                             onChange={(e) => handleNewUserChange("lastname", e.target.value)}
@@ -810,22 +812,22 @@ const CtuSettings = () => {
                         </div>
                       </div>
 
-                      <div style={styles.formRow}>
-                        <div style={styles.formGroup}>
-                          <label style={styles.label}>Email</label>
+                      <div className="flex gap-5 mb-5 flex-wrap">
+                        <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative">
+                          <label className="font-medium mb-1">Email</label>
                           <input
                             type="email"
-                            style={styles.input}
+                            className="px-3 py-2 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                             placeholder="Enter email"
                             value={newUser.email}
                             onChange={(e) => handleNewUserChange("email", e.target.value)}
                           />
                         </div>
-                        <div style={styles.formGroup}>
-                          <label style={styles.label}>Phone Number</label>
+                        <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative">
+                          <label className="font-medium mb-1">Phone Number</label>
                           <input
                             type="tel"
-                            style={styles.input}
+                            className="px-3 py-2 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                             placeholder="Enter phone number"
                             value={newUser.phone}
                             onChange={(e) => handleNewUserChange("phone", e.target.value)}
@@ -833,11 +835,11 @@ const CtuSettings = () => {
                         </div>
                       </div>
 
-                      <div style={styles.formRow}>
-                        <div style={styles.formGroup}>
-                          <label style={styles.label}>Role</label>
+                      <div className="flex gap-5 mb-5 flex-wrap">
+                        <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative">
+                          <label className="font-medium mb-1">Role</label>
                           <select
-                            style={styles.input}
+                            className="px-3 py-2 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                             value={newUser.ctu_role}
                             onChange={(e) => handleNewUserChange("role", e.target.value)}
                           >
@@ -846,12 +848,12 @@ const CtuSettings = () => {
                             <option value="Dvmf">Dvmf</option>
                           </select>
                         </div>
-                        <div style={styles.formGroup}>
-                          <label style={styles.label}>Password</label>
-                          <div style={{ display: "flex", alignItems: "center" }}>
+                        <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative">
+                          <label className="font-medium mb-1">Password</label>
+                          <div className="flex items-center">
                             <input
                               type={isPasswordVisible ? "text" : "password"}
-                              style={styles.passwordInput}
+                              className="w-full pr-9 pl-3 py-2 border border-gray-300 rounded-md text-sm outline-none box-border transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                               placeholder="Enter password"
                               value={newUser.password}
                               onChange={(e) => handleNewUserChange("password", e.target.value)}
@@ -859,12 +861,7 @@ const CtuSettings = () => {
                             <button
                               type="button"
                               onClick={toggleNewUserPasswordVisibility}
-                              style={{
-                                marginLeft: "5px",
-                                cursor: "pointer",
-                                border: "none",
-                                background: "transparent",
-                              }}
+                              className="ml-1 cursor-pointer border-none bg-transparent hover:text-gray-700"
                             >
                               {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                             </button>
@@ -872,8 +869,12 @@ const CtuSettings = () => {
                         </div>
                       </div>
 
-                      <div style={{ marginTop: "20px", textAlign: "left" }}>
-                        <button type="button" style={styles.addUserBtn} onClick={addNewUser}>
+                      <div className="mt-5 text-left">
+                        <button
+                          type="button"
+                          className="flex items-center gap-2 px-5 py-2.5 bg-green-700 text-white border-none rounded-md cursor-pointer text-sm font-medium hover:bg-green-800 transition-all duration-200"
+                          onClick={addNewUser}
+                        >
                           Add User
                           <Plus size={16} />
                         </button>
@@ -883,10 +884,9 @@ const CtuSettings = () => {
                   {/* ALERT UI */}
                   {alert.show && (
                     <div
-                      style={{
-                        ...styles.alertBox,
-                        ...(alert.type === "success" ? styles.alertSuccess : styles.alertError),
-                      }}
+                      className={`fixed top-5 left-1/2 transform -translate-x-1/2 px-6 py-3.5 rounded-xl text-base font-semibold text-white shadow-lg z-50 text-center min-w-[250px] max-w-[500px] transition-opacity duration-300 ${
+                        alert.type === "success" ? "bg-green-600" : "bg-red-600"
+                      }`}
                     >
                       {alert.message}
                     </div>
@@ -894,69 +894,114 @@ const CtuSettings = () => {
 
                   {/* Existing Users Table */}
                   {activeUserTab === "existing" && (
-                    <div style={styles.userSection}>
-                      {profiles.filter(
-                        (p) => (p.status === "approved" || p.status === "deactivated") && p.role !== "Ctu-Admin", // exclude Ctu-Admin from display
-                      ).length === 0 ? (
-                        <div style={styles.emptyState}>
+                    <div className="py-4">
+                      {console.log("[v0] Profiles data:", profiles)}
+                      {console.log(
+                        "[v0] Filtered profiles:",
+                        profiles.filter((p) => {
+                          const statusMatch =
+                            p.status === "Approved" ||
+                            p.status === "approved" ||
+                            p.status === "deactivated" ||
+                            p.status === "Deactivated"
+                          const roleMatch = p.role !== "Ctu-Admin"
+                          console.log(
+                            `[v0] User ${p.ctu_email}: status=${p.status}, role=${p.role}, statusMatch=${statusMatch}, roleMatch=${roleMatch}`,
+                          )
+                          return statusMatch && roleMatch
+                        }),
+                      )}
+
+                      {profiles.filter((p) => {
+                        const statusMatch =
+                          p.status === "Approved" ||
+                          p.status === "approved" ||
+                          p.status === "deactivated" ||
+                          p.status === "Deactivated"
+                        const roleMatch = p.role !== "Ctu-Admin"
+                        return statusMatch && roleMatch
+                      }).length === 0 ? (
+                        <div className="flex flex-col items-center justify-center text-center py-10 text-gray-500 gap-2.5">
                           <Users size={48} />
-                          <h3>No users found</h3>
-                          <p>Add your first user to get started</p>
+                          <h3 className="text-lg font-semibold">No users found</h3>
+                          <p className="text-sm">Add your first user to get started</p>
+                          <p className="text-xs text-gray-400 mt-2">Total profiles loaded: {profiles.length}</p>
                         </div>
                       ) : (
-                        <div style={styles.usersTable}>
-                          <div style={styles.tableHeader}>
-                            <div style={styles.tableHeaderCell}>First Name</div>
-                            <div style={styles.tableHeaderCell}>Last Name</div>
-                            <div style={styles.tableHeaderCell}>Email</div>
-                            <div style={styles.tableHeaderCell}>Phone</div>
-                            <div style={styles.tableHeaderCell}>Role</div>
-                            <div style={styles.tableHeaderCell}>Status</div>
-                            <div style={styles.tableHeaderCell}>Actions</div>
+                        <div className="border border-gray-200 rounded-lg overflow-hidden max-h-96 overflow-y-auto">
+                          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_1fr_80px] bg-gray-50 border-b border-gray-200">
+                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">First Name</div>
+                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Last Name</div>
+                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Email</div>
+                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Phone</div>
+                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Role</div>
+                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Status</div>
+                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Actions</div>
                           </div>
 
                           {profiles
-                            .filter(
-                              (p) => (p.status === "approved" || p.status === "deactivated") && p.role !== "Ctu-Admin",
-                            )
+                            .filter((p) => {
+                              const statusMatch =
+                                p.status === "Approved" ||
+                                p.status === "approved" ||
+                                p.status === "deactivated" ||
+                                p.status === "Deactivated"
+                              const roleMatch = p.role !== "Ctu-Admin"
+                              return statusMatch && roleMatch
+                            })
                             .map((p) => {
-                              const displayStatus = p.status === "approved" ? "active" : p.status
+                              const displayStatus =
+                                p.status === "Approved" || p.status === "approved" ? "active" : p.status
 
                               return (
-                                <div key={p.id} style={styles.tableRow}>
-                                  <div style={styles.tableCell}>{p.ctu_fname || "-"}</div>
-                                  <div style={styles.tableCell}>{p.ctu_lname || "-"}</div>
-                                  <div style={styles.tableCell}>{p.ctu_email || "-"}</div>
-                                  <div style={styles.tableCell}>{p.ctu_phonenum || "-"}</div>
-                                  <div style={styles.tableCell}>
-                                    <span style={styles.roleBadge}>{p.role || "-"}</span>
+                                <div
+                                  key={p.id}
+                                  className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_1fr_80px] border-b border-gray-200 last:border-b-0"
+                                >
+                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
+                                    {p.ctu_fname || "-"}
                                   </div>
-                                  <div style={styles.tableCell}>
+                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
+                                    {p.ctu_lname || "-"}
+                                  </div>
+                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
+                                    {p.ctu_email || "-"}
+                                  </div>
+                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
+                                    {p.ctu_phonenum || "-"}
+                                  </div>
+                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
+                                    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-xl text-xs font-medium">
+                                      {p.role || "-"}
+                                    </span>
+                                  </div>
+                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
                                     <span
-                                      style={{
-                                        ...styles.statusBadge,
-                                        backgroundColor:
-                                          p.status === "approved"
-                                            ? "green"
-                                            : p.status === "deactivated"
-                                              ? "red"
-                                              : "gray",
-                                      }}
+                                      className={`px-2 py-1 rounded-xl text-xs font-medium text-white ${
+                                        p.status === "Approved" || p.status === "approved"
+                                          ? "bg-green-500"
+                                          : p.status === "deactivated" || p.status === "Deactivated"
+                                            ? "bg-red-500"
+                                            : "bg-gray-500"
+                                      }`}
                                     >
                                       {displayStatus}
                                     </span>
                                   </div>
-                                  <div style={styles.tableCell}>
-                                    <div style={styles.dropdown}>
-                                      <button style={styles.dropdownBtn} onClick={() => toggleDropdown(p.id)}>
+                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
+                                    <div className="relative">
+                                      <button
+                                        className="bg-none border-none cursor-pointer p-1 rounded hover:bg-gray-100"
+                                        onClick={() => toggleDropdown(p.id)}
+                                      >
                                         <MoreVertical size={16} />
                                       </button>
 
                                       {dropdownOpen === p.id && (
-                                        <div style={styles.dropdownMenu}>
-                                          {p.status === "approved" && (
+                                        <div className="absolute right-0 top-full bg-white border border-gray-200 rounded-md shadow-lg z-10 min-w-[120px]">
+                                          {(p.status === "Approved" || p.status === "approved") && (
                                             <button
-                                              style={styles.dropdownItem}
+                                              className="flex items-center gap-2 w-full px-3 py-2 bg-transparent border-none cursor-pointer text-sm text-gray-700 hover:bg-gray-50"
                                               onClick={async () => {
                                                 await deactivateUser(p.id)
                                                 showAlert("User deactivated successfully!", "success")
@@ -968,12 +1013,9 @@ const CtuSettings = () => {
                                             </button>
                                           )}
 
-                                          {p.status === "deactivated" && (
+                                          {(p.status === "deactivated" || p.status === "Deactivated") && (
                                             <button
-                                              style={{
-                                                ...styles.dropdownItem,
-                                                ...styles.dropdownItemDanger,
-                                              }}
+                                              className="flex items-center gap-2 w-full px-3 py-2 bg-transparent border-none cursor-pointer text-sm text-red-600 hover:bg-gray-50"
                                               onClick={async () => {
                                                 await reactivateUser(p.id)
                                                 showAlert("User reactivated successfully!", "success")
@@ -998,10 +1040,10 @@ const CtuSettings = () => {
                 </div>
               ) : (
                 // Non-admin: restricted message
-                <div style={styles.emptyState}>
+                <div className="flex flex-col items-center justify-center text-center py-10 text-gray-500 gap-2.5">
                   <Users size={48} />
-                  <h3>Restricted Access</h3>
-                  <p>You do not have permission to view this section.</p>
+                  <h3 className="text-lg font-semibold">Restricted Access</h3>
+                  <p className="text-sm">You do not have permission to view this section.</p>
                 </div>
               )
             ) : (
@@ -1014,430 +1056,6 @@ const CtuSettings = () => {
       </div>
     </div>
   )
-}
-
-const styles = {
-  layout: { display: "flex", minHeight: "100vh", backgroundColor: "#f5f5f5" },
-  dashboard: {
-    flex: 1,
-    fontFamily: "'Segoe UI', Tahoma",
-    display: "flex",
-    flexDirection: "column",
-    height: "100vh",
-    overflow: "hidden",
-  },
-  header: {
-    display: "flex",
-    alignItems: "center",
-    backgroundColor: "#fff",
-    padding: "20px 30px",
-    borderBottom: "1px solid #eee",
-    boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
-    position: "sticky",
-    top: 0,
-    zIndex: 10,
-    justifyContent: "space-between",
-  },
-  title: { fontSize: "25px", fontWeight: "bold", color: "#b91c1c" },
-  notificationBtn: {
-    position: "relative",
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-    padding: "8px",
-    borderRadius: "50%",
-  },
-  badge: {
-    position: "absolute",
-    top: "2px",
-    right: "2px",
-    backgroundColor: "#ef4444",
-    color: "#fff",
-    borderRadius: "50%",
-    padding: "2px 6px",
-    fontSize: "12px",
-    fontWeight: "bold",
-  },
-  tabs: {
-    display: "flex",
-    gap: "25px",
-    marginBottom: "25px",
-    marginTop: "20px",
-    marginLeft: "20px",
-  },
-  tab: {
-    padding: "6px 0",
-    backgroundColor: "transparent",
-    border: "none",
-    cursor: "pointer",
-    fontSize: "16px",
-    color: "#555",
-  },
-  tabActive: {
-    fontWeight: "bold",
-    borderBottom: "3px solid #b91c1c",
-    transform: "scale(1.05)",
-    color: "#b91c1c",
-  },
-  content: {},
-  box: {
-    backgroundColor: "#fff",
-    borderRadius: "12px",
-    padding: "20px 20px",
-    marginBottom: "20px",
-    boxShadow: "0 3px 10px rgba(0,0,0,0.05)",
-    marginLeft: "20px",
-    width: "calc(100% - 40px)",
-    maxWidth: "none",
-  },
-  boxTitle: { fontSize: "20px", fontWeight: "600", marginBottom: "10px" },
-  boxText: { color: "#555", marginBottom: "10px", fontStyle: "italic", fontSize: "14px" },
-  formGroup: {
-    flex: 1,
-    minWidth: "200px",
-    display: "flex",
-    flexDirection: "column",
-    gap: "6px",
-    position: "relative",
-  },
-  label: { fontWeight: "500", marginBottom: "3px" },
-  input: {
-    padding: "8px 12px",
-    border: "1px solid #ccc",
-    borderRadius: "6px",
-    fontSize: "14px",
-    outline: "none",
-    transition: "all 0.2s ease",
-  },
-  editBtn: {
-    display: "flex",
-    alignItems: "center",
-    gap: "4px",
-    padding: "4px 12px",
-    backgroundColor: "#f59e0b",
-    color: "#fff",
-    border: "none",
-    borderRadius: "20px",
-    fontWeight: "bold",
-    fontSize: "13px",
-    cursor: "pointer",
-    marginTop: "20px", // pushes the button all the way to the left
-  },
-  saveBtn: {
-    padding: "6px 16px",
-    backgroundColor: "#2e7d32",
-    color: "#fff",
-    border: "none",
-    borderRadius: "20px",
-    fontWeight: "bold",
-    fontSize: "13px",
-    cursor: "pointer",
-    transition: "all 0.2s ease",
-    alignSelf: "flex-start",
-    marginTop: "20px", // Added margin on top
-  },
-  cancelBtn: {
-    padding: "6px 16px",
-    backgroundColor: "#9ca3af",
-    color: "#fff",
-    border: "none",
-    borderRadius: "20px",
-    fontWeight: "bold",
-    fontSize: "13px",
-    cursor: "pointer",
-    marginLeft: "8px",
-    transition: "all 0.2s ease",
-    alignSelf: "flex-start",
-    marginTop: "20px",
-  },
-  errorText: {
-    color: "#ef4444",
-    fontSize: "12px",
-    position: "absolute",
-    bottom: "-18px",
-    margin: 0,
-    right: "0",
-  },
-  profileContainer: {
-    display: "flex",
-    gap: "90px",
-    alignItems: "flex-start",
-  },
-  profileSection: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    minWidth: "200px",
-    flex: "0 0 auto",
-    marginRight: "100px", // <-- added margin right
-  },
-  formSection: {
-    flex: 1,
-    minWidth: "400px",
-  },
-  profileHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: "20px",
-    marginBottom: "32px",
-    padding: "0",
-    backgroundColor: "transparent",
-    borderRadius: "0",
-  },
-  avatar: {
-    width: "140px",
-    height: "140px",
-    borderRadius: "50%",
-    backgroundColor: "#e5e7eb",
-    color: "#6a6e77ff",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "32px",
-    fontWeight: "600",
-    border: "3px solid #f3f4f6",
-    marginTop: "50px",
-    marginLeft: "100px", // <-- added margin right
-  },
-  profileInfo: {
-    textAlign: "center",
-    marginLeft: "100px",
-  },
-  profileName: {
-    fontSize: "20px",
-    fontWeight: "600",
-    margin: "0 0 4px 0",
-    color: "#333",
-  },
-  profileUsername: {
-    fontSize: "14px",
-    color: "#6b7280",
-    margin: "0",
-    fontWeight: "400",
-  },
-  userTabs: {
-    display: "flex",
-    borderBottom: "1px solid #e5e7eb",
-    marginBottom: "24px",
-  },
-  userTab: {
-    padding: "12px 24px",
-    backgroundColor: "transparent",
-    border: "none",
-    cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: "500",
-  },
-  userTabActive: {
-    color: "#b91c1c",
-    borderBottomColor: "#b91c1c",
-    backgroundColor: "#fee2e2",
-  },
-  userSection: {
-    padding: "16px 0",
-  },
-  formRow: {
-    display: "flex",
-    gap: "20px",
-    marginBottom: "20px",
-    flexWrap: "wrap",
-  },
-  sectionHeader: {
-    marginBottom: "24px",
-  },
-  sectionTitle: {
-    fontSize: "18px",
-    fontWeight: "600",
-    color: "#D2691E",
-    marginBottom: "8px",
-  },
-  sectionDivider: {
-    height: "3px",
-    backgroundColor: "#D2691E",
-    width: "100%",
-    borderRadius: "2px",
-  },
-  nameRow: {
-    display: "flex",
-    gap: "12px",
-  },
-  nameInput: {
-    flex: 1,
-    padding: "12px 16px",
-    border: "1px solid #d1d5db",
-    borderRadius: "6px",
-    fontSize: "14px",
-    outline: "none",
-    transition: "all 0.2s ease",
-  },
-  fullWidthInput: {
-    width: "100%",
-    padding: "12px 16px",
-    border: "1px solid #d1d5db",
-    borderRadius: "6px",
-    fontSize: "14px",
-    outline: "none",
-    transition: "all 0.2s ease",
-  },
-  passwordContainer: {
-    position: "relative",
-    width: "100%",
-  },
-  passwordInput: {
-    width: "100%",
-    padding: "12px 36px 12px 12px", // space for toggle icon
-    border: "1px solid #ccc",
-    borderRadius: "6px",
-    fontSize: "14px",
-    outline: "none",
-    boxSizing: "border-box",
-    transition: "all 0.2s ease",
-  },
-  passwordToggle: {
-    position: "absolute",
-    top: "50%",
-    right: "12px",
-    transform: "translateY(-50%)",
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-    color: "#6b7280",
-    padding: "0",
-    lineHeight: "1",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addUserBtn: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    padding: "10px 20px",
-    backgroundColor: "#2e7d32",
-    color: "#fff",
-    border: "none",
-    borderRadius: "6px",
-    cursor: "pointer",
-    fontSize: "14px",
-    fontWeight: "500",
-  },
-  emptyState: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    textAlign: "center",
-    padding: "40px",
-    color: "#6b7280",
-    gap: "10px",
-  },
-  usersTable: {
-    border: "1px solid #e5e7eb",
-    borderRadius: "8px",
-    overflow: "hidden",
-    maxHeight: "400px", // adjust height as needed
-    overflowY: "auto", // enables vertical scrolling
-  },
-  tableHeader: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr 2fr 1fr 1fr 1fr 80px",
-    backgroundColor: "#f9fafb",
-    borderBottom: "1px solid #e5e7eb",
-  },
-  tableHeaderCell: {
-    padding: "12px",
-    fontSize: "12px",
-    fontWeight: "600",
-    color: "#374151",
-    textTransform: "uppercase",
-  },
-  tableRow: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr 2fr 1fr 1fr 1fr 80px",
-    borderBottom: "1px solid #e5e7eb",
-  },
-  tableCell: {
-    padding: "12px",
-    fontSize: "14px",
-    color: "#374151",
-    display: "flex",
-    alignItems: "center",
-  },
-  roleBadge: {
-    padding: "4px 8px",
-    backgroundColor: "#dbeafe",
-    color: "#1e40af",
-    borderRadius: "12px",
-    fontSize: "12px",
-    fontWeight: "500",
-  },
-  statusBadge: {
-    padding: "4px 8px",
-    borderRadius: "12px",
-    fontSize: "12px",
-    fontWeight: "500",
-    color: "#fff", // red for deactivated
-    backgroundColor: "#52c41a", // green for active
-  },
-  dropdown: {
-    position: "relative",
-  },
-  dropdownBtn: {
-    background: "none",
-    border: "none",
-    cursor: "pointer",
-    padding: "4px",
-    borderRadius: "4px",
-  },
-  dropdownMenu: {
-    position: "absolute",
-    right: "0",
-    top: "100%",
-    backgroundColor: "#fff",
-    border: "1px solid #e5e7eb",
-    borderRadius: "6px",
-    boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
-    zIndex: 10,
-    minWidth: "120px",
-  },
-  dropdownItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    width: "100%",
-    padding: "8px 12px",
-    backgroundColor: "transparent",
-    border: "none",
-    cursor: "pointer",
-    fontSize: "14px",
-    color: "#374151",
-  },
-  dropdownItemDanger: {
-    color: "#dc2626",
-  },
-  alertBox: {
-    position: "fixed",
-    top: "20px",
-    left: "50%",
-    transform: "translateX(-50%)",
-    padding: "14px 24px",
-    borderRadius: "12px",
-    fontSize: "15px",
-    fontWeight: "600",
-    color: "white",
-    boxShadow: "0 6px 14px rgba(0,0,0,0.2)",
-    zIndex: 1000,
-    textAlign: "center",
-    minWidth: "250px",
-    maxWidth: "500px",
-    transition: "opacity 0.3s ease-in-out",
-  },
-  alertSuccess: {
-    backgroundColor: "#16a34a", // green
-  },
-  alertError: {
-    backgroundColor: "#dc2626", // red
-  },
 }
 
 export default CtuSettings

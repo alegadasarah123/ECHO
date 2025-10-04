@@ -1150,6 +1150,7 @@ def search_vets(request):
 # -------------------- CREATE POST --------------------
 
 
+# -------------------- HELPER FUNCTIONS --------------------
 def _get_user_from_cookie(request):
     token = request.COOKIES.get("access_token")
     if not token:
@@ -1174,65 +1175,141 @@ def _get_user_from_cookie(request):
         logging.exception("Supabase auth request failed")
         return None, Response({"error": "Auth service unavailable"}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-
+# -------------------- CREATE ANNOUNCEMENT --------------------
 @api_view(["POST"])
 def create_post(request):
-    """Create a post in Supabase announcement table"""
+    """
+    Create an announcement with optional images.
+    Images are uploaded to Supabase 'announcement-img' bucket.
+    Timestamps use UTC.
+    """
+    import json
+    import base64
+    import random
+    import logging
+    from datetime import datetime, timezone
 
-    # 🔐 Get user from cookie (Supabase auth)
     user_id, error_response = _get_user_from_cookie(request)
     if error_response:
-        return error_response  # return 401 if not authenticated
+        return error_response
 
-    # 📌 Request data
-    title = (request.data.get("announce_title") or "DVMF Announcement").strip()
+    title = (request.data.get("announce_title") or "CTU Announcement").strip()
     content = (request.data.get("announce_content") or "").strip()
-    image = request.data.get("announce_img")  # now None if not provided
+    images_data = request.data.get("announce_img", [])
 
-    if not content and not image:
-        return Response({"error": "Content or image is required"},
-                        status=status.HTTP_400_BAD_REQUEST)
+    if not content and not images_data:
+        return Response({"error": "Content or image is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    from datetime import datetime, timezone
     now_iso = datetime.now(timezone.utc).isoformat()
+    image_urls = []
 
-    # 📌 Insert row
+    for idx, img_b64 in enumerate(images_data):
+        try:
+            # Validate base64 image
+            if ";base64," not in img_b64:
+                logging.warning(f"Skipping invalid image at index {idx}")
+                continue
+
+            format, imgstr = img_b64.split(";base64,")
+            ext = format.split("/")[-1]
+            timestamp = int(datetime.now().timestamp())
+            file_name = f"{user_id}_{timestamp}_{random.randint(1000,9999)}.{ext}"
+            file_bytes = base64.b64decode(imgstr)
+
+            # Optional: delete first if exists to mimic overwrite
+            try:
+                sr_client.storage.from_("announcement-img").remove([file_name])
+            except Exception:
+                pass  # ignore if file does not exist
+
+            # Upload to Supabase
+            print(f"[DEBUG] Uploading file: {file_name}")
+            upload_res = sr_client.storage.from_("announcement-img").upload(
+                file_name,
+                file_bytes,
+                {"content-type": f"image/{ext}"}
+            )
+            print(f"[DEBUG] Upload response: {upload_res}")
+
+            # Get public URL
+            public_url = sr_client.storage.from_("announcement-img").get_public_url(file_name)
+            print(f"[DEBUG] Public URL: {public_url}")
+
+            if public_url and public_url.strip():
+                image_urls.append(public_url)
+            else:
+                logging.error(f"Failed to get public URL for {file_name}")
+
+        except Exception as e:
+            logging.exception(f"Image processing/upload failed at index {idx}: {e}")
+            continue
+
+    # Prepare row for insert
     row = {
-    # "announce_id": str(user_id),  # REMOVE THIS
-    "announce_title": title,
-    "announce_content": content,
-    "announce_img": request.data.get("announce_img"),  # or None if not provided
-    "announce_date": now_iso,
-    "user_id": user_id,  # ✅ Required to satisfy NOT NULL constraint
-}
+        "announce_title": title,
+        "announce_content": content,
+        "announce_img": json.dumps(image_urls),  # Convert list to JSON string
+        "announce_date": now_iso,
+        "user_id": user_id,
+    }
 
+    print(f"[DEBUG] Row to insert: {row}")
 
     try:
         result = sr_client.table("announcement").insert(row).execute()
+        print(f"[DEBUG] Insert result: {result}")
+
         if getattr(result, "data", None):
             return Response({"post": result.data[0]}, status=status.HTTP_201_CREATED)
-        return Response({"error": "Failed to create post"},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": "Failed to create post"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     except Exception:
         logging.exception("Supabase insert failed")
-        return Response({"error": "Failed to create post"},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({"error": "Failed to create post"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# -------------------- GET ANNOUNCEMENTS --------------------
 @api_view(["GET"])
 def get_announcements(request):
+    import json
+    import logging
+
     try:
-        # Fetch all rows from Supabase announcement table
         result = sr_client.table("announcement").select("*").execute()
         data = result.data or []
 
-        return Response({"data": data}, status=200)
+        for row in data:
+            imgs = row.get("announce_img", "[]")  # default to JSON empty array
+            normalized_urls = []
+
+            # Decode JSON string if needed
+            if isinstance(imgs, str):
+                try:
+                    imgs_list = json.loads(imgs)
+                except json.JSONDecodeError:
+                    imgs_list = []
+            elif isinstance(imgs, list):
+                imgs_list = imgs
+            else:
+                imgs_list = []
+
+            # Normalize each image URL
+            for img in imgs_list:
+                if isinstance(img, str) and img.strip():
+                    if img.startswith("http"):
+                        normalized_urls.append(img)
+                    else:
+                        # If stored as filename, get public URL
+                        public_url = sr_client.storage.from_("announcement-img").get_public_url(img)
+                        if public_url:
+                            normalized_urls.append(public_url)
+
+            row["announce_img"] = normalized_urls  # Always a list
+
+        return Response({"data": data}, status=status.HTTP_200_OK)
+
     except Exception:
         logging.exception("Failed to fetch announcements")
-        return Response({"error": "Failed to fetch announcements"}, status=500)
-    
-
-
+        return Response({"error": "Failed to fetch announcements"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # -------------------- SEARCH VETS --------------------
 # -------------------- SEARCH VETS --------------------
