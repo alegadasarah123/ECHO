@@ -1,3 +1,5 @@
+<<<<<<< HEAD
+=======
 import React, { useState, useEffect } from 'react';
 import {
   Calendar, Search, Bell, Eye, Grid, Clock, CheckCircle, 
@@ -5,10 +7,25 @@ import {
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { useNavigate } from "react-router-dom";
+>>>>>>> 2f518546479e092f571cff740b2cd7809e78f0fe
 import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
-import ProfileModal from '@/components/modal/profileModal';
 import NotificationModal from '@/components/modal/notificationModal';
+import ProfileModal from '@/components/modal/profileModal';
+import {
+  AlertCircle,
+  Bell,
+  Calendar as CalendarIcon,
+  CheckCircle,
+  Clock,
+  Eye,
+  Filter,
+  Grid,
+  Search,
+  X
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from "react-router-dom";
 
 const VetAppointmentRequest = () => {
   const [appointments, setAppointments] = useState([]);

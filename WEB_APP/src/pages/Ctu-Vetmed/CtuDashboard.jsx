@@ -4,550 +4,10 @@ import Sidebar from "@/components/CtuSidebar"
 import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, MapPin, Phone, User, XCircle } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import FloatingMessages from './CtuMessage'
+import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed";
-
-// Add skull loading styles
-const skullStyles = {
-  skullContainer: {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: "100%",
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 9999,
-  },
-  skullAnimation: {
-    fontSize: "64px",
-    animation: "pulse 1.5s infinite",
-  },
-  loadingText: {
-    marginTop: "16px",
-    fontSize: "18px",
-    fontWeight: "bold",
-    color: "#b91c1c",
-  },
-  // Keyframes for the pulse animation
-  "@keyframes pulse": {
-    "0%": { transform: "scale(1)", opacity: 1 },
-    "50%": { transform: "scale(1.1)", opacity: 0.8 },
-    "100%": { transform: "scale(1)", opacity: 1 },
-  },
-};
-
-const styles = {
-  ...skullStyles,
-  bodyWrapper: {
-    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
-    backgroundColor: "#f5f5f5",
-    display: "flex",
-    height: "100vh",
-    overflowX: "hidden",
-    width: "100%",
-  },
-  mainContent: {
-    flex: 1,
-    display: "flex",
-    flexDirection: "column",
-    width: "calc(100% - 250px)",
-    transition: "margin-left 0.3s ease",
-  },
-  logoutBtns: {
-    display: "flex",
-    alignItems: "center",
-    color: "white",
-    textDecoration: "none",
-    fontSize: "clamp(13px, 2vw, 15px)",
-    fontWeight: 500,
-    cursor: "pointer",
-    padding: "14px 40px",
-    borderRadius: "25px",
-    transition: "all 0.3s ease",
-    minHeight: "44px",
-  },
-  logoutBtnsHover: {
-    backgroundColor: "rgba(255, 255, 255, 0.1)",
-  },
-  logoutIcons: {
-    width: "20px",
-    height: "20px",
-    marginRight: "15px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "16px",
-    flexShrink: 0,
-  },
-  headers: {
-    background: "white",
-    padding: "8px 24px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-    flexWrap: "wrap",
-    gap: "55px",
-  },
-  dashboardContainer: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "12px 20px",
-    background: "transparent",
-  },
-  dashboardTitle: {
-    fontSize: "25px",
-    fontWeight: "bold",
-    color: "#da2424ff",
-  },
-  dashboardTime: {
-    fontSize: "16px",
-    fontWeight: 500,
-    color: "#666",
-    marginLeft: "20px",
-  },
-  notificationBtn: {
-    position: "relative",
-    background: "transparent",
-    border: "none",
-    cursor: "pointer",
-    padding: "8px",
-    borderRadius: "50%",
-  },
-  notificationBell: {
-    fontSize: "20px",
-    color: "#666",
-    cursor: "pointer",
-    position: "relative",
-    marginRight: "20px",
-    padding: "8px",
-    minHeight: "44px",
-    minWidth: "44px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  badge: {
-    position: "absolute",
-    top: "2px",
-    right: "2px",
-    backgroundColor: "#ef4444",
-    color: "#fff",
-    borderRadius: "50%",
-    padding: "2px 6px",
-    fontSize: "12px",
-    fontWeight: "bold",
-  },
-  contentAreas: {
-    flex: 1,
-    padding: "24px",
-    background: "#f5f5f5",
-    overflowY: "auto",
-  },
-  statsContainers: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr 1fr",
-    gap: "24px",
-    marginBottom: "24px",
-  },
-  statCard: {
-    background: "white",
-    padding: "24px",
-    borderRadius: "10px",
-    boxShadow: "0 1px 3px rgba(0, 0, 0, 0.1)",
-    transition: "transform 0.2s",
-    cursor: "pointer",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    textAlign: "center",
-  },
-  statCardHover: {
-    transform: "translateY(-2px)",
-  },
-  statIcon: {
-   marginRight: "10px",
-    padding: "12px",
-    borderRadius: "50%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  
-  pendingIcon: {
-    backgroundColor: "#fef3c7",
-    color: "#d97706",
-  },
-  approvedIcon: {
-    backgroundColor: "#dcfce7",
-    color: "#16a34a",
-  },
-  declinedIcon: {
-    backgroundColor: "#fee2e2",
-    color: "#dc2626",
-  },
-  statTitle: {
-     color: "#666",
-     fontSize: "14px",
-    fontWeight: "500",
-  },
-  
-  statNumbers: {
-    fontSize: "36px",
-    fontWeight: "bold",
-    color: "#b91c1c",
-  },
-  mainGrid: {
-    display: "grid",
-    gridTemplateColumns: "1fr 400px",
-    gap: "24px",
-  },
-  recentActivity: {
-    background: "#fff",
-    padding: "20px",
-    borderRadius: "12px",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-    border: "1px solid #fee2e2",
-    maxHeight: "600px",
-    overflowY: "auto",
-  },
-  activityHeader: {
-    fontSize: "20px",
-    fontWeight: "bold",
-    marginBottom: "4px",
-    color: "#dc2626",
-  },
-  activitySubtitle: {
-    fontSize: "14px",
-    color: "#666",
-    marginBottom: "20px",
-  },
-  activityCards: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    maxHeight: "300px",
-    overflowY: "auto",
-  },
-  activityCard: {
-    borderRadius: "12px",
-    padding: "10px",
-    display: "flex",
-    alignItems: "center",
-    gap: "10px",
-    transition: "all 0.3s ease",
-    position: "relative",
-    overflow: "hidden",
-  },
-  // Enhanced color variations for activity cards
-  activityCard0: {
-    background: "linear-gradient(135deg, #fef2f2 0%, #fff 100%)",
-    border: "1px solid #fca5a5",
-  },
-  activityCard1: {
-    background: "linear-gradient(135deg, #eff6ff 0%, #fff 100%)",
-    border: "1px solid #93c5fd",
-  },
-  activityCard2: {
-    background: "linear-gradient(135deg, #ecfdf5 0%, #fff 100%)",
-    border: "1px solid #86efac",
-  },
-  activityCard3: {
-    background: "linear-gradient(135deg, #faf5ff 0%, #fff 100%)",
-    border: "1px solid #c4b5fd",
-  },
-  activityCard4: {
-    background: "linear-gradient(135deg, #fff7ed 0%, #fff 100%)",
-    border: "1px solid #fdba74",
-  },
-  activityCard5: {
-    background: "linear-gradient(135deg, #f0f9ff 0%, #fff 100%)",
-    border: "1px solid #7dd3fc",
-  },
-  activityCard6: {
-    background: "linear-gradient(135deg, #f0fdf4 0%, #fff 100%)",
-    border: "1px solid #bbf7d0",
-  },
-  activityCard7: {
-    background: "linear-gradient(135deg, #fefce8 0%, #fff 100%)",
-    border: "1px solid #fde047",
-  },
-  activityCard8: {
-    background: "linear-gradient(135deg, #fdf2f8 0%, #fff 100%)",
-    border: "1px solid #f9a8d4",
-  },
-  activityCard9: {
-    background: "linear-gradient(135deg, #f3e8ff 0%, #fff 100%)",
-    border: "1px solid #d8b4fe",
-  },
-  activityAvatar: {
-    color: "white",
-    fontWeight: "bold",
-    borderRadius: "50%",
-    width: "32px",
-    height: "32px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: "12px",
-    flexShrink: 0,
-  },
-  // Enhanced color variations for avatars
-  activityAvatar0: {
-    background: "linear-gradient(135deg, #dc2626, #ef4444)",
-    boxShadow: "0 2px 8px rgba(220, 38, 38, 0.3)",
-  },
-  activityAvatar1: {
-    background: "linear-gradient(135deg, #2563eb, #3b82f6)",
-    boxShadow: "0 2px 8px rgba(37, 99, 235, 0.3)",
-  },
-  activityAvatar2: {
-    background: "linear-gradient(135deg, #059669, #10b981)",
-    boxShadow: "0 2px 8px rgba(5, 150, 105, 0.3)",
-  },
-  activityAvatar3: {
-    background: "linear-gradient(135deg, #7c3aed, #8b5cf6)",
-    boxShadow: "0 2px 8px rgba(124, 58, 237, 0.3)",
-  },
-  activityAvatar4: {
-    background: "linear-gradient(135deg, #ea580c, #f97316)",
-    boxShadow: "0 2px 8px rgba(234, 88, 12, 0.3)",
-  },
-  activityAvatar5: {
-    background: "linear-gradient(135deg, #0891b2, #06b6d4)",
-    boxShadow: "0 2px 8px rgba(8, 145, 178, 0.3)",
-  },
-  activityAvatar6: {
-    background: "linear-gradient(135deg, #15803d, #22c55e)",
-    boxShadow: "0 2px 8px rgba(21, 128, 61, 0.3)",
-  },
-  activityAvatar7: {
-    background: "linear-gradient(135deg, #a16207, #eab308)",
-    boxShadow: "0 2px 8px rgba(161, 98, 7, 0.3)",
-  },
-  activityAvatar8: {
-    background: "linear-gradient(135deg, #be185d, #ec4899)",
-    boxShadow: "0 2px 8px rgba(190, 24, 93, 0.3)",
-  },
-  activityAvatar9: {
-    background: "linear-gradient(135deg, #6b21a8, #a855f7)",
-    boxShadow: "0 2px 8px rgba(107, 33, 168, 0.3)",
-  },
-  activityInfo: {
-    flex: 1,
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "3px 10px",
-  },
-  activityName: {
-    fontWeight: 600,
-    fontSize: "14px",
-    color: "#1f2937",
-    gridColumn: "1 / -1",
-  },
-  activityDetail: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "1px",
-  },
-  activityLabel: {
-    fontSize: "10px",
-    fontWeight: 500,
-    color: "#6b7280",
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-  },
-  activityValue: {
-    fontSize: "12px",
-    color: "#374151",
-  },
-  activityRole: {
-    padding: "4px 8px",
-    borderRadius: "12px",
-    fontSize: "10px",
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-  },
-  activityRolePending: {
-    background: "#fef3c7",
-    color: "#d97706",
-    border: "1px solid #fbbf24",
-  },
-  activityRoleApproved: {
-    background: "dcfce7",
-    color: "#16a34a",
-    border: "1px solid #4ade80",
-  },
-  activityRoleDeclined: {
-    background: "#fee2e2",
-    color: "#dc2626",
-    border: "1px solid #f87171",
-  },
-  activityDate: {
-    fontSize: "10px",
-    color: "#6b7280",
-    fontWeight: 500,
-    whiteSpace: "nowrap",
-  },
-  // SOS Emergency Styles
-  sosWidget: {
-    background: "white",
-    borderRadius: "12px",
-    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-    border: "1px solid #fee2e2",
-    padding: "20px",
-    maxHeight: "380px",
-    overflowY: "auto",
-  },
-  sosHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: "12px",
-    marginBottom: "16px",
-    paddingBottom: "12px",
-    borderBottom: "2px solid #fee2e2",
-  },
-  sosTitle: {
-    fontSize: "20px",
-    fontWeight: "bold",
-    color: "#dc2626",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-  },
-  sosSubtitle: {
-    fontSize: "14px",
-    color: "#666",
-    marginBottom: "16px",
-  },
-  sosList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "12px",
-  },
-  sosItem: {
-    background: "linear-gradient(135deg, #fef2f2 0%, #fff 100%)",
-    border: "1px solid #fca5a5",
-    borderRadius: "12px",
-    padding: "16px",
-    transition: "all 0.3s ease",
-    cursor: "pointer",
-    position: "relative",
-    overflow: "hidden",
-  },
-  sosItemHover: {
-    transform: "translateY(-2px)",
-    boxShadow: "0 8px 25px rgba(220, 38, 38, 0.15)",
-    borderColor: "#dc2626",
-  },
-  sosItemHeader: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: "12px",
-  },
-  sosEmergencyType: {
-    background: "#dc2626",
-    color: "white",
-    padding: "4px 12px",
-    borderRadius: "20px",
-    fontSize: "12px",
-    fontWeight: 600,
-    textTransform: "uppercase",
-    letterSpacing: "0.5px",
-  },
-  sosUrgent: {
-    background: "#ef4444",
-    animation: "pulse 2s infinite",
-  },
-  sosTime: {
-    fontSize: "12px",
-    color: "#6b7280",
-    fontWeight: 500,
-  },
-  sosDetails: {
-    display: "grid",
-    gridTemplateColumns: "1fr 1fr",
-    gap: "8px",
-    marginBottom: "12px",
-  },
-  sosDetailItem: {
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    fontSize: "13px",
-    color: "#374151",
-  },
-  sosLocation: {
-    background: "#f3f4f6",
-    padding: "8px 12px",
-    borderRadius: "8px",
-    fontSize: "12px",
-    color: "#4b5563",
-    fontStyle: "italic",
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-  },
-  chatWidget: {
-    position: "fixed",
-    bottom: "24px",
-    right: "24px",
-    zIndex: 1000,
-  },
-  chatButton: {
-    width: "64px",
-    height: "64px",
-    background: "#b91c1c",
-    border: "none",
-    borderRadius: "20px",
-    color: "white",
-    cursor: "pointer",
-    boxShadow: "0 4px 12px rgba(28, 44, 185, 0.3)",
-    transition: "all 0.3s ease",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-  chatDots: {
-    display: "flex",
-    gap: "6px",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  chatDot: {
-    width: "8px",
-    height: "8px",
-    background: "white",
-    borderRadius: "50%",
-  },
-  emptyState: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "center",
-    justifyContent: "center",
-    textAlign: "center",
-    padding: "2rem",
-    color: "#6b7280",
-  },
-  emptyStateH3: {
-    fontSize: "18px",
-    marginBottom: "8px",
-    color: "#374151",
-  },
-  emptyStateP: {
-    fontSize: "14px",
-  },
-}
+const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
 
 function CtuDashboard() {
   const navigate = useNavigate()
@@ -555,7 +15,7 @@ function CtuDashboard() {
   const [notifsOpen, setNotifsOpen] = useState(false)
   const [setIsLogoutModalOpen] = useState(false)
   const [setIsNotificationDropdownOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(true) // Add loading state
+  const [isLoading, setIsLoading] = useState(true)
 
   const [notifications, setNotifications] = useState([])
   const [recordCount, setrecordCount] = useState(0)
@@ -564,6 +24,11 @@ function CtuDashboard() {
   const [recentActivities, setRecentActivities] = useState([])
   const [sosEmergencies, setSosEmergencies] = useState([])
 
+  // Individual loading states for each section
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [activitiesLoading, setActivitiesLoading] = useState(true)
+  const [sosLoading, setSosLoading] = useState(true)
+
   const [time, setTime] = useState(new Date().toLocaleTimeString())
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
@@ -571,20 +36,116 @@ function CtuDashboard() {
   const notificationDropdownRef = useRef(null)
   const logoutModalRef = useRef(null)
 
+  // Skeleton Loader Components
+  const StatSkeleton = () => (
+    <div className="bg-white p-6 rounded-lg shadow-sm flex flex-col items-center text-center animate-pulse">
+      <div className="flex items-center gap-2 mb-3 w-full justify-center">
+        <div className="h-4 w-20 bg-gray-300 rounded"></div>
+        <div className="p-3 rounded-full flex items-center justify-center bg-gray-200">
+          <div className="w-6 h-6 bg-gray-300 rounded"></div>
+        </div>
+      </div>
+      <div className="h-10 w-16 bg-gray-300 rounded"></div>
+    </div>
+  )
+
+  const ActivitySkeleton = () => (
+    <div className="rounded-xl p-2.5 flex items-center gap-2.5 border border-gray-200 animate-pulse">
+      <div className="w-8 h-8 bg-gray-300 rounded-full flex-shrink-0"></div>
+      <div className="flex-1 grid grid-cols-2 gap-2">
+        <div className="h-4 bg-gray-300 rounded col-span-2"></div>
+        <div className="flex flex-col gap-1">
+          <div className="h-3 w-12 bg-gray-300 rounded"></div>
+          <div className="h-3 w-20 bg-gray-300 rounded"></div>
+        </div>
+        <div className="flex flex-col gap-1">
+          <div className="h-3 w-16 bg-gray-300 rounded"></div>
+          <div className="h-3 w-24 bg-gray-300 rounded"></div>
+        </div>
+      </div>
+      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+        <div className="h-6 w-16 bg-gray-300 rounded"></div>
+        <div className="h-3 w-12 bg-gray-300 rounded"></div>
+      </div>
+    </div>
+  )
+
+  const SosSkeleton = () => (
+    <div className="border border-gray-200 rounded-xl p-4 animate-pulse">
+      <div className="flex justify-between items-start mb-3">
+        <div className="h-6 w-16 bg-gray-300 rounded"></div>
+        <div className="h-3 w-12 bg-gray-300 rounded"></div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="flex items-center gap-1.5">
+          <div className="w-4 h-4 bg-gray-300 rounded"></div>
+          <div className="h-3 w-16 bg-gray-300 rounded"></div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="w-4 h-4 bg-gray-300 rounded"></div>
+          <div className="h-3 w-16 bg-gray-300 rounded"></div>
+        </div>
+      </div>
+      <div className="bg-gray-100 px-3 py-2 rounded-lg">
+        <div className="h-3 w-full bg-gray-300 rounded"></div>
+      </div>
+    </div>
+  )
+
   // Enhanced color assignment function
   const getColorIndex = (activity, index) => {
-    // Use a combination of index and string hash for better distribution
-    const stringHash = activity.title
-      .split("")
-      .reduce((acc, char) => acc + char.charCodeAt(0), 0)
-    
-    // Combine index and hash for better color distribution
+    const stringHash = activity.title.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
     return (index + stringHash) % 10
   }
-  
+
+  const getActivityCardClasses = (colorIndex) => {
+    const baseClasses = "rounded-xl p-2.5 flex items-center gap-2.5 transition-all duration-300 relative overflow-hidden border"
+    const colorVariants = [
+      "bg-gradient-to-br from-red-50 to-white border-red-300",
+      "bg-gradient-to-br from-blue-50 to-white border-blue-300",
+      "bg-gradient-to-br from-green-50 to-white border-green-300",
+      "bg-gradient-to-br from-purple-50 to-white border-purple-300",
+      "bg-gradient-to-br from-orange-50 to-white border-orange-300",
+      "bg-gradient-to-br from-cyan-50 to-white border-cyan-300",
+      "bg-gradient-to-br from-emerald-50 to-white border-emerald-300",
+      "bg-gradient-to-br from-yellow-50 to-white border-yellow-300",
+      "bg-gradient-to-br from-pink-50 to-white border-pink-300",
+      "bg-gradient-to-br from-violet-50 to-white border-violet-300",
+    ]
+    return `${baseClasses} ${colorVariants[colorIndex]}`
+  }
+
+  const getActivityAvatarClasses = (colorIndex) => {
+    const baseClasses = "text-white font-bold rounded-full w-8 h-8 flex items-center justify-center text-xs flex-shrink-0"
+    const colorVariants = [
+      "bg-gradient-to-br from-red-600 to-red-500 shadow-lg shadow-red-600/30",
+      "bg-gradient-to-br from-blue-600 to-blue-500 shadow-lg shadow-blue-600/30",
+      "bg-gradient-to-br from-green-600 to-green-500 shadow-lg shadow-green-600/30",
+      "bg-gradient-to-br from-purple-600 to-purple-500 shadow-lg shadow-purple-600/30",
+      "bg-gradient-to-br from-orange-600 to-orange-500 shadow-lg shadow-orange-600/30",
+      "bg-gradient-to-br from-cyan-600 to-cyan-500 shadow-lg shadow-cyan-600/30",
+      "bg-gradient-to-br from-emerald-600 to-emerald-500 shadow-lg shadow-emerald-600/30",
+      "bg-gradient-to-br from-yellow-600 to-yellow-500 shadow-lg shadow-yellow-600/30",
+      "bg-gradient-to-br from-pink-600 to-pink-500 shadow-lg shadow-pink-600/30",
+      "bg-gradient-to-br from-violet-600 to-violet-500 shadow-lg shadow-violet-600/30",
+    ]
+    return `${baseClasses} ${colorVariants[colorIndex]}`
+  }
+
+  const getRoleClasses = (status) => {
+    const baseClasses = "px-2 py-1 rounded-xl text-xs font-semibold uppercase tracking-wide border"
+    const statusVariants = {
+      pending: "bg-yellow-100 text-yellow-700 border-yellow-300",
+      approved: "bg-green-100 text-green-700 border-green-300",
+      declined: "bg-red-100 text-red-700 border-red-300",
+    }
+    return `${baseClasses} ${statusVariants[status] || statusVariants.pending}`
+  }
+
   // Data loading functions
   const loadStats = useCallback(() => {
     console.log("Loading statistics...")
+    setStatsLoading(true)
 
     fetch("http://127.0.0.1:8000/api/ctu_vetmed/status-counts/", {
       method: "GET",
@@ -598,16 +159,36 @@ function CtuDashboard() {
         setrecordCount(data.pending || 0)
         setvetCount(data.approved || 0)
         setDeclinedCount(data.declined || 0)
+        setStatsLoading(false)
       })
-      .catch((err) => console.error("Error fetching stats:", err))
+      .catch((err) => {
+        console.error("Error fetching stats:", err)
+        setStatsLoading(false)
+      })
   }, [])
 
   const loadRecentActivities = useCallback(() => {
     console.log("Loading recent activities...")
-    setRecentActivities([])
+    setActivitiesLoading(true)
+
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/recent-activity/", {
+      method: "GET",
+      credentials: "include",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
+        return res.json()
+      })
+      .then((data) => {
+        setRecentActivities(data)
+        setActivitiesLoading(false)
+      })
+      .catch((err) => {
+        console.error("Error fetching activity:", err)
+        setActivitiesLoading(false)
+      })
   }, [])
 
-  // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
@@ -628,45 +209,45 @@ function CtuDashboard() {
   }, [])
 
   const loadSosEmergencies = useCallback(() => {
-    console.log("Loading SOS emergencies...");
+    console.log("Loading SOS emergencies...")
+    setSosLoading(true)
 
     fetch("http://127.0.0.1:8000/api/ctu_vetmed/sos_requests/", {
       method: "GET",
       credentials: "include",
     })
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-        return res.json();
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
+        return res.json()
       })
       .then((data) => {
-        console.log("Raw SOS data:", data);
+        console.log("Raw SOS data:", data)
 
-        let sosData = [];
-        if (Array.isArray(data)) sosData = data;
-        else if (data.sos_requests && Array.isArray(data.sos_requests))
-          sosData = data.sos_requests;
-        else if (data.results && Array.isArray(data.results)) sosData = data.results;
+        let sosData = []
+        if (Array.isArray(data)) sosData = data
+        else if (data.sos_requests && Array.isArray(data.sos_requests)) sosData = data.sos_requests
+        else if (data.results && Array.isArray(data.results)) sosData = data.results
         else {
-          console.warn("Unexpected data structure:", data);
-          setSosEmergencies([]);
-          return;
+          console.warn("Unexpected data structure:", data)
+          setSosEmergencies([])
+          setSosLoading(false)
+          return
         }
 
         const formatted = sosData.map((item) => {
-          // Safe "time ago"
-          let timeAgo = "Unknown time";
+          let timeAgo = "Unknown time"
           try {
             if (item.time || item.created_at) {
-              const createdDate = new Date(item.time || item.created_at);
-              const diffMs = Date.now() - createdDate.getTime();
-              const diffMin = Math.floor(diffMs / 60000);
-              if (diffMin < 1) timeAgo = "Just now";
-              else if (diffMin < 60) timeAgo = `${diffMin} min ago`;
-              else if (diffMin < 1440) timeAgo = `${Math.floor(diffMin / 60)} hr ago`;
-              else timeAgo = `${Math.floor(diffMin / 1440)} day(s) ago`;
+              const createdDate = new Date(item.time || item.created_at)
+              const diffMs = Date.now() - createdDate.getTime()
+              const diffMin = Math.floor(diffMs / 60000)
+              if (diffMin < 1) timeAgo = "Just now"
+              else if (diffMin < 60) timeAgo = `${diffMin} min ago`
+              else if (diffMin < 1440) timeAgo = `${Math.floor(diffMin / 60)} hr ago`
+              else timeAgo = `${Math.floor(diffMin / 1440)} day(s) ago`
             }
           } catch {
-            console.warn("Invalid timestamp:", item.time || item.created_at);
+            console.warn("Invalid timestamp:", item.time || item.created_at)
           }
 
           return {
@@ -678,79 +259,64 @@ function CtuDashboard() {
             time: timeAgo,
             urgent: item.urgent === true || item.status === "pending",
             description: item.description || "No description provided",
-          };
-        });
+          }
+        })
 
-        console.log("Formatted SOS data:", formatted);
-        setSosEmergencies(formatted);
+        console.log("Formatted SOS data:", formatted)
+        setSosEmergencies(formatted)
+        setSosLoading(false)
       })
       .catch((err) => {
-        console.error("Error fetching SOS emergencies:", err);
-      });
-  }, []);
+        console.error("Error fetching SOS emergencies:", err)
+        setSosLoading(false)
+      })
+  }, [])
 
   const loadDashboardData = useCallback(() => {
-    setIsLoading(true); // Set loading to true when starting to load data
+    setIsLoading(true)
     
-    Promise.all([
-      loadStats(),
-      loadRecentActivities(),
-      loadNotifications(),
-      loadSosEmergencies()
-    ]).then(() => {
-      setIsLoading(false); // Set loading to false when all data is loaded
-    }).catch((error) => {
-      console.error("Error loading dashboard data:", error);
-      setIsLoading(false); // Ensure loading is false even if there's an error
-    });
+    // Reset all loading states
+    setStatsLoading(true)
+    setActivitiesLoading(true)
+    setSosLoading(true)
+
+    Promise.all([loadStats(), loadRecentActivities(), loadNotifications(), loadSosEmergencies()])
+      .then(() => {
+        setIsLoading(false)
+      })
+      .catch((error) => {
+        console.error("Error loading dashboard data:", error)
+        setIsLoading(false)
+        // Ensure loading states are reset even on error
+        setStatsLoading(false)
+        setActivitiesLoading(false)
+        setSosLoading(false)
+      })
   }, [loadStats, loadRecentActivities, loadNotifications, loadSosEmergencies])
 
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
   }
 
-  // ✅ Auto-refresh every 30s
   useEffect(() => {
-    loadNotifications() // load once
+    loadNotifications()
 
     const interval = setInterval(() => {
       loadNotifications()
-    }, 30000) // 30 seconds
+    }, 30000)
 
     return () => clearInterval(interval)
   }, [loadNotifications])
 
-  // Fetch from Django backend
-  useEffect(() => {
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/recent-activity/", {
-      method: "GET",
-      credentials: "include",
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-        return res.json();
-      })
-      .then((data) => setRecentActivities(data))
-      .catch((err) => console.error("Error fetching activity:", err));
-  }, []);
-
-  // Effects
   useEffect(() => {
     console.log("Veterinary Dashboard initialized")
     loadDashboardData()
   }, [loadDashboardData])
 
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setTime(new Date().toLocaleTimeString())
-    }, 1000)
-
-    return () => clearInterval(timer)
-  }, [])
+  
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      // Close notification dropdown
       if (
         notificationBellRef.current &&
         !notificationBellRef.current.contains(event.target) &&
@@ -760,7 +326,6 @@ function CtuDashboard() {
         setIsNotificationDropdownOpen(false)
       }
 
-      // Close logout modal
       if (logoutModalRef.current && event.target === logoutModalRef.current) {
         closeLogoutModal()
       }
@@ -774,55 +339,37 @@ function CtuDashboard() {
 
   const handleSosItemClick = (emergency) => {
     console.log("SOS Emergency clicked:", emergency)
-    // Handle emergency action here
   }
 
-  // Add CSS for the pulse animation
-  useEffect(() => {
-    const style = document.createElement('style');
-    style.textContent = `
-      @keyframes pulse {
-        0% { transform: scale(1); opacity: 1; }
-        50% { transform: scale(1.1); opacity: 0.8; }
-        100% { transform: scale(1); opacity: 1; }
-      }
-    `;
-    document.head.appendChild(style);
-    
-    return () => {
-      document.head.removeChild(style);
-    };
-  }, []);
-
   return (
-    <div style={styles.bodyWrapper}>
-      {/* Skull Loading Overlay */}
+    <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
       {isLoading && (
-        <div style={styles.skullContainer}>
-          <div style={styles.skullAnimation}></div>
-          <div style={styles.loadingText}>Loading Dashboard...</div>
+        <div className="fixed top-0 left-0 w-full h-full bg-white/90 flex flex-col items-center justify-center z-[9999]">
+          <div className="text-6xl animate-pulse"></div>
+          <div className="mt-4 text-lg font-bold text-black">Loading Dashboard...</div>
         </div>
       )}
-      
+
       <Sidebar isOpen={isSidebarOpen} />
 
-      <div style={styles.mainContent}>
-        <header style={styles.headers}>
-          <div style={styles.dashboardContainer}>
-            <h2 style={styles.dashboardTitle}>Dashboard</h2>
-            <span style={styles.dashboardTime}>{time}</span>
+      <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
+        <header className="bg-white px-6 py-2 flex items-center justify-between shadow-sm flex-wrap gap-14">
+          <div className="flex items-center justify-between py-3 px-5 bg-transparent">
+            <h2 className="text-2xl font-bold text-black">Dashboard</h2>
+            
           </div>
           <button
-            style={styles.notificationBtn}
+            className="relative bg-transparent border-none cursor-pointer p-2 rounded-full"
             onClick={() => setNotifsOpen(!notifsOpen)}
           >
             <Bell size={24} color="#374151" />
             {notifications.length > 0 && (
-              <span style={styles.badge}>{notifications.length}</span>
+              <span className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold">
+                {notifications.length}
+              </span>
             )}
           </button>
 
-          {/* 📩 Notification Modal */}
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
@@ -833,179 +380,180 @@ function CtuDashboard() {
           />
         </header>
 
-        <div style={styles.contentAreas}>
-          <div style={styles.statsContainers}>
-            <div style={styles.statCard}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-                <div style={styles.statTitle}>Total Pending</div>
-                <div style={{ ...styles.statIcon, ...styles.pendingIcon }}>
-                  <Clock size={24} />
+        <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
+          {/* Stat Count Section */}
+          <div className="grid grid-cols-3 gap-6 mb-6">
+            {statsLoading ? (
+              <>
+                <StatSkeleton />
+                <StatSkeleton />
+                <StatSkeleton />
+              </>
+            ) : (
+              <>
+                <div className="bg-white p-6 rounded-lg shadow-sm transition-transform duration-200 cursor-pointer hover:-translate-y-0.5 flex flex-col items-center text-center">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="text-gray-600 text-sm font-medium">Total Pending</div>
+                    <div className="mr-2.5 p-3 rounded-full flex items-center justify-center bg-yellow-100 text-yellow-600">
+                      <Clock size={24} />
+                    </div>
+                  </div>
+                  <div className="text-4xl font-bold text-black">{recordCount}</div>
                 </div>
-              </div>
-              <div style={styles.statNumbers}>{recordCount}</div>
-            </div>
 
-            <div style={styles.statCard}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-                <div style={styles.statTitle}>Total Approved</div>
-                <div style={{ ...styles.statIcon, ...styles.approvedIcon }}>
-                  <CheckCircle size={24} />
+                <div className="bg-white p-6 rounded-lg shadow-sm transition-transform duration-200 cursor-pointer hover:-translate-y-0.5 flex flex-col items-center text-center">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="text-gray-600 text-sm font-medium">Total Approved</div>
+                    <div className="mr-2.5 p-3 rounded-full flex items-center justify-center bg-green-100 text-green-600">
+                      <CheckCircle size={24} />
+                    </div>
+                  </div>
+                  <div className="text-4xl font-bold text-black">{vetCount}</div>
                 </div>
-              </div>
-              <div style={styles.statNumbers}>{vetCount}</div>
-            </div>
 
-            <div style={styles.statCard}>
-              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "12px" }}>
-                <div style={styles.statTitle}>Total Declined</div>
-                <div style={{ ...styles.statIcon, ...styles.declinedIcon }}>
-                  <XCircle size={24} />
+                <div className="bg-white p-6 rounded-lg shadow-sm transition-transform duration-200 cursor-pointer hover:-translate-y-0.5 flex flex-col items-center text-center">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="text-gray-600 text-sm font-medium">Total Declined</div>
+                    <div className="mr-2.5 p-3 rounded-full flex items-center justify-center bg-red-100 text-red-600">
+                      <XCircle size={24} />
+                    </div>
+                  </div>
+                  <div className="text-4xl font-bold text-black">{declinedCount || 0}</div>
                 </div>
-              </div>
-              <div style={styles.statNumbers}>{declinedCount || 0}</div>
-            </div>
+              </>
+            )}
           </div>
 
-          <div style={styles.mainGrid}>
-              <div style={styles.recentActivity}>
-                <h3 style={styles.activityHeader}>Recent Activity</h3>
-                <p style={styles.activitySubtitle}>Latest updates from the system</p>
+          <div className="grid grid-cols-[1fr_400px] gap-6">
+            {/* Recent Activity Section */}
+            <div className="bg-white p-5 rounded-xl shadow-lg border border-red-100 max-h-[600px] overflow-y-auto">
+              <h3 className="text-xl font-bold mb-1 text-black">Recent Activity</h3>
+              <p className="text-sm text-gray-600 mb-5">Latest added veterinary account</p>
 
-                {recentActivities.filter(activity => {
-  const activityDate = new Date(activity.date)
-  const now = new Date()
-  const diffTime = now - activityDate
-  const diffDays = diffTime / (1000 * 60 * 60 * 24)
-  return diffDays <= 2
-}).length === 0 ? (
-  <div style={styles.emptyState}>
-    <ClipboardList size={48} style={{ color: "#6b7280" }} /> {/* neutral gray */}
-    <h3 style={styles.emptyStateH3}>No recent activity</h3>
-    <p style={styles.emptyStateP}>Activity will appear here when available</p>
-  </div>
-) : (
-  <div style={styles.activityCards}>
-    {recentActivities
-      .filter(activity => {
-        const activityDate = new Date(activity.date)
-        const now = new Date()
-        const diffTime = now - activityDate
-        const diffDays = diffTime / (1000 * 60 * 60 * 24)
-        return diffDays <= 2
-      })
-      .map((activity, index) => {
-        const initials = activity.title
-          .split(" ")
-          .map(word => word[0])
-          .join("")
-          .toUpperCase()
+              {activitiesLoading ? (
+                <div className="flex flex-col gap-2">
+                  <ActivitySkeleton />
+                  <ActivitySkeleton />
+                  <ActivitySkeleton />
+                </div>
+              ) : recentActivities.filter((activity) => {
+                const activityDate = new Date(activity.date)
+                const now = new Date()
+                const diffTime = now - activityDate
+                const diffDays = diffTime / (1000 * 60 * 60 * 24)
+                return diffDays <= 2
+              }).length === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center p-8 text-gray-500">
+                  <ClipboardList size={48} className="text-gray-500" />
+                  <h3 className="text-lg mb-2 text-gray-700">No recent activity</h3>
+                  <p className="text-sm">Activity will appear here when available</p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+                  {recentActivities
+                    .filter((activity) => {
+                      const activityDate = new Date(activity.date)
+                      const now = new Date()
+                      const diffTime = now - activityDate
+                      const diffDays = diffTime / (1000 * 60 * 60 * 24)
+                      return diffDays <= 2
+                    })
+                    .map((activity, index) => {
+                      const initials = activity.title
+                        .split(" ")
+                        .map((word) => word[0])
+                        .join("")
+                        .toUpperCase()
 
-        const colorIndex = getColorIndex(activity, index)
+                      const colorIndex = getColorIndex(activity, index)
 
-        const getActivityCardStyle = colorIndex => ({
-          ...styles.activityCard,
-          ...styles[`activityCard${colorIndex}`],
-        })
-
-        const getActivityAvatarStyle = colorIndex => ({
-          ...styles.activityAvatar,
-          ...styles[`activityAvatar${colorIndex}`],
-        })
-
-        const getRoleStyle = status => ({
-          ...styles.activityRole,
-          ...styles[`activityRole${status.charAt(0).toUpperCase() + status.slice(1)}`],
-        })
-
-        return (
-          <div key={activity.id} style={getActivityCardStyle(colorIndex)}>
-            <div style={getActivityAvatarStyle(colorIndex)}>{initials}</div>
-            <div style={styles.activityInfo}>
-              <div style={styles.activityName}>{activity.title}</div>
-              <div style={styles.activityDetail}>
-                <span style={styles.activityLabel}>Email</span>
-                <span style={styles.activityValue}>{activity.email}</span>
-              </div>
-              <div style={styles.activityDetail}>
-                <span style={styles.activityLabel}>Description</span>
-                <span style={styles.activityValue}>
-                  {activity.description || "System activity update"}
-                </span>
-              </div>
+                      return (
+                        <div key={activity.id} className={getActivityCardClasses(colorIndex)}>
+                          <div className={getActivityAvatarClasses(colorIndex)}>{initials}</div>
+                          <div className="flex-1 grid grid-cols-2 gap-1 gap-x-2.5">
+                            <div className="font-semibold text-sm text-gray-800 col-span-2">{activity.title}</div>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Email</span>
+                              <span className="text-xs text-gray-700">{activity.email}</span>
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                Description
+                              </span>
+                              <span className="text-xs text-gray-700">
+                                {activity.description || "System activity update"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={getRoleClasses(activity.status)}>{activity.status}</span>
+                            <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
+                              {new Date(activity.date).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year: "numeric",
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
+              )}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: "4px" }}>
-              <span style={getRoleStyle(activity.status)}>{activity.status}</span>
-              <span style={styles.activityDate}>
-                {new Date(activity.date).toLocaleDateString("en-US", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-              </span>
-            </div>
-          </div>
-        )
-      })}
-  </div>
-)}
 
-              </div>
-
-
-            {/* SOS Emergency Widget */}
-              <div style={styles.sosWidget}>
-              <div style={styles.sosHeader}>
-                <h3 style={styles.sosTitle}>
+            {/* SOS Emergency Section */}
+            <div className="bg-white rounded-xl shadow-lg border border-red-100 p-5 max-h-96 overflow-y-auto">
+              <div className="flex items-center gap-3 mb-4 pb-3 border-b-2 border-red-100">
+                <h3 className="text-xl font-bold text-black flex items-center gap-2">
                   <AlertTriangle size={24} />
                   SOS Emergency
                 </h3>
               </div>
-              <p style={styles.sosSubtitle}>Active emergency contacts and alerts</p>
+              <p className="text-sm text-gray-600 mb-4">Active emergency contacts and alerts</p>
 
-              {sosEmergencies.length === 0 ? (
-                <div style={styles.emptyState}>
+              {sosLoading ? (
+                <div className="flex flex-col gap-3">
+                  <SosSkeleton />
+                  <SosSkeleton />
+                </div>
+              ) : sosEmergencies.length === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center p-8 text-gray-500">
                   <AlertTriangle size={48} />
-                  <h3 style={styles.emptyStateH3}>No active emergencies</h3>
-                  <p style={styles.emptyStateP}>Emergency alerts will appear here</p>
+                  <h3 className="text-lg mb-2 text-gray-700">No active emergencies</h3>
+                  <p className="text-sm">Emergency alerts will appear here</p>
                 </div>
               ) : (
-                <div style={styles.sosList}>
+                <div className="flex flex-col gap-3">
                   {sosEmergencies.map((emergency) => (
                     <div
                       key={emergency.id}
-                      style={styles.sosItem}
+                      className="bg-gradient-to-br from-red-50 to-white border border-red-300 rounded-xl p-4 transition-all duration-300 cursor-pointer relative overflow-hidden hover:-translate-y-0.5 hover:shadow-lg hover:shadow-red-600/15 hover:border-red-600"
                       onClick={() => handleSosItemClick(emergency)}
-                      onMouseEnter={(e) => {
-                        Object.assign(e.currentTarget.style, styles.sosItemHover)
-                      }}
-                      onMouseLeave={(e) => {
-                        Object.assign(e.currentTarget.style, styles.sosItem)
-                      }}
                     >
-                      <div style={styles.sosItemHeader}>
+                      <div className="flex justify-between items-start mb-3">
                         <span
-                          style={{
-                            ...styles.sosEmergencyType,
-                            ...(emergency.urgent ? styles.sosUrgent : {}),
-                          }}
+                          className={`px-3 py-1 rounded-2xl text-xs font-semibold uppercase tracking-wide ${
+                            emergency.urgent ? "bg-red-500 text-white" : "bg-red-600 text-white"
+                          }`}
                         >
                           {emergency.type}
                         </span>
-                        <span style={styles.sosTime}>{emergency.time}</span>
+                        <span className="text-xs text-gray-500 font-medium">{emergency.time}</span>
                       </div>
 
-                      <div style={styles.sosDetails}>
-                        <div style={styles.sosDetailItem}>
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        <div className="flex items-center gap-1.5 text-xs text-gray-700">
                           <User size={16} />
                           <span>{emergency.contact}</span>
                         </div>
-                        <div style={styles.sosDetailItem}>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-700">
                           <Phone size={16} />
                           <span>{emergency.phone}</span>
                         </div>
                       </div>
 
-                      <div style={styles.sosLocation}>
+                      <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-600 italic flex items-center gap-1.5">
                         <MapPin size={14} />
                         <span>{emergency.location}</span>
                       </div>
