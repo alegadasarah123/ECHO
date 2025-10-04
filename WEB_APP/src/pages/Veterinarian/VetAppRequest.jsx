@@ -1,32 +1,68 @@
 import React, { useState, useEffect } from 'react';
-import {Calendar, FileText, Search, Clock, Bell, Eye, Trash2, PawPrint, User, Phone, X, AlertTriangle, Tag, Clock10Icon, CheckCircle, XCircle, MessageCircle} from 'lucide-react';
+import {Calendar, FileText, Search, Clock, Bell, Eye, Trash2, PawPrint, User, Phone, X, AlertTriangle, Tag, Clock10Icon, CheckCircle, XCircle, MessageCircle, ChevronLeft, ChevronRight, RefreshCw} from 'lucide-react';
 import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
 import ProfileModal from '@/components/modal/profileModal';
 import NotificationModal from '@/components/modal/notificationModal';
 
-
 const API_BASE = "http://localhost:8000/api/veterinarian";
 
-// Skeleton Loading Components
-const SkeletonFilterBar = () => (
-  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-    {/* Search Skeleton */}
-    <div className="relative w-[350px] max-w-full flex items-center bg-gray-200 rounded-xl overflow-hidden animate-pulse">
-      <div className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 bg-gray-300 rounded-full"></div>
-      <div className="w-full pl-12 pr-4 py-3 h-12 bg-gray-200"></div>
-    </div>
+// Alert Component - Compact version
+const Alert = ({ message, type = 'success', onClose, duration = 5000 }) => {
+  useEffect(() => {
+    if (duration > 0) {
+      const timer = setTimeout(() => {
+        onClose();
+      }, duration);
+      return () => clearTimeout(timer);
+    }
+  }, [duration, onClose]);
 
-    {/* Filters Skeleton */}
-    <div className="flex items-center justify-between md:justify-end flex-1 space-x-4">
-      <div className="flex items-center space-x-2 bg-gray-200 rounded-xl p-1">
-        {[1, 2, 3, 4].map((item) => (
-          <div key={item} className="px-4 py-2 rounded-lg bg-gray-300 animate-pulse w-24 h-10"></div>
-        ))}
-      </div>
+  const getAlertStyles = () => {
+    const baseStyles = "fixed top-4 left-1/2 transform -translate-x-1/2 z-[9999] px-4 py-3 rounded-xl shadow-lg border backdrop-blur-sm transition-all duration-300 ease-in-out flex items-center space-x-3 max-w-sm";
+    
+    switch (type) {
+      case 'success':
+        return `${baseStyles} bg-green-50 border-green-200 text-green-800`;
+      case 'error':
+        return `${baseStyles} bg-red-50 border-red-200 text-red-800`;
+      case 'warning':
+        return `${baseStyles} bg-yellow-50 border-yellow-200 text-yellow-800`;
+      case 'info':
+        return `${baseStyles} bg-blue-50 border-blue-200 text-blue-800`;
+      default:
+        return `${baseStyles} bg-gray-50 border-gray-200 text-gray-800`;
+    }
+  };
+
+  const getIcon = () => {
+    switch (type) {
+      case 'success':
+        return <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />;
+      case 'error':
+        return <XCircle className="w-5 h-5 text-red-600 flex-shrink-0" />;
+      case 'warning':
+        return <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0" />;
+      case 'info':
+        return <Clock className="w-5 h-5 text-blue-600 flex-shrink-0" />;
+      default:
+        return <Bell className="w-5 h-5 text-gray-600 flex-shrink-0" />;
+    }
+  };
+
+  return (
+    <div className={getAlertStyles()}>
+      {getIcon()}
+      <span className="font-medium text-sm whitespace-nowrap">{message}</span>
+      <button
+        onClick={onClose}
+        className="flex-shrink-0 p-1 hover:bg-black/10 rounded-full transition-colors duration-200 ml-2"
+      >
+        <X className="w-4 h-4" />
+      </button>
     </div>
-  </div>
-);
+  );
+};
 
 const SkeletonTableRow = () => (
   <tr className="animate-pulse">
@@ -70,7 +106,23 @@ const VetAppointmentRequest = () => {
   const [appointments, setAppointments] = useState([]);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [alert, setAlert] = useState({ show: false, message: '', type: 'success' });
   
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
+  
+  // Show alert function
+  const showAlert = (message, type = 'success') => {
+    setAlert({ show: true, message, type });
+  };
+
+  // Hide alert function
+  const hideAlert = () => {
+    setAlert(prev => ({ ...prev, show: false }));
+  };
+
   useEffect(() => {
     fetchAppointments();
   }, []);
@@ -93,8 +145,14 @@ const VetAppointmentRequest = () => {
     fetchVetProfile();
   }, []);
 
+  // Reset to first page when filters or search changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedFilter, searchTerm]);
+
 const fetchAppointments = async () => {
   setIsLoading(true);
+  setIsRefreshing(true);
   try {
     const response = await fetch(`${API_BASE}/get_all_appointments/`, {
       method: 'GET',
@@ -115,7 +173,7 @@ const fetchAppointments = async () => {
         time: app.app_time,
         type: app.app_service,
         status: app.app_status,
-        notes: app.app_note,
+        complain: app.app_complain,
         declineReason: app.decline_reason || "",
       }));
 
@@ -131,10 +189,17 @@ const fetchAppointments = async () => {
     }
   } catch (err) {
     console.error("Failed to fetch appointments:", err);
+    showAlert('Failed to fetch appointments', 'error');
   } finally {
     setIsLoading(false);
+    setIsRefreshing(false);
   }
 };
+
+  const handleRefresh = () => {
+    fetchAppointments();
+    showAlert('Appointments refreshed', 'success');
+  };
 
   const handleDeclineWithReason = async (appointmentId, reason) => {
     try {
@@ -148,7 +213,7 @@ const fetchAppointments = async () => {
       });
       const data = await response.json();
       if (response.ok) {
-        alert("Appointment declined successfully");
+        showAlert("Appointment declined", 'success');
         // Close both modals
         setIsDeclineModalOpen(false);
         setIsDetailsModalOpen(false);
@@ -158,11 +223,11 @@ const fetchAppointments = async () => {
         // Refresh appointments if needed
         fetchAppointments();
       } else {
-        alert(data.error || "Failed to decline appointment");
+        showAlert(data.error || "Failed to decline appointment", 'error');
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      showAlert("Something went wrong", 'error');
     }
   };
 
@@ -174,16 +239,16 @@ const fetchAppointments = async () => {
       });
       const data = await response.json();
       if (response.ok) {
-        alert("Appointment approved successfully");
+        showAlert("Appointment approved", 'success');
         setIsDetailsModalOpen(false);
         setSelectedAppointment(null);
         fetchAppointments();
       } else {
-        alert(data.error || "Failed to approve appointment");
+        showAlert(data.error || "Failed to approve appointment", 'error');
       }
     } catch (err) {
       console.error(err);
-      alert("Something went wrong");
+      showAlert("Something went wrong", 'error');
     }
   };
 
@@ -203,7 +268,36 @@ const fetchAppointments = async () => {
       default:
         return 'bg-gray-100 text-gray-700 border-gray-200'; 
     }
-};
+  };
+
+  // ---------------- GET PROFILE DISPLAY ----------------
+  const getProfileDisplay = () => {
+    if (!vetProfile) {
+      return {
+        type: 'initials',
+        content: ''
+      };
+    }
+
+    // Check if there's a valid profile photo
+    if (vetProfile.vet_profile_photo && 
+        vetProfile.vet_profile_photo.trim() !== '' && 
+        !vetProfile.vet_profile_photo.includes('default') &&
+        vetProfile.vet_profile_photo.startsWith('http')) {
+      return {
+        type: 'photo',
+        content: vetProfile.vet_profile_photo
+      };
+    }
+
+    // Fallback to initials
+    const firstInitial = vetProfile.vet_fname?.[0] || '';
+    const lastInitial = vetProfile.vet_lname?.[0] || '';
+    return {
+      type: 'initials',
+      content: (firstInitial + lastInitial).toUpperCase() || 'V'
+    };
+  };
 
 const filteredAppointments = appointments
   .filter(appointment => appointment.status !== "deleted" && appointment.status !== "approved") 
@@ -224,6 +318,32 @@ const filteredAppointments = appointments
     );
   });
 
+  // Pagination logic
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentItems = filteredAppointments.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredAppointments.length / itemsPerPage);
+
+  const paginate = (pageNumber) => setCurrentPage(pageNumber);
+
+  const nextPage = () => {
+    if (currentPage < totalPages) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
+
+  const prevPage = () => {
+    if (currentPage > 1) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
+  // Generate page numbers for pagination
+  const pageNumbers = [];
+  for (let i = 1; i <= totalPages; i++) {
+    pageNumbers.push(i);
+  }
+
   const filterOptions = [
     { key: 'all', label: 'All Requests', count: appointments.filter(a => a.status !== 'confirmed' && a.status !== 'approved').length },
     { key: 'pending', label: 'Pending Approval', count: appointments.filter(a => a.status === 'pending').length },
@@ -231,9 +351,21 @@ const filteredAppointments = appointments
     { key: 'cancelled', label: 'Cancelled', count: appointments.filter(a => a.status === 'cancelled').length },
   ];
 
+  const profileDisplay = getProfileDisplay();
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-       <Sidebar/>
+      {/* Alert Component */}
+      {alert.show && (
+        <Alert 
+          message={alert.message} 
+          type={alert.type} 
+          onClose={hideAlert}
+          duration={5000}
+        />
+      )}
+      
+      <Sidebar/>
 
     {/* Main Content */}
     <div className="flex-1 flex flex-col">
@@ -246,6 +378,14 @@ const filteredAppointments = appointments
 
           <div className="flex items-center space-x-4">
             <button 
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
+            <button 
               onClick={() => setIsNotificationModalOpen(!isNotificationModalOpen)} 
               className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl relative"
             >
@@ -254,12 +394,25 @@ const filteredAppointments = appointments
             </button>            <button
               onClick={() => setIsProfileModalOpen(true)}
             >
-              <div className="cursor-pointer w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md">
-                <span className="text-white font-semibold text-sm">
-                  {vetProfile ? `${vetProfile.vet_fname?.[0] || ""}${vetProfile.vet_lname?.[0] || ""}` : ""}
-                </span>
+              <div className="cursor-pointer w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md overflow-hidden">
+                {profileDisplay.type === 'photo' ? (
+                  <img 
+                    src={profileDisplay.content} 
+                    alt="Profile" 
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // If image fails to load, fall back to initials
+                      console.error('Profile image failed to load:', profileDisplay.content);
+                      e.target.style.display = 'none';
+                      // The initials will show as fallback due to the gradient background
+                    }}
+                  />
+                ) : (
+                  <span className="text-white font-semibold text-sm">
+                    {profileDisplay.content}
+                  </span>
+                )}
               </div>
-
             </button>
           </div>
         </div>
@@ -267,10 +420,7 @@ const filteredAppointments = appointments
 
       {/* Appointments Content */}
       <div className="flex-1 p-6 overflow-auto">
-        {/* ✅ Search + Filters in same row */}
-        {isLoading ? (
-          <SkeletonFilterBar />
-        ) : (
+        
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
             {/* Search */}
             <div
@@ -318,84 +468,163 @@ const filteredAppointments = appointments
               </div>
             </div>
           </div>
-        )}
       
 
-          {/* Appointments Table */}
-          <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-gray-100 overflow-auto">
+          {/* Appointments Table with Pagination Attached */}
+          <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
+            <div className="overflow-auto">
               <table className="min-w-full border-collapse">              
-              <thead className="bg-gray-50 sticky top-0 z-10">
-                <tr>
-                  <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Date & Time</th>
-                  <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Owner Name</th>
-                  <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Horse Name</th>
-                  <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Appointment Type</th>
-                  <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Status</th>
-                  <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
-                {isLoading ? (
-                  // Show skeleton rows when loading
-                  Array.from({ length: 5 }).map((_, index) => (
-                    <SkeletonTableRow key={index} />
-                  ))
-                ) : filteredAppointments.length === 0 ? (
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
-                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
-                      <div className="flex flex-col items-center justify-center">
-                        {/* Small Icon */}
-                        <Calendar className="w-12 h-12 text-gray-400 mb-3" />
-                        
-                        {/* Message */}
-                        <p className="text-lg font-medium text-gray-700">No appointment requests found</p>
-                        <p className="text-sm text-gray-500">New requests will appear here when clients book appointments.</p>
-                      </div>
-                    </td>
+                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Date & Time</th>
+                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Owner Name</th>
+                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Horse Name</th>
+                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Appointment Type</th>
+                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-center text-sm font-medium text-gray-800 uppercase tracking-wider">Actions</th>
                   </tr>
-                ) : (
-                  filteredAppointments.map((appointment) => (
-                    <tr key={appointment.id} className="hover:bg-gray-50 transition-colors border-b border-gray-100">
-                      <td className="px-6 py-4 text-base text-gray-700 text-center">
-                        <div className="font-medium text-gray-600">{appointment.date}</div>
-                        <div className="text-gray-500 text-sm mt-1">{appointment.time}</div>
-                      </td>                      
-                      <td className="px-6 py-4 text-base text-gray-700 text-center">{appointment.ownerName}</td>
-                      <td className="px-6 py-4 text-base text-gray-900 text-center">{appointment.petName}</td>
-                      <td className="px-6 py-4 text-base text-gray-700 text-center">{appointment.type}</td>
-                      <td className="px-6 py-4 text-center">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(appointment.status)}`}>
-                          {appointment.status === 'pending' ? 'Needs Approval' : appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-center">
-                        <div className="flex justify-center items-center space-x-2 w-full">
-                          {/* View button always visible */}
-                          <button 
-                            onClick={() => handleViewAppointment(appointment)}
-                            className="cursor-pointer p-2 hover:bg-blue-100 rounded-lg transition-colors flex items-center justify-center"
-                            title="View"
-                          >
-                            <Eye className="w-5 h-5 text-gray-400 hover:text-blue-600" />
-                          </button>
-
-                          {/* Delete button only for declined or cancelled, if filter is not 'all' */}
-                          {selectedFilter !== 'all' && (appointment.status === 'declined' || appointment.status === 'cancelled') && (
-                            <button 
-                              onClick={() => handleDeleteAppointment(appointment)}
-                              className="cursor-pointer p-2 hover:bg-red-100 rounded-lg transition-colors flex items-center justify-center"
-                              title="Delete"
-                            >
-                              <Trash2 className="w-5 h-5 text-gray-400 hover:text-red-600" />
-                            </button>
-                          )}
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {isLoading ? (
+                    // Show skeleton rows when loading
+                    Array.from({ length: 5 }).map((_, index) => (
+                      <SkeletonTableRow key={index} />
+                    ))
+                  ) : filteredAppointments.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                        <div className="flex flex-col items-center justify-center">
+                          {/* Small Icon */}
+                          <Calendar className="w-12 h-12 text-gray-400 mb-3" />
+                          
+                          {/* Message */}
+                          <p className="text-lg font-medium text-gray-700">No appointment requests found</p>
+                          <p className="text-sm text-gray-500">New requests will appear here when clients book appointments.</p>
                         </div>
                       </td>
                     </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+                  ) : (
+                    currentItems.map((appointment) => (
+                      <tr key={appointment.id} className="hover:bg-gray-50 transition-colors border-b border-gray-100">
+                        <td className="px-6 py-4 text-base text-gray-700 text-center">
+                          <div className="font-medium text-gray-600">{appointment.date}</div>
+                          <div className="text-gray-500 text-sm mt-1">{appointment.time}</div>
+                        </td>                      
+                        <td className="px-6 py-4 text-base text-gray-700 text-center">{appointment.ownerName}</td>
+                        <td className="px-6 py-4 text-base text-gray-900 text-center">{appointment.petName}</td>
+                        <td className="px-6 py-4 text-base text-gray-700 text-center">{appointment.type}</td>
+                        <td className="px-6 py-4 text-center">
+                          <span className={`px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(appointment.status)}`}>
+                            {appointment.status === 'pending' ? 'Needs Approval' : appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="flex justify-center items-center space-x-2 w-full">
+                            {/* View button always visible */}
+                            <button 
+                              onClick={() => handleViewAppointment(appointment)}
+                              className="cursor-pointer p-2 hover:bg-blue-100 rounded-lg transition-colors flex items-center justify-center"
+                              title="View"
+                            >
+                              <Eye className="w-5 h-5 text-gray-400 hover:text-blue-600" />
+                            </button>
+
+                            {/* Delete button only for declined or cancelled, if filter is not 'all' */}
+                            {selectedFilter !== 'all' && (appointment.status === 'declined' || appointment.status === 'cancelled') && (
+                              <button 
+                                onClick={() => handleDeleteAppointment(appointment)}
+                                className="cursor-pointer p-2 hover:bg-red-100 rounded-lg transition-colors flex items-center justify-center"
+                                title="Delete"
+                              >
+                                <Trash2 className="w-5 h-5 text-gray-400 hover:text-red-600" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination Controls - Attached directly to table */}
+            {filteredAppointments.length > 0 && !isLoading && (
+              <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
+                <div className="text-sm text-gray-600 mb-4 sm:mb-0">
+                  Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to{" "}
+                  <span className="font-medium">
+                    {indexOfLastItem > filteredAppointments.length 
+                      ? filteredAppointments.length 
+                      : indexOfLastItem}
+                  </span> of{" "}
+                  <span className="font-medium">{filteredAppointments.length}</span> results
+                </div>
+                
+                <div className="flex items-center space-x-2">
+                  {/* Items per page selector */}
+                  <div className="flex items-center mr-4">
+                    <span className="text-sm text-gray-600 mr-2">Show:</span>
+                    <select
+                      value={itemsPerPage}
+                      onChange={(e) => {
+                        setItemsPerPage(Number(e.target.value));
+                        setCurrentPage(1);
+                      }}
+                      className="border border-gray-300 rounded-md px-2 py-1 text-sm"
+                    >
+                      <option value="5">5</option>
+                      <option value="10">10</option>
+                      <option value="20">20</option>
+                      <option value="50">50</option>
+                    </select>
+                  </div>
+
+                  {/* Previous button */}
+                  <button
+                    onClick={prevPage}
+                    disabled={currentPage === 1}
+                    className={`p-2 rounded-md border ${
+                      currentPage === 1
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  {/* Page numbers */}
+                  <div className="flex space-x-1">
+                    {pageNumbers.map((number) => (
+                      <button
+                        key={number}
+                        onClick={() => paginate(number)}
+                        className={`w-8 h-8 flex items-center justify-center rounded-md border text-sm ${
+                          currentPage === number
+                            ? "bg-green-500 text-white border-green-500"
+                            : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                        }`}
+                      >
+                        {number}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Next button */}
+                  <button
+                    onClick={nextPage}
+                    disabled={currentPage === totalPages}
+                    className={`p-2 rounded-md border ${
+                      currentPage === totalPages
+                        ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                        : "bg-white text-gray-700 hover:bg-gray-50"
+                    }`}
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -465,25 +694,21 @@ const filteredAppointments = appointments
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                      <Calendar className="w-5 h-5 text-emerald-600" />
                       Appointment Info
                     </h3>
                     <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                      <Calendar className="w-5 h-5 text-gray-500" />
                       <div>
                         <p className="text-sm text-gray-500">Date</p>
                         <p className="font-medium text-gray-800">{selectedAppointment.date}</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                      <Clock className="w-5 h-5 text-gray-500" />
                       <div>
                         <p className="text-sm text-gray-500">Time</p>
                         <p className="font-medium text-gray-800">{selectedAppointment.time}</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                      <FileText className="w-5 h-5 text-gray-500" />
                       <div>
                         <p className="text-sm text-gray-500">Appointment Type</p>
                         <p className="font-medium text-gray-800">{selectedAppointment.type}</p>
@@ -493,25 +718,21 @@ const filteredAppointments = appointments
 
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
-                      <PawPrint className="w-5 h-5 text-emerald-600" />
                       Horse Info
                     </h3>
                     <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                      <PawPrint className="w-5 h-5 text-gray-500" />
                       <div>
                         <p className="text-sm text-gray-500">Horse Name</p>
                         <p className="font-medium text-gray-800">{selectedAppointment.petName}</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                      <Tag className="w-5 h-5 text-gray-500" />
                       <div>
                         <p className="text-sm text-gray-500">Breed</p>
                         <p className="font-medium text-gray-800">{selectedAppointment.petBreed}</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-3 p-3 bg-gray-50 rounded-lg">
-                      <Clock10Icon className="w-5 h-5 text-gray-500" />
                       <div>
                         <p className="text-sm text-gray-500">Age</p>
                         <p className="font-medium text-gray-800">{selectedAppointment.petAge}</p>
@@ -520,14 +741,14 @@ const filteredAppointments = appointments
                   </div>
                 </div>
 
-                {/* Notes */}
+                {/* Chief Complaint */}
                 <div>
                   <h3 className="text-lg font-semibold text-gray-800 mb-3 flex items-center gap-2">
                     <MessageCircle className="w-5 h-5 text-emerald-600" />
-                    Appointment Notes
+                    Chief Complaint
                   </h3>
                   <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <p className="text-gray-700">{selectedAppointment.notes || "No notes provided for this appointment."}</p>
+                    <p className="text-gray-700">{selectedAppointment.complain}</p>
                   </div>
                 </div>
                 
@@ -591,7 +812,7 @@ const filteredAppointments = appointments
             {/* Predefined choices */}
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">Select a reason</label>
-              <select
+            <select
                 value={selectedDeclineReason}
                 onChange={(e) => setSelectedDeclineReason(e.target.value)}
                 className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
@@ -640,7 +861,7 @@ const filteredAppointments = appointments
                     : selectedDeclineReason;
                   
                   if (!reason.trim()) {
-                    alert("Please provide a reason for declining.");
+                    showAlert("Please provide a reason for declining.", 'warning');
                     return;
                   }
                   

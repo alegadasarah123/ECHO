@@ -123,6 +123,7 @@ def fetch_and_merge_users():
                     "contact_num": contact_num,
                     "role": role_raw,
                     "status": status,
+                    "declineReason": db_u.get("decline_reason", ""), 
                     **profile
                 })
 
@@ -172,24 +173,194 @@ def approve_all_users(request):
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
+# ---------------------------- APPROVE / DECLINE USER --------------------
+from django.core.mail import send_mail
+import threading
+
+def send_email_async(subject, plain_message, from_email, recipient_list, html_message):
+    """Send email in a background thread."""
+    try:
+        send_mail(
+            subject=subject,
+            message=plain_message,
+            from_email=from_email,
+            recipient_list=recipient_list,
+            fail_silently=False,
+            html_message=html_message
+        )
+    except Exception:
+        pass  # no logger, silently ignore failure
+
+
 @api_view(["POST"])
 @login_required
 def approve_user(request, user_id):
+    """Approve a user, update status, and send email asynchronously."""
+    # ✅ Get Philippine time
     ph_time = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
+
+    # ✅ Get user role
+    user_res = supabase.table("users").select("role").eq("id", str(user_id)).execute()
+    if not user_res.data:
+        return Response({"error": "User not found"}, status=404)
+    role = user_res.data[0]["role"]
+
+    # ✅ Fetch user info
+    if role == "Kutsero":
+        profile_res = supabase.table("kutsero_profile") \
+            .select("kutsero_fname, kutsero_lname, kutsero_email") \
+            .eq("kutsero_id", str(user_id)).execute()
+        if not profile_res.data:
+            return Response({"error": "Kutsero profile not found"}, status=404)
+        data = profile_res.data[0]
+        user_name = f"{data.get('kutsero_fname','')} {data.get('kutsero_lname','')}".strip()
+        user_email = data.get("kutsero_email")
+    elif role == "Horse Operator":
+        profile_res = supabase.table("horse_op_profile") \
+            .select("op_fname, op_lname, op_email") \
+            .eq("op_id", str(user_id)).execute()
+        if not profile_res.data:
+            return Response({"error": "Operator profile not found"}, status=404)
+        data = profile_res.data[0]
+        user_name = f"{data.get('op_fname','')} {data.get('op_lname','')}".strip()
+        user_email = data.get("op_email")
+    else:
+        return Response({"error": f"Unknown role: {role}"}, status=400)
+
+    # ✅ Update status
     res = supabase.table("users").update({
         "status": "approved",
         "created_at": ph_time.isoformat()
     }).eq("id", user_id).execute()
-    if res.data:
-        return Response({"message": "✅ User approved successfully", "user_id": user_id})
-    return Response({"error": "User not found"}, status=404)
+    if not res.data:
+        return Response({"error": "User not found"}, status=404)
+
+    # ✅ Send email asynchronously
+    if user_email:
+        subject = "Your Account Has Been Approved"
+        plain_message = f"Hello {user_name},\n\nYour account has been approved. You can now log in on your mobile app.\n\nBest regards,\nECHOSys Team"
+        html_message = f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
+            <div style="max-width:600px; margin:auto; background:white; border-radius:12px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+              <div style="background-color:#8B4513; padding:20px; text-align:center; color:white;">
+                <h1 style="margin:0; font-size:24px;">Account Approved ✅</h1>
+              </div>
+              <div style="padding:30px; color:#333; font-size:16px; line-height:1.5;">
+                <p>Hello {user_name},</p>
+                <p>Good news! Your account has been approved by the admin. You can now open your mobile app and log in.</p>
+                <div style="text-align:center; margin:30px 0;">
+                  <a 
+                    href="#" 
+                    style="display:inline-block; background-color:#8B4513; color:white; text-decoration:none; padding:12px 25px; border-radius:6px; font-weight:bold; pointer-events:none; opacity:0.8;"
+                  >
+                    Open your mobile app to login
+                  </a>
+                </div>
+                <p>Best regards,<br>ECHOSys Team</p>
+              </div>
+            </div>
+          </body>
+        </html>
+        """
+        threading.Thread(target=send_email_async, kwargs={
+            "subject": subject,
+            "plain_message": plain_message,
+            "from_email": getattr(settings, "DEFAULT_FROM_EMAIL", None),
+            "recipient_list": [user_email],
+            "html_message": html_message
+        }).start()
+
+    return Response({
+        "message": f"{role.capitalize()} approved successfully",
+        "user_id": user_id,
+        "role": role
+    }, status=200)
+
+
+@api_view(["POST"])
+@login_required
+def decline_user(request, user_id):
+    """Decline a user, update status + reason, and send email asynchronously."""
+    decline_reason = request.data.get("declineReason", "No reason provided")
+
+    # ✅ Get user role
+    user_res = supabase.table("users").select("role").eq("id", str(user_id)).execute()
+    if not user_res.data:
+        return Response({"error": "User not found"}, status=404)
+    role = user_res.data[0]["role"]
+
+    # ✅ Fetch user info
+    if role == "Kutsero":
+        profile_res = supabase.table("kutsero_profile") \
+            .select("kutsero_fname, kutsero_lname, kutsero_email") \
+            .eq("kutsero_id", str(user_id)).execute()
+        if not profile_res.data:
+            return Response({"error": "Kutsero profile not found"}, status=404)
+        data = profile_res.data[0]
+        user_name = f"{data.get('kutsero_fname','')} {data.get('kutsero_lname','')}".strip()
+        user_email = data.get("kutsero_email")
+    elif role == "Horse Operator":
+        profile_res = supabase.table("horse_op_profile") \
+            .select("op_fname, op_lname, op_email") \
+            .eq("op_id", str(user_id)).execute()
+        if not profile_res.data:
+            return Response({"error": "Operator profile not found"}, status=404)
+        data = profile_res.data[0]
+        user_name = f"{data.get('op_fname','')} {data.get('op_lname','')}".strip()
+        user_email = data.get("op_email")
+    else:
+        return Response({"error": f"Unknown role: {role}"}, status=400)
+
+    # ✅ Update users table
+    res = supabase.table("users").update({
+        "status": "declined",
+        "decline_reason": decline_reason
+    }).eq("id", user_id).execute()
+    if not res.data:
+        return Response({"error": "User not found"}, status=404)
+
+    # ✅ Send email asynchronously
+    if user_email:
+        subject = "Your Account Has Been Declined ⚠️"
+        plain_message = f"Hello {user_name},\n\nWe’re sorry to inform you that your account has been declined. Reason: {decline_reason}.\n\nBest regards,\nECHOSys Team"
+        html_message = f"""
+        <html>
+          <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
+            <div style="max-width:600px; margin:auto; background:white; border-radius:12px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+              <div style="background-color:#8B4513; padding:20px; text-align:center; color:white;">
+                <h1 style="margin:0; font-size:24px;">Account Declined ⚠️</h1>
+              </div>
+              <div style="padding:30px; color:#333; font-size:16px; line-height:1.5;">
+                <p>Hello {user_name},</p>
+                <p>We’re sorry to inform you that your account request has been declined by the admin.</p>
+                <p><strong>Reason:</strong> {decline_reason}</p>
+                <p>Best regards,<br>ECHOSys Team</p>
+              </div>
+            </div>
+          </body>
+        </html>
+        """
+        threading.Thread(target=send_email_async, kwargs={
+            "subject": subject,
+            "plain_message": plain_message,
+            "from_email": getattr(settings, "DEFAULT_FROM_EMAIL", None),
+            "recipient_list": [user_email],
+            "html_message": html_message
+        }).start()
+
+    return Response({
+        "message": f"{role.capitalize()} declined successfully",
+        "user_id": user_id,
+        "role": role,
+        "decline_reason": decline_reason
+    }, status=200)
 
 @api_view(["GET"])
 @login_required
 def get_approved_users(request):
     users = fetch_and_merge_users()
     
-    # Include approved AND deactivated users for Kutsero and Horse Operator roles
     allowed_roles = ["kutsero", "horse operator"]
     filtered_users = [
         u for u in users
@@ -197,22 +368,12 @@ def get_approved_users(request):
         and u.get("status", "").strip().lower() in ["approved", "deactivated"]
     ]
 
-    # Add approved_date field
     for u in filtered_users:
         u["approved_date"] = u.pop("created_at", "N/A")
     
     return Response({"users": filtered_users})
 
-
-@api_view(["POST"])
-@login_required
-def decline_user(request, user_id):
-    res = supabase.table("users").update({"status": "declined"}).eq("id", user_id).execute()
-    if res.data:
-        return Response({"message": "⚠️ User declined successfully", "user_id": user_id})
-    return Response({"error": "User not found"}, status=404)
-
-
+# -------------------- NOTIFICATIONS --------------------
 @api_view(["GET"])
 @login_required
 def get_notifications(request):
@@ -238,7 +399,8 @@ def get_notifications(request):
                     "id": u["id"],
                     "notif_message": f"New {u['role']} registered: {u['name']}",
                     "notif_date": dt_ph.date().isoformat(),
-                    "notif_time": dt_ph.time().strftime("%H:%M:%S")
+                    "notif_time": dt_ph.time().strftime("%H:%M"),
+                    "notif_read": False  # Explicitly set to false for new notifications
                 }).execute()
             except Exception as e:
                 print(f"Failed to insert notification for user {u['id']}: {e}")
@@ -255,14 +417,68 @@ def get_notifications(request):
             notif_time_str = str(n['notif_time'])
             date_iso = f"{notif_date_str}T{notif_time_str}+08:00"
             notifications_filtered.append({
-                "id": n["notif_id"],
+                "id": n["notif_id"],  # Use notif_id as the unique identifier
+                "user_id": n["id"],   # Include user_id for reference
                 "message": n["notif_message"],
                 "date": date_iso,
+                "read": n.get("notif_read", False)  # Include read status
             })
 
     notifications_filtered.sort(key=lambda x: x["id"] or 0, reverse=True)
     return Response(notifications_filtered)
 
+# -------------------- MARK NOTIFICATION AS READ --------------------
+@api_view(["POST"])
+@login_required
+def mark_notification_read(request, notif_id):
+    """Mark a specific notification as read."""
+    try:
+        # Check if notification exists
+        result = supabase.table("notification").select("*").eq("notif_id", notif_id).execute()
+        
+        if not result.data:
+            return Response({"error": "Notification not found"}, status=404)
+        
+        # Update the notification to mark as read
+        update_result = supabase.table("notification").update({
+            "notif_read": True
+        }).eq("notif_id", notif_id).execute()
+        
+        if update_result.data:
+            return Response({
+                "success": True, 
+                "message": "Notification marked as read",
+                "notif_id": notif_id
+            })
+        else:
+            return Response({"error": "Failed to update notification"}, status=500)
+            
+    except Exception as e:
+        print(f"Error marking notification as read: {e}")
+        return Response({"error": "Internal server error"}, status=500)
+
+# -------------------- MARK ALL NOTIFICATIONS AS READ --------------------
+@api_view(["POST"])
+@login_required
+def mark_all_notifications_read(request):
+    """Mark all notifications as read."""
+    try:
+        # Update all notifications to mark as read
+        update_result = supabase.table("notification").update({
+            "notif_read": True
+        }).eq("notif_read", False).execute()
+        
+        return Response({
+            "success": True, 
+            "message": f"All notifications marked as read",
+            "updated_count": len(update_result.data) if update_result.data else 0
+        })
+            
+    except Exception as e:
+        print(f"Error marking all notifications as read: {e}")
+        return Response({"error": "Internal server error"}, status=500)
+
+# ------------------------- ACTIVATE / DEACTIVATE USER ------------------------------------
 @api_view(["POST"])
 @login_required
 def deactivate_user(request, user_id):

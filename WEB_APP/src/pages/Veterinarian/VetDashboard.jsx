@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar, Users, FileText, Clock, ChevronLeft, ChevronRight, Bell, Plus, X, Clock3 } from 'lucide-react';
+import { Calendar, Users, FileText, Clock, ChevronLeft, ChevronRight, Bell, Plus, X, Clock3, RefreshCw } from 'lucide-react';
 import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
 import ProfileModal from '@/components/modal/profileModal';
@@ -21,8 +21,20 @@ const VetDashboard = () => {
     appointments: true,
     schedule: true
   });
+  const [refreshing, setRefreshing] = useState(false);
 
-const [notifications, setNotifications] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+
+  // ---------------- REFRESH FUNCTION ----------------
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([
+      fetchProfile(),
+      fetchAppointments(),
+      fetchScheduleSlots()
+    ]);
+    setRefreshing(false);
+  };
 
   // ---------------- FETCH VET PROFILE ----------------
   const fetchProfile = async () => {
@@ -58,61 +70,57 @@ const [notifications, setNotifications] = useState([]);
     }
   };
 
-// ---------------- FETCH SCHEDULE SLOTS ----------------
-const fetchScheduleSlots = async () => {
-  try {
-    const res = await fetch('http://localhost:8000/api/veterinarian/get_all_schedules/', {
-      method: 'GET',
-      credentials: 'include',
-    });
+  // ---------------- FETCH SCHEDULE SLOTS ----------------
+  const fetchScheduleSlots = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/veterinarian/get_all_schedules/', {
+        method: 'GET',
+        credentials: 'include',
+      });
 
-    const data = await res.json();
-  console.log("Backend schedule slots:", data.schedule_slots); 
-    if (res.ok) {
-      // data.schedule_slots already contains only upcoming schedules
-      const processedSlots = processScheduleSlots(data.schedule_slots || []);
-      setScheduleSlots(processedSlots);
-    } else {
-      console.error('Schedule slots fetch error:', data.error);
+      const data = await res.json();
+      console.log("Backend schedule slots:", data.schedule_slots); 
+      if (res.ok) {
+        const processedSlots = processScheduleSlots(data.schedule_slots || []);
+        setScheduleSlots(processedSlots);
+      } else {
+        console.error('Schedule slots fetch error:', data.error);
+        setScheduleSlots([]);
+      }
+    } catch (err) {
+      console.error('Schedule slots fetch failed:', err);
       setScheduleSlots([]);
+    } finally {
+      setLoading(prev => ({ ...prev, schedule: false }));
     }
-  } catch (err) {
-    console.error('Schedule slots fetch failed:', err);
-    setScheduleSlots([]);
-  } finally {
-    setLoading(prev => ({ ...prev, schedule: false }));
-  }
-};
+  };
 
   // ---------------- PROCESS SCHEDULE SLOTS TO GROUP BY DATE ----------------
   const processScheduleSlots = (slots) => {
     const dateGroups = {};
     
     slots.forEach(slot => {
-      // Use app_date if available, otherwise use created_at or fallback to current date
-      const date = slot.app_date || slot.date || new Date().toLocaleDateString();
+      const date = slot.date || new Date().toLocaleDateString();
       
       if (!dateGroups[date]) {
         dateGroups[date] = [];
       }
       
       dateGroups[date].push({
-        id: slot.id || `${date}-${slot.app_time}`,
+        id: slot.id || `${date}-${slot.startTime}`,
         date: date,
-        time: slot.app_time || slot.time,
+        time: `${slot.startTime} - ${slot.endTime}`,
         available: slot.available !== undefined ? slot.available : true,
-        pending: slot.app_status === 'pending',
+        pending: slot.pending || false,
         operator_name: slot.operator_name,
-        app_status: slot.app_status
+        app_status: slot.pending ? 'pending' : 'approved'
       });
     });
     
-    // Convert to array format for easier rendering and sort by date
     return Object.entries(dateGroups)
       .map(([date, timeSlots]) => ({
         date,
         timeSlots: timeSlots.sort((a, b) => {
-          // Sort time slots chronologically
           const timeToMinutes = (time) => {
             if (!time) return 0;
             const [timePart, modifier] = time.split(' ');
@@ -125,7 +133,77 @@ const fetchScheduleSlots = async () => {
           return timeToMinutes(a.time) - timeToMinutes(b.time);
         })
       }))
-      .sort((a, b) => new Date(a.date) - new Date(b.date)); // Sort dates chronologically
+      .sort((a, b) => new Date(a.date) - new Date(b.date)); 
+  };
+
+  // ---------------- CALCULATE TIME UNTIL APPOINTMENT ----------------
+  const calculateTimeUntilAppointment = (appointment) => {
+    const now = new Date();
+    
+    // Parse appointment time (assuming format like "3:00 PM")
+    const [timePart, period] = appointment.app_time.split(' ');
+    let [hours, minutes] = timePart.split(':').map(Number);
+    
+    // Convert to 24-hour format
+    if (period === 'PM' && hours !== 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+    
+    // Create appointment datetime
+    const appointmentDate = new Date(appointment.app_date);
+    const appointmentDateTime = new Date(
+      appointmentDate.getFullYear(),
+      appointmentDate.getMonth(),
+      appointmentDate.getDate(),
+      hours,
+      minutes || 0
+    );
+    
+    const timeDiff = appointmentDateTime - now;
+    
+    if (timeDiff <= 0) {
+      return "Now";
+    }
+    
+    const minutesUntil = Math.floor(timeDiff / (1000 * 60));
+    const hoursUntil = Math.floor(minutesUntil / 60);
+    const daysUntil = Math.floor(hoursUntil / 24);
+    
+    if (daysUntil > 0) {
+      return `${daysUntil} day${daysUntil !== 1 ? 's' : ''}`;
+    } else if (hoursUntil > 0) {
+      return `${hoursUntil} hr${hoursUntil !== 1 ? 's' : ''} ${minutesUntil % 60} min`;
+    } else {
+      return `${minutesUntil} min`;
+    }
+  };
+
+  // ---------------- GET PROFILE DISPLAY ----------------
+  const getProfileDisplay = () => {
+    if (!vetProfile) {
+      return {
+        type: 'initials',
+        content: ''
+      };
+    }
+
+    // Check if there's a valid profile photo
+    if (vetProfile.vet_profile_photo && 
+        vetProfile.vet_profile_photo.trim() !== '' && 
+        !vetProfile.vet_profile_photo.includes('default') &&
+        vetProfile.vet_profile_photo.startsWith('http')) {
+      return {
+        type: 'photo',
+        content: vetProfile.vet_profile_photo
+      };
+    }
+
+    // Fallback to initials
+    const firstInitial = vetProfile.vet_fname?.[0] || '';
+    const lastInitial = vetProfile.vet_lname?.[0] || '';
+    return {
+      type: 'initials',
+      content: (firstInitial + lastInitial).toUpperCase() || 'V'
+    };
   };
 
   useEffect(() => {
@@ -214,6 +292,8 @@ const fetchScheduleSlots = async () => {
     return timeString.replace(/:00$/, '');
   };
 
+  const profileDisplay = getProfileDisplay();
+
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Sidebar />
@@ -223,6 +303,16 @@ const fetchScheduleSlots = async () => {
         <div className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-800 mb-1">Dashboard</h1>
           <div className="flex items-center space-x-4">
+            {/* Refresh Button */}
+            <button 
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-50"
+              title="Refresh data"
+            >
+              <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+            
             <button 
               onClick={() => setIsNotificationModalOpen(!isNotificationModalOpen)} 
               className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl relative"
@@ -231,10 +321,24 @@ const fetchScheduleSlots = async () => {
               <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
             </button>
             <button onClick={() => setIsProfileModalOpen(true)}>
-              <div className="cursor-pointer w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md">
-                <span className="text-white font-semibold text-sm">
-                  {vetProfile ? `${vetProfile.vet_fname?.[0] || ""}${vetProfile.vet_lname?.[0] || ""}` : ""}
-                </span>
+              <div className="cursor-pointer w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md overflow-hidden">
+                {profileDisplay.type === 'photo' ? (
+                  <img 
+                    src={profileDisplay.content} 
+                    alt="Profile" 
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      // If image fails to load, fall back to initials
+                      console.error('Profile image failed to load:', profileDisplay.content);
+                      e.target.style.display = 'none';
+                      // The initials will show as fallback due to the gradient background
+                    }}
+                  />
+                ) : (
+                  <span className="text-white font-semibold text-sm">
+                    {profileDisplay.content}
+                  </span>
+                )}
               </div>
             </button>
           </div>
@@ -283,25 +387,30 @@ const fetchScheduleSlots = async () => {
                 {/* Scrollable list */}
                 <div className="p-6 space-y-4 overflow-y-auto flex-1">
                   {approvedTodayAppointments.length > 0 ? (
-                    approvedTodayAppointments.map(app => (
-                      <div key={app.app_id} className="flex items-center space-x-4 p-4 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl border border-orange-100">
-                        <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center shadow-md">
-                          <span className="text-white font-semibold">{app.horse_name?.[0] || "H"}</span>
-                        </div>
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-gray-800">{app.horse_name}</h3>
-                          <p className="text-sm text-gray-600">Owner: {app.operator_name}</p>
-                          <p className="text-xs text-gray-500 mt-1">{app.app_service || app.app_note}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-semibold text-gray-800">{app.app_date} {app.app_time}</p>
-                          <div className="flex items-center text-xs text-gray-500 mt-1">
-                            <Clock className="w-3 h-3 mr-1" />
-                            <span>30 min</span>
+                    approvedTodayAppointments.map(app => {
+                      const timeUntil = calculateTimeUntilAppointment(app);
+                      
+                      return (
+                        <div key={app.app_id} className="flex items-center space-x-4 p-4 bg-gradient-to-r from-orange-50 to-yellow-50 rounded-xl border border-orange-100">
+                          <div className="w-12 h-12 bg-gradient-to-br from-orange-400 to-orange-600 rounded-full flex items-center justify-center shadow-md">
+                            <span className="text-white font-semibold">{app.horse_name?.[0] || "H"}</span>
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="font-semibold text-gray-800">{app.horse_name}</h3>
+                            <p className="text-sm text-gray-600">Owner: {app.operator_name}</p>
+                            <p className="text-xs text-gray-500 mt-1">{app.app_service || app.app_note}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-semibold text-gray-800">{app.app_date} {app.app_time}</p>
+                            <div className={`text-xs font-medium mt-2 ${
+                              timeUntil === "Now" ? "text-red-600" : "text-green-600"
+                            }`}>
+                              {timeUntil === "Now" ? "In progress" : `${timeUntil} to go`}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : (
                     <div className="flex flex-col items-center justify-center h-full text-gray-400">
                       <Calendar className="w-12 h-12 mb-2" />
@@ -379,7 +488,7 @@ const fetchScheduleSlots = async () => {
                                       ? 'bg-yellow-100 text-yellow-800'
                                       : 'bg-red-100 text-red-800'
                                   }`}>
-                                    {slot.available ? 'Available' : slot.pending ? 'Pending' : 'Booked'}
+                                    {slot.available ? 'Available' : slot.pending ? 'Pending' : 'Booked' }
                                   </span>
                                   
                                   {!slot.available && (

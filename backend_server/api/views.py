@@ -1,4 +1,5 @@
 
+from django.http import JsonResponse
 from django.shortcuts import render
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -10,6 +11,8 @@ import requests
 import datetime
 
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY) 
+supabase_admin: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+sr_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
 
 SUPABASE_SERVICE_ROLE_KEY = settings.SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_URL = settings.SUPABASE_URL
@@ -50,76 +53,116 @@ def login(request):
     if not access_token or not user_id:
         return Response({"error": "Login failed: missing token or user id"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # 2️⃣ Fetch role from public.users using service role key
+    # 2️⃣ Fetch user data from public.users using service role key
     service_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
-    user_query = service_client.table("users").select("role").eq("id", user_id).execute()
-    role_info = user_query.data[0] if user_query.data else None
-    user_role = (role_info.get("role", "general") if role_info else "general").strip()
-    is_active = role_info.get("is_active", True) if role_info else True  # default True if missing
+    user_query = service_client.table("users").select("role, status, decline_reason").eq("id", user_id).execute()
+    
+    if not user_query.data:
+        return Response({"error": "User profile not found"}, status=status.HTTP_404_NOT_FOUND)
+    
+    role_info = user_query.data[0]
+    user_role = role_info.get("role", "general").strip()
+    user_status = role_info.get("status", "pending").strip().lower()
+    decline_reason = role_info.get("decline_reason")
 
-    # ❌ Prevent deactivated accounts from logging in
-    if not is_active:
-        return Response({"error": "Account is deactivated. Please contact admin."}, status=status.HTTP_403_FORBIDDEN)
+    # ❌ Prevent users with "declined" status from logging in
+    if user_status == "declined":
+        error_msg = "Your account registration has been declined."
+        if decline_reason:
+            error_msg += f" Reason: {decline_reason}"
+        return Response({"error": error_msg}, status=status.HTTP_403_FORBIDDEN)
 
-    print(f"[LOGIN] User ID: {user_id}, Role: {user_role}")
+    # ❌ PREVENT UNAPPROVED VETERINARIANS FROM LOGGING IN
+    if user_role == "Veterinarian" and user_status != "approved":
+        if user_status == "pending":
+            return Response({
+               "error": "Your account is pending approval. Please wait for administrator approval. Check your email for updates."
+            }, status=status.HTTP_403_FORBIDDEN)
+        else:
+            return Response({
+                "error": f"Your account status is '{user_status}'. Please contact administrator for assistance."
+            }, status=status.HTTP_403_FORBIDDEN)
+
+    print(f"[LOGIN] User ID: {user_id}, Role: {user_role}, Status: {user_status}")
 
     # 3️⃣ Set HttpOnly cookie
     response = Response({
         "message": "Login successful",
-        "role": user_role
+        "role": user_role,
+        "status": user_status
     }, status=status.HTTP_200_OK)
 
     # Cookie expires in 1 day
     response.set_cookie(
-   key="access_token",
-   value=access_token,
-   httponly=True,
-   secure=False,
-   samesite="Lax",
-   max_age=86400
-)
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=False,
+        samesite="Lax",
+        max_age=86400
+    )
 
     return response
 
-# -------------- SIGN UP VET --------------------------------
+
+@api_view(['GET'])
+def check_email(request):
+    email = request.GET.get('email', '').strip().lower()
+    
+    if not email:
+        return Response({"exists": False}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        service_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)   
+        users_list = service_client.auth.admin.list_users()
+        user_exists = any(user.email.lower() == email for user in users_list)
+        return Response({"exists": user_exists}, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        print(f"Error checking email: {e}")
+        return Response({"exists": False, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+#-----------------------------------------------------------------SIGNUP VET WEB---------------------------------------------------------------------------------------
 @api_view(['POST'])
 def signup_vet(request):
+    """
+    Register a Veterinarian account with binary file uploads
+    """
+    import random
+    import datetime
+    import json
+    import logging
+
     try:
+        # ---------------- Get and Validate Inputs ----------------
         email = request.data.get("email", "").strip()
         password = request.data.get("password", "").strip()
+        first_name = request.data.get("firstName", "").strip()
+        last_name = request.data.get("lastName", "").strip()
 
         if not email or not password:
             return Response({"error": "Email and password are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Generate username
-        first_name = request.data.get("firstName", "").strip()
-        last_name = request.data.get("lastName", "").strip()
-        username = (
-            request.data.get("username")
-            or f"{first_name.lower()}.{last_name.lower()}" if first_name and last_name else email.split('@')[0]
+        username = request.data.get("username") or (
+            f"{first_name.lower()}.{last_name.lower()}" if first_name and last_name else email.split('@')[0]
         )
 
         # ---------------- Step 1: Create Supabase Auth User ----------------
-        signup_url = f"{SUPABASE_URL}/auth/v1/admin/users"
-        headers = {
-            "apikey": SUPABASE_SERVICE_ROLE_KEY,
-            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-            "Content-Type": "application/json"
-        }
-        payload_auth = {"email": email, "password": password}
-        auth_response = requests.post(signup_url, json=payload_auth, headers=headers)
-        auth_json = auth_response.json()
+        user_response = supabase_admin.auth.admin.create_user({
+            "email": email,
+            "password": password,
+            "email_confirm": True,
+        })
 
-        if auth_response.status_code not in [200, 201]:
-            return Response({"error": "Failed to create user in Supabase Auth", "details": auth_json}, status=status.HTTP_400_BAD_REQUEST)
+        if hasattr(user_response, "user") and hasattr(user_response.user, "id"):
+            user_id = str(user_response.user.id)
+        else:
+            return Response({"error": "Failed to retrieve user ID from Supabase"}, status=status.HTTP_400_BAD_REQUEST)
 
-        user_id = auth_json.get("id") or auth_json.get("user", {}).get("id")
-        if not user_id:
-            return Response({"error": "Supabase Auth did not return a user ID"}, status=status.HTTP_400_BAD_REQUEST)
+        print(f"[DEBUG] Auth user created with ID: {user_id}")
 
         # ---------------- Step 2: Insert into public.users ----------------
-        insert_user_url = f"{SUPABASE_URL}/rest/v1/users"
-        insert_headers = {
+        headers = {
             "apikey": SUPABASE_SERVICE_ROLE_KEY,
             "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
             "Content-Type": "application/json",
@@ -127,17 +170,93 @@ def signup_vet(request):
         }
         user_payload = {
             "id": user_id,
-            "role": "Veterinarian",  # force role
-            "status": "pending"
+            "role": "Veterinarian",
+            "status": "pending",
+            "created_at": datetime.datetime.utcnow().isoformat()
         }
-        user_insert_response = requests.post(insert_user_url, json=user_payload, headers=insert_headers)
-        if user_insert_response.status_code not in [200, 201]:
-            requests.delete(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=headers)
-            return Response({"error": "Failed to insert into users table", "details": user_insert_response.json()}, status=status.HTTP_400_BAD_REQUEST)
 
-        # ---------------- Step 3: Insert into vet_profile ----------------
-        insert_profile_url = f"{SUPABASE_URL}/rest/v1/vet_profile"
+        user_insert = requests.post(f"{SUPABASE_URL}/rest/v1/users", json=user_payload, headers=headers)
+        if user_insert.status_code not in [200, 201]:
+            print(f"[DEBUG] Failed inserting into public.users: {user_insert.text}")
+            supabase_admin.auth.admin.delete_user(user_id)
+            return Response({
+                "error": "Failed to insert into users table",
+                "details": user_insert.text
+            }, status=status.HTTP_400_BAD_REQUEST)
 
+        print(f"[DEBUG] public.users insert successful: {user_insert.json()}")
+
+        # ---------------- Step 3: Handle File Uploads (BINARY) ----------------
+        profile_photo_file = request.FILES.get('profile_photo')
+        document_file = request.FILES.get('document')
+
+        vet_profile_photo_url = None
+        vet_documents_urls = []
+
+        # ✅ Upload Profile Photo → 'vet_profile' bucket (BINARY)
+        if profile_photo_file:
+            try:
+                timestamp = int(datetime.datetime.now().timestamp())
+                file_extension = profile_photo_file.name.split('.')[-1] if '.' in profile_photo_file.name else 'jpg'
+                file_name = f"{user_id}_profile_{timestamp}_{random.randint(1000,9999)}.{file_extension}"
+                
+                # Read file content
+                file_content = profile_photo_file.read()
+                
+                # Upload to Supabase bucket: vet_profile
+                upload_res = sr_client.storage.from_("vet_profile").upload(
+                    file_name,
+                    file_content,
+                    {"content-type": profile_photo_file.content_type}
+                )
+
+                public_url = sr_client.storage.from_("vet_profile").get_public_url(file_name)
+                vet_profile_photo_url = public_url
+                print(f"[DEBUG] Profile photo uploaded: {public_url}")
+            except Exception as e:
+                logging.exception(f"Profile photo upload failed: {e}")
+
+        # ✅ Upload Document → 'vet_documents' bucket (BINARY)
+        if document_file:
+            try:
+                timestamp = int(datetime.datetime.now().timestamp())
+                file_extension = document_file.name.split('.')[-1] if '.' in document_file.name else 'pdf'
+                file_name = f"{user_id}_doc_{timestamp}_{random.randint(1000,9999)}.{file_extension}"
+                
+                # Read file content
+                file_content = document_file.read()
+                
+                upload_res = sr_client.storage.from_("vet_documents").upload(
+                    file_name,
+                    file_content,
+                    {"content-type": document_file.content_type}
+                )
+
+                public_url = sr_client.storage.from_("vet_documents").get_public_url(file_name)
+                if public_url:
+                    vet_documents_urls.append(public_url)
+                print(f"[DEBUG] Document uploaded: {public_url}")
+            except Exception as e:
+                logging.exception(f"Document upload failed: {e}")
+
+        # ---------------- Step 4: Handle Address Logic ----------------
+        vet_address_is_clinic = request.data.get("vetAddressIsClinic", "true").lower() == "true"
+        
+        # If vet_address_is_clinic is True, use permanent address for clinic address
+        if vet_address_is_clinic:
+            clinic_province = request.data.get("province", "")
+            clinic_city = request.data.get("city", "")
+            clinic_barangay = request.data.get("barangay", "")
+            clinic_street = request.data.get("street", "")
+            clinic_zipcode = request.data.get("zipCode", "")
+        else:
+            clinic_province = request.data.get("clinicProvince", "")
+            clinic_city = request.data.get("clinicCity", "")
+            clinic_barangay = request.data.get("clinicBarangay", "")
+            clinic_street = request.data.get("clinicStreet", "")
+            clinic_zipcode = request.data.get("clinicZipCode", "")
+
+        # ---------------- Step 5: Insert into vet_profile ----------------
         profile_payload = {
             "vet_id": user_id,
             "vet_fname": first_name or "",
@@ -146,36 +265,52 @@ def signup_vet(request):
             "vet_dob": request.data.get("dob") or "0000-01-01",
             "vet_sex": request.data.get("sex") or "N/A",
             "vet_phone_num": request.data.get("phoneNumber") or "",
-            "vet_province": request.data.get("province") or "",
-            "vet_city": request.data.get("city") or "",
+            "vet_street": request.data.get("street") or "",  # Can be null
             "vet_brgy": request.data.get("barangay") or "",
+            "vet_city": request.data.get("city") or "",
+            "vet_province": request.data.get("province") or "",
             "vet_zipcode": request.data.get("zipCode") or "",
+            "vet_address_is_clinic": vet_address_is_clinic,
+            "vet_clinic_street": clinic_street or "",  # Can be null
+            "vet_clinic_brgy": clinic_barangay or "",  # Can be null
+            "vet_clinic_city": clinic_city or "",  # Can be null
+            "vet_clinic_province": clinic_province or "",  # Can be null
+            "vet_clinic_zipcode": clinic_zipcode or "",  # Can be null
             "vet_email": email,
             "vet_license_num": request.data.get("licenseNumber") or "",
             "vet_exp_yr": int(request.data.get("yearsOfExperience") or 0),
             "vet_specialization": request.data.get("specialization") or "",
             "vet_org": request.data.get("affiliatedOrganization") or "",
+            "vet_profile_photo": vet_profile_photo_url,
+            "vet_documents": json.dumps(vet_documents_urls),
             "created_at": datetime.datetime.utcnow().isoformat()
         }
 
-        profile_insert_response = requests.post(insert_profile_url, json=profile_payload, headers=insert_headers)
-        if profile_insert_response.status_code not in [200, 201]:
-            requests.delete(f"{SUPABASE_URL}/rest/v1/users?id=eq.{user_id}", headers=insert_headers)
-            requests.delete(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=headers)
-            return Response({"error": "Failed to insert into vet_profile", "details": profile_insert_response.json()}, status=status.HTTP_400_BAD_REQUEST)
+        profile_insert = requests.post(f"{SUPABASE_URL}/rest/v1/vet_profile", json=profile_payload, headers=headers)
+        if profile_insert.status_code not in [200, 201]:
+            print(f"[DEBUG] Failed inserting into vet_profile: {profile_insert.text}")
+            # rollback previous inserts
+            requests.delete(f"{SUPABASE_URL}/rest/v1/users?id=eq.{user_id}", headers=headers)
+            supabase_admin.auth.admin.delete_user(user_id)
+            return Response({
+                "error": "Failed to insert into vet_profile",
+                "details": profile_insert.text
+            }, status=status.HTTP_400_BAD_REQUEST)
 
-        # ---------------- Step 4: Success ----------------
+        print(f"[DEBUG] vet_profile insert successful: {profile_insert.json()}")
+
+        # ---------------- Step 6: Success ----------------
         return Response({
-            "message": "Vet registration completed successfully. Your account is pending approval.",
-            "auth_user": auth_json,
-            "user_record": user_insert_response.json(),
-            "profile": profile_insert_response.json()
+            "message": "Vet registration completed successfully. You will be notified via email once your account is approved.",
+            "auth_user": {"id": user_id, "email": email},
+            "user_record": user_insert.json(),
+            "profile": profile_insert.json()
         }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
+        print(f"[ERROR] Exception in signup_vet: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-\
+            
 #-----------------------------------------------------------------LOGIN MOBILE---------------------------------------------------------------------------------------
 
 @api_view(['POST'])
@@ -536,3 +671,4 @@ def reset_password(request):
 
     return Response({"success": True, "message": "Password reset successful."},
                     status=status.HTTP_200_OK)
+

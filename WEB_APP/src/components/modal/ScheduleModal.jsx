@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, Plus, X, ChevronLeft, ChevronRight, AlertCircle, Trash2, Save } from 'lucide-react';
+import { Calendar, Clock, Plus, X, ChevronLeft, ChevronRight, AlertCircle, Trash2, Save, Settings, CheckSquare, Square, CheckCircle } from 'lucide-react';
 
 const ScheduleModal = ({ isOpen, onClose, onSave }) => {
   const [modalCurrentDate, setModalCurrentDate] = useState(new Date());
@@ -7,36 +7,106 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
   const [existingSchedules, setExistingSchedules] = useState([]);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [selectedDateSlots, setSelectedDateSlots] = useState({});
-  const [activeTab, setActiveTab] = useState('calendar'); // 'calendar' or 'dates'
+  const [activeTab, setActiveTab] = useState('calendar');
   const [quickDates, setQuickDates] = useState([]);
-
-  const hourOptions = Array.from({ length: 12 }, (_, i) => i + 1);
-  const minuteOptions = ['00', '15', '30', '45'];
-
-  // Default time slot template
-  const defaultTimeSlot = {
+  const [errorMessage, setErrorMessage] = useState('');
+  const [showSettings, setShowSettings] = useState(false);
+  const [dailyDuration, setDailyDuration] = useState({
     startHour: '9',
     startMinute: '00',
     startPeriod: 'AM',
     endHour: '5',
     endMinute: '00',
     endPeriod: 'PM'
+  });
+  const [slotInterval, setSlotInterval] = useState(60); // minutes
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
+
+  const hourOptions = Array.from({ length: 12 }, (_, i) => i + 1);
+  const minuteOptions = ['00', '15', '30', '45'];
+  const intervalOptions = [
+    { value: 15, label: '15 minutes' },
+    { value: 30, label: '30 minutes' },
+    { value: 60, label: '1 hour' },
+    { value: 90, label: '1.5 hours' },
+    { value: 120, label: '2 hours' }
+  ];
+
+  // Generate time slots based on daily duration and interval
+  const generateTimeSlots = (dateStr) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    
+    const startTime = convertTo24hFormat(
+      `${dailyDuration.startHour}:${dailyDuration.startMinute} ${dailyDuration.startPeriod}`
+    );
+    const endTime = convertTo24hFormat(
+      `${dailyDuration.endHour}:${dailyDuration.endMinute} ${dailyDuration.endPeriod}`
+    );
+    
+    const slots = [];
+    let currentTime = startTime;
+    
+    while (currentTime < endTime) {
+      const nextTime = Math.min(currentTime + slotInterval, endTime);
+      
+      // Convert back to 12h format for display
+      const startFormatted = convertTo12hFormat(currentTime);
+      const endFormatted = convertTo12hFormat(nextTime);
+      
+      // Check if this slot is in the past (for today only)
+      const isPast = isToday && (now.getHours() * 60 + now.getMinutes()) > currentTime;
+      
+      if (!isPast) {
+        slots.push({
+          id: `${dateStr}-${currentTime}`,
+          startTime: currentTime,
+          endTime: nextTime,
+          startFormatted,
+          endFormatted,
+          selected: selectedDateSlots[dateStr]?.some(s => s.startTime === currentTime && s.endTime === nextTime)
+        });
+      }
+      
+      currentTime = nextTime;
+    }
+    
+    return slots;
   };
 
-  // Predefined date ranges for quick selection
-  const predefinedDateRanges = [
-    { id: 'next7days', label: 'Next 7 Days', getDates: () => getDateRange(0, 6) },
-    { id: 'next14days', label: 'Next 14 Days', getDates: () => getDateRange(0, 13) },
-    { id: 'thisWeekend', label: 'This Weekend', getDates: getThisWeekend },
-    { id: 'nextWeek', label: 'Next Week', getDates: getNextWeek },
-  ];
+  // Helper function to convert time to 24h format (minutes since midnight)
+  const convertTo24hFormat = (timeStr) => {
+    const [time, period] = timeStr.split(' ');
+    let [hours, minutes] = time.split(':').map(Number);
+    
+    if (period === 'PM' && hours !== 12) {
+      hours += 12;
+    } else if (period === 'AM' && hours === 12) {
+      hours = 0;
+    }
+    
+    return hours * 60 + minutes;
+  };
+
+  // Helper function to convert minutes since midnight to 12h format
+  const convertTo12hFormat = (minutes) => {
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    
+    const period = hours >= 12 ? 'PM' : 'AM';
+    const displayHours = hours % 12 || 12;
+    
+    return `${displayHours}:${mins.toString().padStart(2, '0')} ${period}`;
+  };
 
   // Fetch existing schedules when modal opens
   useEffect(() => {
     if (isOpen) {
       fetchExistingSchedules();
-      // Clear selected dates when modal opens
       setSelectedDateSlots({});
+      setErrorMessage('');
     }
   }, [isOpen]);
 
@@ -74,10 +144,9 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
 
   function getThisWeekend() {
     const today = new Date();
-    const dayOfWeek = today.getDay(); // 0 = Sunday, 6 = Saturday
+    const dayOfWeek = today.getDay();
     const dates = [];
     
-    // If it's already weekend, get next weekend
     const daysUntilSaturday = dayOfWeek <= 6 ? (6 - dayOfWeek) : (6 + 7 - dayOfWeek);
     const daysUntilSunday = daysUntilSaturday + 1;
     
@@ -100,10 +169,8 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
 
   function getNextWeek() {
     const today = new Date();
-    const dayOfWeek = today.getDay(); // 0 = Sunday
+    const dayOfWeek = today.getDay();
     const daysUntilNextMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek;
-    const nextMonday = new Date(today);
-    nextMonday.setDate(today.getDate() + daysUntilNextMonday);
     
     return getDateRange(daysUntilNextMonday, daysUntilNextMonday + 6);
   }
@@ -196,18 +263,13 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
 
     setSelectedDateSlots(prev => {
       if (prev[dateStr]) {
-        // Remove date if it already exists
         const newSlots = { ...prev };
         delete newSlots[dateStr];
         return newSlots;
       } else {
-        // Add date with default time slot
         return {
           ...prev,
-          [dateStr]: [{
-            ...defaultTimeSlot,
-            id: Date.now() + Math.random() // More unique ID for this slot
-          }]
+          [dateStr]: []
         };
       }
     });
@@ -223,10 +285,7 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
         parseInt(dateStr.split('-')[0])
       ) && !existingSchedules.some(schedule => schedule.date === dateStr)) {
         if (!newSelectedSlots[dateStr]) {
-          newSelectedSlots[dateStr] = [{
-            ...defaultTimeSlot,
-            id: Date.now() + Math.random() // More unique ID
-          }];
+          newSelectedSlots[dateStr] = [];
         }
       }
     });
@@ -242,63 +301,71 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
     return !!selectedDateSlots[dateStr];
   };
 
-  const addTimeSlot = (dateStr) => {
-    setSelectedDateSlots(prev => ({
-      ...prev,
-      [dateStr]: [
-        ...prev[dateStr],
-        {
-          ...defaultTimeSlot,
-          id: Date.now() + Math.random() // More unique ID for this slot
-        }
-      ]
-    }));
-  };
-
-  const removeTimeSlot = (dateStr, slotId) => {
+  const toggleTimeSlot = (dateStr, slot) => {
     setSelectedDateSlots(prev => {
-      const updatedSlots = prev[dateStr].filter(slot => slot.id !== slotId);
+      const currentSlots = prev[dateStr] || [];
+      const isSelected = currentSlots.some(s => 
+        s.startTime === slot.startTime && s.endTime === slot.endTime
+      );
       
-      if (updatedSlots.length === 0) {
-        // Remove date if no slots left
-        const newSlots = { ...prev };
-        delete newSlots[dateStr];
-        return newSlots;
+      if (isSelected) {
+        return {
+          ...prev,
+          [dateStr]: currentSlots.filter(s => 
+            !(s.startTime === slot.startTime && s.endTime === slot.endTime)
+          )
+        };
+      } else {
+        return {
+          ...prev,
+          [dateStr]: [
+            ...currentSlots,
+            {
+              startTime: slot.startTime,
+              endTime: slot.endTime,
+              startFormatted: slot.startFormatted,
+              endFormatted: slot.endFormatted
+            }
+          ]
+        };
       }
-      
-      return {
-        ...prev,
-        [dateStr]: updatedSlots
-      };
     });
   };
 
-  const updateTimeSlot = (dateStr, slotId, field, value) => {
+  const selectAllSlots = (dateStr) => {
+    const slots = generateTimeSlots(dateStr);
     setSelectedDateSlots(prev => ({
       ...prev,
-      [dateStr]: prev[dateStr].map(slot => 
-        slot.id === slotId ? { ...slot, [field]: value } : slot
-      )
+      [dateStr]: slots.map(slot => ({
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        startFormatted: slot.startFormatted,
+        endFormatted: slot.endFormatted
+      }))
     }));
   };
 
-  const copyTimeSlotsToAll = (sourceDateStr) => {
-    if (!selectedDateSlots[sourceDateStr]) return;
-    
-    const sourceSlots = selectedDateSlots[sourceDateStr];
+  const clearAllSlots = (dateStr) => {
+    setSelectedDateSlots(prev => {
+      const newSlots = { ...prev };
+      delete newSlots[dateStr];
+      return newSlots;
+    });
+  };
+
+  const applyToAllSelectedDates = () => {
     const newSelectedSlots = { ...selectedDateSlots };
+    const sampleDate = Object.keys(selectedDateSlots)[0];
+    
+    if (!sampleDate || selectedDateSlots[sampleDate].length === 0) return;
     
     Object.keys(newSelectedSlots).forEach(dateStr => {
-      if (dateStr !== sourceDateStr) {
-        newSelectedSlots[dateStr] = sourceSlots.map(slot => ({
-          ...slot,
-          id: Date.now() + Math.random() // More unique ID for each copied slot
-        }));
+      if (dateStr !== sampleDate) {
+        newSelectedSlots[dateStr] = [...selectedDateSlots[sampleDate]];
       }
     });
     
     setSelectedDateSlots(newSelectedSlots);
-    alert(`Time slots copied from ${formatDateForDisplay(sourceDateStr)} to all selected dates!`);
   };
 
   const clearAllSelections = () => {
@@ -315,18 +382,15 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
     const daysInMonth = getDaysInMonth(modalCurrentDate);
     const firstDay = getFirstDayOfMonth(modalCurrentDate);
 
-    // Previous month days (empty cells)
     for (let i = 0; i < firstDay; i++) {
       days.push(null);
     }
     
-    // Current month days
     for (let day = 1; day <= daysInMonth; day++) {
       days.push(day);
     }
     
-    // Next month days (empty cells to complete grid)
-    const totalCells = 42; // 6 rows x 7 columns
+    const totalCells = 42;
     const nextMonthDays = totalCells - days.length;
     for (let i = 1; i <= nextMonthDays; i++) {
       days.push(null);
@@ -336,7 +400,6 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
   };
 
   const handleCancel = () => {
-    // Clear selected dates when cancel is clicked
     setSelectedDateSlots({});
     setShowConfirmation(false);
     onClose();
@@ -344,18 +407,26 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
 
   const handleSaveClick = () => {
     if (Object.keys(selectedDateSlots).length === 0) {
-      alert("⚠️ Please select at least one date before saving!");
+      setErrorMessage("Please select at least one date and time slot before saving!");
       return;
     }
     
+    // Check if at least one time slot is selected for each date
+    for (const [dateStr, slots] of Object.entries(selectedDateSlots)) {
+      if (slots.length === 0) {
+        setErrorMessage(`Please select at least one time slot for ${formatDateForDisplay(dateStr)}`);
+        return;
+      }
+    }
+    
     setShowConfirmation(true);
+    setErrorMessage('');
   };
 
   const handleSave = async () => {
     setShowConfirmation(false);
     setLoading(true);
 
-    // Filter out any past dates that might have been selected
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
@@ -366,18 +437,17 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
     });
 
     if (validDates.length === 0) {
-      alert("⚠️ All selected dates are in the past. Please select future dates.");
+      setErrorMessage("All selected dates are in the past. Please select future dates.");
       setLoading(false);
       return;
     }
 
-    // Transform frontend state into backend-friendly payload
     const payload = {
       schedules: validDates.flatMap(dateStr => 
         selectedDateSlots[dateStr].map(slot => ({
           date: dateStr,
-          startTime: `${slot.startHour}:${slot.startMinute} ${slot.startPeriod}`,
-          endTime: `${slot.endHour}:${slot.endMinute} ${slot.endPeriod}`,
+          startTime: slot.startFormatted,
+          endTime: slot.endFormatted,
         }))
       )
     };
@@ -393,25 +463,25 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
       const data = await response.json();
 
       if (response.ok) {
-        console.log("Saved schedules:", data.schedules);
-        alert(`✅ ${data.schedules.length} time slot(s) saved!`);
-
-        if (onSave) onSave(data.schedules);
-
-        // Reset state after successful save
-        setSelectedDateSlots({});
+        // Show success alert instead of standard alert
+        setSuccessMessage(`${data.schedules.length} time slot(s) saved!`);
+        setShowSuccessAlert(true);
         
-        // Refresh existing schedules
+        if (onSave) onSave(data.schedules);
+        setSelectedDateSlots({});
         await fetchExistingSchedules();
-        onClose();
-
+        
+        // Auto-hide the success alert after 3 seconds
+        setTimeout(() => {
+          setShowSuccessAlert(false);
+          onClose();
+        }, 2000);
       } else {
-        alert(data.error || "❌ Failed to save schedule");
+        setErrorMessage(data.error || "Failed to save schedule");
       }
-
     } catch (err) {
       console.error("Error saving schedule", err);
-      alert("❌ Error saving schedule");
+      setErrorMessage("Error saving schedule");
     } finally {
       setLoading(false);
     }
@@ -429,23 +499,163 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
 
   return (
     <>
+      {/* Success Alert */}
+      {showSuccessAlert && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-2000 animate-fade-in-down">
+          <div className="bg-green-100 border border-green-400 text-green-700 px-6 py-4 rounded-xl shadow-lg flex items-center">
+            <CheckCircle className="w-5 h-5 mr-2" />
+            <span>{successMessage}</span>
+            <button 
+              onClick={() => setShowSuccessAlert(false)}
+              className="ml-4 text-green-700 hover:text-green-900"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="fixed inset-0 z-1000 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl shadow-xl w-full max-w-4xl overflow-hidden border border-gray-200 flex flex-col" style={{ maxHeight: '90vh' }}>
-          {/* Header - Fixed */}
+        <div className="bg-white rounded-2xl shadow-xl w-full max-w-6xl overflow-hidden border border-gray-200 flex flex-col" style={{ maxHeight: '90vh' }}>
+          {/* Header */}
           <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-green-50 to-emerald-50 flex-shrink-0">
             <div>
               <h3 className="text-xl font-semibold text-gray-800">Add Schedule Availability</h3>
-              <p className="text-sm text-gray-600 mt-1">Select dates and set your available time slots</p>
+              <p className="text-sm text-gray-600 mt-1">Select dates and time slots for your availability</p>
             </div>
-            <button
-              onClick={handleCancel}
-              className="cursor-pointer text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-white rounded-lg"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className="cursor-pointer p-2 text-gray-500 hover:text-gray-700 hover:bg-white rounded-lg transition-colors flex items-center text-sm"
+                title="Configure daily availability settings"
+              >
+                <Settings className="w-4 h-4 mr-1" /> Settings
+              </button>
+              <button
+                onClick={handleCancel}
+                className="cursor-pointer text-gray-400 hover:text-gray-600 transition-colors p-1 hover:bg-white rounded-lg"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
-          {/* Tab Navigation - Fixed */}
+          {/* Settings Panel */}
+          {showSettings && (
+            <div className="p-4 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+              <h4 className="font-medium text-gray-700 mb-3">Daily Availability Settings</h4>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Daily Start Time</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select
+                      value={dailyDuration.startHour}
+                      onChange={(e) => setDailyDuration({...dailyDuration, startHour: e.target.value})}
+                      className="cursor-pointer px-2 py-2 border border-gray-300 rounded text-sm"
+                    >
+                      {hourOptions.map((hour) => (
+                        <option key={`start-hour-${hour}`} value={hour}>
+                          {hour}
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={dailyDuration.startMinute}
+                      onChange={(e) => setDailyDuration({...dailyDuration, startMinute: e.target.value})}
+                      className="cursor-pointer px-2 py-2 border border-gray-300 rounded text-sm"
+                    >
+                      {minuteOptions.map((minute) => (
+                        <option key={`start-minute-${minute}`} value={minute}>
+                          {minute}
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={dailyDuration.startPeriod}
+                      onChange={(e) => setDailyDuration({...dailyDuration, startPeriod: e.target.value})}
+                      className="cursor-pointer px-2 py-2 border border-gray-300 rounded text-sm"
+                    >
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Daily End Time</label>
+                  <div className="grid grid-cols-3 gap-2">
+                    <select
+                      value={dailyDuration.endHour}
+                      onChange={(e) => setDailyDuration({...dailyDuration, endHour: e.target.value})}
+                      className="cursor-pointer px-2 py-2 border border-gray-300 rounded text-sm"
+                    >
+                      {hourOptions.map((hour) => (
+                        <option key={`end-hour-${hour}`} value={hour}>
+                          {hour}
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={dailyDuration.endMinute}
+                      onChange={(e) => setDailyDuration({...dailyDuration, endMinute: e.target.value})}
+                      className="cursor-pointer px-2 py-2 border border-gray-300 rounded text-sm"
+                    >
+                      {minuteOptions.map((minute) => (
+                        <option key={`end-minute-${minute}`} value={minute}>
+                          {minute}
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={dailyDuration.endPeriod}
+                      onChange={(e) => setDailyDuration({...dailyDuration, endPeriod: e.target.value})}
+                      className="cursor-pointer px-2 py-2 border border-gray-300 rounded text-sm"
+                    >
+                      <option value="AM">AM</option>
+                      <option value="PM">PM</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Time Slot Duration</label>
+                <select
+                  value={slotInterval}
+                  onChange={(e) => setSlotInterval(parseInt(e.target.value))}
+                  className="cursor-pointer px-3 py-2 border border-gray-300 rounded text-sm"
+                >
+                  {intervalOptions.map(option => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </div>
+              
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={() => setShowSettings(false)}
+                  className="cursor-pointer px-3 py-1 text-xs bg-gray-200 hover:bg-gray-300 text-gray-700 rounded transition-colors"
+                >
+                  Close Settings
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {errorMessage && (
+            <div className="bg-red-50 p-3 border-b border-red-200 flex items-center">
+              <AlertCircle className="w-5 h-5 text-red-500 mr-2" />
+              <p className="text-red-700 text-sm">{errorMessage}</p>
+            </div>
+          )}
+
+          {/* Tab Navigation */}
           <div className="border-b border-gray-200 flex flex-shrink-0">
             <button
               className={`px-4 py-2 font-medium text-sm ${activeTab === 'calendar' ? 'text-green-600 border-b-2 border-green-500' : 'text-gray-500 hover:text-gray-700'} cursor-pointer`}
@@ -461,11 +671,11 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
             </button>
           </div>
 
-          {/* Main Content - Scrollable */}
-          <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4 overflow-y-auto flex-grow">
+          {/* Main Content */}
+          <div className="p-4 grid grid-cols-1 lg:grid-cols-3 gap-4 overflow-y-auto flex-grow">
             {/* Calendar Section */}
             {activeTab === 'calendar' && (
-              <div className="bg-gray-50 p-3 rounded-xl">
+              <div className="bg-gray-50 p-3 rounded-xl lg:col-span-1">
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="font-medium text-gray-700 flex items-center">
                     <Calendar className="w-4 h-4 mr-2" />
@@ -556,14 +766,19 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
 
             {/* Quick Date Selection Section */}
             {activeTab === 'dates' && (
-              <div className="bg-gray-50 p-3 rounded-xl">
+              <div className="bg-gray-50 p-3 rounded-xl lg:col-span-1">
                 <h4 className="font-medium text-gray-700 mb-3 flex items-center">
                   <Clock className="w-4 h-4 mr-2" />
                   Quick Date Selection
                 </h4>
                 
                 <div className="grid grid-cols-1 gap-2 mb-4">
-                  {predefinedDateRanges.map(range => (
+                  {[
+                    { id: 'next7days', label: 'Next 7 Days', getDates: () => getDateRange(0, 6) },
+                    { id: 'next14days', label: 'Next 14 Days', getDates: () => getDateRange(0, 13) },
+                    { id: 'thisWeekend', label: 'This Weekend', getDates: getThisWeekend },
+                    { id: 'nextWeek', label: 'Next Week', getDates: getNextWeek },
+                  ].map(range => (
                     <button
                       key={range.id}
                       onClick={() => handleQuickDateSelection(range.getDates())}
@@ -590,7 +805,7 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
                           <span className="text-sm">{formatDateForDisplay(dateStr)}</span>
                           {selectedDateSlots[dateStr] && (
                             <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">
-                              Added
+                              {selectedDateSlots[dateStr].length} slots
                             </span>
                           )}
                         </div>
@@ -604,151 +819,96 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
             )}
 
             {/* Time Selection Section */}
-            <div className="bg-gray-50 p-3 rounded-xl">
+            <div className="bg-gray-50 p-3 rounded-xl lg:col-span-2">
               <div className="flex justify-between items-center mb-3">
                 <h4 className="font-medium text-gray-700 flex items-center">
                   <Clock className="w-4 h-4 mr-2" />
-                  Set Time Slots
+                  Select Time Slots
                 </h4>
-                {Object.keys(selectedDateSlots).length > 0 && (
-                  <button
-                    onClick={clearAllSelections}
-                    className="cursor-pointer text-xs text-red-600 hover:text-red-800 font-medium flex items-center"
-                  >
-                    <Trash2 className="w-3 h-3 mr-1" /> Clear All
-                  </button>
-                )}
+                <div className="flex space-x-2">
+                  {Object.keys(selectedDateSlots).length > 0 && (
+                    <button
+                      onClick={clearAllSelections}
+                      className="cursor-pointer text-xs text-red-600 hover:text-red-800 font-medium flex items-center"
+                    >
+                      <Trash2 className="w-3 h-3 mr-1" /> Clear All
+                    </button>
+                  )}
+                  {Object.keys(selectedDateSlots).length > 1 && (
+                    <button
+                      onClick={applyToAllSelectedDates}
+                      className="cursor-pointer text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center"
+                      title="Apply the same time slots to all selected dates"
+                    >
+                      <Save className="w-3 h-3 mr-1" /> Apply to All Dates
+                    </button>
+                  )}
+                </div>
               </div>
 
               {Object.keys(selectedDateSlots).length === 0 ? (
                 <div className="text-center py-8 text-gray-500">
                   <Calendar className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                  <p>Select a date to add time slots</p>
+                  <p>Select dates to view available time slots</p>
                 </div>
               ) : (
-                <div className="space-y-4 max-h-96 overflow-y-auto">
-                  {Object.entries(selectedDateSlots).map(([dateStr, slots]) => (
-                    <div key={dateStr} className="bg-white p-3 rounded-lg border border-gray-200">
-                      <div className="flex justify-between items-center mb-2">
-                        <h5 className="font-medium text-gray-800">
-                          {formatDateForDisplay(dateStr)}
-                        </h5>
-                        <div className="flex space-x-2">
-                          <button
-                            onClick={() => copyTimeSlotsToAll(dateStr)}
-                            className="cursor-pointer text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center"
-                            title="Copy these time slots to all selected dates"
-                          >
-                            <Save className="w-3 h-3 mr-1" /> Copy to All
-                          </button>
-                          <button
-                            onClick={() => addTimeSlot(dateStr)}
-                            className="cursor-pointer text-xs text-green-600 hover:text-green-800 font-medium flex items-center"
-                          >
-                            <Plus className="w-3 h-3 mr-1" /> Add Slot
-                          </button>
-                        </div>
-                      </div>
-                      
-                      <div className="space-y-3">
-                        {slots.map((slot, index) => (
-                          <div key={slot.id} className="grid grid-cols-1 md:grid-cols-2 gap-2 p-2 bg-gray-50 rounded-md">
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">From</label>
-                              <div className="grid grid-cols-3 gap-1">
-                                <select
-                                  value={slot.startHour}
-                                  onChange={(e) => updateTimeSlot(dateStr, slot.id, 'startHour', e.target.value)}
-                                  className="cursor-pointer px-1 py-1 border border-gray-300 rounded text-xs"
-                                >
-                                  {hourOptions.map((hour) => (
-                                    <option key={`start-hour-${dateStr}-${slot.id}-${hour}`} value={hour}>
-                                      {hour}
-                                    </option>
-                                  ))}
-                                </select>
-
-                                <select
-                                  value={slot.startMinute}
-                                  onChange={(e) => updateTimeSlot(dateStr, slot.id, 'startMinute', e.target.value)}
-                                  className="cursor-pointer px-1 py-1 border border-gray-300 rounded text-xs"
-                                >
-                                  {minuteOptions.map((minute) => (
-                                    <option key={`start-minute-${dateStr}-${slot.id}-${minute}`} value={minute}>
-                                      {minute}
-                                    </option>
-                                  ))}
-                                </select>
-
-                                <select
-                                  value={slot.startPeriod}
-                                  onChange={(e) => updateTimeSlot(dateStr, slot.id, 'startPeriod', e.target.value)}
-                                  className="cursor-pointer px-1 py-1 border border-gray-300 rounded text-xs"
-                                >
-                                  <option value="AM">AM</option>
-                                  <option value="PM">PM</option>
-                                </select>
-                              </div>
-                            </div>
-
-                            <div>
-                              <label className="block text-xs font-medium text-gray-700 mb-1">To</label>
-                              <div className="grid grid-cols-3 gap-1">
-                                <select
-                                  value={slot.endHour}
-                                  onChange={(e) => updateTimeSlot(dateStr, slot.id, 'endHour', e.target.value)}
-                                  className="cursor-pointer px-1 py-1 border border-gray-300 rounded text-xs"
-                                >
-                                  {hourOptions.map((hour) => (
-                                    <option key={`end-hour-${dateStr}-${slot.id}-${hour}`} value={hour}>
-                                      {hour}
-                                    </option>
-                                  ))}
-                                </select>
-
-                                <select
-                                  value={slot.endMinute}
-                                  onChange={(e) => updateTimeSlot(dateStr, slot.id, 'endMinute', e.target.value)}
-                                  className="cursor-pointer px-1 py-1 border border-gray-300 rounded text-xs"
-                                >
-                                  {minuteOptions.map((minute) => (
-                                    <option key={`end-minute-${dateStr}-${slot.id}-${minute}`} value={minute}>
-                                      {minute}
-                                    </option>
-                                  ))}
-                                </select>
-
-                                <select
-                                  value={slot.endPeriod}
-                                  onChange={(e) => updateTimeSlot(dateStr, slot.id, 'endPeriod', e.target.value)}
-                                  className="cursor-pointer px-1 py-1 border border-gray-300 rounded text-xs"
-                                >
-                                  <option value="AM">AM</option>
-                                  <option value="PM">PM</option>
-                                </select>
-                              </div>
-                            </div>
-                            
-                            <div className="md:col-span-2 flex justify-end">
-                              <button
-                                onClick={() => removeTimeSlot(dateStr, slot.id)}
-                                className="cursor-pointer text-xs text-red-600 hover:text-red-800 flex items-center"
-                                disabled={slots.length <= 1}
-                              >
-                                <Trash2 className="w-3 h-3 mr-1" /> Remove
-                              </button>
-                            </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+                  {Object.entries(selectedDateSlots).map(([dateStr, slots]) => {
+                    const timeSlots = generateTimeSlots(dateStr);
+                    const allSelected = timeSlots.length > 0 && timeSlots.every(slot => 
+                      slots.some(s => s.startTime === slot.startTime && s.endTime === slot.endTime)
+                    );
+                    
+                    return (
+                      <div key={dateStr} className="bg-white p-3 rounded-lg border border-gray-200">
+                        <div className="flex justify-between items-center mb-3">
+                          <h5 className="font-medium text-gray-800">
+                            {formatDateForDisplay(dateStr)}
+                          </h5>
+                          <div className="flex space-x-2">
+                            <button
+                              onClick={() => allSelected ? clearAllSlots(dateStr) : selectAllSlots(dateStr)}
+                              className="cursor-pointer text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center"
+                            >
+                              {allSelected ? (
+                                <><CheckSquare className="w-3 h-3 mr-1" /> Deselect All</>
+                              ) : (
+                                <><Square className="w-3 h-3 mr-1" /> Select All</>
+                              )}
+                            </button>
                           </div>
-                        ))}
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-2">
+                          {timeSlots.map(slot => (
+                            <button
+                              key={slot.id}
+                              onClick={() => toggleTimeSlot(dateStr, slot)}
+                              className={`p-2 rounded text-sm text-center transition-colors ${
+                                slot.selected
+                                  ? 'bg-green-100 text-green-800 border border-green-300'
+                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200 border border-transparent'
+                              }`}
+                            >
+                              {slot.startFormatted} - {slot.endFormatted}
+                            </button>
+                          ))}
+                        </div>
+                        
+                        {timeSlots.length === 0 && (
+                          <p className="text-sm text-gray-500 text-center py-4">
+                            No available time slots for this date
+                          </p>
+                        )}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
           </div>
 
-          {/* Footer - Fixed */}
+          {/* Footer */}
           <div className="p-4 border-t border-gray-200 flex justify-between items-center bg-gray-50 flex-shrink-0">
             <div className="text-sm text-gray-600">
               {getSelectedDatesCount()} date{getSelectedDatesCount() !== 1 ? 's' : ''} · {getSelectedSlotsCount()} time slot{getSelectedSlotsCount() !== 1 ? 's' : ''}
@@ -772,11 +932,10 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
         </div>
       </div>
 
-      {/* Confirmation Modal - Higher z-index to appear on top */}
+      {/* Confirmation Modal */}
       {showConfirmation && (
         <div className="fixed inset-0 z-1000 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden border border-gray-200 flex flex-col" style={{ maxHeight: '80vh' }}>
-            {/* Confirmation modal header */}
             <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-gradient-to-r from-yellow-50 to-orange-50 flex-shrink-0">
               <div className="flex items-center">
                 <AlertCircle className="w-5 h-5 text-yellow-600 mr-2" />
@@ -790,7 +949,6 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
               </button>
             </div>
 
-            {/* Confirmation modal content - Scrollable */}
             <div className="p-4 overflow-y-auto flex-grow">
               <p className="text-gray-700 mb-4">
                 Are you sure you want to save these schedule slots? This action cannot be undone.
@@ -806,8 +964,8 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
                           {formatDateForDisplay(dateStr)}
                         </div>
                         {slots.map((slot, index) => (
-                          <div key={slot.id} className="text-xs text-gray-600 ml-2 py-1">
-                            Slot {index + 1}: {slot.startHour}:{slot.startMinute} {slot.startPeriod} - {slot.endHour}:{slot.endMinute} {slot.endPeriod}
+                          <div key={index} className="text-xs text-gray-600 ml-2 py-1">
+                            {slot.startFormatted} - {slot.endFormatted}
                           </div>
                         ))}
                       </div>
@@ -825,7 +983,6 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
               </div>
             </div>
 
-            {/* Confirmation modal footer */}
             <div className="p-4 border-t border-gray-200 flex justify-end space-x-2 bg-gray-50 flex-shrink-0">
               <button
                 onClick={() => setShowConfirmation(false)}

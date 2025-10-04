@@ -8,31 +8,33 @@ const VetScheduleCalendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [appointments, setAppointments] = useState([]);
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [isAppointmentsModalOpen, setIsAppointmentsModalOpen] = useState(false);
+  const [selectedDateAppointments, setSelectedDateAppointments] = useState([]);
+  const [selectedDate, setSelectedDate] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchAppointments();
   }, []);
 
-const fetchAppointments = async () => {
-  try {
-    const response = await fetch("http://localhost:8000/api/veterinarian/get_approved_appointments/", {
-      method: "GET",
-      credentials: "include",
-    });
+  const fetchAppointments = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/veterinarian/get_approved_appointments/", {
+        method: "GET",
+        credentials: "include",
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (data.appointments) {
-      // No need to filter, API already ensures "approved" only
-      setAppointments(data.appointments);
+      if (data.appointments) {
+        setAppointments(data.appointments);
+      }
+    } catch (err) {
+      console.error("Failed to fetch appointments:", err);
     }
-  } catch (err) {
-    console.error("Failed to fetch appointments:", err);
-  }
-};
+  };
 
-const getDaysInMonth = (date) => {
+  const getDaysInMonth = (date) => {
     const year = date.getFullYear();
     const month = date.getMonth();
     return new Date(year, month + 1, 0).getDate();
@@ -61,20 +63,45 @@ const getDaysInMonth = (date) => {
   };
 
   const formatDateForComparison = (date) => {
-    // Format date as YYYY-MM-DD for consistent comparison
     const year = date.getFullYear();
     const month = (date.getMonth() + 1).toString().padStart(2, '0');
     const day = date.getDate().toString().padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
 
-  const hasAppointmentOnDate = (date) => {
-    const dateString = formatDateForComparison(date);
-    return appointments.some(app => {
-      // Ensure we're comparing just the date part, ignoring time
-      const appointmentDate = app.app_date.split('T')[0];
-      return appointmentDate === dateString;
+  const formatDateForDisplay = (dateString) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
     });
+  };
+
+// normalize MM-DD-YYYY into YYYY-MM-DD
+const normalizeAppDate = (dateStr) => {
+  if (!dateStr) return "";
+  const [month, day, year] = dateStr.split("-");
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+};
+
+const hasAppointmentOnDate = (date) => {
+  const dateString = formatDateForComparison(date); // YYYY-MM-DD
+  return appointments.some(app => normalizeAppDate(app.app_date) === dateString);
+};
+
+const getAppointmentsForDate = (date) => {
+  const dateString = formatDateForComparison(date); // YYYY-MM-DD
+  return appointments.filter(app => normalizeAppDate(app.app_date) === dateString);
+};
+  const handleDateClick = (date) => {
+    const dateAppointments = getAppointmentsForDate(date);
+    if (dateAppointments.length > 0) {
+      setSelectedDateAppointments(dateAppointments);
+      setSelectedDate(formatDateForDisplay(date));
+      setIsAppointmentsModalOpen(true);
+    }
   };
 
   const renderCalendar = () => {
@@ -92,14 +119,16 @@ const getDaysInMonth = (date) => {
       const date = new Date(currentDate.getFullYear(), currentDate.getMonth(), day);
       const hasAppointment = hasAppointmentOnDate(date);
       const appointmentCount = appointments.filter(app => {
-        const appointmentDate = app.app_date.split('T')[0];
+        const appointmentDate = normalizeAppDate(app.app_date);
         return appointmentDate === formatDateForComparison(date);
-      }).length;
-      
+      }).length;      
       calendarDays.push(
         <div 
           key={day} 
-          className={`h-16 border border-gray-200 p-1 flex flex-col ${hasAppointment ? 'bg-blue-50' : ''}`}
+          className={`h-16 border border-gray-200 p-1 flex flex-col ${
+            hasAppointment ? 'bg-blue-50 cursor-pointer hover:bg-blue-100 transition-colors' : ''
+          }`}
+          onClick={() => hasAppointment && handleDateClick(date)}
         >
           <div className="flex justify-between items-start">
             <span className="text-xs font-medium">{day}</span>
@@ -151,7 +180,7 @@ const getDaysInMonth = (date) => {
           </div>
         </div>
 
-        {/* Calendar content - made more compact */}
+        {/* Calendar content */}
         <div className="flex-1 p-6">
           <div className="bg-white rounded-2xl shadow-lg p-4 h-full flex flex-col">
             {/* Month navigation */}
@@ -167,7 +196,7 @@ const getDaysInMonth = (date) => {
               </button>
             </div>
 
-            {/* Calendar grid - made more compact */}
+            {/* Calendar grid */}
             <div className="grid grid-cols-7 gap-1 flex-1">
               {/* Day headers */}
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
@@ -183,11 +212,90 @@ const getDaysInMonth = (date) => {
         </div>
       </div>
 
+      {/* Schedule Modal */}
       <ScheduleModal 
         isOpen={isScheduleModalOpen} 
         onClose={() => setIsScheduleModalOpen(false)} 
         onScheduleAdded={fetchAppointments}
       />
+
+      {/* Appointments Modal */}
+      {isAppointmentsModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-1000">
+          <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full mx-4 max-h-[80vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-bold text-gray-800">Appointments for {selectedDate}</h3>
+                <button 
+                  onClick={() => setIsAppointmentsModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 text-2xl font-bold"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {selectedDateAppointments.length === 0 ? (
+                <p className="text-gray-500 text-center py-4">No appointments found for this date.</p>
+              ) : (
+                <div className="space-y-4">
+                  {selectedDateAppointments.map((appointment, index) => (
+                    <div key={index} className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <h4 className="font-semibold text-gray-800">Appointment Details</h4>
+                          <p className="text-sm text-gray-600">
+                            <span className="font-medium">Time:</span>{" "}
+                            {appointment.app_time ? appointment.app_time : "N/A"}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            <span className="font-medium">Status:</span> 
+                            <span className={`ml-1 px-2 py-1 rounded-full text-xs ${
+                              appointment.status === 'approved' ? 'bg-green-100 text-green-800' :
+                              appointment.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {appointment.status}
+                            </span>
+                          </p>
+                        </div>
+                        <div>
+                          <h4 className="font-semibold text-gray-800">Pet Information</h4>
+                          <p className="text-sm text-gray-600">
+                            <span className="font-medium">Pet:</span> {appointment.pet_name || 'N/A'}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            <span className="font-medium">Service:</span> {appointment.service_type || 'N/A'}
+                          </p>
+                        </div>
+                      </div>
+                      {appointment.notes && (
+                        <div className="mt-3">
+                          <p className="text-sm text-gray-600">
+                            <span className="font-medium">Notes:</span> {appointment.notes}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            <div className="p-6 border-t border-gray-200 bg-gray-50">
+              <div className="flex justify-end">
+                <button 
+                  onClick={() => setIsAppointmentsModalOpen(false)}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

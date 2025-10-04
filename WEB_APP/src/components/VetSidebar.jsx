@@ -7,18 +7,38 @@ import {
   Settings,
   X
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 const Sidebar = () => {
   const location = useLocation();
   const navigate = useNavigate();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  
+  // Get initial state from localStorage or default to false
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebarCollapsed');
+    return saved ? JSON.parse(saved) : false;
+  });
+
+  // Save to localStorage whenever state changes
+  useEffect(() => {
+    localStorage.setItem('sidebarCollapsed', JSON.stringify(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
 
   const handleLogout = () => {
     localStorage.clear();
     navigate('/');
+  };
+
+  const handleToggleSidebar = () => {
+    setIsSidebarCollapsed(!isSidebarCollapsed);
+  };
+
+  // Navigation doesn't affect sidebar state
+  const handleNavigation = (path) => {
+    navigate(path);
+    // Sidebar state remains the same
   };
 
   const sidebarItems = [
@@ -66,21 +86,20 @@ const Sidebar = () => {
         }
 
         .sidebar-logo {
-          width: 42px;
-          height: 42px;
-          background: #16a34a;
-          border-radius: 12px;
+          max-width: 160px;
+          height: auto;
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
-          box-shadow: 0 4px 20px -2px rgba(22, 163, 74, 0.3);
+          overflow: hidden;
         }
 
-        .sidebar-logo-icon {
-          width: 22px;
-          height: 22px;
-          color: white;
+        .sidebar-logo-img {
+          width: 100%;
+          height: auto;
+          object-fit: contain;
+          filter: contrast(1.3) brightness(1.1);
         }
 
         .sidebar-brand {
@@ -146,6 +165,13 @@ const Sidebar = () => {
           color: #362205;
           position: relative;
           overflow: hidden;
+          cursor: pointer;
+        }
+
+        /* Fix for collapsed state */
+        .sidebar-collapsed .sidebar-nav-item {
+          justify-content: center;
+          padding: 14px;
         }
 
         .sidebar-nav-item:before {
@@ -208,7 +234,41 @@ const Sidebar = () => {
           font-weight: 500;
         }
 
-        /* Tooltip */
+        /* Hide labels when sidebar is collapsed */
+        .sidebar-collapsed .sidebar-nav-label {
+          display: none;
+        }
+
+        /* Show labels on hover when collapsed */
+        .sidebar-collapsed .sidebar-nav-item:hover .sidebar-nav-label {
+          display: block;
+          position: absolute;
+          left: 100%;
+          top: 50%;
+          transform: translateY(-50%) translateX(12px);
+          background: #362205;
+          color: white;
+          padding: 8px 14px;
+          border-radius: 6px;
+          white-space: nowrap;
+          font-size: 13px;
+          z-index: 1000;
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+          border: 1px solid rgba(0, 0, 0, 0.3);
+        }
+
+        .sidebar-collapsed .sidebar-nav-item:hover .sidebar-nav-label::before {
+          content: '';
+          position: absolute;
+          right: 100%;
+          top: 50%;
+          transform: translateY(-50%);
+          border-width: 6px;
+          border-style: solid;
+          border-color: transparent #362205 transparent transparent;
+        }
+
+        /* Tooltip - Alternative approach using data attributes */
         .sidebar-tooltip {
           visibility: hidden;
           opacity: 0;
@@ -240,8 +300,9 @@ const Sidebar = () => {
           border-color: transparent #362205 transparent transparent;
         }
 
-        .sidebar-nav-item:hover .sidebar-tooltip,
-        .sidebar-logout-button:hover .sidebar-tooltip {
+        /* Show tooltip only when sidebar is collapsed (alternative method) */
+        .sidebar-collapsed .sidebar-nav-item:hover .sidebar-tooltip,
+        .sidebar-collapsed .sidebar-logout-button:hover .sidebar-tooltip {
           visibility: visible;
           opacity: 1;
           transform: translateY(-50%) translateX(12px);
@@ -264,10 +325,55 @@ const Sidebar = () => {
           position: relative;
         }
 
+        /* Fix for collapsed logout button */
+        .sidebar-collapsed .sidebar-logout-button {
+          justify-content: center;
+          padding: 14px;
+        }
+
         .sidebar-logout-button:hover {
           background: #F0F0F0;
           color: #120A01;
           transform: translateX(4px);
+        }
+
+        /* Hide logout text when collapsed */
+        .sidebar-collapsed .sidebar-logout-button .sidebar-nav-label {
+          display: none;
+        }
+
+        /* Show logout label on hover when collapsed */
+        .sidebar-collapsed .sidebar-logout-button:hover .sidebar-nav-label {
+          display: block;
+          position: absolute;
+          left: 100%;
+          top: 50%;
+          transform: translateY(-50%) translateX(12px);
+          background: #362205;
+          color: white;
+          padding: 8px 14px;
+          border-radius: 6px;
+          white-space: nowrap;
+          font-size: 13px;
+          z-index: 1000;
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+          border: 1px solid rgba(0, 0, 0, 0.3);
+        }
+
+        .sidebar-collapsed .sidebar-logout-button:hover .sidebar-nav-label::before {
+          content: '';
+          position: absolute;
+          right: 100%;
+          top: 50%;
+          transform: translateY(-50%);
+          border-width: 6px;
+          border-style: solid;
+          border-color: transparent #362205 transparent transparent;
+        }
+
+        /* Hide logo when collapsed */
+        .sidebar-collapsed .sidebar-logo {
+          display: none;
         }
 
         /* Modal */
@@ -385,25 +491,17 @@ const Sidebar = () => {
         }
       `}</style>
 
-      <div
-        className={`sidebar ${isSidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}`}
-      >
+      <div className={`sidebar ${isSidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}`}>
         {/* Header */}
         <div className="sidebar-header">
           <div className="sidebar-logo-container">
             <div className="sidebar-logo">
-              <Heart className="sidebar-logo-icon" />
+              <img src="/Images/echo.png" alt="ECHO Logo" className="sidebar-logo-img" />
             </div>
-            {!isSidebarCollapsed && (
-              <div className="sidebar-brand">
-                <span className="sidebar-brand-title">ECHO</span>
-                <p className="sidebar-brand-subtitle">Veterinarian</p>
-              </div>
-            )}
           </div>
           <button
             className="menu-button"
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            onClick={handleToggleSidebar}
           >
             <Menu className="menu-icon" />
           </button>
@@ -425,15 +523,19 @@ const Sidebar = () => {
             }
 
             return (
-              <Link
+              <div
                 key={index}
-                to={path}
+                onClick={() => handleNavigation(path)}
                 className={`sidebar-nav-item ${isActive ? 'sidebar-nav-item-active' : ''}`}
               >
                 <Icon className="sidebar-nav-icon" />
-                {!isSidebarCollapsed && <span className="sidebar-nav-label">{label}</span>}
-                {isSidebarCollapsed && <span className="sidebar-tooltip">{label}</span>}
-              </Link>
+                {!isSidebarCollapsed && (
+                  <span className="sidebar-nav-label">{label}</span>
+                )}
+                {isSidebarCollapsed && (
+                  <span className="sidebar-tooltip">{label}</span>
+                )}
+              </div>
             );
           })}
         </nav>
