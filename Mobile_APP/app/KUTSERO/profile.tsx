@@ -58,7 +58,7 @@ const getSafeAreaPadding = () => {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
 
 // Updated User data interface - Fixed to include kutsero_id at root level
 interface UserData {

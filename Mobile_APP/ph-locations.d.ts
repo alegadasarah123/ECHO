@@ -1,0 +1,1 @@
+declare module 'philippine-location-json-for-geer';

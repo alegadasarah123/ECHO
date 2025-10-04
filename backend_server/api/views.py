@@ -6,12 +6,17 @@ from supabase import create_client, Client
 from django.conf import settings
 import requests
 import datetime
+import base64
+import random
+from datetime import datetime
+
 
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_KEY) 
 
 SUPABASE_SERVICE_ROLE_KEY = settings.SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_URL = settings.SUPABASE_URL
 SUPABASE_ANON_KEY = settings.SUPABASE_ANON_KEY
+
 
 # --------------------------------------------------------------- LOGIN WEB -------------------------------------------------------------------------------------------
 @api_view(['POST'])
@@ -180,7 +185,7 @@ def signup_vet(request):
 def signup_mobile(request):
     email = request.data.get("email")
     password = request.data.get("password")
-    role = request.data.get("role")   # 👈 kutsero or horse_operator
+    role = request.data.get("role")
 
     if not email or not password or not role:
         return Response({"error": "Email, password, and role are required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -192,6 +197,50 @@ def signup_mobile(request):
         last_name = request.data.get("lastName", "").strip()
         username = f"{first_name.lower()}.{last_name.lower()}" if first_name and last_name else email.split('@')[0]
 
+    # Handle profile picture upload to Supabase Storage
+    profile_picture_url = None
+    profile_picture_base64 = request.data.get("profilePicture")
+    
+    if profile_picture_base64 and profile_picture_base64.strip():
+        try:
+            if ";base64," in profile_picture_base64:
+                # Extract format and base64 data
+                format_part, imgstr = profile_picture_base64.split(";base64,")
+                ext = format_part.split("/")[-1]
+                
+                # Generate unique filename
+                timestamp = int(datetime.now().timestamp())
+                file_name = f"{email.split('@')[0]}_{timestamp}_{random.randint(1000,9999)}.{ext}"
+                
+                # Decode base64 to bytes
+                file_bytes = base64.b64decode(imgstr)
+                
+                # Upload to Supabase storage using REST API
+                print(f"[DEBUG] Uploading profile picture: {file_name}")
+                upload_url = f"{SUPABASE_URL}/storage/v1/object/kutsero_op_profile/{file_name}"
+                upload_headers = {
+                    "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                    "Content-Type": f"image/{ext}",
+                }
+                
+                upload_response = requests.post(upload_url, data=file_bytes, headers=upload_headers)
+                print(f"[DEBUG] Upload status: {upload_response.status_code}")
+                print(f"[DEBUG] Upload response: {upload_response.text}")
+                
+                if upload_response.status_code in [200, 201]:
+                    # Construct public URL manually
+                    profile_picture_url = f"{SUPABASE_URL}/storage/v1/object/public/kutsero_op_profile/{file_name}"
+                    print(f"[DEBUG] Profile picture URL: {profile_picture_url}")
+                else:
+                    print(f"[ERROR] Upload failed with status {upload_response.status_code}")
+                
+        except Exception as e:
+            print(f"[ERROR] Profile picture upload failed: {e}")
+            import traceback
+            traceback.print_exc()
+            profile_picture_url = None
+
     # Create user in Supabase Auth
     signup_url = f"{SUPABASE_URL}/auth/v1/admin/users"
     headers = {
@@ -199,9 +248,17 @@ def signup_mobile(request):
         "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
         "Content-Type": "application/json"
     }
-    payload_auth = {"email": email, "password": password}
+    payload_auth = {
+        "email": email, 
+        "password": password,
+        "email_confirm": True  # Auto-confirm email
+    }
+    
+    print(f"[DEBUG] Creating auth user for: {email}")
     auth_response = requests.post(signup_url, json=payload_auth, headers=headers)
     auth_json = auth_response.json()
+    print(f"[DEBUG] Auth response status: {auth_response.status_code}")
+    print(f"[DEBUG] Auth response: {auth_json}")
 
     if auth_response.status_code not in [200, 201]:
         return Response({"error": "Failed to create user in Supabase Auth", "details": auth_json}, status=status.HTTP_400_BAD_REQUEST)
@@ -213,10 +270,10 @@ def signup_mobile(request):
     # Convert role to proper format for database
     db_role = "Kutsero" if role == "kutsero" else "Horse Operator" if role == "horse_operator" else role
 
-    # Insert into users table (with chosen role)
+    # Insert into users table
     user_payload = {
         "id": user_id,
-        "role": db_role,      # 👈 "Kutsero" or "Horse Operator"
+        "role": db_role,
         "status": "pending",
     }
 
@@ -227,20 +284,29 @@ def signup_mobile(request):
         "Content-Type": "application/json",
         "Prefer": "return=representation"
     }
+    
+    print(f"[DEBUG] Inserting into users table...")
     user_insert_response = requests.post(insert_user_url, json=user_payload, headers=insert_headers)
     user_insert_json = user_insert_response.json()
+    print(f"[DEBUG] User insert status: {user_insert_response.status_code}")
+    print(f"[DEBUG] User insert response: {user_insert_json}")
 
     if user_insert_response.status_code not in [200, 201]:
-        # Cleanup Auth user if failed
+        print(f"[ERROR] Failed to insert into users table")
         delete_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
         requests.delete(delete_url, headers=headers)
         return Response({"error": "Failed to insert into users table", "details": user_insert_json}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Insert profile based on role
+    # Prepare profile payload based on role
     if role == "kutsero":
         profile_payload = {
             "kutsero_id": user_id,
             "kutsero_username": username,
+            "kutsero_email": email,
+        }
+        
+        # Add optional fields only if they have values
+        optional_fields = {
             "kutsero_fname": request.data.get("firstName"),
             "kutsero_mname": request.data.get("middleName"),
             "kutsero_lname": request.data.get("lastName"),
@@ -252,21 +318,32 @@ def signup_mobile(request):
             "kutsero_municipality": request.data.get("municipality"),
             "kutsero_brgy": request.data.get("barangay"),
             "kutsero_zipcode": request.data.get("zipCode"),
-            "kutsero_email": email,
             "kutsero_fb": request.data.get("facebook"),
+            "kutsero_image": profile_picture_url,
         }
+        
+        # Only add non-None values
+        for key, value in optional_fields.items():
+            if value is not None and value != "":
+                profile_payload[key] = value
+        
         insert_profile_url = f"{SUPABASE_URL}/rest/v1/kutsero_profile"
 
     elif role == "horse_operator":
         profile_payload = {
             "op_id": user_id,
+            "op_email": email,
+            "op_province": "Cebu",  # Default value
+        }
+        
+        # Add optional fields only if they have values
+        optional_fields = {
             "op_fname": request.data.get("firstName"),
             "op_mname": request.data.get("middleName"),
             "op_lname": request.data.get("lastName"),
             "op_dob": request.data.get("dob"),
             "op_sex": request.data.get("sex"),
             "op_phone_num": request.data.get("phoneNumber"),
-            "op_province": request.data.get("province", "Cebu"),
             "op_city": request.data.get("city"),
             "op_municipality": request.data.get("municipality"),
             "op_brgy": request.data.get("barangay"),
@@ -274,32 +351,61 @@ def signup_mobile(request):
             "op_house_add": request.data.get("houseAddress"),
             "op_routefrom": request.data.get("route"),
             "op_routeto": request.data.get("to"),
-            "op_email": email,
             "op_fb": request.data.get("facebook"),
-            "op_image": request.data.get("profilePicture"),
+            "op_image": profile_picture_url,
         }
+        
+        # Only add non-None values
+        for key, value in optional_fields.items():
+            if value is not None and value != "":
+                profile_payload[key] = value
+        
         insert_profile_url = f"{SUPABASE_URL}/rest/v1/horse_op_profile"
 
     else:
         return Response({"error": "Invalid role selected"}, status=status.HTTP_400_BAD_REQUEST)
 
     # Insert profile
+    print(f"[DEBUG] Inserting profile for {role}...")
+    print(f"[DEBUG] Profile payload: {profile_payload}")
     profile_insert_response = requests.post(insert_profile_url, json=profile_payload, headers=insert_headers)
     profile_insert_json = profile_insert_response.json()
+    print(f"[DEBUG] Profile insert status: {profile_insert_response.status_code}")
+    print(f"[DEBUG] Profile insert response: {profile_insert_json}")
 
     if profile_insert_response.status_code not in [200, 201]:
-        # Cleanup if profile insert fails
+        print(f"[ERROR] Failed to insert profile")
+        
+        # Cleanup: delete user record
         requests.delete(f"{SUPABASE_URL}/rest/v1/users?id=eq.{user_id}", headers=insert_headers)
+        
+        # Cleanup: delete auth user
         requests.delete(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=headers)
+        
+        # Cleanup uploaded image
+        if profile_picture_url:
+            try:
+                file_name = profile_picture_url.split("/")[-1]
+                delete_url = f"{SUPABASE_URL}/storage/v1/object/kutsero_op_profile/{file_name}"
+                delete_headers = {
+                    "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                }
+                requests.delete(delete_url, headers=delete_headers)
+                print(f"[DEBUG] Cleaned up uploaded image: {file_name}")
+            except Exception as e:
+                print(f"[ERROR] Failed to cleanup image: {e}")
+        
         return Response({"error": "Failed to insert profile", "details": profile_insert_json}, status=status.HTTP_400_BAD_REQUEST)
 
+    print(f"[SUCCESS] User registration completed for {email}")
     return Response({
         "message": "User registration completed successfully. Your account is pending approval.",
         "user": auth_json,
         "user_record": user_insert_json,
-        "profile": profile_insert_json
+        "profile": profile_insert_json,
+        "profile_picture": profile_picture_url
     }, status=status.HTTP_201_CREATED)
-
 
 @api_view(['POST'])
 def login_mobile(request):

@@ -1,4 +1,3 @@
-
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import { useFocusEffect, useRouter } from 'expo-router'
 import { useCallback, useEffect, useState } from "react"
@@ -60,6 +59,25 @@ const getSafeAreaPadding = () => {
   }
 }
 
+// Generate a more unique ID
+const generateUniqueId = () => {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+};
+
+// Add duplicate removal helper
+const removeDuplicateActivities = (activities: CareActivity[]) => {
+  const seen = new Set();
+  return activities.filter(activity => {
+    // Create a more comprehensive key for duplicate detection
+    const key = `${activity.id}-${activity.type}-${activity.timestamp}-${activity.horseId}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+
 interface Horse {
   id: string
   name: string
@@ -105,7 +123,7 @@ interface CareActivity {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.1.3:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
 
 export default function HorseCareScreen() {
   const router = useRouter()
@@ -214,20 +232,24 @@ export default function HorseCareScreen() {
   // Load care activities for the selected horse
   const loadCareActivities = async () => {
     try {
-      // Load from local storage first
       const storedActivities = await SecureStore.getItemAsync('careActivities')
       if (storedActivities) {
         const activities: CareActivity[] = JSON.parse(storedActivities)
-        // Filter activities for current horse and sort by timestamp
-        const horseActivities = activities
-          .filter(activity => activity.horseId === selectedHorse.id)
-          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
-          .slice(0, 10) // Show only last 10 activities
+        // Remove duplicates and filter for current horse
+        const cleanActivities = Array.isArray(activities) 
+          ? removeDuplicateActivities(activities)
+              .filter(activity => activity.horseId === selectedHorse.id)
+              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+              .slice(0, 10)
+          : []
         
-        setRecentActivities(horseActivities)
+        setRecentActivities(cleanActivities)
+      } else {
+        setRecentActivities([])
       }
     } catch (error) {
       console.error('Error loading care activities:', error)
+      setRecentActivities([])
     }
   }
 
@@ -251,7 +273,7 @@ export default function HorseCareScreen() {
   const saveCareActivity = async (type: 'feed' | 'water', notes?: string) => {
     try {
       const activity: CareActivity = {
-        id: Date.now().toString(),
+        id: generateUniqueId(), // Use the new unique ID generator
         type: type,
         timestamp: new Date().toISOString(),
         horseId: selectedHorse.id,
@@ -267,14 +289,18 @@ export default function HorseCareScreen() {
       // Add new activity
       activities.unshift(activity)
       
-      // Keep only last 100 activities to prevent storage bloat
-      activities = activities.slice(0, 100)
+      // Remove duplicates and keep only last 100 activities
+      activities = removeDuplicateActivities(activities).slice(0, 100)
       
       // Save back to storage
       await SecureStore.setItemAsync('careActivities', JSON.stringify(activities))
       
       // Update local state
-      setRecentActivities(prev => [activity, ...prev.slice(0, 9)])
+      const horseActivities = activities
+        .filter(act => act.horseId === selectedHorse.id)
+        .slice(0, 10)
+      
+      setRecentActivities(horseActivities)
       
       console.log(`${type} activity saved for ${selectedHorse.name}`)
     } catch (error) {
@@ -304,62 +330,60 @@ export default function HorseCareScreen() {
     </View>
   )
 
-  // In the HorseCareScreen component, replace the TabButton onPress logic with this:
-
-const TabButton = ({
-  iconSource,
-  label,
-  tabKey,
-  isActive,
-  onPress,
-}: {
-  iconSource: any
-  label: string
-  tabKey: string
-  isActive: boolean
-  onPress?: () => void
-}) => (
-  <TouchableOpacity
-    style={styles.tabButton}
-    onPress={() => {
-      if (onPress) {
-        onPress()
-      } else {
-        // Navigate directly without updating local state
-        if (tabKey === "home") {
-          router.push('./dashboard') // Navigate to dashboard in same folder
-        } else if (tabKey === "horse") {
-          // Stay on horse care - already here
-        } else if (tabKey === "chat") {
-          router.push('./messages')
-        } else if (tabKey === "calendar") {
-          router.push('./calendar')
-        } else if (tabKey === "history") {
-          router.push('./history')
-        } else if (tabKey === "profile") {
-          router.push('./profile')
+  const TabButton = ({
+    iconSource,
+    label,
+    tabKey,
+    isActive,
+    onPress,
+  }: {
+    iconSource: any
+    label: string
+    tabKey: string
+    isActive: boolean
+    onPress?: () => void
+  }) => (
+    <TouchableOpacity
+      style={styles.tabButton}
+      onPress={() => {
+        if (onPress) {
+          onPress()
+        } else {
+          // Navigate directly without updating local state
+          if (tabKey === "home") {
+            router.push('./dashboard') // Navigate to dashboard in same folder
+          } else if (tabKey === "horse") {
+            // Stay on horse care - already here
+          } else if (tabKey === "chat") {
+            router.push('./messages')
+          } else if (tabKey === "calendar") {
+            router.push('./calendar')
+          } else if (tabKey === "history") {
+            router.push('./history')
+          } else if (tabKey === "profile") {
+            router.push('./profile')
+          }
         }
-      }
-    }}
-  >
-    <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
-      {iconSource ? (
-        <Image
-          source={iconSource}
-          style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
-          resizeMode="contain"
-        />
-      ) : tabKey === "home" ? (
-        <DashboardIcon color={isActive ? "white" : "#666"} />
-      ) : tabKey === "profile" ? (
-        <ProfileIcon color={isActive ? "white" : "#666"} />
-      ) : (
-        <View style={styles.fallbackIcon} />
-      )}
-    </View>
-    <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
-  </TouchableOpacity>
-)
+      }}
+    >
+      <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
+        {iconSource ? (
+          <Image
+            source={iconSource}
+            style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
+            resizeMode="contain"
+          />
+        ) : tabKey === "home" ? (
+          <DashboardIcon color={isActive ? "white" : "#666"} />
+        ) : tabKey === "profile" ? (
+          <ProfileIcon color={isActive ? "white" : "#666"} />
+        ) : (
+          <View style={styles.fallbackIcon} />
+        )}
+      </View>
+      <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
+    </TouchableOpacity>
+  )
 
   const MenuIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
@@ -469,6 +493,8 @@ const TabButton = ({
         }}
         feedType={feedType}
         horseName={selectedHorse.name}
+        horseId={selectedHorse.id}
+        userId={userData?.id || ""}
       />
     )
   }
@@ -672,9 +698,9 @@ const TabButton = ({
               </TouchableOpacity>
             </View>
             
-            {recentActivities.length > 0 ? (
-              recentActivities.map((activity) => (
-                <View key={activity.id} style={styles.activityItem}>
+            {recentActivities && Array.isArray(recentActivities) && recentActivities.length > 0 ? (
+              recentActivities.map((activity, index) => (
+                <View key={`activity-${activity.id}-${index}`} style={styles.activityItem}>
                   <View style={styles.activityIcon}>
                     <Text style={styles.activityEmoji}>{getActivityIcon(activity.type)}</Text>
                   </View>

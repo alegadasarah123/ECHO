@@ -15,6 +15,9 @@ import {
   TouchableOpacity,
   View,
   ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
 import NotificationsPage from "./notifications"
@@ -22,41 +25,35 @@ import SOSEmergencyScreen from "./sos"
 
 const { width, height } = Dimensions.get("window")
 
-// Enhanced responsive scaling functions with better mobile optimization
 const scale = (size: number) => {
-  const scaleFactor = width / 375 // Base width for iPhone X
+  const scaleFactor = width / 375
   const scaledSize = size * scaleFactor
-  // Tighter bounds for mobile screens
   return Math.max(Math.min(scaledSize, size * 1.2), size * 0.8)
 }
 
 const verticalScale = (size: number) => {
-  const scaleFactor = height / 812 // Base height for iPhone X
+  const scaleFactor = height / 812
   const scaledSize = size * scaleFactor
-  // Tighter bounds for mobile screens
   return Math.max(Math.min(scaledSize, size * 1.15), size * 0.85)
 }
 
 const moderateScale = (size: number, factor = 0.5) => {
   const scaledSize = size + (scale(size) - size) * factor
-  // Ensure text remains readable on all screen sizes
   return Math.max(Math.min(scaledSize, size * 1.1), size * 0.9)
 }
 
-// Mobile-optimized spacing
 const dynamicSpacing = (baseSize: number) => {
-  if (width < 350) return verticalScale(baseSize * 0.7) // Very small screens
-  if (width < 400) return verticalScale(baseSize * 0.85) // Small screens
-  if (width > 450) return verticalScale(baseSize * 1.05) // Large screens
-  return verticalScale(baseSize) // Standard screens
+  if (width < 350) return verticalScale(baseSize * 0.7)
+  if (width < 400) return verticalScale(baseSize * 0.85)
+  if (width > 450) return verticalScale(baseSize * 1.05)
+  return verticalScale(baseSize)
 }
 
-// Safe area calculations
 const getSafeAreaPadding = () => {
   const statusBarHeight = StatusBar.currentHeight || 0
   return {
     top: Math.max(statusBarHeight, 20),
-    bottom: height > 800 ? 34 : 20, // Account for home indicator on newer phones
+    bottom: height > 800 ? 34 : 20,
   }
 }
 
@@ -88,7 +85,6 @@ interface Horse {
   nextCheckup?: string
 }
 
-// User data interface
 interface UserData {
   id: string
   email: string
@@ -116,10 +112,10 @@ interface Announcement {
   created_at?: string
   comment_count?: number
   user_name?: string
+  image_url?: string
 }
 
-// Backend API configuration
-const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
 
 export default function DashboardScreen() {
   const router = useRouter()
@@ -127,15 +123,13 @@ export default function DashboardScreen() {
   const [showCommentModal, setShowCommentModal] = useState(false)
   const [newComment, setNewComment] = useState("")
   const [selectedAnnouncementId, setSelectedAnnouncementId] = useState<string | null>(null)
-
-  // Updated user state management
-  const [currentUser, setCurrentUser] = useState("User") // Default fallback
+  const [keyboardHeight, setKeyboardHeight] = useState(0)
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
+  const [currentUser, setCurrentUser] = useState("User")
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingHorse, setIsLoadingHorse] = useState(false)
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(false)
-
-  // Announcements state
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [expandedAnnouncements, setExpandedAnnouncements] = useState<Set<string>>(new Set())
 
@@ -153,23 +147,48 @@ export default function DashboardScreen() {
   }
 
   const [selectedHorse, setSelectedHorse] = useState<Horse>(defaultHorse)
-
   const [isCheckedIn, setIsCheckedIn] = useState(false)
   const [checkInTime, setCheckInTime] = useState<string | null>(null)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showSOSEmergency, setShowSOSEmergency] = useState(false)
-
   const safeArea = getSafeAreaPadding()
-
   const [comments, setComments] = useState<{ [key: string]: Comment[] }>({})
   const [isLoadingComments, setIsLoadingComments] = useState(false)
   const [isPostingComment, setIsPostingComment] = useState(false)
 
-  // Validate authentication token
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
+      setKeyboardHeight(e.endCoordinates.height)
+      setIsKeyboardVisible(true)
+    })
+    
+    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+      setKeyboardHeight(0)
+      setIsKeyboardVisible(false)
+    })
+
+    return () => {
+      keyboardDidHideListener?.remove()
+      keyboardDidShowListener?.remove()
+    }
+  }, [])
+
+  const getModalHeight = () => {
+    if (isKeyboardVisible) {
+      return height - keyboardHeight - (Platform.OS === 'ios' ? 50 : 20)
+    }
+    return height * 0.8
+  }
+
+  const getModalMarginTop = () => {
+    if (isKeyboardVisible) {
+      return Platform.OS === 'ios' ? 50 : 20
+    }
+    return height * 0.2
+  }
+
   const validateAuthToken = async (token: string): Promise<boolean> => {
     try {
-      // You can add a backend endpoint to validate token
-      // For now, we'll assume token is valid if it exists
       return token.length > 0
     } catch (error) {
       console.error("Token validation error:", error)
@@ -177,7 +196,6 @@ export default function DashboardScreen() {
     }
   }
 
-  // Fetch announcements from API
   const fetchAnnouncements = async () => {
     try {
       setIsLoadingAnnouncements(true)
@@ -190,8 +208,19 @@ export default function DashboardScreen() {
 
       if (response.ok) {
         const data = await response.json()
+        
+        // DEBUG LOGS
+        console.log("=== ANNOUNCEMENT DEBUG ===")
+        console.log("Total announcements:", data.announcements?.length || 0)
+        data.announcements?.forEach((ann: Announcement) => {
+          console.log(`Announcement ${ann.id}:`)
+          console.log("  - Title:", ann.announce_title)
+          console.log("  - Has image_url:", !!ann.image_url)
+          console.log("  - Image URL:", ann.image_url)
+        })
+        console.log("========================")
+        
         setAnnouncements(data.announcements || [])
-        console.log("Fetched announcements:", data.announcements?.length || 0)
       } else {
         console.error("Failed to fetch announcements:", response.status)
         setAnnouncements([])
@@ -204,17 +233,14 @@ export default function DashboardScreen() {
     }
   }
 
-  // Load current horse assignment from backend
   const loadCurrentAssignment = async (kutserroId: string) => {
     try {
       setIsLoadingHorse(true)
-
       const storedHorseData = await SecureStore.getItemAsync("selectedHorseData")
       if (storedHorseData) {
         try {
           const parsedHorseData = JSON.parse(storedHorseData)
           setSelectedHorse(parsedHorseData)
-          console.log("Loaded horse from SecureStore:", parsedHorseData.name)
         } catch (parseError) {
           console.error("Error parsing stored horse data:", parseError)
         }
@@ -222,21 +248,18 @@ export default function DashboardScreen() {
 
       const response = await fetch(`${API_BASE_URL}/current_assignment/?kutsero_id=${kutserroId}`, {
         method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
       })
 
       if (response.ok) {
         const data = await response.json()
         if (data.assignment && data.assignment.horse) {
-          // Transform the horse data to match our interface
           const horse: Horse = {
             id: data.assignment.horse.id,
             name: data.assignment.horse.name,
             healthStatus: data.assignment.horse.healthStatus as Horse["healthStatus"],
             status: data.assignment.horse.status,
-            image: require("../../assets/images/horse.png"), // Default image
+            image: require("../../assets/images/horse.png"),
             breed: data.assignment.horse.breed,
             age: data.assignment.horse.age,
             color: data.assignment.horse.color,
@@ -246,47 +269,25 @@ export default function DashboardScreen() {
             lastCheckup: data.assignment.horse.lastCheckup,
             nextCheckup: data.assignment.horse.nextCheckup,
           }
-
           setSelectedHorse(horse)
-
           await SecureStore.setItemAsync("selectedHorseData", JSON.stringify(horse))
-
-          console.log("Loaded current horse assignment from API:", horse.name)
-        } else {
-          console.log("No current horse assignment found from API")
-          if (!storedHorseData) {
-            setSelectedHorse(defaultHorse)
-          }
-        }
-      } else {
-        console.log("Failed to fetch current assignment from API")
-        if (!storedHorseData) {
+        } else if (!storedHorseData) {
           setSelectedHorse(defaultHorse)
         }
+      } else if (!storedHorseData) {
+        setSelectedHorse(defaultHorse)
       }
     } catch (error) {
       console.error("Error loading current assignment:", error)
-      try {
-        const storedHorseData = await SecureStore.getItemAsync("selectedHorseData")
-        if (storedHorseData && !selectedHorse) {
-          const parsedHorseData = JSON.parse(storedHorseData)
-          setSelectedHorse(parsedHorseData)
-          console.log("Loaded horse from SecureStore as fallback:", parsedHorseData.name)
-        }
-      } catch (fallbackError) {
-        console.error("Error loading horse from SecureStore fallback:", fallbackError)
-      }
     } finally {
       setIsLoadingHorse(false)
     }
   }
 
-  // Load user data and selected horse from SecureStore
   useEffect(() => {
     loadUserData()
   }, [])
 
-  // Use useFocusEffect to reload data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
       loadUserData()
@@ -297,24 +298,14 @@ export default function DashboardScreen() {
   const loadUserData = async () => {
     setIsLoading(true)
     try {
-      // Get the stored authentication data from SecureStore
       const storedUserData = await SecureStore.getItemAsync("user_data")
       const storedAccessToken = await SecureStore.getItemAsync("access_token")
 
-      console.log("Loading user data...")
-      console.log("Has stored user data:", !!storedUserData)
-      console.log("Has stored access token:", !!storedAccessToken)
-
       if (storedUserData && storedAccessToken) {
         const parsedUserData = JSON.parse(storedUserData)
-
-        // Validate token
         const isValidToken = await validateAuthToken(storedAccessToken)
-        if (!isValidToken) {
-          throw new Error("Invalid token")
-        }
+        if (!isValidToken) throw new Error("Invalid token")
 
-        // Create a unified user data structure
         const unifiedUserData: UserData = {
           id: parsedUserData.id,
           email: parsedUserData.email,
@@ -325,11 +316,8 @@ export default function DashboardScreen() {
 
         setUserData(unifiedUserData)
 
-        // Set display name based on available data
-        let displayName = "User" // default fallback
-
+        let displayName = "User"
         if (parsedUserData.profile) {
-          // Use profile data if available
           const { kutsero_fname, kutsero_lname, kutsero_username } = parsedUserData.profile
           if (kutsero_fname && kutsero_lname) {
             displayName = `${kutsero_fname} ${kutsero_lname}`
@@ -339,39 +327,21 @@ export default function DashboardScreen() {
             displayName = kutsero_fname
           }
         } else if (parsedUserData.email) {
-          // Fallback to user email if no profile
           displayName = parsedUserData.email.split("@")[0]
         }
 
         setCurrentUser(displayName)
-
-        // Load current horse assignment from backend
         const kutserroId = parsedUserData.profile?.kutsero_id || parsedUserData.id
         await loadCurrentAssignment(kutserroId)
-
-        console.log("Successfully loaded user data:", {
-          userId: parsedUserData.id,
-          email: parsedUserData.email,
-          displayName: displayName,
-          status: parsedUserData.user_status,
-        })
       } else {
-        // No stored auth data - redirect to login
-        console.log("No stored authentication data found")
         Alert.alert("Session Expired", "Please log in again to continue.", [
-          {
-            text: "OK",
-            onPress: () => router.replace("../../pages/auth/login"),
-          },
+          { text: "OK", onPress: () => router.replace("../../pages/auth/login") },
         ])
       }
     } catch (error) {
       console.error("Error loading user data:", error)
       Alert.alert("Error", "Failed to load user data. Please log in again.", [
-        {
-          text: "OK",
-          onPress: () => router.replace("../../pages/auth/login"),
-        },
+        { text: "OK", onPress: () => router.replace("../../pages/auth/login") },
       ])
     } finally {
       setIsLoading(false)
@@ -386,18 +356,14 @@ export default function DashboardScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            // Clear all user data from SecureStore
             await SecureStore.deleteItemAsync("access_token")
             await SecureStore.deleteItemAsync("refresh_token")
             await SecureStore.deleteItemAsync("user_data")
             await SecureStore.deleteItemAsync("selectedHorseData")
             await SecureStore.deleteItemAsync("checkInData")
-
-            console.log("User data cleared, navigating to login")
             router.replace("../../pages/auth/login")
           } catch (error) {
             console.error("Error during logout:", error)
-            // Still navigate even if storage clear fails
             router.replace("../../pages/auth/login")
           }
         },
@@ -418,12 +384,7 @@ export default function DashboardScreen() {
 
       if (response.ok) {
         const data = await response.json()
-        setComments((prev) => ({
-          ...prev,
-          [announcementId]: data.comments || [],
-        }))
-      } else {
-        console.error("Failed to fetch comments:", response.status)
+        setComments((prev) => ({ ...prev, [announcementId]: data.comments || [] }))
       }
     } catch (error) {
       console.error("Error fetching comments:", error)
@@ -432,109 +393,57 @@ export default function DashboardScreen() {
     }
   }
 
-  // FIXED: This is the main fix for the undefined ID issue
   const handleComment = (announcementId: string) => {
-    console.log("[v0] Opening comment modal for announcement:", announcementId)
-    console.log("[v0] Announcement ID type:", typeof announcementId)
-
     if (!announcementId || announcementId === "undefined") {
-      console.error("[v0] Invalid announcement ID:", announcementId)
       Alert.alert("Error", "Unable to load comments. Please try again.")
       return
     }
-
     setSelectedAnnouncementId(announcementId)
     setShowCommentModal(true)
     fetchComments(announcementId)
   }
 
   const submitComment = async () => {
-    console.log("[v0] Submit comment called")
-    console.log("[v0] New comment:", newComment.trim())
-    console.log("[v0] Selected announcement ID:", selectedAnnouncementId)
-    console.log("[v0] User data:", userData)
-    console.log("[v0] Kutsero ID:", userData?.profile?.kutsero_id)
-    console.log("[v0] Access token exists:", !!userData?.access_token)
-
     if (!newComment.trim()) {
       Alert.alert("Error", "Please enter a comment before posting.")
       return
     }
 
-    if (!selectedAnnouncementId || selectedAnnouncementId === "undefined") {
-      console.error("[v0] Invalid announcement ID:", selectedAnnouncementId)
-      Alert.alert("Error", "Unable to post comment. Invalid announcement ID.")
-      return
-    }
-
-    if (!userData?.profile?.kutsero_id) {
-      console.error("[v0] Missing kutsero_id:", userData?.profile)
-      Alert.alert("Error", "User not properly authenticated. Please log in again.")
-      return
-    }
-
-    if (!userData?.access_token) {
-      console.error("[v0] Missing access token")
-      Alert.alert("Error", "Authentication token missing. Please log in again.")
+    if (!selectedAnnouncementId || !userData?.profile?.kutsero_id || !userData?.access_token) {
+      Alert.alert("Error", "Unable to post comment. Please try again.")
       return
     }
 
     setIsPostingComment(true)
     try {
-      const requestUrl = `${API_BASE_URL}/announcements/${selectedAnnouncementId}/comments/`
-      console.log("[v0] Making POST request to:", requestUrl)
-
-      const requestBody = {
-        comment_text: newComment.trim(),
-        kutsero_id: userData.profile.kutsero_id,
-      }
-      console.log("[v0] Request body:", requestBody)
-
-      const response = await fetch(requestUrl, {
+      const response = await fetch(`${API_BASE_URL}/announcements/${selectedAnnouncementId}/comments/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${userData.access_token}`,
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({
+          comment_text: newComment.trim(),
+          kutsero_id: userData.profile.kutsero_id,
+        }),
       })
-
-      console.log("[v0] Response status:", response.status)
-      console.log("[v0] Response ok:", response.ok)
 
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] Response data:", data)
-
-        // Add the new comment to local state
         setComments((prev) => ({
           ...prev,
           [selectedAnnouncementId]: [data.comment, ...(prev[selectedAnnouncementId] || [])],
         }))
-
         setNewComment("")
         setShowCommentModal(false)
         setSelectedAnnouncementId(null)
         Alert.alert("Success", "Your comment has been posted!")
-
-        // Refresh announcements to update comment count
         fetchAnnouncements()
       } else {
-        const errorText = await response.text()
-        console.error("[v0] Error response:", errorText)
-
-        let errorData
-        try {
-          errorData = JSON.parse(errorText)
-        } catch (e) {
-          errorData = { error: errorText }
-        }
-
-        Alert.alert("Error", errorData.error || `Failed to post comment (${response.status})`)
+        Alert.alert("Error", "Failed to post comment")
       }
     } catch (error) {
-      console.error("[v0] Network error posting comment:", error)
-      Alert.alert("Error", "Network error. Please check your connection and try again.")
+      Alert.alert("Error", "Network error. Please check your connection.")
     } finally {
       setIsPostingComment(false)
     }
@@ -542,14 +451,10 @@ export default function DashboardScreen() {
 
   const getHealthStatusColor = (status: Horse["healthStatus"]) => {
     switch (status) {
-      case "Healthy":
-        return "#4CAF50"
-      case "Under Care":
-        return "#FF9800"
-      case "Recovering":
-        return "#2196F3"
-      default:
-        return "#666"
+      case "Healthy": return "#4CAF50"
+      case "Under Care": return "#FF9800"
+      case "Recovering": return "#2196F3"
+      default: return "#666"
     }
   }
 
@@ -561,23 +466,16 @@ export default function DashboardScreen() {
 
     try {
       const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-
-      // Store check-in data in SecureStore
-      await SecureStore.setItemAsync(
-        "checkInData",
-        JSON.stringify({
-          horseId: selectedHorse.id,
-          horseName: selectedHorse.name,
-          checkInTime: currentTime,
-          timestamp: Date.now(),
-        }),
-      )
-
+      await SecureStore.setItemAsync("checkInData", JSON.stringify({
+        horseId: selectedHorse.id,
+        horseName: selectedHorse.name,
+        checkInTime: currentTime,
+        timestamp: Date.now(),
+      }))
       setIsCheckedIn(true)
       setCheckInTime(currentTime)
       Alert.alert("Success", `Checked in with ${selectedHorse.name} at ${currentTime}`)
     } catch (error) {
-      console.error("Error during check-in:", error)
       Alert.alert("Error", "Failed to check in. Please try again.")
     }
   }
@@ -599,12 +497,9 @@ export default function DashboardScreen() {
           onPress: async () => {
             try {
               const kutserroId = await SecureStore.getItemAsync("kutseroId")
-
               const response = await fetch(`${API_BASE_URL}/checkout/`, {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   assignment_id: selectedHorse.currentAssignmentId,
                   kutsero_id: kutserroId,
@@ -612,25 +507,16 @@ export default function DashboardScreen() {
               })
 
               if (response.ok) {
-                const data = await response.json()
-
-                // Clear check-in data from SecureStore only after successful API call
                 await SecureStore.deleteItemAsync("checkInData")
-
-                // Update local state
                 setIsCheckedIn(false)
                 setCheckInTime(null)
-
                 setSelectedHorse(defaultHorse)
-
-                Alert.alert("Success", data.message || `Successfully checked out from ${selectedHorse.name}`)
+                Alert.alert("Success", `Successfully checked out from ${selectedHorse.name}`)
               } else {
-                const errorData = await response.json()
-                Alert.alert("Checkout Failed", errorData.error || "Failed to check out. Please try again.")
+                Alert.alert("Checkout Failed", "Failed to check out. Please try again.")
               }
             } catch (error) {
-              console.error("Error during check-out:", error)
-              Alert.alert("Error", "Failed to check out. Please check your internet connection and try again.")
+              Alert.alert("Error", "Failed to check out. Please check your internet connection.")
             }
           },
         },
@@ -638,7 +524,6 @@ export default function DashboardScreen() {
     )
   }
 
-  // Load check-in status on component mount
   useEffect(() => {
     const loadCheckInStatus = async () => {
       try {
@@ -660,7 +545,6 @@ export default function DashboardScreen() {
     }
   }, [selectedHorse.id])
 
-  // Format date for display
   const formatDate = (dateString: string) => {
     try {
       const date = new Date(dateString)
@@ -676,7 +560,6 @@ export default function DashboardScreen() {
     }
   }
 
-  // Dashboard/Home Icon Component
   const DashboardIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
       <View style={styles.dashboardGrid}>
@@ -688,7 +571,6 @@ export default function DashboardScreen() {
     </View>
   )
 
-  // Profile Icon Component
   const ProfileIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
       <View style={styles.profileContainer}>
@@ -717,20 +599,11 @@ export default function DashboardScreen() {
         if (onPress) {
           onPress()
         } else {
-          // Navigate directly without updating local state
-          if (tabKey === "home") {
-            // Stay on dashboard - already here
-          } else if (tabKey === "horse") {
-            router.push("./horsecare")
-          } else if (tabKey === "chat") {
-            router.push("./messages")
-          } else if (tabKey === "calendar") {
-            router.push("./calendar")
-          } else if (tabKey === "history") {
-            router.push("./history")
-          } else if (tabKey === "profile") {
-            router.push("./profile")
-          }
+          if (tabKey === "horse") router.push("./horsecare")
+          else if (tabKey === "chat") router.push("./messages")
+          else if (tabKey === "calendar") router.push("./calendar")
+          else if (tabKey === "history") router.push("./history")
+          else if (tabKey === "profile") router.push("./profile")
         }
       }}
     >
@@ -761,10 +634,8 @@ export default function DashboardScreen() {
     </View>
   )
 
-  // Get unread notifications count (simulated)
   const unreadNotificationsCount = 2
 
-  // Show loading screen while data is being loaded
   if (isLoading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
@@ -775,12 +646,10 @@ export default function DashboardScreen() {
     )
   }
 
-  // Show Notifications page when requested - moved after all hooks
   if (showNotifications) {
     return <NotificationsPage onBack={() => setShowNotifications(false)} userName={currentUser} />
   }
 
-  // Show SOS Emergency page when requested
   if (showSOSEmergency) {
     return <SOSEmergencyScreen onBack={() => setShowSOSEmergency(false)} />
   }
@@ -816,7 +685,6 @@ export default function DashboardScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
 
-      {/* Header Section */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
         <View style={styles.headerTop}>
           <View style={styles.welcomeSection}>
@@ -849,7 +717,6 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        {/* Search Bar */}
         <View style={styles.searchContainer}>
           <TextInput
             style={styles.searchInput}
@@ -868,14 +735,12 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* Content Section */}
       <View style={styles.contentContainer}>
         <ScrollView
           style={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContentContainer}
         >
-          {/* Horse Selection Section */}
           <View style={styles.horseSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Horse Assignment</Text>
@@ -917,7 +782,6 @@ export default function DashboardScreen() {
                 <>
                   <Text style={styles.reminderText}>Remember to check-out your horse at the end of the day</Text>
 
-                  {/* Check In/Out Buttons */}
                   <View style={styles.checkInOutContainer}>
                     {!isCheckedIn ? (
                       <TouchableOpacity style={styles.checkInButton} onPress={handleCheckIn}>
@@ -939,7 +803,6 @@ export default function DashboardScreen() {
                 <Text style={styles.reminderText}>Select a horse to start working</Text>
               )}
 
-              {/* Change/Select Horse Button */}
               <TouchableOpacity style={styles.changeHorseButton} onPress={() => router.push("./horseselection")}>
                 <Text style={styles.changeHorseButtonText}>
                   {selectedHorse.id === "default" ? "Select Horse" : "Change Horse"}
@@ -948,7 +811,6 @@ export default function DashboardScreen() {
             </View>
           </View>
 
-          {/* Announcements Section */}
           <View style={styles.activitiesSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Recent Announcements</Text>
@@ -978,6 +840,29 @@ export default function DashboardScreen() {
                     </View>
                   </View>
 
+                  {/* ANNOUNCEMENT IMAGE DISPLAY */}
+                  {announcement.image_url && (
+                    <View style={styles.postImageContainer}>
+                      <Image
+                        source={{ uri: announcement.image_url }}
+                        style={styles.postImage}
+                        resizeMode="cover"
+                        onLoadStart={() => {
+                          console.log("🔄 Loading image for announcement:", announcement.id)
+                          console.log("   URL:", announcement.image_url)
+                        }}
+                        onLoad={() => {
+                          console.log("✅ Image loaded successfully for announcement:", announcement.id)
+                        }}
+                        onError={(error) => {
+                          console.log("❌ Image failed to load for announcement:", announcement.id)
+                          console.log("   URL:", announcement.image_url)
+                          console.log("   Error:", error.nativeEvent.error)
+                        }}
+                      />
+                    </View>
+                  )}
+
                   <View style={styles.postContent}>
                     {(() => {
                       const { text, showToggle } = getTruncatedContent(announcement.announce_content, announcement.id)
@@ -1003,14 +888,9 @@ export default function DashboardScreen() {
                     <TouchableOpacity
                       style={styles.commentButton}
                       onPress={() => {
-                        console.log("[v0] Announcement object:", announcement)
-                        console.log("[v0] Announcement ID:", announcement.id)
-
-                        // Ensure we have a valid ID before calling handleComment
                         if (announcement.id) {
                           handleComment(String(announcement.id))
                         } else {
-                          console.error("[v0] No valid ID found in announcement:", announcement)
                           Alert.alert("Error", "Unable to load comments. Invalid announcement ID.")
                         }
                       }}
@@ -1029,7 +909,6 @@ export default function DashboardScreen() {
           </View>
         </ScrollView>
 
-        {/* Bottom Tab Navigation */}
         <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
           <TabButton iconSource={null} label="Home" tabKey="home" isActive={true} />
           <TabButton
@@ -1055,7 +934,6 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* Comment Modal */}
       <Modal
         visible={showCommentModal}
         animationType="slide"
@@ -1066,68 +944,106 @@ export default function DashboardScreen() {
         }}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Comments ({commentCount})</Text>
-              <TouchableOpacity
-                onPress={() => {
-                  setShowCommentModal(false)
-                  setSelectedAnnouncementId(null)
-                }}
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.keyboardAvoidingView}
+          >
+            <View 
+              style={[
+                styles.modalContainer,
+                {
+                  height: getModalHeight(),
+                  marginTop: getModalMarginTop(),
+                }
+              ]}
+            >
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>Comments ({commentCount})</Text>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowCommentModal(false)
+                    setSelectedAnnouncementId(null)
+                  }}
+                >
+                  <Text style={styles.closeButton}>✕</Text>
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView 
+                style={styles.commentsContainer}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={true}
               >
-                <Text style={styles.closeButton}>✕</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={styles.commentsContainer}>
-              {isLoadingComments ? (
-                <View style={styles.loadingCommentsContainer}>
-                  <ActivityIndicator size="small" color="#C17A47" />
-                  <Text style={styles.loadingCommentsText}>Loading comments...</Text>
-                </View>
-              ) : selectedAnnouncementComments.length > 0 ? (
-                selectedAnnouncementComments.map((comment) => (
-                  <View key={comment.id} style={styles.commentItem}>
-                    <View style={styles.commentHeader}>
-                      <Text style={styles.commentUser}>
-                        {comment.kutsero_fname && comment.kutsero_lname
-                          ? `${comment.kutsero_fname} ${comment.kutsero_lname}`
-                          : comment.kutsero_username || "Anonymous User"}
-                      </Text>
-                      <Text style={styles.commentTime}>{new Date(comment.comment_date).toLocaleString()}</Text>
-                    </View>
-                    <Text style={styles.commentText}>{comment.comment_text}</Text>
+                {isLoadingComments ? (
+                  <View style={styles.loadingCommentsContainer}>
+                    <ActivityIndicator size="small" color="#C17A47" />
+                    <Text style={styles.loadingCommentsText}>Loading comments...</Text>
                   </View>
-                ))
-              ) : (
-                <View style={styles.noCommentsContainer}>
-                  <Text style={styles.noCommentsText}>No comments yet. Be the first to comment!</Text>
-                </View>
-              )}
-            </ScrollView>
-            <View style={styles.commentInputContainer}>
-              <TextInput
-                style={styles.commentInput}
-                value={newComment}
-                onChangeText={setNewComment}
-                placeholder="Write a comment..."
-                placeholderTextColor="#999"
-                multiline
-                maxLength={500}
-                editable={!isPostingComment}
-              />
-              <TouchableOpacity
-                style={[styles.submitButton, { opacity: newComment.trim() && !isPostingComment ? 1 : 0.5 }]}
-                onPress={submitComment}
-                disabled={!newComment.trim() || isPostingComment}
-              >
-                {isPostingComment ? (
-                  <ActivityIndicator size="small" color="white" />
+                ) : selectedAnnouncementComments.length > 0 ? (
+                  selectedAnnouncementComments.map((comment) => (
+                    <View key={comment.id} style={styles.commentItem}>
+                      <View style={styles.commentHeader}>
+                        <Text style={styles.commentUser}>
+                          {comment.kutsero_fname && comment.kutsero_lname
+                            ? `${comment.kutsero_fname} ${comment.kutsero_lname}`
+                            : comment.kutsero_username || "Anonymous User"}
+                        </Text>
+                        <Text style={styles.commentTime}>{new Date(comment.comment_date).toLocaleString()}</Text>
+                      </View>
+                      <Text style={styles.commentText}>{comment.comment_text}</Text>
+                    </View>
+                  ))
                 ) : (
-                  <Text style={styles.submitButtonText}>Post</Text>
+                  <View style={styles.noCommentsContainer}>
+                    <Text style={styles.noCommentsText}>No comments yet. Be the first to comment!</Text>
+                  </View>
                 )}
-              </TouchableOpacity>
+              </ScrollView>
+              
+              <View style={styles.commentInputContainer}>
+                <View style={styles.commentInputWrapper}>
+                  <TextInput
+                    style={styles.commentInput}
+                    value={newComment}
+                    onChangeText={setNewComment}
+                    placeholder="Write a comment..."
+                    placeholderTextColor="#65676B"
+                    multiline={true}
+                    maxLength={500}
+                    editable={!isPostingComment}
+                    autoCorrect={true}
+                    autoCapitalize="sentences"
+                    returnKeyType="default"
+                    blurOnSubmit={false}
+                    textAlignVertical="center"
+                    selectionColor="#1877F2"
+                  />
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.submitButton, 
+                    { 
+                      opacity: newComment.trim() && !isPostingComment ? 1 : 0.5,
+                      backgroundColor: newComment.trim() && !isPostingComment ? "#1877F2" : "#E4E6EA"
+                    }
+                  ]}
+                  onPress={submitComment}
+                  disabled={!newComment.trim() || isPostingComment}
+                >
+                  {isPostingComment ? (
+                    <ActivityIndicator size="small" color="white" />
+                  ) : (
+                    <Text style={[
+                      styles.submitButtonText,
+                      { color: newComment.trim() && !isPostingComment ? "white" : "#65676B" }
+                    ]}>
+                      Post
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </View>
@@ -1373,7 +1289,6 @@ const styles = StyleSheet.create({
     borderRadius: scale(12),
     padding: scale(16),
   },
-  // Announcement icon styles
   announcementIcon: {
     width: scale(16),
     height: scale(12),
@@ -1457,7 +1372,6 @@ const styles = StyleSheet.create({
     color: "#C17A47",
     fontWeight: "600",
   },
-  // Icon container for custom icons
   iconContainer: {
     width: scale(14),
     height: scale(14),
@@ -1465,12 +1379,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     position: "relative",
   },
-  // Professional Menu Icon
   menuBar: {
     width: scale(10),
     height: scale(1.5),
   },
-  // Dashboard/Home Icon Styles
   dashboardGrid: {
     width: scale(14),
     height: scale(14),
@@ -1497,7 +1409,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     right: 0,
   },
-  // Profile Icon Styles
   profileContainer: {
     width: scale(14),
     height: scale(14),
@@ -1519,19 +1430,20 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 0,
   },
-  // Modal Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+    justifyContent: 'flex-end',
   },
   modalContainer: {
     backgroundColor: "white",
     borderTopLeftRadius: scale(20),
     borderTopRightRadius: scale(20),
-    maxHeight: height * 0.8,
-    minHeight: height * 0.4,
     paddingTop: verticalScale(20),
+    maxHeight: height * 0.9,
   },
   modalHeader: {
     flexDirection: "row",
@@ -1555,6 +1467,7 @@ const styles = StyleSheet.create({
   commentsContainer: {
     flex: 1,
     paddingHorizontal: scale(20),
+    maxHeight: height * 0.5,
   },
   commentItem: {
     paddingVertical: verticalScale(10),
@@ -1603,34 +1516,46 @@ const styles = StyleSheet.create({
   },
   commentInputContainer: {
     flexDirection: "row",
-    padding: scale(16),
+    padding: scale(12),
     borderTopWidth: 1,
-    borderTopColor: "#E0E0E0",
+    borderTopColor: "#E4E6EA",
     alignItems: "flex-end",
+    backgroundColor: "#FFFFFF",
+    gap: scale(8),
+  },
+  commentInputWrapper: {
+    flex: 1,
+    backgroundColor: "#F0F2F5",
+    borderRadius: scale(20),
+    minHeight: scale(36),
+    maxHeight: verticalScale(100),
+    justifyContent: "center",
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
   },
   commentInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#E0E0E0",
-    borderRadius: scale(16),
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(8),
-    fontSize: moderateScale(12),
-    maxHeight: verticalScale(80),
-    marginRight: scale(10),
+    fontSize: moderateScale(14),
+    color: "#1C1E21",
+    lineHeight: moderateScale(18),
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+    margin: 0,
+    backgroundColor: "transparent",
+    textAlignVertical: "center",
   },
   submitButton: {
-    backgroundColor: "#C17A47",
     paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(8),
-    borderRadius: scale(16),
+    paddingVertical: scale(8),
+    borderRadius: scale(18),
+    minWidth: scale(50),
+    height: scale(36),
+    justifyContent: "center",
+    alignItems: "center",
   },
   submitButtonText: {
-    color: "white",
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(14),
     fontWeight: "600",
   },
-  // Check In/Out Styles
   checkInOutContainer: {
     marginTop: verticalScale(8),
     marginBottom: verticalScale(8),
@@ -1720,6 +1645,17 @@ const styles = StyleSheet.create({
   postTime: {
     fontSize: moderateScale(13),
     color: "#8E8E93",
+  },
+  // NEW STYLES FOR IMAGE DISPLAY
+  postImageContainer: {
+    width: "100%",
+    height: verticalScale(200),
+    backgroundColor: "#F0F0F0",
+    overflow: "hidden",
+  },
+  postImage: {
+    width: "100%",
+    height: "100%",
   },
   postContent: {
     paddingHorizontal: scale(16),

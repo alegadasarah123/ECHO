@@ -34,13 +34,6 @@ const moderateScale = (size: number, factor = 0.5) => {
     return Math.max(Math.min(scaledSize, size * 1.1), size * 0.9)
 }
 
-const dynamicSpacing = (baseSize: number) => {
-    if (width < 350) return verticalScale(baseSize * 0.7)
-    if (width < 400) return verticalScale(baseSize * 0.85)
-    if (width > 450) return verticalScale(baseSize * 1.05)
-    return verticalScale(baseSize)
-}
-
 const getSafeAreaPadding = () => {
     const statusBarHeight = StatusBar.currentHeight || 0
     return {
@@ -57,23 +50,29 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
     const router = useRouter()
     const [contactNumber, setContactNumber] = useState("")
     const [additionalInfo, setAdditionalInfo] = useState("")
-    const [emergencyType, setEmergencyType] = useState("Horse Injury")
+    const [emergencyType, setEmergencyType] = useState("Injury/Trauma")
     const [horseStatus, setHorseStatus] = useState<string[]>([])
     const [description, setDescription] = useState("")
     const [currentLocation, setCurrentLocation] = useState("Tap to get current location")
-    const [latitude, setLatitude] = useState<number | null>(null);
-    const [longitude, setLongitude] = useState<number | null>(null);
+    const [latitude, setLatitude] = useState<number | null>(null)
+    const [longitude, setLongitude] = useState<number | null>(null)
     const [showSuccessModal, setShowSuccessModal] = useState(false)
-    const [showDetailedForm, setShowDetailedForm] = useState(false)
+    const [showEmergencyTypeModal, setShowEmergencyTypeModal] = useState(false)
     const safeArea = getSafeAreaPadding()
 
     const emergencyTypes = [
-        "Horse Injury",
-        "Medical Emergency",
-        "Fire Emergency",
-        "Security Issue",
-        "Equipment Failure",
-        "Other Emergency"
+        "Injury/Trauma",
+        "Colic",
+        "Lameness",
+        "Respiratory Distress",
+        "Eye Injury",
+        "Wound/Bleeding",
+        "Neurological Issue",
+        "Poisoning/Toxicity",
+        "Foaling Emergency",
+        "Behavioral/Aggressive",
+        "Heatstroke/Exhaustion",
+        "Other Horse Emergency"
     ]
 
     const horseStatusOptions: string[] = [
@@ -93,7 +92,6 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
         )
     }
 
-    // 🔹 Fetch Current Location
     const getCurrentLocation = async () => {
         try {
             let { status } = await Location.requestForegroundPermissionsAsync()
@@ -108,7 +106,6 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
 
             const { latitude: lat, longitude: long } = location.coords
 
-            // Convert to human-readable address
             let [address] = await Location.reverseGeocodeAsync({
                 latitude: lat,
                 longitude: long,
@@ -119,8 +116,8 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
             setCurrentLocation(
                 `${addressString} - (Lat: ${lat.toFixed(4)}, Long: ${long.toFixed(4)})`
             )
-            setLatitude(lat);
-            setLongitude(long);
+            setLatitude(lat)
+            setLongitude(long)
         } catch (error) {
             console.error(error)
             Alert.alert("Error", "Unable to fetch your location.")
@@ -128,50 +125,57 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
     }
 
     const handleSendSOS = async () => {
-  if (!contactNumber.trim()) {
-    Alert.alert("Error", "Please enter a contact number")
-    return
-  }
+        if (!contactNumber.trim()) {
+            Alert.alert("Error", "Please enter a contact number")
+            return
+        }
 
-  // ✅ Use the correct SOS endpoint
-const API_URL = "http://192.168.1.7:8000/api/kutsero/sos/create/"
+        const sosData = {
+            user_id: "example_user_id_123",
+            contact_number: contactNumber,
+            additional_info: additionalInfo,
+            emergency_type: emergencyType,
+            horse_status: horseStatus,
+            description,
+            location_text: currentLocation,
+            latitude,
+            longitude,
+        }
 
-  const sosData = {
-    user_id: "example_user_id_123", // Replace with actual user ID
-    contact_number: contactNumber,
-    additional_info: additionalInfo,
-    emergency_type: emergencyType,
-    horse_status: horseStatus,
-    description,
-    location_text: currentLocation,
-    latitude,
-    longitude,
-  }
+        try {
+            const response = await fetch("http://192.168.1.8:8000/api/kutsero/sos/create/", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(sosData),
+            })
 
-  try {
-    const response = await fetch("http://192.168.1.7:8000/api/kutsero/sos/create/", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(sosData),
-    })
-
-    if (response.ok) {
-      setShowSuccessModal(true)
-      setTimeout(() => {
-        setShowSuccessModal(false)
-      }, 3000)
-    } else {
-      const errorData = await response.json()
-      console.error("SOS Request Error:", errorData)
-      Alert.alert("Error", `Failed to send SOS alert. Status: ${response.status}`)
+            if (response.ok) {
+                setShowSuccessModal(true)
+                // Clear form after successful submission
+                setTimeout(() => {
+                    setShowSuccessModal(false)
+                    // Reset all form fields
+                    setContactNumber("")
+                    setAdditionalInfo("")
+                    setEmergencyType("Injury/Trauma")
+                    setHorseStatus([])
+                    setDescription("")
+                    setCurrentLocation("Tap to get current location")
+                    setLatitude(null)
+                    setLongitude(null)
+                }, 3000)
+            } else {
+                const errorData = await response.json()
+                console.error("SOS Request Error:", errorData)
+                Alert.alert("Error", `Failed to send SOS alert. Status: ${response.status}`)
+            }
+        } catch (error) {
+            console.error("Network Error:", error)
+            Alert.alert("Error", "An error occurred while sending the request.")
+        }
     }
-  } catch (error) {
-    console.error("Network Error:", error)
-    Alert.alert("Error", "An error occurred while sending the request.")
-  }
-}
 
     const BackIcon = () => (
         <View style={styles.backIconContainer}>
@@ -197,125 +201,108 @@ const API_URL = "http://192.168.1.7:8000/api/kutsero/sos/create/"
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={styles.scrollContent}
             >
-                {!showDetailedForm ? (
-                    // Basic Form
-                    <View style={styles.formContainer}>
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Contact Number</Text>
-                            <TextInput
-                                style={styles.textInput}
-                                value={contactNumber}
-                                onChangeText={setContactNumber}
-                                placeholder="Enter emergency contact number"
-                                placeholderTextColor="#999"
-                                keyboardType="phone-pad"
-                            />
-                        </View>
+                <View style={styles.formContainer}>
+                    <View style={styles.importantNotice}>
+                        <Text style={styles.importantText}>
+                            Important: This form sends an emergency alert to DVME and CTU Vermed. Please provide accurate information about your emergency situation.
+                        </Text>
+                    </View>
 
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Additional Information (Optional)</Text>
-                            <TextInput
-                                style={[styles.textInput, styles.textArea]}
-                                value={additionalInfo}
-                                onChangeText={setAdditionalInfo}
-                                placeholder="Describe the emergency situation..."
-                                placeholderTextColor="#999"
-                                multiline
-                                numberOfLines={4}
-                                textAlignVertical="top"
-                            />
-                        </View>
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Contact Number *</Text>
+                        <TextInput
+                            style={styles.textInput}
+                            value={contactNumber}
+                            onChangeText={setContactNumber}
+                            placeholder="Enter emergency contact number"
+                            placeholderTextColor="#999"
+                            keyboardType="phone-pad"
+                        />
+                    </View>
 
-                        <TouchableOpacity
-                            style={styles.detailedFormButton}
-                            onPress={() => setShowDetailedForm(true)}
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Horse Emergency Type</Text>
+                        <TouchableOpacity 
+                            style={styles.dropdownContainer}
+                            onPress={() => setShowEmergencyTypeModal(true)}
                         >
-                            <Text style={styles.detailedFormButtonText}>More Details</Text>
+                            <Text style={styles.dropdownValue}>{emergencyType}</Text>
+                            <View style={styles.dropdownArrow} />
                         </TouchableOpacity>
                     </View>
-                ) : (
-                    // Detailed Form
-                    <View style={styles.formContainer}>
-                        <View style={styles.importantNotice}>
-                            <Text style={styles.importantText}>
-                                Important: This form sends an emergency alert to DVME and CTU Vermed. Please provide accurate information about your emergency situation.
-                            </Text>
-                        </View>
 
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Emergency Type</Text>
-                            <View style={styles.dropdownContainer}>
-                                <Text style={styles.dropdownValue}>{emergencyType}</Text>
-                                <View style={styles.dropdownArrow} />
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Horse Status</Text>
+                        <View style={styles.statusButtonsContainer}>
+                            {horseStatusOptions.map((status: string) => (
+                                <TouchableOpacity
+                                    key={status}
+                                    style={[
+                                        styles.statusButton,
+                                        horseStatus.includes(status) && styles.statusButtonActive
+                                    ]}
+                                    onPress={() => toggleHorseStatus(status)}
+                                >
+                                    <Text style={[
+                                        styles.statusButtonText,
+                                        horseStatus.includes(status) && styles.statusButtonTextActive
+                                    ]}>
+                                        {status}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Describe What Happened</Text>
+                        <TextInput
+                            style={[styles.textInput, styles.textArea]}
+                            value={description}
+                            onChangeText={setDescription}
+                            placeholder="Provide detailed description of the emergency..."
+                            placeholderTextColor="#999"
+                            multiline
+                            numberOfLines={4}
+                            textAlignVertical="top"
+                        />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Additional Information (Optional)</Text>
+                        <TextInput
+                            style={[styles.textInput, styles.textArea]}
+                            value={additionalInfo}
+                            onChangeText={setAdditionalInfo}
+                            placeholder="Any other relevant information..."
+                            placeholderTextColor="#999"
+                            multiline
+                            numberOfLines={3}
+                            textAlignVertical="top"
+                        />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Your Current Location</Text>
+                        <TouchableOpacity style={styles.locationContainer} onPress={getCurrentLocation}>
+                            <View style={styles.locationPin}>
+                                <View style={styles.locationDot} />
                             </View>
-                        </View>
-
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Horse Status</Text>
-                            <View style={styles.statusButtonsContainer}>
-                                {horseStatusOptions.map((status: string) => (
-                                    <TouchableOpacity
-                                        key={status}
-                                        style={[
-                                            styles.statusButton,
-                                            horseStatus.includes(status) && styles.statusButtonActive
-                                        ]}
-                                        onPress={() => toggleHorseStatus(status)}
-                                    >
-                                        <Text style={[
-                                            styles.statusButtonText,
-                                            horseStatus.includes(status) && styles.statusButtonTextActive
-                                        ]}>
-                                            {status}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
-                        </View>
-
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Describe What Happened</Text>
-                            <TextInput
-                                style={[styles.textInput, styles.textArea]}
-                                value={description}
-                                onChangeText={setDescription}
-                                placeholder="Provide detailed description of the emergency..."
-                                placeholderTextColor="#999"
-                                multiline
-                                numberOfLines={4}
-                                textAlignVertical="top"
-                            />
-                        </View>
-
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Your current location</Text>
-                            <TouchableOpacity style={styles.locationContainer} onPress={getCurrentLocation}>
-                                <View style={styles.locationPin}>
-                                    <View style={styles.locationDot} />
-                                </View>
-                                <Text style={styles.locationText}>{currentLocation}</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <View style={styles.inputGroup}>
-                            <Text style={styles.inputLabel}>Upload Photos (Optional)</Text>
-                            <TouchableOpacity style={styles.uploadContainer}>
-                                <View style={styles.cameraIcon}>
-                                    <View style={styles.cameraBody} />
-                                    <View style={styles.cameraLens} />
-                                </View>
-                                <Text style={styles.uploadText}>Add Photos</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <TouchableOpacity
-                            style={styles.backToBasicButton}
-                            onPress={() => setShowDetailedForm(false)}
-                        >
-                            <Text style={styles.backToBasicButtonText}>Back to Basic Form</Text>
+                            <Text style={styles.locationText}>{currentLocation}</Text>
                         </TouchableOpacity>
                     </View>
-                )}
+
+                    <View style={styles.inputGroup}>
+                        <Text style={styles.inputLabel}>Upload Photos (Optional)</Text>
+                        <TouchableOpacity style={styles.uploadContainer}>
+                            <View style={styles.cameraIcon}>
+                                <View style={styles.cameraBody} />
+                                <View style={styles.cameraLens} />
+                            </View>
+                            <Text style={styles.uploadText}>Add Photos</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
             </ScrollView>
 
             {/* Send SOS Button */}
@@ -354,6 +341,55 @@ const API_URL = "http://192.168.1.7:8000/api/kutsero/sos/create/"
                         >
                             <Text style={styles.modalButtonText}>OK</Text>
                         </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            {/* Emergency Type Selection Modal */}
+            <Modal
+                visible={showEmergencyTypeModal}
+                transparent={true}
+                animationType="slide"
+                onRequestClose={() => setShowEmergencyTypeModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={styles.pickerModalContainer}>
+                        <View style={styles.pickerHeader}>
+                            <Text style={styles.pickerTitle}>Select Horse Emergency Type</Text>
+                            <TouchableOpacity
+                                onPress={() => setShowEmergencyTypeModal(false)}
+                                style={styles.closeButton}
+                            >
+                                <Text style={styles.closeButtonText}>✕</Text>
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView style={styles.pickerScrollView}>
+                            {emergencyTypes.map((type) => (
+                                <TouchableOpacity
+                                    key={type}
+                                    style={[
+                                        styles.pickerOption,
+                                        emergencyType === type && styles.pickerOptionSelected
+                                    ]}
+                                    onPress={() => {
+                                        setEmergencyType(type)
+                                        setShowEmergencyTypeModal(false)
+                                    }}
+                                >
+                                    <Text style={[
+                                        styles.pickerOptionText,
+                                        emergencyType === type && styles.pickerOptionTextSelected
+                                    ]}>
+                                        {type}
+                                    </Text>
+                                    {emergencyType === type && (
+                                        <View style={styles.checkIcon}>
+                                            <View style={styles.checkIconMark} />
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
                     </View>
                 </View>
             </Modal>
@@ -534,26 +570,6 @@ const styles = StyleSheet.create({
         left: scale(8),
     },
     uploadText: { fontSize: moderateScale(14), color: "#666", fontWeight: "500" },
-    detailedFormButton: {
-        backgroundColor: "#F8F9FA",
-        borderWidth: 1,
-        borderColor: "#E0E0E0",
-        borderRadius: scale(8),
-        paddingVertical: verticalScale(12),
-        alignItems: "center",
-        marginTop: verticalScale(8),
-    },
-    detailedFormButtonText: { fontSize: moderateScale(14), color: "#666", fontWeight: "500" },
-    backToBasicButton: {
-        backgroundColor: "#F8F9FA",
-        borderWidth: 1,
-        borderColor: "#E0E0E0",
-        borderRadius: scale(8),
-        paddingVertical: verticalScale(12),
-        alignItems: "center",
-        marginTop: verticalScale(8),
-    },
-    backToBasicButtonText: { fontSize: moderateScale(14), color: "#666", fontWeight: "500" },
     bottomContainer: {
         backgroundColor: "white",
         paddingHorizontal: scale(16),
@@ -613,4 +629,78 @@ const styles = StyleSheet.create({
         paddingVertical: verticalScale(10),
     },
     modalButtonText: { fontSize: moderateScale(14), fontWeight: "bold", color: "white" },
-});
+    pickerModalContainer: {
+        backgroundColor: "white",
+        borderTopLeftRadius: scale(20),
+        borderTopRightRadius: scale(20),
+        maxHeight: "70%",
+        width: "100%",
+        position: "absolute",
+        bottom: 0,
+    },
+    pickerHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingHorizontal: scale(20),
+        paddingVertical: verticalScale(16),
+        borderBottomWidth: 1,
+        borderBottomColor: "#E0E0E0",
+    },
+    pickerTitle: {
+        fontSize: moderateScale(18),
+        fontWeight: "bold",
+        color: "#333",
+    },
+    closeButton: {
+        width: scale(32),
+        height: scale(32),
+        borderRadius: scale(16),
+        backgroundColor: "#F5F5F5",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    closeButtonText: {
+        fontSize: moderateScale(20),
+        color: "#666",
+    },
+    pickerScrollView: {
+        maxHeight: "100%",
+    },
+    pickerOption: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        paddingHorizontal: scale(20),
+        paddingVertical: verticalScale(16),
+        borderBottomWidth: 1,
+        borderBottomColor: "#F0F0F0",
+    },
+    pickerOptionSelected: {
+        backgroundColor: "#FFF5F5",
+    },
+    pickerOptionText: {
+        fontSize: moderateScale(16),
+        color: "#333",
+    },
+    pickerOptionTextSelected: {
+        color: "#E53E3E",
+        fontWeight: "600",
+    },
+    checkIcon: {
+        width: scale(20),
+        height: scale(20),
+        borderRadius: scale(10),
+        backgroundColor: "#E53E3E",
+        justifyContent: "center",
+        alignItems: "center",
+    },
+    checkIconMark: {
+        width: scale(10),
+        height: scale(5),
+        borderLeftWidth: 2,
+        borderBottomWidth: 2,
+        borderColor: "white",
+        transform: [{ rotate: "-45deg" }],
+    },
+})
