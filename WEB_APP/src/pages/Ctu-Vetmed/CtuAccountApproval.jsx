@@ -4,6 +4,8 @@ import {
   AlertTriangle,
   Bell,
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   CreditCard,
   Eye,
@@ -75,6 +77,10 @@ function CtuAccountApproval() {
   const [modalActiveTab, setModalActiveTab] = useState("personal")
 
   const [declineReason, setDeclineReason] = useState("")
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
 
   // State for managing pinned posts (if this component were to handle posts)
   const [pinnedPosts, setPinnedPosts] = useState(new Set())
@@ -167,6 +173,14 @@ function CtuAccountApproval() {
 
     return filtered
   }, [registrationData, activeTab, searchTerm])
+
+  // Get paginated data
+  const getPaginatedData = () => {
+    const filteredRegistrations = filterRegistrations()
+    const startIndex = (currentPage - 1) * itemsPerPage
+    const endIndex = startIndex + itemsPerPage
+    return filteredRegistrations.slice(startIndex, endIndex)
+  }
 
   const viewDetails = (vetId, status) => {
     const user = registrationData.find((u) => u.vet_id === vetId)
@@ -305,6 +319,7 @@ function CtuAccountApproval() {
 
   const handleSearchInput = (e) => {
     setSearchTerm(e.target.value)
+    setCurrentPage(1) // Reset to first page when searching
     if (e.target.value) {
       setIsSearching(true)
     }
@@ -337,14 +352,17 @@ function CtuAccountApproval() {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
       })
-      .then((result) => {
-        // Extract data from response if needed
-        const data = result.data || result
+      .then((data) => {
+        console.log("Raw notifications data:", data);
         const formatted = data.map((notif) => ({
           id: notif.id,
           message: notif.message,
           date: notif.date || new Date().toISOString(),
+          read: notif.read || false,
+          type: notif.type || "general"
         }))
+        console.log("Formatted notifications:", formatted);
+        console.log("Unread count:", formatted.filter(n => !n.read).length);
         setNotifications(formatted)
       })
       .catch((err) => console.error("Failed to fetch notifications:", err))
@@ -361,6 +379,99 @@ function CtuAccountApproval() {
       console.error("Error fetching counts:", error)
     }
   }
+
+  // ✅ MARK ALL NOTIFICATIONS AS READ
+  const handleMarkAllAsRead = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to mark all as read");
+      }
+      
+      const data = await res.json();
+      console.log("Mark all as read result:", data);
+
+      // Update frontend state
+      setNotifications(prev =>
+        prev.map(notif => ({ ...notif, read: true }))
+      );
+      
+    } catch (err) {
+      console.error("Error marking all as read:", err);
+    }
+  };
+
+  // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
+  const handleNotificationClick = async (notification) => {
+    // Mark notification as read in frontend immediately for better UX
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === notification.id ? { ...notif, read: true } : notif
+      )
+    );
+
+    // Mark notification as read in backend
+    try {
+      const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      console.log("Mark notification read result:", data);
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
+
+    // Handle navigation based on notification content
+    console.log('Notification clicked:', notification);
+    const message = notification.message.toLowerCase();
+
+    if (
+      message.includes("new registration") ||
+      message.includes("new veterinarian approved") ||
+      message.includes("veterinarian approved") ||
+      message.includes("veterinarian declined") ||
+      message.includes("veterinarian registered")
+    ) {
+      console.log("Already on Account Approval page");
+      // We're already on the Account Approval page, no need to navigate
+      return;
+    }
+
+    if (message.includes("pending medical record access") || message.includes("requested access")) {
+      console.log("Navigating to Access Request page");
+      navigate("/CtuAccessRequest", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (message.includes("emergency") || message.includes("sos")) {
+      console.log("Navigating to SOS page");
+      navigate("/CtuSOS");
+      return;
+    }
+
+    console.warn("No matching route for notification:", notification);
+  };
+
+  // ✅ Handle notifications update from modal
+  const handleNotificationsUpdate = (updatedNotifications) => {
+    console.log("Notifications updated from modal:", updatedNotifications);
+    console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
+    setNotifications(updatedNotifications);
+  };
 
   // ✅ Auto-refresh notifications every 60s (reduced from 10s)
   useEffect(() => {
@@ -485,6 +596,23 @@ function CtuAccountApproval() {
   }, [isNotificationDropdownOpen, isViewDetailsModalOpen, isConfirmationModalOpen])
 
   const filteredRegistrations = filterRegistrations()
+  const paginatedRegistrations = getPaginatedData()
+  const totalPages = Math.ceil(filteredRegistrations.length / itemsPerPage)
+
+  // Calculate unread notifications count
+  const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
+
+  // Pagination handlers
+  const goToPage = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page)
+    }
+  }
+
+  const handleItemsPerPageChange = (e) => {
+    setItemsPerPage(Number(e.target.value))
+    setCurrentPage(1) // Reset to first page when changing items per page
+  }
 
   const togglePin = (postId) => {
     setPinnedPosts((prev) => {
@@ -517,6 +645,7 @@ function CtuAccountApproval() {
 
   const handleTabChange = (tabName) => {
     setActiveTab(tabName)
+    setCurrentPage(1) // Reset to first page when changing tabs
     setIsLoading(true)
     // Simulate loading delay for tab change
     setTimeout(() => {
@@ -578,8 +707,10 @@ function CtuAccountApproval() {
 
       <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
         <header className="bg-white px-6 py-[18px] flex items-center justify-between shadow-sm flex-wrap gap-4">
-          <h1 className="text-2xl font-bold text-black">Account Approval</h1>
-
+            <h2 className="text-2xl font-bold text-[#b91c1c]">Account Approval</h2>
+             {/* <p className="text-sm text-gray-600 mt-1 font-normal">
+              Overview of requests, approvals, declines, and recent activity
+            </p>*/}
           <div className="flex items-center gap-4">
             {/* Manual Refresh Icon */}
             <button
@@ -587,6 +718,7 @@ function CtuAccountApproval() {
               disabled={isLoading}
               className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title="Refresh Data"
+            
             >
               <RefreshCw 
                 size={24} 
@@ -597,13 +729,14 @@ function CtuAccountApproval() {
 
             {/* 🔔 Notification Bell */}
             <button
+              ref={notificationBellRef}
               className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
               onClick={() => setNotifsOpen(!notifsOpen)}
             >
               <Bell size={24} color="#374151" />
-              {notifications.length > 0 && (
-                <span className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[20px] text-center">
-                  {notifications.length}
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold min-w-[20px]">
+                  {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
                 </span>
               )}
             </button>
@@ -613,10 +746,10 @@ function CtuAccountApproval() {
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            onNotificationsUpdate={handleNotificationsUpdate}
           />
         </header>
 
@@ -742,70 +875,143 @@ function CtuAccountApproval() {
                 </p>
               </div>
             ) : (
-              filteredRegistrations.map((user) => (
-                <div
-                  key={user.vet_id}
-                  className="flex items-center p-4 border-b border-gray-100 transition-colors duration-200 min-h-[80px] overflow-y-auto hover:bg-gray-50 last:border-b-0"
-                >
-                  {/* Profile Photo */}
-                  <div className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center text-white font-semibold text-base mr-4 flex-shrink-0 overflow-hidden">
-                    {user.vet_profile_photo ? (
-                      <img 
-                        src={user.vet_profile_photo} 
-                        alt={`${user.vet_fname} ${user.vet_lname}`}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          // If image fails to load, show initials as fallback
-                          e.target.style.display = 'none';
-                          const fallback = document.createElement('div');
-                          fallback.className = 'w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold';
-                          fallback.textContent = user.vet_fname.charAt(0) + user.vet_lname.charAt(0);
-                          e.target.parentNode.appendChild(fallback);
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold">
-                        {user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}
+              <>
+                {paginatedRegistrations.map((user) => (
+                  <div
+                    key={user.vet_id}
+                    className="flex items-center p-4 border-b border-gray-100 transition-colors duration-200 min-h-[80px] overflow-y-auto hover:bg-gray-50 last:border-b-0"
+                  >
+                    {/* Profile Photo */}
+                    <div className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center text-white font-semibold text-base mr-4 flex-shrink-0 overflow-hidden">
+                      {user.vet_profile_photo ? (
+                        <img 
+                          src={user.vet_profile_photo} 
+                          alt={`${user.vet_fname} ${user.vet_lname}`}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            // If image fails to load, show initials as fallback
+                            e.target.style.display = 'none';
+                            const fallback = document.createElement('div');
+                            fallback.className = 'w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold';
+                            fallback.textContent = user.vet_fname.charAt(0) + user.vet_lname.charAt(0);
+                            e.target.parentNode.appendChild(fallback);
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold">
+                          {user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-gray-900 text-sm mb-0.5 break-words">
+                        {user.vet_fname} {user.vet_mname} {user.vet_lname}
+                        <span
+                          className={`inline-block py-1 px-2 rounded-xl text-xs font-medium ml-2 text-black ${
+                            user.users?.status === "approved"
+                              ? "bg-green-600 text-white"
+                              : user.users?.status === "pending"
+                                ? "bg-orange-500 text-white"
+                                : user.users?.status === "declined"
+                                  ? "bg-red-500 text-white"
+                                  : ""
+                          }`}
+                        >
+                          {user.users?.status}
+                        </span>
                       </div>
-                    )}
-                  </div>
+                      <div className="text-gray-500 text-xs mb-0.5 break-words">{user.vet_email}</div>
+                      <div className="text-gray-500 text-xs break-words">
+                        {user.vet_city}, {user.vet_province}
+                        {user.users?.status === "declined" && user.decline_reason
+                          ? ` - Reason: ${user.decline_reason}`
+                          : ""}
+                      </div>
+                    </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 text-sm mb-0.5 break-words">
-                      {user.vet_fname} {user.vet_mname} {user.vet_lname}
-                      <span
-                        className={`inline-block py-1 px-2 rounded-xl text-xs font-medium ml-2 text-black ${
-                          user.users?.status === "approved"
-                            ? "bg-green-600 text-white"
-                            : user.users?.status === "pending"
-                              ? "bg-orange-500 text-white"
-                              : user.users?.status === "declined"
-                                ? "bg-red-500 text-white"
-                                : ""
-                        }`}
+                    <div className="flex gap-2 ml-4 flex-wrap">
+                      <button
+                        className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px] "
+                        onClick={() => viewDetails(user.vet_id, user.status)}
                       >
-                        {user.users?.status}
-                      </span>
-                    </div>
-                    <div className="text-gray-500 text-xs mb-0.5 break-words">{user.vet_email}</div>
-                    <div className="text-gray-500 text-xs break-words">
-                      {user.vet_city}, {user.vet_province}
-                      {user.users?.status === "declined" && user.decline_reason
-                        ? ` - Reason: ${user.decline_reason}`
-                        : ""}
+                        <Eye size={16} />
+                      </button>
                     </div>
                   </div>
+                ))}
+                
+                {/* Pagination Controls */}
+                {filteredRegistrations.length > 0 && (
+                  <div className="flex justify-between items-center bg-gray-50 px-6 py-4 border-t border-gray-200">
+                    <div className="text-sm text-gray-600 flex items-center gap-3">
+                      Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                      {Math.min(currentPage * itemsPerPage, filteredRegistrations.length)} of {filteredRegistrations.length} results
+                    </div>
 
-                  <div className="flex gap-2 ml-4 flex-wrap">
-                    <button
-                      className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px] "
-                      onClick={() => viewDetails(user.vet_id, user.status)}
-                    >
-                      <Eye size={16} />
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">Show:</span>
+                        <select
+                          value={itemsPerPage}
+                          onChange={handleItemsPerPageChange}
+                          className="px-3 py-2 border border-gray-300 rounded bg-white text-sm"
+                        >
+                          <option value="5">5</option>
+                          <option value="10">10</option>
+                          <option value="20">20</option>
+                          <option value="50">50</option>
+                        </select>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          className="flex items-center justify-center w-10 h-10 border border-gray-300 bg-white text-gray-700 rounded-md cursor-pointer transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => goToPage(currentPage - 1)}
+                          disabled={currentPage === 1}
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          let pageNum
+                          if (totalPages <= 5) {
+                            pageNum = i + 1
+                          } else if (currentPage <= 3) {
+                            pageNum = i + 1
+                          } else if (currentPage >= totalPages - 2) {
+                            pageNum = totalPages - 4 + i
+                          } else {
+                            pageNum = currentPage - 2 + i
+                          }
+
+                          return (
+                            <button
+                              key={pageNum}
+                              className={`flex items-center justify-center min-w-[40px] h-10 px-3 border border-gray-300 rounded-md text-sm cursor-pointer transition-all duration-200 ${
+                                currentPage === pageNum
+                                  ? "bg-red-700 text-white border-red-700"
+                                  : "bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
+                              }`}
+                              onClick={() => goToPage(pageNum)}
+                            >
+                              {pageNum}
+                            </button>
+                          )
+                        })}
+
+                        <button
+                          className="flex items-center justify-center w-10 h-10 border border-gray-300 bg-white text-gray-700 rounded-md cursor-pointer transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => goToPage(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))
+                )}
+              </>
             )}
           </div>
         </div>

@@ -126,17 +126,98 @@ function CtuAccessRequest() {
     return icons[type] || icons.info
   }
 
-  const markAsRead = (notificationId) => {
-    setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
-  }
+  // ✅ MARK ALL NOTIFICATIONS AS READ
+  const handleMarkAllAsRead = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mark_all_notifications_read/`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to mark all as read");
+      }
+      
+      const data = await res.json();
+      console.log("Mark all as read result:", data);
 
-  const markAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-  }
+      // Update frontend state
+      setNotifications(prev =>
+        prev.map(notif => ({ ...notif, read: true }))
+      );
+      
+    } catch (err) {
+      console.error("Error marking all as read:", err);
+    }
+  };
 
-  const deleteNotification = (notificationId) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
-  }
+  // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
+  const handleNotificationClick = async (notification) => {
+    // Mark notification as read in frontend immediately for better UX
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === notification.id ? { ...notif, read: true } : notif
+      )
+    );
+
+    // Mark notification as read in backend
+    try {
+      const res = await fetch(`${API_BASE_URL}/mark_notification_read/${notification.id}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      console.log("Mark notification read result:", data);
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
+
+    // Handle navigation based on notification content
+    console.log('Notification clicked:', notification);
+    const message = notification.message.toLowerCase();
+
+    if (
+      message.includes("new registration") ||
+      message.includes("new veterinarian approved") ||
+      message.includes("veterinarian approved") ||
+      message.includes("veterinarian declined") ||
+      message.includes("veterinarian registered")
+    ) {
+      console.log("Navigating to Account Approval page");
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (message.includes("pending medical record access") || message.includes("requested access")) {
+      console.log("Already on Access Request page");
+      // We're already on the Access Request page, no need to navigate
+      return;
+    }
+
+    if (message.includes("emergency") || message.includes("sos")) {
+      console.log("Navigating to SOS page");
+      navigate("/CtuSOS");
+      return;
+    }
+
+    console.warn("No matching route for notification:", notification);
+  };
+
+  // ✅ Handle notifications update from modal
+  const handleNotificationsUpdate = (updatedNotifications) => {
+    console.log("Notifications updated from modal:", updatedNotifications);
+    console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
+    setNotifications(updatedNotifications);
+  };
 
   // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
@@ -148,11 +229,16 @@ function CtuAccessRequest() {
         return res.json()
       })
       .then((data) => {
+        console.log("Raw notifications data:", data);
         const formatted = data.map((notif) => ({
           id: notif.id,
           message: notif.message,
           date: notif.date || new Date().toISOString(),
+          read: notif.read || false,
+          type: notif.type || "general"
         }))
+        console.log("Formatted notifications:", formatted);
+        console.log("Unread count:", formatted.filter(n => !n.read).length);
         setNotifications(formatted)
       })
       .catch((err) => console.error("Failed to fetch notifications:", err))
@@ -218,22 +304,37 @@ function CtuAccessRequest() {
     setIsLogoutModalOpen(false)
   }
 
-  const approveRequest = (requestId) => {
-    fetch(`http://127.0.0.1:8000/api/ctu_vetmed/access-requests/${requestId}/approve/`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-    })
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.message) {
-          alert(data.message)
-        }
-        console.log("Approved:", data)
-        loadAccessRequests()
-        setIsViewModalOpen(false)
-      })
-      .catch((err) => console.error("Approve failed:", err))
+  const approveRequest = async (requestId) => {
+  try {
+    const res = await fetch(
+      `http://127.0.0.1:8000/api/ctu_vetmed/access-requests/${requestId}/approve/`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      console.error("Approve failed:", data.error || "Unknown error");
+      alert("Failed to approve request: " + (data.error || "Unknown error"));
+      return;
+    }
+
+    if (data.message) {
+      alert(data.message);
+    }
+
+    console.log("Approved:", data);
+    loadAccessRequests();
+    setIsViewModalOpen(false);
+
+  } catch (err) {
+    console.error("Approve failed:", err);
+    alert("Approve request failed. Check console for details.");
   }
+};
 
   const handleDecline = (id) => {
     setCurrentRequestId(id)
@@ -441,6 +542,9 @@ function CtuAccessRequest() {
   const totalPages = Math.ceil(filteredRequests.length / itemsPerPage)
   const filterCounts = getFilterCounts()
 
+  // Calculate unread notifications count
+  const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
+
   // Pagination handlers
   const goToPage = (page) => {
     if (page >= 1 && page <= totalPages) {
@@ -487,13 +591,14 @@ function CtuAccessRequest() {
 
             {/* 🔔 Notification Bell */}
             <button
+              ref={notificationBellRef}
               className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
               onClick={() => setNotifsOpen(!notifsOpen)}
             >
               <Bell size={24} color="#374151" />
-              {notifications.length > 0 && (
-                <span className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[15px] h-[15px] flex items-center justify-center">
-                  {notifications.length}
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold min-w-[20px]">
+                  {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
                 </span>
               )}
             </button>
@@ -503,10 +608,10 @@ function CtuAccessRequest() {
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            onNotificationsUpdate={handleNotificationsUpdate}
           />
         </header>
 
@@ -596,113 +701,115 @@ function CtuAccessRequest() {
                       </p>
                     </div>
                   ) : (
-                    paginatedRequests.map((request) => (
-                      <div
-                        key={request.id}
-                        className={`grid ${gridConfig} px-6 py-4 border-b border-gray-100 transition-colors items-center min-h-[60px] hover:bg-gray-50`}
-                      >
-                        <div className="font-medium text-gray-900">{request.requestedBy}</div>
-                        <div className="text-gray-700">{request.horse}</div>
-                        <div>
-                          <span
-                            className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
-                              request.status === "PENDING"
-                                ? "bg-yellow-100 text-yellow-800"
-                                : request.status === "APPROVED"
-                                  ? "bg-green-100 text-green-800"
-                                  : "bg-red-100 text-red-800"
-                            }`}
-                          >
-                            {request.status}
-                          </span>
+                    <>
+                      {paginatedRequests.map((request) => (
+                        <div
+                          key={request.id}
+                          className={`grid ${gridConfig} px-6 py-4 border-b border-gray-100 transition-colors items-center min-h-[60px] hover:bg-gray-50`}
+                        >
+                          <div className="font-medium text-gray-900">{request.requestedBy}</div>
+                          <div className="text-gray-700">{request.horse}</div>
+                          <div>
+                            <span
+                              className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                                request.status === "PENDING"
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : request.status === "APPROVED"
+                                    ? "bg-green-100 text-green-800"
+                                    : "bg-red-100 text-red-800"
+                              }`}
+                            >
+                              {request.status}
+                            </span>
+                          </div>
+                          <div className="text-gray-600 text-sm">{request.dateRequested.toLocaleDateString()}</div>
+                          <div className="flex justify-center">
+                            <button
+                              className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px]"
+                              onClick={() => openViewModal(request)}
+                            >
+                              <Eye size={14} />
+                              View
+                            </button>
+                          </div>
                         </div>
-                        <div className="text-gray-600 text-sm">{request.dateRequested.toLocaleDateString()}</div>
-                        <div className="flex justify-center">
-                          <button
-                            className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px]"
-                            onClick={() => openViewModal(request)}
-                          >
-                            <Eye size={14} />
-                            View
-                          </button>
+                      ))}
+                      
+                      {/* Pagination as the last row of the table */}
+                      {filteredRequests.length > 0 && (
+                        <div className="flex justify-between items-center bg-gray-50 px-6 py-4 border-t border-gray-200">
+                          <div className="text-sm text-gray-600 flex items-center gap-3">
+                            Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                            {Math.min(currentPage * itemsPerPage, filteredRequests.length)} of {filteredRequests.length} results
+                          </div>
+
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm">Show:</span>
+                              <select
+                                value={itemsPerPage}
+                                onChange={handleItemsPerPageChange}
+                                className="px-3 py-2 border border-gray-300 rounded bg-white text-sm"
+                              >
+                                <option value="5">5</option>
+                                <option value="10">10</option>
+                                <option value="20">20</option>
+                                <option value="50">50</option>
+                              </select>
+                            </div>
+
+                            <div className="flex gap-2">
+                              <button
+                                className="flex items-center justify-center w-10 h-10 border border-gray-300 bg-white text-gray-700 rounded-md cursor-pointer transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={() => goToPage(currentPage - 1)}
+                                disabled={currentPage === 1}
+                              >
+                                <ChevronLeft size={16} />
+                              </button>
+
+                              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                let pageNum
+                                if (totalPages <= 5) {
+                                  pageNum = i + 1
+                                } else if (currentPage <= 3) {
+                                  pageNum = i + 1
+                                } else if (currentPage >= totalPages - 2) {
+                                  pageNum = totalPages - 4 + i
+                                } else {
+                                  pageNum = currentPage - 2 + i
+                                }
+
+                                return (
+                                  <button
+                                    key={pageNum}
+                                    className={`flex items-center justify-center min-w-[40px] h-10 px-3 border border-gray-300 rounded-md text-sm cursor-pointer transition-all duration-200 ${
+                                      currentPage === pageNum
+                                        ? "bg-red-700 text-white border-red-700"
+                                        : "bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
+                                    }`}
+                                    onClick={() => goToPage(pageNum)}
+                                  >
+                                    {pageNum}
+                                  </button>
+                                )
+                              })}
+
+                              <button
+                                className="flex items-center justify-center w-10 h-10 border border-gray-300 bg-white text-gray-700 rounded-md cursor-pointer transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                                onClick={() => goToPage(currentPage + 1)}
+                                disabled={currentPage === totalPages}
+                              >
+                                <ChevronRight size={16} />
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      )}
+                    </>
                   )}
                 </>
               )}
             </div>
-
-            {/* Pagination Controls */}
-            {filteredRequests.length > 0 && !isLoading && (
-              <div className="flex justify-between items-center bg-gray-50 px-5 py-3 rounded-lg border border-gray-200 mt-4">
-                <div className="text-sm text-gray-600 flex items-center gap-3">
-                  Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
-                  {Math.min(currentPage * itemsPerPage, filteredRequests.length)} of {filteredRequests.length} results
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">Show:</span>
-                    <select
-                      value={itemsPerPage}
-                      onChange={handleItemsPerPageChange}
-                      className="px-3 py-2 border border-gray-300 rounded bg-white text-sm"
-                    >
-                      <option value="5">5</option>
-                      <option value="10">10</option>
-                      <option value="20">20</option>
-                      <option value="50">50</option>
-                    </select>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      className="flex items-center justify-center w-10 h-10 border border-gray-300 bg-white text-gray-700 rounded-md cursor-pointer transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                      onClick={() => goToPage(currentPage - 1)}
-                      disabled={currentPage === 1}
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-
-                    {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                      let pageNum
-                      if (totalPages <= 5) {
-                        pageNum = i + 1
-                      } else if (currentPage <= 3) {
-                        pageNum = i + 1
-                      } else if (currentPage >= totalPages - 2) {
-                        pageNum = totalPages - 4 + i
-                      } else {
-                        pageNum = currentPage - 2 + i
-                      }
-
-                      return (
-                        <button
-                          key={pageNum}
-                          className={`flex items-center justify-center min-w-[40px] h-10 px-3 border border-gray-300 rounded-md text-sm cursor-pointer transition-all duration-200 ${
-                            currentPage === pageNum
-                              ? "bg-red-700 text-white border-red-700"
-                              : "bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
-                          }`}
-                          onClick={() => goToPage(pageNum)}
-                        >
-                          {pageNum}
-                        </button>
-                      )
-                    })}
-
-                    <button
-                      className="flex items-center justify-center w-10 h-10 border border-gray-300 bg-white text-gray-700 rounded-md cursor-pointer transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
-                      onClick={() => goToPage(currentPage + 1)}
-                      disabled={currentPage === totalPages}
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       </div>
@@ -872,10 +979,10 @@ function CtuAccessRequest() {
         <div className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay">
           <div className="bg-white rounded-lg p-6 w-[90%] max-w-lg">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Not Approved Request</h3>
-            <p className="mb-4 text-gray-700">Please provide a reason for declining this request:</p>
+            <p className="mb-4 text-gray-700">Please provide a reason for not approving this request:</p>
             <textarea
               className="w-full min-h-[100px] p-3 border-2 border-gray-200 rounded-md text-sm resize-y mb-5 focus:outline-none focus:border-blue-500 focus:shadow-[0_0_0_3px_rgba(59,130,246,0.1)]"
-              placeholder="Enter reason for declining..."
+              placeholder="Enter reason for not approving..."
               value={declineNote}
               onChange={(e) => setDeclineNote(e.target.value)}
             />
@@ -891,7 +998,7 @@ function CtuAccessRequest() {
                 onClick={confirmDeclineModal}
                 disabled={!declineNote.trim()}
               >
-                Decline
+                Not Approved
               </button>
             </div>
           </div>

@@ -19,6 +19,7 @@ import {
   Mail,
   MapPin,
   Phone,
+  RefreshCw,
   Search,
   User,
   X,
@@ -66,6 +67,9 @@ function CtuDirectory() {
   const [currentPagePagination, setCurrentPagePagination] = useState(1)
   const [itemsPerPagePagination, setItemsPerPagePagination] = useState(10)
 
+  // Refresh state
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
   // Utility functions
   const formatTimeAgo = useCallback((timestamp) => {
     const now = new Date()
@@ -86,6 +90,128 @@ function CtuDirectory() {
     return icons[type] || icons.info
   }, [])
 
+  // MARK ALL NOTIFICATIONS AS READ
+  const handleMarkAllAsRead = async () => {
+    // Update frontend state
+    setNotifications(prev => prev.map(notif => ({ ...notif, read: true })))
+
+    // Call backend endpoint
+    try {
+      const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+        method: "POST",
+        credentials: "include",
+      })
+      const data = await res.json()
+      console.log("Mark all as read result:", data)
+    } catch (err) {
+      console.error("Error marking all as read:", err)
+    }
+  }
+
+  // HANDLE INDIVIDUAL NOTIFICATION CLICK
+  const handleNotificationClick = async (notification) => {
+    // Mark notification as read in frontend
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === notification.id ? { ...notif, read: true } : notif
+      )
+    )
+
+    // Mark notification as read in backend
+    try {
+      const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+        method: "POST",
+        credentials: "include",
+      })
+      const data = await res.json()
+      console.log("Mark notification read result:", data)
+    } catch (err) {
+      console.error("Error marking notification as read:", err)
+    }
+
+    // Handle navigation based on notification content
+    console.log('Notification clicked:', notification)
+    const message = notification.message.toLowerCase()
+
+    if (
+      message.includes("new registration") ||
+      message.includes("approved") ||
+      message.includes("declined")
+    ) {
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      })
+    } else if (message.includes("pending medical record access")) {
+      navigate("/CtuAccessRequest", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      })
+    } else if (message.includes("emergency") || message.includes("sos")) {
+      navigate("/CtuSOS")
+    } else {
+      console.warn("No matching navigation route for this notification:", notification)
+    }
+  }
+
+  // HANDLE OPENING USER MANAGEMENT FROM NOTIFICATIONS
+  const handleOpenUserManagement = async (notification = null) => {
+    console.log('Opening User Management from dashboard notification:', notification)
+
+    if (notification) {
+      // Mark notification as read in frontend
+      setNotifications(prev =>
+        prev.map(notif =>
+          notif.id === notification.id ? { ...notif, read: true } : notif
+        )
+      )
+
+      // Mark notification as read in backend
+      try {
+        const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+          method: "POST",
+          credentials: "include",
+        })
+        const data = await res.json()
+        console.log("Mark notification read result:", data)
+      } catch (err) {
+        console.error("Error marking notification as read:", err)
+      }
+
+      const message = notification.message.toLowerCase()
+
+      if (
+        message.includes("new registration") ||
+        message.includes("approved") ||
+        message.includes("declined")
+      ) {
+        navigate("/CtuAccountApproval", {
+          state: {
+            highlightedNotification: notification,
+            shouldHighlight: true,
+          },
+        })
+      } else if (message.includes("pending medical record access")) {
+        navigate("/CtuAccessRequest", {
+          state: {
+            highlightedNotification: notification,
+            shouldHighlight: true,
+          },
+        })
+      } else if (message.includes("emergency") || message.includes("sos")) {
+        navigate("/CtuSOS")
+      } else {
+        console.warn("No matching navigation route for this notification:", notification)
+      }
+    } else {
+      console.warn("No notification provided — no navigation performed")
+    }
+  }
+
   // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
@@ -100,6 +226,7 @@ function CtuDirectory() {
           id: notif.id,
           message: notif.message,
           date: notif.date || new Date().toISOString(),
+          read: notif.read || false // Add read status
         }))
         setNotifications(formatted)
       })
@@ -318,6 +445,21 @@ function CtuDirectory() {
     }
   }
 
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      await Promise.all([
+        loadDirectoryData(),
+        loadNotifications()
+      ])
+    } catch (error) {
+      console.error("Failed to refresh data:", error)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
   useEffect(() => {
     loadDirectoryData()
   }, [])
@@ -372,6 +514,32 @@ function CtuDirectory() {
     )
   }
 
+  // Function to get initials from first and last name
+// Function to get initials from first and last name
+const getInitials = (firstName, lastName) => {
+  const firstInitial = firstName ? firstName.charAt(0).toUpperCase() : '';
+  const lastInitial = lastName ? lastName.charAt(0).toUpperCase() : '';
+  return firstInitial + lastInitial;
+};
+
+// Function to generate consistent background color based on initials
+const getInitialsBackgroundColor = (initials) => {
+  const colors = [
+    'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 
+    'bg-indigo-500', 'bg-teal-500', 'bg-orange-500', 'bg-cyan-500',
+    'bg-red-500', 'bg-amber-500', 'bg-lime-500', 'bg-emerald-500'
+  ];
+  
+  // Simple hash function to get consistent color for same initials
+  let hash = 0;
+  for (let i = 0; i < initials.length; i++) {
+    hash = initials.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  const colorIndex = Math.abs(hash) % colors.length;
+  return colors[colorIndex];
+};
+
   const ProfileModal = ({ person, onClose }) => {
     if (!person) return null
 
@@ -383,6 +551,8 @@ function CtuDirectory() {
         return {
           type: "veterinarian",
           name: `${person.vet_fname} ${person.vet_mname || ""} ${person.vet_lname}`.trim(),
+          firstName: person.vet_fname,
+          lastName: person.vet_lname,
           email: person.vet_email,
           fb: person.vet_fb || "N/A",
           phone: person.vet_phone_num,
@@ -397,6 +567,7 @@ function CtuDirectory() {
           specialization: person.vet_specialization,
           organization: person.vet_org,
           status: person.users?.status || "N/A",
+          profile_photo: person.vet_profile_photo || null,
         }
       }
 
@@ -404,6 +575,8 @@ function CtuDirectory() {
         return {
           type: "kutsero",
           name: `${person.kutsero_fname} ${person.kutsero_mname || ""} ${person.kutsero_lname}`.trim(),
+          firstName: person.kutsero_fname,
+          lastName: person.kutsero_lname,
           email: person.kutsero_email,
           fb: person.kutsero_fb || "N/A",
           phone: person.kutsero_phone_num,
@@ -414,6 +587,7 @@ function CtuDirectory() {
           barangay: person.kutsero_brgy,
           zip_code: person.kutsero_zipcode,
           status: person.users?.status || "N/A",
+          profile_photo: person.kutsero_image || null,
         }
       }
 
@@ -421,6 +595,8 @@ function CtuDirectory() {
         return {
           type: "horse operator",
           name: `${person.op_fname} ${person.op_mname || ""} ${person.op_lname}`.trim(),
+          firstName: person.op_fname,
+          lastName: person.op_lname,
           email: person.op_email,
           fb: person.op_fb || "N/A",
           phone: person.op_phone_num,
@@ -431,6 +607,7 @@ function CtuDirectory() {
           barangay: person.op_brgy,
           zip_code: person.op_zipcode,
           status: person.users?.status || "N/A",
+          profile_photo: person.op_image || null,
         }
       }
 
@@ -438,9 +615,24 @@ function CtuDirectory() {
       return person
     })()
 
+    // Function to check if the Facebook value is a valid URL
+    const getFacebookUrl = (fbValue) => {
+      if (!fbValue || fbValue === "N/A") return null;
+      
+      // If it already starts with http, return as is
+      if (fbValue.startsWith('http://') || fbValue.startsWith('https://')) {
+        return fbValue;
+      }
+      
+      // If it's a username, construct Facebook URL
+      // Remove any @ symbol and construct profile URL
+      const username = fbValue.replace('@', '').trim();
+      return `https://facebook.com/${username}`;
+    };
+
     const InfoItem = ({ icon: Icon, label, value }) => (
-      <div className="flex items-center gap-2 py-2 text-slate-600 text-sm">
-        <Icon size={14} className="text-indigo-500 flex-shrink-0" />
+      <div className="flex items-center gap-2 py-2 text-gray-600 text-sm">
+        <Icon size={14} className="text-gray-500 flex-shrink-0" />
         <span>
           {label}: {value || "N/A"}
         </span>
@@ -448,8 +640,8 @@ function CtuDirectory() {
     )
 
     const renderPersonalInfo = () => (
-      <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-slate-200">
-        <h4 className="flex items-center gap-2 text-base font-semibold text-slate-800 mb-4">
+      <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
+        <h4 className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
           <User size={16} /> Personal Information
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -480,21 +672,40 @@ function CtuDirectory() {
       </div>
     )
 
-    const renderSocialMediaInfo = () => (
-      <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-slate-200">
-        <h4 className="flex items-center gap-2 text-base font-semibold text-slate-800 mb-4">
-          <Globe size={16} /> Social Media
-        </h4>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <InfoItem icon={Mail} label="Email" value={normalizedPerson.email} />
-          <InfoItem icon={Facebook} label="Facebook" value={normalizedPerson.fb} />
+    const renderSocialMediaInfo = () => {
+      const facebookUrl = getFacebookUrl(normalizedPerson.fb);
+
+      return (
+        <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
+          <h4 className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
+            <Globe size={16} /> Social Media
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <InfoItem icon={Mail} label="Email" value={normalizedPerson.email} />
+            <div className="flex items-center gap-2 py-2 text-gray-600 text-sm">
+              <Facebook size={14} className="text-gray-500 flex-shrink-0" />
+              <span>Facebook: </span>
+              {facebookUrl && facebookUrl !== "N/A" ? (
+                <a 
+                  href={facebookUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 hover:underline transition-colors duration-200"
+                >
+                  {normalizedPerson.fb}
+                </a>
+              ) : (
+                <span>N/A</span>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-    )
+      )
+    }
 
     const renderAddressInfo = () => (
-      <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-slate-200">
-        <h4 className="flex items-center gap-2 text-base font-semibold text-slate-800 mb-4">
+      <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
+        <h4 className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
           <MapPin size={16} /> Address Information
         </h4>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -507,11 +718,11 @@ function CtuDirectory() {
     )
 
     const renderProfessionalInfo = () => {
-      if (normalizedPerson.type !== "veterinarian") return null
+      if (normalizedPerson.type !== "Veterinarian") return null
 
       return (
-        <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-slate-200">
-          <h4 className="flex items-center gap-2 text-base font-semibold text-slate-800 mb-4">
+        <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
+          <h4 className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
             <Award size={16} /> Professional Details
           </h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -524,6 +735,9 @@ function CtuDirectory() {
       )
     }
 
+    const initials = getInitials(normalizedPerson.firstName, normalizedPerson.lastName);
+    const initialsBackgroundColor = getInitialsBackgroundColor(initials);
+
     return (
       <div
         className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay"
@@ -533,33 +747,76 @@ function CtuDirectory() {
           className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-bottom-10 duration-400"
           onClick={(e) => e.stopPropagation()}
         >
-          <div className="bg-red-700 p-8 text-white relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-white/5 pointer-events-none"></div>
-            <div className="relative z-10">
-              <h3 className="text-2xl font-semibold mb-2">{normalizedPerson.name}</h3>
-              <span
-                className={`inline-block px-3 py-1 rounded-full text-xs font-medium backdrop-blur-sm ${
-                  normalizedPerson.type === "veterinarian"
-                    ? "bg-green-500 text-white"
-                    : normalizedPerson.type === "kutsero"
-                      ? "bg-amber-600 text-white"
-                      : normalizedPerson.type === "horse operator"
-                        ? "bg-orange-500 text-white"
-                        : "bg-white/20 text-white"
-                }`}
-              >
-                {normalizedPerson.type?.replace("_", " ")}
-              </span>
-            </div>
+          {/* Clean White Header with Profile Picture - Background kept white */}
+          <div className="bg-white p-15 border-b border-gray-200 relative overflow-hidden">
+            <div className="flex items-center gap-6">
+  {/* Profile Picture - Square with border radius */}
+ 
+<div className="flex-shrink-0">
+  {normalizedPerson.profile_photo ? (
+    <div className="w-24 h-24 md:w-32 md:h-32 rounded-xl bg-gray-300 flex items-center justify-center overflow-hidden border-2 border-white shadow-md -mt-5">
+      <img 
+        src={normalizedPerson.profile_photo} 
+        alt="Profile" 
+        className="w-full h-full object-cover rounded-xl"
+        onError={(e) => {
+          e.target.style.display = 'none';
+          e.target.nextSibling.style.display = 'flex';
+        }}
+      />
+      {/* Fallback to initials with colored background when image fails to load */}
+      <div className={`hidden w-full h-full items-center justify-center ${initialsBackgroundColor} rounded-xl`}>
+        <span className="text-sm font-semibold text-white">
+          {initials}
+        </span>
+      </div>
+    </div>
+  ) : (
+    // Show initials with colored background when no profile photo - SAME DESIGN AS WITH PHOTO
+    <div className="w-24 h-24 md:w-32 md:h-32 rounded-xl flex items-center justify-center overflow-hidden border-2 border-white shadow-md -mt-5">
+      <div className={`w-full h-full items-center justify-center ${initialsBackgroundColor} rounded-xl flex`}>
+        <span className="text-sm font-semibold text-white">
+          {initials}
+        </span>
+      </div>
+    </div>
+  )}
+</div>
+
+  {/* Name and Role - Background kept white */}
+  <div className="flex-1 bg-white">
+    <h3 className="text-2xl font-semibold text-gray-900 mb-2">{normalizedPerson.name}</h3>
+    <span
+      className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+        normalizedPerson.type === "veterinarian"
+          ? "bg-green-100 text-green-800 border border-green-200"
+          : normalizedPerson.type === "kutsero"
+            ? "bg-yellow-100 text-yellow-800 border border-yellow-200"
+            : normalizedPerson.type === "horse operator"
+              ? "bg-orange-100 text-orange-800 border border-orange-200"
+              : "bg-gray-100 text-gray-800 border border-gray-200"
+      }`}
+    >
+      {normalizedPerson.type === "veterinarian" 
+        ? "Veterinarian" 
+        : normalizedPerson.type === "kutsero" 
+          ? "Kutsero" 
+          : normalizedPerson.type === "horse operator" 
+            ? "Horse Operator" 
+            : normalizedPerson.type?.replace("_", " ")}
+    </span>
+  </div>
+</div>
+            
             <button
-              className="absolute top-5 right-5 w-10 h-10 bg-white/20 backdrop-blur-sm border border-white/30 rounded-xl flex items-center justify-center text-white hover:bg-white/30 hover:border-white/50 hover:scale-105 transition-all duration-300 z-20"
+              className="absolute top-6 right-6 w-10 h-10 bg-gray-100 border border-gray-300 rounded-xl flex items-center justify-center text-gray-600 hover:bg-gray-200 hover:border-gray-400 hover:scale-105 transition-all duration-300"
               onClick={onClose}
             >
               <X size={20} />
             </button>
           </div>
 
-          <div className="p-8 bg-slate-50 overflow-y-auto">
+          <div className="p-8 bg-gray-50 overflow-y-auto">
             {renderPersonalInfo()}
             {renderSocialMediaInfo()}
             {renderAddressInfo()}
@@ -594,31 +851,43 @@ function CtuDirectory() {
     <div className="flex h-screen overflow-hidden">
       <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
 
-      <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
+      <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
         <header className="bg-white px-6 py-2 flex items-center justify-between shadow-sm flex-wrap gap-4">
           <div className="flex items-center justify-between py-3 px-5 bg-transparent">
             <h2 className="text-2xl font-bold text-black">Directory</h2>
           </div>
-          <button
-            className="relative bg-transparent border-none cursor-pointer p-2 rounded-full"
-            onClick={() => setNotifsOpen(!notifsOpen)}
-          >
-            <Bell size={24} className="text-gray-700" />
-            {notifications.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 bg-red-600 text-white text-xs w-4 h-4 rounded-full flex items-center justify-center font-bold">
-                {notifications.length}
-              </span>
-            )}
-          </button>
+          
+          <div className="flex items-center gap-4">
+            {/* 🔄 Refresh Icon */}
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
+              title="Refresh Directory"
+            >
+              <RefreshCw 
+                size={24} 
+                className={`text-gray-700 ${isRefreshing ? 'animate-spin' : ''}`}
+              />
+            </button>
+
+            {/* 🔔 Notification Bell (without count) */}
+            <button
+              className="bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
+              onClick={() => setNotifsOpen(!notifsOpen)}
+            >
+              <Bell size={24} className="text-gray-700" />
+            </button>
+          </div>
 
           {/* Notification Modal */}
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            onOpenUserManagement={handleOpenUserManagement}
           />
         </header>
 
@@ -635,8 +904,6 @@ function CtuDirectory() {
           </div>
 
           <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-5">
-            
-
             <div className="p-5">
               {loading ? (
                 // Show skeleton loader while loading

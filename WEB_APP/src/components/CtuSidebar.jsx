@@ -1,3 +1,5 @@
+"use client"
+
 import {
   BarChart3,
   ClipboardList,
@@ -9,41 +11,41 @@ import {
   Menu,
   Settings,
   UserCheck,
-  X
-} from 'lucide-react';
-import { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+  X,
+} from "lucide-react"
+import { forwardRef, useEffect, useState } from "react"
+import { useLocation, useNavigate } from "react-router-dom"
 
-const Sidebars = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
-  
+const Sidebars = forwardRef((props, ref) => {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
+
   // Get initial state from localStorage or default to false
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
-    const saved = localStorage.getItem('sidebarCollapsed');
-    return saved ? JSON.parse(saved) : false;
-  });
+    const saved = localStorage.getItem("sidebarCollapsed")
+    return saved ? JSON.parse(saved) : false
+  })
 
   // Save to localStorage whenever state changes
   useEffect(() => {
-    localStorage.setItem('sidebarCollapsed', JSON.stringify(isSidebarCollapsed));
-  }, [isSidebarCollapsed]);
+    localStorage.setItem("sidebarCollapsed", JSON.stringify(isSidebarCollapsed))
+  }, [isSidebarCollapsed])
 
   const handleLogout = () => {
-    localStorage.clear();
-    navigate('/');
-  };
+    localStorage.clear()
+    navigate("/")
+  }
 
   const handleToggleSidebar = () => {
-    setIsSidebarCollapsed(!isSidebarCollapsed);
-  };
+    setIsSidebarCollapsed(!isSidebarCollapsed)
+  }
 
   // This function handles navigation without affecting sidebar state
   const handleNavigation = (path) => {
-    navigate(path);
+    navigate(path)
     // Sidebar state remains the same
-  };
+  }
 
   const sidebarItems = [
     { icon: LayoutDashboard, label: "Dashboard", path: "/CtuDashboard" },
@@ -54,7 +56,7 @@ const Sidebars = () => {
     { icon: Megaphone, label: "Announcements", path: "/CtuAnnouncement" },
     { icon: Folder, label: "Directory", path: "/CtuDirectory" },
     { icon: Settings, label: "Settings", path: "/CtuSettings" },
-  ];
+  ]
 
   return (
     <>
@@ -390,7 +392,7 @@ const Sidebars = () => {
         }
       `}</style>
 
-      <div className={`sidebar ${isSidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}`}>
+      <div ref={ref} className={`sidebar ${isSidebarCollapsed ? "sidebar-collapsed" : "sidebar-expanded"}`}>
         {/* Header */}
         <div className="sidebar-header">
           <div className="sidebar-logo-container">
@@ -398,10 +400,7 @@ const Sidebars = () => {
               <img src="/Images/echo.png" alt="ECHO Logo" className="sidebar-logo-img" />
             </div>
           </div>
-          <button
-            className="menu-button"
-            onClick={handleToggleSidebar}
-          >
+          <button className="menu-button" onClick={handleToggleSidebar}>
             <Menu className="menu-icon" />
           </button>
         </div>
@@ -409,31 +408,24 @@ const Sidebars = () => {
         {/* Navigation */}
         <nav className="sidebar-nav">
           {sidebarItems.map(({ icon: Icon, label, path }, index) => {
-            const isActive = location.pathname === path;
+            const isActive = location.pathname === path
             return (
               <div
                 key={index}
                 onClick={() => handleNavigation(path)}
-                className={`sidebar-nav-item ${isActive ? 'sidebar-nav-item-active' : ''}`}
+                className={`sidebar-nav-item ${isActive ? "sidebar-nav-item-active" : ""}`}
               >
                 <Icon className="sidebar-nav-icon" />
-                {!isSidebarCollapsed && (
-                  <span className="sidebar-nav-label">{label}</span>
-                )}
-                {isSidebarCollapsed && (
-                  <span className="sidebar-tooltip">{label}</span>
-                )}
+                {!isSidebarCollapsed && <span className="sidebar-nav-label">{label}</span>}
+                {isSidebarCollapsed && <span className="sidebar-tooltip">{label}</span>}
               </div>
-            );
+            )
           })}
         </nav>
 
         {/* Logout */}
         <div className="sidebar-logout">
-          <div
-            onClick={() => setShowLogoutModal(true)}
-            className="sidebar-logout-button"
-          >
+          <div onClick={() => setShowLogoutModal(true)} className="sidebar-logout-button">
             <LogOut className="sidebar-nav-icon" />
             {!isSidebarCollapsed && <span className="sidebar-nav-label">Log Out</span>}
             {isSidebarCollapsed && <span className="sidebar-tooltip">Log Out</span>}
@@ -447,10 +439,7 @@ const Sidebars = () => {
           <div className="logout-modal" onClick={(e) => e.stopPropagation()}>
             <div className="logout-modal-header">
               <h2 className="logout-modal-title">Confirm Logout</h2>
-              <button
-                className="logout-modal-close"
-                onClick={() => setShowLogoutModal(false)}
-              >
+              <button className="logout-modal-close" onClick={() => setShowLogoutModal(false)}>
                 <X size={20} />
               </button>
             </div>
@@ -458,16 +447,10 @@ const Sidebars = () => {
               Are you sure you want to log out your account? You'll need to sign in again to access your dashboard.
             </p>
             <div className="logout-modal-actions">
-              <button
-                onClick={() => setShowLogoutModal(false)}
-                className="logout-modal-cancel"
-              >
+              <button onClick={() => setShowLogoutModal(false)} className="logout-modal-cancel">
                 Cancel
               </button>
-              <button
-                onClick={handleLogout}
-                className="logout-modal-confirm"
-              >
+              <button onClick={handleLogout} className="logout-modal-confirm">
                 Log Out
               </button>
             </div>
@@ -475,7 +458,9 @@ const Sidebars = () => {
         </div>
       )}
     </>
-  );
-};
+  )
+})
 
-export default Sidebars;
+Sidebars.displayName = "Sidebars"
+
+export default Sidebars

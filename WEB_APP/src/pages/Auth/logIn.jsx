@@ -254,6 +254,7 @@ function LogIn({ onBack }) {
       }
 
       console.log("Login successful:", data);
+      
       const role = data.role.trim(); // keep original case from DB
 
       if (role === "Veterinarian") {

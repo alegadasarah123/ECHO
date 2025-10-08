@@ -8,6 +8,8 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
+const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
+
 function CtuHealthReport() {
   const navigate = useNavigate()
 
@@ -41,10 +43,114 @@ function CtuHealthReport() {
     return `${Math.floor(diffInMinutes / 1440)}d ago`
   }, [])
 
+  // MARK ALL NOTIFICATIONS AS READ
+  const handleMarkAllAsRead = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to mark all as read");
+      }
+      
+      const data = await res.json();
+      console.log("Mark all as read result:", data);
+
+      // Update frontend state
+      setNotifications(prev =>
+        prev.map(notif => ({ ...notif, read: true }))
+      );
+      
+    } catch (err) {
+      console.error("Error marking all as read:", err);
+    }
+  };
+
+  // HANDLE INDIVIDUAL NOTIFICATION CLICK
+  const handleNotificationClick = async (notification) => {
+    // Mark notification as read in frontend immediately for better UX
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === notification.id ? { ...notif, read: true } : notif
+      )
+    );
+
+    // Mark notification as read in backend
+    try {
+      const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      console.log("Mark notification read result:", data);
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
+
+    // Handle navigation based on notification content
+    console.log('Notification clicked:', notification);
+    const message = notification.message.toLowerCase();
+
+    if (
+      message.includes("new registration") ||
+      message.includes("new veterinarian approved") ||
+      message.includes("veterinarian approved") ||
+      message.includes("veterinarian declined") ||
+      message.includes("veterinarian registered")
+    ) {
+      console.log("Navigating to Account Approval page");
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (message.includes("pending medical record access") || message.includes("requested access")) {
+      console.log("Navigating to Access Request page");
+      navigate("/CtuAccessRequest", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (message.includes("emergency") || message.includes("sos")) {
+      console.log("Navigating to SOS page");
+      navigate("/CtuSOS");
+      return;
+    }
+
+    if (message.includes("health") || message.includes("report") || message.includes("statistic")) {
+      console.log("Already on Health Report page");
+      // We're already on the health report page, no navigation needed
+      return;
+    }
+
+    console.warn("No matching route for notification:", notification);
+  };
+
+  // Handle notifications update from modal
+  const handleNotificationsUpdate = (updatedNotifications) => {
+    console.log("Notifications updated from modal:", updatedNotifications);
+    console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
+    setNotifications(updatedNotifications);
+  };
+
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+    fetch(`${API_BASE}/get_vetnotifications/`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -54,6 +160,8 @@ function CtuHealthReport() {
           id: notif.id,
           message: notif.message,
           date: notif.date || new Date().toISOString(),
+          read: notif.read || false,
+          type: notif.type || "general"
         }))
         setNotifications(formatted)
       })
@@ -354,6 +462,9 @@ pdf.text(footerText, pageWidth - textWidth - 20, 290);
 
   const { maxValue: yAxisMax, steps: yAxisSteps } = getYAxisScale();
 
+  // Calculate unread notifications count
+  const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
+
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full m-0 p-0 box-border">
       <div className="sidebars" id="sidebars">
@@ -367,13 +478,14 @@ pdf.text(footerText, pageWidth - textWidth - 20, 290);
           </div>
 
           <button
-            className="relative bg-transparent border-none cursor-pointer p-2 rounded-full"
+            ref={notificationBellRef}
+            className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
             onClick={() => setNotifsOpen(!notifsOpen)}
           >
             <Bell size={24} color="#374151" />
-            {notifications.length > 0 && (
-              <span className="absolute top-[2px] right-[2px] bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[15px] min-h-[15px] flex items-center justify-center">
-                {notifications.length}
+            {unreadNotificationsCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold min-w-[20px]">
+                {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
               </span>
             )}
           </button>
@@ -381,10 +493,10 @@ pdf.text(footerText, pageWidth - textWidth - 20, 290);
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            onNotificationsUpdate={handleNotificationsUpdate}
           />
         </header>
 

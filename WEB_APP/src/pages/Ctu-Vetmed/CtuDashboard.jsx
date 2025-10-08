@@ -1,13 +1,13 @@
 "use client"
 
 import Sidebar from "@/components/CtuSidebar"
-import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, MapPin, Phone, User, XCircle } from "lucide-react"
+import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, MapPin, Phone, RefreshCw, User, XCircle } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
+
 
 function CtuDashboard() {
   const navigate = useNavigate()
@@ -16,6 +16,7 @@ function CtuDashboard() {
   const [setIsLogoutModalOpen] = useState(false)
   const [setIsNotificationDropdownOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false) // Added refresh state
 
   const [notifications, setNotifications] = useState([])
   const [recordCount, setrecordCount] = useState(0)
@@ -147,10 +148,11 @@ function CtuDashboard() {
     console.log("Loading statistics...")
     setStatsLoading(true)
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/status-counts/", {
-      method: "GET",
-      credentials: "include",
-    })
+    fetch("http://localhost:8000/api/ctu_vetmed/get_status_counts/", {
+    method: 'GET',
+    credentials: 'include',
+})
+
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
         return res.json()
@@ -171,7 +173,7 @@ function CtuDashboard() {
     console.log("Loading recent activities...")
     setActivitiesLoading(true)
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/recent-activity/", {
+    fetch("http://localhost:8000/api/ctu_vetmed/get_recent_activity/", {
       method: "GET",
       credentials: "include",
     })
@@ -198,79 +200,89 @@ function CtuDashboard() {
         return res.json()
       })
       .then((data) => {
+        console.log("Raw notifications data:", data);
         const formatted = data.map((notif) => ({
           id: notif.id,
           message: notif.message,
           date: notif.date || new Date().toISOString(),
+          read: notif.read || false,
+          type: notif.type || "general"
         }))
+        console.log("Formatted notifications:", formatted);
+        console.log("Unread count:", formatted.filter(n => !n.read).length);
         setNotifications(formatted)
       })
       .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
   const loadSosEmergencies = useCallback(() => {
-    console.log("Loading SOS emergencies...")
-    setSosLoading(true)
+  console.log("Loading SOS emergencies...")
+  setSosLoading(true)
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/sos_requests/", {
-      method: "GET",
-      credentials: "include",
+  fetch("http://localhost:8000/api/ctu_vetmed/get_sos_requests/", {
+    method: "GET",
+    credentials: "include",
+  })
+    .then((res) => {
+      if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
+      return res.json()
     })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
-        return res.json()
-      })
-      .then((data) => {
-        console.log("Raw SOS data:", data)
+    .then((data) => {
+      console.log("Raw SOS data:", data)
 
-        let sosData = []
-        if (Array.isArray(data)) sosData = data
-        else if (data.sos_requests && Array.isArray(data.sos_requests)) sosData = data.sos_requests
-        else if (data.results && Array.isArray(data.results)) sosData = data.results
-        else {
-          console.warn("Unexpected data structure:", data)
-          setSosEmergencies([])
-          setSosLoading(false)
-          return
+      let sosData = []
+      if (Array.isArray(data)) sosData = data
+      else if (data.sos_requests && Array.isArray(data.sos_requests)) sosData = data.sos_requests
+      else if (data.results && Array.isArray(data.results)) sosData = data.results
+      else {
+        console.warn("Unexpected data structure:", data)
+        setSosEmergencies([])
+        setSosLoading(false)
+        return
+      }
+
+      const formatted = sosData.map((item) => {
+        let formattedTime = "Unknown time"
+        try {
+          if (item.time || item.created_at) {
+            const createdDate = new Date(item.time || item.created_at)
+            
+            // Format as "September 7, 2025 3:15 PM"
+            formattedTime = createdDate.toLocaleDateString('en-US', {
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric'
+            }) + ' ' + createdDate.toLocaleTimeString('en-US', {
+              hour: 'numeric',
+              minute: 'numeric',
+              hour12: true
+            })
+          }
+        } catch {
+          console.warn("Invalid timestamp:", item.time || item.created_at)
         }
 
-        const formatted = sosData.map((item) => {
-          let timeAgo = "Unknown time"
-          try {
-            if (item.time || item.created_at) {
-              const createdDate = new Date(item.time || item.created_at)
-              const diffMs = Date.now() - createdDate.getTime()
-              const diffMin = Math.floor(diffMs / 60000)
-              if (diffMin < 1) timeAgo = "Just now"
-              else if (diffMin < 60) timeAgo = `${diffMin} min ago`
-              else if (diffMin < 1440) timeAgo = `${Math.floor(diffMin / 60)} hr ago`
-              else timeAgo = `${Math.floor(diffMin / 1440)} day(s) ago`
-            }
-          } catch {
-            console.warn("Invalid timestamp:", item.time || item.created_at)
-          }
-
-          return {
-            id: item.id,
-            type: item.type || "Emergency",
-            contact: item.contact || "Unknown Contact",
-            phone: item.phone || "N/A",
-            location: item.location || "No location provided",
-            time: timeAgo,
-            urgent: item.urgent === true || item.status === "pending",
-            description: item.description || "No description provided",
-          }
-        })
-
-        console.log("Formatted SOS data:", formatted)
-        setSosEmergencies(formatted)
-        setSosLoading(false)
+        return {
+          id: item.id,
+          type: item.type || "Emergency",
+          contact: item.contact || "Unknown Contact",
+          phone: item.phone || "N/A",
+          location: item.location || "No location provided",
+          time: formattedTime, // Now uses the formatted timestamp
+          urgent: item.urgent === true || item.status === "pending",
+          description: item.description || "No description provided",
+        }
       })
-      .catch((err) => {
-        console.error("Error fetching SOS emergencies:", err)
-        setSosLoading(false)
-      })
-  }, [])
+
+      console.log("Formatted SOS data:", formatted)
+      setSosEmergencies(formatted)
+      setSosLoading(false)
+    })
+    .catch((err) => {
+      console.error("Error fetching SOS emergencies:", err)
+      setSosLoading(false)
+    })
+}, [])
 
   const loadDashboardData = useCallback(() => {
     setIsLoading(true)
@@ -294,8 +306,146 @@ function CtuDashboard() {
       })
   }, [loadStats, loadRecentActivities, loadNotifications, loadSosEmergencies])
 
+  // ADDED: Handle refresh function
+  const handleRefresh = useCallback(() => {
+    console.log("Manual refresh triggered")
+    setIsRefreshing(true)
+    
+    // Reset all loading states for visual feedback
+    setStatsLoading(true)
+    setActivitiesLoading(true)
+    setSosLoading(true)
+
+    Promise.all([loadStats(), loadRecentActivities(), loadNotifications(), loadSosEmergencies()])
+      .then(() => {
+        setIsRefreshing(false)
+        console.log("Manual refresh completed")
+      })
+      .catch((error) => {
+        console.error("Error during manual refresh:", error)
+        setIsRefreshing(false)
+        // Ensure loading states are reset even on error
+        setStatsLoading(false)
+        setActivitiesLoading(false)
+        setSosLoading(false)
+      })
+  }, [loadStats, loadRecentActivities, loadNotifications, loadSosEmergencies])
+
   const closeLogoutModal = () => {
     setIsLogoutModalOpen(false)
+  }
+
+  // MARK ALL NOTIFICATIONS AS READ
+  const handleMarkAllAsRead = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to mark all as read");
+      }
+      
+      const data = await res.json();
+      console.log("Mark all as read result:", data);
+
+      // Update frontend state
+      setNotifications(prev =>
+        prev.map(notif => ({ ...notif, read: true }))
+      );
+      
+    } catch (err) {
+      console.error("Error marking all as read:", err);
+    }
+  };
+
+  // HANDLE INDIVIDUAL NOTIFICATION CLICK
+  const handleNotificationClick = async (notification) => {
+    // Mark notification as read in frontend immediately for better UX
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === notification.id ? { ...notif, read: true } : notif
+      )
+    );
+
+    // Mark notification as read in backend
+    try {
+      const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      console.log("Mark notification read result:", data);
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
+
+    // Handle navigation based on notification content
+    console.log('Notification clicked:', notification);
+    const message = notification.message.toLowerCase();
+
+    if (
+      message.includes("new registration") ||
+      message.includes("new veterinarian approved") ||
+      message.includes("veterinarian approved") ||
+      message.includes("veterinarian declined") ||
+      message.includes("veterinarian registered")
+    ) {
+      console.log("Navigating to Account Approval page");
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (message.includes("pending medical record access") || message.includes("requested access")) {
+      console.log("Navigating to Access Request page");
+      navigate("/CtuAccessRequest", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (message.includes("emergency") || message.includes("sos")) {
+      console.log("Navigating to SOS page");
+      navigate("/CtuSOS");
+      return;
+    }
+
+    console.warn("No matching route for notification:", notification);
+  };
+
+  // Handle notifications update from modal
+  const handleNotificationsUpdate = (updatedNotifications) => {
+    console.log("Notifications updated from modal:", updatedNotifications);
+    console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
+    setNotifications(updatedNotifications);
+  };
+
+  // Handle opening UserManagement from notifications
+  const handleOpenUserManagement = (notification = null) => {
+    console.log('Opening User Management from dashboard notification:', notification)
+    if (notification) {
+      navigate('/CtuDashboard', { 
+        state: { 
+          highlightedNotification: notification,
+          shouldHighlight: true
+        } 
+      })
+    } else {
+      navigate('/CtuDashboard')
+    }
   }
 
   useEffect(() => {
@@ -309,11 +459,9 @@ function CtuDashboard() {
   }, [loadNotifications])
 
   useEffect(() => {
-    console.log("Veterinary Dashboard initialized")
+    console.log("CTU Dashboard initialized")
     loadDashboardData()
   }, [loadDashboardData])
-
-  
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -341,6 +489,9 @@ function CtuDashboard() {
     console.log("SOS Emergency clicked:", emergency)
   }
 
+  // Calculate unread notifications count
+  const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
+
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
       {isLoading && (
@@ -354,29 +505,48 @@ function CtuDashboard() {
 
       <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
         <header className="bg-white px-6 py-2 flex items-center justify-between shadow-sm flex-wrap gap-14">
-          <div className="flex items-center justify-between py-3 px-5 bg-transparent">
-            <h2 className="text-2xl font-bold text-black">Dashboard</h2>
-            
+          <div className="flex flex-col py-3 px-5 bg-transparent">
+            <h2 className="text-2xl font-bold text-[#b91c1c]">Dashboard</h2>
+           <p className="text-sm text-gray-600 mt-1 font-normal">
+              Overview of requests, approvals, declines, and recent activity
+            </p>
           </div>
-          <button
-            className="relative bg-transparent border-none cursor-pointer p-2 rounded-full"
-            onClick={() => setNotifsOpen(!notifsOpen)}
-          >
-            <Bell size={24} color="#374151" />
-            {notifications.length > 0 && (
-              <span className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold">
-                {notifications.length}
-              </span>
-            )}
-          </button>
+
+          
+          <div className="flex items-center gap-4">
+            {/* ADDED: Refresh Button */}
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="cursor-pointer p-2 hover:bg-gray-100 rounded-full transition-colors"
+              title="Refresh Dashboard"
+            >
+              <RefreshCw 
+                className={`w-5 h-5 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} 
+              />
+            </button>
+
+            <button
+              ref={notificationBellRef}
+              className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
+              onClick={() => setNotifsOpen(!notifsOpen)}
+            >
+              <Bell size={24} color="#374151" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold min-w-[20px]">
+                  {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                </span>
+              )}
+            </button>
+          </div>
 
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            onNotificationsUpdate={handleNotificationsUpdate}
           />
         </header>
 
@@ -489,9 +659,13 @@ function CtuDashboard() {
                             <span className={getRoleClasses(activity.status)}>{activity.status}</span>
                             <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
                               {new Date(activity.date).toLocaleDateString("en-US", {
-                                month: "short",
+                                month: "long",
                                 day: "numeric",
                                 year: "numeric",
+                              }) + ' ' + new Date(activity.date).toLocaleTimeString("en-US", {
+                                hour: "numeric",
+                                minute: "numeric",
+                                hour12: true
                               })}
                             </span>
                           </div>

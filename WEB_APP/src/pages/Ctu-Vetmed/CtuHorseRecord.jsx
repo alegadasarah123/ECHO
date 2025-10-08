@@ -9,14 +9,23 @@ import {
   ClipboardList,
   Download,
   Eye,
+  FileText,
+  Image as ImageIcon,
+  Mail,
+  MapPin,
+  Phone,
+  RefreshCw,
   Search,
   Stethoscope,
   Syringe,
+  User
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
+
+const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
 
 const TableSkeleton = () => {
   return (
@@ -44,6 +53,183 @@ const TableSkeleton = () => {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+// Horse Detail Skeleton Loader
+const HorseDetailSkeleton = () => {
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6 animate-pulse">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="h-5 w-5 bg-gray-200 rounded"></div>
+        <div className="h-4 bg-gray-200 rounded w-32"></div>
+      </div>
+
+      <div className="bg-gray-50 rounded-lg p-5 mb-5">
+        <div className="flex items-center mb-5 flex-wrap gap-4">
+          <div className="w-20 h-20 rounded bg-gray-200 mr-5 flex-shrink-0"></div>
+          <div className="horse-basic-info">
+            <div className="h-6 bg-gray-200 rounded w-32 mb-2"></div>
+            <div className="h-4 bg-gray-200 rounded w-48"></div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {[...Array(6)].map((_, index) => (
+            <div key={index} className="flex flex-col">
+              <div className="h-3 bg-gray-200 rounded w-16 mb-2"></div>
+              <div className="h-4 bg-gray-200 rounded w-24"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="h-5 bg-gray-200 rounded w-48 mb-4"></div>
+      
+      {/* Medical Record History Skeleton */}
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-5">
+        <div className="bg-gray-50 grid grid-cols-5 gap-4 py-3 px-4 border-b border-gray-200">
+          {[...Array(5)].map((_, index) => (
+            <div key={index} className="h-4 bg-gray-200 rounded"></div>
+          ))}
+        </div>
+        {[...Array(3)].map((_, index) => (
+          <div key={index} className="grid grid-cols-5 gap-4 py-3 px-4 border-b border-gray-100 items-center min-h-[50px]">
+            {[...Array(5)].map((_, colIndex) => (
+              <div key={colIndex} className="h-4 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* Treatment History Skeleton */}
+      <div className="h-5 bg-gray-200 rounded w-48 mb-4"></div>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-gray-50 grid grid-cols-5 gap-4 py-3 px-4 border-b border-gray-200">
+          {[...Array(5)].map((_, index) => (
+            <div key={index} className="h-4 bg-gray-200 rounded"></div>
+          ))}
+        </div>
+        {[...Array(3)].map((_, index) => (
+          <div key={index} className="grid grid-cols-5 gap-4 py-3 px-4 border-b border-gray-100 items-center min-h-[50px]">
+            {[...Array(5)].map((_, colIndex) => (
+              <div key={colIndex} className="h-4 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Medical Record Detail Skeleton
+const MedicalRecordDetailSkeleton = () => {
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6 animate-pulse">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="h-5 w-5 bg-gray-200 rounded"></div>
+        <div className="h-4 bg-gray-200 rounded w-32"></div>
+      </div>
+
+      <div className="flex items-center mb-5 flex-wrap gap-4">
+        <div className="w-12 h-12 rounded bg-gray-200 mr-4 flex-shrink-0"></div>
+        <div className="profile-info">
+          <div className="h-5 bg-gray-200 rounded w-32 mb-2"></div>
+          <div className="h-6 bg-gray-200 rounded-full w-20"></div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
+        {[...Array(6)].map((_, index) => (
+          <div key={index} className="flex flex-col">
+            <div className="h-3 bg-gray-200 rounded w-16 mb-2"></div>
+            <div className="h-4 bg-gray-200 rounded w-24"></div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mb-6">
+        <div className="h-5 bg-gray-200 rounded w-48 mb-4"></div>
+
+        <div className="bg-blue-50 rounded-lg p-4 mb-5">
+          <div className="h-4 bg-gray-200 rounded w-32 mb-3"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {[...Array(5)].map((_, index) => (
+              <div key={index} className="h-4 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        </div>
+
+        <div className="h-4 bg-gray-200 rounded w-32 mb-4"></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+          {[...Array(3)].map((_, index) => (
+            <div key={index} className="bg-white border border-gray-200 rounded-md p-3 text-center">
+              <div className="h-6 bg-gray-200 rounded mb-2"></div>
+              <div className="h-3 bg-gray-200 rounded w-20 mx-auto"></div>
+            </div>
+          ))}
+        </div>
+
+        {[...Array(7)].map((_, index) => (
+          <div key={index} className="bg-gray-50 rounded-lg p-4 mb-5">
+            <div className="h-4 bg-gray-200 rounded w-32 mb-3"></div>
+            <div className="h-4 bg-gray-200 rounded"></div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex justify-center">
+        <div className="h-10 bg-gray-200 rounded w-40"></div>
+      </div>
+    </div>
+  )
+}
+
+// Treatment History Detail Skeleton
+const TreatmentHistoryDetailSkeleton = () => {
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6 animate-pulse">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="h-5 w-5 bg-gray-200 rounded"></div>
+        <div className="h-4 bg-gray-200 rounded w-32"></div>
+      </div>
+
+      <div>
+        <div className="h-5 bg-gray-200 rounded w-48 mb-5"></div>
+
+        <div className="bg-blue-50 rounded-lg p-4 mb-5">
+          <div className="h-4 bg-gray-200 rounded w-32 mb-3"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {[...Array(5)].map((_, index) => (
+              <div key={index} className="h-4 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-5">
+          <div className="h-4 bg-gray-200 rounded w-48 mb-4"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+            {[...Array(3)].map((_, index) => (
+              <div key={index} className="bg-white border border-gray-200 rounded-md p-3 text-center">
+                <div className="h-6 bg-gray-200 rounded mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-20 mx-auto"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {[...Array(4)].map((_, index) => (
+          <div key={index} className="bg-gray-50 rounded-lg p-4 mb-5">
+            <div className="h-4 bg-gray-200 rounded w-32 mb-3"></div>
+            <div className="h-4 bg-gray-200 rounded"></div>
+          </div>
+        ))}
+
+        <div className="flex justify-center">
+          <div className="h-10 bg-gray-200 rounded w-40"></div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -314,6 +500,16 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
         "Diagnostic Protocol",
         medicalRecord.medrec_diagnostic_protocol || "No protocol recorded"
       );
+
+      // NEW: Add Lab Results and Lab Image information to PDF
+      addSection("Laboratory Results", "");
+      addKeyValue("Lab Results", medicalRecord.medrec_lab_results || "No lab results available");
+      
+      if (medicalRecord.medrec_lab_img) {
+        addKeyValue("Lab Image", "Available - See attached records for details");
+      } else {
+        addKeyValue("Lab Image", "No lab image available");
+      }
     } else {
       // --- Treatment Record ---
       addSection("Horse Information", "");
@@ -425,52 +621,10 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
         Back to Horse Details
       </button>
 
-      <div className="flex items-center mb-5 flex-wrap gap-4">
-        <div className="w-12 h-12 rounded-full bg-gray-300 mr-4 flex items-center justify-center font-semibold text-gray-500 flex-shrink-0">
-          {horse?.horse_name?.charAt(0) || "H"}
-        </div>
-        <div className="profile-info">
-          <h4 className="text-base font-semibold text-gray-900 mb-1">{horse?.horse_name || "Horse"}</h4>
-          <span className={`inline-block py-0.5 px-2 rounded-xl text-xs font-medium ${
-            medicalRecord.medrec_horsestatus?.toLowerCase() === "healthy" 
-              ? "bg-green-100 text-green-800"
-              : medicalRecord.medrec_horsestatus?.toLowerCase() === "sick"
-                ? "bg-red-100 text-red-600"
-                : medicalRecord.medrec_horsestatus?.toLowerCase() === "unhealthy"
-                  ? "bg-yellow-100 text-yellow-600"
-                  : "bg-gray-100 text-gray-600"
-          }`}>
-            {medicalRecord.medrec_horsestatus || "No Status"}
-          </span>
-        </div>
-      </div>
+     
+        
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
-        <div className="flex flex-col">
-          <span className="text-xs text-gray-500 mb-0.5">Breed</span>
-          <div className="text-sm text-gray-900 font-medium">{horse?.horse_breed || "N/A"}</div>
-        </div>
-        <div className="flex flex-col">
-          <span className="text-xs text-gray-500 mb-0.5">Age</span>
-          <div className="text-sm text-gray-900 font-medium">{horse?.horse_age || "N/A"}</div>
-        </div>
-        <div className="flex flex-col">
-          <span className="text-xs text-gray-500 mb-0.5">Sex</span>
-          <div className="text-sm text-gray-900 font-medium">{horse?.horse_sex || "N/A"}</div>
-        </div>
-        <div className="flex flex-col">
-          <span className="text-xs text-gray-500 mb-0.5">Owner</span>
-          <div className="text-sm text-gray-900 font-medium">{horse?.owner_fullname || "N/A"}</div>
-        </div>
-        <div className="flex flex-col">
-          <span className="text-xs text-gray-500 mb-0.5">Contact</span>
-          <div className="text-sm text-gray-900 font-medium">{horse?.owner_phone || "N/A"}</div>
-        </div>
-        <div className="flex flex-col">
-          <span className="text-xs text-gray-500 mb-0.5">Location</span>
-          <div className="text-sm text-gray-900 font-medium">{horse?.location || "N/A"}</div>
-        </div>
-      </div>
+
 
       <div className="mb-6">
         <h5 className="text-base font-semibold text-red-700 mb-4 border-b-2 border-gray-200 pb-1.5">
@@ -479,7 +633,6 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
 
         {/* Information Section */}
         <div className="bg-blue-50 rounded-lg p-4 mb-5">
-          <div className="text-sm font-semibold text-red-700 mb-3">Information</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="text-sm mb-2">
               <strong>Follow-up Date:</strong> {medicalRecord.medrec_followup_date || "No follow-up scheduled"}
@@ -504,9 +657,6 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
                 {medicalRecord.medrec_horsestatus || "N/A"}
               </span>
             </div>
-            <div className="text-sm mb-2">
-              <strong>Recommendation:</strong> {medicalRecord.medrec_recommendation || "N/A"}
-            </div>
           </div>
         </div>
 
@@ -529,6 +679,57 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
               {medicalRecord.medrec_resp_rate || "N/A"} breaths/min
             </div>
             <div className="text-xs text-gray-500">Respiratory Rate</div>
+          </div>
+        </div>
+
+        {/* NEW: Laboratory Results Section */}
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <div className="text-sm font-semibold text-gray-900 mb-2">Laboratory Results</div>
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <FileText size={16} className="text-blue-600" />
+                <span className="text-sm font-medium text-gray-700">Lab Results:</span>
+              </div>
+              <p className="text-sm text-gray-700 leading-6 ml-6">
+                {medicalRecord.medrec_lab_results || "No lab results available"}
+              </p>
+            </div>
+            
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <ImageIcon size={16} className="text-green-600" />
+                <span className="text-sm font-medium text-gray-700">Lab Images:</span>
+              </div>
+              <div className="ml-6">
+                {medicalRecord.medrec_lab_img ? (
+                  <div className="flex flex-col space-y-2">
+                    <img 
+                      src={medicalRecord.medrec_lab_img} 
+                      alt="Laboratory test results"
+                      className="max-w-full h-auto max-h-64 rounded-lg border border-gray-200"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'block';
+                      }}
+                    />
+                    <div className="hidden text-sm text-gray-500 italic">
+                      Lab image failed to load
+                    </div>
+                    <a 
+                      href={medicalRecord.medrec_lab_img} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-sm text-blue-600 hover:text-blue-800 underline"
+                    >
+                      View full size image
+                    </a>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 italic">No lab images available</p>
+                )}
+              </div>
+            </div>
           </div>
         </div>
 
@@ -612,7 +813,6 @@ const TreatmentHistoryDetailView = ({ treatmentHistory, horse, onBack, onExportP
         <h4 className="text-lg font-semibold text-red-700 mb-5">Treatment History Details</h4>
 
         <div className="bg-blue-50 rounded-lg p-4 mb-5">
-          <div className="text-sm font-semibold text-red-700 mb-3">Treatment Record</div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="text-sm mb-2">
               <strong>Follow-up Date:</strong> {treatmentHistory.followup_date || treatmentHistory.parent_record?.medrec_followup_date || "N/A"}
@@ -637,9 +837,7 @@ const TreatmentHistoryDetailView = ({ treatmentHistory, horse, onBack, onExportP
                 {treatmentHistory.parent_record?.medrec_horsestatus || "N/A"}
               </span>
             </div>
-            <div className="text-sm mb-2">
-              <strong>Recommendation:</strong> {treatmentHistory.medrec_recommendation || "N/A"}
-            </div>
+          
           </div>
         </div>
 
@@ -668,6 +866,13 @@ const TreatmentHistoryDetailView = ({ treatmentHistory, horse, onBack, onExportP
         </div>
 
         <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <div className="text-sm font-semibold text-gray-900 mb-3">Recommendations</div>
+          <p className="text-sm text-gray-700 leading-6">
+            {treatmentHistory.medrec_recommendation  || "No information available"}
+          </p>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
           <div className="text-sm font-semibold text-gray-900 mb-3">Clinical Signs</div>
           <p className="text-sm text-gray-700 leading-6">
             {treatmentHistory.medrec_clinical_sign || "No information available"}
@@ -682,7 +887,7 @@ const TreatmentHistoryDetailView = ({ treatmentHistory, horse, onBack, onExportP
         </div>
 
         <div className="bg-gray-50 rounded-lg p-4 mb-5">
-          <div className="text-sm font-semibold text-red-700 mb-3">Treatment Details</div>
+          <div className="text-sm font-semibold text-gray-900 mb-3">Treatment Details</div>
           <p className="text-sm text-gray-700 leading-6 mb-2">
             <span className="font-semibold">Treatment Name: </span>
             {treatmentHistory.treatment_name || "No information available"}
@@ -791,43 +996,97 @@ const HorseDetailView = ({ horse, onBack, onViewMedicalRecord, onViewTreatmentHi
         Back to Horse Records
       </button>
 
-      <div className="bg-gray-50 rounded-lg p-5 mb-5">
-        <div className="flex items-center mb-5 flex-wrap gap-4">
-          <div className="w-15 h-15 rounded-full bg-gray-300 mr-5 flex-shrink-0 flex items-center justify-center text-2xl font-semibold text-gray-500">
-            {horse.horse_name ? horse.horse_name.charAt(0) : "?"}
+      {/* Square Profile and Info Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        {/* Horse Information Section */}
+        <div className="flex flex-col md:flex-row items-start md:items-start space-x-0 md:space-x-6">
+          <div className="relative flex-shrink-0">
+            <div className="w-32 h-32 md:w-40 md:h-40 rounded-xl bg-gray-300 flex items-center justify-center overflow-hidden border-2 border-white shadow-md">
+              {horse.horse_image ? (
+                <img 
+                  src={horse.horse_image} 
+                  alt={horse.horse_name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div className={`w-full h-full flex items-center justify-center text-3xl font-semibold text-gray-500 ${horse.horse_image ? 'hidden' : 'flex'}`}>
+                {horse.horse_name ? horse.horse_name.charAt(0) : "H"}
+              </div>
+            </div>
+            
+            {/* Status Badge */}
+            <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
+              <span className={`inline-block py-1 px-3 rounded-full border shadow-sm text-xs font-semibold ${
+                horse.horse_status?.toLowerCase() === "healthy" 
+                  ? "bg-green-100 text-green-800 border-green-200"
+                  : horse.horse_status?.toLowerCase() === "sick"
+                    ? "bg-red-100 text-red-800 border-red-200"
+                    : horse.horse_status?.toLowerCase() === "unhealthy"
+                      ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                      : "bg-gray-100 text-gray-800 border-gray-200"
+              }`}>
+                {horse.horse_status || "No Status"}
+              </span>
+            </div>
           </div>
-          <div className="horse-basic-info">
-            <h3 className="text-lg font-semibold text-gray-900 mb-1">{horse.horse_name}</h3>
-            <div className="text-sm text-gray-500">
-              <span>Age: {horse.horse_age || "N/A"}</span> • <span>Breed: {horse.horse_breed || "N/A"}</span>
+
+          <div className="flex-1 mt-6 md:mt-0 flex flex-col justify-start text-left">
+            <h2 className="text-2xl font-bold text-gray-800">{horse.horse_name || "Unknown Horse"}</h2>
+            <div className="flex items-center space-x-4 mt-1">
+              <span className="text-indigo-600 font-semibold">{horse.horse_breed || "Unknown Breed"}</span>
+              <span className="text-gray-600">({horse.horse_sex || "Unknown"})</span>
+            </div>
+            <span className="mt-1 block text-gray-700">{horse.horse_color || "Unknown"} Coat</span>
+
+            <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-gray-600 text-sm mt-4">
+              <span>DOB: <strong className="text-gray-800">{horse.horse_dob || "Unknown"}</strong></span>
+              <span>Age: <strong className="text-gray-800">{horse.horse_age || "Unknown"}</strong></span>
+              <span>Height: <strong className="text-gray-800">{displayHeight()}</strong></span>
+              <span>Weight: <strong className="text-gray-800">{displayWeight()}</strong></span>
             </div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          <div className="flex flex-col">
-            <span className="text-xs text-gray-500 mb-1 font-medium">Owner</span>
-            <span className="text-sm text-gray-900 font-medium">{horse.owner_fullname || "N/A"}</span>
+        {/* Owner Information Section */}
+        <div>
+          <div className="flex items-center space-x-2 mb-4">
+            <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-teal-600 rounded-xl flex items-center justify-center shadow-md">
+              <User className="w-4 h-4 text-white" />
+            </div>
+            <h2 className="text-lg font-bold text-gray-800">Owner Information</h2>
           </div>
-          <div className="flex flex-col">
-            <span className="text-xs text-gray-500 mb-1 font-medium">Location</span>
-            <span className="text-sm text-gray-900 font-medium">{horse.location || "N/A"}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xs text-gray-500 mb-1 font-medium">Sex</span>
-            <span className="text-sm text-gray-900 font-medium">{horse.horse_sex || "N/A"}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xs text-gray-500 mb-1 font-medium">Color</span>
-            <span className="text-sm text-gray-900 font-medium">{horse.horse_color || "N/A"}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xs text-gray-500 mb-1 font-medium">Weight</span>
-            <span className="text-sm text-gray-900 font-medium">{displayWeight()}</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-xs text-gray-500 mb-1 font-medium">Height</span>
-            <span className="text-sm text-gray-900 font-medium">{displayHeight()}</span>
+
+          <div className="space-y-3">
+            <p className="font-bold text-gray-800 text-lg">
+              {horse.owner_fullname || "Unknown Owner"}
+            </p>
+
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2 text-sm">
+                <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Phone className="w-3 h-3 text-blue-600" />
+                </div>
+                <span className="text-gray-700">{horse.owner_phone || "Phone not available"}</span>
+              </div>
+
+              <div className="flex items-center space-x-2 text-sm">
+                <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center">
+                  <MapPin className="w-3 h-3 text-green-600" />
+                </div>
+                <span className="text-gray-700">{horse.location || "Address not available"}</span>
+              </div>
+
+              <div className="flex items-center space-x-2 text-sm">
+                <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <Mail className="w-3 h-3 text-purple-600" />
+                </div>
+                <span className="text-gray-700">{horse.owner_email || "Email not available"}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -870,7 +1129,6 @@ const HorseDetailView = ({ horse, onBack, onViewMedicalRecord, onViewTreatmentHi
                   onClick={() => onViewMedicalRecord(horse, history.full_record)}
                 >
                   <Eye size={16} />
-                  
                 </button>
               </div>
             </div>
@@ -884,10 +1142,8 @@ const HorseDetailView = ({ horse, onBack, onViewMedicalRecord, onViewTreatmentHi
         )}
       </div>
 
-      {/* UPDATED TREATMENT HISTORY SECTION */}
       <div className="text-base font-semibold text-gray-900 mb-4">Treatment History</div>
       <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-        {/* Updated header with 5 columns - Color removed and Remark/Administered By swapped */}
         <div className="bg-gray-50 grid grid-cols-5 gap-4 py-3 px-4 font-semibold text-gray-700 text-xs border-b border-gray-200">
           <div>Date</div>
           <div>Treatment</div>
@@ -904,11 +1160,19 @@ const HorseDetailView = ({ horse, onBack, onViewMedicalRecord, onViewTreatmentHi
             >
               <div className="flex items-center">{treatment.treatment_date || "N/A"}</div>
               <div className="flex items-center">{treatment.treatment_info || "N/A"}</div>
-              {/* Remark column (now before Administered By) - No color for "Completed" */}
               <div className="flex items-center">
-                <span className="text-sm text-gray-900">{treatment.treatment_remark || "N/A"}</span>
+                <span className={`inline-block py-1 px-2 rounded text-xs font-medium ${
+                  treatment.treatment_remark?.toLowerCase() === "completed" 
+                    ? "bg-green-100 text-green-800"
+                    : treatment.treatment_remark?.toLowerCase() === "in progress"
+                      ? "bg-blue-100 text-blue-800"
+                      : treatment.treatment_remark?.toLowerCase() === "pending"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-gray-100 text-gray-600"
+                }`}>
+                  {treatment.treatment_remark || "N/A"}
+                </span>
               </div>
-              {/* Administered By column (now after Remark) */}
               <div className="flex items-center">{treatment.vet_name || "N/A"}</div>
               <div className="flex items-center justify-center">
                 <button
@@ -916,7 +1180,6 @@ const HorseDetailView = ({ horse, onBack, onViewMedicalRecord, onViewTreatmentHi
                   onClick={() => onViewTreatmentHistory(treatment)}
                 >
                   <Eye size={16} />
-                  
                 </button>
               </div>
             </div>
@@ -939,6 +1202,7 @@ function CtuHorseRecord() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const [currentView, setCurrentView] = useState('list')
   const [loading, setLoading] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
   const [error, setError] = useState(null)
   const [notifsOpen, setNotifsOpen] = useState(false)
   const [areaFilter, setAreaFilter] = useState("all")
@@ -951,14 +1215,113 @@ function CtuHorseRecord() {
   const [selectedHorse, setSelectedHorse] = useState(null)
   const [selectedMedicalRecord, setSelectedMedicalRecord] = useState(null)
   const [selectedTreatmentHistory, setSelectedTreatmentHistory] = useState(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
   const sidebarRef = useRef(null)
 
+  // MARK ALL NOTIFICATIONS AS READ
+  const handleMarkAllAsRead = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to mark all as read");
+      }
+      
+      const data = await res.json();
+      console.log("Mark all as read result:", data);
+
+      // Update frontend state
+      setNotifications(prev =>
+        prev.map(notif => ({ ...notif, read: true }))
+      );
+      
+    } catch (err) {
+      console.error("Error marking all as read:", err);
+    }
+  };
+
+  // HANDLE INDIVIDUAL NOTIFICATION CLICK
+  const handleNotificationClick = async (notification) => {
+    // Mark notification as read in frontend immediately for better UX
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === notification.id ? { ...notif, read: true } : notif
+      )
+    );
+
+    // Mark notification as read in backend
+    try {
+      const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json();
+      console.log("Mark notification read result:", data);
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
+
+    // Handle navigation based on notification content
+    console.log('Notification clicked:', notification);
+    const message = notification.message.toLowerCase();
+
+    if (
+      message.includes("new registration") ||
+      message.includes("new veterinarian approved") ||
+      message.includes("veterinarian approved") ||
+      message.includes("veterinarian declined") ||
+      message.includes("veterinarian registered")
+    ) {
+      console.log("Navigating to Account Approval page");
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (message.includes("pending medical record access") || message.includes("requested access")) {
+      console.log("Navigating to Access Request page");
+      navigate("/CtuAccessRequest", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (message.includes("emergency") || message.includes("sos")) {
+      console.log("Navigating to SOS page");
+      navigate("/CtuSOS");
+      return;
+    }
+
+    console.warn("No matching route for notification:", notification);
+  };
+
+  // Handle notifications update from modal
+  const handleNotificationsUpdate = (updatedNotifications) => {
+    console.log("Notifications updated from modal:", updatedNotifications);
+    console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
+    setNotifications(updatedNotifications);
+  };
+
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+    fetch(`${API_BASE}/get_vetnotifications/`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -968,13 +1331,47 @@ function CtuHorseRecord() {
           id: notif.id,
           message: notif.message,
           date: notif.date || new Date().toISOString(),
+          read: notif.read || false,
+          type: notif.type || "general"
         }))
         setNotifications(formatted)
       })
       .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      await Promise.all([
+        fetchHorses(),
+        loadNotifications()
+      ])
+    } catch (error) {
+      console.error("Failed to refresh data:", error)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
+
+  const fetchHorses = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_horses/")
+      if (!res.ok) throw new Error("Failed to fetch horses")
+      const data = await res.json()
+      setHorseRecords(data)
+    } catch (err) {
+      console.error("Error fetching horses:", err)
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
+    fetchHorses()
     loadNotifications()
     const interval = setInterval(() => {
       loadNotifications()
@@ -990,7 +1387,6 @@ function CtuHorseRecord() {
       filtered = filtered.filter((horse) => horse.location.toLowerCase().includes(areaFilter.toLowerCase()))
     }
     if (statusFilter !== "all") {
-      // UPDATED: Use horse.horse_status directly instead of checking medical records
       filtered = filtered.filter((horse) => 
         horse.horse_status?.toLowerCase() === statusFilter.toLowerCase()
       )
@@ -1029,20 +1425,32 @@ function CtuHorseRecord() {
     setCurrentPage(1)
   }, [areaFilter, statusFilter, searchTerm])
 
-  const viewHorseDetails = (horse) => {
+  const viewHorseDetails = async (horse) => {
+    setDetailLoading(true)
     setSelectedHorse(horse)
+    // Simulate loading delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 500))
     setCurrentView('horse')
+    setDetailLoading(false)
   }
 
-  const viewMedicalRecord = (horse, record) => {
+  const viewMedicalRecord = async (horse, record) => {
+    setDetailLoading(true)
     setSelectedHorse(horse)
     setSelectedMedicalRecord(record)
+    // Simulate loading delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 500))
     setCurrentView('medical')
+    setDetailLoading(false)
   }
 
-  const viewTreatmentHistory = (record) => {
+  const viewTreatmentHistory = async (record) => {
+    setDetailLoading(true)
     setSelectedTreatmentHistory(record)
+    // Simulate loading delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 500))
     setCurrentView('treatment')
+    setDetailLoading(false)
   }
 
   const backToList = () => {
@@ -1073,10 +1481,6 @@ function CtuHorseRecord() {
   const handleStatusFilterChange = (e) => {
     setStatusFilter(e.target.value)
   }
-
-  useEffect(() => {
-    loadNotifications()
-  }, [loadNotifications])
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -1112,24 +1516,8 @@ function CtuHorseRecord() {
 
   const currentFilteredHorseRecords = paginatedHorseRecords()
 
-  useEffect(() => {
-    const fetchHorses = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_horses/")
-        if (!res.ok) throw new Error("Failed to fetch horses")
-        const data = await res.json()
-        setHorseRecords(data)
-      } catch (err) {
-        console.error("Error fetching horses:", err)
-        setError(err.message)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchHorses()
-  }, [])
+  // Calculate unread notifications count
+  const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
 
   const renderListView = () => (
     <>
@@ -1196,7 +1584,6 @@ function CtuHorseRecord() {
                 </div>
               ) : (
                 currentFilteredHorseRecords.map((horse, index) => {
-                  // UPDATED: Use horse.horse_status directly from the horse object
                   const horseStatus = horse.horse_status || "No Status"
 
                   return (
@@ -1252,6 +1639,55 @@ function CtuHorseRecord() {
     </>
   );
 
+  const renderCurrentView = () => {
+    if (detailLoading) {
+      switch (currentView) {
+        case 'horse':
+          return <HorseDetailSkeleton />;
+        case 'medical':
+          return <MedicalRecordDetailSkeleton />;
+        case 'treatment':
+          return <TreatmentHistoryDetailSkeleton />;
+        default:
+          return renderListView();
+      }
+    }
+
+    switch (currentView) {
+      case 'list':
+        return renderListView();
+      case 'horse':
+        return (
+          <HorseDetailView
+            horse={selectedHorse}
+            onBack={backToList}
+            onViewMedicalRecord={viewMedicalRecord}
+            onViewTreatmentHistory={viewTreatmentHistory}
+          />
+        );
+      case 'medical':
+        return (
+          <MedicalRecordDetailView
+            horse={selectedHorse}
+            medicalRecord={selectedMedicalRecord}
+            onBack={backToHorse}
+            onExportPDF={handleExportPDF}
+          />
+        );
+      case 'treatment':
+        return (
+          <TreatmentHistoryDetailView
+            treatmentHistory={selectedTreatmentHistory}
+            horse={selectedHorse}
+            onBack={backToHorse}
+            onExportPDF={handleExportPDF}
+          />
+        );
+      default:
+        return renderListView();
+    }
+  };
+
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
       <div className="sidebars" id="sidebars">
@@ -1269,54 +1705,48 @@ function CtuHorseRecord() {
             </h2>
           </div>
 
-          <button
-            className="relative bg-transparent border-none cursor-pointer p-2 rounded-full"
-            onClick={() => setNotifsOpen(!notifsOpen)}
-          >
-            <Bell size={24} color="#374151" />
-            {notifications.length > 0 && (
-              <span className="absolute top-0.5 right-0.5 bg-red-600 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[15px] h-[15px] flex items-center justify-center">
-                {notifications.length}
-              </span>
-            )}
-          </button>
+          <div className="flex items-center gap-4">
+            {/* Refresh Button */}
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Refresh Data"
+            >
+              <RefreshCw 
+                size={24} 
+                color="#374151" 
+                className={isRefreshing ? "animate-spin" : ""}
+              />
+            </button>
+
+            {/* Notification Bell */}
+            <button
+              ref={notificationBellRef}
+              className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
+              onClick={() => setNotifsOpen(!notifsOpen)}
+            >
+              <Bell size={24} color="#374151" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold min-w-[20px]">
+                  {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                </span>
+              )}
+            </button>
+          </div>
 
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            onNotificationsUpdate={handleNotificationsUpdate}
           />
         </header>
 
         <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
-          {currentView === 'list' && renderListView()}
-          {currentView === 'horse' && (
-            <HorseDetailView
-              horse={selectedHorse}
-              onBack={backToList}
-              onViewMedicalRecord={viewMedicalRecord}
-              onViewTreatmentHistory={viewTreatmentHistory}
-            />
-          )}
-          {currentView === 'medical' && (
-            <MedicalRecordDetailView
-              horse={selectedHorse}
-              medicalRecord={selectedMedicalRecord}
-              onBack={backToHorse}
-              onExportPDF={handleExportPDF}
-            />
-          )}
-          {currentView === 'treatment' && (
-            <TreatmentHistoryDetailView
-              treatmentHistory={selectedTreatmentHistory}
-              horse={selectedHorse}
-              onBack={backToHorse}
-              onExportPDF={handleExportPDF}
-            />
-          )}
+          {renderCurrentView()}
         </div>
       </div>
 

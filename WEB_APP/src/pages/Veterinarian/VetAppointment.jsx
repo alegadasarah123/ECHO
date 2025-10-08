@@ -1,13 +1,3 @@
-<<<<<<< HEAD
-=======
-import React, { useState, useEffect } from 'react';
-import {
-  Calendar, Search, Bell, Eye, Grid, Clock, CheckCircle, 
-  AlertCircle, Calendar as CalendarIcon, Filter, X, RefreshCw,
-  ChevronLeft, ChevronRight
-} from 'lucide-react';
-import { useNavigate } from "react-router-dom";
->>>>>>> 2f518546479e092f571cff740b2cd7809e78f0fe
 import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
 import NotificationModal from '@/components/modal/notificationModal';
@@ -17,10 +7,12 @@ import {
   Bell,
   Calendar as CalendarIcon,
   CheckCircle,
+  ChevronLeft, ChevronRight,
   Clock,
   Eye,
   Filter,
   Grid,
+  RefreshCw,
   Search,
   X
 } from 'lucide-react';

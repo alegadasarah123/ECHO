@@ -2,12 +2,34 @@
 import Sidebar from "@/components/CtuSidebar"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
+
 import FloatingMessages from "./CtuMessage"
 
-import { Bell, Edit, Mail, MapPin, MessageCircle, MoreHorizontal, MoreVertical, Phone, Pin, Reply, Send, Upload } from "lucide-react"
+import { Bell, Edit, Mail, MapPin, MessageCircle, MoreHorizontal, MoreVertical, Phone, Pin, RefreshCw, Reply, Send, Upload } from "lucide-react"
 import NotificationModal from "./CtuNotif"
 
 const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
+
+// Skeleton Loader Component
+const PostSkeletonLoader = () => (
+  <div className="post-skeleton">
+    <div className="skeleton-header">
+      <div className="skeleton-avatar"></div>
+      <div className="skeleton-user-info">
+        <div className="skeleton-text short"></div>
+        <div className="skeleton-text shorter"></div>
+      </div>
+    </div>
+    <div className="skeleton-content">
+      <div className="skeleton-text medium"></div>
+      <div className="skeleton-text long"></div>
+      <div className="skeleton-text short"></div>
+    </div>
+    <div className="skeleton-actions">
+      <div className="skeleton-action"></div>
+    </div>
+  </div>
+)
 
 const CtuAnnouncement = () => {
   const navigate = useNavigate()
@@ -42,6 +64,10 @@ const CtuAnnouncement = () => {
   // State for edit functionality
   const [editingPostId, setEditingPostId] = useState(null)
   const [editPostText, setEditPostText] = useState("")
+
+  // Add loading state for refresh functionality
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isLoadingPosts, setIsLoadingPosts] = useState(true)
 
   // Refs for click outside functionality and file input
   const notificationBellRef = useRef(null)
@@ -429,17 +455,6 @@ const CtuAnnouncement = () => {
       padding: "8px",
       borderRadius: "50%",
     },
-    badge: {
-      position: "absolute",
-      top: "2px",
-      right: "2px",
-      backgroundColor: "#ef4444",
-      color: "#fff",
-      borderRadius: "50%",
-      padding: "2px 6px",
-      fontSize: "12px",
-      fontWeight: "bold",
-    },
     seeMoreButton: {
       border: "none",
       background: "none",
@@ -471,84 +486,201 @@ const CtuAnnouncement = () => {
     return `${datePart} at ${timePart}`
   }, [])
 
-  // API functions for comments
- const fetchComments = useCallback(async (postId) => {
-  try {
-    const response = await fetch(
-      `http://localhost:8000/api/ctu_vetmed/comments/${postId}/`
-    );
-
-    if (!response.ok) {
-      console.error("Failed to fetch comments", response.status);
+  // fetch comments
+  const fetchComments = useCallback(async (postId) => {
+    if (!postId) {
+      console.warn("fetchComments: Missing postId");
       return [];
     }
 
-    const result = await response.json();
-
-    if (!result.data) {
-      console.error("No comments data returned", result);
-      return [];
-    }
-
-    return result.data.map((comment) => ({
-      id: comment.id,
-      author: comment.user_id || "User",
-      text: comment.comment_text,
-      timestamp: new Date(comment.comment_date),
-      replies: [],
-    }));
-  } catch (error) {
-    console.error("Error fetching comments:", error);
-    return [];
-  }
-}, []);
-
-  const addCommentAPI = useCallback(async (postId, commentText) => {
     try {
-      const response = await fetch(`${API_BASE}/add_comment/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          announcement_id: postId,
-          comment_text: commentText,
-          user_id: currentUser.id,
-        }),
-      })
+      const response = await fetch(
+  `http://localhost:8000/api/ctu_vetmed/get_comments/?post_id=${postId}`,
+  { credentials: "include" }
+);
 
-      const result = await response.json()
-      
-      if (response.ok) {
-        return result.data
-      } else {
-        throw new Error(result.error || "Failed to add comment")
+
+      if (!response.ok) {
+        console.error(`fetchComments failed with status ${response.status}`);
+        return [];
       }
+
+      const result = await response.json();
+      if (!result.data || !Array.isArray(result.data)) {
+        console.warn("fetchComments: No comment data returned");
+        return [];
+      }
+
+      // Recursive function to transform API response for frontend
+      const transformComments = (comments) => {
+        return comments.map((c) => ({
+          id: c.id,
+          author: c.author || "Unknown User",         // Resolved author from backend
+          text: c.text || "",
+          timestamp: c.timestamp ? new Date(c.timestamp) : new Date(),
+          repliedBy: c.repliedBy || null,            // Who replied (if any)
+          replies: c.replies ? transformComments(c.replies) : [],
+          // Remove avatar/logo reference
+        }));
+      };
+
+      return transformComments(result.data);
+
     } catch (error) {
-      console.error("Error adding comment:", error)
-      throw error
+      console.error("Error fetching comments:", error);
+      return [];
     }
-  }, [currentUser.id])
+  }, []);
 
-  // Fetch notifications from backend
-  const loadNotifications = useCallback(() => {
-    console.log("Loading notifications...")
+  // MARK ALL NOTIFICATIONS AS READ
+    const handleMarkAllAsRead = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+        
+        if (!res.ok) {
+          const errorData = await res.json();
+          throw new Error(errorData.error || "Failed to mark all as read");
+        }
+        
+        const data = await res.json();
+        console.log("Mark all as read result:", data);
+  
+        // Update frontend state
+        setNotifications(prev =>
+          prev.map(notif => ({ ...notif, read: true }))
+        );
+        
+      } catch (err) {
+        console.error("Error marking all as read:", err);
+      }
+    };
+  
+    // HANDLE INDIVIDUAL NOTIFICATION CLICK
+    const handleNotificationClick = async (notification) => {
+      // Mark notification as read in frontend immediately for better UX
+      setNotifications(prev => 
+        prev.map(notif => 
+          notif.id === notification.id ? { ...notif, read: true } : notif
+        )
+      );
+  
+      // Mark notification as read in backend
+      try {
+        const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const data = await res.json();
+        console.log("Mark notification read result:", data);
+      } catch (err) {
+        console.error("Error marking notification as read:", err);
+      }
+  
+      // Handle navigation based on notification content
+      console.log('Notification clicked:', notification);
+      const message = notification.message.toLowerCase();
+  
+      if (
+        message.includes("new registration") ||
+        message.includes("new veterinarian approved") ||
+        message.includes("veterinarian approved") ||
+        message.includes("veterinarian declined") ||
+        message.includes("veterinarian registered")
+      ) {
+        console.log("Navigating to Account Approval page");
+        navigate("/CtuAccountApproval", {
+          state: {
+            highlightedNotification: notification,
+            shouldHighlight: true,
+          },
+        });
+        return;
+      }
+  
+      if (message.includes("pending medical record access") || message.includes("requested access")) {
+        console.log("Navigating to Access Request page");
+        navigate("/CtuAccessRequest", {
+          state: {
+            highlightedNotification: notification,
+            shouldHighlight: true,
+          },
+        });
+        return;
+      }
+  
+      if (message.includes("emergency") || message.includes("sos")) {
+        console.log("Navigating to SOS page");
+        navigate("/CtuSOS");
+        return;
+      }
+  
+      if (message.includes("health") || message.includes("report") || message.includes("statistic")) {
+        console.log("Already on Health Report page");
+        // We're already on the health report page, no navigation needed
+        return;
+      }
+  
+      console.warn("No matching route for notification:", notification);
+    };
+  
+    // Handle notifications update from modal
+    const handleNotificationsUpdate = (updatedNotifications) => {
+      console.log("Notifications updated from modal:", updatedNotifications);
+      console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
+      setNotifications(updatedNotifications);
+    };
+  
+    const loadNotifications = useCallback(() => {
+      console.log("Loading notifications...")
+  
+      fetch(`${API_BASE}/get_vetnotifications/`)
+        .then((res) => {
+          if (!res.ok) throw new Error("Failed to fetch notifications")
+          return res.json()
+        })
+        .then((data) => {
+          const formatted = data.map((notif) => ({
+            id: notif.id,
+            message: notif.message,
+            date: notif.date || new Date().toISOString(),
+            read: notif.read || false,
+            type: notif.type || "general"
+          }))
+          setNotifications(formatted)
+        })
+        .catch((err) => console.error("Failed to fetch notifications:", err))
+    }, [])
+  
+    useEffect(() => {
+      loadNotifications()
+      const interval = setInterval(() => {
+        loadNotifications()
+      }, 30000)
+      return () => clearInterval(interval)
+    }, [loadNotifications])
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch notifications")
-        return res.json()
-      })
-      .then((data) => {
-        const formatted = data.map((notif) => ({
-          id: notif.id,
-          message: notif.message,
-          date: notif.date || new Date().toISOString(),
-        }))
-        setNotifications(formatted)
-      })
-      .catch((err) => console.error("Failed to fetch notifications:", err))
-  }, [])
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      await Promise.all([
+        loadAnnouncements(),
+        loadNotifications()
+      ])
+      // Force a re-render of all components
+      setPosts(prev => [...prev])
+    } catch (error) {
+      console.error("Failed to refresh data:", error)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
 
   // Auto-refresh every 30s
   useEffect(() => {
@@ -612,6 +744,7 @@ const CtuAnnouncement = () => {
 
   // Updated loadAnnouncements to include comments
   const loadAnnouncements = useCallback(async () => {
+    setIsLoadingPosts(true)
     try {
       const response = await fetch("http://localhost:8000/api/ctu_vetmed/announcements/", {
         credentials: "include",
@@ -706,8 +839,58 @@ const CtuAnnouncement = () => {
       }
     } catch (error) {
       console.error("[v0] Error loading announcements:", error)
+    } finally {
+      setIsLoadingPosts(false)
     }
   }, [fetchComments])
+
+  // -------------------- ADD COMMENT -------------------- //
+  const addComment = async (postId, commentText) => {
+    try {
+      const response = await fetch("http://localhost:8000/api/ctu_vetmed/add_comment/", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify({
+          announcement_id: postId,
+          comment_text: commentText,
+        }),
+      });
+
+      const data = await response.json();
+      console.log("✅ Added comment:", data);
+      
+      // Refresh comments after adding
+      if (response.ok) {
+        await loadAnnouncements(); // Refresh all posts and comments
+      }
+      
+      return data;
+    } catch (err) {
+      console.error("❌ Error adding comment:", err);
+    }
+  };
+
+  // -------------------- HANDLE COMMENT SUBMIT -------------------- //
+  const handleCommentSubmit = useCallback(
+    async (postId) => {
+      const commentText = commentInputs[postId]?.trim();
+      if (!commentText) {
+        showError("Please enter a comment.");
+        return;
+      }
+
+      console.log("Submitting comment for post:", postId, "Text:", commentText);
+
+      await addComment(postId, commentText);
+      
+      // Clear input and refresh
+      setCommentInputs(prev => ({ ...prev, [postId]: "" }));
+    },
+    [commentInputs, addComment, showError]
+  );
 
   const createPost = useCallback(async () => {
     const postText = postInputText?.trim() || ""
@@ -791,7 +974,9 @@ const CtuAnnouncement = () => {
       setSelectedPhotos([])
       hideError()
 
-      loadAnnouncements()
+      // Force refresh announcements
+      await loadAnnouncements()
+      
     } catch (error) {
       console.error("Error creating post:", error)
       showError(error.message || "Failed to create post. Please try again.")
@@ -843,7 +1028,7 @@ const CtuAnnouncement = () => {
         setEditPostText("")
         
         // Reload announcements to ensure consistency
-        loadAnnouncements()
+        await loadAnnouncements()
         
         console.log("Post updated successfully:", result)
       } else {
@@ -855,84 +1040,42 @@ const CtuAnnouncement = () => {
     }
   }
 
-  // Updated addComment function to use API
-  const addComment = useCallback(async (postId, commentText) => {
-    if (!commentText.trim()) return
-    
-    try {
-      const newComment = await addCommentAPI(postId, commentText)
-      
-      setPosts((prevPosts) =>
-        prevPosts.map((post) => {
-          if (post.id === postId) {
-            const comment = {
-              id: newComment.id,
-              author: currentUser.name,
-              text: commentText,
-              timestamp: new Date(newComment.comment_date),
-              replies: [],
-            }
-            return {
-              ...post,
-              comments: [...post.comments, comment],
-              commentCount: post.commentCount + 1,
-            }
-          }
-          return post
-        }),
-      )
-      
-      return true
-    } catch (error) {
-      console.error("Error adding comment:", error)
-      showError("Failed to add comment. Please try again.")
-      return false
-    }
-  }, [addCommentAPI, currentUser.name, showError])
-
   // Updated toggleComments to fetch comments when opened
   const toggleComments = useCallback(async (postId) => {
+    console.log("Toggling comments for post:", postId);
+    
     setPosts((prevPosts) =>
       prevPosts.map((post) => 
         post.id === postId 
           ? { ...post, isCommentsOpen: !post.isCommentsOpen }
           : post
       ),
-    )
+    );
 
-    // If opening comments and no comments are loaded, fetch them
-    const post = posts.find(p => p.id === postId)
-    if (!post.isCommentsOpen && (post.comments.length === 0)) {
+    const post = posts.find(p => p.id === postId);
+    if (!post.isCommentsOpen && post.comments.length === 0) {
       try {
-        const comments = await fetchComments(postId)
+        console.log("Fetching comments for post:", postId);
+        const comments = await fetchComments(postId);
+        console.log("Fetched comments:", comments);
+        
         setPosts(prevPosts =>
           prevPosts.map(p =>
             p.id === postId
               ? { ...p, comments, commentCount: comments.length }
               : p
           )
-        )
+        );
       } catch (error) {
-        console.error("Error loading comments:", error)
+        console.error("Error loading comments:", error);
       }
     }
 
     setTimeout(() => {
       const input = document.querySelector(`#comment-input-${postId}`)
       if (input) input.focus()
-    }, 0)
-  }, [posts, fetchComments])
-
-  // Update the comment submission handler
-  const handleCommentSubmit = useCallback(async (postId) => {
-    const commentText = commentInputs[postId]?.trim()
-    if (!commentText) return
-
-    const success = await addComment(postId, commentText)
-    if (success) {
-      setCommentInputs((prev) => ({ ...prev, [postId]: "" }))
-    }
-  }, [commentInputs, addComment])
+    }, 0);
+  }, [posts, fetchComments]);
 
   const openImageModal = useCallback((imageSrc, photos = [], index = 0) => {
     setModalImageSrc(imageSrc)
@@ -964,45 +1107,81 @@ const CtuAnnouncement = () => {
     }
   }, [currentImageIndex, currentPostPhotos])
 
-  const addReply = useCallback((postId, commentId, replyText) => {
-    if (!replyText.trim()) return
-    setPosts((prevPosts) =>
-      prevPosts.map((post) => {
-        if (post.id === postId) {
-          const updatedComments = post.comments.map((comment) => {
-            if (comment.id === commentId) {
-              const newReply = {
-                id: Date.now(),
-                author: "You",
-                text: replyText,
-                timestamp: new Date(),
-              }
-              return {
-                ...comment,
-                replies: [...(comment.replies || []), newReply],
-              }
-            }
-            return comment
-          })
-          return { ...post, comments: updatedComments }
-        }
-        return post
-      }),
-    )
-    setReplyingTo(null)
-  }, [])
+  // ---------------- Add reply function ----------------
+  const addReply = async (postId, commentId, replyText) => {
+  if (!replyText.trim()) {
+    alert("Reply cannot be empty!");
+    return;
+  }
 
-  const toggleReply = useCallback(
-    (postId, commentId) => {
-      setReplyingTo(replyingTo?.commentId === commentId ? null : { postId, commentId })
+  const payload = {
+    announcement_id: postId,
+    parent_comment_id: commentId,
+    comment_text: replyText,
+  };
 
-      setTimeout(() => {
-        const input = document.querySelector(`#reply-input-${commentId}`)
-        if (input) input.focus()
-      }, 0)
-    },
-    [replyingTo],
-  )
+  try {
+    const res = await fetch(
+      `http://localhost:8000/api/ctu_vetmed/add_comment/`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        credentials: "include",
+      }
+    );
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      switch (res.status) {
+        case 400:
+          alert(data.error || "Missing required fields.");
+          break;
+        case 401:
+          alert(data.error || "Unauthorized. Please log in.");
+          break;
+        case 403:
+          alert(data.error || "Invalid token.");
+          break;
+        case 404:
+          alert(data.error || "Parent comment not found.");
+          break;
+        case 500:
+          alert(data.error || "Server error. Please try again later.");
+          break;
+        default:
+          alert(data.error || "Unknown error occurred.");
+      }
+      throw new Error(`Failed to add reply: ${res.status}`);
+    }
+
+    console.log("✅ Reply added:", data);
+    
+    // Refresh the announcements to show the new reply
+    await loadAnnouncements();
+    
+    // Clear the reply input
+    setReplyInputs(prev => ({ ...prev, [commentId]: "" }));
+    setReplyingTo(null);
+    
+    return data;
+
+  } catch (error) {
+    console.error("Error adding reply:", error);
+    alert("Failed to add reply. Check console for details.");
+  }
+};
+
+  const toggleReply = useCallback((postId, commentId) => {
+    setReplyingTo(replyingTo?.commentId === commentId ? null : { postId, commentId });
+    setTimeout(() => {
+      const input = document.querySelector(`#reply-input-${commentId}`);
+      if (input) input.focus();
+    }, 0);
+  }, [replyingTo]);
 
   const showMoreComments = useCallback((postId) => {
     setPosts((prevPosts) =>
@@ -1026,6 +1205,30 @@ const CtuAnnouncement = () => {
   const toggleSidebar = () => {
     setIsSidebarExpanded((prev) => !prev)
   }
+
+  // Toggle post expansion for "See More" functionality
+  const togglePostExpansion = useCallback((postId) => {
+    setExpandedPosts((prev) => {
+      const newSet = new Set(prev)
+      if (newSet.has(postId)) {
+        newSet.delete(postId)
+      } else {
+        newSet.add(postId)
+      }
+      return newSet
+    })
+  }, [])
+
+  // Check if post content is too long and needs "See More"
+  const isPostLong = useCallback((content, maxLength = 300) => {
+    return content && content.length > maxLength
+  }, [])
+
+  // Get truncated content for long posts
+  const getTruncatedContent = useCallback((content, maxLength = 300) => {
+    if (!content || content.length <= maxLength) return content
+    return content.substring(0, maxLength) + '...'
+  }, [])
 
   // Effects for initial data loading
   useEffect(() => {
@@ -1120,8 +1323,6 @@ const CtuAnnouncement = () => {
     return () => document.removeEventListener("keydown", handleKeyDown)
   }, [closeImageModal, editingPostId])
 
-  const unreadNotificationCount = notifications.filter((n) => !n.read).length
-
   // Helper to render post images
   const renderPostImages = (photos) => {
     if (!photos || photos.length === 0) return null
@@ -1146,6 +1347,78 @@ const CtuAnnouncement = () => {
     )
   }
 
+  // Render post content with "See More" functionality
+  const renderPostContent = (post) => {
+    const isLong = isPostLong(post.content)
+    const isExpanded = expandedPosts.has(post.id)
+    
+    if (editingPostId === post.id) {
+      // EDIT MODE
+      return (
+        <div style={{ position: 'relative' }}>
+          <textarea
+            className="edit-textarea"
+            value={editPostText}
+            onChange={(e) => setEditPostText(e.target.value)}
+            placeholder="Edit your post..."
+          />
+          <div className="edit-actions">
+            <button
+              className="edit-cancel-btn"
+              onClick={cancelEdit}
+            >
+              Cancel
+            </button>
+            <button
+              className="edit-save-btn"
+              onClick={() => saveEdit(post.id)}
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      )
+    } else {
+      // VIEW MODE
+      return (
+        <div style={styles.postContent}>
+          <div
+            style={{
+              lineHeight: "1.5",
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-word",
+              fontSize: "15px",
+              color: "#050505",
+            }}
+          >
+            {isLong && !isExpanded ? getTruncatedContent(post.content) : post.content}
+          </div>
+          
+          {/* See More / See Less Button */}
+          {isLong && (
+            <button
+              style={{
+                ...styles.seeMoreButton,
+                background: "none",
+                border: "none",
+                color: "#1877f2",
+                cursor: "pointer",
+                fontSize: "14px",
+                fontWeight: "600",
+                padding: "4px 0",
+                marginTop: "8px",
+                display: "block",
+              }}
+              onClick={() => togglePostExpansion(post.id)}
+            >
+              {isExpanded ? "See Less" : "See More"}
+            </button>
+          )}
+        </div>
+      )
+    }
+  }
+
   // Render comments
   const renderComments = (post) => {
     if (!post.isCommentsOpen) return null
@@ -1166,11 +1439,7 @@ const CtuAnnouncement = () => {
         {/* Comment Input */}
         <div style={styles.commentForm}>
           <div style={styles.commentAvatar}>
-            <img
-              src={currentUser.avatar}
-              alt="Your avatar"
-              style={{ width: "160%", height: "160%", borderRadius: "60%", objectFit: "cover" }}
-            />
+           
           </div>
           <div style={styles.commentInputContainer}>
             <input
@@ -1181,8 +1450,10 @@ const CtuAnnouncement = () => {
               onChange={(e) => setCommentInputs((prev) => ({ ...prev, [post.id]: e.target.value }))}
               onKeyDown={async (e) => {
                 if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault()
-                  await handleCommentSubmit(post.id)
+                  e.preventDefault();
+                  if (commentInputs[post.id]?.trim()) {
+                    await handleCommentSubmit(post.id);
+                  }
                 }
               }}
               style={styles.commentInput}
@@ -1207,11 +1478,20 @@ const CtuAnnouncement = () => {
             post.comments.map((comment) => (
               <div key={comment.id} style={styles.commentItem}>
                 <div style={styles.commentAvatar}>
-                  <img
-                    src={currentUser.avatar}
-                    alt={`${comment.author} avatar`}
-                    style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
-                  />
+                  <div style={{ 
+                    width: "100%", 
+                    height: "100%", 
+                    borderRadius: "50%", 
+                    backgroundColor: "#e0e0e0",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#666",
+                    fontSize: "12px",
+                    fontWeight: "bold"
+                  }}>
+                    {comment.author?.charAt(0)?.toUpperCase() || "U"}
+                  </div>
                 </div>
                 
                 <div style={styles.commentContent}>
@@ -1239,20 +1519,13 @@ const CtuAnnouncement = () => {
                         <MoreHorizontal size={14} />
                       </button>
                     </div>
-
-                    {/* Comment Menu Dropdown */}
-                    
                   </div>
 
                   {/* Reply Input */}
                   {replyingTo?.postId === post.id && replyingTo?.commentId === comment.id && (
                     <div style={styles.replyInputContainer}>
                       <div style={styles.commentAvatar}>
-                        <img
-                          src={currentUser.avatar}
-                          alt="Your avatar"
-                          style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
-                        />
+                        
                       </div>
                       <div style={styles.replyInputWrapper}>
                         <input
@@ -1265,7 +1538,6 @@ const CtuAnnouncement = () => {
                             if (e.key === "Enter" && !e.shiftKey) {
                               e.preventDefault()
                               addReply(post.id, comment.id, replyInputs[comment.id] || "")
-                              setReplyInputs((prev) => ({ ...prev, [comment.id]: "" }))
                             }
                           }}
                           style={styles.replyInput}
@@ -1274,7 +1546,6 @@ const CtuAnnouncement = () => {
                           style={styles.replySubmit}
                           onClick={() => {
                             addReply(post.id, comment.id, replyInputs[comment.id] || "")
-                            setReplyInputs((prev) => ({ ...prev, [comment.id]: "" }))
                           }}
                           disabled={!replyInputs[comment.id]?.trim()}
                         >
@@ -1290,11 +1561,20 @@ const CtuAnnouncement = () => {
                       {comment.replies.map((reply) => (
                         <div key={reply.id} style={styles.replyItem}>
                           <div style={styles.commentAvatar}>
-                            <img
-                              src={currentUser.avatar}
-                              alt={`${reply.author} avatar`}
-                              style={{ width: "100%", height: "100%", borderRadius: "50%", objectFit: "cover" }}
-                            />
+                            <div style={{ 
+                              width: "100%", 
+                              height: "100%", 
+                              borderRadius: "50%", 
+                              backgroundColor: "#e0e0e0",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              color: "#666",
+                              fontSize: "10px",
+                              fontWeight: "bold"
+                            }}>
+                              {reply.author?.charAt(0)?.toUpperCase() || "U"}
+                            </div>
                           </div>
                           <div style={styles.replyBubble}>
                             <div style={styles.commentHeader}>
@@ -1331,18 +1611,6 @@ const CtuAnnouncement = () => {
       [postId]: !prev[postId],
     }))
   }
-
-  const togglePostExpansion = useCallback((postId) => {
-    setExpandedPosts((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(postId)) {
-        newSet.delete(postId)
-      } else {
-        newSet.add(postId)
-      }
-      return newSet
-    })
-  }, [])
 
   const getSortedPosts = useCallback(() => {
     const pinned = posts.filter((post) => pinnedPosts.has(post.id))
@@ -2382,6 +2650,153 @@ const CtuAnnouncement = () => {
           font-weight: bold;
           color: black;
         }
+
+        /* Refresh button styles */
+        .refresh-btn {
+          background: transparent;
+          border: none;
+          cursor: pointer;
+          padding: 8px;
+          border-radius: 50%;
+          transition: background-color 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+        
+        .refresh-btn:hover {
+          background: #f0f0f0;
+        }
+        
+        .refresh-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+        
+        .refresh-btn.loading {
+          animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+
+        .header-actions {
+          display: flex;
+          align-items: center;
+          gap: 15px;
+        }
+
+        /* Skeleton Loader Styles */
+        .post-skeleton {
+          background: #f9fafb;
+          border: 1px solid #e5e7eb;
+          border-radius: 8px;
+          padding: 20px;
+          margin-bottom: 20px;
+          animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        .skeleton-header {
+          display: flex;
+          align-items: center;
+          margin-bottom: 15px;
+        }
+
+        .skeleton-avatar {
+          width: 65px;
+          height: 60px;
+          border-radius: 50%;
+          background: #e5e7eb;
+          margin-right: 12px;
+        }
+
+        .skeleton-user-info {
+          flex: 1;
+        }
+
+        .skeleton-text {
+          background: #e5e7eb;
+          border-radius: 4px;
+          margin-bottom: 8px;
+          height: 12px;
+        }
+
+        .skeleton-text.short {
+          width: 60%;
+        }
+
+        .skeleton-text.shorter {
+          width: 40%;
+          height: 10px;
+        }
+
+        .skeleton-text.medium {
+          width: 80%;
+        }
+
+        .skeleton-text.long {
+          width: 95%;
+        }
+
+        .skeleton-content {
+          margin-bottom: 15px;
+        }
+
+        .skeleton-actions {
+          display: flex;
+          padding-top: 15px;
+          border-top: 1px solid #e5e7eb;
+        }
+
+        .skeleton-action {
+          width: 100px;
+          height: 20px;
+          background: #e5e7eb;
+          border-radius: 6px;
+        }
+
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.5;
+          }
+        }
+
+        .skeleton-container {
+          display: flex;
+          flex-direction: column;
+          gap: 20px;
+        }
+
+        /* See More Button Styles */
+        .see-more-btn {
+          background: none;
+          border: none;
+          color: #1877f2;
+          cursor: pointer;
+          font-size: 14px;
+          font-weight: 600;
+          padding: 4px 0;
+          margin-top: 8px;
+          display: block;
+          text-align: left;
+        }
+
+        .see-more-btn:hover {
+          text-decoration: underline;
+        }
+
+        .post-content-expandable {
+          line-height: 1.5;
+          whiteSpace: "pre-wrap";
+          wordBreak: "break-word";
+          fontSize: "15px";
+          color: "#050505";
+        }
       `}</style>
 
       <div className="sidebars" id="sidebar">
@@ -2392,20 +2807,39 @@ const CtuAnnouncement = () => {
           <div className="dashboard-container">
             <h2 className="announcement-title">Announcement</h2>
           </div>
-          {/* 🔔 Notification Bell */}
-          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
-            <Bell size={24} color="#374151" />
-            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
-          </button>
+          
+          <div className="header-actions">
+            {/* 🔄 Refresh Icon */}
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="refresh-btn"
+              title="Refresh Announcements"
+            >
+              <RefreshCw 
+                size={24} 
+                color="#374151" 
+                className={isRefreshing ? "loading" : ""}
+              />
+            </button>
+
+            {/* 🔔 Notification Bell (without count) */}
+            <button 
+              style={styles.notificationBtn} 
+              onClick={() => setNotifsOpen(!notifsOpen)}
+            >
+              <Bell size={24} color="#374151" />
+            </button>
+          </div>
 
           {/* 📩 Notification Modal */}
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onMarkAllAsRead={handleMarkAllAsRead}
+           
           />
         </header>
 
@@ -2601,7 +3035,13 @@ const CtuAnnouncement = () => {
                 </div>
               </div>
 
-              {posts.length === 0 ? (
+              {isLoadingPosts ? (
+                <div className="skeleton-container">
+                  <PostSkeletonLoader />
+                  <PostSkeletonLoader />
+                  <PostSkeletonLoader />
+                </div>
+              ) : posts.length === 0 ? (
                 <div className="empty-state" id="postsEmptyState">
                   <i className="fas fa-bullhorn"></i>
                   <h3>No announcements yet</h3>
@@ -2713,62 +3153,8 @@ const CtuAnnouncement = () => {
                         </div>
                       </div>
 
-                      {/* Post Content */}
-                      <div style={styles.postContent}>
-                        {editingPostId === post.id ? (
-                          // EDIT MODE
-                          <div style={{ position: 'relative' }}>
-                            <textarea
-                              className="edit-textarea"
-                              value={editPostText}
-                              onChange={(e) => setEditPostText(e.target.value)}
-                              placeholder="Edit your post..."
-                            />
-                            <div className="edit-actions">
-                              <button
-                                className="edit-cancel-btn"
-                                onClick={cancelEdit}
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                className="edit-save-btn"
-                                onClick={() => saveEdit(post.id)}
-                              >
-                                Save
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          // VIEW MODE
-                          <div
-                            style={{
-                              lineHeight: "1.5",
-                              whiteSpace: "pre-wrap",
-                              wordBreak: "break-word",
-                              fontSize: "15px",
-                              color: "#050505",
-                              maxHeight: expandedPosts.has(post.id) ? "none" : "100px",
-                              overflow: expandedPosts.has(post.id) ? "visible" : "hidden",
-                            }}
-                          >
-                            {post.content}
-                            {!expandedPosts.has(post.id) && post.content.length > 200 && (
-                              <button
-                                style={{
-                                  ...styles.seeMoreButton,
-                                  background: "linear-gradient(to right, transparent, white)",
-                                }}
-                                onClick={() => {
-                                  setExpandedPosts((prev) => new Set([...prev, post.id]))
-                                }}
-                              >
-                                {expandedPosts.has(post.id) ? "See less" : "See more"}
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                      {/* Post Content with See More functionality */}
+                      {renderPostContent(post)}
 
                       {/* Images */}
                       {renderPostImages(post.photos)}

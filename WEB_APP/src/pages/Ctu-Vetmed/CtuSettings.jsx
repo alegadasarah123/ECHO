@@ -1,8 +1,10 @@
 "use client"
 
 import Sidebar from "@/components/CtuSidebar"
-import { Bell, Check, Edit2, Eye, EyeOff, MoreVertical, Plus, Users } from "lucide-react"
+import { Bell, Check, Edit2, Eye, EyeOff, MoreVertical, Plus, RefreshCw, Users } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
+import { useNavigate } from "react-router-dom"
+
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
@@ -16,6 +18,7 @@ const CtuSettings = () => {
   const [editing, setEditing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState("All")
+  const navigate = useNavigate()
 
   const [profileExists, setProfileExists] = useState(false)
   const [passwordErrors, setPasswordErrors] = useState({})
@@ -65,11 +68,138 @@ const CtuSettings = () => {
     confirm_new_password: "",
   })
 
+  // Refresh state
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
   const handleChange = (e) => {
     const { name, value } = e.target
     setProfile((prev) => ({ ...prev, [name]: value }))
   }
 
+  // MARK ALL NOTIFICATIONS AS READ
+      const handleMarkAllAsRead = async () => {
+        try {
+          const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+            method: "POST",
+            credentials: "include",
+            headers: {
+              'Content-Type': 'application/json',
+            },
+          });
+          
+          if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.error || "Failed to mark all as read");
+          }
+          
+          const data = await res.json();
+          console.log("Mark all as read result:", data);
+    
+          // Update frontend state
+          setNotifications(prev =>
+            prev.map(notif => ({ ...notif, read: true }))
+          );
+          
+        } catch (err) {
+          console.error("Error marking all as read:", err);
+        }
+      };
+    
+      // HANDLE INDIVIDUAL NOTIFICATION CLICK
+      const handleNotificationClick = async (notification) => {
+        // Mark notification as read in frontend immediately for better UX
+        setNotifications(prev => 
+          prev.map(notif => 
+            notif.id === notification.id ? { ...notif, read: true } : notif
+          )
+        );
+    
+        // Mark notification as read in backend
+        try {
+          const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+            method: "POST",
+            credentials: "include",
+          });
+          const data = await res.json();
+          console.log("Mark notification read result:", data);
+        } catch (err) {
+          console.error("Error marking notification as read:", err);
+        }
+    
+        // Handle navigation based on notification content
+        console.log('Notification clicked:', notification);
+        const message = notification.message.toLowerCase();
+    
+        if (
+          message.includes("new registration") ||
+          message.includes("new veterinarian approved") ||
+          message.includes("veterinarian approved") ||
+          message.includes("veterinarian declined") ||
+          message.includes("veterinarian registered")
+        ) {
+          console.log("Navigating to Account Approval page");
+          navigate("/CtuAccountApproval", {
+            state: {
+              highlightedNotification: notification,
+              shouldHighlight: true,
+            },
+          });
+          return;
+        }
+    
+        if (message.includes("pending medical record access") || message.includes("requested access")) {
+          console.log("Navigating to Access Request page");
+          navigate("/CtuAccessRequest", {
+            state: {
+              highlightedNotification: notification,
+              shouldHighlight: true,
+            },
+          });
+          return;
+        }
+    
+        if (message.includes("emergency") || message.includes("sos")) {
+          console.log("Navigating to SOS page");
+          navigate("/CtuSOS");
+          return;
+        }
+    
+        if (message.includes("health") || message.includes("report") || message.includes("statistic")) {
+          console.log("Already on Health Report page");
+          // We're already on the health report page, no navigation needed
+          return;
+        }
+    
+        console.warn("No matching route for notification:", notification);
+      };
+    
+      // Handle notifications update from modal
+      const handleNotificationsUpdate = (updatedNotifications) => {
+        console.log("Notifications updated from modal:", updatedNotifications);
+        console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
+        setNotifications(updatedNotifications);
+      };
+    
+      const loadNotifications = useCallback(() => {
+        console.log("Loading notifications...")
+    
+        fetch(`${API_BASE}/get_vetnotifications/`)
+          .then((res) => {
+            if (!res.ok) throw new Error("Failed to fetch notifications")
+            return res.json()
+          })
+          .then((data) => {
+            const formatted = data.map((notif) => ({
+              id: notif.id,
+              message: notif.message,
+              date: notif.date || new Date().toISOString(),
+              read: notif.read || false,
+              type: notif.type || "general"
+            }))
+            setNotifications(formatted)
+          })
+          .catch((err) => console.error("Failed to fetch notifications:", err))
+      }, [])
   // Save first-time CTU Vet profile
   const handleSave = async (e) => {
     e.preventDefault()
@@ -340,61 +470,60 @@ const CtuSettings = () => {
   const toggleDropdown = (id) => {
     setDropdownOpen(dropdownOpen === id ? null : id)
   }
-  // Fetch CTU Vet profile
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const res = await fetch("http://localhost:8000/api/ctu_vetmed/get_ctu_vet_profiles/", {
-          method: "GET",
-          credentials: "include", // include HttpOnly cookie
-        })
 
-        const data = await res.json()
-
-        if (!res.ok) {
-          console.error("Failed to fetch profile:", data.error || "Unknown error")
-          return
-        }
-
-        // Set profile state
-        setProfile({
-          ctu_fname: data.ctu_fname || "",
-          ctu_lname: data.ctu_lname || "",
-          ctu_email: data.ctu_email || "",
-          ctu_phonenum: data.ctu_phonenum || "",
-          ctu_role: data.ctu_role || "",
-        })
-
-        if (data.ctu_fname || data.ctu_lname || data.ctu_phonenum) {
-          setProfileExists(true)
-        }
-      } catch (err) {
-        console.error("Error fetching profile:", err)
-      }
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      await Promise.all([
+        fetchProfile(),
+        loadNotifications(),
+        fetchUsers()
+      ])
+    } catch (error) {
+      console.error("Failed to refresh data:", error)
+    } finally {
+      setIsRefreshing(false)
     }
+  }
 
+  // Fetch CTU Vet profile
+  const fetchProfile = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/ctu_vetmed/get_ctu_vet_profiles/", {
+        method: "GET",
+        credentials: "include", // include HttpOnly cookie
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        console.error("Failed to fetch profile:", data.error || "Unknown error")
+        return
+      }
+
+      // Set profile state
+      setProfile({
+        ctu_fname: data.ctu_fname || "",
+        ctu_lname: data.ctu_lname || "",
+        ctu_email: data.ctu_email || "",
+        ctu_phonenum: data.ctu_phonenum || "",
+        ctu_role: data.ctu_role || "",
+      })
+
+      if (data.ctu_fname || data.ctu_lname || data.ctu_phonenum) {
+        setProfileExists(true)
+      }
+    } catch (err) {
+      console.error("Error fetching profile:", err)
+    }
+  }
+
+  useEffect(() => {
     fetchProfile()
   }, [])
 
-  // ✅ Fetch notifications from backend
-  const loadNotifications = useCallback(() => {
-    console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch notifications")
-        return res.json()
-      })
-      .then((data) => {
-        const formatted = data.map((notif) => ({
-          id: notif.id,
-          message: notif.message,
-          date: notif.date || new Date().toISOString(),
-        }))
-        setNotifications(formatted)
-      })
-      .catch((err) => console.error("Failed to fetch notifications:", err))
-  }, [])
 
   // ✅ Auto-refresh every 30s
   useEffect(() => {
@@ -448,27 +577,37 @@ const CtuSettings = () => {
       <div className="flex-1 font-sans flex flex-col h-screen overflow-hidden">
         <div className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
           <h1 className="text-2xl font-bold text-black">Settings</h1>
-          <div className="relative">
+          <div className="flex items-center gap-4">
+            {/* 🔄 Refresh Icon */}
             <button
-              className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
+              title="Refresh Settings"
+            >
+              <RefreshCw 
+                size={24} 
+                className={`text-gray-700 ${isRefreshing ? 'animate-spin' : ''}`}
+              />
+            </button>
+
+            {/* 🔔 Notification Bell (without count) */}
+            <button
+              className="bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
               onClick={() => setNotifsOpen(!notifsOpen)}
             >
-              <Bell size={24} color="#374151" />
-              {notifications.length > 0 && (
-                <span className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold">
-                  {notifications.length}
-                </span>
-              )}
+              <Bell size={24} className="text-gray-700" />
             </button>
           </div>
+
           {/* Notification Modal */}
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onMarkAllAsRead={handleMarkAllAsRead}
+           
           />
         </div>
 
@@ -840,7 +979,7 @@ const CtuSettings = () => {
                           <label className="font-medium mb-1">Role</label>
                           <select
                             className="px-3 py-2 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                            value={newUser.ctu_role}
+                            value={newUser.role}
                             onChange={(e) => handleNewUserChange("role", e.target.value)}
                           >
                             <option value="">Select role</option>
