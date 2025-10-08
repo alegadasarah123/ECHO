@@ -1,13 +1,12 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
-  MessageCircle,
-  X,
-  Maximize2,
   ArrowLeft,
-  Send,
+  Maximize2,
+  MessageCircle,
   Search,
+  Send,
+  X,
 } from "lucide-react";
-import supabase from "@/supabaseClient.js"; // Make sure you have supabase client configured with VITE_ env vars
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // ------------------ CHAT VIEW COMPONENT ------------------
 const ChatView = ({

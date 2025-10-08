@@ -1,246 +1,94 @@
-import { ArrowLeft, Maximize2, MessageCircle, MoreVertical, Phone, Search, Send, Video, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import {
+  ArrowLeft,
+  Maximize2,
+  MessageCircle,
+  Search,
+  Send,
+  X,
+} from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-const API_BASE = "http://localhost:8000/api/ctu_vetmed"; 
-
-const FloatingMessages = () => {
-  const [viewState, setViewState] = useState('closed');
-  const [selectedConversation, setSelectedConversation] = useState(null);
-  const [newMessage, setNewMessage] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [conversations, setConversations] = useState([]);
-  const [totalUnread, setTotalUnread] = useState(0);
-
-  const textareaRef = useRef(null);
+// ------------------ CHAT VIEW COMPONENT ------------------
+const ChatView = ({
+  conversation,
+  newMessage,
+  setNewMessage,
+  handleSendMessage,
+  setSelectedConversation,
+}) => {
   const messagesEndRef = useRef(null);
 
-  // Prevent background scroll when fullscreen
-  useEffect(() => {
-    if (viewState === "fullscreen") {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "auto";
-    }
-  }, [viewState]);
-
-  // Scroll to bottom when messages update
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [selectedConversation?.messages]);
-
-  // Fetch conversations
-  useEffect(() => {
-    fetchConversations('');
-  }, []);
-
-  // Fetch conversations
-useEffect(() => {
-  fetchConversations('');
-}, []);
-
-const fetchConversations = async (query) => {
-  try {
-    const res = await fetch(`${API_BASE}/get_directory_profiles/`, {
-      credentials: "include",
-    });
-    const data = await res.json();
-
-    // Combine all users and filter by query
-    const allUsers = [
-      ...(data.vets || []).map(v => ({
-        id: v.vet_id,
-        name: `${v.vet_fname} ${v.vet_lname}`,
-        avatar: `${v.vet_fname.slice(0,1)}${v.vet_lname.slice(0,1)}`.toUpperCase(),
-        type: "Veterinarian",
-        lastMessage: '',
-        timestamp: '',
-        unread: 0,
-        online: false,
-        messages: [],
-        status: v.users?.status || 'pending'
-      })),
-      ...(data.kutseros || []).map(k => ({
-        id: k.kutsero_id,
-        name: `${k.kutsero_fname} ${k.kutsero_lname}`,
-        avatar: `${k.kutsero_fname.slice(0,1)}${k.kutsero_lname.slice(0,1)}`.toUpperCase(),
-        type: "Kutsero",
-        lastMessage: '',
-        timestamp: '',
-        unread: 0,
-        online: false,
-        messages: [],
-        status: k.users?.status || 'pending'
-      })),
-      ...(data.horse_operators || []).map(op => ({
-        id: op.op_id,
-        name: `${op.op_fname} ${op.op_lname}`,
-        avatar: `${op.op_fname.slice(0,1)}${op.op_lname.slice(0,1)}`.toUpperCase(),
-        type: "Horse Operator",
-        lastMessage: '',
-        timestamp: '',
-        unread: 0,
-        online: false,
-        messages: [],
-        status: op.users?.status || 'pending'
-      })),
-    ];
-
-    // Filter by search query
-    const filtered = allUsers.filter(u => 
-      u.name.toLowerCase().includes(query.toLowerCase())
-    );
-
-    setConversations(filtered);
-
-    const unreadSum = filtered.reduce((sum, c) => sum + (c.unread || 0), 0);
-    setTotalUnread(unreadSum);
-  } catch (err) {
-    console.error(err);
-  }
-};
-
-
-  const handleSearch = (term) => {
-    setSearchTerm(term);
-    fetchConversations(term);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const handleSendMessage = async () => {
-    if (!newMessage.trim() || !selectedConversation) return;
+  useEffect(() => {
+    scrollToBottom();
+  }, [conversation.messages]);
 
-    try {
-      const res = await fetch(`${API_BASE}/send_message/`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: "CURRENT_USER_ID", // replace with actual logged-in user id
-          receiver_id: selectedConversation.id,
-          mes_content: newMessage,
-        }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        setConversations(prev =>
-          prev.map(conv =>
-            conv.id === selectedConversation.id
-              ? {
-                  ...conv,
-                  messages: [
-                    ...conv.messages,
-                    {
-                      content: data.mes_content || newMessage,
-                      timestamp: new Date(data.mes_date || Date.now()).toLocaleTimeString(),
-                      isOwn: true,
-                    },
-                  ],
-                }
-              : conv
-          )
-        );
-        setNewMessage("");
-        if (textareaRef.current) {
-          textareaRef.current.style.height = "20px";
-        }
-      } else {
-        console.error("Failed to send message:", data);
-      }
-    } catch (err) {
-      console.error("Error sending message:", err);
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
     }
   };
 
-  const ConversationList = () => (
-    <div style={styles.conversationList}>
-      <div style={styles.searchHeader}>
-        <div style={styles.searchWrapper}>
-          <Search style={styles.searchIcon} />
-          <input
-            type="text"
-            placeholder="Search conversations..."
-            style={styles.searchInput}
-            value={searchTerm}
-            onChange={(e) => handleSearch(e.target.value)}
-          />
-        </div>
-      </div>
-      <div style={styles.conversationsContainer}>
-        {conversations.map(conv => (
-          <div
-            key={conv.id}
-            onClick={() => setSelectedConversation(conv)}
-            style={styles.conversationItem}
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setSelectedConversation(null)}
+            className="p-1 hover:bg-gray-100 rounded transition-colors"
           >
-            <div style={styles.avatarWrapper}>
-              <div style={{ ...styles.avatar, background: 'linear-gradient(to bottom right, #3b82f6, #8b5cf6)' }}>
-                {conv.avatar}
-              </div>
-              {conv.online && <div style={styles.onlineBadge}></div>}
-            </div>
-            <div style={styles.conversationInfo}>
-              <div style={styles.conversationHeader}>
-                <h4 style={styles.conversationName}>{conv.name}</h4>
-                <span style={styles.conversationTimestamp}>{conv.timestamp}</span>
-              </div>
-              <p style={styles.conversationLastMessage}>{conv.lastMessage}</p>
-            </div>
-            {conv.unread > 0 && <div style={styles.unreadBadge}>{conv.unread}</div>}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-
-  const ChatView = ({ conversation }) => (
-    <div style={styles.chatView}>
-      <div style={styles.chatHeader}>
-        <div style={styles.chatHeaderLeft}>
-          <button onClick={() => setSelectedConversation(null)} style={styles.iconButton}>
-            <ArrowLeft style={styles.icon} />
+            <ArrowLeft className="w-5 h-5 text-gray-600" />
           </button>
-          <div style={styles.avatarWrapper}>
-            <div style={{ ...styles.avatar, width: '40px', height: '40px', fontSize: '14px', background: 'linear-gradient(to bottom right, #3b82f6, #8b5cf6)' }}>
-              {conversation.avatar}
+          <div className="relative">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
+              {conversation.avatar || conversation.name.charAt(0)}
             </div>
-            {conversation.online && <div style={styles.onlineBadge}></div>}
+            {conversation.online && (
+              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
+            )}
           </div>
           <div>
-            <h3 style={styles.chatName}>{conversation.name}</h3>
-            <p style={styles.chatStatus}>{conversation.online ? 'Active now' : 'Last seen 2h ago'}</p>
+            <h3 className="font-semibold text-gray-900">{conversation.name}</h3>
+            <p className="text-xs text-gray-500">
+              {conversation.online ? "Active now" : "Offline"}
+            </p>
           </div>
         </div>
-        <div style={styles.chatHeaderRight}>
-          {[Phone, Video, MoreVertical].map((IconComp, idx) => (
-            <button key={idx} style={styles.iconButton}>
-              <IconComp style={styles.icon} />
-            </button>
-          ))}
-        </div>
       </div>
-      <div style={styles.messagesContainer}>
-        {conversation.messages.map((message, index) => (
-          <div key={index} style={{ display: 'flex', justifyContent: message.isOwn ? 'flex-end' : 'flex-start' }}>
-            <div style={{ maxWidth: '60%' }}>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50">
+        {(conversation.messages || []).map((message, index) => (
+          <div
+            key={index}
+            className={`flex ${
+              message.isOwn ? "justify-end" : "justify-start"
+            }`}
+          >
+            <div
+              className={`max-w-xs lg:max-w-md ${
+                message.isOwn ? "order-1" : "order-2"
+              }`}
+            >
               <div
-                style={{
-                  padding: '8px 12px',
-                  borderRadius: '20px',
-                  fontSize: '14px',
-                  backgroundColor: message.isOwn ? '#3b82f6' : '#fff',
-                  color: message.isOwn ? '#fff' : '#111827',
-                  marginBottom: '2px',
-                  boxShadow: message.isOwn ? 'none' : '0 1px 2px rgba(0,0,0,0.05)',
-                  borderBottomRightRadius: message.isOwn ? '4px' : '20px',
-                  borderBottomLeftRadius: !message.isOwn ? '4px' : '20px',
-                }}
+                className={`px-4 py-2 rounded-2xl text-sm ${
+                  message.isOwn
+                    ? "bg-blue-500 text-white rounded-br-md"
+                    : "bg-white text-gray-800 rounded-bl-md shadow-sm"
+                }`}
               >
                 {message.content}
               </div>
-              <div style={{ fontSize: '12px', color: '#6b7280', textAlign: message.isOwn ? 'right' : 'left', paddingLeft: message.isOwn ? '0' : '4px', paddingRight: message.isOwn ? '4px' : '0' }}>
+              <div
+                className={`text-xs text-gray-500 mt-1 px-1 ${
+                  message.isOwn ? "text-right" : "text-left"
+                }`}
+              >
                 {message.timestamp}
               </div>
             </div>
@@ -248,121 +96,430 @@ const fetchConversations = async (query) => {
         ))}
         <div ref={messagesEndRef} />
       </div>
-      <div style={styles.messageInputContainer}>
-        <div style={styles.messageInputWrapper}>
-          <textarea
-            ref={textareaRef}
-            value={newMessage}
-            onChange={(e) => {
-              setNewMessage(e.target.value);
-              if (textareaRef.current) {
-                textareaRef.current.style.height = "auto";
-                textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 80) + "px"; // max 4 lines
-              }
-            }}
-            placeholder="Type a message..."
-            style={styles.messageInput}
-            rows={1}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                handleSendMessage();
-              }
-            }}
-          />
-        </div>
-        <button onClick={handleSendMessage} style={styles.sendButton}>
-          <Send style={{ width: '16px', height: '16px' }} />
-        </button>
-      </div>
-    </div>
-  );
 
-  const FloatingButton = () => (
-    <div style={styles.floatingButtonWrapper}>
-      <button onClick={() => setViewState('small')} style={styles.floatingButton}>
-        <MessageCircle style={{ width: '24px', height: '24px' }} />
-        {totalUnread > 0 && <span style={styles.totalUnread}>{totalUnread}</span>}
-      </button>
-    </div>
-  );
-
-  if (viewState === 'closed') return <FloatingButton />;
-
-  return (
-    <div style={viewState === 'fullscreen' ? styles.fullscreenWrapper : styles.smallWrapper}>
-      <div style={styles.chatBoxHeader}>
-        <div style={styles.chatBoxHeaderLeft}>
-          <MessageCircle style={{ width: '20px', height: '20px' }} />
-          <div style={{ marginLeft: '8px' }}>
-            <h3 style={{ fontWeight: 600, fontSize: '14px' }}>Messages</h3>
-            <p style={{ fontSize: '12px', opacity: 0.9 }}>{conversations.length} conversations</p>
+      {/* Input */}
+      <div className="flex-shrink-0 p-4 bg-white border-t border-gray-200">
+        <div className="flex items-center gap-3">
+          <div className="flex-1 bg-gray-100 rounded-full px-4 py-2 flex items-center gap-2">
+            <input
+              type="text"
+              value={newMessage}
+              onChange={(e) => setNewMessage(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Type a message... (Press Enter to send)"
+              className="flex-1 bg-transparent text-sm focus:outline-none"
+            />
           </div>
-        </div>
-        <div style={styles.chatBoxHeaderRight}>
-          <button onClick={() => setViewState('fullscreen')} style={styles.iconButton}>
-            <Maximize2 style={styles.icon} />
-          </button>
-          <button onClick={() => setViewState('closed')} style={styles.iconButton}>
-            <X style={styles.icon} />
+          <button
+            onClick={handleSendMessage}
+            disabled={!newMessage.trim()}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+              newMessage.trim()
+                ? "bg-blue-500 hover:bg-blue-600 text-white"
+                : "bg-gray-300 text-gray-500 cursor-not-allowed"
+            }`}
+          >
+            <Send className="w-4 h-4" />
           </button>
         </div>
       </div>
-      {viewState === 'fullscreen' ? (
-        <div style={{ flex: 1, display: 'flex' }}>
-          <div style={{ width: '300px', borderRight: '1px solid #e5e7eb' }}>
-            <ConversationList />
-          </div>
-          <div style={{ flex: 1 }}>
-            {selectedConversation ? <ChatView conversation={selectedConversation} /> : <div style={{ padding: '20px', color: '#6b7280' }}>Select a conversation</div>}
-          </div>
-        </div>
-      ) : (
-        selectedConversation ? <ChatView conversation={selectedConversation} /> : <ConversationList />
-      )}
     </div>
   );
 };
 
-// Internal CSS
-const styles = {
-  conversationList: { display: 'flex', flexDirection: 'column', height: '100%' },
-  searchHeader: { padding: '16px', borderBottom: '1px solid #e5e7eb' },
-  searchWrapper: { position: 'relative' },
-  searchIcon: { position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af', width: '16px', height: '16px' },
-  searchInput: { width: '100%', padding: '8px 12px 8px 36px', borderRadius: '9999px', border: '1px solid #d1d5db', fontSize: '14px', outline: 'none' },
-  conversationsContainer: { flex: 1, overflowY: 'auto' },
-  conversationItem: { display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 16px', cursor: 'pointer', borderBottom: '1px solid #f3f4f6', transition: 'background-color 0.2s', backgroundColor: '#fff' },
-  avatarWrapper: { position: 'relative' },
-  avatar: { width: '48px', height: '48px', borderRadius: '9999px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 600 },
-  onlineBadge: { position: 'absolute', bottom: 0, right: 0, width: '12px', height: '12px', backgroundColor: '#22c55e', border: '2px solid #fff', borderRadius: '9999px' },
-  conversationInfo: { flex: 1, minWidth: 0 },
-  conversationHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' },
-  conversationName: { fontWeight: 600, color: '#111827', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  conversationTimestamp: { fontSize: '12px', color: '#6b7280' },
-  conversationLastMessage: { fontSize: '14px', color: '#4b5563', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-  unreadBadge: { width: '20px', height: '20px', backgroundColor: '#3b82f6', color: '#fff', borderRadius: '9999px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 500 },
-  chatView: { display: 'flex', flexDirection: 'column', height: '100%' },
-  chatHeader: { display: 'flex', justifyContent: 'space-between', padding: '16px', borderBottom: '1px solid #e5e7eb', backgroundColor: '#fff' },
-  chatHeaderLeft: { display: 'flex', alignItems: 'center', gap: '12px' },
-  chatHeaderRight: { display: 'flex', alignItems: 'center', gap: '8px' },
-  chatName: { fontWeight: 600, color: '#111827' },
-  chatStatus: { fontSize: '12px', color: '#6b7280' },
-  iconButton: { padding: '4px', borderRadius: '9999px', background: 'transparent', border: 'none', cursor: 'pointer', transition: 'background 0.2s' },
-  icon: { width: '16px', height: '16px', color: '#4b5563' },
-  messagesContainer: { flex: 1, overflowY: 'auto', padding: '16px', backgroundColor: '#f9fafb', display: 'flex', flexDirection: 'column', gap: '12px' },
-  messageInputContainer: { flexShrink: 0, padding: '16px', borderTop: '1px solid #e5e7eb', display: 'flex', gap: '8px', backgroundColor: '#fff' },
-  messageInputWrapper: { flex: 1, backgroundColor: '#f3f4f6', borderRadius: '20px', display: 'flex', alignItems: 'center', padding: '4px 12px' },
-  messageInput: { flex: 1, backgroundColor: 'transparent', border: 'none', outline: 'none', fontSize: '14px', resize: 'none', overflow: 'hidden', lineHeight: '20px', height: '20px' },
-  sendButton: { width: '40px', height: '40px', backgroundColor: '#3b82f6', borderRadius: '9999px', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'background 0.2s', color: '#fff' },
-  floatingButtonWrapper: { position: 'fixed', bottom: '24px', right: '24px', zIndex: 50 },
-  floatingButton: { width: '64px', height: '64px', borderRadius: '9999px', background: 'linear-gradient(to bottom right, #b91c1c, #b91c1c)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', cursor: 'pointer', boxShadow: '0 8px 16px rgba(0,0,0,0.25)', position: 'relative', transition: 'all 0.3s' },
-  totalUnread: { position: 'absolute', top: '-4px', right: '-4px', width: '24px', height: '24px', borderRadius: '9999px', backgroundColor: '#ef4444', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: 500 },
-  smallWrapper: { position: 'fixed', bottom: '24px', right: '24px', width: '320px', height: '500px', borderRadius: '24px', backgroundColor: '#fff', boxShadow: '0 16px 32px rgba(0,0,0,0.25)', border: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', overflow: 'hidden', zIndex: 50 },
-  fullscreenWrapper: { position: 'fixed', inset: 0, zIndex: 50, backgroundColor: '#fff', display: 'flex', flexDirection: 'column' },
-  chatBoxHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', borderBottom: '1px solid #e5e7eb', background: 'linear-gradient(to right, #b91c1c, #7f1d1d)', color: '#fff' },
-  chatBoxHeaderLeft: { display: 'flex', alignItems: 'center', gap: '8px' },
-  chatBoxHeaderRight: { display: 'flex', alignItems: 'center', gap: '4px' }
+// ------------------ CONVERSATION LIST COMPONENT ------------------
+const ConversationList = ({
+  searchTerm,
+  setSearchTerm,
+  filteredConversations,
+  handleSelectConversation,
+}) => (
+  <div className="flex flex-col h-full">
+    <div className="p-4 border-b border-gray-200">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <input
+          type="text"
+          placeholder="Search conversations..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </div>
+    </div>
+
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-h-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
+        {filteredConversations.length === 0 ? (
+          <div className="flex items-center justify-center h-32 text-gray-500">
+            <p className="text-sm">No conversations found</p>
+          </div>
+        ) : (
+          filteredConversations.map((conversation) => (
+            <div
+              key={conversation.id}
+              onClick={() => handleSelectConversation(conversation)}
+              className="flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition-colors"
+            >
+              <div className="relative">
+                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold">
+                  {conversation.avatar || conversation.name.charAt(0)}
+                </div>
+                {conversation.online && (
+                  <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
+                )}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="font-semibold text-gray-900 truncate">
+                    {conversation.name}
+                  </h4>
+                  <span className="text-xs text-gray-500">
+                    {conversation.timestamp || ""}
+                  </span>
+                </div>
+                <p className="text-sm text-gray-600 truncate">
+                  {conversation.lastMessage || "Tap to chat"}
+                </p>
+              </div>
+              {conversation.unread > 0 && (
+                <div className="w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-medium">
+                  {conversation.unread}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  </div>
+);
+
+// ------------------ MAIN FLOATING MESSAGES COMPONENT ------------------
+const FloatingMessages = () => {
+  const [viewState, setViewState] = useState("closed");
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [newMessage, setNewMessage] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const subscriptionRef = useRef(null);
+
+  // Load conversations once
+  useEffect(() => {
+    fetchConversations();
+  }, []);
+
+// ---------------- POLLING SYSTEM (TEMPORARY FIX) ----------------
+const [pollingInterval, setPollingInterval] = useState(null);
+
+// Start polling when a conversation is selected
+useEffect(() => {
+  if (!selectedConversation) {
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      setPollingInterval(null);
+    }
+    return;
+  }
+
+  console.log('🔄 Starting message polling for conversation:', selectedConversation.id);
+
+  // Function to check for new messages
+  const checkForNewMessages = async () => {
+    try {
+      const res = await fetch(
+        `http://localhost:8000/api/veterinarian/get_conversation/${selectedConversation.id}/`,
+        { credentials: "include" }
+      );
+      
+      if (res.ok) {
+        const newMessages = await res.json();
+        
+        setSelectedConversation(prev => {
+          if (!prev) return prev;
+          
+          // Check if messages changed
+          const currentMessageIds = prev.messages?.map(m => m.id) || [];
+          const newMessageIds = newMessages.map(m => m.id);
+          
+          // If different, update the messages
+          if (JSON.stringify(currentMessageIds) !== JSON.stringify(newMessageIds)) {
+            console.log('🆕 New messages detected via polling:', newMessages.length);
+            return {
+              ...prev,
+              messages: newMessages
+            };
+          }
+          
+          return prev;
+        });
+      }
+    } catch (error) {
+      console.error('❌ Polling error:', error);
+    }
+  };
+
+  // Check immediately and then every 3 seconds
+  checkForNewMessages();
+  const interval = setInterval(checkForNewMessages, 3000);
+  setPollingInterval(interval);
+
+  return () => {
+    if (interval) {
+      clearInterval(interval);
+    }
+  };
+}, [selectedConversation]);
+
+// Also poll for conversation list updates
+useEffect(() => {
+  const pollConversations = async () => {
+    try {
+      const res = await fetch(
+        "http://localhost:8000/api/veterinarian/get_all_users/",
+        { credentials: "include" }
+      );
+      const data = await res.json();
+      setConversations(data);
+    } catch (error) {
+      console.error('❌ Conversation polling error:', error);
+    }
+  };
+
+  // Poll conversations every 10 seconds
+  const interval = setInterval(pollConversations, 10000);
+  
+  return () => {
+    clearInterval(interval);
+  };
+}, []);
+
+  const fetchConversations = async () => {
+    try {
+      const res = await fetch(
+        "http://localhost:8000/api/veterinarian/get_all_users/",
+        { credentials: "include" }
+      );
+      const data = await res.json();
+      setConversations(data);
+    } catch (error) {
+      console.error("Error fetching conversations:", error);
+    }
+  };
+
+  const totalUnread = conversations.reduce(
+    (sum, conv) => sum + (conv.unread || 0),
+    0
+  );
+
+  // Select conversation
+  const handleSelectConversation = async (conversation) => {
+    setSelectedConversation(conversation);
+    try {
+      const res = await fetch(
+        `http://localhost:8000/api/veterinarian/get_conversation/${conversation.id}/`,
+        { credentials: "include" }
+      );
+      const data = await res.json();
+      setSelectedConversation({
+        ...conversation,
+        messages: data || [],
+      });
+
+      await fetch(
+        `http://localhost:8000/api/veterinarian/mark_messages_as_read/${conversation.id}/`,
+        { method: "PUT", credentials: "include" }
+      );
+    } catch (error) {
+      console.error("Error fetching messages:", error);
+    }
+  };
+
+  // Send message
+  const handleSendMessage = useCallback(async () => {
+    if (!newMessage.trim() || !selectedConversation) return;
+
+    const payload = {
+      receiver_id: selectedConversation.id,
+      message: newMessage,
+    };
+
+    try {
+      const res = await fetch(
+        "http://localhost:8000/api/veterinarian/send_message/",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await res.json();
+
+      if (res.ok) {
+        const newMsg = {
+          id: data.data?.[0]?.id || Date.now(),
+          sender: "You",
+          content: newMessage,
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          isOwn: true,
+        };
+        setSelectedConversation((prev) => ({
+          ...prev,
+          messages: [...(prev.messages || []), newMsg],
+        }));
+        setNewMessage("");
+      } else {
+        console.error("Send failed:", data.error);
+      }
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
+  }, [newMessage, selectedConversation]);
+
+  const filteredConversations = conversations.filter((c) =>
+    c.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // ---------------- VIEWS ----------------
+  if (viewState === "closed") {
+    return (
+      <div className="fixed bottom-6 right-6 z-50">
+        <button
+          onClick={() => setViewState("small")}
+          className="relative w-16 h-16 bg-gradient-to-br from-[#b91c1c] to-[#7f1d1d] hover:from-[#dc2626] hover:to-[#991b1b] text-white rounded-full shadow-xl hover:shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 hover:-translate-y-1"
+        >
+          <MessageCircle className="w-6 h-6" />
+          {totalUnread > 0 && (
+            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-medium">
+              {totalUnread}
+            </span>
+          )}
+        </button>
+      </div>
+    );
+  }
+
+  if (viewState === "small") {
+    return (
+      <div className="fixed bottom-6 right-6 z-1000 w-80 h-[500px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-[#b91c1c] to-[#7f1d1d] text-white">
+          <div className="flex items-center gap-2">
+            <MessageCircle className="w-5 h-5" />
+            <div>
+              <h3 className="font-semibold">Messages</h3>
+              <p className="text-xs opacity-90">{conversations.length} conversations</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setViewState("fullscreen")}
+              className="p-1.5 hover:bg-white/20 rounded transition-colors"
+              title="Expand"
+            >
+              <Maximize2 className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => setViewState("closed")}
+              className="p-1.5 hover:bg-white/20 rounded transition-colors"
+              title="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        {selectedConversation ? (
+          <ChatView
+            conversation={selectedConversation}
+            newMessage={newMessage}
+            setNewMessage={setNewMessage}
+            handleSendMessage={handleSendMessage}
+            setSelectedConversation={setSelectedConversation}
+          />
+        ) : (
+          <ConversationList
+            searchTerm={searchTerm}
+            setSearchTerm={setSearchTerm}
+            filteredConversations={filteredConversations}
+            handleSelectConversation={handleSelectConversation}
+          />
+        )}
+      </div>
+    );
+  }
+
+  if (viewState === "fullscreen") {
+    return (
+      <div className="fixed inset-0 z-1000 bg-white flex flex-col">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-[#b91c1c] to-[#7f1d1d] text-white">
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setViewState("small")}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2">
+              <MessageCircle className="w-6 h-6" />
+              <div>
+                <h3 className="text-lg font-semibold">Messages</h3>
+                <p className="text-sm opacity-90">{conversations.length} conversations</p>
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setViewState("closed")}
+            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="flex-1 flex min-h-0">
+          {/* Conversation List Sidebar */}
+          <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
+            <ConversationList
+              searchTerm={searchTerm}
+              setSearchTerm={setSearchTerm}
+              filteredConversations={filteredConversations}
+              handleSelectConversation={handleSelectConversation}
+            />
+          </div>
+
+          {/* Chat Area */}
+          <div className="flex-1 bg-gray-50 flex flex-col min-h-0">
+            {selectedConversation ? (
+              <ChatView
+                conversation={selectedConversation}
+                newMessage={newMessage}
+                setNewMessage={setNewMessage}
+                handleSendMessage={handleSendMessage}
+                setSelectedConversation={setSelectedConversation}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-gray-500">
+                <div className="text-center">
+                  <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-medium mb-2">
+                    Select a conversation
+                  </h3>
+                  <p className="text-sm">
+                    Choose a conversation to start messaging
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
 };
 
 export default FloatingMessages;

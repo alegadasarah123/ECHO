@@ -78,6 +78,7 @@ urlpatterns = [
 
     path("mark_notification_read/<str:notif_id>/", views.mark_notification_read, name="mark_notification_read"),
     path("mark_all_notifications_read/", views.mark_all_notifications_read, name="mark_all_notifications_read"),
+    
 
 
     
