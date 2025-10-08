@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {FileText,Heart,Search,Menu,MessageCircle,Bell,PawPrint,User,Phone,MapPin,CheckCircle,AlertCircle,RefreshCw,X,Clock3,Shield,Clock, ChevronLeft, ChevronRight
+import {FileText,Heart,Search,Menu, Eye, MessageCircle,Bell,PawPrint,User,Phone,MapPin,CheckCircle,AlertCircle,RefreshCw,X,Clock3,Shield,Clock, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
@@ -290,7 +290,7 @@ const VetAccessRequests = () => {
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 transition-all duration-200" />
               <input
                 type="text"
-                placeholder="Search horse name, owner name, or approved by..."
+                placeholder="Search horse name or owner name"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 onFocus={() => setSearchFocus(true)}
@@ -367,14 +367,19 @@ const VetAccessRequests = () => {
                             {record.status?.charAt(0).toUpperCase() + record.status?.slice(1)}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-center">
-                          <button 
-                            onClick={() => handleViewRecord(record)}
-                            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-                          >
-                            View
-                          </button>
-                        </td>
+                          <td className="px-4 py-4 text-center">
+                            <div className="flex justify-center space-x-2">
+                              <button 
+                                onClick={() => handleViewAppointment(appointment)}
+                                className="cursor-pointer flex items-center text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-900 px-3 py-2 rounded-lg transition-colors"
+                                title="View Details"
+                              >
+                                <Eye className="w-4 h-4 mr-1" />
+                                View
+                              </button>
+                            </div>
+                          </td>
+
                       </tr>
                     ))
                   ) : (

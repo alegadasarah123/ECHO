@@ -177,6 +177,22 @@ const MedicalRecordsModal = ({ isOpen, onClose, record, vetProfile, horseInfo, o
   );
 };
 
+// Medical Record Details Modal Component
+const MedicalRecordDetailsModal = ({ isOpen, onClose, record, vetProfile, horseInfo }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-1000 p-4 overflow-auto">
+      <MedicalRecordDetails 
+        record={record}
+        vetProfile={vetProfile}
+        horseInfo={horseInfo}
+        onClose={onClose}
+      />
+    </div>
+  );
+};
+
 // Treatment Records Modal Component
 const TreatmentRecordsModal = ({ isOpen, onClose, record, vetProfile, horseInfo, onRefresh, isNew, hasAccess }) => {
   if (!isOpen) return null;
@@ -282,12 +298,11 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
   );
 };
 
-// Medical Records Table Component - UPDATED WITH INLINE VIEW
-const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddRecord, onEditRecord, hasAccess, onRequestAccess, accessRequested }) => {
+// Medical Records Table Component - FIXED WITH ADD FIRST RECORD BUTTON
+const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddRecord, onEditRecord, onViewRecord, hasAccess, onRequestAccess, accessRequested }) => {
   const [filteredRecords, setFilteredRecords] = useState(records || []);
   const [dateFilter, setDateFilter] = useState({ from: "", to: "" });
   const [currentPage, setCurrentPage] = useState(1);
-  const [expandedRecordId, setExpandedRecordId] = useState(null); // Track which record is expanded
   const recordsPerPage = 5;
 
   useEffect(() => {
@@ -334,15 +349,6 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
     return record.veterinarian === currentVetName;
   };
 
-  // Handle view details click
-  const handleViewDetails = (recordId) => {
-    if (expandedRecordId === recordId) {
-      setExpandedRecordId(null); // Collapse if already expanded
-    } else {
-      setExpandedRecordId(recordId); // Expand the clicked record
-    }
-  };
-
   // Calculate pagination
   const indexOfLastRecord = currentPage * recordsPerPage;
   const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
@@ -351,7 +357,6 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
-    setExpandedRecordId(null); // Collapse details when changing page
   };
 
   return (
@@ -369,7 +374,7 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
           </div>
         </div>
         
-        {hasAccess && (
+        {hasAccess && filteredRecords.length > 0 && ( // ONLY SHOW FILTER WHEN RECORDS EXIST
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
@@ -450,14 +455,35 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
             <FileText className="w-8 h-8 text-blue-400" />
           </div>
           <p className="mb-3 text-lg font-medium text-gray-600">No medical records found</p>
-          <p className="mb-6 text-gray-500">Get started by adding the first medical record</p>
-          <AddRecordButton 
-            onClick={onAddRecord}
-            hasAccess={hasAccess}
-            accessRequested={accessRequested}
-            onRequestAccess={onRequestAccess}
-          />        
-      </div>
+          <p className="mb-6 text-gray-500">
+            {dateFilter.from || dateFilter.to 
+              ? "No records match your filter criteria. Try adjusting your filters." 
+              : "No medical records available for this horse."
+            }
+          </p>
+          
+          {/* ADD FIRST RECORD BUTTON - SHOWN WHEN NO RECORDS EXIST AND NO FILTERS APPLIED */}
+          {!(dateFilter.from || dateFilter.to) && (
+            <Button 
+              onClick={onAddRecord}
+              className="cursor-pointer px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 rounded-xl text-white shadow-sm hover:shadow-md transition-all duration-200"
+            >
+              <Plus className="w-5 h-5 mr-2" />
+              Add First Record
+            </Button>
+          )}
+          
+          {/* CLEAR FILTERS BUTTON - SHOWN WHEN FILTERS ARE APPLIED */}
+          {(dateFilter.from || dateFilter.to) && (
+            <Button 
+              onClick={clearFilter} 
+              variant="outline" 
+              className="cursor-pointer px-4 py-2 rounded-xl border-gray-300 hover:bg-gray-50"
+            >
+              Clear Filters
+            </Button>
+          )}
+        </div>
       ) : (
         <>
           <div className="flex justify-between items-center mb-4">
@@ -485,109 +511,88 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
               <tbody className="divide-y divide-gray-100">
                 {currentRecords.map((record, index) => {
                   const isCurrentVet = isCurrentVetRecord(record);
-                  const isExpanded = expandedRecordId === record.id;
                   
                   return (
-                    <React.Fragment key={index}>
-                      <tr 
-                        className={`
-                          transition-all duration-200 group
-                          ${isCurrentVet 
-                            ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-l-blue-500' 
-                            : 'hover:bg-gray-50'
-                          }
-                          ${isExpanded ? 'bg-blue-25' : ''}
-                        `}
-                      >
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors duration-200 ${
-                              isCurrentVet ? 'bg-blue-100' : 'bg-gray-50'
-                            }`}>
-                              <Calendar className={`w-4 h-4 ${isCurrentVet ? 'text-blue-600' : 'text-gray-600'}`} />
+                    <tr 
+                      key={index}
+                      className={`
+                        transition-all duration-200 group
+                        ${isCurrentVet 
+                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-l-blue-500' 
+                          : 'hover:bg-gray-50'
+                        }
+                      `}
+                    >
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center group-hover:bg-blue-100 transition-colors duration-200 ${
+                            isCurrentVet ? 'bg-blue-100' : 'bg-gray-50'
+                          }`}>
+                            <Calendar className={`w-4 h-4 ${isCurrentVet ? 'text-blue-600' : 'text-gray-600'}`} />
+                          </div>
+                          <div>
+                            <div className={`font-medium ${isCurrentVet ? 'text-blue-900' : 'text-gray-900'}`}>
+                              {new Date(record.date).toLocaleDateString('en-US', { 
+                                year: 'numeric', 
+                                month: 'short', 
+                                day: 'numeric' 
+                              })}
                             </div>
-                            <div>
-                              <div className={`font-medium ${isCurrentVet ? 'text-blue-900' : 'text-gray-900'}`}>
-                                {new Date(record.date).toLocaleDateString('en-US', { 
-                                  year: 'numeric', 
-                                  month: 'short', 
-                                  day: 'numeric' 
-                                })}
-                              </div>
-                              <div className={`text-sm ${isCurrentVet ? 'text-blue-700' : 'text-gray-500'}`}>
-                                {new Date(record.date).toLocaleDateString('en-US', { 
-                                  weekday: 'short' 
-                                })}
-                              </div>
+                            <div className={`text-sm ${isCurrentVet ? 'text-blue-700' : 'text-gray-500'}`}>
+                              {new Date(record.date).toLocaleDateString('en-US', { 
+                                weekday: 'short' 
+                              })}
                             </div>
                           </div>
-                        </td>
-                        <td className="px-6 py-4 max-w-xs">
-                          <div className={`font-medium line-clamp-2 ${isCurrentVet ? 'text-blue-900' : 'text-gray-900'}`}>
-                            {record.clinicalSigns || "N/A"}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 max-w-xs">
+                        <div className={`font-medium line-clamp-2 ${isCurrentVet ? 'text-blue-900' : 'text-gray-900'}`}>
+                          {record.clinicalSigns || "N/A"}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 max-w-xs">
+                        <div className={`font-medium line-clamp-2 ${isCurrentVet ? 'text-blue-900' : 'text-gray-900'}`}>
+                          {record.diagnosis || "N/A"}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                            isCurrentVet ? 'bg-blue-200' : 'bg-green-100'
+                          }`}>
+                            <User className={`w-3 h-3 ${isCurrentVet ? 'text-blue-700' : 'text-green-600'}`} />
                           </div>
-                        </td>
-                        <td className="px-6 py-4 max-w-xs">
-                          <div className={`font-medium line-clamp-2 ${isCurrentVet ? 'text-blue-900' : 'text-gray-900'}`}>
-                            {record.diagnosis || "N/A"}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              isCurrentVet ? 'bg-blue-200' : 'bg-green-100'
-                            }`}>
-                              <User className={`w-3 h-3 ${isCurrentVet ? 'text-blue-700' : 'text-green-600'}`} />
-                            </div>
-                            <span className={`font-medium ${isCurrentVet ? 'text-blue-900' : 'text-gray-900'}`}>
-                              {record.veterinarian || "N/A"}
-                              {isCurrentVet && (
-                                <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                                  You
-                                </span>
-                              )}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex justify-center gap-2">
-                            <Button 
-                              onClick={() => handleViewDetails(record.id)}
-                              variant="outline" 
-                              size="sm"
-                              className={`
-                                cursor-pointer flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 shadow-sm hover:shadow-md
-                                ${isCurrentVet 
-                                  ? 'border-blue-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-blue-700' 
-                                  : 'border-gray-300 bg-white hover:bg-gray-50 hover:border-gray-400 text-gray-700'
-                                }
-                                ${isExpanded ? 'bg-blue-100 border-blue-400' : ''}
-                              `}
-                            >
-                              <Eye className="w-4 h-4" />
-                              <span>{isExpanded ? 'Hide Details' : 'View Details'}</span>
-                            </Button>
-                          </div>
-                        </td>                  
-                      </tr>
-                      
-                      {/* Expanded Details Row */}
-                      {isExpanded && (
-                        <tr>
-                          <td colSpan="5" className="p-0">
-                            <MedicalRecordDetails 
-                              record={record}
-                              onClose={() => setExpandedRecordId(null)}
-                              onEdit={onEditRecord}
-                              vetProfile={vetProfile}
-                              horseInfo={horseInfo}
-                              hasAccess={hasAccess}
-                              medicalRecords={records} // Add this line to pass all records for follow-up checking
-                            />
-                          </td>
-                        </tr>
-                      )}
-                    </React.Fragment>
+                          <span className={`font-medium ${isCurrentVet ? 'text-blue-900' : 'text-gray-900'}`}>
+                            {record.veterinarian || "N/A"}
+                            {isCurrentVet && (
+                              <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                                You
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex justify-center gap-2">
+                          <Button 
+                            onClick={() => onViewRecord(record)} 
+                            variant="outline" 
+                            size="sm"
+                            className={`
+                              cursor-pointer flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 shadow-sm hover:shadow-md
+                              ${isCurrentVet 
+                                ? 'border-blue-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-blue-700' 
+                                : 'border-gray-300 bg-white hover:bg-gray-50 hover:border-gray-400 text-gray-700'
+                              }
+                            `}
+                          >
+                            <Eye className="w-4 h-4" />
+                            <span>View Details</span>
+                          </Button>
+                        </div>
+                      </td>                  
+                    </tr>
                   );
                 })}
               </tbody>
@@ -886,7 +891,6 @@ const AppointmentDetails = () => {
   const [vetProfile, setVetProfile] = useState(null);
   const [appointment, setAppointment] = useState(null);
   const [horseInfo, setHorseInfo] = useState(null);
-  const [ownerInfo, setOwnerInfo] = useState(null);
   const [medicalRecords, setMedicalRecords] = useState([]);
   const [treatmentRecords, setTreatmentRecords] = useState([]);
   const [activeTab, setActiveTab] = useState("medical");
@@ -894,9 +898,10 @@ const AppointmentDetails = () => {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   
-  // Modal states - NOW ONLY FOR ADDING/EDITING
+  // Modal states
   const [medicalModalOpen, setMedicalModalOpen] = useState(false);
   const [treatmentModalOpen, setTreatmentModalOpen] = useState(false);
+  const [medicalDetailsModalOpen, setMedicalDetailsModalOpen] = useState(false);
   const [selectedMedicalRecord, setSelectedMedicalRecord] = useState(null);
   const [selectedTreatmentRecord, setSelectedTreatmentRecord] = useState(null);
   const [isNewRecord, setIsNewRecord] = useState(false);
@@ -940,7 +945,6 @@ const AppointmentDetails = () => {
 
       setAppointment(data.appointment || {});
       setHorseInfo(data.horseInfo || {});
-      setOwnerInfo(data.ownerInfo || {});
       setMedicalRecords(data.medical_records || []);
       setTreatmentRecords(data.treatment_records || []);  
 
@@ -1050,7 +1054,7 @@ const AppointmentDetails = () => {
     }
   };
 
-  // FIXED: Updated handlers for new functionality
+  // Handlers for medical records
   const handleAddRecord = () => {
     if (!hasAccess) {
       setAccessModalOpen(true);
@@ -1068,6 +1072,11 @@ const AppointmentDetails = () => {
     setIsNewRecord(false);
     setIsViewMode(false);
     setMedicalModalOpen(true);
+  };
+
+  const handleViewRecord = (record) => {
+    setSelectedMedicalRecord(record);
+    setMedicalDetailsModalOpen(true);
   };
 
   // Handle treatment record view/add
@@ -1098,24 +1107,11 @@ const AppointmentDetails = () => {
     setSuccessMessage(null);
   };
 
-  // Format phone number for display
-  const formatPhoneNumber = (phone) => {
-    if (!phone) return "N/A";
-    const cleaned = phone.replace(/\D/g, '');
-    const match = cleaned.match(/^(\d{3})(\d{3})(\d{4})$/);
-    if (match) {
-      return `(${match[1]}) ${match[2]}-${match[3]}`;
-    }
-    return phone;
-  };
-
-  // Skeleton Loader
+  // Skeleton Loader - Fixed single column
   const renderSkeleton = () => (
     <div className="space-y-6 animate-pulse">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="h-60 bg-gray-200 rounded-2xl"></div>
-        <div className="h-60 bg-gray-200 rounded-2xl"></div>
-      </div>
+      {/* Single skeleton card for horse info */}
+      <div className="h-60 bg-gray-200 rounded-2xl"></div>
       <div className="h-80 bg-gray-200 rounded-2xl"></div>
     </div>
   );
@@ -1156,13 +1152,13 @@ const AppointmentDetails = () => {
             renderSkeleton()
           ) : (
             <>
-              {/* Combined Horse + Owner Info + Appointment Details */}
+              {/* Horse Information Card with Chief Complaint on Right Side */}
               <Card className="bg-gradient-to-br from-white via-blue-50/30 shadow-lg rounded-2xl border border-white/50 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
                 <CardContent className="p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     
-                    {/* Horse Information Section */}
-                    <div className="flex flex-col md:flex-row items-start md:items-start space-x-0 md:space-x-6">
+                    {/* Horse Information Section - Takes 2/3 width */}
+                    <div className="lg:col-span-2 flex flex-col md:flex-row items-start md:items-start space-x-0 md:space-x-6">
                       <div className="relative flex-shrink-0">
                         <img
                           src={horseInfo?.image || "/horse-placeholder.jpg"}
@@ -1183,14 +1179,14 @@ const AppointmentDetails = () => {
                       </div>
 
                       <div className="flex-1 mt-6 md:mt-0 flex flex-col justify-start text-left">
-                        <h2 className="text-2xl font-bold text-gray-800">{horseInfo?.name || "Unknown Horse"}</h2>
-                        <div className="flex items-center space-x-4 mt-1">
-                          <span className="text-indigo-600 font-semibold">{horseInfo?.breed || "Unknown Breed"}</span>
-                          <span className="text-gray-600">({horseInfo?.sex || "Unknown"})</span>
+                        <div className="flex items-center space-x-2 mb-2">
+                          <h2 className="text-2xl font-bold text-gray-800">{horseInfo?.name || "Unknown Horse"}</h2>
+                          <span className="text-indigo-600 font-semibold">({horseInfo?.breed || "Unknown Breed"})</span>
                         </div>
-                        <span className="mt-1 block text-gray-700">{horseInfo?.color || "Unknown"} Coat</span>
-
-                        <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-gray-600 text-sm mt-4">
+                        
+                        <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-gray-600 text-sm mb-4">
+                          <span>Sex: <strong>{horseInfo?.sex || "Unknown"}</strong></span>
+                          <span>Color: <strong>{horseInfo?.color || "Unknown"}</strong></span>
                           <span>DOB: <strong>{horseInfo?.dob || "Unknown"}</strong></span>
                           <span>Age: <strong>{horseInfo?.age || "Unknown"}</strong></span>
                           <span>Height: <strong>{horseInfo?.height || "Unknown"}</strong></span>
@@ -1199,63 +1195,21 @@ const AppointmentDetails = () => {
                       </div>
                     </div>
 
-                    {/* Owner Information Section */}
-                    <div>
-                      <div className="flex items-center space-x-2 mb-4">
-                        <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-teal-600 rounded-xl flex items-center justify-center shadow-md">
-                          <User className="w-4 h-4 text-white" />
-                        </div>
-                        <h2 className="text-lg font-bold text-gray-800">Owner Information</h2>
-                      </div>
-
-                      <div className="space-y-3">
-                        <p className="font-bold text-gray-800 text-lg">
-                          {ownerInfo?.firstName || "Unknown"} {ownerInfo?.middleName || ""} {ownerInfo?.lastName || ""}
-                        </p>
-
-                        <div className="space-y-2">
-                          <div className="flex items-center space-x-2 text-sm">
-                            <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
-                              <Phone className="w-3 h-3 text-blue-600" />
-                            </div>
-                            <span className="text-gray-700">{formatPhoneNumber(ownerInfo?.phone)}</span>
-                          </div>
-
-                          <div className="flex items-center space-x-2 text-sm">
-                            <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center">
-                              <MapPin className="w-3 h-3 text-green-600" />
-                            </div>
-                            <span className="text-gray-700">{ownerInfo?.address || "Address not available"}</span>
-                          </div>
-
-                          <div className="flex items-center space-x-2 text-sm">
-                            <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center">
-                              <Mail className="w-3 h-3 text-purple-600" />
-                            </div>
-                            <span className="text-gray-700">{ownerInfo?.email || "Email not available"}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                  </div>
-
-                  <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
-              
-                    {/* Chief Complaint */}
-                    <div>
+                    {/* Chief Complaint Section - Takes 1/3 width on right side */}
+                    <div className="lg:col-span-1">
                       <div className="flex items-center space-x-2 mb-4">
                         <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-600 rounded-xl flex items-center justify-center shadow-md">
                           <StickyNote className="w-4 h-4 text-white" />
                         </div>
                         <h2 className="text-lg font-bold text-gray-800">Chief Complaint</h2>
                       </div>
-                      <div className="bg-amber-50/50 p-4 rounded-xl">
+                      <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-200/50">
                         <p className="text-gray-800">
                           {appointment?.app_complain || "No chief complaint available for this appointment"}
                         </p>
                       </div>
                     </div>
+
                   </div>
                 </CardContent>
               </Card>
@@ -1293,7 +1247,8 @@ const AppointmentDetails = () => {
                       horseInfo={horseInfo}
                       onRefresh={fetchAppointmentDetails}
                       onAddRecord={handleAddRecord}
-                      onEditRecord={handleEditRecord} // Updated prop
+                      onEditRecord={handleEditRecord}
+                      onViewRecord={handleViewRecord}
                       hasAccess={hasAccess}
                       accessRequested={accessRequested}
                       onRequestAccess={() => setAccessModalOpen(true)}
@@ -1322,7 +1277,7 @@ const AppointmentDetails = () => {
         horseInfo={horseInfo}
       />
       
-      {/* Medical Records Modal - NOW ONLY FOR ADDING/EDITING */}
+      {/* Medical Records Modal - FOR ADDING/EDITING */}
       <MedicalRecordsModal
         isOpen={medicalModalOpen}
         onClose={() => {
@@ -1343,6 +1298,18 @@ const AppointmentDetails = () => {
         isViewMode={isViewMode}
         appointmentId={id}
         hasAccess={hasAccess}
+      />
+
+      {/* Medical Record Details Modal - FOR VIEWING */}
+      <MedicalRecordDetailsModal
+        isOpen={medicalDetailsModalOpen}
+        onClose={() => {
+          setMedicalDetailsModalOpen(false);
+          setSelectedMedicalRecord(null);
+        }}
+        record={selectedMedicalRecord}
+        vetProfile={vetProfile}
+        horseInfo={horseInfo}
       />
       
       <TreatmentRecordsModal

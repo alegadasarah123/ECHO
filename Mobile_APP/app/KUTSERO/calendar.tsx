@@ -62,7 +62,7 @@ interface Event {
 }
 
 // API Base URL - UPDATE THIS TO YOUR IP ADDRESS
-const API_BASE_URL = "http://192.168.1.7:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
 
 export default function CalendarScreen() {
   const router = useRouter()
@@ -229,12 +229,11 @@ export default function CalendarScreen() {
         setEventTime("")
         setSelectedDate("")
         setShowAddEventModal(false)
-        await fetchEvents() // Re-fetch events from the server to get the updated list
+        await fetchEvents()
       } else {
         const errorText = await response.text()
         console.error("Server error:", response.status, errorText)
         Alert.alert("Warning", "Failed to save event on server. Saved locally.")
-        // Fallback to local storage
         const updatedEvents = [...events, newEvent]
         setEvents(updatedEvents)
         await saveEventsToSecureStorage(updatedEvents)
@@ -243,7 +242,6 @@ export default function CalendarScreen() {
     } catch (error) {
       console.error("Network or API error while adding event:", error)
       Alert.alert("Warning", "Network error. Event saved locally.")
-      // Fallback to local storage
       const updatedEvents = [...events, newEvent]
       setEvents(updatedEvents)
       await saveEventsToSecureStorage(updatedEvents)
@@ -274,7 +272,6 @@ export default function CalendarScreen() {
 
               if (response.ok) {
                 Alert.alert("Success", "Event deleted successfully!");
-                // Filter out the deleted event from the state
                 const updatedEvents = events.filter(event => event.id !== eventId);
                 setEvents(updatedEvents);
                 await saveEventsToSecureStorage(updatedEvents);
@@ -365,7 +362,6 @@ export default function CalendarScreen() {
     return days
   }
 
-  // Dashboard/Home Icon Component
   const DashboardIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
       <View style={styles.dashboardGrid}>
@@ -377,7 +373,6 @@ export default function CalendarScreen() {
     </View>
   )
 
-  // Profile Icon Component
   const ProfileIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
       <View style={styles.profileContainer}>
@@ -387,7 +382,6 @@ export default function CalendarScreen() {
     </View>
   )
 
-  // Plus Icon Component
   const PlusIcon = ({ color = "#C17A47", size = 24 }: { color?: string; size?: number }) => (
     <View style={[styles.plusIcon, { width: scale(size), height: scale(size) }]}>
       <View style={[styles.plusHorizontal, { backgroundColor: color }]} />
@@ -447,7 +441,6 @@ export default function CalendarScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
 
-      {/* Header Section */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Calendar</Text>
@@ -457,7 +450,6 @@ export default function CalendarScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Content Section */}
       <View style={styles.contentContainer}>
         <ScrollView
           style={styles.scrollContent}
@@ -467,11 +459,9 @@ export default function CalendarScreen() {
             { paddingBottom: safeArea.bottom + dynamicSpacing(100) },
           ]}
         >
-          {/* Calendar Section */}
           <View style={styles.calendarSection}>
             <Text style={styles.sectionTitle}>Calendar</Text>
 
-            {/* Month Header */}
             <View style={styles.monthHeader}>
               <TouchableOpacity
                 style={styles.monthNavButton}
@@ -490,7 +480,6 @@ export default function CalendarScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Day Headers */}
             <View style={styles.dayHeaders}>
               {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
                 <View key={day} style={styles.dayHeader}>
@@ -499,11 +488,9 @@ export default function CalendarScreen() {
               ))}
             </View>
 
-            {/* Calendar Grid */}
             <View style={styles.calendarGrid}>{renderCalendarDays()}</View>
           </View>
 
-          {/* Events Table */}
           <View style={styles.eventsSection}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>Events for {getMonthName(currentMonth)}</Text>
@@ -512,12 +499,10 @@ export default function CalendarScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* Loading Indicator */}
             {loading ? (
               <ActivityIndicator size="large" color="#C17A47" style={{ paddingVertical: verticalScale(24) }} />
             ) : (
               <View style={styles.tableContainer}>
-                {/* Table Header */}
                 <View style={styles.tableHeader}>
                   <Text style={[styles.tableHeaderText, { flex: 2 }]}>Date</Text>
                   <Text style={[styles.tableHeaderText, { flex: 1.5 }]}>Time</Text>
@@ -525,7 +510,6 @@ export default function CalendarScreen() {
                   <Text style={[styles.tableHeaderText, { flex: 1, textAlign: 'center' }]}>Actions</Text>
                 </View>
 
-                {/* Table Rows */}
                 {getEventsForCurrentMonth().length > 0 ? (
                   getEventsForCurrentMonth().map((event: Event) => (
                     <View key={event.id} style={styles.tableRow}>
@@ -563,7 +547,6 @@ export default function CalendarScreen() {
           </View>
         </ScrollView>
 
-        {/* Add Event Modal */}
         <Modal
           visible={showAddEventModal}
           animationType="slide"
@@ -635,7 +618,6 @@ export default function CalendarScreen() {
           </View>
         </Modal>
 
-        {/* Bottom Tab Navigation */}
         <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
           <TabButton iconSource={null} label="Home" tabKey="home" isActive={false} />
           <TabButton
@@ -859,16 +841,16 @@ const styles = StyleSheet.create({
     textAlign: "left",
   },
   deleteButton: {
-    width: scale(28),
-    height: scale(28),
-    borderRadius: scale(14),
+    width: scale(24),
+    height: scale(24),
+    borderRadius: scale(12),
     backgroundColor: '#FF6347',
     justifyContent: 'center',
     alignItems: 'center',
   },
   deleteButtonText: {
     color: 'white',
-    fontSize: moderateScale(16),
+    fontSize: moderateScale(14),
     fontWeight: 'bold',
   },
   noEventsContainer: {
@@ -992,35 +974,39 @@ const styles = StyleSheet.create({
   tabBar: {
     flexDirection: "row",
     backgroundColor: "white",
-    paddingTop: dynamicSpacing(12),
-    paddingHorizontal: scale(16),
+    paddingVertical: dynamicSpacing(8),
+    paddingHorizontal: scale(8),
     borderTopWidth: 1,
     borderTopColor: "#E0E0E0",
+    minHeight: verticalScale(60),
+    alignItems: "center",
+    justifyContent: "space-around",
   },
   tabButton: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: verticalScale(8),
+    paddingVertical: verticalScale(4),
+    paddingHorizontal: scale(2),
   },
   tabIcon: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
+    width: scale(28),
+    height: scale(28),
+    borderRadius: scale(14),
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: verticalScale(4),
+    marginBottom: verticalScale(2),
   },
   activeTabIcon: {
     backgroundColor: "#C17A47",
   },
   tabIconImage: {
-    width: scale(20),
-    height: scale(20),
+    width: scale(16),
+    height: scale(16),
   },
   tabLabel: {
-    fontSize: moderateScale(10),
+    fontSize: moderateScale(9),
     color: "#666",
-    fontWeight: "500",
+    textAlign: "center",
   },
   activeTabLabel: {
     color: "#C17A47",
@@ -1031,14 +1017,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   dashboardGrid: {
-    width: scale(20),
-    height: scale(20),
+    width: scale(14),
+    height: scale(14),
     flexDirection: "row",
     flexWrap: "wrap",
   },
   gridSquare: {
-    width: scale(8),
-    height: scale(8),
+    width: scale(5),
+    height: scale(5),
     margin: scale(1),
   },
   gridTopLeft: {
@@ -1084,9 +1070,9 @@ const styles = StyleSheet.create({
     borderRadius: scale(1),
   },
   fallbackIcon: {
-    width: scale(20),
-    height: scale(20),
+    width: scale(14),
+    height: scale(14),
     backgroundColor: "#E0E0E0",
-    borderRadius: scale(10),
+    borderRadius: scale(7),
   },
 })

@@ -1,6 +1,5 @@
 "use client"
 
-import AsyncStorage from "@react-native-async-storage/async-storage"
 import { useFocusEffect, useRouter } from "expo-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
@@ -15,7 +14,10 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  Alert,
+  ActivityIndicator,
 } from "react-native"
+import * as SecureStore from "expo-secure-store"
 
 const { width, height } = Dimensions.get("window")
 
@@ -57,6 +59,9 @@ const getSafeAreaPadding = () => {
   }
 }
 
+// Backend API configuration - matching dashboard
+const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
+
 interface Message {
   id: string
   sender: string
@@ -72,6 +77,25 @@ interface ChatMessage {
   text: string
   isUser: boolean
   timestamp: string
+}
+
+// User data interface - matching dashboard
+interface UserData {
+  id: string
+  email: string
+  profile?: {
+    kutsero_id: string
+    kutsero_fname?: string
+    kutsero_lname?: string
+    kutsero_mname?: string
+    kutsero_username?: string
+    kutsero_phone_num?: string
+    kutsero_email?: string
+    [key: string]: any
+  }
+  access_token: string
+  refresh_token?: string
+  user_status?: string
 }
 
 // Separate ChatInterface component to prevent recreation
@@ -108,8 +132,8 @@ const ChatInterface = ({
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={0}
     >
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
 
@@ -159,29 +183,24 @@ const ChatInterface = ({
       </ScrollView>
 
       {/* Chat Input */}
-      <View style={[styles.chatInputContainer, { paddingBottom: safeArea.bottom }]}>
-        <TextInput
-          style={styles.chatInput}
-          value={chatInput}
-          onChangeText={onChatInputChange}
-          placeholder={isAIChat ? "Ask me about horse care..." : "Type a message..."}
-          placeholderTextColor="#999"
-          multiline={true}
-          numberOfLines={1}
-          maxLength={500}
-          returnKeyType="default"
-          blurOnSubmit={false}
-          autoCorrect={true}
-          autoCapitalize="sentences"
-          selectionColor="#C17A47"
-          underlineColorAndroid="transparent"
-          onFocus={() => {
-            // Scroll to bottom when input is focused
-            setTimeout(() => {
-              scrollViewRef.current?.scrollToEnd({ animated: true })
-            }, 300)
-          }}
-        />
+      <View style={[styles.chatInputContainer, { paddingBottom: Math.max(safeArea.bottom, 8) }]}>
+        <View style={styles.inputWrapper}>
+          <TextInput
+            style={styles.chatInput}
+            value={chatInput}
+            onChangeText={onChatInputChange}
+            placeholder={isAIChat ? "Ask me about horse care..." : "Type a message..."}
+            placeholderTextColor="#999"
+            multiline={true}
+            maxLength={500}
+            returnKeyType="default"
+            blurOnSubmit={false}
+            autoCorrect={true}
+            autoCapitalize="sentences"
+            selectionColor="#C17A47"
+            underlineColorAndroid="transparent"
+          />
+        </View>
         <TouchableOpacity
           style={[styles.sendButton, { opacity: chatInput.trim() ? 1 : 0.5 }]}
           onPress={onSendMessage}
@@ -201,7 +220,12 @@ export default function MessagesScreen() {
   const [showIndividualChat, setShowIndividualChat] = useState(false)
   const [selectedContact, setSelectedContact] = useState<Message | null>(null)
   const [chatInput, setChatInput] = useState("")
+  
+  // Updated user state management - matching dashboard
   const [currentUser, setCurrentUser] = useState("User") // Default fallback
+  const [userData, setUserData] = useState<UserData | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+
   const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([
     {
       id: "1",
@@ -212,19 +236,100 @@ export default function MessagesScreen() {
   ])
   const [individualChatMessages, setIndividualChatMessages] = useState<ChatMessage[]>([])
 
-  // Load user data from AsyncStorage
-  const loadUserData = async () => {
+  // Validate authentication token - matching dashboard
+  const validateAuthToken = async (token: string): Promise<boolean> => {
     try {
-      const savedUser = await AsyncStorage.getItem("currentUser")
-      if (savedUser) {
-        setCurrentUser(savedUser)
-      }
+      // You can add a backend endpoint to validate token
+      // For now, we'll assume token is valid if it exists
+      return token.length > 0
     } catch (error) {
-      console.log("Error loading user data:", error)
+      console.error("Token validation error:", error)
+      return false
     }
   }
 
-  // Load data on component mount
+  // Load user data and authentication - matching dashboard approach
+  const loadUserData = async () => {
+    setIsLoading(true)
+    try {
+      // Get the stored authentication data from SecureStore
+      const storedUserData = await SecureStore.getItemAsync("user_data")
+      const storedAccessToken = await SecureStore.getItemAsync("access_token")
+
+      console.log("Loading user data...")
+      console.log("Has stored user data:", !!storedUserData)
+      console.log("Has stored access token:", !!storedAccessToken)
+
+      if (storedUserData && storedAccessToken) {
+        const parsedUserData = JSON.parse(storedUserData)
+
+        // Validate token
+        const isValidToken = await validateAuthToken(storedAccessToken)
+        if (!isValidToken) {
+          throw new Error("Invalid token")
+        }
+
+        // Create a unified user data structure
+        const unifiedUserData: UserData = {
+          id: parsedUserData.id,
+          email: parsedUserData.email,
+          profile: parsedUserData.profile,
+          access_token: storedAccessToken,
+          user_status: parsedUserData.user_status || "pending",
+        }
+
+        setUserData(unifiedUserData)
+
+        // Set display name based on available data
+        let displayName = "User" // default fallback
+
+        if (parsedUserData.profile) {
+          // Use profile data if available
+          const { kutsero_fname, kutsero_lname, kutsero_username } = parsedUserData.profile
+          if (kutsero_fname && kutsero_lname) {
+            displayName = `${kutsero_fname} ${kutsero_lname}`
+          } else if (kutsero_username) {
+            displayName = kutsero_username
+          } else if (kutsero_fname) {
+            displayName = kutsero_fname
+          }
+        } else if (parsedUserData.email) {
+          // Fallback to user email if no profile
+          displayName = parsedUserData.email.split("@")[0]
+        }
+
+        setCurrentUser(displayName)
+
+        console.log("Successfully loaded user data:", {
+          userId: parsedUserData.id,
+          email: parsedUserData.email,
+          displayName: displayName,
+          status: parsedUserData.user_status,
+        })
+      } else {
+        // No stored auth data - redirect to login
+        console.log("No stored authentication data found")
+        Alert.alert("Session Expired", "Please log in again to continue.", [
+          {
+            text: "OK",
+            onPress: () => router.replace("../../pages/auth/login"),
+          },
+        ])
+      }
+    } catch (error) {
+      console.error("Error loading user data:", error)
+      Alert.alert("Error", "Failed to load user data. Please log in again.", [
+        {
+          text: "OK",
+          onPress: () => router.replace("../../pages/auth/login"),
+        },
+      ])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  // Load user data on component mount
   useEffect(() => {
     loadUserData()
   }, [])
@@ -305,25 +410,6 @@ export default function MessagesScreen() {
     setIndividualChatMessages(initialMessages)
   }, [])
 
-  // AI response generator - wrapped in useCallback
-  const generateAIResponse = useCallback((userInput: string): string => {
-    const input = userInput.toLowerCase()
-
-    if (input.includes("feed") || input.includes("food")) {
-      return "For feeding, I recommend checking Oscar's current feed schedule. Make sure to provide the right amount of chaff, restone, and dynamy based on the meal time. Would you like me to help you plan a feeding schedule?"
-    } else if (input.includes("health") || input.includes("sick") || input.includes("checkup")) {
-      return "For health concerns, I suggest monitoring the horse's vital signs and behavior. Oscar's last checkup was 2 days ago and he's currently healthy. Should I schedule a veterinary consultation?"
-    } else if (input.includes("water")) {
-      return "Proper hydration is crucial! Make sure fresh water is available at all times. An average horse needs 5-10 gallons of water per day. Would you like me to set up water monitoring reminders?"
-    } else if (input.includes("exercise") || input.includes("training")) {
-      return "Regular exercise is important for horse health. I can help you create a training schedule based on Oscar's age and fitness level. What type of activities are you planning?"
-    } else if (input.includes("hello") || input.includes("hi")) {
-      return "Hello! I'm here to help with all your horse care needs. You can ask me about feeding, health monitoring, exercise routines, or any other questions about Oscar's care."
-    } else {
-      return "I understand you're asking about horse care. I can help with feeding schedules, health monitoring, exercise planning, and general care tips. Could you be more specific about what you'd like to know?"
-    }
-  }, [])
-
   // Contact response generator - wrapped in useCallback
   const generateContactResponse = useCallback((userInput: string, contact: Message | null): string => {
     if (!contact) return "Thank you for your message. I'll get back to you soon."
@@ -362,47 +448,92 @@ export default function MessagesScreen() {
     return "Thank you for your message. I'll get back to you soon."
   }, [])
 
-  // AI Chat functionality - wrapped in useCallback
   const handleSendMessage = useCallback(
-    (isAIChat = true) => {
-      if (!chatInput.trim()) return
+    async (isAIChat = true) => {
+      if (!chatInput.trim()) return;
 
       const userMessage: ChatMessage = {
         id: Date.now().toString(),
         text: chatInput.trim(),
         isUser: true,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      }
+      };
 
       if (isAIChat) {
-        setAiChatMessages((prev) => [...prev, userMessage])
+        setAiChatMessages((prev) => [...prev, userMessage]);
       } else {
-        setIndividualChatMessages((prev) => [...prev, userMessage])
+        setIndividualChatMessages((prev) => [...prev, userMessage]);
       }
 
-      setChatInput("")
+      setChatInput("");
 
-      // Simulate response
-      setTimeout(() => {
-        const response = isAIChat
-          ? generateAIResponse(userMessage.text)
-          : generateContactResponse(userMessage.text, selectedContact)
+      if (isAIChat) {
+        try {
+          // Call your existing AI assistant endpoint
+          const response = await fetch(`${API_BASE_URL}/ai_assistant/`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": userData?.access_token ? `Bearer ${userData.access_token}` : "",
+            },
+            body: JSON.stringify({
+              prompt: userMessage.text, // Changed from "message" to "prompt"
+            }),
+          });
+
+
+          if (response.ok) {
+            const data = await response.json();
+            console.log("AI Response:", data);
+            
+            // Use "answer" field from your backend response
+            const aiText = data.answer || data.reply || "Sorry, I couldn't understand that.";
+
+            const responseMessage: ChatMessage = {
+              id: (Date.now() + 1).toString(),
+              text: aiText,
+              isUser: false,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            };
+
+            setAiChatMessages((prev) => [...prev, responseMessage]);
+          } else {
+            console.error("Backend API error:", response.status);
+            const errorText = await response.text();
+            console.error("Error response:", errorText);
+            
+            const errorMessage: ChatMessage = {
+              id: (Date.now() + 1).toString(),
+              text: "Sorry, I'm having trouble connecting to the server. Please try again later.",
+              isUser: false,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            };
+            setAiChatMessages((prev) => [...prev, errorMessage]);
+          }
+        } catch (error) {
+          console.error("Backend fetch error:", error);
+          const errorMessage: ChatMessage = {
+            id: (Date.now() + 1).toString(),
+            text: "Sorry, I'm having trouble connecting. Please check your internet connection and try again.",
+            isUser: false,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          };
+          setAiChatMessages((prev) => [...prev, errorMessage]);
+        }
+      } else {
+        // Keep existing contact responses
+        const response = generateContactResponse(userMessage.text, selectedContact);
         const responseMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
           text: response,
           isUser: false,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        }
-
-        if (isAIChat) {
-          setAiChatMessages((prev) => [...prev, responseMessage])
-        } else {
-          setIndividualChatMessages((prev) => [...prev, responseMessage])
-        }
-      }, 1000)
+        };
+        setIndividualChatMessages((prev) => [...prev, responseMessage]);
+      }
     },
-    [chatInput, generateAIResponse, generateContactResponse, selectedContact],
-  )
+    [chatInput, selectedContact, currentUser, userData, generateContactResponse],
+  );
 
   // Text input change handler - wrapped in useCallback
   const handleChatInputChange = useCallback((text: string) => {
@@ -427,13 +558,24 @@ export default function MessagesScreen() {
     handleSendMessage(false)
   }, [handleSendMessage])
 
+  // Show loading screen while data is being loaded - matching dashboard
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+        <ActivityIndicator size="large" color="white" />
+        <Text style={styles.loadingText}>Loading messages...</Text>
+      </View>
+    )
+  }
+
   // Show AI Chat Interface
   if (showAIChat) {
     return (
       <ChatInterface
         isAIChat={true}
         messages={aiChatMessages}
-        title="AI Assistant"
+        title="EchoCare AI"
         onBack={handleBackFromAI}
         chatInput={chatInput}
         onChatInputChange={handleChatInputChange}
@@ -547,6 +689,9 @@ export default function MessagesScreen() {
         </View>
         <View style={styles.headerRight}>
           <Text style={styles.userName}>{currentUser}</Text>
+          {userData?.user_status === "pending" && (
+            <Text style={styles.statusText}>Pending</Text>
+          )}
         </View>
       </View>
 
@@ -622,6 +767,17 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#F5F5F5",
   },
+  loadingContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#C17A47",
+  },
+  loadingText: {
+    color: "white",
+    fontSize: moderateScale(16),
+    fontWeight: "500",
+    marginTop: verticalScale(10),
+  },
   header: {
     backgroundColor: "#C17A47",
     flexDirection: "row",
@@ -666,6 +822,11 @@ const styles = StyleSheet.create({
   userName: {
     fontSize: moderateScale(12),
     color: "white",
+    fontWeight: "500",
+  },
+  statusText: {
+    fontSize: moderateScale(10),
+    color: "#FFE082",
     fontWeight: "500",
   },
   aiStatusIndicator: {
@@ -804,35 +965,55 @@ const styles = StyleSheet.create({
   },
   chatInputContainer: {
     flexDirection: "row",
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(12),
+    paddingTop: verticalScale(10),
+    paddingBottom: verticalScale(10),
     backgroundColor: "white",
     borderTopWidth: 1,
     borderTopColor: "#E0E0E0",
     alignItems: "flex-end",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  inputWrapper: {
+    flex: 1,
+    marginRight: scale(8),
   },
   chatInput: {
-    flex: 1,
     borderWidth: 1,
     borderColor: "#E0E0E0",
     borderRadius: scale(20),
     paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(12),
+    paddingTop: verticalScale(10),
+    paddingBottom: verticalScale(10),
     fontSize: moderateScale(14),
-    maxHeight: verticalScale(100),
+    maxHeight: verticalScale(120),
     minHeight: verticalScale(44),
-    marginRight: scale(8),
     color: "#333333",
-    backgroundColor: "#FFFFFF",
-    textAlignVertical: "top",
+    backgroundColor: "#F8F9FA",
   },
   sendButton: {
     backgroundColor: "#C17A47",
     paddingHorizontal: scale(20),
-    paddingVertical: verticalScale(10),
+    paddingVertical: verticalScale(12),
     borderRadius: scale(20),
     justifyContent: "center",
     alignItems: "center",
+    minHeight: verticalScale(44),
+    shadowColor: "#C17A47",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 3,
   },
   sendButtonText: {
     color: "white",

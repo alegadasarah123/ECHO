@@ -4,7 +4,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import FeedLogPage from './FeedLogPage';
 import WaterLogPage from './waterlogpage';
 
-// API Configuration
+// API Configuration - Replace with your actual API URL
 const API_BASE_URL = 'http://192.168.1.8:8000/api/kutsero';
 
 interface FeedLog {
@@ -79,7 +79,7 @@ type FeedType = {
 };
 
 // ============================================================================
-// API FUNCTIONS
+// API FUNCTIONS FOR FEED
 // ============================================================================
 const fetchFeedingSchedule = async (kutseronId: string, horseId: string): Promise<MealSchedule[]> => {
   try {
@@ -91,28 +91,15 @@ const fetchFeedingSchedule = async (kutseronId: string, horseId: string): Promis
       }
     );
     
-    if (!response.ok) return [];
-    const data = await response.json();
-    return data.success ? (data.data || []) : [];
-  } catch (error) {
-    return [];
-  }
-};
+    if (!response.ok) {
+      console.error(`HTTP ${response.status}: ${response.statusText}`);
+      return [];
+    }
 
-const fetchWaterSchedule = async (kutseronId: string, horseId: string): Promise<WaterSchedule[]> => {
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}/water-schedule/?kutsero_id=${kutseronId}&horse_id=${horseId}`,
-      {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
-    
-    if (!response.ok) return [];
     const data = await response.json();
     return data.success ? (data.data || []) : [];
   } catch (error) {
+    console.error('Network Error:', error);
     return [];
   }
 };
@@ -128,23 +115,7 @@ const saveFeedingSchedule = async (feedData: any): Promise<{ success: boolean; e
     if (!response.ok) {
       return { success: false, error: `Server error: ${response.status}` };
     }
-    return await response.json();
-  } catch (error) {
-    return { success: false, error: `Network error: ${error instanceof Error ? error.message : String(error)}` };
-  }
-};
 
-const saveWaterSchedule = async (waterData: any): Promise<{ success: boolean; error?: string; data?: any; message?: string }> => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/water-schedule/update/`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(waterData),
-    });
-    
-    if (!response.ok) {
-      return { success: false, error: `Server error: ${response.status}` };
-    }
     return await response.json();
   } catch (error) {
     return { success: false, error: `Network error: ${error instanceof Error ? error.message : String(error)}` };
@@ -169,9 +140,74 @@ const markFeedCompleted = async (kutseronId: string, horseId: string, fdId: stri
     if (!response.ok) {
       return { success: false, error: `Server error: ${response.status}` };
     }
+
     return await response.json();
   } catch (error) {
     return { success: false, error: 'Network error occurred' };
+  }
+};
+
+const fetchFeedLogs = async (kutseronId: string, horseId: string, logDate?: string, logMeal?: string): Promise<FeedLog[]> => {
+  try {
+    let url = `${API_BASE_URL}/feed-logs/?kutsero_id=${kutseronId}&horse_id=${horseId}&user_type=kutsero`;
+    if (logDate) url += `&log_date=${logDate}`;
+    if (logMeal && logMeal !== 'All Meals') url += `&log_meal=${logMeal}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    
+    if (!response.ok) return [];
+
+    const data = await response.json();
+    return data.success ? (data.data || []) : [];
+  } catch (error) {
+    return [];
+  }
+};
+
+// ============================================================================
+// API FUNCTIONS FOR WATER
+// ============================================================================
+const fetchWaterSchedule = async (kutseronId: string, horseId: string): Promise<WaterSchedule[]> => {
+  try {
+    const response = await fetch(
+      `${API_BASE_URL}/water-schedule/?kutsero_id=${kutseronId}&horse_id=${horseId}`,
+      {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+    
+    if (!response.ok) {
+      console.error(`HTTP ${response.status}: ${response.statusText}`);
+      return [];
+    }
+
+    const data = await response.json();
+    return data.success ? (data.data || []) : [];
+  } catch (error) {
+    console.error('Network Error:', error);
+    return [];
+  }
+};
+
+const saveWaterSchedule = async (waterData: any): Promise<{ success: boolean; error?: string; data?: any; message?: string }> => {
+  try {
+    const response = await fetch(`${API_BASE_URL}/water-schedule/update/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(waterData),
+    });
+    
+    if (!response.ok) {
+      return { success: false, error: `Server error: ${response.status}` };
+    }
+
+    return await response.json();
+  } catch (error) {
+    return { success: false, error: `Network error: ${error instanceof Error ? error.message : String(error)}` };
   }
 };
 
@@ -193,28 +229,10 @@ const markWaterCompleted = async (kutseronId: string, horseId: string, waterId: 
     if (!response.ok) {
       return { success: false, error: `Server error: ${response.status}` };
     }
+
     return await response.json();
   } catch (error) {
     return { success: false, error: 'Network error occurred' };
-  }
-};
-
-const fetchFeedLogs = async (kutseronId: string, horseId: string, logDate?: string, logMeal?: string): Promise<FeedLog[]> => {
-  try {
-    let url = `${API_BASE_URL}/feed-logs/?kutsero_id=${kutseronId}&horse_id=${horseId}&user_type=kutsero`;
-    if (logDate) url += `&log_date=${logDate}`;
-    if (logMeal && logMeal !== 'All Meals') url += `&log_meal=${logMeal}`;
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    
-    if (!response.ok) return [];
-    const data = await response.json();
-    return data.success ? (data.data || []) : [];
-  } catch (error) {
-    return [];
   }
 };
 
@@ -230,6 +248,7 @@ const fetchWaterLogs = async (kutseronId: string, horseId: string, logDate?: str
     });
     
     if (!response.ok) return [];
+
     const data = await response.json();
     return data.success ? (data.data || []) : [];
   } catch (error) {
@@ -237,6 +256,9 @@ const fetchWaterLogs = async (kutseronId: string, horseId: string, logDate?: str
   }
 };
 
+// ============================================================================
+// RESET DAILY API
+// ============================================================================
 const resetDailyAPI = async (kutseronId: string, horseId: string, type: 'feed' | 'water'): Promise<{ success: boolean; error?: string; message?: string }> => {
   try {
     const endpoint = type === 'feed' ? 'feeding-schedule/reset/' : 'water-schedule/reset/';
@@ -252,6 +274,7 @@ const resetDailyAPI = async (kutseronId: string, horseId: string, type: 'feed' |
     if (!response.ok) {
       return { success: false, error: `Server error: ${response.status}` };
     }
+
     return await response.json();
   } catch (error) {
     return { success: false, error: 'Network error occurred' };
@@ -293,7 +316,6 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
   const periods = ['Morning', 'Afternoon', 'Evening'];
 
   useEffect(() => {
-    console.log('FeedPage loaded with feedType:', feedType);
     loadSchedule();
   }, [userId, horseId, feedType]);
 
@@ -1009,4 +1031,4 @@ const styles = StyleSheet.create({
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 60 },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: '#374151', marginTop: 16, marginBottom: 8 },
   emptySubtitle: { fontSize: 16, color: '#64748B', textAlign: 'center', lineHeight: 24 },
-}); 
+});
