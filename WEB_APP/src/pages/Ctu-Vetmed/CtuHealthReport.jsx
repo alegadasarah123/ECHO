@@ -472,10 +472,14 @@ pdf.text(footerText, pageWidth - textWidth - 20, 290);
       </div>
 
       <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
-        <header className="bg-white py-[18px] px-6 flex items-center justify-between shadow-sm flex-wrap gap-4">
-          <div className="dashboard-container">
-            <h2 className="text-[22px] font-bold text-black">Health Reports</h2>
-          </div>
+        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+          <div className="flex flex-col w-full sm:w-2/3 md:w-1/2 lg:w-1/3">
+  <h2 className="text-2xl font-bold text-[#b91c1c]">Health Report</h2>
+  <p className="text-sm text-gray-500 mt-1 font-normal">
+  Track overall horse health and monitor monthly status
+</p>
+
+</div>
 
           <button
             ref={notificationBellRef}

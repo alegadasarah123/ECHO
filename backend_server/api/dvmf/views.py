@@ -3,7 +3,6 @@ from functools import wraps
 import os
 import requests
 import logging
-import datetime
 import random
 import jwt
 from django.conf import settings
@@ -13,9 +12,14 @@ from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 import re
-from supabase import create_client 
+from supabase import create_client
 from django.http import JsonResponse
-from django.utils import timezone
+from django.utils import timezone  # ✅ keep only this
+import base64
+from collections import defaultdict
+from datetime import datetime, timedelta
+from django.views.decorators.csrf import csrf_exempt
+
 
 # -------------------- SUPABASE CLIENT --------------------
 # Environment config
@@ -152,19 +156,59 @@ def signup(request):
 
 
 # -------------------- GET VET PROFILES --------------------
-@api_view(['GET'])
+# -------------------- GET VET PROFILES --------------------
+@api_view(["GET"])
 def get_vet_profiles(request):
+    import json
+    import logging
+
     try:
-        # Query vet_profile table and include user's status
         response = sr_client.table("vet_profile").select("*, users(status)").execute()
+        data = response.data or []
 
-        if response.data:
-            return Response(response.data, status=status.HTTP_200_OK)
-        else:
-            return Response({"message": "No records found"}, status=status.HTTP_404_NOT_FOUND)
+        for row in data:
+            # Normalize vet_profile_photo
+            profile_photo = row.get("vet_profile_photo")
+            if profile_photo:
+                if isinstance(profile_photo, str) and not profile_photo.startswith("http"):
+                    # If only filename stored, get full public URL
+                    public_url = sr_client.storage.from_("vet_profile").get_public_url(profile_photo)
+                    row["vet_profile_photo"] = public_url
+                # Else already a full URL — leave as is
 
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            # Normalize vet_documents (may be stored as JSON string or list)
+            documents = row.get("vet_documents", "[]")
+            normalized_docs = []
+
+            # Decode JSON string if needed
+            if isinstance(documents, str):
+                try:
+                    docs_list = json.loads(documents)
+                except json.JSONDecodeError:
+                    docs_list = []
+            elif isinstance(documents, list):
+                docs_list = documents
+            else:
+                docs_list = []
+
+            # Normalize each document URL
+            for doc in docs_list:
+                if isinstance(doc, str) and doc.strip():
+                    if doc.startswith("http"):
+                        normalized_docs.append(doc)
+                    else:
+                        public_url = sr_client.storage.from_("vet_documents").get_public_url(doc)
+                        if public_url:
+                            normalized_docs.append(public_url)
+
+            # Always return vet_documents as a list
+            row["vet_documents"] = normalized_docs
+
+        return Response({"data": data}, status=status.HTTP_200_OK)
+
+    except Exception:
+        logging.exception("Failed to fetch vet profiles")
+        return Response({"error": "Failed to fetch vet profiles"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # -------------------- UPDATE STATUS --------------------
@@ -292,6 +336,7 @@ def update_vet_status(request, vet_profile_id):
 # -------------------- DASHBOARD RECENTLY ACTIVITIES --------------------
 # -------------------- DASHBOARD RECENTLY ACTIVITIES --------------------
 @api_view(["GET"])
+@login_required
 def get_recent_activity(request):
     try:
         response = (
@@ -310,7 +355,6 @@ def get_recent_activity(request):
 
         activities = []
         for row in response.data:
-            # Safely extract user status
             user_data = row.get("users") or {}
             user_status = user_data.get("status", "unknown")
 
@@ -321,13 +365,13 @@ def get_recent_activity(request):
             initials = "".join([w[0] for w in full_name.split() if w]).upper()
 
             activities.append({
-                "id": row["vet_id"],                  # vet_id
-                "title": full_name,                   # full name
-                "initials": initials,                 # initials
+                "id": row["vet_id"],
+                "title": full_name,
+                "initials": initials,
                 "description": f"User is currently {user_status.capitalize()}",
-                "status": user_status,                # status
-                "date": row.get("created_at"),        # created_at
-                "email": row.get("vet_email")         # vet_email
+                "status": user_status,
+                "date": row.get("created_at"),
+                "email": row.get("vet_email")
             })
 
         return Response(activities, status=200)
@@ -337,8 +381,10 @@ def get_recent_activity(request):
 
 
 
+
 # -------------------- DASHBOARD TOTAL COUNT --------------------
 @api_view(["GET"])
+@login_required   # ✅ Require login before accessing this view
 def get_status_counts(request):
     try:
         # Query vet_profile and join with users (status)
@@ -566,98 +612,121 @@ def get_users(request):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
-# --------------------NOTIFICATIONS--------------------
+# -------------------- NOTIFICATIONS --------------------
+
+from datetime import datetime, timedelta, timezone as dt_timezone
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
 
 @api_view(["GET"])
 def get_vetnotifications(request):
-    """
-    Fetch notifications related ONLY to veterinarians and med record access:
-    - New registration (pending)
-    - Approved
-    - Declined
-    - Pending medical record access requests
-    """
     try:
-        manila_tz = datetime.timezone(datetime.timedelta(hours=8))
+        # ---------------- TIMEZONE SETUP ----------------
+        manila_tz = dt_timezone(timedelta(hours=8))
 
-        # 1️⃣ Fetch vet profiles with user info
-        vets_res = sr_client.table("vet_profile") \
-            .select("vet_id, vet_fname, vet_lname, created_at, users(status, role)") \
-            .execute()
+        def to_manila_time(iso_str):
+            if not iso_str:
+                return datetime.now(manila_tz)
+            try:
+                return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone(manila_tz)
+            except Exception:
+                return datetime.now(manila_tz)
 
-        # 2️⃣ Get existing vet-related notification IDs only
-        existing_res = sr_client.table("notification") \
-            .select("id, notif_message") \
-            .execute()
-
-        existing_ids = {
-            row["id"] for row in (existing_res.data or [])
-            if "veterinarian" in row.get("notif_message", "").lower()
-               or "vet." in row.get("notif_message", "").lower()
-        }
+        # ---------------- FETCH EXISTING KEYS ----------------
+        existing_res = sr_client.table("notification").select("*").execute()
+        existing_keys = set(
+            row.get("related_id")
+            for row in (existing_res.data or [])
+            if row.get("related_id")
+        )
 
         notifications_to_insert = []
 
-        # ---------------- VETS ---------------- #
-        def add_vet_notif(vet, status_label, message_prefix):
-            vet_id = str(vet.get("vet_id"))
-            if vet_id in existing_ids:
+        # ---------------- HELPER FUNCTION ----------------
+        def add_vet_notif(user_id, vet_name, created_at, message_prefix, status, related_id):
+            """Add a vet notification safely."""
+            if related_id in existing_keys:
                 return
-            vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
-            created_at = vet.get("created_at")
-            dt_ph = (datetime.datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                     .astimezone(manila_tz)) if created_at else datetime.datetime.now(manila_tz)
+
+            dt_ph = to_manila_time(created_at)
             notifications_to_insert.append({
-                "id": vet_id,
+                "id": user_id,  # <-- FIX: Use users.id for FK
                 "notif_message": f"{message_prefix} Dr. {vet_name}.",
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
+                "notif_read": False,
+                "notification_type": status,
+                "related_id": related_id
             })
+            existing_keys.add(related_id)
 
-        for vet in (vets_res.data or []):
-            role = vet.get("users", {}).get("role", "").lower()
-            status = vet.get("users", {}).get("status", "").lower()
-            if role != "veterinarian":
-                continue
-            if status == "pending":
-                add_vet_notif(vet, status, "New veterinarian registered:")
-            elif status == "approved":
-                add_vet_notif(vet, status, "New veterinarian approved:")
-            elif status == "declined":
-                add_vet_notif(vet, status, "Veterinarian declined:")
-
-        # ---------------- MEDICAL RECORD ACCESS REQUESTS ---------------- #
-        medreq_res = sr_client.table("medrec_access_request") \
-            .select("request_id, vet_id, horse_id, request_status, requested_at, vet_profile(vet_fname, vet_lname), horse_profile(horse_name)") \
+        # ---------------- VET REGISTRATION/APPROVAL/DECLINE ----------------
+        vets_res = sr_client.table("vet_profile") \
+            .select("vet_id, vet_fname, vet_lname, created_at, users(id, status, role)") \
             .execute()
 
-        pending_requests = [
-            r for r in (medreq_res.data or [])
-            if r.get("request_status", "").lower() == "pending"
-        ]
+        for vet in (vets_res.data or []):
+            users = vet.get("users") or {}
+            role = users.get("role", "").lower()
+            status = users.get("status", "").lower()
+            user_id = users.get("id")  # <-- NEW: get users.id
 
-        for req in pending_requests:
-            req_id = str(req.get("request_id"))
-            if req_id in existing_ids:
+            if not user_id or role != "veterinarian":
                 continue
-            vet_name = f"{req.get('vet_profile', {}).get('vet_fname','')} {req.get('vet_profile', {}).get('vet_lname','')}".strip()
-            horse_name = req.get("horse_profile", {}).get("horse_name", "Unknown Horse")
+
+            vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
+            created_at = vet.get("created_at")
+
+            if status == "pending":
+                add_vet_notif(user_id, vet_name, created_at, "New registration:", status, f"vet_{vet['vet_id']}_{status}")
+            elif status == "approved":
+                add_vet_notif(user_id, vet_name, created_at, "Veterinarian approved:", status, f"vet_{vet['vet_id']}_{status}")
+            elif status == "declined":
+                add_vet_notif(user_id, vet_name, created_at, "Veterinarian declined:", status, f"vet_{vet['vet_id']}_{status}")
+
+        # ---------------- MEDICAL RECORD ACCESS REQUESTS ----------------
+        medreq_res = sr_client.table("medrec_access_request") \
+            .select("request_id, vet_id, horse_id, request_status, requested_at, vet_profile(vet_fname, vet_lname, users(id)), horse_profile(horse_name)") \
+            .execute()
+
+        for req in (medreq_res.data or []):
+            if req.get("request_status", "").lower() != "pending":
+                continue
+
+            vet = req.get("vet_profile", {}) or {}
+            users = vet.get("users") or {}
+            user_id = users.get("id")
+            if not user_id:
+                continue
+
+            vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
+            horse = req.get("horse_profile", {}) or {}
+            horse_name = horse.get("horse_name", "Unknown Horse")
             requested_at = req.get("requested_at")
-            dt_ph = (datetime.datetime.fromisoformat(requested_at.replace("Z", "+00:00"))
-                     .astimezone(manila_tz)) if requested_at else datetime.datetime.now(manila_tz)
+
+            related_id = f"medreq_{req['request_id']}"
+            if related_id in existing_keys:
+                continue
+
+            dt_ph = to_manila_time(requested_at)
 
             notifications_to_insert.append({
-                "id": req_id,
-                "notif_message": f"Vet. {vet_name} requested access to {horse_name}'s medical records.",
+                "id": user_id,  # <-- FIX: Use users.id for FK
+                "notif_message": f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
+                "notif_read": False,
+                "notification_type": "medrec_request",
+                "related_id": related_id
             })
+            existing_keys.add(related_id)
 
-        # ---------------- INSERT NEW NOTIFS ---------------- #
-        for notif in notifications_to_insert:
-            sr_client.table("notification").insert(notif).execute()
+        # ---------------- BULK INSERT NEW NOTIFICATIONS ----------------
+        if notifications_to_insert:
+            sr_client.table("notification").insert(notifications_to_insert).execute()
 
-        # 3️⃣ Fetch all vet-related notifications (latest first)
+        # ---------------- FETCH ALL NOTIFICATIONS ----------------
         all_notifs_res = sr_client.table("notification") \
             .select("*") \
             .order("notif_date", desc=True) \
@@ -666,23 +735,78 @@ def get_vetnotifications(request):
 
         notifications = []
         for row in (all_notifs_res.data or []):
-            notif_msg = row.get("notif_message", "")
-            # Only include if message is clearly vet-related
-            if "veterinarian" not in notif_msg.lower() and "vet." not in notif_msg.lower():
-                continue
-            date_iso = f"{row['notif_date']}T{row['notif_time']}+08:00"
-            notifications.append({
-                "id": row["id"],
-                "message": notif_msg,
-                "date": date_iso,
-            })
+            message = row.get("notif_message", "").lower()
+            if any(keyword in message for keyword in ["veterinarian", "vet.", "registration:", "medical record"]):
+                notifications.append({
+                    "id": row.get("id"),
+                    "message": row.get("notif_message"),
+                    "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
+                    "read": row.get("notif_read", False),
+                    "type": row.get("notification_type", "general"),
+                })
 
         return Response(notifications, status=200)
 
     except Exception as e:
-        print("Error in get_vetnotifications:", e)
+        print("❌ Error in get_vetnotifications:", e)
         return Response({"error": str(e)}, status=500)
 
+
+
+    
+
+
+
+# -------------------- MARK NOTIFICATION AS READ --------------------
+@api_view(["POST"])
+def mark_notification_read(request, notif_id):
+    """
+    Mark a specific notification as read.
+    """
+    try:
+        result = sr_client.table("notification").select("*").eq("id", notif_id).execute()
+
+        if not result.data:
+            return Response({"error": "Notification not found"}, status=404)
+
+        update_result = sr_client.table("notification").update({
+            "notif_read": True
+        }).eq("id", notif_id).execute()
+
+        if update_result.data:
+            return Response({
+                "success": True,
+                "message": "Notification marked as read",
+                "notif_id": notif_id
+            })
+        else:
+            return Response({"error": "Failed to update notification"}, status=500)
+
+    except Exception as e:
+        print(f"Error marking notification as read: {e}")
+        return Response({"error": "Internal server error"}, status=500)
+
+
+# -------------------- MARK ALL NOTIFICATIONS AS READ --------------------
+@api_view(["POST"])
+def mark_all_notifications_read(request):
+    """
+    Mark all notifications as read.
+    """
+    try:
+        # Update all unread notifications
+        update_result = sr_client.table("notification").update({
+            "notif_read": True
+        }).eq("notif_read", False).execute()
+
+        return Response({
+            "success": True,
+            "message": "All notifications marked as read",
+            "updated_count": len(update_result.data) if update_result.data else 0
+        })
+    except Exception as e:
+        print(f"Error marking all notifications as read: {e}")
+        return Response({"error": "Internal server error"}, status=500)
 
 
 
@@ -1193,7 +1317,7 @@ def create_post(request):
     if error_response:
         return error_response
 
-    title = (request.data.get("announce_title") or "CTU Announcement").strip()
+    title = (request.data.get("announce_title") or "DVMF Announcement").strip()
     content = (request.data.get("announce_content") or "").strip()
     images_data = request.data.get("announce_img", [])
 
@@ -1265,6 +1389,7 @@ def create_post(request):
     except Exception:
         logging.exception("Supabase insert failed")
         return Response({"error": "Failed to create post"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 # -------------------- GET ANNOUNCEMENTS --------------------
@@ -1358,10 +1483,10 @@ def search_vet(request):
 @api_view(['GET'])
 def get_horses(request):
     """
-    Fetch all horses with owner info only.
+    Fetch all horses with owner info, medical records (with lab images from Supabase),
+    treatments, and veterinarian name.
     """
     try:
-        # Fetch horses with owner info only
         horses_response = sr_client.table("horse_profile").select("""
             horse_id,
             horse_name,
@@ -1373,22 +1498,53 @@ def get_horses(request):
             horse_weight,
             horse_height,
             horse_image,
+            horse_status,
             created_at,
             horse_op_profile (
                 op_fname,
                 op_mname,
                 op_lname,
+                op_phone_num,
                 op_province,
                 op_city,
                 op_municipality,
                 users (status, role)
+            ),
+            horse_medical_record (
+                medrec_id,
+                medrec_date,
+                medrec_heart_rate,
+                medrec_resp_rate,
+                medrec_body_temp,
+                medrec_clinical_signs,
+                medrec_diagnostic_protocol,
+                medrec_lab_results,
+                medrec_lab_img,
+                medrec_diagnosis,
+                medrec_prognosis,
+                medrec_recommendation,
+                medrec_followup_date,
+                medrec_horsestatus,
+                medrec_vet_id,
+                vet_profile (
+                    vet_fname,
+                    vet_mname,
+                    vet_lname
+                ),
+                horse_treatment (
+                    treatment_id,
+                    treatment_name,
+                    treatment_dosage,
+                    treatment_duration,
+                    treatment_outcome
+                )
             )
         """).execute()
 
         horse_list = []
 
         for horse in horses_response.data:
-            # --- Owner info ---
+            # 🧍 Owner info
             owner = horse.get("horse_op_profile", {})
             fullname = " ".join(filter(None, [owner.get("op_fname"), owner.get("op_mname"), owner.get("op_lname")]))
             location = ", ".join(filter(None, [owner.get("op_municipality"), owner.get("op_city"), owner.get("op_province")]))
@@ -1398,9 +1554,26 @@ def get_horses(request):
             horse["location"] = location.strip()
             horse["status"] = user_info.get("status", "Unknown")
             horse["role"] = user_info.get("role", "N/A")
+            horse["owner_phone"] = owner.get("op_phone_num", "")
 
             if "horse_op_profile" in horse:
                 del horse["horse_op_profile"]
+
+            # 🩺 Vet + Medical Records
+            med_records = horse.get("horse_medical_record", [])
+            for record in med_records:
+                # Vet name
+                vet_info = record.get("vet_profile", {})
+                vet_name = " ".join(filter(None, [vet_info.get("vet_fname"), vet_info.get("vet_mname"), vet_info.get("vet_lname")]))
+                record["vet_name"] = vet_name.strip()
+
+                # ✅ Lab image from Supabase Storage
+                lab_img_path = record.get("medrec_lab_img")
+                if lab_img_path:
+                    public_url = sr_client.storage.from_("Lab_results").get_public_url(lab_img_path)
+                    record["medrec_lab_img_url"] = public_url
+                else:
+                    record["medrec_lab_img_url"] = None
 
             horse_list.append(horse)
 
@@ -1417,35 +1590,31 @@ def get_horses(request):
 
 
 
+
+# -------------------- SOS REQUESTS ENDPOINT --------------------
 # -------------------- SOS REQUESTS ENDPOINT --------------------
 @api_view(["GET"])
+@login_required 
 def get_sos_requests(request):
-    """
-    Fetch all SOS requests from Supabase 'sos_requests' table.
-    Handles Supabase/network errors gracefully.
-    """
     try:
-        # Fetch all rows
         response = sr_client.table("sos_requests").select("*").execute()
-
-        # Access data safely
         data = getattr(response, "data", None)
-        if data is None:
+
+        if not data:
             return Response(
                 {"error": "Supabase returned no data or an unexpected response."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # Format data for frontend
         formatted_data = [
             {
                 "id": item.get("id"),
                 "type": item.get("emergency_type", "Emergency"),
-                "contact": item.get("contact_name", "Unknown Contact"),
+                "contact": item.get("user_name") or "Unknown Contact",
                 "phone": item.get("contact_number", "N/A"),
                 "location": item.get("location_text", "No location provided"),
                 "time": item.get("created_at"),
-                "urgent": item.get("status") == "pending" or item.get("urgent") is True,
+                "urgent": item.get("status", "").lower() == "pending",
             }
             for item in data
         ]
@@ -1460,37 +1629,46 @@ def get_sos_requests(request):
         )
 
 
+
+
 # -------------------- Access Requests -------------------- #
 @api_view(['GET'])
 def get_access_requests(request):
-    """Fetch all access requests with vet and horse details"""
+    """Fetch all access requests with vet profile and horse details"""
     try:
-        # Select all access requests
-        response = sr_client.table("medrec_access_request") \
-            .select(
-                """
-                request_id,
-                request_status,
-                requested_at,
-                approved_at,
-                approved_by,
-                note,
-                vet_id (
-                    vet_fname,
-                    vet_mname,
-                    vet_lname
-                ),
-                horse_id (
-                    horse_name,
-                    horse_breed,
-                    horse_dob
-                )
-                """
-            ).execute()
+        response = sr_client.table("medrec_access_request").select(
+            """
+            request_id,
+            request_status,
+            requested_at,
+            approved_at,
+            approved_by,
+            note,
+            vet_profile (
+                vet_id,
+                vet_fname,
+                vet_mname,
+                vet_lname,
+                vet_email,
+                vet_phone_num,
+                vet_specialization,
+                vet_org,
+                vet_license_num
+            ),
+            horse_profile (
+                horse_id,
+                horse_name,
+                horse_breed,
+                horse_dob
+            )
+            """
+        ).order("requested_at", desc=True).execute()
 
-        # Format data
         formatted_data = []
         for req in response.data:
+            vet = req.get("vet_profile")
+            horse = req.get("horse_profile")
+
             formatted_data.append({
                 "request_id": req.get("request_id"),
                 "status": req.get("request_status"),
@@ -1498,34 +1676,48 @@ def get_access_requests(request):
                 "approved_at": req.get("approved_at"),
                 "approved_by": req.get("approved_by"),
                 "note": req.get("note") or "",
+
+                # Vet Details
                 "vet_name": " ".join(filter(None, [
-                    req["vet_id"].get("vet_fname"),
-                    req["vet_id"].get("vet_mname"),
-                    req["vet_id"].get("vet_lname")
-                ])) if req.get("vet_id") else None,
-                "horse_name": req["horse_id"].get("horse_name") if req.get("horse_id") else None,
-                "horse_breed": req["horse_id"].get("horse_breed") if req.get("horse_id") else None,
-                "horse_dob": req["horse_id"].get("horse_dob") if req.get("horse_id") else None,
+                    vet.get("vet_fname") if vet else None,
+                    vet.get("vet_mname") if vet else None,
+                    vet.get("vet_lname") if vet else None
+                ])) if vet else None,
+                "vet_email": vet.get("vet_email") if vet else None,
+                "vet_phone_num": vet.get("vet_phone_num") if vet else None,
+                "vet_specialization": vet.get("vet_specialization") if vet else None,
+                "vet_org": vet.get("vet_org") if vet else None,
+                "vet_license_num": vet.get("vet_license_num") if vet else None,
+
+                # Horse Details
+                "horse_name": horse.get("horse_name") if horse else None,
+                "horse_breed": horse.get("horse_breed") if horse else None,
+                "horse_dob": horse.get("horse_dob") if horse else None,
             })
 
-        return Response(formatted_data)
+        return Response(formatted_data, status=status.HTTP_200_OK)
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
-# -------------------- APPROVE REQUEST --------------------
+
+
+from django.utils import timezone  # ✅ Siguro naa lang ni usa ka import
+
+# -------------------- APPROVE REQUEST -------------------- #
 @api_view(['PATCH'])
 def approve_access_request(request, request_id):
     """Approve an access request"""
     try:
-        # Update the request to approved
+        current_time = timezone.now()  # 📌 Kuhaa ang current time properly
+
         response = sr_client.table("medrec_access_request") \
             .update({
                 "request_status": "approved",
-                "approved_at": timezone.now().isoformat(),
-                "approved_by": "CTU-VET"   # 👈 force approver name
+                "approved_at": current_time.isoformat(),  # ✅ Proper timezone.now() usage
+                "approved_by": "CTU-VET"
             }) \
             .eq("request_id", str(request_id)) \
             .execute()
@@ -1533,26 +1725,26 @@ def approve_access_request(request, request_id):
         if not response.data:
             return Response({"error": "Request not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response(
-            {
-                "message": "Access request successfully approved ✅",
-                "data": response.data[0]
-            },
-            status=status.HTTP_200_OK
-        )
+        return Response({
+            "message": "Access request successfully approved ✅",
+            "data": response.data[0]
+        }, status=status.HTTP_200_OK)
+
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# -------------------- DECLINE REQUEST --------------------
+# -------------------- DECLINE REQUEST -------------------- #
 @api_view(['PATCH'])
 def decline_access_request(request, request_id):
     """Decline an access request"""
     try:
+        current_time = timezone.now()
+
         response = sr_client.table("medrec_access_request") \
             .update({
                 "request_status": "declined",
-                "approved_at": timezone.now().isoformat(),
+                "approved_at": current_time.isoformat(),
                 "approved_by": request.user.id if request.user.is_authenticated else None,
                 "note": request.data.get("note", "")
             }) \
@@ -1562,10 +1754,13 @@ def decline_access_request(request, request_id):
         if not response.data:
             return Response({"error": "Request not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response({"message": "Access request declined", "data": response.data[0]})
+        return Response({
+            "message": "Access request declined",
+            "data": response.data[0]
+        }, status=status.HTTP_200_OK)
+
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 
 
@@ -1578,7 +1773,6 @@ def decline_access_request(request, request_id):
 
 
 @api_view(["PATCH"])
-
 def edit_post(request, post_id):
     try:
         new_content = request.data.get("announce_content")
@@ -1600,3 +1794,301 @@ def edit_post(request, post_id):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+
+
+
+
+@api_view(["GET"])
+def get_horse_statistics(request):
+    try:
+        # Join horse_profile → horse_op_profile → users
+        query = (
+            sr_client.table("horse_profile")
+            .select("horse_status, created_at, horse_op_profile(op_id, users(id, status))")
+            .execute()
+        )
+
+        rows = query.data or []
+
+        # Filter out deactivated users
+        filtered_rows = []
+        for row in rows:
+            op_profile = row.get("horse_op_profile")
+            if not op_profile:
+                continue
+
+            user = op_profile.get("users")
+            if not user:
+                continue
+
+            if user.get("status", "").lower() != "deactivated":
+                filtered_rows.append(row)
+
+        # Mapping categories
+        status_mapping = {
+            "healthy": ["healthy", "normal", "good", "excellent"],
+            "sick": ["sick", "ill", "critical", "emergency"],
+            "unhealthy": ["unhealthy", "poor", "poor_health", "poor health"]
+        }
+
+        # Monthly counts
+        monthly_data = defaultdict(lambda: {"healthy": 0, "sick": 0, "unhealthy": 0, "total": 0})
+
+        for row in filtered_rows:
+            status_text = (row.get("horse_status") or "").strip().lower()
+            created_at = row.get("created_at")
+
+            # Default to current month if no created_at
+            if created_at:
+                try:
+                    date_obj = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                except:
+                    date_obj = datetime.now()
+            else:
+                date_obj = datetime.now()
+
+            month_label = date_obj.strftime("%b %Y")  # e.g., "Oct 2025"
+
+            # Count categories
+            for category, keywords in status_mapping.items():
+                if status_text in keywords:
+                    monthly_data[month_label][category] += 1
+                    break
+
+            monthly_data[month_label]["total"] += 1
+
+        # Convert to sorted list by month
+        result = []
+        for month in sorted(monthly_data.keys(), key=lambda d: datetime.strptime(d, "%b %Y")):
+            result.append({
+                "month": month,
+                "healthy": monthly_data[month]["healthy"],
+                "sick": monthly_data[month]["sick"],
+                "unhealthy": monthly_data[month]["unhealthy"],
+                "total": monthly_data[month]["total"]
+            })
+
+        return Response(result)
+
+    except Exception as e:
+        return Response(
+            {"detail": "Internal server error", "error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+
+
+
+
+# -------------------- ADD COMMENTS --------------------#
+
+@api_view(["POST"])
+@login_required
+def add_comment(request):
+    try:
+        announcement_id = request.data.get("announcement_id")
+        comment_text = request.data.get("comment_text")
+        parent_comment_id = request.data.get("parent_comment_id")  # optional
+
+        if not announcement_id or not comment_text:
+            return Response({"error": "Missing required fields."}, status=400)
+
+        token = get_token_from_cookie(request)
+        if not token:
+            return Response({"error": "Authentication required"}, status=401)
+
+        # Verify token with Supabase
+        user_resp = sr_client.auth.get_user(token)
+        print("DEBUG get_user:", user_resp.__dict__)  # Debug output
+
+        if not hasattr(user_resp, "user") or not user_resp.user:
+            return Response({"error": "Invalid token or user not found"}, status=403)
+
+        user_id = user_resp.user.id
+
+        data = {
+            "announcement_id": announcement_id,
+            "comment_text": comment_text,
+            "user_id": user_id,
+            "parent_comment_id": parent_comment_id,
+        }
+
+        response = sr_client.table("comment").insert(data).execute()
+
+        if hasattr(response, "error") and response.error:
+            return Response({"error": response.error.message}, status=500)
+
+        return Response({
+            "message": "Comment added successfully",
+            "data": response.data
+        }, status=200)
+
+    except Exception as e:
+        print("❌ add_comment ERROR:", str(e))
+        return Response({"error": str(e)}, status=500)
+
+
+# -------------------- FETCH COMMENTS --------------------#
+@api_view(["GET"])
+def get_comments(request):
+    import uuid, traceback
+
+    try:
+        post_id = request.query_params.get("post_id")
+
+        if not post_id:
+            return Response({"error": "post_id query parameter is required"}, status=400)
+
+        # Validate UUID
+        try:
+            uuid.UUID(post_id)
+        except ValueError:
+            return Response({"error": "Invalid post_id format"}, status=400)
+
+        # Fetch comments
+        result = (
+            sr_client.table("comment")
+            .select("id, comment_text, comment_date, user_id, parent_comment_id")
+            .eq("announcement_id", post_id)
+            .order("comment_date", desc=False)
+            .execute()
+        )
+
+        comments_data = result.data or []
+        print("✅ Comments fetched:", len(comments_data))
+
+        # Collect all user IDs
+        user_ids = {c["user_id"] for c in comments_data if c.get("user_id")}
+
+        user_profiles = {}
+        if user_ids:
+            try:
+                # Try kutsero_profile first
+                profiles_result = (
+                    sr_client.table("kutsero_profile")
+                    .select("kutsero_id, kutsero_fname, kutsero_lname")
+                    .in_("kutsero_id", list(user_ids))
+                    .execute()
+                )
+
+                for profile in profiles_result.data:
+                    user_profiles[profile["kutsero_id"]] = {
+                        "name": f"{profile.get('kutsero_fname', '')} {profile.get('kutsero_lname', '')}".strip()
+                    }
+
+                # ✅ Try horse_op_profile (for horse operators)
+                horse_result = (
+                    sr_client.table("horse_op_profile")
+                    .select("op_id, op_fname, op_lname")
+                    .in_("op_id", list(user_ids))
+                    .execute()
+                )
+
+                for profile in horse_result.data:
+                    user_profiles[profile["op_id"]] = {
+                        "name": f"{profile.get('op_fname', '')} {profile.get('op_lname', '')}".strip()
+                    }
+
+                # For missing users, fallback to role from users table
+                missing_ids = user_ids - set(user_profiles.keys())
+                if missing_ids:
+                    users_result = (
+                        sr_client.table("users")
+                        .select("id, role")
+                        .in_("id", list(missing_ids))
+                        .execute()
+                    )
+
+                    for user in users_result.data:
+                        user_profiles[user["id"]] = {"name": user.get("role", "User")}
+
+            except Exception as e:
+                print("⚠️ Error fetching user profiles:", e)
+
+        # Build comment tree
+        def build_comment_tree(parent_id=None):
+            tree = []
+            for comment in comments_data:
+                if comment.get("parent_comment_id") == parent_id:
+                    user_profile = user_profiles.get(comment.get("user_id"))
+                    author_name = user_profile["name"] if user_profile else "Unknown User"
+
+                    node = {
+                        "id": comment["id"],
+                        "text": comment["comment_text"],
+                        "timestamp": comment["comment_date"],
+                        "author": author_name,
+                        "replies": build_comment_tree(comment["id"]),
+                    }
+                    tree.append(node)
+            return tree
+
+        comments_tree = build_comment_tree()
+
+        return Response({"data": comments_tree}, status=200)
+
+    except Exception as e:
+        print("❌ get_comments ERROR:", traceback.format_exc())
+        return Response({"error": "Internal server error", "details": str(e)}, status=500)
+
+
+
+
+# -------------------- ADD REPLY_COMMENT --------------------#
+logger = logging.getLogger(__name__)
+
+@api_view(["POST"])
+@login_required
+def add_reply(request):
+    token = get_token_from_cookie(request)
+    if not token:
+        return Response({"error": "Missing token"}, status=401)
+    
+    # Get logged-in user from Supabase
+    try:
+        supa_user = sr_client.auth.get_user(token)
+        user_id = supa_user.user.id
+    except Exception as e:
+        return Response({"error": f"Invalid token: {str(e)}"}, status=401)
+
+    data = request.data
+    announcement_id = data.get("announcement_id")
+    parent_comment_id = data.get("parent_comment_id")
+    comment_text = data.get("comment_text")
+
+    if not all([announcement_id, comment_text]):
+        return Response({"error": "Missing required fields"}, status=400)
+
+    # Optional: check if parent_comment_id exists
+    if parent_comment_id:
+        try:
+            parent_resp = sr_client.table("comment").select("id").eq("id", parent_comment_id).execute()
+            if not parent_resp.data:
+                return Response({"error": "Parent comment not found"}, status=404)
+        except APIError as e:
+            logger.error("Error checking parent comment: %s", e)
+            return Response({"error": "Database error checking parent comment"}, status=500)
+
+    # Insert reply safely
+    try:
+        resp = sr_client.table("comment").insert({
+            "announcement_id": announcement_id,
+            "parent_comment_id": parent_comment_id,
+            "comment_text": comment_text,
+            "user_id": user_id,
+            "created_at": "now()"
+        }).execute()
+
+        return Response({"message": "Reply added successfully", "data": resp.data}, status=201)
+
+    except APIError as e:
+        logger.error("Database insert error: %s", e)
+        return Response({"error": "Failed to add reply, check table exists and schema"}, status=500)
+    
+
+
+

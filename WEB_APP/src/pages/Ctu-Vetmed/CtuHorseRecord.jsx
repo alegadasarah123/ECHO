@@ -621,11 +621,6 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
         Back to Horse Details
       </button>
 
-     
-        
-
-
-
       <div className="mb-6">
         <h5 className="text-base font-semibold text-red-700 mb-4 border-b-2 border-gray-200 pb-1.5">
           Medical Record Details
@@ -848,7 +843,7 @@ const TreatmentHistoryDetailView = ({ treatmentHistory, horse, onBack, onExportP
               <div className="text-lg font-semibold text-gray-900 mb-1">
                 {treatmentHistory.medrec_bodytemp || "N/A"} °C
               </div>
-              <div className="text-xs text-gray-500">Temperature</div>
+            <div className="text-xs text-gray-500">Temperature</div>
             </div>
             <div className="bg-white border border-gray-200 rounded-md p-3 text-center">
               <div className="text-lg font-semibold text-gray-900 mb-1">
@@ -1695,14 +1690,20 @@ function CtuHorseRecord() {
       </div>
 
       <div className="flex-1 flex flex-col w-full md:w-[calc(100%-250px)]">
-        <header className="bg-white px-6 py-4 flex items-center justify-between shadow-sm flex-wrap gap-4">
-          <div className="dashboard-container">
-            <h2 className="text-xl font-bold text-black">
+        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+          <div className="flex flex-col">
+            <h2 className="text-2xl font-bold text-[#b91c1c]">
               {currentView === 'list' && 'Horse Records'}
               {currentView === 'horse' && 'Horse Details'}
               {currentView === 'medical' && 'Medical Record Details'}
               {currentView === 'treatment' && 'Treatment History Details'}
             </h2>
+            <p className="text-sm text-gray-600 mt-1 font-normal">
+              {currentView === 'list' && 'Manage and view all horse medical records and treatment histories'}
+               {/*{currentView === 'horse' && 'View detailed information about the horse and its medical history'}
+              {currentView === 'medical' && 'View comprehensive medical record details and laboratory results'}
+              {currentView === 'treatment' && 'View detailed treatment history and administered medications'}*/}
+            </p>
           </div>
 
           <div className="flex items-center gap-4">

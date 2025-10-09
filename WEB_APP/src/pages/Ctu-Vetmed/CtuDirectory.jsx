@@ -852,10 +852,14 @@ const getInitialsBackgroundColor = (initials) => {
       <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
 
       <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
-        <header className="bg-white px-6 py-2 flex items-center justify-between shadow-sm flex-wrap gap-4">
-          <div className="flex items-center justify-between py-3 px-5 bg-transparent">
-            <h2 className="text-2xl font-bold text-black">Directory</h2>
-          </div>
+        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+           <div className="flex flex-col w-full sm:w-2/3 md:w-1/2 lg:w-1/3">
+              <h2 className="text-2xl font-bold text-[#b91c1c]">Director</h2>
+              <p className="text-sm text-gray-500 mt-1 font-normal">
+              View approved registered users and their assigned roles.
+            </p>
+
+</div>
           
           <div className="flex items-center gap-4">
             {/* 🔄 Refresh Icon */}

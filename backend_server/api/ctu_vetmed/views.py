@@ -18,7 +18,7 @@ from django.utils import timezone  # ✅ keep only this
 import base64
 from collections import defaultdict
 from datetime import datetime, timedelta
-
+from django.views.decorators.csrf import csrf_exempt
 
 
 
@@ -161,7 +161,7 @@ def signup(request):
 
 
 
-# -------------------- GET VET PROFILES --------------------
+
 # -------------------- GET VET PROFILES --------------------
 @api_view(["GET"])
 def get_vet_profiles(request):
@@ -1652,7 +1652,7 @@ def get_horses(request):
                 medrec_prognosis,
                 medrec_recommendation,
                 medrec_followup_date,
-                medrec_horsestatus,                                                  
+                medrec_horsestatus,
                 medrec_vet_id,
                 vet_profile (
                     vet_fname,
@@ -1663,7 +1663,6 @@ def get_horses(request):
                     treatment_id,
                     treatment_name,
                     treatment_dosage,
-                    followup_date,
                     treatment_duration,
                     treatment_outcome
                 )

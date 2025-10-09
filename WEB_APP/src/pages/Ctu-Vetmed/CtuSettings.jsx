@@ -576,7 +576,13 @@ const CtuSettings = () => {
       <Sidebar />
       <div className="flex-1 font-sans flex flex-col h-screen overflow-hidden">
         <div className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
-          <h1 className="text-2xl font-bold text-black">Settings</h1>
+          <div className="flex flex-col">
+            <h2 className="text-2xl font-bold text-[#b91c1c]">Settings</h2>
+            <p className="text-sm text-gray-600 mt-1 font-normal">
+              Manage your profile, security settings, and user accounts
+            </p>
+          </div>
+
           <div className="flex items-center gap-4">
             {/* 🔄 Refresh Icon */}
             <button

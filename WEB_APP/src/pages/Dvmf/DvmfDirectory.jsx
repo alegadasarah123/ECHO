@@ -19,6 +19,7 @@ import {
   Mail,
   MapPin,
   Phone,
+  RefreshCw,
   Search,
   User,
   X,
@@ -40,7 +41,7 @@ function DvmfDirectory() {
   const [directoryData, setDirectoryData] = useState(initialDirectoryData)
   const [filteredDirectoryData, setFilteredDirectoryData] = useState(initialDirectoryData)
 
-  // Separate state for sidebar navigation active state
+  // Fixed tab state - using consistent values
   const [currentPage, setCurrentPage] = useState(1)
   const [currentTab, setCurrentTab] = useState("all")
 
@@ -50,12 +51,12 @@ function DvmfDirectory() {
   const [notifications, setNotifications] = useState(initialNotifications)
   const [showNotificationDropdown, setShowNotificationDropdown] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Added state for sidebar open/close
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
-  const sidebarRef = useRef(null) // Added ref for sidebar
+  const sidebarRef = useRef(null)
   const [directory, setDirectory] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true) // Changed to true initially
   const [error, setError] = useState(null)
 
   // State for profile modal
@@ -65,6 +66,9 @@ function DvmfDirectory() {
   // Pagination state
   const [currentPagePagination, setCurrentPagePagination] = useState(1)
   const [itemsPerPagePagination, setItemsPerPagePagination] = useState(10)
+
+  // Refresh state
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Utility functions
   const formatTimeAgo = useCallback((timestamp) => {
@@ -86,11 +90,133 @@ function DvmfDirectory() {
     return icons[type] || icons.info
   }, [])
 
+  // MARK ALL NOTIFICATIONS AS READ
+  const handleMarkAllAsRead = async () => {
+    // Update frontend state
+    setNotifications(prev => prev.map(notif => ({ ...notif, read: true })))
+
+    // Call backend endpoint
+    try {
+      const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+        method: "POST",
+        credentials: "include",
+      })
+      const data = await res.json()
+      console.log("Mark all as read result:", data)
+    } catch (err) {
+      console.error("Error marking all as read:", err)
+    }
+  }
+
+  // HANDLE INDIVIDUAL NOTIFICATION CLICK
+  const handleNotificationClick = async (notification) => {
+    // Mark notification as read in frontend
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === notification.id ? { ...notif, read: true } : notif
+      )
+    )
+
+    // Mark notification as read in backend
+    try {
+      const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+        method: "POST",
+        credentials: "include",
+      })
+      const data = await res.json()
+      console.log("Mark notification read result:", data)
+    } catch (err) {
+      console.error("Error marking notification as read:", err)
+    }
+
+    // Handle navigation based on notification content
+    console.log('Notification clicked:', notification)
+    const message = notification.message.toLowerCase()
+
+    if (
+      message.includes("new registration") ||
+      message.includes("approved") ||
+      message.includes("declined")
+    ) {
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      })
+    } else if (message.includes("pending medical record access")) {
+      navigate("/CtuAccessRequest", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      })
+    } else if (message.includes("emergency") || message.includes("sos")) {
+      navigate("/CtuSOS")
+    } else {
+      console.warn("No matching navigation route for this notification:", notification)
+    }
+  }
+
+  // HANDLE OPENING USER MANAGEMENT FROM NOTIFICATIONS
+  const handleOpenUserManagement = async (notification = null) => {
+    console.log('Opening User Management from dashboard notification:', notification)
+
+    if (notification) {
+      // Mark notification as read in frontend
+      setNotifications(prev =>
+        prev.map(notif =>
+          notif.id === notification.id ? { ...notif, read: true } : notif
+        )
+      )
+
+      // Mark notification as read in backend
+      try {
+        const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+          method: "POST",
+          credentials: "include",
+        })
+        const data = await res.json()
+        console.log("Mark notification read result:", data)
+      } catch (err) {
+        console.error("Error marking notification as read:", err)
+      }
+
+      const message = notification.message.toLowerCase()
+
+      if (
+        message.includes("new registration") ||
+        message.includes("approved") ||
+        message.includes("declined")
+      ) {
+        navigate("/CtuAccountApproval", {
+          state: {
+            highlightedNotification: notification,
+            shouldHighlight: true,
+          },
+        })
+      } else if (message.includes("pending medical record access")) {
+        navigate("/CtuAccessRequest", {
+          state: {
+            highlightedNotification: notification,
+            shouldHighlight: true,
+          },
+        })
+      } else if (message.includes("emergency") || message.includes("sos")) {
+        navigate("/CtuSOS")
+      } else {
+        console.warn("No matching navigation route for this notification:", notification)
+      }
+    } else {
+      console.warn("No notification provided — no navigation performed")
+    }
+  }
+
   // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/dvmf/get_vetnotifications/")
+    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -100,6 +226,7 @@ function DvmfDirectory() {
           id: notif.id,
           message: notif.message,
           date: notif.date || new Date().toISOString(),
+          read: notif.read || false // Add read status
         }))
         setNotifications(formatted)
       })
@@ -117,13 +244,13 @@ function DvmfDirectory() {
     return () => clearInterval(interval)
   }, [loadNotifications])
 
-  // Apply all filters and search
+  // ✅ FIXED: Apply all filters and search - CORRECTED TAB FILTERING
   const applyFiltersAndSearch = useCallback(() => {
     let filtered = directoryData
 
     filtered = filtered.filter((item) => item.status?.toLowerCase() === "approved")
 
-    // Apply tab filter
+    // ✅ FIXED: Proper tab filtering logic
     switch (currentTab) {
       case "veterinarian":
         filtered = filtered.filter((item) => item.type?.toLowerCase() === "veterinarian")
@@ -131,12 +258,11 @@ function DvmfDirectory() {
       case "kutsero":
         filtered = filtered.filter((item) => item.type?.toLowerCase() === "kutsero")
         break
-      case "horses-operator":
-        // This would require special handling for grouping horses by owner
+      case "horse operator":
         filtered = filtered.filter((item) => item.type?.toLowerCase() === "horse operator")
         break
       default:
-        // 'all' tab
+        // "all" tab - show everything
         break
     }
 
@@ -214,7 +340,7 @@ function DvmfDirectory() {
   const handleView = async (person) => {
     try {
       // Optional: fetch full data from API if not already complete
-      const response = await fetch("http://127.0.0.1:8000/api/dvmf/get_directory_profiles/", {
+      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -253,7 +379,8 @@ function DvmfDirectory() {
   // Load data from backend
   const loadDirectoryData = async () => {
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/dvmf/get_directory_profiles/", {
+      setLoading(true)
+      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -267,7 +394,7 @@ function DvmfDirectory() {
       const combinedData = [
         ...data.vets.map((vet) => ({
           name: `${vet.vet_fname} ${vet.vet_lname}`,
-          type: "Veterinarian",
+          type: "veterinarian",
           email: vet.vet_email || "N/A",
           status: vet.users?.status || "Unknown",
           date_of_birth: vet.vet_dob || "N/A",
@@ -282,7 +409,7 @@ function DvmfDirectory() {
         })),
         ...data.kutseros.map((k) => ({
           name: `${k.kutsero_fname} ${k.kutsero_lname}`,
-          type: "Kutsero",
+          type: "kutsero",
           email: k.kutsero_email || "N/A",
           status: k.users?.status || "Unknown",
           date_of_birth: k.kutsero_dob || "N/A",
@@ -296,7 +423,7 @@ function DvmfDirectory() {
         })),
         ...data.horse_operators.map((h) => ({
           name: `${h.op_fname} ${h.op_mname || ""} ${h.op_lname}`.trim(),
-          type: "Horse Operator",
+          type: "horse operator",
           email: h.op_email || "N/A",
           status: h.users?.status || "Unknown",
           date_of_birth: h.op_dob || "N/A",
@@ -318,32 +445,100 @@ function DvmfDirectory() {
     }
   }
 
-  // Define the styles object at the top of your file or before the return
-  const styles = {
-    notificationBtn: {
-      position: "relative",
-      background: "transparent",
-      border: "none",
-      cursor: "pointer",
-      padding: "8px",
-      borderRadius: "50%",
-    },
-    badge: {
-      position: "absolute",
-      top: "2px",
-      right: "2px",
-      backgroundColor: "#ef4444",
-      color: "#fff",
-      borderRadius: "50%",
-      padding: "2px 6px",
-      fontSize: "12px",
-      fontWeight: "bold",
-    },
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      await Promise.all([
+        loadDirectoryData(),
+        loadNotifications()
+      ])
+    } catch (error) {
+      console.error("Failed to refresh data:", error)
+    } finally {
+      setIsRefreshing(false)
+    }
   }
 
   useEffect(() => {
     loadDirectoryData()
   }, [])
+
+  // Skeleton Loader Component for Table Rows
+  const TableSkeleton = () => {
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                Name
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                Role
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                Email
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                Status
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                Actions
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: itemsPerPagePagination }).map((_, index) => (
+              <tr key={index} className="border-b border-gray-100">
+                <td className="px-4 py-4">
+                  <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+                </td>
+                <td className="px-4 py-4">
+                  <div className="h-6 w-16 bg-gray-200 rounded animate-pulse"></div>
+                </td>
+                <td className="px-4 py-4">
+                  <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+                </td>
+                <td className="px-4 py-4">
+                  <div className="h-6 w-16 bg-gray-200 rounded animate-pulse"></div>
+                </td>
+                <td className="px-4 py-4">
+                  <div className="h-8 w-16 bg-gray-200 rounded animate-pulse"></div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  // Function to get initials from first and last name
+// Function to get initials from first and last name
+const getInitials = (firstName, lastName) => {
+  const firstInitial = firstName ? firstName.charAt(0).toUpperCase() : '';
+  const lastInitial = lastName ? lastName.charAt(0).toUpperCase() : '';
+  return firstInitial + lastInitial;
+};
+
+// Function to generate consistent background color based on initials
+const getInitialsBackgroundColor = (initials) => {
+  const colors = [
+    'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 
+    'bg-indigo-500', 'bg-teal-500', 'bg-orange-500', 'bg-cyan-500',
+    'bg-red-500', 'bg-amber-500', 'bg-lime-500', 'bg-emerald-500'
+  ];
+  
+  // Simple hash function to get consistent color for same initials
+  let hash = 0;
+  for (let i = 0; i < initials.length; i++) {
+    hash = initials.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  
+  const colorIndex = Math.abs(hash) % colors.length;
+  return colors[colorIndex];
+};
 
   const ProfileModal = ({ person, onClose }) => {
     if (!person) return null
@@ -354,8 +549,10 @@ function DvmfDirectory() {
     const normalizedPerson = (() => {
       if (person.vet_fname) {
         return {
-          type: "Veterinarian",
+          type: "veterinarian",
           name: `${person.vet_fname} ${person.vet_mname || ""} ${person.vet_lname}`.trim(),
+          firstName: person.vet_fname,
+          lastName: person.vet_lname,
           email: person.vet_email,
           fb: person.vet_fb || "N/A",
           phone: person.vet_phone_num,
@@ -370,13 +567,16 @@ function DvmfDirectory() {
           specialization: person.vet_specialization,
           organization: person.vet_org,
           status: person.users?.status || "N/A",
+          profile_photo: person.vet_profile_photo || null,
         }
       }
 
       if (person.kutsero_fname) {
         return {
-          type: "Kutsero",
+          type: "kutsero",
           name: `${person.kutsero_fname} ${person.kutsero_mname || ""} ${person.kutsero_lname}`.trim(),
+          firstName: person.kutsero_fname,
+          lastName: person.kutsero_lname,
           email: person.kutsero_email,
           fb: person.kutsero_fb || "N/A",
           phone: person.kutsero_phone_num,
@@ -387,13 +587,16 @@ function DvmfDirectory() {
           barangay: person.kutsero_brgy,
           zip_code: person.kutsero_zipcode,
           status: person.users?.status || "N/A",
+          profile_photo: person.kutsero_image || null,
         }
       }
 
       if (person.op_fname) {
         return {
-          type: "Horse Operator",
+          type: "horse operator",
           name: `${person.op_fname} ${person.op_mname || ""} ${person.op_lname}`.trim(),
+          firstName: person.op_fname,
+          lastName: person.op_lname,
           email: person.op_email,
           fb: person.op_fb || "N/A",
           phone: person.op_phone_num,
@@ -404,6 +607,7 @@ function DvmfDirectory() {
           barangay: person.op_brgy,
           zip_code: person.op_zipcode,
           status: person.users?.status || "N/A",
+          profile_photo: person.op_image || null,
         }
       }
 
@@ -411,15 +615,24 @@ function DvmfDirectory() {
       return person
     })()
 
-    const typeClassMap = {
-      Veterinarian: "veterinarian",
-      Kutsero: "kutsero",
-      "Horse Operator": "horse-operator",
-    }
+    // Function to check if the Facebook value is a valid URL
+    const getFacebookUrl = (fbValue) => {
+      if (!fbValue || fbValue === "N/A") return null;
+      
+      // If it already starts with http, return as is
+      if (fbValue.startsWith('http://') || fbValue.startsWith('https://')) {
+        return fbValue;
+      }
+      
+      // If it's a username, construct Facebook URL
+      // Remove any @ symbol and construct profile URL
+      const username = fbValue.replace('@', '').trim();
+      return `https://facebook.com/${username}`;
+    };
 
     const InfoItem = ({ icon: Icon, label, value }) => (
-      <div className="info-item">
-        <Icon size={14} />
+      <div className="flex items-center gap-2 py-2 text-gray-600 text-sm">
+        <Icon size={14} className="text-gray-500 flex-shrink-0" />
         <span>
           {label}: {value || "N/A"}
         </span>
@@ -427,11 +640,11 @@ function DvmfDirectory() {
     )
 
     const renderPersonalInfo = () => (
-      <div className="profile-section">
-        <h4 className="section-title">
+      <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
+        <h4 className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
           <User size={16} /> Personal Information
         </h4>
-        <div className="info-grid">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <InfoItem icon={User} label="Name" value={normalizedPerson.name} />
           <InfoItem icon={Calendar} label="Date of Birth" value={normalizedPerson.date_of_birth} />
           <InfoItem icon={User} label="Gender" value={normalizedPerson.gender} />
@@ -440,31 +653,62 @@ function DvmfDirectory() {
             icon={CheckSquare}
             label="Status"
             value={
-              <span className={`status-badge ${normalizedPerson.status.toLowerCase()}`}>{normalizedPerson.status}</span>
+              <span
+                className={`inline-block px-2 py-1 rounded-xl text-xs font-medium ${
+                  normalizedPerson.status.toLowerCase() === "approved"
+                    ? "bg-green-100 text-green-800"
+                    : normalizedPerson.status.toLowerCase() === "declined"
+                      ? "bg-red-100 text-red-800"
+                      : normalizedPerson.status.toLowerCase() === "pending"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-gray-100 text-gray-800"
+                }`}
+              >
+                {normalizedPerson.status.toUpperCase()}
+              </span>
             }
           />
         </div>
       </div>
     )
 
-    const renderSocialMediaInfo = () => (
-      <div className="profile-section">
-        <h4 className="section-title">
-          <Globe size={16} /> Social Media
-        </h4>
-        <div className="info-grid">
-          <InfoItem icon={Mail} label="Email" value={normalizedPerson.email} />
-          <InfoItem icon={Facebook} label="Facebook" value={normalizedPerson.fb} />
+    const renderSocialMediaInfo = () => {
+      const facebookUrl = getFacebookUrl(normalizedPerson.fb);
+
+      return (
+        <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
+          <h4 className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
+            <Globe size={16} /> Social Media
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <InfoItem icon={Mail} label="Email" value={normalizedPerson.email} />
+            <div className="flex items-center gap-2 py-2 text-gray-600 text-sm">
+              <Facebook size={14} className="text-gray-500 flex-shrink-0" />
+              <span>Facebook: </span>
+              {facebookUrl && facebookUrl !== "N/A" ? (
+                <a 
+                  href={facebookUrl} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-blue-600 hover:text-blue-800 hover:underline transition-colors duration-200"
+                >
+                  {normalizedPerson.fb}
+                </a>
+              ) : (
+                <span>N/A</span>
+              )}
+            </div>
+          </div>
         </div>
-      </div>
-    )
+      )
+    }
 
     const renderAddressInfo = () => (
-      <div className="profile-section">
-        <h4 className="section-title">
+      <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
+        <h4 className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
           <MapPin size={16} /> Address Information
         </h4>
-        <div className="info-grid">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <InfoItem icon={MapPin} label="Province" value={normalizedPerson.province} />
           <InfoItem icon={MapPin} label="City" value={normalizedPerson.city} />
           <InfoItem icon={MapPin} label="Barangay" value={normalizedPerson.barangay} />
@@ -477,11 +721,11 @@ function DvmfDirectory() {
       if (normalizedPerson.type !== "Veterinarian") return null
 
       return (
-        <div className="profile-section">
-          <h4 className="section-title">
+        <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
+          <h4 className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
             <Award size={16} /> Professional Details
           </h4>
-          <div className="info-grid">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <InfoItem icon={Award} label="License" value={normalizedPerson.license} />
             <InfoItem icon={Award} label="Experience (Years)" value={normalizedPerson.experience} />
             <InfoItem icon={Award} label="Specialization" value={normalizedPerson.specialization} />
@@ -491,22 +735,88 @@ function DvmfDirectory() {
       )
     }
 
+    const initials = getInitials(normalizedPerson.firstName, normalizedPerson.lastName);
+    const initialsBackgroundColor = getInitialsBackgroundColor(initials);
+
     return (
-      <div className="modal-overlay active" onClick={onClose}>
-        <div className="profile-modal" onClick={(e) => e.stopPropagation()}>
-          <div className="profile-modal-header">
-            <div className="profile-header-content">
-              <h3>{normalizedPerson.name}</h3>
-              <span className={`user-type-badge ${typeClassMap[normalizedPerson.type]}`}>
-                {normalizedPerson.type?.replace("_", " ")}
-              </span>
-            </div>
-            <button className="close-button" onClick={onClose}>
+      <div
+        className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay"
+        onClick={onClose}
+      >
+        <div
+          className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-bottom-10 duration-400"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Clean White Header with Profile Picture - Background kept white */}
+          <div className="bg-white p-15 border-b border-gray-200 relative overflow-hidden">
+            <div className="flex items-center gap-6">
+  {/* Profile Picture - Square with border radius */}
+ 
+<div className="flex-shrink-0">
+  {normalizedPerson.profile_photo ? (
+    <div className="w-24 h-24 md:w-32 md:h-32 rounded-xl bg-gray-300 flex items-center justify-center overflow-hidden border-2 border-white shadow-md -mt-5">
+      <img 
+        src={normalizedPerson.profile_photo} 
+        alt="Profile" 
+        className="w-full h-full object-cover rounded-xl"
+        onError={(e) => {
+          e.target.style.display = 'none';
+          e.target.nextSibling.style.display = 'flex';
+        }}
+      />
+      {/* Fallback to initials with colored background when image fails to load */}
+      <div className={`hidden w-full h-full items-center justify-center ${initialsBackgroundColor} rounded-xl`}>
+        <span className="text-sm font-semibold text-white">
+          {initials}
+        </span>
+      </div>
+    </div>
+  ) : (
+    // Show initials with colored background when no profile photo - SAME DESIGN AS WITH PHOTO
+    <div className="w-24 h-24 md:w-32 md:h-32 rounded-xl flex items-center justify-center overflow-hidden border-2 border-white shadow-md -mt-5">
+      <div className={`w-full h-full items-center justify-center ${initialsBackgroundColor} rounded-xl flex`}>
+        <span className="text-sm font-semibold text-white">
+          {initials}
+        </span>
+      </div>
+    </div>
+  )}
+</div>
+
+  {/* Name and Role - Background kept white */}
+  <div className="flex-1 bg-white">
+    <h3 className="text-2xl font-semibold text-gray-900 mb-2">{normalizedPerson.name}</h3>
+    <span
+      className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+        normalizedPerson.type === "veterinarian"
+          ? "bg-green-100 text-green-800 border border-green-200"
+          : normalizedPerson.type === "kutsero"
+            ? "bg-yellow-100 text-yellow-800 border border-yellow-200"
+            : normalizedPerson.type === "horse operator"
+              ? "bg-orange-100 text-orange-800 border border-orange-200"
+              : "bg-gray-100 text-gray-800 border border-gray-200"
+      }`}
+    >
+      {normalizedPerson.type === "veterinarian" 
+        ? "Veterinarian" 
+        : normalizedPerson.type === "kutsero" 
+          ? "Kutsero" 
+          : normalizedPerson.type === "horse operator" 
+            ? "Horse Operator" 
+            : normalizedPerson.type?.replace("_", " ")}
+    </span>
+  </div>
+</div>
+            
+            <button
+              className="absolute top-6 right-6 w-10 h-10 bg-gray-100 border border-gray-300 rounded-xl flex items-center justify-center text-gray-600 hover:bg-gray-200 hover:border-gray-400 hover:scale-105 transition-all duration-300"
+              onClick={onClose}
+            >
               <X size={20} />
             </button>
           </div>
 
-          <div className="profile-modal-body">
+          <div className="p-8 bg-gray-50 overflow-y-auto">
             {renderPersonalInfo()}
             {renderSocialMediaInfo()}
             {renderAddressInfo()}
@@ -539,877 +849,170 @@ function DvmfDirectory() {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      <style>{`
-        * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        }
-
-        body {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-        }
-
-        .main-content {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          width: calc(100% - 250px);
-        }
-
-        .headers {
-          background: #ffffff;
-          padding: 8px 24px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          flex-wrap: wrap;
-          gap: 16px;
-        }
-
-        .notification-bell {
-          font-size: clamp(18px, 3vw, 20px);
-          color: #666;
-          cursor: pointer;
-          position: relative;
-          margin-right: 20px;
-          padding: 8px;
-          min-height: 44px;
-          min-width: 44px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .notification-count {
-          position: absolute;
-          top: 2px;
-          right: 2px;
-          background-color: #0F3D5A;
-          color: white;
-          font-size: 10px;
-          width: 15px;
-          height: 15px;
-          border-radius: 50%;
-          display: none;
-          align-items: center;
-          justify-content: center;
-        }
-
-        .notification-dropdown {
-          position: absolute;
-          top: 100%;
-          right: 0;
-          width: min(350px, 90vw);
-          background-color: #ffffff;
-          border: 1px solid #ccc;
-          border-radius: 8px;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-          z-index: 100;
-          display: none;
-          max-height: 400px;
-          overflow-y: auto;
-        }
-
-        .notification-dropdown.show {
-          display: block;
-        }
-
-        .notification-header {
-          padding: 15px 20px;
-          border-bottom: 1px solid #eee;
-          background: #f8f9fa;
-          border-radius: 8px 8px 0 0;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .notification-header h3 {
-          font-size: 16px;
-          font-weight: 600;
-          color: #333;
-          margin: 0;
-        }
-
-        .mark-all-read {
-          background: none;
-          border: none;
-          color: #0F3D5A;
-          font-size: 12px;
-          cursor: pointer;
-          text-decoration: underline;
-        }
-
-        .notification-item {
-          padding: 15px 20px;
-          border-bottom: 1px solid #eee;
-          cursor: pointer;
-          transition: background-color 0.2s;
-          position: relative;
-        }
-
-        .notification-item:hover {
-          background-color: #f8f9fa;
-        }
-
-        .notification-item.unread {
-          background-color: #f0f8ff;
-          border-left: 3px solid #0F3D5A;
-        }
-
-        .notification-item:last-child {
-          border-bottom: none;
-        }
-
-        .notification-title {
-          font-weight: 600;
-          font-size: 14px;
-          margin-bottom: 5px;
-          color: #333;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .notification-message {
-          font-size: 13px;
-          color: #666;
-          margin-bottom: 5px;
-          line-height: 1.4;
-        }
-
-        .notification-time {
-          font-size: 11px;
-          color: #999;
-        }
-
-        .notification-icon {
-          width: 16px;
-          height: 16px;
-          flex-shrink: 0;
-        }
-
-        .notification-icon.info {
-          color: #3b82f6;
-        }
-        .notification-icon.success {
-          color: #10b981;
-        }
-        .notification-icon.warning {
-          color: #f59e0b;
-        }
-        .notification-icon.error {
-          color: #ef4444;
-        }
-
-        .notification-actions {
-          position: absolute;
-          top: 10px;
-          right: 15px;
-          display: flex;
-          gap: 5px;
-        }
-
-        .notification-action {
-          background: none;
-          border: none;
-          color: #999;
-          cursor: pointer;
-          padding: 2px;
-          border-radius: 3px;
-          font-size: 12px;
-        }
-
-        .notification-action:hover {
-          background: #f0f0f0;
-          color: #666;
-        }
-
-        .content-area {
-          flex: 1;
-          padding: 24px;
-          background: #f5f5f5;
-          overflow-y: auto;
-          
-        }
-
-        .directory-container {
-          background: #ffffff;
-          border-radius: 8px;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          overflow: hidden;
-          margin-bottom: 20px;
-        }
-
-        .tab-navigation {
-          display: flex;
-          border-bottom: 1px solid #e5e7eb;
-          background: #f8f9fa;
-          overflow-x: auto;
-        }
-
-        .tab-item {
-          padding: clamp(10px, 2vw, 12px) clamp(16px, 3vw, 24px);
-          font-size: clamp(12px, 2vw, 14px);
-          font-weight: 500;
-          color: #6b7280;
-          cursor: pointer;
-          border-bottom: 2px solid transparent;
-          transition: all 0.2s;
-          white-space: nowrap;
-          min-height: 44px;
-          display: flex;
-          align-items: center;
-        }
-
-        .tab-item.active {
-          color: #111827;
-          background: #e5e7eb;
-          border-bottom-color: #0F3D5A;
-        }
-
-        .tab-item:hover:not(.active) {
-          color: #374151;
-          background: #f3f4f6;
-        }
-
-        .directory-content {
-          padding: clamp(16px, 3vw, 20px);
-        }
-
-        .directory-table {
-          width: 100%;
-          border-collapse: collapse;
-          font-size: clamp(12px, 2vw, 14px);
-        }
-
-        .table-header {
-          background: #f8f9fa;
-        }
-
-        .table-header th {
-          padding: clamp(8px, 2vw, 12px) clamp(12px, 2vw, 16px);
-          text-align: left;
-          font-weight: 600;
-          color: #374151;
-          font-size: clamp(12px, 2vw, 14px);
-          border-bottom: 1px solid #e5e7eb;
-        }
-
-        .table-row {
-          border-bottom: 1px solid #f3f4f6;
-          transition: background-color 0.2s;
-        }
-
-        .table-row:hover {
-          background: #f8f9fa;
-        }
-
-        .table-row:last-child {
-          border-bottom: none;
-        }
-
-        .table-row td {
-          padding: clamp(12px, 2vw, 16px);
-          font-size: clamp(12px, 2vw, 14px);
-          color: #111827;
-          word-wrap: break-word;
-        }
-
-        .status-badge {
-          display: inline-block;
-          padding: 4px 8px;
-          border-radius: 12px;
-          font-size: clamp(10px, 1.8vw, 12px);
-          font-weight: 500;
-          white-space: nowrap;
-        }
-
-        .status-approved {
-          background: #dcfce7;
-          color: #166534;
-        }
-
-        .status-active {
-          background: #dbeafe;
-          color: #1d4ed8;
-        }
-
-        .status-declined {
-          background: #fef2f2;
-          color: #dc2626;
-        }
-        .status-deactivated {
-          background: #fef2f2;
-          color: #4e0920ff;
-        }
-        .status-available {
-          background: #d1fae5;
-          color: #065f46;
-        }
-
-        .status-pending {
-          background: #fef3c7;
-          color: #92400e;
-        }
-
-        .status-offline {
-          background: #f3f4f6;
-          color: #374151;
-        }
-
-        .status-on-duty {
-          background: #e0e7ff;
-          color: #3730a3;
-        }
-
-        .status-off-duty {
-          background: #fce7f3;
-          color: #be185d;
-        }
-
-        .status-unknown {
-          background: #f9fafb;
-          color: #6b7280;
-          border: 1px solid #d1d5db;
-        }
-
-        .role-badge {
-          display: inline-block;
-          padding: 4px 8px;
-          border-radius: 8px;
-          font-size: clamp(10px, 1.8vw, 12px);
-          font-weight: 500;
-          white-space: nowrap;
-        }
-
-        .role-veterinarian {
-          background: #dcfce7;
-          color: #166534;
-          border: 1px solid #bbf7d0;
-        }
-
-        .role-kutsero {
-          background: #fef3c7;
-          color: #92400e;
-          border: 1px solid #fde68a;
-        }
-
-        .role-horse-operator {
-          background: #fef7ed;
-          color: #c2410c;
-          border: 1px solid #fed7aa;
-        }
-
-        .view-button {
-          display: flex;
-          align-items: center;
-          gap: 4px;
-          padding: 6px 12px;
-          background: #dbeafe;
-          color: #1d4ed8;
-          border: 1px solid #bfdbfe;
-          border-radius: 6px;
-          font-size: clamp(10px, 1.8vw, 12px);
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .view-button:hover {
-          background: #bfdbfe;
-          border-color: #93c5fd;
-        }
-
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.7);
-          backdrop-filter: blur(8px);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          opacity: 0;
-          visibility: hidden;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          padding: 20px;
-        }
-
-        .modal-overlay.active {
-          opacity: 1;
-          visibility: visible;
-        }
-
-        .profile-modal {
-          background: #ffffff;
-          border-radius: 24px;
-          width: 100%;
-          max-width: 900px;
-          max-height: 90vh; /* limit modal height */
-          overflow: hidden; /* hide overflow at modal level */
-          box-shadow:
-            0 25px 50px -12px rgba(0, 0, 0, 0.25),
-            0 0 0 1px rgba(255, 255, 255, 0.1);
-          animation: modalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-          position: relative;
-          display: flex;
-          flex-direction: column; /* so header stays on top and body scrolls */
-        }
-
-        @keyframes modalSlideIn {
-          from {
-            opacity: 0;
-            transform: scale(0.9) translateY(-40px);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-          }
-        }
-
-        .profile-modal-header {
-          background: #0F3D5A;
-          padding: 32px;
-          color: white;
-          position: relative;
-          overflow: hidden;
-        }
-
-        .profile-modal-header ::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background:
-            radial-gradient(circle at 20% 50%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
-            radial-gradient(circle at 80% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
-          pointer-events: none;
-        }
-
-        .profile-header-content h3 {
-          font-size: 24px;
-          font-weight: 600;
-          margin: 0 0 8px 0;
-        }
-
-        /* Status badge colors */
-        .status-approved {
-          background-color: #4caf50; /* green */
-          color: white;
-          padding: 3px 8px;
-          border-radius: 12px;
-          font-size: 0.8rem;
-        }
-        .status-badge.approved { background-color: #4caf50; color: white; }
-        .status-badge.declined { background-color: #f44336; color: white; }
-        .status-badge.pending { background-color: #ff9800; color: white; }
-
-        .header-subinfo {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .user-type-badge {
-          background: rgba(255, 255, 255, 0.2);
-          padding: 4px 12px;
-          border-radius: 20px;
-          font-size: 12px;
-          text-transform: capitalize;
-          backdrop-filter: blur(10px);
-        }
-
-        /* Type-specific colors */
-        .user-type-badge.veterinarian {
-          background-color: #4caf50; /* green */
-          color: white;
-        }
-
-        .user-type-badge.kutsero {
-          background-color: #8b4513; /* brown */
-          color: white;
-        }
-
-        .user-type-badge.horse-operator {
-          background-color: #ff9800; /* orange */
-          color: white;
-        }
-
-        .close-button {
-          position: absolute;
-          top: 20px;
-          right: 20px;
-          background: rgba(255, 255, 255, 0.2);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.3);
-          border-radius: 12px;
-          width: 40px;
-          height: 40px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          color: white;
-          z-index: 3;
-        }
-
-        .close-button:hover {
-          background: rgba(255, 255, 255, 0.3);
-          border-color: rgba(255, 255, 255, 0.5);
-          transform: scale(1.05);
-        }
-
-        .profile-modal-body {
-          padding: 32px;
-          background: #f8fafc;
-          overflow-y: auto;
-        }
-
-        .profile-section {
-          background: white;
-          border-radius: 16px;
-          padding: 24px;
-          margin-bottom: 24px;
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-          border: 1px solid #e2e8f0;
-        }
-
-        .profile-section:last-child {
-          margin-bottom: 0;
-        }
-
-        .section-title {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          font-size: 16px;
-          font-weight: 600;
-          color: #1e293b;
-          margin-bottom: 16px;
-        }
-
-        .info-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-          gap: 12px;
-        }
-
-        .info-item {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          padding: 8px 0;
-          color: #475569;
-          font-size: 14px;
-        }
-
-        .info-item svg {
-          color: #667eea;
-          flex-shrink: 0;
-        }
-
-        @media (max-width: 1024px) {
-          .filter-select {
-            min-width: auto;
-          }
-        }
-
-        .dashboard-container {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 12px 20px;
-          background: transparent;
-        }
-
-        .directory-title {
-          font-size: 25px;
-          font-weight: bold;
-          color: #0F3D5A;
-        }
-
-        .search-containers {
-          flex: 1;
-          max-width: 400px;
-          margin-right: 20px;
-          position: relative;
-          min-width: 200px;
-          margin-bottom: 10px;
-        }
-
-        .search-input {
-          width: 100%;
-          padding: 8px 16px 8px 40px;
-          border: 2px solid #fff;
-          border-radius: 8px;
-          font-size: clamp(12px, 2vw, 14px);
-          outline: none;
-          min-height: 50px;
-          background: #fff;
-        }
-
-        .search-icon {
-          position: absolute;
-          left: 12px;
-          top: 50%;
-          transform: translateY(-50%);
-          width: 16px;
-          height: 16px;
-          color: #6b7280;
-        }
-
-        .empty-state {
-          display: flex;
-          flex-direction: column;
-          align-items: center; /* centers horizontally */
-          justify-content: center; /* centers vertically */
-          text-align: center; /* centers text inside */
-          padding: 40px 20px;
-          height: 100%; /* optional, if you want it vertically centered in parent */
-          gap: 12px; /* spacing between icon, heading, and paragraph */
-          color: #555; /* optional text color */
-        }
-
-        /* Pagination Styles */
-        .pagination-container {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          background-color: #f9fafb;
-          padding: 10px 20px;
-          border-radius: 8px;
-          border: 1px solid #e5e7eb;
-          font-family: sans-serif;
-        }
-
-        .pagination-info {
-          font-size: 14px;
-          color: #6b7280;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-        }
-
-        .pagination-controls {
-          display: flex;
-          align-items: center;
-          gap: 10px;
-        }
-
-        .items-per-page {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .items-per-page select {
-          padding: 6px 10px;
-          border: 1px solid #d1d5db;
-          border-radius: 4px;
-          background-color: white;
-          font-size: 14px;
-        }
-
-        .pagination-buttons {
-          display: flex;
-          gap: 5px;
-        }
-
-        .pagination-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          min-width: 36px;
-          height: 36px;
-          padding: 0 8px;
-          border: 1px solid #d1d5db;
-          background-color: white;
-          color: #374151;
-          border-radius: 6px;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .pagination-btn:hover:not(:disabled) {
-          background-color: #f9fafb;
-          border-color: #9ca3af;
-        }
-
-        .pagination-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .pagination-btn.active {
-          background-color: #0F3D5A;
-          color: white;
-          border-color: #0F3D5A;
-        }
-
-        .pagination-nav-btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 36px;
-          height: 36px;
-          border: 1px solid #d1d5db;
-          background-color: white;
-          color: #374151;
-          border-radius: 6px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .pagination-nav-btn:hover:not(:disabled) {
-          background-color: #f9fafb;
-          border-color: #9ca3af;
-        }
-
-        .pagination-nav-btn:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .pagination-ellipsis {
-          margin: 0 5px;
-          color: #6b7280;
-        }
-      `}</style>
-
       <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
 
-      <div className="main-content">
-        <header className="headers">
-          <div className="dashboard-container">
-            <h2 className="directory-title">Directory</h2>
+      <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
+        <header className="bg-white py-[18px] px-6 flex items-center justify-between shadow-sm flex-wrap gap-4">
+           <div className="flex flex-col w-full sm:w-2/3 md:w-1/2 lg:w-1/3">
+  <h2 className="text-2xl font-bold text-[#0F3D5A]">Directory</h2>
+  <p className="text-sm text-gray-500 mt-1 font-normal">
+  View approved registered users and their assigned roles.
+</p>
+
+</div>
+          
+          <div className="flex items-center gap-4">
+            {/* 🔄 Refresh Icon */}
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
+              title="Refresh Directory"
+            >
+              <RefreshCw 
+                size={24} 
+                className={`text-gray-700 ${isRefreshing ? 'animate-spin' : ''}`}
+              />
+            </button>
+
+            {/* 🔔 Notification Bell (without count) */}
+            <button
+              className="bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
+              onClick={() => setNotifsOpen(!notifsOpen)}
+            >
+              <Bell size={24} className="text-gray-700" />
+            </button>
           </div>
-          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
-            <Bell size={24} color="#374151" />
-            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
-          </button>
 
           {/* Notification Modal */}
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            onOpenUserManagement={handleOpenUserManagement}
           />
         </header>
 
-        <div className="content-area">
-          <div className="search-containers">
-            <Search className="search-icon" size={18} />
+        <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
+          <div className="flex-1 max-w-md relative mb-4">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
             <input
               type="text"
-              className="search-input"
+              className="w-full pl-10 pr-4 py-3 border-2 border-white rounded-lg text-sm outline-none min-h-[50px] bg-white"
               placeholder="Search directory..."
               onChange={handleSearchInput}
               value={searchTerm}
             />
           </div>
-          <div className="directory-container">
-            <div className="tab-navigation">
-              <div
-                className={`tab-item ${currentTab === "all" ? "active" : ""}`}
-                onClick={() => setCurrentTab("all")}
-                data-tab="all"
-              >
-                All
-              </div>
-              <div
-                className={`tab-item ${currentTab === "veterinarian" ? "active" : ""}`}
-                onClick={() => setCurrentTab("veterinarian")}
-                data-tab="veterinarian"
-              >
-                Veterinarian
-              </div>
-              <div
-                className={`tab-item ${currentTab === "horses-operator" ? "active" : ""}`}
-                onClick={() => setCurrentTab("horses-operator")}
-                data-tab="horses-operator"
-              >
-                Horses Operator
-              </div>
-              <div
-                className={`tab-item ${currentTab === "kutsero" ? "active" : ""}`}
-                onClick={() => setCurrentTab("kutsero")}
-                data-tab="kutsero"
-              >
-                Kutsero
-              </div>
-            </div>
 
-            <div className="directory-content">
-              {filteredDirectoryData.length === 0 ? (
-                <div className="empty-state">
+          <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-5">
+            <div className="p-5">
+              {loading ? (
+                // Show skeleton loader while loading
+                <TableSkeleton />
+              ) : filteredDirectoryData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center text-center py-10 gap-3 text-gray-600">
                   <Folder size={48} />
-                  <h3>No approved directory entries found</h3>
-                  <p>Only approved entries will appear here</p>
+                  <h3 className="text-lg font-medium">No approved directory entries found</h3>
+                  <p className="text-sm">Only approved entries will appear here</p>
                 </div>
               ) : (
-                <table className="directory-table">
-                  <thead className="table-header">
-                    <tr>
-                      <th>Name</th>
-                      <th>Role</th>
-                      <th>Email</th>
-                      <th>Status</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {getPaginatedData().map((person) => (
-                      <tr key={person.email} className="table-row">
-                        <td>{person.name}</td>
-                        <td>
-                          <span className={`role-badge role-${person.type?.toLowerCase().replace(/\s+/g, "-")}`}>
-                            {person.type}
-                          </span>
-                        </td>
-                        <td>{person.email}</td>
-                        <td>
-                          <span className={`status-badge status-${person.status?.toLowerCase()}`}>{person.status}</span>
-                        </td>
-                        <td>
-                          <button className="view-button" onClick={() => handleView(person)}>
-                            <Eye size={16} /> View
-                          </button>
-                        </td>
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                          Name
+                        </th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                          Role
+                        </th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                          Email
+                        </th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                          Status
+                        </th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                          Actions
+                        </th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {getPaginatedData().map((person) => (
+                        <tr
+                          key={person.email}
+                          className="border-b border-gray-100 hover:bg-gray-50 transition-colors duration-200"
+                        >
+                          <td className="px-4 py-4 text-sm text-gray-900">{person.name}</td>
+                          <td className="px-4 py-4">
+                            <span
+                              className={`inline-block px-2 py-1 rounded-lg text-xs font-medium whitespace-nowrap ${
+                                person.type?.toLowerCase() === "veterinarian"
+                                  ? "bg-green-100 text-green-800 border border-green-200"
+                                  : person.type?.toLowerCase() === "kutsero"
+                                    ? "bg-yellow-100 text-yellow-800 border border-yellow-200"
+                                    : person.type?.toLowerCase().includes("horse")
+                                      ? "bg-orange-100 text-orange-800 border border-orange-200"
+                                      : "bg-gray-100 text-gray-800 border border-gray-200"
+                              }`}
+                            >
+                              {/* ✅ FIXED: Capitalize first letter of role */}
+                              {person.type && person.type.charAt(0).toUpperCase() + person.type.slice(1)}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4 text-sm text-gray-900 break-words">{person.email}</td>
+                          <td className="px-4 py-4">
+                            <span
+                              className={`inline-block px-2 py-1 rounded-xl text-xs font-medium whitespace-nowrap ${
+                                person.status?.toLowerCase() === "approved"
+                                  ? "bg-green-100 text-green-800"
+                                  : person.status?.toLowerCase() === "declined"
+                                    ? "bg-red-100 text-red-800"
+                                    : person.status?.toLowerCase() === "pending"
+                                      ? "bg-yellow-100 text-yellow-800"
+                                      : "bg-gray-100 text-gray-800"
+                              }`}
+                            >
+                              {person.status?.toUpperCase()}
+                            </span>
+                          </td>
+                          <td className="px-4 py-4">
+                            <button
+                              className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md text-xs cursor-pointer hover:bg-blue-100 hover:border-blue-300 transition-all duration-200"
+                              onClick={() => handleView(person)}
+                            >
+                              <Eye size={16} /> View
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
 
-            {/* Pagination Controls */}
-            {filteredDirectoryData.length > 0 && (
-              <div className="pagination-container" style={{ marginTop: "2rem" }}>
-                <div className="pagination-info">
-                  Showing {(currentPagePagination - 1) * itemsPerPagePagination + 1} to{" "}
-                  {Math.min(currentPagePagination * itemsPerPagePagination, filteredDirectoryData.length)} of{" "}
-                  {filteredDirectoryData.length} results
+            {!loading && filteredDirectoryData.length > 0 && (
+              <div className="flex justify-between items-center bg-gray-50 px-5 py-3 border-t border-gray-200 text-sm">
+                <div className="text-gray-600 flex items-center gap-3">
+                  <span>
+                    Showing {(currentPagePagination - 1) * itemsPerPagePagination + 1} to{" "}
+                    {Math.min(currentPagePagination * itemsPerPagePagination, filteredDirectoryData.length)} of{" "}
+                    {filteredDirectoryData.length} results
+                  </span>
                 </div>
 
-                <div className="pagination-controls">
-                  <div className="items-per-page">
-                    <span>Show:</span>
-                    <select value={itemsPerPagePagination} onChange={handleItemsPerPageChange}>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-600">Show:</span>
+                    <select
+                      value={itemsPerPagePagination}
+                      onChange={handleItemsPerPageChange}
+                      className="px-2 py-1 border border-gray-300 rounded bg-white text-sm"
+                    >
                       <option value="5">5</option>
                       <option value="10">10</option>
                       <option value="20">20</option>
@@ -1417,9 +1020,9 @@ function DvmfDirectory() {
                     </select>
                   </div>
 
-                  <div className="pagination-buttons">
+                  <div className="flex gap-1">
                     <button
-                      className="pagination-nav-btn"
+                      className="flex items-center justify-center w-8 h-8 border border-gray-300 bg-white text-gray-700 rounded hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                       onClick={() => goToPage(currentPagePagination - 1)}
                       disabled={currentPagePagination === 1}
                     >
@@ -1441,7 +1044,11 @@ function DvmfDirectory() {
                       return (
                         <button
                           key={pageNum}
-                          className={`pagination-btn ${currentPagePagination === pageNum ? "active" : ""}`}
+                          className={`flex items-center justify-center min-w-[32px] h-8 px-2 border rounded text-sm transition-all duration-200 ${
+                            currentPagePagination === pageNum
+                              ? "bg-red-700 text-white border-red-700"
+                              : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
+                          }`}
                           onClick={() => goToPage(pageNum)}
                         >
                           {pageNum}
@@ -1450,7 +1057,7 @@ function DvmfDirectory() {
                     })}
 
                     <button
-                      className="pagination-nav-btn"
+                      className="flex items-center justify-center w-8 h-8 border border-gray-300 bg-white text-gray-700 rounded hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
                       onClick={() => goToPage(currentPagePagination + 1)}
                       disabled={currentPagePagination === totalPages}
                     >

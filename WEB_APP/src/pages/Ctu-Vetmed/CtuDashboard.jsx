@@ -504,10 +504,10 @@ function CtuDashboard() {
       <Sidebar isOpen={isSidebarOpen} />
 
       <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
-        <header className="bg-white px-6 py-2 flex items-center justify-between shadow-sm flex-wrap gap-14">
+        <header className="bg-white px-6 py-2 flex items-center justify-between shadow-md sticky top-0 z-10 flex-wrap gap-14">
           <div className="flex flex-col py-3 px-5 bg-transparent">
             <h2 className="text-2xl font-bold text-[#b91c1c]">Dashboard</h2>
-           <p className="text-sm text-gray-600 mt-1 font-normal">
+            <p className="text-sm text-gray-600 mt-1 font-normal">
               Overview of requests, approvals, declines, and recent activity
             </p>
           </div>

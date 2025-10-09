@@ -26,7 +26,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE_URL = "http://127.0.0.1:8000/api/ctu_vetmed"
+const API_BASE_URL = "http://localhost:8000/api/ctu_vetmed"
 
 const SkeletonLoader = ({ activeTab }) => {
   const getGridConfig = () => {
@@ -571,8 +571,14 @@ function CtuAccessRequest() {
       </div>
 
       <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
-        <header className="bg-white px-6 py-4 flex items-center justify-between shadow-sm flex-wrap gap-4">
-          <h1 className="text-2xl font-bold text-black">Access Request</h1>
+        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+          {/* ADDED HEADER SECTION */}
+          <div className="flex flex-col">
+            <h2 className="text-2xl font-bold text-[#b91c1c]">Access Request</h2>
+            <p className="text-sm text-gray-600 mt-1 font-normal">
+              Overview of medical record access requests and approvals
+            </p>
+          </div>
 
           <div className="flex items-center gap-4">
             {/* Manual Refresh Icon */}
@@ -930,7 +936,7 @@ function CtuAccessRequest() {
                         <Calendar size={14} />
                         Date Approved
                       </label>
-                      <p className="text-gray-900">{selectedRequest.approvedAt.toLocaleDateString()}</p>
+                    <p className="text-gray-900">{selectedRequest.approvedAt.toLocaleDateString()}</p>
                     </div>
                   )}
                   {selectedRequest.approvedBy && (

@@ -706,11 +706,15 @@ function CtuAccountApproval() {
       </div>
 
       <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
-        <header className="bg-white px-6 py-[18px] flex items-center justify-between shadow-sm flex-wrap gap-4">
+        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+          {/* ADDED HEADER SECTION */}
+          <div className="flex flex-col ">
             <h2 className="text-2xl font-bold text-[#b91c1c]">Account Approval</h2>
-             {/* <p className="text-sm text-gray-600 mt-1 font-normal">
-              Overview of requests, approvals, declines, and recent activity
-            </p>*/}
+            <p className="text-sm text-gray-600 mt-1 font-normal">
+              Manage veterinarian user requests, approvals, and declines
+            </p>
+          </div>
+
           <div className="flex items-center gap-4">
             {/* Manual Refresh Icon */}
             <button
@@ -1369,11 +1373,12 @@ function CtuAccountApproval() {
               )}
             </div>
 
-            <div className="flex justify-end pt-4 border-t border-gray-200 gap-3 flex-wrap">
+            {/* COMPACT BUTTONS - Updated Section */}
+            <div className="flex justify-end pt-4 border-t border-gray-200 gap-2 flex-wrap">
               {selectedUser?.users?.status === "pending" && (
                 <>
                   <button
-                    className="inline-flex items-center gap-1.5 py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 flex-1 min-h-[40px] bg-green-500 text-white hover:bg-green-600"
+                    className="inline-flex items-center gap-1.5 py-2 px-3 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 bg-green-500 text-white hover:bg-green-600 min-w-[100px] justify-center"
                     onClick={() => showApproveConfirmation(selectedUser.vet_id)}
                   >
                     <CheckCircle size={16} />
@@ -1381,7 +1386,7 @@ function CtuAccountApproval() {
                   </button>
 
                   <button
-                    className="inline-flex items-center gap-1.5 py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 flex-1 min-h-[40px] bg-red-500 text-white hover:bg-red-600"
+                    className="inline-flex items-center gap-1.5 py-2 px-3 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 bg-red-500 text-white hover:bg-red-600 min-w-[100px] justify-center"
                     onClick={() => showDeclineConfirmation(selectedUser.vet_id)}
                   >
                     <XCircle size={16} />

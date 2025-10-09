@@ -150,6 +150,7 @@ const CtuAnnouncement = () => {
       display: "flex",
       justifyContent: "space-between",
       alignItems: "center",
+      
     },
     headerTitle: {
       fontSize: "24px",
@@ -1649,16 +1650,21 @@ const CtuAnnouncement = () => {
           width: calc(100% - 250px);
         }
 
-        .headers {
-          background: white;
-          padding: 10px 24px;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-          flex-wrap: wrap;
-          gap: 16px;
-        }
+       .headers {
+  background: white;
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 
+              0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  flex-wrap: wrap;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
 
         .content-areas {
           flex: 1;
@@ -1693,7 +1699,7 @@ const CtuAnnouncement = () => {
           width: 120px;
           height: 120px;
           object-fit: cover;
-          margin-top: 17px;
+          margin-top: 18px;
         }
 
         .profile-details h1 {
@@ -2804,8 +2810,12 @@ const CtuAnnouncement = () => {
       </div>
       <div className="main-content">
         <header className="headers">
-          <div className="dashboard-container">
-            <h2 className="announcement-title">Announcement</h2>
+          {/* ADDED HEADER SECTION */}
+          <div className="flex flex-col">
+            <h2 className="text-2xl font-bold text-[#b91c1c]">Announcement</h2>
+            <p className="text-sm text-gray-600 mt-1 font-normal">
+              Share updates, news, and important information with the community
+            </p>
           </div>
           
           <div className="header-actions">
