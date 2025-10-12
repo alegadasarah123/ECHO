@@ -55,9 +55,9 @@ CORS_ALLOW_HEADERS = ["content-type", "authorization", "x-csrftoken"]
 CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 
 # CSRF / SESSION
-CSRF_TRUSTED_ORIGINS = ["http://localhost:5173"]
+CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "https://echo-backend-7dxq.onrender.com"]
 SESSION_COOKIE_SAMESITE = "None"
-SESSION_COOKIE_SECURE = True
+SESSION_COOKIE_SECURE = False
 
 # URLS / WSGI
 ROOT_URLCONF = "backend.urls"
