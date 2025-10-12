@@ -49,15 +49,20 @@ REST_FRAMEWORK = {
 }
 
 # CORS
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = ["content-type", "authorization", "x-csrftoken"]
 CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:5173",  # your frontend dev URL
+    "https://echo-backend-7dxq.onrender.com"
+]
 # CSRF / SESSION
 CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "https://echo-backend-7dxq.onrender.com"]
 SESSION_COOKIE_SAMESITE = "None"
-SESSION_COOKIE_SECURE = False
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SECURE = True
+
 
 # URLS / WSGI
 ROOT_URLCONF = "backend.urls"
