@@ -84,10 +84,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'backend.wsgi.application'
 
-
-# Database
-# https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
@@ -95,9 +91,6 @@ DATABASES = {
     }
 }
 
-
-# Password validation
-# https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -114,9 +107,6 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
-# Internationalization
-# https://docs.djangoproject.com/en/5.2/topics/i18n/
 
 LANGUAGE_CODE = 'en-us'
 
@@ -149,3 +139,25 @@ DEFAULT_FROM_EMAIL = "ECHOSys Admin <echosys.ph@gmail.com>"
 # --------------- UPLOAD SETTINGS ----------------
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+# ---------------- DEPLOYMENT SETTINGS FOR RENDER ----------------
+import dj_database_url
+
+# Static files (CSS, JavaScript, Images)
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+
+# Allow all hosts temporarily (Render assigns dynamic URLs)
+ALLOWED_HOSTS = ['*']
+
+# CORS — allow all origins for now (you can restrict later)
+CORS_ALLOW_ALL_ORIGINS = True
+
+# Update database config if Render provides DATABASE_URL (for PostgreSQL)
+DATABASES['default'] = dj_database_url.config(
+    default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}", conn_max_age=600
+)
+
+# Security settings (recommended for Render)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
