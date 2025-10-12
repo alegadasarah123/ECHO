@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, ArrowLeft, Edit3, Save, User, Phone, Mail, MapPin, Camera, Calendar, FileText,
-  Download, Eye, Trash2
+  Download, Eye, Trash2, Building, Home
 } from 'lucide-react';
 import { provinces, getCities, getBarangays } from './philippinesData';
 
@@ -17,10 +17,20 @@ const ProfileModal = ({ isOpen, onClose }) => {
     vet_sex: '',
     vet_phone_num: '',
     vet_email: '',
+    // Home address fields
+    vet_street: '',
     vet_city: '',
     vet_province: '',
     vet_brgy: '',
     vet_zipcode: '',
+    // Clinic address fields
+    vet_address_is_clinic: true,
+    vet_clinic_street: '',
+    vet_clinic_city: '',
+    vet_clinic_province: '',
+    vet_clinic_brgy: '',
+    vet_clinic_zipcode: '',
+    // Professional fields
     vet_specialization: '',
     vet_org: '',
     vet_exp_yr: '',
@@ -37,12 +47,20 @@ const ProfileModal = ({ isOpen, onClose }) => {
   const [newProfilePhoto, setNewProfilePhoto] = useState(null);
   const [isDeletingPhoto, setIsDeletingPhoto] = useState(false);
 
-  // Address dropdown states
-  const [province, setProvince] = useState('');
-  const [city, setCity] = useState('');
-  const [barangay, setBarangay] = useState('');
-  const cities = getCities(province);
-  const barangays = getBarangays(province, city);
+  // Address dropdown states for home address
+  const [homeProvince, setHomeProvince] = useState('');
+  const [homeCity, setHomeCity] = useState('');
+  const [homeBarangay, setHomeBarangay] = useState('');
+  
+  // Address dropdown states for clinic address
+  const [clinicProvince, setClinicProvince] = useState('');
+  const [clinicCity, setClinicCity] = useState('');
+  const [clinicBarangay, setClinicBarangay] = useState('');
+
+  const homeCities = getCities(homeProvince);
+  const homeBarangays = getBarangays(homeProvince, homeCity);
+  const clinicCities = getCities(clinicProvince);
+  const clinicBarangays = getBarangays(clinicProvince, clinicCity);
 
   // Show alert function
   const showAlert = (message, type = 'success') => {
@@ -89,9 +107,13 @@ const ProfileModal = ({ isOpen, onClose }) => {
         setOriginalData(cleanedProfileData);
         
         // Set address dropdown values from profile data
-        setProvince(data.profile.vet_province || '');
-        setCity(data.profile.vet_city || '');
-        setBarangay(data.profile.vet_brgy || '');
+        setHomeProvince(data.profile.vet_province || '');
+        setHomeCity(data.profile.vet_city || '');
+        setHomeBarangay(data.profile.vet_brgy || '');
+        
+        setClinicProvince(data.profile.vet_clinic_province || '');
+        setClinicCity(data.profile.vet_clinic_city || '');
+        setClinicBarangay(data.profile.vet_clinic_brgy || '');
       } catch (err) {
         console.error(err);
         showAlert('Failed to load profile', 'error');
@@ -106,12 +128,17 @@ const ProfileModal = ({ isOpen, onClose }) => {
     if (isEditing) {
       setProfileData(prev => ({
         ...prev,
-        vet_province: province,
-        vet_city: city,
-        vet_brgy: barangay
+        // Home address
+        vet_province: homeProvince,
+        vet_city: homeCity,
+        vet_brgy: homeBarangay,
+        // Clinic address
+        vet_clinic_province: clinicProvince,
+        vet_clinic_city: clinicCity,
+        vet_clinic_brgy: clinicBarangay
       }));
     }
-  }, [province, city, barangay, isEditing]);
+  }, [homeProvince, homeCity, homeBarangay, clinicProvince, clinicCity, clinicBarangay, isEditing]);
 
   const handleSave = async () => {
     setIsUploading(true);
@@ -214,9 +241,12 @@ const ProfileModal = ({ isOpen, onClose }) => {
     if (originalData) {
       setProfileData(originalData);
       // Reset dropdowns to original values
-      setProvince(originalData.vet_province || '');
-      setCity(originalData.vet_city || '');
-      setBarangay(originalData.vet_brgy || '');
+      setHomeProvince(originalData.vet_province || '');
+      setHomeCity(originalData.vet_city || '');
+      setHomeBarangay(originalData.vet_brgy || '');
+      setClinicProvince(originalData.vet_clinic_province || '');
+      setClinicCity(originalData.vet_clinic_city || '');
+      setClinicBarangay(originalData.vet_clinic_brgy || '');
     }
     setNewProfilePhoto(null);
     setIsEditing(false);
@@ -225,6 +255,10 @@ const ProfileModal = ({ isOpen, onClose }) => {
 
   const handleInputChange = (field, value) => {
     setProfileData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleAddressTypeChange = (isClinic) => {
+    setProfileData(prev => ({ ...prev, vet_address_is_clinic: isClinic }));
   };
 
   const handleProfilePictureClick = () => {
@@ -272,17 +306,12 @@ const ProfileModal = ({ isOpen, onClose }) => {
     }
   };
 
-  const handleDownloadDocument = () => {
-    if (profileData.vet_documents) {
-      const cleanUrl = profileData.vet_documents;
-      const link = document.createElement('a');
-      link.href = cleanUrl;
-      link.download = 'veterinarian_document.pdf';
-      link.target = '_blank';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
+
+  // Format address for display
+  const formatAddress = (street, brgy, city, province, zipcode) => {
+    return [street, brgy, city, province, zipcode]
+      .filter(item => item && item.trim() !== '')
+      .join(', ') || '-';
   };
 
   // Bigger PDF viewer component with full-height iframe
@@ -299,14 +328,6 @@ const ProfileModal = ({ isOpen, onClose }) => {
               <h3 className="text-xl font-bold">Uploaded Document</h3>
             </div>
             <div className="flex items-center space-x-2">
-              {/* Download Button */}
-              <button
-                onClick={handleDownloadDocument}
-                className="flex items-center space-x-2 bg-white/20 hover:bg-white/30 px-3 py-2 rounded-lg transition-colors"
-              >
-                <Download className="w-4 h-4" />
-                <span>Download</span>
-              </button>
 
               {/* Close Button */}
               <button
@@ -648,7 +669,6 @@ const ProfileModal = ({ isOpen, onClose }) => {
                       <option value="">Select Sex</option>
                       <option value="Male">Male</option>
                       <option value="Female">Female</option>
-                      <option value="Other">Other</option>
                     </select>
                   ) : (
                     <p className="text-gray-800">{profileData.vet_sex || '-'}</p>
@@ -657,7 +677,6 @@ const ProfileModal = ({ isOpen, onClose }) => {
               </div>
             </div>
 
-            {/* Rest of the sections remain the same but with disabled states for uploading/deleting */}
             {/* Contact Information Section */}
             <div className="bg-blue-50 rounded-2xl p-6 border border-blue-200/50 shadow-sm">
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center space-x-2">
@@ -702,77 +721,223 @@ const ProfileModal = ({ isOpen, onClose }) => {
                     )}
                   </div>
                 </div>
+              </div>
+            </div>
 
-                {/* Address fields with disabled states */}
-                <div className="flex items-start space-x-3">
-                  <MapPin className="w-5 h-5 text-red-500 flex-shrink-0 mt-1" />
-                  <div className="flex-1">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
-                    {isEditing ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">Province</label>
-                          <select
-                            value={province}
-                            onChange={(e) => setProvince(e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            disabled={isUploading || isDeletingPhoto}
-                          >
-                            <option value="">Select Province</option>
-                            {provinces.map(p => (
-                              <option key={p} value={p}>{p}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
-                          <select
-                            value={city}
-                            onChange={(e) => setCity(e.target.value)}
-                            disabled={!province || isUploading || isDeletingPhoto}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                          >
-                            <option value="">Select City</option>
-                            {cities.map(c => (
-                              <option key={c} value={c}>{c}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">Barangay</label>
-                          <select
-                            value={barangay}
-                            onChange={(e) => setBarangay(e.target.value)}
-                            disabled={!city || isUploading || isDeletingPhoto}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                          >
-                            <option value="">Select Barangay</option>
-                            {barangays.map(b => (
-                              <option key={b} value={b}>{b}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-gray-500 mb-1">Zip Code</label>
-                          <input
-                            type="text"
-                            placeholder="Zip Code"
-                            value={profileData.vet_zipcode}
-                            onChange={(e) => handleInputChange('vet_zipcode', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
-                            disabled={isUploading || isDeletingPhoto}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-gray-800">
-                        {[profileData.vet_brgy, profileData.vet_city, profileData.vet_province, profileData.vet_zipcode]
-                          .filter(item => item && item.trim() !== '')
-                          .join(', ') || '-'}
-                      </p>
-                    )}
+            {/* Address Information Section */}
+            <div className="bg-orange-50 rounded-2xl p-6 border border-orange-200/50 shadow-sm">
+              <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center space-x-2">
+                <MapPin className="w-5 h-5 text-orange-500" />
+                <span>Address Information</span>
+              </h3>
+
+              {/* Address Type Toggle */}
+              {isEditing && (
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-3">Address Type</label>
+                  <div className="flex space-x-4">
+                    <button
+                      type="button"
+                      onClick={() => handleAddressTypeChange(true)}
+                      className={`flex items-center space-x-2 px-4 py-3 rounded-lg border-2 transition-all duration-200 ${
+                        profileData.vet_address_is_clinic
+                          ? 'bg-blue-500 text-white border-blue-500'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-blue-300'
+                      }`}
+                    >
+                      <Building className="w-4 h-4" />
+                      <span>Clinic Address</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleAddressTypeChange(false)}
+                      className={`flex items-center space-x-2 px-4 py-3 rounded-lg border-2 transition-all duration-200 ${
+                        !profileData.vet_address_is_clinic
+                          ? 'bg-green-500 text-white border-green-500'
+                          : 'bg-white text-gray-700 border-gray-300 hover:border-green-300'
+                      }`}
+                    >
+                      <Home className="w-4 h-4" />
+                      <span>Home Address</span>
+                    </button>
                   </div>
                 </div>
+              )}
+
+              {/* Home Address */}
+              <div className={`mb-6 ${!profileData.vet_address_is_clinic ? 'bg-white p-4 rounded-lg border-2 border-green-200' : ''}`}>
+                <h4 className="text-md font-semibold text-gray-700 mb-3 flex items-center space-x-2">
+                  <Home className="w-4 h-4 text-green-500" />
+                  <span>Home Address</span>
+                </h4>
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Street</label>
+                      <input
+                        type="text"
+                        value={profileData.vet_street}
+                        onChange={(e) => handleInputChange('vet_street', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="Enter street address"
+                        disabled={isUploading || isDeletingPhoto}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Province</label>
+                        <select
+                          value={homeProvince}
+                          onChange={(e) => setHomeProvince(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          disabled={isUploading || isDeletingPhoto}
+                        >
+                          <option value="">Select Province</option>
+                          {provinces.map(p => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
+                        <select
+                          value={homeCity}
+                          onChange={(e) => setHomeCity(e.target.value)}
+                          disabled={!homeProvince || isUploading || isDeletingPhoto}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        >
+                          <option value="">Select City</option>
+                          {homeCities.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Barangay</label>
+                        <select
+                          value={homeBarangay}
+                          onChange={(e) => setHomeBarangay(e.target.value)}
+                          disabled={!homeCity || isUploading || isDeletingPhoto}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        >
+                          <option value="">Select Barangay</option>
+                          {homeBarangays.map(b => (
+                            <option key={b} value={b}>{b}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Zip Code</label>
+                        <input
+                          type="text"
+                          placeholder="Zip Code"
+                          value={profileData.vet_zipcode}
+                          onChange={(e) => handleInputChange('vet_zipcode', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          disabled={isUploading || isDeletingPhoto}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-gray-800">
+                    {formatAddress(
+                      profileData.vet_street,
+                      profileData.vet_brgy,
+                      profileData.vet_city,
+                      profileData.vet_province,
+                      profileData.vet_zipcode
+                    )}
+                  </p>
+                )}
+              </div>
+
+              {/* Clinic Address */}
+              <div className={`${profileData.vet_address_is_clinic ? 'bg-white p-4 rounded-lg border-2 border-blue-200' : ''}`}>
+                <h4 className="text-md font-semibold text-gray-700 mb-3 flex items-center space-x-2">
+                  <Building className="w-4 h-4 text-blue-500" />
+                  <span>Clinic Address</span>
+                </h4>
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Clinic Street</label>
+                      <input
+                        type="text"
+                        value={profileData.vet_clinic_street}
+                        onChange={(e) => handleInputChange('vet_clinic_street', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        placeholder="Enter clinic street address"
+                        disabled={isUploading || isDeletingPhoto}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Province</label>
+                        <select
+                          value={clinicProvince}
+                          onChange={(e) => setClinicProvince(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          disabled={isUploading || isDeletingPhoto}
+                        >
+                          <option value="">Select Province</option>
+                          {provinces.map(p => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">City</label>
+                        <select
+                          value={clinicCity}
+                          onChange={(e) => setClinicCity(e.target.value)}
+                          disabled={!clinicProvince || isUploading || isDeletingPhoto}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        >
+                          <option value="">Select City</option>
+                          {clinicCities.map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Barangay</label>
+                        <select
+                          value={clinicBarangay}
+                          onChange={(e) => setClinicBarangay(e.target.value)}
+                          disabled={!clinicCity || isUploading || isDeletingPhoto}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                        >
+                          <option value="">Select Barangay</option>
+                          {clinicBarangays.map(b => (
+                            <option key={b} value={b}>{b}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Zip Code</label>
+                        <input
+                          type="text"
+                          placeholder="Zip Code"
+                          value={profileData.vet_clinic_zipcode}
+                          onChange={(e) => handleInputChange('vet_clinic_zipcode', e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                          disabled={isUploading || isDeletingPhoto}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-gray-800">
+                    {formatAddress(
+                      profileData.vet_clinic_street,
+                      profileData.vet_clinic_brgy,
+                      profileData.vet_clinic_city,
+                      profileData.vet_clinic_province,
+                      profileData.vet_clinic_zipcode
+                    )}
+                  </p>
+                )}
               </div>
             </div>
 

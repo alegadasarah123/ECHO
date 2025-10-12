@@ -7,6 +7,46 @@ import NotificationModal from './KutNotif';
 
 const API_BASE = "http://localhost:8000/api/kutsero_president";
 
+// Profile Avatar Component
+const UserProfileAvatar = ({ user, size = 9 }) => {
+  const getInitials = (name) => {
+    if (!name || name === "N/A") return "?";
+    
+    // Split the name and filter out empty parts
+    const nameParts = name.split(' ').filter(part => part.trim() !== '');
+    
+    if (nameParts.length === 0) return "?";
+    if (nameParts.length === 1) return nameParts[0].charAt(0).toUpperCase();
+    
+    // Get first letter of first name and first letter of last name
+    const firstName = nameParts[0];
+    const lastName = nameParts[nameParts.length - 1];
+    
+    return (firstName.charAt(0) + lastName.charAt(0)).toUpperCase();
+  };
+
+  const profilePicture = user.profilePicture || user.kutsero_image || user.op_image;
+
+  if (profilePicture) {
+    return (
+      <img 
+        src={profilePicture} 
+        alt={user.name}
+        className={`w-${size} h-${size} rounded-full object-cover border border-gray-200`}
+      />
+    );
+  }
+
+  return (
+    <div 
+      className={`w-${size} h-${size} rounded-full flex items-center justify-center text-white font-medium text-xs border border-gray-200`}
+      style={{ backgroundColor: '#D2691E' }}
+    >
+      {getInitials(user.name)}
+    </div>
+  );
+};
+
 const KutseroDashboard = () => {
   const navigate = useNavigate(); 
   const [authorized, setAuthorized] = useState(false);
@@ -111,7 +151,10 @@ const KutseroDashboard = () => {
           email: u.email || "N/A",
           created_at: u.created_at ? new Date(u.created_at).toLocaleDateString() : "N/A",
           role: u.role,
-          status: u.status?.toLowerCase() || "pending"
+          status: u.status?.toLowerCase() || "pending",
+          profilePicture: u.profilePicture,
+          kutsero_image: u.kutsero_image,
+          op_image: u.op_image
         }));
         setUsers(formatted);
         setPendingCount(data.pending_count);
@@ -474,9 +517,8 @@ const KutseroDashboard = () => {
                 ) : todayRegistrations.length > 0 ? (
                   todayRegistrations.map((u) => (
                     <div key={u.id} className="flex gap-3 p-3 border border-gray-100 rounded-lg bg-gray-50 items-center hover:bg-gray-100 transition-colors duration-150">
-                      <div className="w-9 h-9 rounded-full flex items-center justify-center bg-green-50">
-                        <User size={16} className="text-green-600" />
-                      </div>
+                      {/* Profile Avatar instead of User icon */}
+                      <UserProfileAvatar user={u} size={9} />
                       <div className="flex-1 flex justify-between items-center">
                         <span className="font-medium text-gray-900">{u.name}</span>
                         <span className={`px-2 py-1 rounded-md text-xs font-medium border ${getRoleColor(u.role)}`}>
@@ -520,9 +562,8 @@ const KutseroDashboard = () => {
                       const StatusIcon = getStatusIcon(u.status);
                       return (
                         <div key={u.id} className="flex gap-3 p-3 border border-gray-100 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors duration-150">
-                          <div className="w-9 h-9 rounded-full flex items-center justify-center bg-green-50 shrink-0">
-                            <User size={16} className="text-green-600" />
-                          </div>
+                          {/* Profile Avatar instead of User icon */}
+                          <UserProfileAvatar user={u} size={9} />
                           <div className="flex-1 flex flex-col gap-1 min-w-0">
                             <div className="flex justify-between items-center">
                               <span className="font-medium text-gray-900 truncate">{u.name}</span>

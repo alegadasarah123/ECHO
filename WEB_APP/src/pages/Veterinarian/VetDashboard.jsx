@@ -22,17 +22,22 @@ const VetDashboard = () => {
     schedule: true
   });
   const [refreshing, setRefreshing] = useState(false);
+  const [scheduleUpdateTrigger, setScheduleUpdateTrigger] = useState(0);
 
   const [notifications, setNotifications] = useState([]);
 
   // ---------------- REFRESH FUNCTION ----------------
-  const handleRefresh = async () => {
-    setRefreshing(true);
+  const refreshDashboardData = async () => {
+    console.log("Refreshing dashboard data...");
     await Promise.all([
-      fetchProfile(),
       fetchAppointments(),
       fetchScheduleSlots()
     ]);
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await refreshDashboardData();
     setRefreshing(false);
   };
 
@@ -73,6 +78,7 @@ const VetDashboard = () => {
   // ---------------- FETCH SCHEDULE SLOTS ----------------
   const fetchScheduleSlots = async () => {
     try {
+      console.log("Fetching schedule slots...");
       const res = await fetch('http://localhost:8000/api/veterinarian/get_all_schedules/', {
         method: 'GET',
         credentials: 'include',
@@ -83,6 +89,7 @@ const VetDashboard = () => {
       if (res.ok) {
         const processedSlots = processScheduleSlots(data.schedule_slots || []);
         setScheduleSlots(processedSlots);
+        console.log("Schedule slots updated:", processedSlots.length);
       } else {
         console.error('Schedule slots fetch error:', data.error);
         setScheduleSlots([]);
@@ -206,11 +213,35 @@ const VetDashboard = () => {
     };
   };
 
+  // ---------------- HANDLE SCHEDULE MODAL CLOSE ----------------
+  const handleScheduleModalClose = () => {
+    console.log("Schedule modal closed, refreshing data...");
+    setIsScheduleModalOpen(false);
+    // Force refresh after a short delay to ensure backend has processed the request
+    setTimeout(() => {
+      refreshDashboardData();
+    }, 1000);
+  };
+
+  // ---------------- HANDLE SCHEDULE ADDED ----------------
+  const handleScheduleAdded = (newSchedules) => {
+    console.log("New schedules added:", newSchedules);
+    // Force immediate refresh
+    refreshDashboardData();
+  };
+
   useEffect(() => {
     fetchProfile();
     fetchAppointments();
     fetchScheduleSlots();
   }, []);
+
+  // Refresh when scheduleUpdateTrigger changes
+  useEffect(() => {
+    if (scheduleUpdateTrigger > 0) {
+      refreshDashboardData();
+    }
+  }, [scheduleUpdateTrigger]);
 
   // ---------------- FILTER APPROVED APPOINTMENTS FOR TODAY ----------------
   const today = new Date();
@@ -516,10 +547,11 @@ const VetDashboard = () => {
           </div>
         </div>
       </div>
-        <ScheduleModal 
+      
+      <ScheduleModal 
         isOpen={isScheduleModalOpen} 
-        onClose={() => setIsScheduleModalOpen(false)} 
-        onScheduleAdded={fetchAppointments}
+        onClose={handleScheduleModalClose} 
+        onScheduleAdded={handleScheduleAdded}
       />
       <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} />
       <NotificationModal isOpen={isNotificationModalOpen} onClose={() => setIsNotificationModalOpen(false)} notifications={notifications} />

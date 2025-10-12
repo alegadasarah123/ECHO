@@ -53,45 +53,44 @@ const VetAppointmentRequest = () => {
     setCurrentPage(1);
   }, [statusFilter, searchTerm]);
 
-const fetchAppointments = async () => {
-  setLoading(true);
-  setIsRefreshing(true);
-  try {
-    const response = await fetch(
-      "http://localhost:8000/api/veterinarian/get_approved_appointments/",
-      {
-        method: "GET",
-        credentials: "include",
-      }
-    );
-    const data = await response.json();
+  const fetchAppointments = async () => {
+    setLoading(true);
+    setIsRefreshing(true);
+    try {
+      const response = await fetch(
+        "http://localhost:8000/api/veterinarian/get_approved_appointments/",
+        {
+          method: "GET",
+          credentials: "include",
+        }
+      );
+      const data = await response.json();
 
-    if (data.appointments && data.appointments.length > 0) {
-      const mappedAppointments = data.appointments.map((app) => ({
-        id: app.app_id,
-        petName: app.horse_name,
-        ownerName: app.operator_name,
-        ownerPhone: app.operator_phone,
-        date: app.app_date,
-        time: app.app_time,
-        type: app.app_service,
-        notes: app.app_note,
-        horseId: app.horse_id || null,
-        operatorId: app.operator_id || null,
-        status: getAppointmentStatus(app.app_date).status,
-      }));
-      setAppointments(mappedAppointments);
-    } else {
+      if (data.appointments && data.appointments.length > 0) {
+        const mappedAppointments = data.appointments.map((app) => ({
+          id: app.app_id,
+          petName: app.horse_name,
+          ownerName: app.operator_name,
+          ownerPhone: app.operator_phone,
+          date: app.app_date,
+          time: app.app_time,
+          type: app.app_service,
+          notes: app.app_complain,
+          horseId: app.horse_id || null,
+          operatorId: app.operator_id || null,
+        }));
+        setAppointments(mappedAppointments);
+      } else {
+        setAppointments([]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch appointments:", err);
       setAppointments([]);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
     }
-  } catch (err) {
-    console.error("Failed to fetch appointments:", err);
-    setAppointments([]);
-  } finally {
-    setLoading(false);
-    setIsRefreshing(false);
-  }
-};
+  };
 
   const fetchVetProfile = async () => {
     try {
@@ -141,9 +140,9 @@ const fetchAppointments = async () => {
   };
 
   // Function to determine status based on date
-  const getAppointmentStatus = (dateString) => {
+  const getAppointmentStatus = (appointment) => {
     const today = new Date();
-    const appointmentDate = new Date(dateString);
+    const appointmentDate = new Date(appointment.date);
     
     today.setHours(0, 0, 0, 0);
     appointmentDate.setHours(0, 0, 0, 0);
@@ -177,7 +176,8 @@ const fetchAppointments = async () => {
     const matchesSearch = appointment.petName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           appointment.ownerName.toLowerCase().includes(searchTerm.toLowerCase());
     
-    const matchesStatus = statusFilter === "all" || appointment.status === statusFilter;
+    const statusInfo = getAppointmentStatus(appointment);
+    const matchesStatus = statusFilter === "all" || statusInfo.status === statusFilter;
     
     return matchesSearch && matchesStatus;
   });
@@ -208,7 +208,7 @@ const fetchAppointments = async () => {
     pageNumbers.push(i);
   }
 
-  // Status filter options
+  // Status filter options - NO FOLLOW-UP OPTION
   const statusOptions = [
     { value: "all", label: "All Appointments" },
     { value: "Today", label: "Today" },
@@ -284,10 +284,8 @@ const fetchAppointments = async () => {
                       alt="Profile" 
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        // If image fails to load, fall back to initials
                         console.error('Profile image failed to load:', profileDisplay.content);
                         e.target.style.display = 'none';
-                        // The initials will show as fallback due to the gradient background
                       }}
                     />
                   ) : (
@@ -400,7 +398,6 @@ const fetchAppointments = async () => {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {loading ? (
-                    // Show skeleton loading when data is being fetched
                     Array.from({ length: 5 }).map((_, index) => (
                       <SkeletonRow key={index} />
                     ))
@@ -418,7 +415,8 @@ const fetchAppointments = async () => {
                     </tr>
                   ) : (
                     currentItems.map((appointment) => {
-                      const statusInfo = getAppointmentStatus(appointment.date);
+                      const statusInfo = getAppointmentStatus(appointment);
+                      
                       return (
                         <tr key={appointment.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-4 text-center">
@@ -466,7 +464,7 @@ const fetchAppointments = async () => {
               </table>
             </div>
 
-            {/* Pagination Controls - Attached directly to table */}
+            {/* Pagination Controls */}
             {filteredAppointments.length > 0 && !loading && (
               <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
                 <div className="text-sm text-gray-600 mb-4 sm:mb-0">

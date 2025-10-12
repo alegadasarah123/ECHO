@@ -44,14 +44,16 @@ def fetch_and_merge_users():
     auth_res = requests.get(auth_url, headers=headers)
     auth_users = auth_res.json().get("users", [])
 
+    # Fetch core user data
     db_res = supabase.table("users").select("*").execute()
-    db_users = {u["id"]: u for u in db_res.data or []}
+    db_users = {u["id"]: u for u in (db_res.data or [])}
 
+    # Fetch profile tables
     kutsero_res = supabase.table("kutsero_profile").select("*").execute()
-    kutsero_profiles = {kp["kutsero_id"]: kp for kp in kutsero_res.data or []}
+    kutsero_profiles = {kp["kutsero_id"]: kp for kp in (kutsero_res.data or [])}
 
     ho_res = supabase.table("horse_op_profile").select("*").execute()
-    ho_profiles = {hp["op_id"]: hp for hp in ho_res.data or []}
+    ho_profiles = {hp["op_id"]: hp for hp in (ho_res.data or [])}
 
     allowed_roles = {"kutsero", "horse operator"}
     merged = []
@@ -69,6 +71,7 @@ def fetch_and_merge_users():
                 full_name = ""
                 contact_num = ""
 
+                # ✅ KUTSERO
                 if role == "kutsero" and user_id in kutsero_profiles:
                     kp = kutsero_profiles[user_id]
                     full_name = " ".join(filter(None, [
@@ -77,6 +80,7 @@ def fetch_and_merge_users():
                         kp.get("kutsero_lname")
                     ]))
                     contact_num = kp.get("kutsero_phone_num", "")
+
                     profile = {
                         "dateOfBirth": kp.get("kutsero_dob"),
                         "sex": kp.get("kutsero_sex"),
@@ -89,8 +93,11 @@ def fetch_and_merge_users():
                             kp.get("kutsero_zipcode"),
                         ])),
                         "facebook": kp.get("kutsero_fb"),
-                        "profilePicture": kp.get("profile_picture", "https://via.placeholder.com/120x120?text=Profile")
+                        # ✅ Directly fetch image column from DB
+                        "profilePicture": kp.get("kutsero_image")
                     }
+
+                # ✅ HORSE OPERATOR
                 elif role == "horse operator" and user_id in ho_profiles:
                     hp = ho_profiles[user_id]
                     full_name = " ".join(filter(None, [
@@ -99,6 +106,7 @@ def fetch_and_merge_users():
                         hp.get("op_lname")
                     ]))
                     contact_num = hp.get("op_phone_num", "")
+
                     profile = {
                         "dateOfBirth": str(hp.get("op_dob")),
                         "sex": hp.get("op_sex"),
@@ -112,7 +120,8 @@ def fetch_and_merge_users():
                             hp.get("op_zipcode"),
                         ])),
                         "facebook": hp.get("op_fb"),
-                        "profilePicture": hp.get("profile_picture", "https://via.placeholder.com/120x120?text=Profile")
+                        # ✅ Use op_image from DB
+                        "profilePicture": hp.get("op_image")
                     }
 
                 merged.append({
