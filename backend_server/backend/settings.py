@@ -55,10 +55,10 @@ CORS_ALLOW_HEADERS = ["content-type", "authorization", "x-csrftoken"]
 CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:5173",  # your frontend dev URL
-    "https://echo-backend-7dxq.onrender.com"
+    "https://echo-ebl8.onrender.com"
 ]
 # CSRF / SESSION
-CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "https://echo-backend-7dxq.onrender.com"]
+CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "https://echo-ebl8.onrender.com"]
 SESSION_COOKIE_SAMESITE = "None"
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
