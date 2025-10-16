@@ -14,7 +14,7 @@ ALLOWED_HOSTS = ["*"]
 
 # INSTALLED APPS
 INSTALLED_APPS = [
-    "django.contrib.admin",
+    #"django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -54,7 +54,7 @@ CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOW_HEADERS = ["content-type", "authorization", "x-csrftoken"]
 CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # your frontend dev URL
+    "http://localhost:5173",  
     "https://echo-ebl8.onrender.com"
 ]
 # CSRF / SESSION

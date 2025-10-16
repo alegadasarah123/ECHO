@@ -96,14 +96,14 @@ def get_all_users(request):
             ids = role_groups["Kutsero"]
             res = safe_execute(
                 supabase.table("kutsero_profile")
-                .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname")
+                .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_image")
                 .in_("kutsero_id", ids)
             )
             for p in res.data or []:
                 full_name = " ".join(filter(None, [p.get("kutsero_fname"), p.get("kutsero_mname"), p.get("kutsero_lname")])).strip()
                 profiles_map[p["kutsero_id"]] = {
                     "name": f"{full_name} (Kutsero)",
-                    "avatar": None
+                    "avatar": p.get("kutsero_image")
                 }
 
         # 🐴 Horse Operator
@@ -121,7 +121,7 @@ def get_all_users(request):
                     "avatar": p.get("op_image")
                 }
 
-        # 🧑 Kutsero President
+        # 🧑 Kutsero President (no image)
         if "Kutsero President" in role_groups:
             ids = role_groups["Kutsero President"]
             res = safe_execute(
@@ -136,7 +136,7 @@ def get_all_users(request):
                     "avatar": None
                 }
 
-        # 🧑 DVMF + DVMF-Admin
+        # 🧑 DVMF + DVMF-Admin (no image)
         for role_key in ["Dvmf", "Dvmf-Admin"]:
             if role_key in role_groups:
                 ids = role_groups[role_key]
@@ -152,7 +152,7 @@ def get_all_users(request):
                         "avatar": None
                     }
 
-        # 🎓 CTU Vetmed + CTU-Admin
+        # 🎓 CTU Vetmed + CTU-Admin (no image)
         for role_key in ["Ctu-Vetmed", "Ctu-Admin"]:
             if role_key in role_groups:
                 ids = role_groups[role_key]
@@ -185,6 +185,7 @@ def get_all_users(request):
         print("❌ Error fetching users:", str(e))
         traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 @api_view(["GET"])
 @login_required
@@ -522,6 +523,8 @@ def get_conversation(request, conversation_id):
                 "content": msg["mes_content"],
                 "timestamp": local_time,
                 "isOwn": msg["user_id"] == vet_id,
+                "is_read": msg["is_read"],  # ✅ ADD THIS LINE - Include read status
+                "originalTimestamp": msg["mes_date"],  # ✅ ADD THIS LINE - Include original timestamp
             })
 
         return Response(formatted_messages, status=status.HTTP_200_OK)
@@ -529,9 +532,7 @@ def get_conversation(request, conversation_id):
     except Exception as e:
         print("❌ Error fetching conversation:", str(e))
         traceback.print_exc()
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)    
 
 
 @api_view(["PUT"])

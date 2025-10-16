@@ -890,6 +890,37 @@ const MedicalRecordDetails = ({
     setShowConfirmation(true);
   };
 
+  // ========== COPIED SCHEDULE HANDLERS ==========
+  const handleScheduleSelect = (scheduleId) => {
+    setSelectedScheduleId(scheduleId);
+    const selectedSchedule = schedules.find(s => s.id === scheduleId);
+    if (selectedSchedule) {
+      setFollowUpData(prev => ({
+        ...prev,
+        followUpDate: selectedSchedule.date,
+        followUpStartTime: selectedSchedule.startTime,
+        followUpEndTime: selectedSchedule.endTime
+      }));
+    }
+  };
+
+  const handleCancelSchedule = () => {
+    setSelectedScheduleId("");
+    setFollowUpData(prev => ({
+      ...prev,
+      followUpDate: "",
+      followUpStartTime: "",
+      followUpEndTime: ""
+    }));
+  };
+
+  const handleToggleCustomSchedule = (showCustom) => {
+    setShowCustomSchedule(showCustom);
+    if (!showCustom) {
+      setSelectedScheduleId("");
+    }
+  };
+
   // ========== UPDATED SAVE FOLLOW-UP FUNCTION WITH SCHEDULE SUPPORT ==========
   const handleSaveFollowUp = async () => {
     console.log("💾 Saving follow-up data:", followUpData);
@@ -996,37 +1027,6 @@ const MedicalRecordDetails = ({
     setLabFiles([]);
     setSelectedScheduleId("");
     setError(null);
-  };
-
-  // ========== COPIED SCHEDULE HANDLERS ==========
-  const handleScheduleSelect = (scheduleId) => {
-    setSelectedScheduleId(scheduleId);
-    const selectedSchedule = schedules.find(s => s.id === scheduleId);
-    if (selectedSchedule) {
-      setFollowUpData(prev => ({
-        ...prev,
-        followUpDate: selectedSchedule.date,
-        followUpStartTime: selectedSchedule.startTime,
-        followUpEndTime: selectedSchedule.endTime
-      }));
-    }
-  };
-
-  const handleCancelSchedule = () => {
-    setSelectedScheduleId("");
-    setFollowUpData(prev => ({
-      ...prev,
-      followUpDate: "",
-      followUpStartTime: "",
-      followUpEndTime: ""
-    }));
-  };
-
-  const handleToggleCustomSchedule = (showCustom) => {
-    setShowCustomSchedule(showCustom);
-    if (!showCustom) {
-      setSelectedScheduleId("");
-    }
   };
 
   // ========== UPDATED CONFIRMATION MODAL WITH LOADING STATE ==========

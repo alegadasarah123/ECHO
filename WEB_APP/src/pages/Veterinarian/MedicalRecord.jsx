@@ -474,7 +474,8 @@ const FileUploadSection = ({
   return (
     <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900">Lab Files (Optional)</h3>
+        <h3 className="font-semibold text-gray-900">Lab Files</h3>
+        <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Optional</span>
         {labFiles.length > 0 && (
           <span className="text-sm text-gray-500">
             {labFiles.length}/10 files
@@ -714,13 +715,185 @@ const convertTimeToMinutes = (timeStr) => {
   return hours * 60 + minutes;
 };
 
-// Time slots for custom schedule
-const timeSlots = [
-  "08:00 AM", "08:30 AM", "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM",
-  "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "01:00 PM", "01:30 PM",
-  "02:00 PM", "02:30 PM", "03:00 PM", "03:30 PM", "04:00 PM", "04:30 PM",
-  "05:00 PM", "05:30 PM", "06:00 PM"
-];
+// Time dropdown options
+const hours = Array.from({ length: 12 }, (_, i) => i + 1);
+const minutes = Array.from({ length: 60 }, (_, i) => i);
+const timePeriods = ['AM', 'PM'];
+
+// Time Selector Component with 3 columns
+const TimeSelector = ({ value, onChange, placeholder }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedHour, setSelectedHour] = useState("");
+  const [selectedMinute, setSelectedMinute] = useState("");
+  const [selectedPeriod, setSelectedPeriod] = useState("");
+
+  // Parse current value when component mounts or value changes
+  useEffect(() => {
+    if (value) {
+      const [time, period] = value.split(' ');
+      const [hour, minute] = time.split(':');
+      setSelectedHour(hour);
+      setSelectedMinute(minute);
+      setSelectedPeriod(period);
+    } else {
+      setSelectedHour("");
+      setSelectedMinute("");
+      setSelectedPeriod("");
+    }
+  }, [value]);
+
+  const handleHourSelect = (hour) => {
+    setSelectedHour(hour);
+  };
+
+  const handleMinuteSelect = (minute) => {
+    setSelectedMinute(minute);
+  };
+
+  const handlePeriodSelect = (period) => {
+    setSelectedPeriod(period);
+  };
+
+  const handleApply = () => {
+    if (selectedHour && selectedMinute && selectedPeriod) {
+      const timeString = `${selectedHour}:${selectedMinute} ${selectedPeriod}`;
+      onChange(timeString);
+      setIsOpen(false);
+    }
+  };
+
+  const handleClear = () => {
+    setSelectedHour("");
+    setSelectedMinute("");
+    setSelectedPeriod("");
+    onChange("");
+    setIsOpen(false);
+  };
+
+  const displayValue = value || placeholder;
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full border border-gray-300 rounded-lg p-3 text-sm text-left ${
+          value ? 'text-gray-900' : 'text-gray-500'
+        } bg-white hover:border-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500`}
+      >
+        {displayValue}
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-1 w-80 bg-white border border-gray-300 rounded-lg shadow-lg">
+          {/* Header */}
+          <div className="p-3 border-b border-gray-200">
+            <div className="flex justify-between items-center">
+              <span className="text-sm font-medium text-gray-900">Select Time</span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleClear}
+                  className="h-7 text-xs"
+                >
+                  Clear
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleApply}
+                  disabled={!selectedHour || !selectedMinute || !selectedPeriod}
+                  className="h-7 text-xs"
+                >
+                  Apply
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* Time Selection Grid */}
+          <div className="p-3">
+            <div className="grid grid-cols-3 gap-2">
+              {/* Hours Column */}
+              <div>
+                <div className="text-xs font-medium text-gray-700 mb-2 text-center">Hour</div>
+                <div className="max-h-48 overflow-y-auto border border-gray-200 rounded">
+                  {hours.map((hour) => (
+                    <button
+                      key={hour}
+                      type="button"
+                      onClick={() => handleHourSelect(hour.toString())}
+                      className={`w-full px-3 py-2 text-sm text-left hover:bg-gray-100 ${
+                        selectedHour === hour.toString() 
+                          ? 'bg-blue-100 text-blue-700 border-r-2 border-blue-500' 
+                          : 'text-gray-700'
+                      }`}
+                    >
+                      {hour}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Minutes Column */}
+              <div>
+                <div className="text-xs font-medium text-gray-700 mb-2 text-center">Minute</div>
+                <div className="max-h-48 overflow-y-auto border border-gray-200 rounded">
+                  {minutes.map((minute) => (
+                    <button
+                      key={minute}
+                      type="button"
+                      onClick={() => handleMinuteSelect(minute.toString().padStart(2, '0'))}
+                      className={`w-full px-3 py-2 text-sm text-left hover:bg-gray-100 ${
+                        selectedMinute === minute.toString().padStart(2, '0')
+                          ? 'bg-blue-100 text-blue-700 border-r-2 border-blue-500'
+                          : 'text-gray-700'
+                      }`}
+                    >
+                      {minute.toString().padStart(2, '0')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* AM/PM Column */}
+              <div>
+                <div className="text-xs font-medium text-gray-700 mb-2 text-center">AM/PM</div>
+                <div className="max-h-48 overflow-y-auto border border-gray-200 rounded">
+                  {timePeriods.map((period) => (
+                    <button
+                      key={period}
+                      type="button"
+                      onClick={() => handlePeriodSelect(period)}
+                      className={`w-full px-3 py-2 text-sm text-left hover:bg-gray-100 ${
+                        selectedPeriod === period
+                          ? 'bg-blue-100 text-blue-700 border-r-2 border-blue-500'
+                          : 'text-gray-700'
+                      }`}
+                    >
+                      {period}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Selected Time Preview */}
+            {(selectedHour || selectedMinute || selectedPeriod) && (
+              <div className="mt-3 p-2 bg-gray-50 rounded border border-gray-200">
+                <div className="text-xs text-gray-600">
+                  Selected: <span className="font-medium text-gray-900">
+                    {selectedHour || '--'}:{selectedMinute || '--'} {selectedPeriod || '--'}
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // --- 4. THE MAIN FORM COMPONENT ---
 const RecordForm = ({ 
@@ -882,7 +1055,8 @@ const RecordForm = ({
 
             {/* Lab Results */}
             <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-              <h3 className="font-semibold text-gray-900 mb-4">Lab Results (Optional)</h3>
+              <h3 className="font-semibold text-gray-900 mb-4">Lab Results</h3>
+              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Optional</span>
               <textarea
                 name="labResult"
                 value={formData.labResult}
@@ -1034,7 +1208,8 @@ const RecordForm = ({
             <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
               <div className="flex items-center gap-2 mb-4">
                 <Clock3 className="w-5 h-5 text-blue-600" />
-                <h3 className="font-semibold text-gray-900">Next Follow-up (Optional)</h3>
+                <h3 className="font-semibold text-gray-900">Next Follow-up</h3>
+                <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Optional</span>
               </div>
 
               {/* Schedule Selection Toggle */}
@@ -1127,7 +1302,7 @@ const RecordForm = ({
                   )}
                 </div>
               ) : (
-                /* Custom Schedule Creation with Time Range */
+                /* Custom Schedule Creation with Enhanced Time Selectors */
                 <div className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {/* Date Selection */}
@@ -1152,19 +1327,13 @@ const RecordForm = ({
                       </label>
                       <div className="flex gap-2">
                         {/* Start Time */}
-                        <select
-                          name="followUpStartTime"
-                          value={formData.followUpStartTime}
-                          onChange={onInputChange}
-                          className="flex-1 border border-gray-300 rounded-lg p-3 text-sm"
-                        >
-                          <option value="">Start time</option>
-                          {timeSlots.map((time) => (
-                            <option key={time} value={time}>
-                              {time}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex-1">
+                          <TimeSelector
+                            value={formData.followUpStartTime}
+                            onChange={(value) => onInputChange({ target: { name: 'followUpStartTime', value } })}
+                            placeholder="Start time"
+                          />
+                        </div>
                         
                         {/* Separator */}
                         <div className="flex items-center justify-center text-gray-500 font-medium">
@@ -1172,19 +1341,13 @@ const RecordForm = ({
                         </div>
                         
                         {/* End Time */}
-                        <select
-                          name="followUpEndTime"
-                          value={formData.followUpEndTime}
-                          onChange={onInputChange}
-                          className="flex-1 border border-gray-300 rounded-lg p-3 text-sm"
-                        >
-                          <option value="">End time</option>
-                          {timeSlots.map((time) => (
-                            <option key={time} value={time}>
-                              {time}
-                            </option>
-                          ))}
-                        </select>
+                        <div className="flex-1">
+                          <TimeSelector
+                            value={formData.followUpEndTime}
+                            onChange={(value) => onInputChange({ target: { name: 'followUpEndTime', value } })}
+                            placeholder="End time"
+                          />
+                        </div>
                       </div>
                     </div>
                   </div>
