@@ -90,11 +90,15 @@ def login(request):
 
     print(f"[LOGIN] User ID: {user_id}, Role: {user_role}, Status: {user_status}")
 
+    
+
     # 3️⃣ Set HttpOnly cookie
     response = Response({
         "message": "Login successful",
         "role": user_role,
-        "status": user_status
+        "status": user_status,
+        
+
     }, status=status.HTTP_200_OK)
 
     # Cookie expires in 1 day

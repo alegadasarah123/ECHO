@@ -651,7 +651,7 @@ def get_vetnotifications(request):
 
             dt_ph = to_manila_time(created_at)
             notifications_to_insert.append({
-                "id": user_id,  # <-- FIX: Use users.id for FK
+                "id": user_id,
                 "notif_message": f"{message_prefix} Dr. {vet_name}.",
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
@@ -670,7 +670,7 @@ def get_vetnotifications(request):
             users = vet.get("users") or {}
             role = users.get("role", "").lower()
             status = users.get("status", "").lower()
-            user_id = users.get("id")  # <-- NEW: get users.id
+            user_id = users.get("id")
 
             if not user_id or role != "veterinarian":
                 continue
@@ -694,14 +694,14 @@ def get_vetnotifications(request):
             if req.get("request_status", "").lower() != "pending":
                 continue
 
-            vet = req.get("vet_profile", {}) or {}
+            vet = req.get("vet_profile") or {}
             users = vet.get("users") or {}
             user_id = users.get("id")
             if not user_id:
                 continue
 
             vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
-            horse = req.get("horse_profile", {}) or {}
+            horse = req.get("horse_profile") or {}
             horse_name = horse.get("horse_name", "Unknown Horse")
             requested_at = req.get("requested_at")
 
@@ -712,7 +712,7 @@ def get_vetnotifications(request):
             dt_ph = to_manila_time(requested_at)
 
             notifications_to_insert.append({
-                "id": user_id,  # <-- FIX: Use users.id for FK
+                "id": user_id,
                 "notif_message": f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
@@ -722,11 +722,51 @@ def get_vetnotifications(request):
             })
             existing_keys.add(related_id)
 
-        # ---------------- BULK INSERT NEW NOTIFICATIONS ----------------
+        # ---------------- COMMENTS (ONLY KUTSERO OR HORSE OP) ----------------
+        comments_res = sr_client.table("comment") \
+            .select("id, comment_text, comment_date, user_id, announcement_id") \
+            .execute()
+
+        for comment in (comments_res.data or []):
+            user_id = comment.get("user_id")
+            if not user_id:
+                continue
+
+            related_id = f"comment_{comment['id']}"
+            if related_id in existing_keys:
+                continue
+
+            comment_text = (comment.get("comment_text") or "").strip()
+            created_at = comment.get("comment_date")
+
+            # Check if author is kutsero or horse operator
+            author_name = None
+            kutsero_res = sr_client.table("kutsero_profile") \
+                .select("kutsero_fname, kutsero_lname") \
+                .eq("kutsero_id", user_id) \
+                .execute()
+            if kutsero_res.data:
+                prof = kutsero_res.data[0]
+                author_name = f"{prof.get('kutsero_fname', '')} {prof.get('kutsero_lname', '')}".strip()
+            else:
+                op_res = sr_client.table("horse_op_profile") \
+                    .select("op_fname, op_lname") \
+                    .eq("op_id", user_id) \
+                    .execute()
+                if op_res.data:
+                    prof = op_res.data[0]
+                    author_name = f"{prof.get('op_fname', '')} {prof.get('op_lname', '')}".strip()
+
+            if not author_name:
+                continue  # skip comments from others
+
+            add_vet_notif(user_id, author_name, created_at, f"{author_name} commented: \"{comment_text}\"", "comment", related_id)
+
+        # ---------------- BULK INSERT ----------------
         if notifications_to_insert:
             sr_client.table("notification").insert(notifications_to_insert).execute()
 
-        # ---------------- FETCH ALL NOTIFICATIONS ----------------
+        # ---------------- FETCH ALL ----------------
         all_notifs_res = sr_client.table("notification") \
             .select("*") \
             .order("notif_date", desc=True) \
@@ -735,16 +775,21 @@ def get_vetnotifications(request):
 
         notifications = []
         for row in (all_notifs_res.data or []):
-            message = row.get("notif_message", "").lower()
-            if any(keyword in message for keyword in ["veterinarian", "vet.", "registration:", "medical record"]):
-                notifications.append({
-                    "id": row.get("id"),
-                    "message": row.get("notif_message"),
-                    "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
-                    "read": row.get("notif_read", False),
-                    "type": row.get("notification_type", "general"),
-                })
+            message = (row.get("notif_message") or "").lower()
 
+            # ---------------- FILTER OUT KUTSERO/HORSE OP REGISTRATION ----------------
+            if "new kutsero registered" in message or "new horse operator registered" in message:
+                continue
+
+            notifications.append({
+                "id": row.get("id"),
+                "message": row.get("notif_message"),
+                "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
+                "read": row.get("notif_read", False),
+                "type": row.get("notification_type", "general"),
+            })
+
+        print(f"✅ Returning {len(notifications)} notifications.")
         return Response(notifications, status=200)
 
     except Exception as e:
@@ -1592,12 +1637,35 @@ def get_horses(request):
 
 
 # -------------------- SOS REQUESTS ENDPOINT --------------------
-# -------------------- SOS REQUESTS ENDPOINT --------------------
+# -------------------- VET ACTIVITY ENDPOINT --------------------
+
+import time
+
+def retry_query(query_func, retries=3, delay=1):
+    """
+    Executes a Supabase query with retries in case of failure.
+
+    query_func: a function that returns the query object (with .execute())
+    """
+    for attempt in range(retries):
+        try:
+            return query_func().execute()
+        except Exception as e:
+            print(f"⚠️ Supabase query failed (attempt {attempt+1}): {e}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                raise
+
 @api_view(["GET"])
-@login_required 
+@login_required
 def get_sos_requests(request):
+    """
+    Fetch all SOS requests with image URL and details.
+    """
     try:
-        response = sr_client.table("sos_requests").select("*").execute()
+        # Use retry_query to safely execute the Supabase request
+        response = retry_query(lambda: sr_client.table("sos_requests").select("*"))
         data = getattr(response, "data", None)
 
         if not data:
@@ -1606,8 +1674,19 @@ def get_sos_requests(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        formatted_data = [
-            {
+        formatted_data = []
+
+        for item in data:
+            image_path = item.get("sos_image")
+
+            # Clean the sos_image URL
+            if image_path and isinstance(image_path, str):
+                clean_url = image_path.strip().strip('[]"\'')
+                sos_image_url = clean_url if clean_url.startswith("http") else None
+            else:
+                sos_image_url = None
+
+            formatted_data.append({
                 "id": item.get("id"),
                 "type": item.get("emergency_type", "Emergency"),
                 "contact": item.get("user_name") or "Unknown Contact",
@@ -1615,18 +1694,25 @@ def get_sos_requests(request):
                 "location": item.get("location_text", "No location provided"),
                 "time": item.get("created_at"),
                 "urgent": item.get("status", "").lower() == "pending",
-            }
-            for item in data
-        ]
+                "status": item.get("status", "pending"),
+                "description": item.get("description"),
+                "horse_status": item.get("horse_status"),
+                "additional_info": item.get("additional_info"),
+                "latitude": item.get("latitude"),
+                "longitude": item.get("longitude"),
+                "sos_image_url": sos_image_url,
+            })
 
         return Response({"sos_requests": formatted_data}, status=status.HTTP_200_OK)
 
     except Exception as e:
+        logging.exception("Error fetching SOS requests")
         traceback.print_exc()
         return Response(
             {"error": f"An unexpected error occurred: {str(e)}"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 
 
 
@@ -1886,10 +1972,23 @@ def get_horse_statistics(request):
 
 # -------------------- ADD COMMENTS --------------------#
 
+
 @api_view(["POST"])
 @login_required
 def add_comment(request):
     try:
+        # ---------------- Get token from cookie ----------------
+        token = request.COOKIES.get("access_token")
+        if not token:
+            return Response({"error": "Authentication required"}, status=401)
+
+        # ---------------- Decode token WITHOUT verifying signature ----------------
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        if not user_id:
+            return Response({"error": "Invalid token: no user_id"}, status=401)
+
+        # ---------------- Get data from request ----------------
         announcement_id = request.data.get("announcement_id")
         comment_text = request.data.get("comment_text")
         parent_comment_id = request.data.get("parent_comment_id")  # optional
@@ -1897,19 +1996,7 @@ def add_comment(request):
         if not announcement_id or not comment_text:
             return Response({"error": "Missing required fields."}, status=400)
 
-        token = get_token_from_cookie(request)
-        if not token:
-            return Response({"error": "Authentication required"}, status=401)
-
-        # Verify token with Supabase
-        user_resp = sr_client.auth.get_user(token)
-        print("DEBUG get_user:", user_resp.__dict__)  # Debug output
-
-        if not hasattr(user_resp, "user") or not user_resp.user:
-            return Response({"error": "Invalid token or user not found"}, status=403)
-
-        user_id = user_resp.user.id
-
+        # ---------------- Prepare data for insert ----------------
         data = {
             "announcement_id": announcement_id,
             "comment_text": comment_text,
@@ -1917,19 +2004,29 @@ def add_comment(request):
             "parent_comment_id": parent_comment_id,
         }
 
-        response = sr_client.table("comment").insert(data).execute()
+        # ---------------- Insert comment ----------------
+        try:
+            response = sr_client.table("comment").insert(data).execute()
+            if hasattr(response, "error") and response.error:
+                logger.error("Database insert error: %s", response.error.message)
+                return Response({"error": response.error.message}, status=500)
 
-        if hasattr(response, "error") and response.error:
-            return Response({"error": response.error.message}, status=500)
+            return Response({
+                "message": "Comment added successfully",
+                "data": response.data
+            }, status=201)
 
-        return Response({
-            "message": "Comment added successfully",
-            "data": response.data
-        }, status=200)
+        except APIError as e:
+            logger.error("Database insert error: %s", e)
+            return Response({"error": "Failed to add comment, check table exists and schema"}, status=500)
 
     except Exception as e:
-        print("❌ add_comment ERROR:", str(e))
+        logger.exception("Unexpected error in add_comment")
         return Response({"error": str(e)}, status=500)
+
+
+
+
 
 
 # -------------------- FETCH COMMENTS --------------------#
@@ -2038,57 +2135,942 @@ def get_comments(request):
 
 
 
-# -------------------- ADD REPLY_COMMENT --------------------#
+
+
+# -------------------- ADD REPLY_COMMENT -------------------- #
+# -------------------- ADD REPLY_COMMENT -------------------- #
 logger = logging.getLogger(__name__)
 
 @api_view(["POST"])
 @login_required
 def add_reply(request):
-    token = get_token_from_cookie(request)
-    if not token:
-        return Response({"error": "Missing token"}, status=401)
-    
-    # Get logged-in user from Supabase
     try:
-        supa_user = sr_client.auth.get_user(token)
-        user_id = supa_user.user.id
-    except Exception as e:
-        return Response({"error": f"Invalid token: {str(e)}"}, status=401)
+        # ---------------- Get token from cookie ----------------
+        token = request.COOKIES.get("access_token")
+        if not token:
+            return Response({"error": "Authentication required"}, status=401)
 
-    data = request.data
-    announcement_id = data.get("announcement_id")
-    parent_comment_id = data.get("parent_comment_id")
-    comment_text = data.get("comment_text")
+        # ---------------- Decode token WITHOUT verifying signature ----------------
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        if not user_id:
+            return Response({"error": "Invalid token: no user_id"}, status=401)
 
-    if not all([announcement_id, comment_text]):
-        return Response({"error": "Missing required fields"}, status=400)
+        # ---------------- Get data from request ----------------
+        data = request.data
+        announcement_id = data.get("announcement_id")
+        parent_comment_id = data.get("parent_comment_id")  # optional
+        comment_text = data.get("comment_text")
 
-    # Optional: check if parent_comment_id exists
-    if parent_comment_id:
+        # ---------------- Validate required fields ----------------
+        if not announcement_id or not comment_text:
+            return Response({"error": "Missing required fields"}, status=400)
+
+        # ---------------- Optional: check if parent_comment_id exists ----------------
+        if parent_comment_id:
+            try:
+                parent_resp = (
+                    sr_client.table("comment")
+                    .select("id")
+                    .eq("id", parent_comment_id)
+                    .execute()
+                )
+                if not parent_resp.data:
+                    return Response({"error": "Parent comment not found"}, status=404)
+            except Exception as e:
+                logger.error("Error checking parent comment: %s", e)
+                return Response({"error": "Database error checking parent comment"}, status=500)
+
+        # ---------------- Insert reply ----------------
         try:
-            parent_resp = sr_client.table("comment").select("id").eq("id", parent_comment_id).execute()
-            if not parent_resp.data:
-                return Response({"error": "Parent comment not found"}, status=404)
+            resp = (
+                sr_client.table("comment")
+                .insert({
+                    "announcement_id": announcement_id,
+                    "parent_comment_id": parent_comment_id,
+                    "comment_text": comment_text,
+                    "user_id": user_id,
+                    "created_at": "now()",
+                })
+                .execute()
+            )
+
+            if hasattr(resp, "error") and resp.error:
+                logger.error("Database insert error: %s", resp.error.message)
+                return Response({"error": resp.error.message}, status=500)
+
+            return Response(
+                {"message": "Reply added successfully", "data": resp.data},
+                status=201,
+            )
+
         except APIError as e:
-            logger.error("Error checking parent comment: %s", e)
-            return Response({"error": "Database error checking parent comment"}, status=500)
+            logger.error("Database insert error: %s", e)
+            return Response({"error": "Failed to add reply, check table exists and schema"}, status=500)
 
-    # Insert reply safely
+    except Exception as e:
+        logger.exception("Unexpected error in add_reply")
+        return Response({"error": str(e)}, status=500)
+
+
+
+
+
+# -------------------- EDIT COMMENT --------------------
+@api_view(["PUT", "PATCH"])
+def edit_comment(request, comment_id):
     try:
-        resp = sr_client.table("comment").insert({
-            "announcement_id": announcement_id,
-            "parent_comment_id": parent_comment_id,
-            "comment_text": comment_text,
-            "user_id": user_id,
-            "created_at": "now()"
-        }).execute()
+        new_text = request.data.get("comment_text")
+        if not new_text:
+            return Response({"error": "No content provided"}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response({"message": "Reply added successfully", "data": resp.data}, status=201)
+        # ✅ Update comment directly (no token, no user validation)
+        result = sr_client.table("comment").update(
+            {
+                "comment_text": new_text,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+        ).eq("id", str(comment_id)).execute()
 
-    except APIError as e:
-        logger.error("Database insert error: %s", e)
-        return Response({"error": "Failed to add reply, check table exists and schema"}, status=500)
+        if result.data:
+            return Response(
+                {"message": "Comment updated successfully", "data": result.data},
+                status=status.HTTP_200_OK,
+            )
+        else:
+            return Response({"error": "Comment not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    except Exception as e:
+        logging.error("Error editing comment: %s", e)
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# -------------------- EDIT REPLY --------------------
+@api_view(["PUT", "PATCH"])
+def edit_reply(request, reply_id):
+    try:
+        new_text = request.data.get("comment_text")
+        if not new_text:
+            return Response({"error": "No content provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # ✅ Update reply directly (no token)
+        result = sr_client.table("comment").update(
+            {
+                "comment_text": new_text,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+        ).eq("id", str(reply_id)).execute()
+
+        if result.data:
+            return Response(
+                {"message": "Reply updated successfully", "data": result.data},
+                status=status.HTTP_200_OK,
+            )
+        else:
+            return Response({"error": "Reply not found"}, status=status.HTTP_404_NOT_FOUND)
+
+    except Exception as e:
+        logging.error("Error editing reply: %s", e)
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@login_required
+def get_conversations(request):
+    """
+    Get all conversations for the current CTU user (only users who have exchanged messages)
+    """
+    try:
+        ctu_id = get_current_ctu_id(request)
+        if not ctu_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Get unique conversation partners
+        conversation_partners = set()
+        
+        # Get users who sent messages to current CTU user
+        received_res = safe_execute(
+            sr_client.table("message")
+            .select("user_id")
+            .eq("receiver_id", ctu_id)
+        )
+        if received_res.data:
+            for msg in received_res.data:
+                conversation_partners.add(msg["user_id"])
+                
+        # Get users who received messages from current CTU user
+        sent_res = safe_execute(
+            sr_client.table("message")
+            .select("receiver_id")
+            .eq("user_id", ctu_id)
+        )
+        if sent_res.data:
+            for msg in sent_res.data:
+                conversation_partners.add(msg["receiver_id"])
+
+        if not conversation_partners:
+            return Response([], status=status.HTTP_200_OK)
+
+        # Get user details
+        users_res = safe_execute(
+            sr_client.table("users")
+            .select("id, role, status")
+            .in_("id", list(conversation_partners))
+            .eq("status", "approved")
+        )
+        users = users_res.data or []
+        if not users:
+            return Response([], status=status.HTTP_200_OK)
+
+        conversations = []
+        
+        for user in users:
+            user_id = user["id"]
+            role = user["role"]
+            
+            # Get the latest message
+            messages_res = safe_execute(
+                sr_client.table("message")
+                .select("*")
+                .or_(
+                    f"and(user_id.eq.{ctu_id},receiver_id.eq.{user_id}),"
+                    f"and(user_id.eq.{user_id},receiver_id.eq.{ctu_id})"
+                )
+                .order("mes_date", desc=True)
+                .limit(1)
+            )
+            
+            latest_message = messages_res.data[0] if messages_res.data else None
+            
+            # Count unread messages
+            unread_res = safe_execute(
+                sr_client.table("message")
+                .select("mes_id")
+                .eq("user_id", user_id)
+                .eq("receiver_id", ctu_id)
+                .eq("is_read", False)
+            )
+            unread_count = len(unread_res.data) if unread_res.data else 0
+            
+            # Get user profile info
+            profile_info = get_user_profile_info(user_id, role)
+            
+            # Format timestamp
+            timestamp = ""
+            if latest_message and latest_message.get("mes_date"):
+                try:
+                    msg_time = datetime.fromisoformat(str(latest_message["mes_date"]))
+                    local_time = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
+                    timestamp = local_time
+                except Exception:
+                    timestamp = str(latest_message["mes_date"])
+
+            # Handle last message content with "You:" prefix
+            last_message_content = ""
+            last_message_is_own = False
+            
+            if latest_message:
+                last_message_is_own = latest_message["user_id"] == ctu_id
+                if last_message_is_own:
+                    last_message_content = f"You: {latest_message['mes_content']}"
+                else:
+                    last_message_content = latest_message['mes_content']
+            else:
+                last_message_content = "No messages yet"
+
+            conversations.append({
+                'id': user_id,
+                'name': profile_info["name"],
+                'role': role,
+                'avatar': profile_info["avatar"],
+                'online': False,
+                'lastMessage': last_message_content,
+                'lastMessageSender': latest_message["user_id"] if latest_message else None,
+                'lastMessageIsOwn': last_message_is_own,
+                'timestamp': timestamp,
+                'unread': unread_count,
+                'has_conversation': True
+            })
+
+        # Sort by latest message timestamp
+        conversations.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+
+        return Response(conversations, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print("❌ Error fetching conversations:", str(e))
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+# -------------------- GET CURRENT USER --------------------
+@api_view(["GET"])
+@csrf_exempt
+def get_current_user(request):
+    """
+    Retrieves the current authenticated user based on the Supabase access_token
+    stored in the HttpOnly cookie.
+    Works with both DVMF and CTU Vet profiles.
+    """
+    try:
+        # ---------------- Get token from cookie ----------------
+        token = request.COOKIES.get("access_token")
+        if not token:
+            return Response({"error": "No access token found"}, status=401)
+
+        # ---------------- Decode token WITHOUT verifying signature ----------------
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        if not user_id:
+            return Response({"error": "Invalid token: no user_id"}, status=401)
+
+        # ---------------- Check DVMF profile ----------------
+        dvmf_profile = (
+            sr_client.table("dvmf_user_profile")
+            .select("*")
+            .eq("dvmf_id", user_id)
+            .execute()
+        )
+
+        if dvmf_profile.data and len(dvmf_profile.data) > 0:
+            dvmf = dvmf_profile.data[0]
+            return Response(
+                {
+                    "id": dvmf.get("dvmf_id"),
+                    "name": f"{dvmf.get('dvmf_fname', '')} {dvmf.get('dvmf_lname', '')}".strip(),
+                    "email": dvmf.get("dvmf_email"),
+                    "role": dvmf.get("dvmf_role", "user"),
+                    "source": "dvmf_user_profile",
+                },
+                status=200,
+            )
+
+        # ---------------- If not found, check CTU Vet profile ----------------
+        ctu_profile = (
+            sr_client.table("ctu_vet_profile")
+            .select("*")
+            .eq("ctu_id", user_id)
+            .execute()
+        )
+
+        if ctu_profile.data and len(ctu_profile.data) > 0:
+            ctu = ctu_profile.data[0]
+            return Response(
+                {
+                    "id": ctu.get("ctu_id"),
+                    "name": f"{ctu.get('ctu_fname', '')} {ctu.get('ctu_lname', '')}".strip(),
+                    "email": ctu.get("ctu_email"),
+                    "role": ctu.get("ctu_role", "vet"),
+                    "source": "ctu_vet_profile",
+                },
+                status=200,
+            )
+
+        return Response({"error": "User not found in any profile"}, status=404)
+
+    except Exception as e:
+        print("Error decoding token:", e)
+        return Response({"error": "Invalid token"}, status=401)
+
+
+# -------------------- Helper Function --------------------
+import time
+
+def safe_execute(query, retries=3, delay=1):
+    for attempt in range(retries):
+        try:
+            return query.execute()
+        except Exception as e:
+            print(f"⚠️ Supabase query failed (attempt {attempt+1}): {e}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                raise
+
+
+def get_current_dvmf_id(request):
+    """
+    Extract the current dvmf_id (user identifier) from the access_token cookie.
+    """
+    access_token = request.COOKIES.get("access_token")
+    if not access_token:
+        return None
+
+    try:
+        decoded = jwt.decode(access_token, options={"verify_signature": False})
+        return decoded.get("sub")  # 'sub' holds the DVMF user ID
+    except Exception:
+        return None
+
+
+# -------------------- API View --------------------
+@api_view(["GET"])
+@login_required
+def dvmf_user_profile(request):
+    """Fetch the profile of the currently logged-in DVMF user"""
+    try:
+        dvmf_id = get_current_dvmf_id(request)
+        if not dvmf_id:
+            return Response({"error": "Unauthorized"}, status=401)
+
+        res = sr_client.table("dvmf_user_profile").select("*").eq("dvmf_id", dvmf_id).execute()
+        data = res.data or []
+
+        if len(data) == 0:
+            return Response({"error": "Profile not found"}, status=404)
+
+        profile = data[0]
+        full_name = " ".join(filter(None, [
+            profile.get("dvmf_fname"),
+            profile.get("dvmf_lname"),
+        ])).strip()
+
+        profile["full_name"] = full_name
+
+        return Response({"profile": profile}, status=200)
+
+    except Exception:
+        return Response({"error": "Internal server error"}, status=500)
+
+
+@api_view(["PUT"])
+@login_required
+def mark_messages_as_read(request, conversation_id):
+    """Mark messages as read for a conversation"""
+    try:
+        dvmf_id = get_current_dvmf_id(request)
+        if not dvmf_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        print(f"🔔 Marking messages as read - dvmf_id: {dvmf_id}, conversation_id: {conversation_id}")
+
+        res = (
+            sr_client.table("message")
+            .update({"is_read": True})
+            .eq("receiver_id", dvmf_id)
+            .eq("user_id", conversation_id)
+            .eq("is_read", False)
+            .execute()
+        )
+
+        updated_count = len(res.data) if res.data else 0
+        print(f"✅ Marked {updated_count} messages as read")
+
+        return Response(
+            {"message": "Messages marked as read", "updated_count": updated_count},
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        print("❌ Error marking messages as read:", str(e))
+        traceback.print_exc()
+        return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+LOCAL_OFFSET_HOURS = 8  # Manila is UTC+8
+
+
+# -------------------- Send Message API --------------------
+@api_view(["POST"])
+@login_required
+def send_message(request):
+    """Send a message from the current DVMF user to another user"""
+    try:
+        dvmf_id = get_current_dvmf_id(request)
+        if not dvmf_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        data = request.data
+        receiver_id = data.get("receiver_id")
+        message_content = data.get("message")
+
+        if not receiver_id or not message_content:
+            return Response({"error": "Missing receiver_id or message"}, status=status.HTTP_400_BAD_REQUEST)
+
+        payload = {
+            "mes_content": message_content,
+            "is_read": False,
+            "user_id": dvmf_id,
+            "receiver_id": receiver_id
+        }
+
+        res = sr_client.table("message").insert(payload).execute()
+
+        if not res.data:
+            return Response({"error": "Failed to send message"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        msg = res.data[0]
+        msg_time = datetime.fromisoformat(msg["mes_date"])
+        msg["mes_date"] = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
+
+        return Response(
+            {"message": "Message sent successfully", "data": msg},
+            status=status.HTTP_201_CREATED
+        )
+
+    except Exception as e:
+        print("❌ Error sending message:", str(e))
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# -------------------- Conversation APIs --------------------
+@api_view(["GET"])
+@login_required
+def get_conversation(request, conversation_id):
+    """Fetch all messages between the current DVMF user and a specific user."""
+    try:
+        dvmf_id = get_current_dvmf_id(request)
+        if not dvmf_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        receiver_id = conversation_id
+
+        data1 = safe_execute(
+            sr_client.table("message")
+            .select("*")
+            .eq("user_id", dvmf_id)
+            .eq("receiver_id", receiver_id)
+        ).data or []
+
+        data2 = safe_execute(
+            sr_client.table("message")
+            .select("*")
+            .eq("user_id", receiver_id)
+            .eq("receiver_id", dvmf_id)
+        ).data or []
+
+        all_messages = sorted(data1 + data2, key=lambda m: m["mes_date"])
+
+        formatted_messages = []
+        for msg in all_messages:
+            try:
+                msg_time = datetime.fromisoformat(str(msg["mes_date"]))
+                local_time = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
+            except Exception:
+                local_time = msg["mes_date"]
+
+            formatted_messages.append({
+                "id": msg["mes_id"],
+                "content": msg["mes_content"],
+                "timestamp": local_time,
+                "isOwn": msg["user_id"] == dvmf_id,
+                "is_read": msg["is_read"],
+                "originalTimestamp": msg["mes_date"],
+            })
+
+        return Response(formatted_messages, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print("❌ Error fetching conversation:", str(e))
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["GET"])
+@login_required
+def get_conversations(request):
+    """Get all conversations for the currently logged-in DVMF user."""
+    try:
+        dvmf_id = get_current_dvmf_id(request)
+        if not dvmf_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        conversation_partners = set()
+
+        received_res = safe_execute(
+            sr_client.table("message")
+            .select("user_id")
+            .eq("receiver_id", dvmf_id)
+        )
+        if received_res.data:
+            for msg in received_res.data:
+                conversation_partners.add(msg["user_id"])
+
+        sent_res = safe_execute(
+            sr_client.table("message")
+            .select("receiver_id")
+            .eq("user_id", dvmf_id)
+        )
+        if sent_res.data:
+            for msg in sent_res.data:
+                conversation_partners.add(msg["receiver_id"])
+
+        if not conversation_partners:
+            return Response([], status=status.HTTP_200_OK)
+
+        users_res = safe_execute(
+            sr_client.table("users")
+            .select("id, role, status")
+            .in_("id", list(conversation_partners))
+            .eq("status", "approved")
+        )
+
+        users = users_res.data or []
+        if not users:
+            return Response([], status=status.HTTP_200_OK)
+
+        conversations = []
+
+        for user in users:
+            user_id = user["id"]
+            role = user["role"]
+
+            messages_res = safe_execute(
+                sr_client.table("message")
+                .select("*")
+                .or_(
+                    f"and(user_id.eq.{dvmf_id},receiver_id.eq.{user_id}),"
+                    f"and(user_id.eq.{user_id},receiver_id.eq.{dvmf_id})"
+                )
+                .order("mes_date", desc=True)
+                .limit(1)
+            )
+            latest_message = messages_res.data[0] if messages_res.data else None
+
+            unread_res = safe_execute(
+                sr_client.table("message")
+                .select("mes_id")
+                .eq("user_id", user_id)
+                .eq("receiver_id", dvmf_id)
+                .eq("is_read", False)
+            )
+            unread_count = len(unread_res.data) if unread_res.data else 0
+
+            profile_info = get_user_profile_info(user_id, role)
+
+            timestamp = ""
+            if latest_message and latest_message.get("mes_date"):
+                try:
+                    msg_time = datetime.fromisoformat(str(latest_message["mes_date"]))
+                    timestamp = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
+                except Exception:
+                    timestamp = str(latest_message["mes_date"])
+
+            last_message_content = ""
+            last_message_is_own = False
+
+            if latest_message:
+                last_message_is_own = latest_message["user_id"] == dvmf_id
+                last_message_content = (
+                    f"You: {latest_message['mes_content']}"
+                    if last_message_is_own
+                    else latest_message['mes_content']
+                )
+            else:
+                last_message_content = "No messages yet"
+
+            conversations.append({
+                'id': user_id,
+                'name': profile_info["name"],
+                'role': role,
+                'avatar': profile_info["avatar"],
+                'online': False,
+                'lastMessage': last_message_content,
+                'timestamp': timestamp,
+                'unread': unread_count,
+                'has_conversation': True
+            })
+
+        conversations.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+
+        return Response(conversations, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print("❌ Error fetching conversations:", str(e))
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
 
+# -------------------- API VIEW: GET ALL USERS --------------------
+@api_view(["GET"])
+@login_required
+def get_all_users(request):
+    """Fetch all approved users (from all profile tables) except the current DVMF user."""
+    try:
+        # ✅ Step 1: Get the current logged-in DVMF user's ID
+        dvmf_id = get_current_dvmf_id(request)
+        if not dvmf_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
+        print(f"🔍 Debug: Current dvmf_id from token: {dvmf_id}")
+
+        # ✅ Step 2: Fetch all approved users except the current DVMF user
+        users_res = safe_execute(
+            sr_client.table("users")
+            .select("id, role, status")
+            .eq("status", "approved")
+            .neq("id", dvmf_id)
+        )
+
+        users = users_res.data or []
+        print(f"🔍 Debug: Found {len(users)} approved users (excluding current user)")
+
+        if not users:
+            return Response([], status=status.HTTP_200_OK)
+
+        all_users = []
+        role_groups = {}
+
+        # ✅ Step 3: Group users by role
+        for u in users:
+            role_groups.setdefault(u["role"], []).append(u["id"])
+
+        print(f"🔍 Debug: Role groups: {role_groups}")
+
+        profiles_map = {}
+
+        # 🩺 Veterinarian
+        if "Veterinarian" in role_groups:
+            ids = role_groups["Veterinarian"]
+            res = safe_execute(
+                sr_client.table("vet_profile")
+                .select("vet_id, vet_fname, vet_mname, vet_lname, vet_profile_photo")
+                .in_("vet_id", ids)
+            )
+            print(f"🔍 Debug: Found {len(res.data or [])} Veterinarian profiles")
+            for p in res.data or []:
+                full_name = " ".join(filter(None, [p.get("vet_fname"), p.get("vet_mname"), p.get("vet_lname")])).strip()
+                profiles_map[p["vet_id"]] = {
+                    "name": f"{full_name} (Veterinarian)",
+                    "avatar": p.get("vet_profile_photo")
+                }
+
+        # 🧑 Kutsero
+        if "Kutsero" in role_groups:
+            ids = role_groups["Kutsero"]
+            res = safe_execute(
+                sr_client.table("kutsero_profile")
+                .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_image")
+                .in_("kutsero_id", ids)
+            )
+            print(f"🔍 Debug: Found {len(res.data or [])} Kutsero profiles")
+            for p in res.data or []:
+                full_name = " ".join(filter(None, [p.get("kutsero_fname"), p.get("kutsero_mname"), p.get("kutsero_lname")])).strip()
+                profiles_map[p["kutsero_id"]] = {
+                    "name": f"{full_name} (Kutsero)",
+                    "avatar": p.get("kutsero_image")
+                }
+
+        # 🐴 Horse Operator
+        if "Horse Operator" in role_groups:
+            ids = role_groups["Horse Operator"]
+            res = safe_execute(
+                sr_client.table("horse_op_profile")
+                .select("op_id, op_fname, op_mname, op_lname, op_image")
+                .in_("op_id", ids)
+            )
+            print(f"🔍 Debug: Found {len(res.data or [])} Horse Operator profiles")
+            for p in res.data or []:
+                full_name = " ".join(filter(None, [p.get("op_fname"), p.get("op_mname"), p.get("op_lname")])).strip()
+                profiles_map[p["op_id"]] = {
+                    "name": f"{full_name} (Horse Operator)",
+                    "avatar": p.get("op_image")
+                }
+
+        # 🧑 Kutsero President
+        if "Kutsero President" in role_groups:
+            ids = role_groups["Kutsero President"]
+            res = safe_execute(
+                sr_client.table("kutsero_pres_profile")
+                .select("user_id, pres_fname, pres_lname")
+                .in_("user_id", ids)
+            )
+            print(f"🔍 Debug: Found {len(res.data or [])} Kutsero President profiles")
+            for p in res.data or []:
+                full_name = " ".join(filter(None, [p.get("pres_fname"), p.get("pres_lname")])).strip()
+                profiles_map[p["user_id"]] = {
+                    "name": f"{full_name} (Kutsero President)",
+                    "avatar": None
+                }
+
+        # 🧑 DVMF + DVMF-Admin
+        for role_key in ["Dvmf", "Dvmf-Admin"]:
+            if role_key in role_groups:
+                ids = role_groups[role_key]
+                res = safe_execute(
+                    sr_client.table("dvmf_user_profile")
+                    .select("dvmf_id, dvmf_fname, dvmf_lname")
+                    .in_("dvmf_id", ids)
+                )
+                print(f"🔍 Debug: Found {len(res.data or [])} {role_key} profiles")
+                for p in res.data or []:
+                    full_name = " ".join(filter(None, [p.get("dvmf_fname"), p.get("dvmf_lname")])).strip()
+                    profiles_map[p["dvmf_id"]] = {
+                        "name": f"{full_name} ({role_key})",
+                        "avatar": None
+                    }
+
+        # 🎓 CTU Vetmed + CTU-Admin (kept for compatibility)
+        for role_key in ["Ctu-Vetmed", "Ctu-Admin"]:
+            if role_key in role_groups:
+                ids = role_groups[role_key]
+                res = safe_execute(
+                    sr_client.table("ctu_vet_profile")
+                    .select("ctu_id, ctu_fname, ctu_lname")
+                    .in_("ctu_id", ids)
+                )
+                print(f"🔍 Debug: Found {len(res.data or [])} {role_key} profiles")
+                for p in res.data or []:
+                    full_name = " ".join(filter(None, [p.get("ctu_fname"), p.get("ctu_lname")])).strip()
+                    profiles_map[p["ctu_id"]] = {
+                        "name": f"{full_name} ({role_key})",
+                        "avatar": None
+                    }
+
+        # ✅ Step 4: Combine user and profile info
+        for u in users:
+            uid = u["id"]
+            info = profiles_map.get(uid, {"name": f"User {uid} ({u['role']})", "avatar": None})
+            all_users.append({
+                "id": uid,
+                "name": info["name"],
+                "role": u["role"],
+                "avatar": info["avatar"],
+                "online": False,
+                "lastMessage": "Tap to chat",
+                "timestamp": "",
+                "unread": 0
+            })
+
+        print(f"🔍 Debug: Final user list: {len(all_users)} users")
+        return Response(all_users, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print("❌ Error fetching users:", str(e))
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+def get_user_profile_info(user_id, role):
+    """Helper function to get user profile info based on role"""
+    try:
+        # 🩺 Veterinarian
+        if role == "Veterinarian":
+            res = safe_execute(
+                sr_client.table("vet_profile")
+                .select("vet_fname, vet_mname, vet_lname, vet_profile_photo")
+                .eq("vet_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("vet_fname"), p.get("vet_mname"), p.get("vet_lname")])).strip()
+                return {
+                    "name": f"{full_name} (Veterinarian)",
+                    "avatar": p.get("vet_profile_photo")
+                }
+
+        # 🧑 Kutsero
+        elif role == "Kutsero":
+            res = safe_execute(
+                sr_client.table("kutsero_profile")
+                .select("kutsero_fname, kutsero_mname, kutsero_lname")
+                .eq("kutsero_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("kutsero_fname"), p.get("kutsero_mname"), p.get("kutsero_lname")])).strip()
+                return {
+                    "name": f"{full_name} (Kutsero)",
+                    "avatar": None
+                }
+
+        # 🐴 Horse Operator
+        elif role == "Horse Operator":
+            res = safe_execute(
+                sr_client.table("horse_op_profile")
+                .select("op_fname, op_mname, op_lname, op_image")
+                .eq("op_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("op_fname"), p.get("op_mname"), p.get("op_lname")])).strip()
+                return {
+                    "name": f"{full_name} (Horse Operator)",
+                    "avatar": p.get("op_image")
+                }
+
+        # 🧑 Kutsero President
+        elif role == "Kutsero President":
+            res = safe_execute(
+                sr_client.table("kutsero_pres_profile")
+                .select("pres_fname, pres_lname")
+                .eq("user_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("pres_fname"), p.get("pres_lname")])).strip()
+                return {
+                    "name": f"{full_name} (Kutsero President)",
+                    "avatar": None
+                }
+
+        # 🧑 DVMF
+        elif role == "Dvmf":
+            res = safe_execute(
+                sr_client.table("dvmf_user_profile")
+                .select("dvmf_fname, dvmf_lname")
+                .eq("dvmf_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("dvmf_fname"), p.get("dvmf_lname")])).strip()
+                return {
+                    "name": f"{full_name} (DVMF)",
+                    "avatar": None
+                }
+
+        # 🧑 DVMF-Admin
+        elif role == "Dvmf-Admin":
+            res = safe_execute(
+                sr_client.table("dvmf_user_profile")
+                .select("dvmf_fname, dvmf_lname")
+                .eq("dvmf_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("dvmf_fname"), p.get("dvmf_lname")])).strip()
+                return {
+                    "name": f"{full_name} (DVMF Admin)",
+                    "avatar": None
+                }
+
+        # 🎓 CTU Vetmed
+        elif role == "Ctu-Vetmed":
+            res = safe_execute(
+                sr_client.table("ctu_vet_profile")
+                .select("ctu_fname, ctu_lname")
+                .eq("ctu_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("ctu_fname"), p.get("ctu_lname")])).strip()
+                return {
+                    "name": f"{full_name} (CTU Vetmed)",
+                    "avatar": None
+                }
+
+        # 🎓 CTU-Admin
+        elif role == "Ctu-Admin":
+            res = safe_execute(
+                sr_client.table("ctu_vet_profile")
+                .select("ctu_fname, ctu_lname")
+                .eq("ctu_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("ctu_fname"), p.get("ctu_lname")])).strip()
+                return {
+                    "name": f"{full_name} (CTU Admin)",
+                    "avatar": None
+                }
+
+    except Exception as e:
+        print(f"❌ Error getting profile info for {user_id} ({role}): {e}")
+
+    # 🛠️ Fallback for unknown roles or errors
+    return {
+        "name": f"User ({role})",
+        "avatar": None
+    }

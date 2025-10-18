@@ -1,7 +1,7 @@
 "use client"
 
 import Sidebar from "@/components/DvmfSidebar"
-import { Bell, Check, Edit2, Eye, EyeOff, MoreVertical, Plus, RefreshCw, Users } from "lucide-react"
+import { Bell, CheckCircle, Edit2, Eye, EyeOff, Plus, RefreshCw, Users, XCircle } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
@@ -47,7 +47,6 @@ const [activeTab, setActiveTab] = useState("profile")
 
   const [activeUserTab, setActiveUserTab] = useState("addNew")
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
-  const [dropdownOpen, setDropdownOpen] = useState(null)
   // State for new user
   const [newUser, setNewUser] = useState({
     firstname: "",
@@ -108,72 +107,70 @@ const [activeTab, setActiveTab] = useState("profile")
     
       // HANDLE INDIVIDUAL NOTIFICATION CLICK
       const handleNotificationClick = async (notification) => {
-        // Mark notification as read in frontend immediately for better UX
-        setNotifications(prev => 
-          prev.map(notif => 
-            notif.id === notification.id ? { ...notif, read: true } : notif
-          )
-        );
-    
-        // Mark notification as read in backend
-        try {
-          const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-            method: "POST",
-            credentials: "include",
-          });
-          const data = await res.json();
-          console.log("Mark notification read result:", data);
-        } catch (err) {
-          console.error("Error marking notification as read:", err);
-        }
-    
-        // Handle navigation based on notification content
-        console.log('Notification clicked:', notification);
-        const message = notification.message.toLowerCase();
-    
-        if (
-          message.includes("new registration") ||
-          message.includes("new veterinarian approved") ||
-          message.includes("veterinarian approved") ||
-          message.includes("veterinarian declined") ||
-          message.includes("veterinarian registered")
-        ) {
-          console.log("Navigating to Account Approval page");
-          navigate("/DvmfAccountApproval", {
-            state: {
-              highlightedNotification: notification,
-              shouldHighlight: true,
-            },
-          });
-          return;
-        }
-    
-        if (message.includes("pending medical record access") || message.includes("requested access")) {
-          console.log("Navigating to Access Request page");
-          navigate("/DvmfAccessRequest", {
-            state: {
-              highlightedNotification: notification,
-              shouldHighlight: true,
-            },
-          });
-          return;
-        }
-    
-        if (message.includes("emergency") || message.includes("sos")) {
-          console.log("Navigating to SOS page");
-          navigate("/DvmfSOS");
-          return;
-        }
-    
-        if (message.includes("health") || message.includes("report") || message.includes("statistic")) {
-          console.log("Already on Health Report page");
-          // We're already on the health report page, no navigation needed
-          return;
-        }
-    
-        console.warn("No matching route for notification:", notification);
-      };
-    
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev => 
+    prev.map(notif => 
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
+
+  // Mark notification as read in backend
+  try {
+    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const data = await res.json();
+    console.log("Mark notification read result:", data);
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
+  }
+
+  // Handle navigation based on notification content
+  console.log('Notification clicked:', notification);
+  const message = notification.message.toLowerCase();
+
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    console.log("Navigating to Account Approval page");
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    console.log("Navigating to Access Request page");
+    navigate("/DvmfAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
+    console.log("Navigating to Announcement page");
+    navigate("/DvmfAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  console.warn("No matching route for notification:", notification);
+};
       // Handle notifications update from modal
       const handleNotificationsUpdate = (updatedNotifications) => {
         console.log("Notifications updated from modal:", updatedNotifications);
@@ -471,10 +468,6 @@ const [activeTab, setActiveTab] = useState("profile")
       console.error("Error reactivating user:", err)
       showAlert("Error reactivating user", "error")
     }
-  }
-
-  const toggleDropdown = (id) => {
-    setDropdownOpen(dropdownOpen === id ? null : id)
   }
 
   // Manual refresh function
@@ -1009,7 +1002,7 @@ const [activeTab, setActiveTab] = useState("profile")
                             <button
                               type="button"
                               onClick={toggleNewUserPasswordVisibility}
-                              className="ml-1 cursor-pointer border-none bg-transparent hover:text-gray-700"
+                              className="absolute right-3 cursor-pointer border-none bg-transparent hover:text-gray-700"
                             >
                               {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                             </button>
@@ -1077,7 +1070,7 @@ const [activeTab, setActiveTab] = useState("profile")
                         </div>
                       ) : (
                         <div className="border border-gray-200 rounded-lg overflow-hidden max-h-96 overflow-y-auto">
-                          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_1fr_80px] bg-gray-50 border-b border-gray-200">
+                          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_1fr_120px] bg-gray-50 border-b border-gray-200">
                             <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">First Name</div>
                             <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Last Name</div>
                             <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Email</div>
@@ -1104,7 +1097,7 @@ const [activeTab, setActiveTab] = useState("profile")
                               return (
                                 <div
                                   key={p.id}
-                                  className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_1fr_80px] border-b border-gray-200 last:border-b-0"
+                                  className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_1fr_120px] border-b border-gray-200 last:border-b-0"
                                 >
                                   <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
                                     {p.dvmf_fname || "-"}
@@ -1136,47 +1129,32 @@ const [activeTab, setActiveTab] = useState("profile")
                                       {displayStatus}
                                     </span>
                                   </div>
-                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
-                                    <div className="relative">
+                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center justify-center gap-2">
+                                    {(p.status === "Approved" || p.status === "approved") && (
                                       <button
-                                        className="bg-none border-none cursor-pointer p-1 rounded hover:bg-gray-100"
-                                        onClick={() => toggleDropdown(p.id)}
+                                        className="p-1.5 bg-red-50 border border-red-200 rounded-md text-red-600 cursor-pointer transition-all duration-200 hover:bg-red-100 hover:border-red-300"
+                                        onClick={async () => {
+                                          await deactivateUser(p.id)
+                                          showAlert("User deactivated successfully!", "success")
+                                        }}
                                       >
-                                        <MoreVertical size={16} />
+                                        <XCircle size={16} />
+                                       
                                       </button>
+                                    )}
 
-                                      {dropdownOpen === p.id && (
-                                        <div className="absolute right-0 top-full bg-white border border-gray-200 rounded-md shadow-lg z-10 min-w-[120px]">
-                                          {(p.status === "Approved" || p.status === "approved") && (
-                                            <button
-                                              className="flex items-center gap-2 w-full px-3 py-2 bg-transparent border-none cursor-pointer text-sm text-gray-700 hover:bg-gray-50"
-                                              onClick={async () => {
-                                                await deactivateUser(p.id)
-                                                showAlert("User deactivated successfully!", "success")
-                                                setDropdownOpen(null)
-                                              }}
-                                            >
-                                              <Eye size={16} />
-                                              Deactivate
-                                            </button>
-                                          )}
-
-                                          {(p.status === "deactivated" || p.status === "Deactivated") && (
-                                            <button
-                                              className="flex items-center gap-2 w-full px-3 py-2 bg-transparent border-none cursor-pointer text-sm text-red-600 hover:bg-gray-50"
-                                              onClick={async () => {
-                                                await reactivateUser(p.id)
-                                                showAlert("User reactivated successfully!", "success")
-                                                setDropdownOpen(null)
-                                              }}
-                                            >
-                                              <Check size={16} />
-                                              Reactivate
-                                            </button>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
+                                    {(p.status === "deactivated" || p.status === "Deactivated") && (
+                                      <button
+                                        className="p-1.5 bg-green-50 border border-green-200 rounded-md text-green-600 cursor-pointer transition-all duration-200 hover:bg-green-100 hover:border-green-300"
+                                        onClick={async () => {
+                                          await reactivateUser(p.id)
+                                          showAlert("User reactivated successfully!", "success")
+                                        }}
+                                      >
+                                        <CheckCircle size={16} />
+                                       
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               )

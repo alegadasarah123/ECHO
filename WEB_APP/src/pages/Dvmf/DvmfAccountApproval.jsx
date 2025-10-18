@@ -25,6 +25,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
+const API_BASE = "http://127.0.0.1:8000/api/dvmf"
 
 const SkeletonLoader = () => (
   <div className="animate-pulse">
@@ -42,15 +43,11 @@ const SkeletonLoader = () => (
   </div>
 )
 
-
-
-
-
 function DvmfAccountApproval() {
-   const navigate = useNavigate()
+  const navigate = useNavigate()
 
   const [registrationData, setRegistrationData] = useState([])
-  const [message, setMessage] = useState("") // For showing confirmation messages
+  const [message, setMessage] = useState("")
   const [vetProfiles, setVetProfiles] = useState([])
 
   const [activeTab, setActiveTab] = useState("pending")
@@ -62,6 +59,8 @@ function DvmfAccountApproval() {
 
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingCounts, setIsLoadingCounts] = useState(true)
+  const [isActionLoading, setIsActionLoading] = useState(false) // NEW: Loading state for approve/decline actions
+  const [loadingActionId, setLoadingActionId] = useState(null) // NEW: Track which action is loading
 
   const [notifications, setNotifications] = useState([])
   const [notifsOpen, setNotifsOpen] = useState(false)
@@ -85,10 +84,10 @@ function DvmfAccountApproval() {
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
 
-  // State for managing pinned posts (if this component were to handle posts)
+  // State for managing pinned posts
   const [pinnedPosts, setPinnedPosts] = useState(new Set())
   const [showDropdown, setShowDropdown] = useState({})
-  const [posts, setPosts] = useState([]) // Assuming 'posts' is relevant for some functionality
+  const [posts, setPosts] = useState([])
 
   // Helper to format time for notifications
   const formatTimeAgo = useCallback((timestamp) => {
@@ -117,21 +116,22 @@ function DvmfAccountApproval() {
     declined: 0,
   })
 
-  useEffect(() => {
-    const fetchCounts = async () => {
-      setIsLoadingCounts(true)
-      try {
-        const response = await fetch("http://127.0.0.1:8000/api/dvmf/get-account-counts/")
-        if (!response.ok) throw new Error("Failed to fetch data")
-        const result = await response.json()
-        setCounts(result.data || result)
-      } catch (error) {
-        console.error("Error fetching counts:", error)
-      } finally {
-        setIsLoadingCounts(false)
-      }
+  // ✅ Refresh counts function
+  const fetchCounts = async () => {
+    setIsLoadingCounts(true)
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/dvmf/get-account-counts/")
+      if (!response.ok) throw new Error("Failed to fetch data")
+      const result = await response.json()
+      setCounts(result.data || result)
+    } catch (error) {
+      console.error("Error fetching counts:", error)
+    } finally {
+      setIsLoadingCounts(false)
     }
+  }
 
+  useEffect(() => {
     fetchCounts()
   }, [])
 
@@ -139,7 +139,6 @@ function DvmfAccountApproval() {
     const debounceTimer = setTimeout(() => {
       if (searchTerm) {
         setIsSearching(true)
-        // Simulate search delay
         setTimeout(() => {
           const filtered = registrationData.filter(
             (user) =>
@@ -162,7 +161,6 @@ function DvmfAccountApproval() {
   const filterRegistrations = useCallback(() => {
     let filtered = registrationData
 
-    // Correctly filter by nested status
     filtered = filtered.filter((user) => user.users?.status === activeTab)
 
     if (searchTerm) {
@@ -188,7 +186,7 @@ function DvmfAccountApproval() {
   const viewDetails = (vetId, status) => {
     const user = registrationData.find((u) => u.vet_id === vetId)
     if (user) {
-      setSelectedUser({ ...user, status }) // Pass status to modal for conditional buttons
+      setSelectedUser({ ...user, status })
       setIsViewDetailsModalOpen(true)
       setModalActiveTab("personal")
     } else {
@@ -239,6 +237,7 @@ function DvmfAccountApproval() {
     setIsConfirmationModalOpen(false)
     setSelectedUser(null)
     setConfirmationDetails({ title: "", message: "", action: "" })
+    setDeclineReason("") // Reset decline reason when closing
   }
 
   const confirmAction = () => {
@@ -247,14 +246,20 @@ function DvmfAccountApproval() {
     } else if (confirmationDetails.action === "decline" && selectedUser) {
       declineUser(selectedUser.vet_id)
     }
-    closeConfirmation()
   }
 
-  // -------------------- Approve a single user --------------------
+  // -------------------- UPDATED: Approve a single user with loading state --------------------
   const approveUser = async (vetId) => {
+    setIsActionLoading(true)
+    setLoadingActionId(vetId)
+    
     try {
       // Optimistically update the UI first
-      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "approved" } : u)))
+      setRegistrationData((prev) => 
+        prev.map((u) => 
+          u.vet_id === vetId ? { ...u, users: { ...u.users, status: "approved" } } : u
+        )
+      )
       setMessage(`Approving user ${vetId}...`)
 
       const response = await fetch(`http://127.0.0.1:8000/api/dvmf/update-vet-status/${vetId}/`, {
@@ -272,26 +277,43 @@ function DvmfAccountApproval() {
       const data = await response.json()
       setMessage(`User ${vetId} approved successfully!`)
       
-      // Refresh counts after approval
-      fetchCounts()
+      // Refresh data after approval
+      await handleManualRefresh()
+      await fetchCounts()
+      
       console.log("User approved:", data)
     } catch (err) {
       console.error(err)
       // Rollback UI if failed
-      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u)))
+      setRegistrationData((prev) => 
+        prev.map((u) => 
+          u.vet_id === vetId ? { ...u, users: { ...u.users, status: "pending" } } : u
+        )
+      )
       setMessage(`Error: ${err.message}`)
+    } finally {
+      setIsActionLoading(false)
+      setLoadingActionId(null)
+      closeConfirmation()
     }
   }
 
-  // -------------------- Decline a single user --------------------
+  // -------------------- UPDATED: Decline a single user with loading state --------------------
   const declineUser = async (vetId) => {
     if (!declineReason) {
       setMessage("Please enter a reason for decline.")
       return
     }
 
+    setIsActionLoading(true)
+    setLoadingActionId(vetId)
+
     try {
-      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "declined" } : u)))
+      setRegistrationData((prev) => 
+        prev.map((u) => 
+          u.vet_id === vetId ? { ...u, users: { ...u.users, status: "declined" } } : u
+        )
+      )
       setMessage(`Declining user ${vetId}...`)
 
       const response = await fetch(`http://127.0.0.1:8000/api/dvmf/update-vet-status/${vetId}/`, {
@@ -308,21 +330,31 @@ function DvmfAccountApproval() {
 
       const data = await response.json()
       setMessage(`User ${vetId} declined successfully!`)
-      setDeclineReason("") // clear reason after successful decline
       
-      // Refresh counts after decline
-      fetchCounts()
+      // Refresh data after decline
+      await handleManualRefresh()
+      await fetchCounts()
+      
       console.log("User declined:", data)
     } catch (err) {
       console.error(err)
-      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u)))
+      setRegistrationData((prev) => 
+        prev.map((u) => 
+          u.vet_id === vetId ? { ...u, users: { ...u.users, status: "pending" } } : u
+        )
+      )
       setMessage(`Error: ${err.message}`)
+    } finally {
+      setIsActionLoading(false)
+      setLoadingActionId(null)
+      setDeclineReason("")
+      closeConfirmation()
     }
   }
 
   const handleSearchInput = (e) => {
     setSearchTerm(e.target.value)
-    setCurrentPage(1) // Reset to first page when searching
+    setCurrentPage(1)
     if (e.target.value) {
       setIsSearching(true)
     }
@@ -338,12 +370,10 @@ function DvmfAccountApproval() {
 
   const loadStats = useCallback(() => {
     console.log("Loading stats...")
-    // In a real app, this would fetch dashboard statistics
   }, [])
 
   const loadRecentActivities = useCallback(() => {
     console.log("Loading recent activities...")
-    // In a real app, this would fetch recent activities
   }, [])
 
   // ✅ Fetch notifications from backend
@@ -371,18 +401,6 @@ function DvmfAccountApproval() {
       .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
-  // ✅ Refresh counts function
-  const fetchCounts = async () => {
-    try {
-      const response = await fetch("http://127.0.0.1:8000/api/dvmf/get-account-counts/")
-      if (!response.ok) throw new Error("Failed to fetch data")
-      const result = await response.json()
-      setCounts(result.data || result)
-    } catch (error) {
-      console.error("Error fetching counts:", error)
-    }
-  }
-
   // ✅ MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
@@ -402,7 +420,6 @@ function DvmfAccountApproval() {
       const data = await res.json();
       console.log("Mark all as read result:", data);
 
-      // Update frontend state
       setNotifications(prev =>
         prev.map(notif => ({ ...notif, read: true }))
       );
@@ -414,60 +431,70 @@ function DvmfAccountApproval() {
 
   // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
   const handleNotificationClick = async (notification) => {
-    // Mark notification as read in frontend immediately for better UX
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === notification.id ? { ...notif, read: true } : notif
-      )
-    );
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev => 
+    prev.map(notif => 
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
 
-    // Mark notification as read in backend
-    try {
-      const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const data = await res.json();
-      console.log("Mark notification read result:", data);
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
-    }
+  // Mark notification as read in backend
+  try {
+    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const data = await res.json();
+    console.log("Mark notification read result:", data);
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
+  }
 
-    // Handle navigation based on notification content
-    console.log('Notification clicked:', notification);
-    const message = notification.message.toLowerCase();
+  // Handle navigation based on notification content
+  console.log('Notification clicked:', notification);
+  const message = notification.message.toLowerCase();
 
-    if (
-      message.includes("new registration") ||
-      message.includes("new veterinarian approved") ||
-      message.includes("veterinarian approved") ||
-      message.includes("veterinarian declined") ||
-      message.includes("veterinarian registered")
-    ) {
-      console.log("Already on Account Approval page");
-      // We're already on the Account Approval page, no need to navigate
-      return;
-    }
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    console.log("Navigating to Account Approval page");
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("pending medical record access") || message.includes("requested access")) {
-      console.log("Navigating to Access Request page");
-      navigate("/DvmfAccessRequest", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    console.log("Navigating to Access Request page");
+    navigate("/DvmfAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("emergency") || message.includes("sos")) {
-      console.log("Navigating to SOS page");
-      navigate("/DvmfSOS");
-      return;
-    }
+  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
+    console.log("Navigating to Announcement page");
+    navigate("/DvmfAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    console.warn("No matching route for notification:", notification);
-  };
+  console.warn("No matching route for notification:", notification);
+};
 
   // ✅ Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -476,13 +503,13 @@ function DvmfAccountApproval() {
     setNotifications(updatedNotifications);
   };
 
-  // ✅ Auto-refresh notifications every 60s (reduced from 10s)
+  // ✅ Auto-refresh notifications every 60s
   useEffect(() => {
-    loadNotifications() // load once
+    loadNotifications()
 
     const interval = setInterval(() => {
       loadNotifications()
-    }, 60000) // 60 seconds
+    }, 60000)
 
     return () => clearInterval(interval)
   }, [loadNotifications])
@@ -493,8 +520,39 @@ function DvmfAccountApproval() {
     loadNotifications()
   }, [loadStats, loadRecentActivities, loadNotifications])
 
+  // Manual refresh function - UPDATED to be more robust
+  const handleManualRefresh = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch("http://127.0.0.1:8000/api/dvmf/get-vet-profiles/")
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+      
+      const result = await response.json()
+      const data = result.data || []
+      
+      const processedData = data.map((item) => {
+        let statusValue = item.status
+        if (!statusValue && item.users && item.users.status) {
+          statusValue = item.users.status
+        }
+
+        return {
+          ...item,
+          status: statusValue || "pending",
+          type: item.type || "Veterinarian",
+        }
+      })
+
+      setRegistrationData(processedData)
+    } catch (error) {
+      console.error("Failed to refresh data:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   useEffect(() => {
-    const controller = new AbortController() // for cancelling fetch on unmount
+    const controller = new AbortController()
 
     const loadVetProfiles = async () => {
       setIsLoading(true)
@@ -510,11 +568,9 @@ function DvmfAccountApproval() {
         const result = await response.json()
         console.log("Fetched vet profiles response:", result)
 
-        // Extract the data array from the response
         const data = result.data || []
         console.log("Extracted vet profiles data:", data)
 
-        // Process each item safely
         const processedData = data.map((item, index) => {
           let statusValue = item.status
           if (!statusValue && item.users && item.users.status) {
@@ -528,7 +584,6 @@ function DvmfAccountApproval() {
           }
         })
 
-        // Log processed items
         processedData.forEach((item, index) => {
           console.log(`[Processed Item ${index}]`, {
             id: item.vet_id,
@@ -549,13 +604,10 @@ function DvmfAccountApproval() {
       }
     }
 
-    loadVetProfiles() // initial load only
-    
-    // REMOVED auto-refresh interval for vet profiles
-    // Only manual refreshes now
+    loadVetProfiles()
 
     return () => {
-      controller.abort() // cancel fetch if component unmounts
+      controller.abort()
     }
   }, [])
 
@@ -566,7 +618,6 @@ function DvmfAccountApproval() {
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      // Close notification dropdown
       if (
         notificationBellRef.current &&
         !notificationBellRef.current.contains(event.target) &&
@@ -575,7 +626,6 @@ function DvmfAccountApproval() {
       ) {
         setIsNotificationDropdownOpen(false)
       }
-      // Close view details modal
       if (
         isViewDetailsModalOpen &&
         viewDetailsModalOverlayRef.current &&
@@ -583,7 +633,6 @@ function DvmfAccountApproval() {
       ) {
         closeModal()
       }
-      // Close confirmation modal
       if (
         isConfirmationModalOpen &&
         confirmationOverlayRef.current &&
@@ -614,19 +663,18 @@ function DvmfAccountApproval() {
 
   const handleItemsPerPageChange = (e) => {
     setItemsPerPage(Number(e.target.value))
-    setCurrentPage(1) // Reset to first page when changing items per page
+    setCurrentPage(1)
   }
 
   const togglePin = (postId) => {
     setPinnedPosts((prev) => {
       const updated = new Set(prev)
-      updated.add(postId) // only add, never delete
+      updated.add(postId)
       return updated
     })
 
     setShowDropdown((prev) => ({ ...prev, [postId]: false }))
 
-    // Reorder posts: pinned posts first, then regular posts by timestamp
     setPosts((prev) => {
       const pinned = []
       const unpinned = []
@@ -648,9 +696,8 @@ function DvmfAccountApproval() {
 
   const handleTabChange = (tabName) => {
     setActiveTab(tabName)
-    setCurrentPage(1) // Reset to first page when changing tabs
+    setCurrentPage(1)
     setIsLoading(true)
-    // Simulate loading delay for tab change
     setTimeout(() => {
       setIsLoading(false)
     }, 500)
@@ -670,38 +717,6 @@ function DvmfAccountApproval() {
     }
   };
 
-  // Manual refresh function
-  const handleManualRefresh = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch("http://127.0.0.1:8000/api/dvmf/get-vet-profiles/")
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-      
-      const result = await response.json()
-      const data = result.data || []
-      
-      const processedData = data.map((item) => {
-        let statusValue = item.status
-        if (!statusValue && item.users && item.users.status) {
-          statusValue = item.users.status
-        }
-
-        return {
-          ...item,
-          status: statusValue || "pending",
-          type: item.type || "Veterinarian",
-        }
-      })
-
-      setRegistrationData(processedData)
-      await fetchCounts() // Also refresh counts
-    } catch (error) {
-      console.error("Failed to refresh data:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
       <div className="sidebars" id="sidebasr">
@@ -709,8 +724,7 @@ function DvmfAccountApproval() {
       </div>
 
       <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
-        <header className="bg-white px-6 py-[18px] flex items-center justify-between shadow-sm flex-wrap gap-4">
-          {/* ADDED HEADER SECTION */}
+        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
           <div className="flex flex-col ">
             <h2 className="text-2xl font-bold text-[#0F3D5A]">Account Approval</h2>
             <p className="text-sm text-gray-600 mt-1 font-normal">
@@ -725,7 +739,6 @@ function DvmfAccountApproval() {
               disabled={isLoading}
               className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title="Refresh Data"
-            
             >
               <RefreshCw 
                 size={24} 
@@ -851,9 +864,6 @@ function DvmfAccountApproval() {
                 <option value="month">This Month</option>
               </select>
             </div>
-
-            {/* For Approved Tab */}
-            {activeTab === "approved"}
           </div>
 
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -896,7 +906,6 @@ function DvmfAccountApproval() {
                           alt={`${user.vet_fname} ${user.vet_lname}`}
                           className="w-full h-full object-cover"
                           onError={(e) => {
-                            // If image fails to load, show initials as fallback
                             e.target.style.display = 'none';
                             const fallback = document.createElement('div');
                             fallback.className = 'w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold';
@@ -997,7 +1006,7 @@ function DvmfAccountApproval() {
                               key={pageNum}
                               className={`flex items-center justify-center min-w-[40px] h-10 px-3 border border-gray-300 rounded-md text-sm cursor-pointer transition-all duration-200 ${
                                 currentPage === pageNum
-                                  ? "bg-red-700 text-white border-red-700"
+                                  ? "bg-[#0F3D5A] text-white border-[#0F3D5A]"
                                   : "bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
                               }`}
                               onClick={() => goToPage(pageNum)}
@@ -1093,7 +1102,7 @@ function DvmfAccountApproval() {
             <div className="flex border-b border-gray-200">
               <button
                 className={`py-3 px-6 bg-none border-none text-sm font-medium text-gray-500 cursor-pointer border-b-2 border-transparent transition-all duration-200 whitespace-nowrap min-h-[44px] ${
-                  modalActiveTab === "personal" ? "text-red-700 border-b-2 border-red-700" : ""
+                  modalActiveTab === "personal" ? "text-[#0F3D5A] border-b-2 border-[#0F3D5A]" : ""
                 }`}
                 onClick={() => setModalActiveTab("personal")}
               >
@@ -1101,7 +1110,7 @@ function DvmfAccountApproval() {
               </button>
               <button
                 className={`py-3 px-6 bg-none border-none text-sm font-medium text-gray-500 cursor-pointer border-b-2 border-transparent transition-all duration-200 whitespace-nowrap min-h-[44px] ${
-                  modalActiveTab === "professional" ? "text-red-700 border-b-2 border-red-700" : ""
+                  modalActiveTab === "professional" ? "text-[#0F3D5A] border-b-2 border-[#0F3D5A]" : ""
                 }`}
                 onClick={() => setModalActiveTab("professional")}
               >
@@ -1109,7 +1118,7 @@ function DvmfAccountApproval() {
               </button>
               <button
                 className={`py-3 px-6 bg-none border-none text-sm font-medium text-gray-500 cursor-pointer border-b-2 border-transparent transition-all duration-200 whitespace-nowrap min-h-[44px] ${
-                  modalActiveTab === "documents" ? "text-red-700 border-b-2 border-red-700" : ""
+                  modalActiveTab === "documents" ? "text-[#0F3D5A] border-b-2 border-[#0F3D5A]" : ""
                 }`}
                 onClick={() => setModalActiveTab("documents")}
               >
@@ -1122,7 +1131,7 @@ function DvmfAccountApproval() {
                 <>
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
                     <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
-                      <User className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
+                      <User className="text-[#0F3D5A] mr-2 text-base w-5 text-center" size={20} />
                       <h4 className="text-base font-semibold text-gray-900 m-0">Name Information</h4>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -1149,7 +1158,7 @@ function DvmfAccountApproval() {
 
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
                     <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
-                      <CreditCard className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
+                      <CreditCard className="text-[#0F3D5A] mr-2 text-base w-5 text-center" size={20} />
                       <h4 className="text-base font-semibold text-gray-900 m-0">Personal Information</h4>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -1188,7 +1197,7 @@ function DvmfAccountApproval() {
 
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
                     <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
-                      <MapPin className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
+                      <MapPin className="text-[#0F3D5A] mr-2 text-base w-5 text-center" size={20} />
                       <h4 className="text-base font-semibold text-gray-900 m-0">Address Information</h4>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -1231,7 +1240,7 @@ function DvmfAccountApproval() {
                 <>
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
                     <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
-                      <Stethoscope className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
+                      <Stethoscope className="text-[#0F3D5A] mr-2 text-base w-5 text-center" size={20} />
                       <h4 className="text-base font-semibold text-gray-900 m-0">Professional Information</h4>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -1265,7 +1274,7 @@ function DvmfAccountApproval() {
                   {/* Clinic Address Section */}
                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
                     <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
-                      <MapPin className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
+                      <MapPin className="text-[#0F3D5A] mr-2 text-base w-5 text-center" size={20} />
                       <h4 className="text-base font-semibold text-gray-900 m-0">Clinic Address</h4>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -1315,13 +1324,10 @@ function DvmfAccountApproval() {
               {modalActiveTab === "documents" && (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
                   <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
-                    <FileText className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
+                    <FileText className="text-[#0F3D5A] mr-2 text-base w-5 text-center" size={20} />
                     <h4 className="text-base font-semibold text-gray-900 m-0">Documents</h4>
                   </div>
                   
-                  {/* Profile Photo REMOVED from documents section - now only displayed in profile */}
-
-                  {/* License Documents */}
                   <div>
                     <h5 className="text-sm font-semibold text-gray-700 mb-3">License Documents</h5>
                     <div className="flex flex-col items-center justify-center p-5 border border-dashed border-gray-300 rounded-lg text-center">
@@ -1330,7 +1336,6 @@ function DvmfAccountApproval() {
                           {parseDocuments(selectedUser.vet_documents).map((docUrl, index) => (
                             <div key={index} className="mb-4 last:mb-0">
                               <div className="relative w-full max-w-md mx-auto">
-                                {/* Check if it's an image or PDF */}
                                 {docUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/) ? (
                                   <img
                                     src={docUrl}
@@ -1376,24 +1381,34 @@ function DvmfAccountApproval() {
               )}
             </div>
 
-            {/* COMPACT BUTTONS - Updated Section */}
+            {/* COMPACT BUTTONS - UPDATED with loading states */}
             <div className="flex justify-end pt-4 border-t border-gray-200 gap-2 flex-wrap">
               {selectedUser?.users?.status === "pending" && (
                 <>
                   <button
-                    className="inline-flex items-center gap-1.5 py-2 px-3 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 bg-green-500 text-white hover:bg-green-600 min-w-[100px] justify-center"
+                    className="inline-flex items-center gap-1.5 py-2 px-3 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 bg-green-500 text-white hover:bg-green-600 min-w-[100px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => showApproveConfirmation(selectedUser.vet_id)}
+                    disabled={isActionLoading && loadingActionId === selectedUser.vet_id}
                   >
-                    <CheckCircle size={16} />
-                    Approve
+                    {isActionLoading && loadingActionId === selectedUser.vet_id ? (
+                      <RefreshCw size={16} className="animate-spin" />
+                    ) : (
+                      <CheckCircle size={16} />
+                    )}
+                    {isActionLoading && loadingActionId === selectedUser.vet_id ? "Processing..." : "Approve"}
                   </button>
 
                   <button
-                    className="inline-flex items-center gap-1.5 py-2 px-3 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 bg-red-500 text-white hover:bg-red-600 min-w-[100px] justify-center"
+                    className="inline-flex items-center gap-1.5 py-2 px-3 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 bg-red-500 text-white hover:bg-red-600 min-w-[100px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => showDeclineConfirmation(selectedUser.vet_id)}
+                    disabled={isActionLoading && loadingActionId === selectedUser.vet_id}
                   >
-                    <XCircle size={16} />
-                    Decline
+                    {isActionLoading && loadingActionId === selectedUser.vet_id ? (
+                      <RefreshCw size={16} className="animate-spin" />
+                    ) : (
+                      <XCircle size={16} />
+                    )}
+                    {isActionLoading && loadingActionId === selectedUser.vet_id ? "Processing..." : "Decline"}
                   </button>
                 </>
               )}
@@ -1402,7 +1417,7 @@ function DvmfAccountApproval() {
         </div>
       )}
 
-      {/* Confirmation Modal */}
+      {/* Confirmation Modal - UPDATED with loading states */}
       {isConfirmationModalOpen && (
         <div
           className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay"
@@ -1419,25 +1434,37 @@ function DvmfAccountApproval() {
                 value={declineReason}
                 onChange={(e) => setDeclineReason(e.target.value)}
                 className="w-full p-2 mt-2.5 rounded border border-gray-300 resize-y"
+                disabled={isActionLoading}
               />
             )}
 
             <div className="flex gap-3 justify-center flex-wrap">
               <button
-                className="py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 min-h-[40px] flex-1 min-w-[80px] bg-gray-500 text-white hover:bg-gray-600"
+                className="py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 min-h-[40px] flex-1 min-w-[80px] bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={closeConfirmation}
+                disabled={isActionLoading}
               >
                 Cancel
               </button>
               <button
-                className={`py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 min-h-[40px] flex-1 min-w-[80px] ${
+                className={`py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 min-h-[40px] flex-1 min-w-[80px] flex items-center justify-center gap-2 ${
                   confirmationDetails.action === "approve"
                     ? "bg-green-500 text-white hover:bg-green-600"
                     : "bg-red-500 text-white hover:bg-red-600"
-                }`}
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
                 onClick={confirmAction}
+                disabled={isActionLoading || (confirmationDetails.action === "decline" && !declineReason)}
               >
-                {confirmationDetails.action === "approve" ? "Approve" : "Decline"}
+                {isActionLoading ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    Processing...
+                  </>
+                ) : confirmationDetails.action === "approve" ? (
+                  "Approve"
+                ) : (
+                  "Decline"
+                )}
               </button>
             </div>
           </div>
@@ -1446,6 +1473,5 @@ function DvmfAccountApproval() {
     </div>
   )
 }
-
 
 export default DvmfAccountApproval

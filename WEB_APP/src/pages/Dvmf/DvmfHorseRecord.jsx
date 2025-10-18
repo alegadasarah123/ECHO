@@ -327,6 +327,27 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
     const pdf = new jsPDF();
     const { horse, medicalRecord, treatmentHistory } = data;
 
+    // Helper function to parse lab images for PDF
+    const parseLabImages = (labImgData) => {
+      if (!labImgData) return [];
+      
+      try {
+        if (typeof labImgData === 'string' && labImgData.startsWith('[')) {
+          return JSON.parse(labImgData);
+        }
+        if (Array.isArray(labImgData)) {
+          return labImgData;
+        }
+        if (typeof labImgData === 'string') {
+          return [labImgData];
+        }
+      } catch (error) {
+        console.error('Error parsing lab images:', error);
+      }
+      
+      return [];
+    };
+
     // Colors
     const primaryColor = [220, 53, 69]; // Red headers
     const darkColor = [51, 51, 51]; // Text
@@ -500,14 +521,15 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
         medicalRecord.medrec_diagnostic_protocol || "No protocol recorded"
       );
 
-      // NEW: Add Lab Results and Lab Image information to PDF
+      // Laboratory Results Section in PDF
       addSection("Laboratory Results", "");
       addKeyValue("Lab Results", medicalRecord.medrec_lab_results || "No lab results available");
       
-      if (medicalRecord.medrec_lab_img) {
-        addKeyValue("Lab Image", "Available - See attached records for details");
+      const labImages = parseLabImages(medicalRecord.medrec_lab_img);
+      if (labImages.length > 0) {
+        addKeyValue("Lab Images", `${labImages.length} image(s) available - See system for details`);
       } else {
-        addKeyValue("Lab Image", "No lab image available");
+        addKeyValue("Lab Images", "No lab images available");
       }
     } else {
       // --- Treatment Record ---
@@ -582,7 +604,7 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
       pdf.setFontSize(8);
       pdf.setTextColor(150, 150, 150);
       pdf.text(`Page ${i} of ${pageCount}`, 105, 290, { align: "center" });
-      pdf.text("CTU Veterinary Medicine System", 200, 290, { align: "right" });
+      pdf.text("DVMF Veterinary Medicine System", 200, 290, { align: "right" });
     }
 
     pdf.save(filename);
@@ -596,6 +618,54 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
 // Medical Record Detail Component
 const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) => {
   if (!medicalRecord) return null;
+
+  // State to track image loading errors
+  const [imageErrors, setImageErrors] = useState({});
+
+  // Helper function to parse lab images and detect file types
+  const parseLabImages = (labImgData) => {
+    if (!labImgData) return [];
+    
+    try {
+      let files = [];
+      
+      // If it's a string that looks like JSON array, parse it
+      if (typeof labImgData === 'string' && labImgData.startsWith('[')) {
+        files = JSON.parse(labImgData);
+      }
+      // If it's already an array, use it
+      else if (Array.isArray(labImgData)) {
+        files = labImgData;
+      }
+      // If it's a single string URL, wrap it in array
+      else if (typeof labImgData === 'string') {
+        files = [labImgData];
+      }
+      
+      // Add file type information
+      const filesWithType = files.map(url => {
+        const lowerUrl = url.toLowerCase();
+        if (lowerUrl.match(/\.pdf$/)) {
+          return { url, type: 'pdf' };
+        } else {
+          return { url, type: 'image' };
+        }
+      });
+      
+      return filesWithType;
+      
+    } catch (error) {
+      console.error('Error parsing lab images:', error);
+    }
+    
+    return [];
+  };
+
+  const handleImageError = (index) => {
+    setImageErrors(prev => ({ ...prev, [index]: true }));
+  };
+
+  const labFiles = parseLabImages(medicalRecord.medrec_lab_img);
 
   const handleExportPDF = async () => {
     const success = await exportToPDF(
@@ -619,11 +689,6 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
         <ChevronLeft size={20} />
         Back to Horse Details
       </button>
-
-     
-        
-
-
 
       <div className="mb-6">
         <h5 className="text-base font-semibold text-red-700 mb-4 border-b-2 border-gray-200 pb-1.5">
@@ -681,7 +746,7 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
           </div>
         </div>
 
-        {/* NEW: Laboratory Results Section */}
+        {/* Laboratory Results Section */}
         <div className="bg-gray-50 rounded-lg p-4 mb-5">
           <div className="text-sm font-semibold text-gray-900 mb-2">Laboratory Results</div>
           <div className="space-y-4">
@@ -695,40 +760,64 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
               </p>
             </div>
             
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <ImageIcon size={16} className="text-green-600" />
-                <span className="text-sm font-medium text-gray-700">Lab Images:</span>
-              </div>
-              <div className="ml-6">
-                {medicalRecord.medrec_lab_img ? (
-                  <div className="flex flex-col space-y-2">
-                    <img 
-                      src={medicalRecord.medrec_lab_img} 
-                      alt="Laboratory test results"
-                      className="max-w-full h-auto max-h-64 rounded-lg border border-gray-200"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        e.target.nextSibling.style.display = 'block';
-                      }}
-                    />
-                    <div className="hidden text-sm text-gray-500 italic">
-                      Lab image failed to load
-                    </div>
-                    <a 
-                      href={medicalRecord.medrec_lab_img} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 hover:text-blue-800 underline"
-                    >
-                      View full size image
-                    </a>
+            {/* Lab Files Section - Only show if there are files */}
+            {labFiles.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <ImageIcon size={16} className="text-green-600" />
+                  <span className="text-sm font-medium text-gray-700">Lab Files:</span>
+                </div>
+                <div className="ml-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {labFiles.map((file, index) => (
+                      <div key={index} className="flex flex-col space-y-2">
+                        {file.type === 'image' ? (
+                          // Display image files with error handling
+                          !imageErrors[index] ? (
+                            <>
+                              <img 
+                                src={file.url} 
+                                alt={`Laboratory test result ${index + 1}`}
+                                className="max-w-full h-auto max-h-64 rounded-lg border border-gray-200"
+                                onError={() => handleImageError(index)}
+                              />
+                              <a 
+                                href={file.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-sm text-blue-600 hover:text-blue-800 underline text-center"
+                              >
+                                View full size image
+                              </a>
+                            </>
+                          ) : (
+                            <div className="text-sm text-gray-500 italic text-center p-4 bg-gray-100 rounded-lg border border-gray-200">
+                              Lab image failed to load or is unavailable
+                            </div>
+                          )
+                        ) : (
+                          // Display PDF files - always show the link without trying to render as image
+                          <>
+                            <div className="bg-gray-100 rounded-lg border border-gray-200 p-8 text-center">
+                              <FileText size={48} className="text-red-500 mx-auto mb-2" />
+                              <p className="text-sm text-gray-600 mb-3">PDF Document</p>
+                            </div>
+                            <a 
+                              href={file.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-600 hover:text-blue-800 underline text-center"
+                            >
+                              View PDF document
+                            </a>
+                          </>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ) : (
-                  <p className="text-sm text-gray-500 italic">No lab images available</p>
-                )}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -1250,66 +1339,71 @@ function DvmfHorseRecord() {
   };
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
-  const handleNotificationClick = async (notification) => {
-    // Mark notification as read in frontend immediately for better UX
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === notification.id ? { ...notif, read: true } : notif
-      )
-    );
+const handleNotificationClick = async (notification) => {
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev => 
+    prev.map(notif => 
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
 
-    // Mark notification as read in backend
-    try {
-      const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const data = await res.json();
-      console.log("Mark notification read result:", data);
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
-    }
+  // Mark notification as read in backend
+  try {
+    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const data = await res.json();
+    console.log("Mark notification read result:", data);
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
+  }
 
-    // Handle navigation based on notification content
-    console.log('Notification clicked:', notification);
-    const message = notification.message.toLowerCase();
+  // Handle navigation based on notification content
+  console.log('Notification clicked:', notification);
+  const message = notification.message.toLowerCase();
 
-    if (
-      message.includes("new registration") ||
-      message.includes("new veterinarian approved") ||
-      message.includes("veterinarian approved") ||
-      message.includes("veterinarian declined") ||
-      message.includes("veterinarian registered")
-    ) {
-      console.log("Navigating to Account Approval page");
-      navigate("/CtuAccountApproval", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    console.log("Navigating to Account Approval page");
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("pending medical record access") || message.includes("requested access")) {
-      console.log("Navigating to Access Request page");
-      navigate("/CtuAccessRequest", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    console.log("Navigating to Access Request page");
+    navigate("/DvmfAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("emergency") || message.includes("sos")) {
-      console.log("Navigating to SOS page");
-      navigate("/CtuSOS");
-      return;
-    }
+  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
+    console.log("Navigating to Announcement page");
+    navigate("/DvmfAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    console.warn("No matching route for notification:", notification);
-  };
+  console.warn("No matching route for notification:", notification);
+};
 
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -1357,7 +1451,7 @@ function DvmfHorseRecord() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_horses/")
+      const res = await fetch("http://127.0.0.1:8000/api/dvmf/get_horses/")
       if (!res.ok) throw new Error("Failed to fetch horses")
       const data = await res.json()
       setHorseRecords(data)
@@ -1694,14 +1788,17 @@ function DvmfHorseRecord() {
       </div>
 
       <div className="flex-1 flex flex-col w-full md:w-[calc(100%-250px)]">
-        <header className="bg-white px-6 py-4 flex items-center justify-between shadow-sm flex-wrap gap-4">
-          <div className="dashboard-container">
-            <h2 className="text-xl font-bold text-black">
+        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+          <div className="flex flex-col">
+            <h2 className="text-2xl font-bold text-[#0F3D5A]">
               {currentView === 'list' && 'Horse Records'}
               {currentView === 'horse' && 'Horse Details'}
               {currentView === 'medical' && 'Medical Record Details'}
               {currentView === 'treatment' && 'Treatment History Details'}
             </h2>
+            <p className="text-sm text-gray-600 mt-1 font-normal">
+              {currentView === 'list' && 'Manage and view all horse medical records and treatment histories'}
+            </p>
           </div>
 
           <div className="flex items-center gap-4">

@@ -71,72 +71,71 @@ function DvmfHealthReport() {
    };
  
    // HANDLE INDIVIDUAL NOTIFICATION CLICK
-   const handleNotificationClick = async (notification) => {
-     // Mark notification as read in frontend immediately for better UX
-     setNotifications(prev => 
-       prev.map(notif => 
-         notif.id === notification.id ? { ...notif, read: true } : notif
-       )
-     );
- 
-     // Mark notification as read in backend
-     try {
-       const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-         method: "POST",
-         credentials: "include",
-       });
-       const data = await res.json();
-       console.log("Mark notification read result:", data);
-     } catch (err) {
-       console.error("Error marking notification as read:", err);
-     }
- 
-     // Handle navigation based on notification content
-     console.log('Notification clicked:', notification);
-     const message = notification.message.toLowerCase();
- 
-     if (
-       message.includes("new registration") ||
-       message.includes("new veterinarian approved") ||
-       message.includes("veterinarian approved") ||
-       message.includes("veterinarian declined") ||
-       message.includes("veterinarian registered")
-     ) {
-       console.log("Navigating to Account Approval page");
-       navigate("/DvmfAccountApproval", {
-         state: {
-           highlightedNotification: notification,
-           shouldHighlight: true,
-         },
-       });
-       return;
-     }
- 
-     if (message.includes("pending medical record access") || message.includes("requested access")) {
-       console.log("Navigating to Access Request page");
-       navigate("/DvmfAccessRequest", {
-         state: {
-           highlightedNotification: notification,
-           shouldHighlight: true,
-         },
-       });
-       return;
-     }
- 
-     if (message.includes("emergency") || message.includes("sos")) {
-       console.log("Navigating to SOS page");
-       navigate("/DvmfSOS");
-       return;
-     }
- 
-     if (message.includes("health") || message.includes("report") || message.includes("statistic")) {
-       console.log("Already on Health Report page");
-       // We're already on the health report page, no navigation needed
-       return;
-     }
- 
-     console.warn("No matching route for notification:", notification);
-   };
+  const handleNotificationClick = async (notification) => {
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev => 
+    prev.map(notif => 
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
+
+  // Mark notification as read in backend
+  try {
+    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const data = await res.json();
+    console.log("Mark notification read result:", data);
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
+  }
+
+  // Handle navigation based on notification content
+  console.log('Notification clicked:', notification);
+  const message = notification.message.toLowerCase();
+
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    console.log("Navigating to Account Approval page");
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    console.log("Navigating to Access Request page");
+    navigate("/DvmfAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
+    console.log("Navigating to Announcement page");
+    navigate("/DvmfAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  console.warn("No matching route for notification:", notification);
+};
  
    // Handle notifications update from modal
    const handleNotificationsUpdate = (updatedNotifications) => {
@@ -470,7 +469,7 @@ function DvmfHealthReport() {
        </div>
  
        <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
-         <header className="bg-white py-[18px] px-6 flex items-center justify-between shadow-sm flex-wrap gap-4">
+         <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
            <div className="flex flex-col w-full sm:w-2/3 md:w-1/2 lg:w-1/3">
    <h2 className="text-2xl font-bold text-[#0F3D5A]">Health Report</h2>
    <p className="text-sm text-gray-500 mt-1 font-normal">

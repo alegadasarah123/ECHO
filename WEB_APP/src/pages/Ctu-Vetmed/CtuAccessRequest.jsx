@@ -156,61 +156,72 @@ function CtuAccessRequest() {
   };
 
   // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
-  const handleNotificationClick = async (notification) => {
-    // Mark notification as read in frontend immediately for better UX
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === notification.id ? { ...notif, read: true } : notif
-      )
-    );
+ // HANDLE INDIVIDUAL NOTIFICATION CLICK
+const handleNotificationClick = async (notification) => {
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev => 
+    prev.map(notif => 
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
 
-    // Mark notification as read in backend
-    try {
-      const res = await fetch(`${API_BASE_URL}/mark_notification_read/${notification.id}/`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const data = await res.json();
-      console.log("Mark notification read result:", data);
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
-    }
+  // Mark notification as read in backend
+  try {
+    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const data = await res.json();
+    console.log("Mark notification read result:", data);
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
+  }
 
-    // Handle navigation based on notification content
-    console.log('Notification clicked:', notification);
-    const message = notification.message.toLowerCase();
+  // Handle navigation based on notification content
+  console.log('Notification clicked:', notification);
+  const message = notification.message.toLowerCase();
 
-    if (
-      message.includes("new registration") ||
-      message.includes("new veterinarian approved") ||
-      message.includes("veterinarian approved") ||
-      message.includes("veterinarian declined") ||
-      message.includes("veterinarian registered")
-    ) {
-      console.log("Navigating to Account Approval page");
-      navigate("/CtuAccountApproval", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    console.log("Navigating to Account Approval page");
+    navigate("/CtuAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("pending medical record access") || message.includes("requested access")) {
-      console.log("Already on Access Request page");
-      // We're already on the Access Request page, no need to navigate
-      return;
-    }
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    console.log("Navigating to Access Request page");
+    navigate("/CtuAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("emergency") || message.includes("sos")) {
-      console.log("Navigating to SOS page");
-      navigate("/CtuSOS");
-      return;
-    }
+  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
+    console.log("Navigating to Announcement page");
+    navigate("/CtuAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    console.warn("No matching route for notification:", notification);
-  };
+  console.warn("No matching route for notification:", notification);
+};
 
   // ✅ Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {

@@ -1,14 +1,14 @@
 "use client"
 
 import Sidebar from "@/components/CtuSidebar"
-import { Bell, Check, Edit2, Eye, EyeOff, MoreVertical, Plus, RefreshCw, Users } from "lucide-react"
+import { Bell, CheckCircle, Edit2, Eye, EyeOff, Plus, RefreshCw, Users, XCircle } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
+const API_BASE = "http://localhost:8000/api/ctu_vetmed"
 
 const CtuSettings = () => {
   const [activeTab, setActiveTab] = useState("profile")
@@ -106,73 +106,72 @@ const CtuSettings = () => {
       };
     
       // HANDLE INDIVIDUAL NOTIFICATION CLICK
-      const handleNotificationClick = async (notification) => {
-        // Mark notification as read in frontend immediately for better UX
-        setNotifications(prev => 
-          prev.map(notif => 
-            notif.id === notification.id ? { ...notif, read: true } : notif
-          )
-        );
-    
-        // Mark notification as read in backend
-        try {
-          const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-            method: "POST",
-            credentials: "include",
-          });
-          const data = await res.json();
-          console.log("Mark notification read result:", data);
-        } catch (err) {
-          console.error("Error marking notification as read:", err);
-        }
-    
-        // Handle navigation based on notification content
-        console.log('Notification clicked:', notification);
-        const message = notification.message.toLowerCase();
-    
-        if (
-          message.includes("new registration") ||
-          message.includes("new veterinarian approved") ||
-          message.includes("veterinarian approved") ||
-          message.includes("veterinarian declined") ||
-          message.includes("veterinarian registered")
-        ) {
-          console.log("Navigating to Account Approval page");
-          navigate("/CtuAccountApproval", {
-            state: {
-              highlightedNotification: notification,
-              shouldHighlight: true,
-            },
-          });
-          return;
-        }
-    
-        if (message.includes("pending medical record access") || message.includes("requested access")) {
-          console.log("Navigating to Access Request page");
-          navigate("/CtuAccessRequest", {
-            state: {
-              highlightedNotification: notification,
-              shouldHighlight: true,
-            },
-          });
-          return;
-        }
-    
-        if (message.includes("emergency") || message.includes("sos")) {
-          console.log("Navigating to SOS page");
-          navigate("/CtuSOS");
-          return;
-        }
-    
-        if (message.includes("health") || message.includes("report") || message.includes("statistic")) {
-          console.log("Already on Health Report page");
-          // We're already on the health report page, no navigation needed
-          return;
-        }
-    
-        console.warn("No matching route for notification:", notification);
-      };
-    
+      // HANDLE INDIVIDUAL NOTIFICATION CLICK
+const handleNotificationClick = async (notification) => {
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev => 
+    prev.map(notif => 
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
+
+  // Mark notification as read in backend
+  try {
+    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+    const data = await res.json();
+    console.log("Mark notification read result:", data);
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
+  }
+
+  // Handle navigation based on notification content
+  console.log('Notification clicked:', notification);
+  const message = notification.message.toLowerCase();
+
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    console.log("Navigating to Account Approval page");
+    navigate("/CtuAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    console.log("Navigating to Access Request page");
+    navigate("/CtuAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
+    console.log("Navigating to Announcement page");
+    navigate("/CtuAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  console.warn("No matching route for notification:", notification);
+};
       // Handle notifications update from modal
       const handleNotificationsUpdate = (updatedNotifications) => {
         console.log("Notifications updated from modal:", updatedNotifications);
@@ -243,17 +242,17 @@ const CtuSettings = () => {
     setErrors({})
 
     try {
-      const res = await fetch("http://localhost:8000/api/ctu_vetmed/update_ctu_vet_profile/", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ctu_fname: profile.ctu_fname,
-          ctu_lname: profile.ctu_lname,
-          ctu_email: profile.ctu_email,
-          ctu_phonenum: profile.ctu_phonenum,
-        }),
-      })
+      const res = await fetch(`${API_BASE}/update_ctu_vet_profile/`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ctu_fname: profile.ctu_fname,
+        ctu_lname: profile.ctu_lname,
+        ctu_email: profile.ctu_email,
+        ctu_phonenum: profile.ctu_phonenum,
+      }),
+    });
 
       const data = await res.json()
 
@@ -288,16 +287,16 @@ const CtuSettings = () => {
 
     try {
       // 2️⃣ Make API request with credentials included (JWT cookie)
-      const res = await fetch("http://localhost:8000/api/ctu_vetmed/ctu_change_password/", {
-        method: "POST",
-        credentials: "include", // send access_token cookie
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ctu_email: profile.ctu_email, // 👈 use ctu_email instead of pres_email
-          current_password: passwords.current_password,
-          new_password: passwords.new_password,
-        }),
-      })
+     const res = await fetch(`${API_BASE}/ctu_change_password/`, {
+      method: "POST",
+      credentials: "include", // send access_token cookie
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ctu_email: profile.ctu_email, // 👈 use ctu_email instead of pres_email
+        current_password: passwords.current_password,
+        new_password: passwords.new_password,
+      }),
+    });
 
       const data = await res.json()
 
@@ -490,10 +489,10 @@ const CtuSettings = () => {
   // Fetch CTU Vet profile
   const fetchProfile = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/ctu_vetmed/get_ctu_vet_profiles/", {
-        method: "GET",
-        credentials: "include", // include HttpOnly cookie
-      })
+     const res = await fetch(`${API_BASE}/get_ctu_vet_profiles/`, {
+      method: "GET",
+      credentials: "include", // include HttpOnly cookie
+    });
 
       const data = await res.json()
 
@@ -1006,7 +1005,7 @@ const CtuSettings = () => {
                             <button
                               type="button"
                               onClick={toggleNewUserPasswordVisibility}
-                              className="ml-1 cursor-pointer border-none bg-transparent hover:text-gray-700"
+                              className="absolute right-3 cursor-pointer border-none bg-transparent hover:text-gray-700"
                             >
                               {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                             </button>
@@ -1074,7 +1073,7 @@ const CtuSettings = () => {
                         </div>
                       ) : (
                         <div className="border border-gray-200 rounded-lg overflow-hidden max-h-96 overflow-y-auto">
-                          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_1fr_80px] bg-gray-50 border-b border-gray-200">
+                          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_1fr_120px] bg-gray-50 border-b border-gray-200">
                             <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">First Name</div>
                             <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Last Name</div>
                             <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Email</div>
@@ -1096,12 +1095,12 @@ const CtuSettings = () => {
                             })
                             .map((p) => {
                               const displayStatus =
-                                p.status === "Approved" || p.status === "approved" ? "active" : p.status
+                                p.status === "Approved" || p.status === "approved" ? "Active" : p.status
 
                               return (
                                 <div
                                   key={p.id}
-                                  className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_1fr_80px] border-b border-gray-200 last:border-b-0"
+                                  className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_1fr_120px] border-b border-gray-200 last:border-b-0"
                                 >
                                   <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
                                     {p.ctu_fname || "-"}
@@ -1133,47 +1132,32 @@ const CtuSettings = () => {
                                       {displayStatus}
                                     </span>
                                   </div>
-                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
-                                    <div className="relative">
+                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center justify-center gap-2">
+                                    {(p.status === "Approved" || p.status === "approved") && (
                                       <button
-                                        className="bg-none border-none cursor-pointer p-1 rounded hover:bg-gray-100"
-                                        onClick={() => toggleDropdown(p.id)}
+                                        className="p-1.5 bg-red-50 border border-red-200 rounded-md text-red-600 cursor-pointer transition-all duration-200 hover:bg-red-100 hover:border-red-300"
+                                        onClick={async () => {
+                                          await deactivateUser(p.id)
+                                          showAlert("User deactivated successfully!", "success")
+                                        }}
                                       >
-                                        <MoreVertical size={16} />
+                                        <XCircle size={16} />
+                                       
                                       </button>
+                                    )}
 
-                                      {dropdownOpen === p.id && (
-                                        <div className="absolute right-0 top-full bg-white border border-gray-200 rounded-md shadow-lg z-10 min-w-[120px]">
-                                          {(p.status === "Approved" || p.status === "approved") && (
-                                            <button
-                                              className="flex items-center gap-2 w-full px-3 py-2 bg-transparent border-none cursor-pointer text-sm text-gray-700 hover:bg-gray-50"
-                                              onClick={async () => {
-                                                await deactivateUser(p.id)
-                                                showAlert("User deactivated successfully!", "success")
-                                                setDropdownOpen(null)
-                                              }}
-                                            >
-                                              <Eye size={16} />
-                                              Deactivate
-                                            </button>
-                                          )}
-
-                                          {(p.status === "deactivated" || p.status === "Deactivated") && (
-                                            <button
-                                              className="flex items-center gap-2 w-full px-3 py-2 bg-transparent border-none cursor-pointer text-sm text-red-600 hover:bg-gray-50"
-                                              onClick={async () => {
-                                                await reactivateUser(p.id)
-                                                showAlert("User reactivated successfully!", "success")
-                                                setDropdownOpen(null)
-                                              }}
-                                            >
-                                              <Check size={16} />
-                                              Reactivate
-                                            </button>
-                                          )}
-                                        </div>
-                                      )}
-                                    </div>
+                                    {(p.status === "deactivated" || p.status === "Deactivated") && (
+                                      <button
+                                        className="p-1.5 bg-green-50 border border-green-200 rounded-md text-green-600 cursor-pointer transition-all duration-200 hover:bg-green-100 hover:border-green-300"
+                                        onClick={async () => {
+                                          await reactivateUser(p.id)
+                                          showAlert("User reactivated successfully!", "success")
+                                        }}
+                                      >
+                                        <CheckCircle size={16} />
+                                       
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               )
