@@ -1,8 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react";
-
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed";
+const API_BASE = "http://localhost:8000/api/ctu_vetmed";
 
 const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsRead }) => {
   const [notifications, setNotifications] = useState([]);

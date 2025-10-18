@@ -1,35 +1,41 @@
+import os
+import re
+import jwt
+import base64
+import random
+import logging
+import requests
 from uuid import UUID
 from functools import wraps
-import os
-import requests
-import logging
-import random
-import jwt
-from django.conf import settings
-from django.contrib.auth.decorators import login_required
-from rest_framework.response import Response
-from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
-import re
-from supabase import create_client
-from django.http import JsonResponse
-from django.utils import timezone  # ✅ keep only this
-import base64
 from collections import defaultdict
 from datetime import datetime, timedelta
+
+from django.conf import settings
+from django.http import JsonResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from django.contrib.auth.decorators import login_required
 
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 
-# -------------------- SUPABASE CLIENT --------------------
-# Environment config
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://YOUR_PROJECT.supabase.co")
-SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "YOUR_ANON_KEY")
-SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "YOUR_SERVICE_ROLE_KEY")
+from supabase import create_client, Client
+
+# -------------------- Environment Config --------------------
+SUPABASE_URL = getattr(settings, "SUPABASE_URL", os.getenv("SUPABASE_URL", "https://YOUR_PROJECT.supabase.co"))
+SUPABASE_ANON_KEY = getattr(settings, "SUPABASE_ANON_KEY", os.getenv("SUPABASE_ANON_KEY", "YOUR_ANON_KEY"))
+SUPABASE_SERVICE_ROLE_KEY = getattr(settings, "SUPABASE_SERVICE_ROLE_KEY", os.getenv("SUPABASE_SERVICE_ROLE_KEY", "YOUR_SERVICE_ROLE_KEY"))
 CONTENT_TYPE_JSON = "application/json"
 
-# Supabase service role client
-sr_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+# -------------------- Supabase Clients --------------------
+# ✅ Main Supabase client (service role for backend operations)
+sr_client: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+# ✅ Separate client for storage (if needed)
+storage_client: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
 
 # -------------------- AUTH HELPERS --------------------
 def get_token_from_cookie(request):
@@ -618,182 +624,160 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-
 @api_view(["GET"])
 def get_vetnotifications(request):
     try:
-        # ---------------- TIMEZONE SETUP ----------------
         manila_tz = dt_timezone(timedelta(hours=8))
 
         def to_manila_time(iso_str):
-            if not iso_str:
-                return datetime.now(manila_tz)
             try:
-                return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone(manila_tz)
+                if iso_str:
+                    return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone(manila_tz)
             except Exception:
-                return datetime.now(manila_tz)
+                pass
+            return datetime.now(manila_tz)
 
         # ---------------- FETCH EXISTING KEYS ----------------
-        existing_res = sr_client.table("notification").select("*").execute()
-        existing_keys = set(
-            row.get("related_id")
-            for row in (existing_res.data or [])
-            if row.get("related_id")
-        )
+        try:
+            existing_res = sr_client.table("notification").select("related_id").execute()
+            existing_keys = set(row.get("related_id") for row in (existing_res.data or []) if row.get("related_id"))
+        except Exception:
+            existing_keys = set()
 
         notifications_to_insert = []
 
-        # ---------------- HELPER FUNCTION ----------------
-        def add_vet_notif(user_id, vet_name, created_at, message_prefix, status, related_id):
-            """Add a vet notification safely."""
-            if related_id in existing_keys:
-                return
-
-            dt_ph = to_manila_time(created_at)
-            notifications_to_insert.append({
-                "id": user_id,
-                "notif_message": f"{message_prefix} Dr. {vet_name}.",
-                "notif_date": dt_ph.strftime("%Y-%m-%d"),
-                "notif_time": dt_ph.strftime("%H:%M:%S"),
-                "notif_read": False,
-                "notification_type": status,
-                "related_id": related_id
-            })
-            existing_keys.add(related_id)
-
         # ---------------- VET REGISTRATION/APPROVAL/DECLINE ----------------
-        vets_res = sr_client.table("vet_profile") \
-            .select("vet_id, vet_fname, vet_lname, created_at, users(id, status, role)") \
-            .execute()
+        try:
+            vets_res = sr_client.table("vet_profile").select("vet_id, vet_fname, vet_lname, created_at, users(id, status, role)").execute()
+            for vet in (vets_res.data or []):
+                users = vet.get("users") or {}
+                role = (users.get("role") or "").lower()
+                status = (users.get("status") or "").lower()
+                user_id = users.get("id")
+                if not user_id or role != "veterinarian":
+                    continue
+                vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
+                created_at = vet.get("created_at")
+                related_id = f"vet_{vet['vet_id']}_{status}"
+                if related_id in existing_keys:
+                    continue
 
-        for vet in (vets_res.data or []):
-            users = vet.get("users") or {}
-            role = users.get("role", "").lower()
-            status = users.get("status", "").lower()
-            user_id = users.get("id")
-
-            if not user_id or role != "veterinarian":
-                continue
-
-            vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
-            created_at = vet.get("created_at")
-
-            if status == "pending":
-                add_vet_notif(user_id, vet_name, created_at, "New registration:", status, f"vet_{vet['vet_id']}_{status}")
-            elif status == "approved":
-                add_vet_notif(user_id, vet_name, created_at, "Veterinarian approved:", status, f"vet_{vet['vet_id']}_{status}")
-            elif status == "declined":
-                add_vet_notif(user_id, vet_name, created_at, "Veterinarian declined:", status, f"vet_{vet['vet_id']}_{status}")
+                dt_ph = to_manila_time(created_at)
+                notifications_to_insert.append({
+                    "id": user_id,
+                    "notif_message": f"{('New registration:' if status=='pending' else 'Veterinarian ' + status + ':')} {vet_name}.",
+                    "notif_date": dt_ph.strftime("%Y-%m-%d"),
+                    "notif_time": dt_ph.strftime("%H:%M:%S"),
+                    "notif_read": False,
+                    "notification_type": status,
+                    "related_id": related_id
+                })
+                existing_keys.add(related_id)
+        except Exception:
+            pass
 
         # ---------------- MEDICAL RECORD ACCESS REQUESTS ----------------
-        medreq_res = sr_client.table("medrec_access_request") \
-            .select("request_id, vet_id, horse_id, request_status, requested_at, vet_profile(vet_fname, vet_lname, users(id)), horse_profile(horse_name)") \
-            .execute()
-
-        for req in (medreq_res.data or []):
-            if req.get("request_status", "").lower() != "pending":
-                continue
-
-            vet = req.get("vet_profile") or {}
-            users = vet.get("users") or {}
-            user_id = users.get("id")
-            if not user_id:
-                continue
-
-            vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
-            horse = req.get("horse_profile") or {}
-            horse_name = horse.get("horse_name", "Unknown Horse")
-            requested_at = req.get("requested_at")
-
-            related_id = f"medreq_{req['request_id']}"
-            if related_id in existing_keys:
-                continue
-
-            dt_ph = to_manila_time(requested_at)
-
-            notifications_to_insert.append({
-                "id": user_id,
-                "notif_message": f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
-                "notif_date": dt_ph.strftime("%Y-%m-%d"),
-                "notif_time": dt_ph.strftime("%H:%M:%S"),
-                "notif_read": False,
-                "notification_type": "medrec_request",
-                "related_id": related_id
-            })
-            existing_keys.add(related_id)
-
-        # ---------------- COMMENTS (ONLY KUTSERO OR HORSE OP) ----------------
-        comments_res = sr_client.table("comment") \
-            .select("id, comment_text, comment_date, user_id, announcement_id") \
-            .execute()
-
-        for comment in (comments_res.data or []):
-            user_id = comment.get("user_id")
-            if not user_id:
-                continue
-
-            related_id = f"comment_{comment['id']}"
-            if related_id in existing_keys:
-                continue
-
-            comment_text = (comment.get("comment_text") or "").strip()
-            created_at = comment.get("comment_date")
-
-            # Check if author is kutsero or horse operator
-            author_name = None
-            kutsero_res = sr_client.table("kutsero_profile") \
-                .select("kutsero_fname, kutsero_lname") \
-                .eq("kutsero_id", user_id) \
+        try:
+            medreq_res = sr_client.table("medrec_access_request") \
+                .select("request_id, vet_id, horse_id, request_status, requested_at, vet_profile(vet_fname, vet_lname, users(id)), horse_profile(horse_name)") \
                 .execute()
-            if kutsero_res.data:
-                prof = kutsero_res.data[0]
-                author_name = f"{prof.get('kutsero_fname', '')} {prof.get('kutsero_lname', '')}".strip()
-            else:
-                op_res = sr_client.table("horse_op_profile") \
-                    .select("op_fname, op_lname") \
-                    .eq("op_id", user_id) \
-                    .execute()
-                if op_res.data:
-                    prof = op_res.data[0]
-                    author_name = f"{prof.get('op_fname', '')} {prof.get('op_lname', '')}".strip()
 
-            if not author_name:
-                continue  # skip comments from others
+            for req in (medreq_res.data or []):
+                vet = req.get("vet_profile") or {}
+                users = vet.get("users") or {}
+                user_id = users.get("id")
+                if not user_id:
+                    continue
+                vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
+                horse_name = (req.get("horse_profile") or {}).get("horse_name", "Unknown Horse")
+                requested_at = req.get("requested_at")
+                related_id = f"medreq_{req['request_id']}"
+                if related_id in existing_keys:
+                    continue
 
-            add_vet_notif(user_id, author_name, created_at, f"{author_name} commented: \"{comment_text}\"", "comment", related_id)
+                dt_ph = to_manila_time(requested_at)
+                notifications_to_insert.append({
+                    "id": user_id,
+                    "notif_message": f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
+                    "notif_date": dt_ph.strftime("%Y-%m-%d"),
+                    "notif_time": dt_ph.strftime("%H:%M:%S"),
+                    "notif_read": False,
+                    "notification_type": "medrec_request",
+                    "related_id": related_id
+                })
+                existing_keys.add(related_id)
+        except Exception:
+            pass
+
+        # ---------------- COMMENTS (KUTSERO OR HORSE OP) ----------------
+        try:
+            comments_res = sr_client.table("comment").select("id, comment_text, comment_date, user_id").execute()
+            for comment in (comments_res.data or []):
+                user_id = comment.get("user_id")
+                if not user_id:
+                    continue
+                comment_text = (comment.get("comment_text") or "").strip()
+                created_at = comment.get("comment_date")
+
+                # Determine author name
+                author_name = None
+                kutsero_res = sr_client.table("kutsero_profile").select("kutsero_fname, kutsero_lname").eq("kutsero_id", user_id).execute()
+                if kutsero_res.data:
+                    prof = kutsero_res.data[0]
+                    author_name = f"{prof.get('kutsero_fname','')} {prof.get('kutsero_lname','')}".strip()
+                else:
+                    op_res = sr_client.table("horse_op_profile").select("op_fname, op_lname").eq("op_id", user_id).execute()
+                    if op_res.data:
+                        prof = op_res.data[0]
+                        author_name = f"{prof.get('op_fname','')} {prof.get('op_lname','')}".strip()
+                if not author_name:
+                    continue
+
+                related_id = f"comment_{comment['id']}"
+                if related_id in existing_keys:
+                    continue
+
+                dt_ph = to_manila_time(created_at)
+                notifications_to_insert.append({
+                    "id": user_id,
+                    "notif_message": f"{author_name} commented: \"{comment_text}\"",
+                    "notif_date": dt_ph.strftime("%Y-%m-%d"),
+                    "notif_time": dt_ph.strftime("%H:%M:%S"),
+                    "notif_read": False,
+                    "notification_type": "comment",
+                    "related_id": related_id
+                })
+                existing_keys.add(related_id)
+        except Exception:
+            pass
 
         # ---------------- BULK INSERT ----------------
         if notifications_to_insert:
-            sr_client.table("notification").insert(notifications_to_insert).execute()
+            try:
+                sr_client.table("notification").insert(notifications_to_insert).execute()
+            except Exception:
+                pass
 
         # ---------------- FETCH ALL ----------------
-        all_notifs_res = sr_client.table("notification") \
-            .select("*") \
-            .order("notif_date", desc=True) \
-            .order("notif_time", desc=True) \
-            .execute()
+        try:
+            all_notifs_res = sr_client.table("notification").select("*").order("notif_date", desc=True).order("notif_time", desc=True).execute()
+            notifications = [
+                {
+                    "id": row.get("id"),
+                    "message": row.get("notif_message"),
+                    "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
+                    "read": row.get("notif_read", False),
+                    "type": row.get("notification_type","general"),
+                }
+                for row in (all_notifs_res.data or [])
+                if row.get("notif_message")
+            ]
+        except Exception:
+            notifications = []
 
-        notifications = []
-        for row in (all_notifs_res.data or []):
-            message = (row.get("notif_message") or "").lower()
-
-            # ---------------- FILTER OUT KUTSERO/HORSE OP REGISTRATION ----------------
-            if "new kutsero registered" in message or "new horse operator registered" in message:
-                continue
-
-            notifications.append({
-                "id": row.get("id"),
-                "message": row.get("notif_message"),
-                "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
-                "read": row.get("notif_read", False),
-                "type": row.get("notification_type", "general"),
-            })
-
-        print(f"✅ Returning {len(notifications)} notifications.")
         return Response(notifications, status=200)
 
     except Exception as e:
-        print("❌ Error in get_vetnotifications:", e)
         return Response({"error": str(e)}, status=500)
 
 
@@ -2274,6 +2258,11 @@ def edit_reply(request, reply_id):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+
+
+
+
+
 @api_view(["GET"])
 @login_required
 def get_conversations(request):
@@ -2281,7 +2270,7 @@ def get_conversations(request):
     Get all conversations for the current CTU user (only users who have exchanged messages)
     """
     try:
-        ctu_id = get_current_ctu_id(request)
+        ctu_id = get_current_dvmf_id(request)
         if not ctu_id:
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 

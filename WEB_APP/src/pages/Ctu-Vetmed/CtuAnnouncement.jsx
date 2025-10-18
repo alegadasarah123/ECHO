@@ -134,7 +134,7 @@ const CtuAnnouncement = () => {
             role: userData.role || userData.user_type,
           })
         } else {
-          console.warn("[v0] Failed to fetch current user, user may not be logged in")
+         // console.warn("[v0] Failed to fetch current user, user may not be logged in")
           // Set a default user state to prevent issues
           setCurrentUser({
             id: null,
@@ -144,7 +144,7 @@ const CtuAnnouncement = () => {
           })
         }
       } catch (error) {
-        console.error("[v0] Error fetching current user:", error)
+        //console.error("[v0] Error fetching current user:", error)
         // Set a default user state on error too
         setCurrentUser({
           id: null,
@@ -555,7 +555,7 @@ const CtuAnnouncement = () => {
   // fetch comments
   const fetchComments = useCallback(async (postId) => {
     if (!postId) {
-      console.warn("fetchComments: Missing postId")
+     // console.warn("fetchComments: Missing postId")
       return []
     }
 
@@ -565,13 +565,13 @@ const CtuAnnouncement = () => {
       })
 
       if (!response.ok) {
-        console.error(`fetchComments failed with status ${response.status}`)
+       // console.error(`fetchComments failed with status ${response.status}`)
         return []
       }
 
       const result = await response.json()
       if (!result.data || !Array.isArray(result.data)) {
-        console.warn("fetchComments: No comment data returned")
+        //console.warn("fetchComments: No comment data returned")
         return []
       }
 
@@ -589,7 +589,7 @@ const CtuAnnouncement = () => {
 
       return transformComments(result.data)
     } catch (error) {
-      console.error("Error fetching comments:", error)
+     // console.error("Error fetching comments:", error)
       return []
     }
   }, [])
@@ -892,7 +892,7 @@ const handleNotificationClick = async (notification) => {
         setPosts(postsWithComments)
       }
     } catch (error) {
-      console.error("[v0] Error loading announcements:", error)
+     // console.error("[v0] Error loading announcements:", error)
     } finally {
       setIsLoadingPosts(false)
     }
@@ -914,7 +914,7 @@ const handleNotificationClick = async (notification) => {
       })
 
       const data = await response.json()
-      console.log("✅ Added comment:", data)
+      //console.log("✅ Added comment:", data)
 
       // Refresh comments after adding
       if (response.ok) {
@@ -923,73 +923,73 @@ const handleNotificationClick = async (notification) => {
 
       return data
     } catch (err) {
-      console.error("❌ Error adding comment:", err)
+      //console.error("❌ Error adding comment:", err)
     }
   }
 
-  // -------------------- EDIT COMMENT -------------------- //
-  const editComment = async (commentId, newText) => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/ctu_vetmed/edit_comment/${commentId}/`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include", // ✅ send cookies with JWT token
-        body: JSON.JSON.stringify({ comment_text: newText }),
-      })
-
-      const text = await response.text()
-      let data
-      try {
-        data = JSON.parse(text)
-      } catch {
-        console.error("Server did not return JSON:", text)
-        throw new Error("Invalid response from server")
-      }
-
-      console.log("✅ Edited comment:", data)
-
-      if (response.ok) {
-        await loadAnnouncements()
-      }
-
-      return data
-    } catch (err) {
-      console.error("❌ Error editing comment:", err)
-      throw err
-    }
+ // -------------------- EDIT COMMENT --------------------
+// -------------------- EDIT COMMENT --------------------
+const editComment = async (commentId, newText) => {
+  if (!commentId || !newText || !newText.trim()) {
+    throw new Error("Comment text cannot be empty");
   }
+
+  const payload = { comment_text: newText };
+
+  const response = await fetch(
+    `http://localhost:8000/api/ctu_vetmed/edit_comment/${commentId}/`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    }
+  );
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => null);
+    throw new Error(errorData?.error || "Failed to update comment");
+  }
+
+  const data = await response.json();
+
+  // Refresh announcements after successful edit
+  await loadAnnouncements();
+
+  return data;
+};
 
   // -------------------- EDIT REPLY -------------------- //
-  const editReply = async (replyId, newText) => {
-    try {
-      const response = await fetch(`http://localhost:8000/api/ctu_vetmed/edit_reply/${replyId}/`, {
+const editReply = async (replyId, newText) => {
+  try {
+    const response = await fetch(
+      `http://localhost:8000/api/ctu_vetmed/edit_reply/${replyId}/`,
+      {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ comment_text: newText }),
-      })
-
-      const text = await response.text()
-      let data
-      try {
-        data = JSON.parse(text)
-      } catch {
-        console.error("Server did not return JSON:", text)
-        throw new Error("Invalid response from server")
       }
+    );
 
-      console.log("✅ Edited reply:", data)
-
-      if (response.ok) {
-        await loadAnnouncements()
-      }
-
-      return data
-    } catch (err) {
-      console.error("❌ Error editing reply:", err)
-      throw err
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      throw new Error("Invalid response from server");
     }
+
+    if (response.ok) {
+      await loadAnnouncements();
+    }
+
+    return data;
+  } catch (err) {
+    throw err;
   }
+};
+
 
   // -------------------- HANDLE COMMENT SUBMIT -------------------- //
   const handleCommentSubmit = useCallback(
@@ -1115,7 +1115,7 @@ const handleNotificationClick = async (notification) => {
 
   const saveEdit = async (postId) => {
     if (!editPostText.trim()) {
-      showError("Please enter some text for your post")
+      //showError("Please enter some text for your post")
       return
     }
 
@@ -1145,13 +1145,13 @@ const handleNotificationClick = async (notification) => {
         // Reload announcements to ensure consistency
         await loadAnnouncements()
 
-        console.log("Post updated successfully:", result)
+       // console.log("Post updated successfully:", result)
       } else {
         throw new Error(result.error || "Failed to update post")
       }
     } catch (error) {
-      console.error("Error updating post:", error)
-      showError(error.message || "Failed to update post. Please try again.")
+      //console.error("Error updating post:", error)
+      //showError(error.message || "Failed to update post. Please try again.")
     }
   }
 
@@ -1167,21 +1167,21 @@ const handleNotificationClick = async (notification) => {
     setEditCommentText("")
   }
 
-  const saveEditComment = async (commentId) => {
-    if (!editCommentText.trim()) {
-      showError("Please enter some text for your comment")
-      return
-    }
-
-    try {
-      await editComment(commentId, editCommentText)
-      setEditingCommentId(null)
-      setEditCommentText("")
-    } catch (error) {
-      console.error("Error updating comment:", error)
-      showError(error.message || "Failed to update comment. Please try again.")
-    }
+  // -------------------- SAVE EDIT COMMENT --------------------
+const saveEditComment = async (commentId) => {
+  if (!editCommentText || !editCommentText.trim()) {
+    showError("Please enter some text for your comment");
+    return;
   }
+
+  try {
+    await editComment(commentId, editCommentText);
+    setEditingCommentId(null);
+    setEditCommentText("");
+  } catch (error) {
+    showError(error?.message || "Failed to update comment. Please try again.");
+  }
+};
 
   // EDIT REPLY FUNCTIONS
   const toggleEditReply = (replyId, currentText) => {
@@ -1321,7 +1321,7 @@ const handleNotificationClick = async (notification) => {
         throw new Error(`Failed to add reply: ${res.status}`)
       }
 
-      console.log("✅ Reply added:", data)
+      //console.log("✅ Reply added:", data)
 
       // Refresh the announcements to show the new reply
       await loadAnnouncements()
@@ -1332,8 +1332,8 @@ const handleNotificationClick = async (notification) => {
 
       return data
     } catch (error) {
-      console.error("Error adding reply:", error)
-      alert("Failed to add reply. Check console for details.")
+      //console.error("Error adding reply:", error)
+     // alert("Failed to add reply. Check console for details.")
     }
   }
 

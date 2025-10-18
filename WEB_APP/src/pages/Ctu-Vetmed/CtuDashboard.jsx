@@ -7,6 +7,8 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
+const API_BASE = "http://localhost:8000/api/ctu_vetmed";
+
 function CtuDashboard() {
   const navigate = useNavigate()
 
@@ -195,26 +197,19 @@ const loadRecentActivities = useCallback(() => {
   })
     .then(async (res) => {
       if (res.status === 401) {
-        console.warn("Unauthorized - redirecting to login");
-        // Optionally, redirect the user:
-        // window.location.href = "/login";
         return []; // Return empty array so state is safe
       }
 
       if (!res.ok) {
-        const errorText = await res.text();
-        console.error("Backend returned error:", errorText);
         return []; // Return empty array so state is safe
       }
 
       return res.json();
     })
     .then((data) => {
-      // Handle both empty arrays and normal data
       if (Array.isArray(data)) {
         setRecentActivities(data);
       } else if (data.error) {
-        console.error("Backend error:", data.error);
         setRecentActivities([]);
       } else {
         setRecentActivities([]);
@@ -222,70 +217,58 @@ const loadRecentActivities = useCallback(() => {
 
       setActivitiesLoading(false);
     })
-    .catch((err) => {
-      console.error("Error fetching activity:", err);
+    .catch(() => {
       setRecentActivities([]);
       setActivitiesLoading(false);
     });
 }, []);
 
-  const loadNotifications = useCallback(() => {
-    console.log("Loading notifications...")
+const loadNotifications = useCallback(() => {
+  fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+    .then((res) => {
+      if (!res.ok) throw new Error("Failed to fetch notifications");
+      return res.json();
+    })
+    .then((data) => {
+      const formatted = data.map((notif) => ({
+        id: notif.id,
+        message: notif.message,
+        date: notif.date || new Date().toISOString(),
+        read: notif.read || false,
+        type: notif.type || "general"
+      }));
+      setNotifications(formatted);
+    })
+    .catch(() => {});
+}, []);
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch notifications")
-        return res.json()
-      })
-      .then((data) => {
-        console.log("Raw notifications data:", data);
-        const formatted = data.map((notif) => ({
-          id: notif.id,
-          message: notif.message,
-          date: notif.date || new Date().toISOString(),
-          read: notif.read || false,
-          type: notif.type || "general"
-        }))
-        console.log("Formatted notifications:", formatted);
-        console.log("Unread count:", formatted.filter(n => !n.read).length);
-        setNotifications(formatted)
-      })
-      .catch((err) => console.error("Failed to fetch notifications:", err))
-  }, [])
-
-  const loadSosEmergencies = useCallback(() => {
-  console.log("Loading SOS emergencies...")
-  setSosLoading(true)
+const loadSosEmergencies = useCallback(() => {
+  setSosLoading(true);
 
   fetch("http://localhost:8000/api/ctu_vetmed/get_sos_requests/", {
     method: "GET",
     credentials: "include",
   })
     .then((res) => {
-      if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
-      return res.json()
+      if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+      return res.json();
     })
     .then((data) => {
-      console.log("Raw SOS data:", data)
-
-      let sosData = []
-      if (Array.isArray(data)) sosData = data
-      else if (data.sos_requests && Array.isArray(data.sos_requests)) sosData = data.sos_requests
-      else if (data.results && Array.isArray(data.results)) sosData = data.results
+      let sosData = [];
+      if (Array.isArray(data)) sosData = data;
+      else if (data.sos_requests && Array.isArray(data.sos_requests)) sosData = data.sos_requests;
+      else if (data.results && Array.isArray(data.results)) sosData = data.results;
       else {
-        console.warn("Unexpected data structure:", data)
-        setSosEmergencies([])
-        setSosLoading(false)
-        return
+        setSosEmergencies([]);
+        setSosLoading(false);
+        return;
       }
 
       const formatted = sosData.map((item) => {
-        let formattedTime = "Unknown time"
+        let formattedTime = "Unknown time";
         try {
           if (item.time || item.created_at) {
-            const createdDate = new Date(item.time || item.created_at)
-            
-            // Format as "September 7, 2025 3:15 PM"
+            const createdDate = new Date(item.time || item.created_at);
             formattedTime = createdDate.toLocaleDateString('en-US', {
               month: 'long',
               day: 'numeric',
@@ -294,11 +277,9 @@ const loadRecentActivities = useCallback(() => {
               hour: 'numeric',
               minute: 'numeric',
               hour12: true
-            })
+            });
           }
-        } catch {
-          console.warn("Invalid timestamp:", item.time || item.created_at)
-        }
+        } catch {}
 
         return {
           id: item.id,
@@ -306,24 +287,23 @@ const loadRecentActivities = useCallback(() => {
           contact: item.contact || "Unknown Contact",
           phone: item.phone || "N/A",
           location: item.location || "No location provided",
-          time: formattedTime, // Now uses the formatted timestamp
+          time: formattedTime,
           urgent: item.urgent === true || item.status === "pending",
           description: item.description || "No description provided",
-          sos_image_url: item.sos_image_url || null, // ADDED: Include image URL
+          sos_image_url: item.sos_image_url || null,
           horse_status: item.horse_status || "Unknown",
           additional_info: item.additional_info || ""
-        }
-      })
+        };
+      });
 
-      console.log("Formatted SOS data:", formatted)
-      setSosEmergencies(formatted)
-      setSosLoading(false)
+      setSosEmergencies(formatted);
+      setSosLoading(false);
     })
-    .catch((err) => {
-      console.error("Error fetching SOS emergencies:", err)
-      setSosLoading(false)
-    })
-}, [])
+    .catch(() => {
+      setSosLoading(false);
+    });
+}, []);
+
 
   const loadDashboardData = useCallback(() => {
     setIsLoading(true)

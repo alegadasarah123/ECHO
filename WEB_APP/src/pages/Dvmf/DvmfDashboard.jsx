@@ -8,6 +8,7 @@ import FloatingMessages from './DvmfMessage'
 import NotificationModal from "./DvmfNotif"
 
 
+const API_BASE = "http://localhost:8000/api/dvmf";
 
 
 function DvmfDashboard() {

@@ -119,7 +119,7 @@ const DvmfAnnouncement = () => {
             role: userData.role || userData.user_type,
           })
         } else {
-          console.warn("[v0] Failed to fetch current user, user may not be logged in")
+          //console.warn("[v0] Failed to fetch current user, user may not be logged in")
           // Set a default user state to prevent issues
           setCurrentUser({
             id: null,
@@ -129,7 +129,7 @@ const DvmfAnnouncement = () => {
           })
         }
       } catch (error) {
-        console.error("[v0] Error fetching current user:", error)
+        //console.error("[v0] Error fetching current user:", error)
         // Set a default user state on error too
         setCurrentUser({
           id: null,
@@ -540,7 +540,7 @@ const DvmfAnnouncement = () => {
   // fetch comments
   const fetchComments = useCallback(async (postId) => {
     if (!postId) {
-      console.warn("fetchComments: Missing postId")
+      //console.warn("fetchComments: Missing postId")
       return []
     }
 
@@ -550,13 +550,13 @@ const DvmfAnnouncement = () => {
       })
 
       if (!response.ok) {
-        console.error(`fetchComments failed with status ${response.status}`)
+        //console.error(`fetchComments failed with status ${response.status}`)
         return []
       }
 
       const result = await response.json()
       if (!result.data || !Array.isArray(result.data)) {
-        console.warn("fetchComments: No comment data returned")
+        //console.warn("fetchComments: No comment data returned")
         return []
       }
 
@@ -574,7 +574,7 @@ const DvmfAnnouncement = () => {
 
       return transformComments(result.data)
     } catch (error) {
-      console.error("Error fetching comments:", error)
+      //console.error("Error fetching comments:", error)
       return []
     }
   }, [])
@@ -596,12 +596,12 @@ const DvmfAnnouncement = () => {
       }
 
       const data = await res.json()
-      console.log("Mark all as read result:", data)
+     // console.log("Mark all as read result:", data)
 
       // Update frontend state
       setNotifications((prev) => prev.map((notif) => ({ ...notif, read: true })))
     } catch (err) {
-      console.error("Error marking all as read:", err)
+      // console.error("Error marking all as read:", err)
     }
   }
 
@@ -621,7 +621,7 @@ const DvmfAnnouncement = () => {
       credentials: "include",
     });
     const data = await res.json();
-    console.log("Mark notification read result:", data);
+   // console.log("Mark notification read result:", data);
   } catch (err) {
     console.error("Error marking notification as read:", err);
   }
@@ -680,7 +680,7 @@ const DvmfAnnouncement = () => {
   }
 
   const loadNotifications = useCallback(() => {
-    console.log("Loading notifications...")
+   // console.log("Loading notifications...")
 
     fetch(`${API_BASE}/get_vetnotifications/`)
       .then((res) => {
@@ -782,7 +782,7 @@ const DvmfAnnouncement = () => {
     }
   }, [])
 
-  // Updated loadAnnouncements to include comments
+  // Updated loadAnnouncements to include comments and userId
   const loadAnnouncements = useCallback(async () => {
     setIsLoadingPosts(true)
     try {
@@ -855,6 +855,7 @@ const DvmfAnnouncement = () => {
 
             return {
               id: announcement.announce_id,
+              userId: announcement.user_id, // ✅ ADDED - Store user ID for ownership checks
               content: announcement.announce_content,
               photos: photos,
               author: author,
@@ -878,7 +879,7 @@ const DvmfAnnouncement = () => {
         setPosts(postsWithComments)
       }
     } catch (error) {
-      console.error("[v0] Error loading announcements:", error)
+     // console.error("[v0] Error loading announcements:", error)
     } finally {
       setIsLoadingPosts(false)
     }
@@ -901,7 +902,7 @@ const DvmfAnnouncement = () => {
       })
 
       const data = await response.json()
-      console.log("✅ Added comment:", data)
+     // console.log("✅ Added comment:", data)
 
       // Refresh comments after adding
       if (response.ok) {
@@ -910,7 +911,7 @@ const DvmfAnnouncement = () => {
 
       return data
     } catch (err) {
-      console.error("❌ Error adding comment:", err)
+      //console.error("❌ Error adding comment:", err)
     }
   }
 
@@ -920,8 +921,8 @@ const DvmfAnnouncement = () => {
       const response = await fetch(`http://localhost:8000/api/dvmf/edit_comment/${commentId}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // ✅ send cookies with JWT token
-        body: JSON.JSON.stringify({ comment_text: newText }),
+        credentials: "include",
+        body: JSON.stringify({ comment_text: newText }),
       })
 
       const text = await response.text()
@@ -933,7 +934,7 @@ const DvmfAnnouncement = () => {
         throw new Error("Invalid response from server")
       }
 
-      console.log("✅ Edited comment:", data)
+      //console.log("✅ Edited comment:", data)
 
       if (response.ok) {
         await loadAnnouncements()
@@ -941,7 +942,7 @@ const DvmfAnnouncement = () => {
 
       return data
     } catch (err) {
-      console.error("❌ Error editing comment:", err)
+     // console.error("❌ Error editing comment:", err)
       throw err
     }
   }
@@ -965,7 +966,7 @@ const DvmfAnnouncement = () => {
         throw new Error("Invalid response from server")
       }
 
-      console.log("✅ Edited reply:", data)
+      //console.log("✅ Edited reply:", data)
 
       if (response.ok) {
         await loadAnnouncements()
@@ -973,7 +974,7 @@ const DvmfAnnouncement = () => {
 
       return data
     } catch (err) {
-      console.error("❌ Error editing reply:", err)
+      //console.error("❌ Error editing reply:", err)
       throw err
     }
   }
@@ -994,10 +995,10 @@ const DvmfAnnouncement = () => {
       // Clear input and refresh
       setCommentInputs((prev) => ({ ...prev, [postId]: "" }))
     },
-    [commentInputs, showError, loadAnnouncements], // Removed addComment from dependencies
+    [commentInputs, showError, loadAnnouncements],
   )
 
-   const createPost = useCallback(async () => {
+  const createPost = useCallback(async () => {
     const postText = postInputText?.trim() || ""
 
     if (!postText && selectedPhotos.length === 0) {
@@ -1072,6 +1073,7 @@ const DvmfAnnouncement = () => {
         comments: [],
         commentCount: 0,
         isCommentsOpen: false,
+        userId: postData?.user_id, // ✅ ADDED - Store userId for ownership checks
       }
 
       setPosts((prev) => [newPost, ...prev])
@@ -1083,8 +1085,8 @@ const DvmfAnnouncement = () => {
       await loadAnnouncements()
       
     } catch (error) {
-      console.error("Error creating post:", error)
-      showError(error.message || "Failed to create post. Please try again.")
+     // console.error("Error creating post:", error)
+     // showError(error.message || "Failed to create post. Please try again.")
     }
   }, [postInputText, selectedPhotos, setPosts, showError, hideError, loadAnnouncements])
 
@@ -1116,7 +1118,7 @@ const DvmfAnnouncement = () => {
         },
         body: JSON.stringify({
           announce_content: editPostText,
-          user_id: currentUser.id, // Ensure userId is sent
+          user_id: currentUser.id,
         }),
       })
 
@@ -1133,18 +1135,19 @@ const DvmfAnnouncement = () => {
         // Reload announcements to ensure consistency
         await loadAnnouncements()
 
-        console.log("Post updated successfully:", result)
+       // console.log("Post updated successfully:", result)
       } else {
         throw new Error(result.error || "Failed to update post")
       }
     } catch (error) {
-      console.error("Error updating post:", error)
+      //console.error("Error updating post:", error)
       showError(error.message || "Failed to update post. Please try again.")
     }
   }
 
   // EDIT COMMENT FUNCTIONS
   const toggleEditComment = (commentId, currentText) => {
+    console.log("🔄 Toggling edit comment:", commentId, currentText)
     setEditingCommentId(commentId)
     setEditCommentText(currentText)
     setActiveCommentMenu(null)
@@ -1156,18 +1159,22 @@ const DvmfAnnouncement = () => {
   }
 
   const saveEditComment = async (commentId) => {
+    console.log("💾 Saving edit for comment:", commentId, editCommentText)
     if (!editCommentText.trim()) {
-      showError("Please enter some text for your comment")
+      //console.log("❌ Empty comment text")
+      //showError("Please enter some text for your comment")
       return
     }
 
     try {
+      console.log("📡 Calling editComment API...")
       await editComment(commentId, editCommentText)
       setEditingCommentId(null)
       setEditCommentText("")
+     //console.log("✅ Comment edit successful")
     } catch (error) {
-      console.error("Error updating comment:", error)
-      showError(error.message || "Failed to update comment. Please try again.")
+      //console.error("❌ Error updating comment:", error)
+      //showError(error.message || "Failed to update comment. Please try again.")
     }
   }
 
@@ -1211,15 +1218,15 @@ const DvmfAnnouncement = () => {
       const post = posts.find((p) => p.id === postId)
       if (!post.isCommentsOpen && post.comments.length === 0) {
         try {
-          console.log("Fetching comments for post:", postId)
+         // console.log("Fetching comments for post:", postId)
           const comments = await fetchComments(postId)
-          console.log("Fetched comments:", comments)
+          //console.log("Fetched comments:", comments)
 
           setPosts((prevPosts) =>
             prevPosts.map((p) => (p.id === postId ? { ...p, comments, commentCount: comments.length } : p)),
           )
         } catch (error) {
-          console.error("Error loading comments:", error)
+          //console.error("Error loading comments:", error)
         }
       }
 
@@ -1309,7 +1316,7 @@ const DvmfAnnouncement = () => {
         throw new Error(`Failed to add reply: ${res.status}`)
       }
 
-      console.log("✅ Reply added:", data)
+      //console.log("✅ Reply added:", data)
 
       // Refresh the announcements to show the new reply
       await loadAnnouncements()
@@ -1383,47 +1390,38 @@ const DvmfAnnouncement = () => {
     return content.substring(0, maxLength) + "..."
   }, [])
 
+  // ✅ FIXED - Simplified ownership check
   const isOwner = (postAuthor, postUserId = null) => {
-    console.log("[v0] === Ownership Check ===")
-    console.log("[v0] Post Author:", postAuthor)
-    console.log("[v0] Post User ID:", postUserId)
-    console.log("[v0] Current User Name:", currentUser.name)
-    console.log("[v0] Current User Role:", currentUser.role)
-    console.log("[v0] Current User ID:", currentUser.id)
+    console.log("[DVMF] === Ownership Check ===")
+    console.log("[DVMF] Post Author:", postAuthor)
+    console.log("[DVMF] Post User ID:", postUserId)
+    console.log("[DVMF] Current User ID:", currentUser.id)
+    console.log("[DVMF] Current User Name:", currentUser.name)
+    console.log("[DVMF] Current User Role:", currentUser.role)
 
     // Check if user is logged in and has data
-    if (!currentUser.id || !currentUser.name) {
-      console.log("[v0] ❌ User not logged in or data missing")
+    if (!currentUser.id) {
+      console.log("[DVMF] ❌ User not logged in")
       return false
     }
 
     // First, check if user IDs match (most reliable)
     if (postUserId && currentUser.id && postUserId === currentUser.id) {
-      console.log("[v0] ✅ User ID match - user is owner")
+      console.log("[DVMF] ✅ User ID match - user is owner")
       return true
     }
 
-    // Normalize names for comparison
-    const normalizedPostAuthor = (postAuthor || "").trim().toLowerCase()
-    const normalizedUserName = (currentUser.name || "").trim().toLowerCase()
-    const normalizedUserRole = (currentUser.role || "").trim().toLowerCase()
+    // For DVMF posts, check if current user is a DVMF admin
+    const isDVMFAdmin = currentUser.role?.toLowerCase().includes('dvmf')
+    const isDVMFPost = postAuthor?.toLowerCase().includes('dvmf')
+    
+    if (isDVMFAdmin && isDVMFPost) {
+      console.log("[DVMF] ✅ DVMF Admin owns DVMF post")
+      return true
+    }
 
-    console.log("[v0] Normalized Post Author:", normalizedPostAuthor)
-    console.log("[v0] Normalized User Name:", normalizedUserName)
-    console.log("[v0] Normalized User Role:", normalizedUserRole)
-
-    // Check if post author matches user's name or role
-    const isAuthorMatch =
-      normalizedPostAuthor === normalizedUserName ||
-      normalizedPostAuthor === normalizedUserRole ||
-      normalizedPostAuthor.includes(normalizedUserName) ||
-      normalizedPostAuthor.includes(normalizedUserRole) ||
-      normalizedUserName.includes(normalizedPostAuthor) ||
-      normalizedUserRole.includes(normalizedPostAuthor)
-
-    console.log("[v0] Is Author Match:", isAuthorMatch ? "✅ YES" : "❌ NO")
-
-    return isAuthorMatch
+    console.log("[DVMF] ❌ User is not owner")
+    return false
   }
 
   // Debug function for dropdown
@@ -2476,14 +2474,14 @@ const DvmfAnnouncement = () => {
           color: #6b7280;
           font-size: clamp(12px, 2vw, 14px);
           cursor: pointer;
-          display: flex;
-          align-items: center;
+          display: "flex";
+          align-items: "center";
           gap: 6px;
           padding: 8px 12px;
           border-radius: 6px;
           transition: all 0.2s;
           min-height: 40px;
-          position: relative;
+          position: "relative";
         }
 
         .action-btn:hover {
@@ -3350,7 +3348,9 @@ const DvmfAnnouncement = () => {
                         {/* Dropdown menu - ALWAYS SHOW FOR PIN POST, EDIT ONLY FOR OWNER */}
                         <div style={{ position: "relative" }}>
                           <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              console.log("📝 MoreVertical clicked for post:", post.id)
                               toggleDropdown(post.id)
                               debugDropdown(post)
                             }}
@@ -3416,7 +3416,7 @@ const DvmfAnnouncement = () => {
                                 {pinnedPosts.has(post.id) ? "Unpin post" : "Pin post"}
                               </div>
 
-                              {/* Edit Post - Only show if user is owner AND not currently editing */}
+                              {/* ✅ FIXED - Edit Post - Only show if user is owner AND not currently editing */}
                               {isOwner(post.author, post.userId) && editingPostId !== post.id && (
                                 <div
                                   style={{

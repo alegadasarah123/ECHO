@@ -11,7 +11,7 @@ import NotificationModal from "./DvmfNotif"
 const API_BASE = "http://127.0.0.1:8000/api/dvmf"
 
 const DvmfSettings = () => {
-const [activeTab, setActiveTab] = useState("profile")
+  const [activeTab, setActiveTab] = useState("profile")
   const [notifOpen, setNotifOpen] = useState(false)
   const [notifsOpen, setNotifsOpen] = useState(false)
   const [errors, setErrors] = useState({})
@@ -24,12 +24,11 @@ const [activeTab, setActiveTab] = useState("profile")
   const [passwordErrors, setPasswordErrors] = useState({})
   const [notifications, setNotifications] = useState([])
   const [profile, setProfile] = useState({
-   dvmf_fname: "",
+    dvmf_fname: "",
     dvmf_lname: "",
     dvmf_email: "",
     dvmf_phonenum: "",
     dvmf_role: "",
-
   })
 
   const [alert, setAlert] = useState({ show: false, message: "", type: "" })
@@ -53,8 +52,8 @@ const [activeTab, setActiveTab] = useState("profile")
     lastname: "",
     email: "",
     phone: "",
-    role: "Dvmf", // force this role
-    password: "", // optional, won't be saved in DB
+    role: "Dvmf",
+    password: "",
   })
 
   const [error, setError] = useState("")
@@ -68,6 +67,9 @@ const [activeTab, setActiveTab] = useState("profile")
     confirm_new_password: "",
   })
 
+  // Phone validation error state
+  const [phoneError, setPhoneError] = useState("")
+
   // Refresh state
   const [isRefreshing, setIsRefreshing] = useState(false)
 
@@ -77,128 +79,110 @@ const [activeTab, setActiveTab] = useState("profile")
   }
 
   // MARK ALL NOTIFICATIONS AS READ
-      const handleMarkAllAsRead = async () => {
-        try {
-          const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
-            method: "POST",
-            credentials: "include",
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          });
-          
-          if (!res.ok) {
-            const errorData = await res.json();
-            throw new Error(errorData.error || "Failed to mark all as read");
-          }
-          
-          const data = await res.json();
-          console.log("Mark all as read result:", data);
-    
-          // Update frontend state
-          setNotifications(prev =>
-            prev.map(notif => ({ ...notif, read: true }))
-          );
-          
-        } catch (err) {
-          console.error("Error marking all as read:", err);
-        }
-      };
-    
-      // HANDLE INDIVIDUAL NOTIFICATION CLICK
-      const handleNotificationClick = async (notification) => {
-  // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev => 
-    prev.map(notif => 
-      notif.id === notification.id ? { ...notif, read: true } : notif
-    )
-  );
+  const handleMarkAllAsRead = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!res.ok) {
+        throw new Error("Failed to mark all as read");
+      }
+      
+      setNotifications(prev =>
+        prev.map(notif => ({ ...notif, read: true }))
+      );
+      
+    } catch (err) {
+      showAlert("Error marking notifications as read", "error")
+    }
+  };
 
-  // Mark notification as read in backend
-  try {
-    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-      method: "POST",
-      credentials: "include",
-    });
-    const data = await res.json();
-    console.log("Mark notification read result:", data);
-  } catch (err) {
-    console.error("Error marking notification as read:", err);
-  }
+  // HANDLE INDIVIDUAL NOTIFICATION CLICK
+  const handleNotificationClick = async (notification) => {
+    setNotifications(prev => 
+      prev.map(notif => 
+        notif.id === notification.id ? { ...notif, read: true } : notif
+      )
+    );
 
-  // Handle navigation based on notification content
-  console.log('Notification clicked:', notification);
-  const message = notification.message.toLowerCase();
+    try {
+      await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      showAlert("Error marking notification as read", "error")
+    }
 
-  if (
-    message.includes("new registration") ||
-    message.includes("new veterinarian approved") ||
-    message.includes("veterinarian approved") ||
-    message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered")
-  ) {
-    console.log("Navigating to Account Approval page");
-    navigate("/DvmfAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
+    const message = notification.message.toLowerCase();
 
-  if (message.includes("pending medical record access") || message.includes("requested access")) {
-    console.log("Navigating to Access Request page");
-    navigate("/DvmfAccessRequest", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
+    if (
+      message.includes("new registration") ||
+      message.includes("new veterinarian approved") ||
+      message.includes("veterinarian approved") ||
+      message.includes("veterinarian declined") ||
+      message.includes("veterinarian registered")
+    ) {
+      navigate("/DvmfAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
 
-  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
-    console.log("Navigating to Announcement page");
-    navigate("/DvmfAnnouncement", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
+    if (message.includes("pending medical record access") || message.includes("requested access")) {
+      navigate("/DvmfAccessRequest", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
 
-  console.warn("No matching route for notification:", notification);
-};
-      // Handle notifications update from modal
-      const handleNotificationsUpdate = (updatedNotifications) => {
-        console.log("Notifications updated from modal:", updatedNotifications);
-        console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
-        setNotifications(updatedNotifications);
-      };
-    
-      const loadNotifications = useCallback(() => {
-        console.log("Loading notifications...")
-    
-        fetch(`${API_BASE}/get_vetnotifications/`)
-          .then((res) => {
-            if (!res.ok) throw new Error("Failed to fetch notifications")
-            return res.json()
-          })
-          .then((data) => {
-            const formatted = data.map((notif) => ({
-              id: notif.id,
-              message: notif.message,
-              date: notif.date || new Date().toISOString(),
-              read: notif.read || false,
-              type: notif.type || "general"
-            }))
-            setNotifications(formatted)
-          })
-          .catch((err) => console.error("Failed to fetch notifications:", err))
-      }, [])
-  // Save first-timeDvmf profile
+    if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
+      navigate("/DvmfAnnouncement", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+  };
+
+  // Handle notifications update from modal
+  const handleNotificationsUpdate = (updatedNotifications) => {
+    setNotifications(updatedNotifications);
+  };
+
+  const loadNotifications = useCallback(() => {
+    fetch(`${API_BASE}/get_vetnotifications/`)
+      .then((res) => {
+        if (!res.ok) throw new Error("Failed to fetch notifications")
+        return res.json()
+      })
+      .then((data) => {
+        const formatted = data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+          read: notif.read || false,
+          type: notif.type || "general"
+        }))
+        setNotifications(formatted)
+      })
+      .catch((err) => showAlert("Failed to fetch notifications", "error"))
+  }, [])
+
+  // Save first-time DVMF profile
   const handleSave = async (e) => {
     e.preventDefault()
     setErrors({})
@@ -212,27 +196,23 @@ const [activeTab, setActiveTab] = useState("profile")
           dvmf_fname: profile.dvmf_fname,
           dvmf_lname: profile.dvmf_lname,
           dvmf_email: profile.dvmf_email,
-          dvmfu_phonenum: profile.dvmf_phonenum,
-
+          dvmf_phonenum: profile.dvmf_phonenum,
         }),
       })
 
       const data = await res.json()
 
       if (res.ok) {
-        window.alert("Profile saved successfully!")
+        showAlert("Profile saved successfully!")
         setEditing(false)
         setProfileExists(true)
       } else if (data.errors) {
-        // Display validation errors next to inputs
         setErrors(data.errors)
       } else {
-        // Any other server error
-        window.alert(data.error || "Failed to save profile")
+        showAlert(data.error || "Failed to save profile", "error")
       }
     } catch (error) {
-      console.error("Error saving profile:", error)
-      window.alert("Something went wrong. Please try again.")
+      showAlert("Something went wrong. Please try again.", "error")
     }
   }
 
@@ -247,27 +227,25 @@ const [activeTab, setActiveTab] = useState("profile")
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-         dvmf_fname: profile.dvmf_fname,
+          dvmf_fname: profile.dvmf_fname,
           dvmf_lname: profile.dvmf_lname,
           dvmf_email: profile.dvmf_email,
           dvmf_phonenum: profile.dvmf_phonenum,
-
         }),
       })
 
       const data = await res.json()
 
       if (res.ok) {
-        window.alert("Profile updated successfully!")
+        showAlert("Profile updated successfully!")
         setEditing(false)
       } else if (data.errors) {
         setErrors(data.errors)
       } else {
-        window.alert(data.error || "Failed to update profile")
+        showAlert(data.error || "Failed to update profile", "error")
       }
     } catch (error) {
-      console.error("Error updating profile:", error)
-      window.alert("Something went wrong. Please try again.")
+      showAlert("Something went wrong. Please try again.", "error")
     }
   }
 
@@ -280,59 +258,56 @@ const [activeTab, setActiveTab] = useState("profile")
     e.preventDefault()
     setPasswordErrors({})
 
-    // 1️⃣ Check if new passwords match
     if (passwords.new_password !== passwords.confirm_new_password) {
       setPasswordErrors({ confirm_new_password: "Passwords do not match" })
       return
     }
 
     try {
-      // 2️⃣ Make API request with credentials included (JWT cookie)
       const res = await fetch("http://localhost:8000/api/dvmf/dvmf_change_password/", {
         method: "POST",
-        credentials: "include", // send access_token cookie
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dvmf_email: profile.dvmf_email, // 👈 use dvmf_email instead of pres_email
+          dvmf_email: profile.dvmf_email,
           current_password: passwords.current_password,
           new_password: passwords.new_password,
-
         }),
       })
 
       const data = await res.json()
 
-      // 3️⃣ Handle Unauthorized (401)
       if (res.status === 401) {
-        window.alert("Session expired or not logged in. Please log in again.")
+        showAlert("Session expired or not logged in. Please log in again.", "error")
         window.location.href = "/login"
         return
       }
 
-      // 4️⃣ Handle successful password update
       if (res.ok) {
-        window.alert("Password updated successfully!")
+        //showAlert("Password updated successfully!")
         setPasswords({ current_password: "", new_password: "", confirm_new_password: "" })
         return
       }
 
-      // 5️⃣ Handle field-specific errors
       if (data.errors) {
         setPasswordErrors(data.errors)
         return
       }
 
-      // 6️⃣ Handle general errors
-      window.alert(data.error || "Failed to update password")
+      //showAlert(data.error || "Failed to update password", "error")
     } catch (err) {
-      console.error("Password update error:", err)
-      window.alert("Something went wrong. Please try again later.")
+      showAlert("Something went wrong. Please try again later.", "error")
     }
   }
 
   // Handle input changes
   const handleNewUserChange = (field, value) => {
     setNewUser((prev) => ({ ...prev, [field]: value }))
+    
+    // Clear phone error when user starts typing
+    if (field === "phone") {
+      setPhoneError("")
+    }
   }
 
   const togglePasswordVisibility = (field) => {
@@ -350,31 +325,30 @@ const [activeTab, setActiveTab] = useState("profile")
   const addNewUser = async () => {
     const { firstname, lastname, email, phone, password, role } = newUser
 
-    // 1️⃣ Validate input
+    // Validate input
     if (!firstname || !lastname || !email || !phone || !password || !role) {
-      alert("Please fill in all required fields.")
+      showAlert("Please fill in all required fields.", "error")
       return
     }
 
-    // 2️⃣ Validate email
+    // Validate email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(email.trim())) {
-      window.alert("Please enter a valid email address.")
+      showAlert("Please enter a valid email address.", "error")
       return
     }
 
-    // 3️⃣ Validate phone: must start with 09 and be 11 digits
+    // Validate phone: must start with 09 and be 11 digits - THIS IS LINE 265
     const phoneRegex = /^09\d{9}$/
     if (!phoneRegex.test(phone.trim())) {
-      window.alert("Phone number must start with 09 and be 11 digits long.")
+      setPhoneError("Phone number must start with 09 and be 11 digits long.")
       return
     }
 
     try {
-      // 4️⃣ Call backend signup endpoint
       const response = await fetch("http://localhost:8000/api/dvmf/signup/", {
         method: "POST",
-        credentials: "include", // send cookies if needed
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
@@ -382,19 +356,17 @@ const [activeTab, setActiveTab] = useState("profile")
           firstName: firstname.trim(),
           lastName: lastname.trim(),
           phoneNumber: phone.trim(),
-          role: role.trim(), // send role to backend
-
+          role: role.trim(),
         }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        window.alert(data.error || "Failed to create user.")
+        showAlert(data.error || "Failed to create user.", "error")
         return
       }
 
-      // 5️⃣ Update UI with new user
       setUsers((prev) => [
         ...prev,
         {
@@ -403,30 +375,27 @@ const [activeTab, setActiveTab] = useState("profile")
           lastname,
           email,
           phone,
-          role: data.user.dvmf_role || role, // backend response or fallback
+          role: data.user.dvmf_role || role,
           status: "Active",
         },
       ])
 
-      // 6️⃣ Clear form
       setNewUser({
         firstname: "",
         lastname: "",
         email: "",
         phone: "",
         password: "",
-        role: " Dvmf", // reset default
+        role: "Dvmf",
       })
 
-      window.alert("✅ User created successfully!")
+      showAlert("User created successfully!")
     } catch (err) {
-      console.error("Error adding user:", err)
-      alert("Failed to add user. Make sure the backend server is running.")
+      showAlert("Failed to add user. Make sure the backend server is running.", "error")
     }
   }
 
-
-  // -------------------- DEACTIVATE USER --------------------
+  // DEACTIVATE USER
   const deactivateUser = async (id) => {
     try {
       const res = await fetch(`${API_BASE}/users/deactivate/${id}/`, {
@@ -436,19 +405,14 @@ const [activeTab, setActiveTab] = useState("profile")
 
       if (!res.ok) throw new Error("Failed to deactivate user")
 
-      const data = await res.json()
-      console.log("Deactivated:", data)
-
       setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, status: "deactivated" } : p)))
-
       showAlert("User deactivated successfully!", "success")
     } catch (err) {
-      console.error("Error deactivating user:", err)
       showAlert("Error deactivating user", "error")
     }
   }
 
-  // -------------------- REACTIVATE USER --------------------
+  // REACTIVATE USER
   const reactivateUser = async (id) => {
     try {
       const res = await fetch(`${API_BASE}/users/reactivate/${id}/`, {
@@ -458,14 +422,9 @@ const [activeTab, setActiveTab] = useState("profile")
 
       if (!res.ok) throw new Error("Failed to reactivate user")
 
-      const data = await res.json()
-      console.log("Reactivated:", data)
-
       setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, status: "Approved" } : p)))
-
       showAlert("User reactivated successfully!", "success")
     } catch (err) {
-      console.error("Error reactivating user:", err)
       showAlert("Error reactivating user", "error")
     }
   }
@@ -480,43 +439,39 @@ const [activeTab, setActiveTab] = useState("profile")
         fetchUsers()
       ])
     } catch (error) {
-      console.error("Failed to refresh data:", error)
+      showAlert("Failed to refresh data", "error")
     } finally {
       setIsRefreshing(false)
     }
   }
 
-  // Fetch CTU Vet profile
+  // Fetch DVMF profile
   const fetchProfile = async () => {
     try {
       const res = await fetch("http://localhost:8000/api/dvmf/get_dvmf_user_profiles/", {
         method: "GET",
-        credentials: "include", // include HttpOnly cookie
+        credentials: "include",
       })
 
       const data = await res.json()
 
       if (!res.ok) {
-        console.error("Failed to fetch profile:", data.error || "Unknown error")
         return
       }
 
-      // Set profile state
       setProfile({
         dvmf_fname: data.dvmf_fname || "",
-          dvmf_lname: data.dvmf_lname || "",
-          dvmf_email: data.dvmf_email || "",
-          dvmf_phonenum: data.dvmf_phonenum || "",
-          dvmf_role: data.dvmf_role || "",
-
+        dvmf_lname: data.dvmf_lname || "",
+        dvmf_email: data.dvmf_email || "",
+        dvmf_phonenum: data.dvmf_phonenum || "",
+        dvmf_role: data.dvmf_role || "",
       })
 
-       if (data.dvmf_fname || data.dvmf_lname || data.dvmf_phonenum) {
-          setProfileExists(true)
-        }
-
+      if (data.dvmf_fname || data.dvmf_lname || data.dvmf_phonenum) {
+        setProfileExists(true)
+      }
     } catch (err) {
-      console.error("Error fetching profile:", err)
+      showAlert("Error fetching profile", "error")
     }
   }
 
@@ -524,16 +479,12 @@ const [activeTab, setActiveTab] = useState("profile")
     fetchProfile()
   }, [])
 
-
-
-  // ✅ Auto-refresh every 30s
+  // Auto-refresh every 30s
   useEffect(() => {
-    loadNotifications() // load once
-
+    loadNotifications()
     const interval = setInterval(() => {
       loadNotifications()
-    }, 30000) // 30 seconds
-
+    }, 30000)
     return () => clearInterval(interval)
   }, [loadNotifications])
 
@@ -547,10 +498,9 @@ const [activeTab, setActiveTab] = useState("profile")
       })
       const data = await res.json()
       if (res.ok)
-        setProfiles(data) // admins see all
-      else console.error("Error fetching users:", data.error)
+        setProfiles(data)
     } catch (err) {
-      console.error("Fetch error:", err)
+      showAlert("Error fetching users", "error")
     } finally {
       setLoading(false)
     }
@@ -579,7 +529,6 @@ const [activeTab, setActiveTab] = useState("profile")
         <div className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
           <h1 className="text-2xl font-bold text-black">Settings</h1>
           <div className="flex items-center gap-4">
-            {/* 🔄 Refresh Icon */}
             <button
               onClick={handleManualRefresh}
               disabled={isRefreshing}
@@ -592,7 +541,6 @@ const [activeTab, setActiveTab] = useState("profile")
               />
             </button>
 
-            {/* 🔔 Notification Bell (without count) */}
             <button
               className="bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
               onClick={() => setNotifsOpen(!notifsOpen)}
@@ -601,20 +549,17 @@ const [activeTab, setActiveTab] = useState("profile")
             </button>
           </div>
 
-          {/* Notification Modal */}
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
             notifications={notifications}
             onNotificationClick={handleNotificationClick}
             onMarkAllAsRead={handleMarkAllAsRead}
-           
           />
         </div>
 
         <div className="flex gap-6 mb-6 mt-5 ml-5">
           {["profile", "security", "userManagement"].map((tab) => {
-            // Only show "userManagement" if user is Ctu-Admin
             if (tab === "userManagement" && profile?.dvmf_role?.trim().toLowerCase() !== "dvmf-admin") {
               return null
             }
@@ -677,7 +622,7 @@ const [activeTab, setActiveTab] = useState("profile")
                         />
                         <input
                           type="text"
-                          name="dvmmf_lname"
+                          name="dvmf_lname"
                           value={profile.dvmf_lname}
                           onChange={handleChange}
                           readOnly={profileExists && !editing}
@@ -742,8 +687,7 @@ const [activeTab, setActiveTab] = useState("profile")
                           type="button"
                           className="px-4 py-1.5 bg-gray-400 text-white border-none rounded-2xl font-bold text-sm cursor-pointer ml-2 transition-all duration-200 hover:bg-gray-500"
                           onClick={() => {
-                              setProfile({ dvmf_fname: "", dvmf_lname: "", dvmf_email: "", dvmf_phonenum: "" })
-
+                            setProfile({ dvmf_fname: "", dvmf_lname: "", dvmf_email: "", dvmf_phonenum: "" })
                             setErrors({})
                           }}
                         >
@@ -805,7 +749,6 @@ const [activeTab, setActiveTab] = useState("profile")
                     <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative mb-6" key={field.name}>
                       <label className="font-medium mb-1">{field.label}</label>
 
-                      {/* Password input with toggle */}
                       <div className="relative w-full">
                         <input
                           type={passwordVisibility[field.name] ? "text" : "password"}
@@ -823,7 +766,6 @@ const [activeTab, setActiveTab] = useState("profile")
                         </button>
                       </div>
 
-                      {/* Error message */}
                       {passwordErrors[field.name] && (
                         <p className="text-red-500 text-xs absolute -bottom-4 right-0 m-0">
                           {passwordErrors[field.name]}
@@ -832,7 +774,6 @@ const [activeTab, setActiveTab] = useState("profile")
                     </div>
                   ))}
 
-                  {/* Action buttons */}
                   <button
                     type="submit"
                     className="px-4 py-1.5 bg-green-700 text-white border-none rounded-2xl font-bold text-sm cursor-pointer transition-all duration-200 hover:bg-green-800 mr-2"
@@ -901,9 +842,6 @@ const [activeTab, setActiveTab] = useState("profile")
             profile ? (
               profile.dvmf_role?.trim().toLowerCase() === "dvmf-admin" ? (
                 <div className="bg-white rounded-xl p-5 mb-5 shadow-sm ml-5 mr-10">
-                  
-
-                  {/* Tabs for Add New / Existing Users */}
                   <div className="flex border-b border-gray-200 mb-6">
                     <button
                       className={`px-6 py-3 bg-transparent border-none cursor-pointer text-sm font-medium transition-all duration-200 ${
@@ -927,7 +865,6 @@ const [activeTab, setActiveTab] = useState("profile")
                     </button>
                   </div>
 
-                  {/* Add New User Form */}
                   {activeUserTab === "addNew" && (
                     <div className="py-4">
                       <div className="flex gap-5 mb-5 flex-wrap">
@@ -968,11 +905,20 @@ const [activeTab, setActiveTab] = useState("profile")
                           <label className="font-medium mb-1">Phone Number</label>
                           <input
                             type="tel"
-                            className="px-3 py-2 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            className={`px-3 py-2 border rounded-md text-sm outline-none transition-all duration-200 ${
+                              phoneError 
+                                ? "border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500" 
+                                : "border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            }`}
                             placeholder="Enter phone number"
                             value={newUser.phone}
                             onChange={(e) => handleNewUserChange("phone", e.target.value)}
                           />
+                          {phoneError && (
+                            <p className="text-red-500 text-xs absolute -bottom-5 right-0 m-0">
+                              {phoneError}
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -1022,7 +968,7 @@ const [activeTab, setActiveTab] = useState("profile")
                       </div>
                     </div>
                   )}
-                  {/* ALERT UI */}
+
                   {alert.show && (
                     <div
                       className={`fixed top-5 left-1/2 transform -translate-x-1/2 px-6 py-3.5 rounded-xl text-base font-semibold text-white shadow-lg z-50 text-center min-w-[250px] max-w-[500px] transition-opacity duration-300 ${
@@ -1033,26 +979,8 @@ const [activeTab, setActiveTab] = useState("profile")
                     </div>
                   )}
 
-                  {/* Existing Users Table */}
                   {activeUserTab === "existing" && (
                     <div className="py-4">
-                      {console.log("[v0] Profiles data:", profiles)}
-                      {console.log(
-                        "[v0] Filtered profiles:",
-                        profiles.filter((p) => {
-                          const statusMatch =
-                            p.status === "Approved" ||
-                            p.status === "approved" ||
-                            p.status === "deactivated" ||
-                            p.status === "Deactivated"
-                          const roleMatch = p.role !== "Dvmf-Admin"
-                          console.log(
-                            `[v0] User ${p.dvmf_email}: status=${p.status}, role=${p.role}, statusMatch=${statusMatch}, roleMatch=${roleMatch}`,
-                          )
-                          return statusMatch && roleMatch
-                        }),
-                      )}
-
                       {profiles.filter((p) => {
                         const statusMatch =
                           p.status === "Approved" ||
@@ -1066,7 +994,6 @@ const [activeTab, setActiveTab] = useState("profile")
                           <Users size={48} />
                           <h3 className="text-lg font-semibold">No users found</h3>
                           <p className="text-sm">Add your first user to get started</p>
-                          <p className="text-xs text-gray-400 mt-2">Total profiles loaded: {profiles.length}</p>
                         </div>
                       ) : (
                         <div className="border border-gray-200 rounded-lg overflow-hidden max-h-96 overflow-y-auto">
@@ -1135,11 +1062,9 @@ const [activeTab, setActiveTab] = useState("profile")
                                         className="p-1.5 bg-red-50 border border-red-200 rounded-md text-red-600 cursor-pointer transition-all duration-200 hover:bg-red-100 hover:border-red-300"
                                         onClick={async () => {
                                           await deactivateUser(p.id)
-                                          showAlert("User deactivated successfully!", "success")
                                         }}
                                       >
                                         <XCircle size={16} />
-                                       
                                       </button>
                                     )}
 
@@ -1148,11 +1073,9 @@ const [activeTab, setActiveTab] = useState("profile")
                                         className="p-1.5 bg-green-50 border border-green-200 rounded-md text-green-600 cursor-pointer transition-all duration-200 hover:bg-green-100 hover:border-green-300"
                                         onClick={async () => {
                                           await reactivateUser(p.id)
-                                          showAlert("User reactivated successfully!", "success")
                                         }}
                                       >
                                         <CheckCircle size={16} />
-                                       
                                       </button>
                                     )}
                                   </div>
@@ -1165,7 +1088,6 @@ const [activeTab, setActiveTab] = useState("profile")
                   )}
                 </div>
               ) : (
-                // Non-admin: restricted message
                 <div className="flex flex-col items-center justify-center text-center py-10 text-gray-500 gap-2.5">
                   <Users size={48} />
                   <h3 className="text-lg font-semibold">Restricted Access</h3>
