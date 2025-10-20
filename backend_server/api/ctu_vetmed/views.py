@@ -216,8 +216,8 @@ def get_vet_profiles(request):
         return Response({"data": data}, status=status.HTTP_200_OK)
 
     except Exception:
-        logging.exception("Failed to fetch vet profiles")
         return Response({"error": "Failed to fetch vet profiles"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 
@@ -357,7 +357,7 @@ def retry_query(query_func, retries=3, delay=1):
         try:
             return query_func().execute()
         except Exception as e:
-            print(f"⚠️ Supabase query failed (attempt {attempt+1}): {e}")
+            print(f"Supabase query failed (attempt {attempt+1}): {e}")
             if attempt < retries - 1:
                 time.sleep(delay)
             else:
@@ -406,11 +406,8 @@ def get_recent_activity(request):
         return Response(activities, status=200)
 
     except Exception as e:
-        # Optional: import traceback at the top if you want full trace
-        import traceback
-        print("Error fetching recent activity:", e)
-        print(traceback.format_exc())
         return Response({"error": str(e)}, status=500)
+
 
 
 
@@ -770,156 +767,132 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+from datetime import datetime, timedelta, timezone as dt_timezone
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+
 @api_view(["GET"])
 def get_vetnotifications(request):
     try:
+        # ---------------- TIMEZONE SETUP ----------------
         manila_tz = dt_timezone(timedelta(hours=8))
 
         def to_manila_time(iso_str):
+            if not iso_str:
+                return datetime.now(manila_tz)
             try:
-                if iso_str:
-                    return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone(manila_tz)
+                return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone(manila_tz)
             except Exception:
-                pass
-            return datetime.now(manila_tz)
+                return datetime.now(manila_tz)
 
         # ---------------- FETCH EXISTING KEYS ----------------
-        try:
-            existing_res = sr_client.table("notification").select("related_id").execute()
-            existing_keys = set(row.get("related_id") for row in (existing_res.data or []) if row.get("related_id"))
-        except Exception:
-            existing_keys = set()
+        existing_res = sr_client.table("notification").select("*").execute()
+        existing_keys = set(
+            row.get("related_id")
+            for row in (existing_res.data or [])
+            if row.get("related_id")
+        )
 
         notifications_to_insert = []
 
-        # ---------------- VET REGISTRATION/APPROVAL/DECLINE ----------------
-        try:
-            vets_res = sr_client.table("vet_profile").select("vet_id, vet_fname, vet_lname, created_at, users(id, status, role)").execute()
-            for vet in (vets_res.data or []):
-                users = vet.get("users") or {}
-                role = (users.get("role") or "").lower()
-                status = (users.get("status") or "").lower()
-                user_id = users.get("id")
-                if not user_id or role != "veterinarian":
-                    continue
-                vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
-                created_at = vet.get("created_at")
-                related_id = f"vet_{vet['vet_id']}_{status}"
-                if related_id in existing_keys:
-                    continue
+        # ---------------- HELPER FUNCTION ----------------
+        def add_vet_notif(user_id, vet_name, created_at, message_prefix, status, related_id):
+            if related_id in existing_keys:
+                return
+            dt_ph = to_manila_time(created_at)
+            notifications_to_insert.append({
+                "id": user_id,
+                "notif_message": f"{message_prefix} Dr. {vet_name}.",
+                "notif_date": dt_ph.strftime("%Y-%m-%d"),
+                "notif_time": dt_ph.strftime("%H:%M:%S"),
+                "notif_read": False,
+                "notification_type": status,
+                "related_id": related_id
+            })
+            existing_keys.add(related_id)
 
-                dt_ph = to_manila_time(created_at)
-                notifications_to_insert.append({
-                    "id": user_id,
-                    "notif_message": f"{('New registration:' if status=='pending' else 'Veterinarian ' + status + ':')} {vet_name}.",
-                    "notif_date": dt_ph.strftime("%Y-%m-%d"),
-                    "notif_time": dt_ph.strftime("%H:%M:%S"),
-                    "notif_read": False,
-                    "notification_type": status,
-                    "related_id": related_id
-                })
-                existing_keys.add(related_id)
-        except Exception:
-            pass
+        # ---------------- VET REGISTRATION/APPROVAL/DECLINE ----------------
+        vets_res = sr_client.table("vet_profile") \
+            .select("vet_id, vet_fname, vet_lname, created_at, users(id, status, role)") \
+            .execute()
+
+        for vet in (vets_res.data or []):
+            users = vet.get("users") or {}
+            role = users.get("role", "").lower()
+            status = users.get("status", "").lower()
+            user_id = users.get("id")
+
+            if not user_id or role != "veterinarian":
+                continue
+
+            vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
+            created_at = vet.get("created_at")
+
+            if status == "pending":
+                add_vet_notif(user_id, vet_name, created_at, "New registration:", status, f"vet_{vet['vet_id']}_{status}")
+            elif status == "approved":
+                add_vet_notif(user_id, vet_name, created_at, "Veterinarian approved:", status, f"vet_{vet['vet_id']}_{status}")
+            elif status == "declined":
+                add_vet_notif(user_id, vet_name, created_at, "Veterinarian declined:", status, f"vet_{vet['vet_id']}_{status}")
 
         # ---------------- MEDICAL RECORD ACCESS REQUESTS ----------------
-        try:
-            medreq_res = sr_client.table("medrec_access_request") \
-                .select("request_id, vet_id, horse_id, request_status, requested_at, vet_profile(vet_fname, vet_lname, users(id)), horse_profile(horse_name)") \
-                .execute()
+        medreq_res = sr_client.table("medrec_access_request") \
+            .select("request_id, vet_id, horse_id, request_status, requested_at, vet_profile(vet_fname, vet_lname, users(id)), horse_profile(horse_name)") \
+            .execute()
 
-            for req in (medreq_res.data or []):
-                vet = req.get("vet_profile") or {}
-                users = vet.get("users") or {}
-                user_id = users.get("id")
-                if not user_id:
-                    continue
-                vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
-                horse_name = (req.get("horse_profile") or {}).get("horse_name", "Unknown Horse")
-                requested_at = req.get("requested_at")
-                related_id = f"medreq_{req['request_id']}"
-                if related_id in existing_keys:
-                    continue
+        for req in (medreq_res.data or []):
+            if req.get("request_status", "").lower() != "pending":
+                continue
 
-                dt_ph = to_manila_time(requested_at)
-                notifications_to_insert.append({
-                    "id": user_id,
-                    "notif_message": f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
-                    "notif_date": dt_ph.strftime("%Y-%m-%d"),
-                    "notif_time": dt_ph.strftime("%H:%M:%S"),
-                    "notif_read": False,
-                    "notification_type": "medrec_request",
-                    "related_id": related_id
-                })
-                existing_keys.add(related_id)
-        except Exception:
-            pass
+            vet = req.get("vet_profile", {}) or {}
+            users = vet.get("users") or {}
+            user_id = users.get("id")
+            if not user_id:
+                continue
 
-        # ---------------- COMMENTS (KUTSERO OR HORSE OP) ----------------
-        try:
-            comments_res = sr_client.table("comment").select("id, comment_text, comment_date, user_id").execute()
-            for comment in (comments_res.data or []):
-                user_id = comment.get("user_id")
-                if not user_id:
-                    continue
-                comment_text = (comment.get("comment_text") or "").strip()
-                created_at = comment.get("comment_date")
+            vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
+            horse = req.get("horse_profile", {}) or {}
+            horse_name = horse.get("horse_name", "Unknown Horse")
+            requested_at = req.get("requested_at")
 
-                # Determine author name
-                author_name = None
-                kutsero_res = sr_client.table("kutsero_profile").select("kutsero_fname, kutsero_lname").eq("kutsero_id", user_id).execute()
-                if kutsero_res.data:
-                    prof = kutsero_res.data[0]
-                    author_name = f"{prof.get('kutsero_fname','')} {prof.get('kutsero_lname','')}".strip()
-                else:
-                    op_res = sr_client.table("horse_op_profile").select("op_fname, op_lname").eq("op_id", user_id).execute()
-                    if op_res.data:
-                        prof = op_res.data[0]
-                        author_name = f"{prof.get('op_fname','')} {prof.get('op_lname','')}".strip()
-                if not author_name:
-                    continue
+            related_id = f"medreq_{req['request_id']}"
+            if related_id in existing_keys:
+                continue
 
-                related_id = f"comment_{comment['id']}"
-                if related_id in existing_keys:
-                    continue
+            dt_ph = to_manila_time(requested_at)
+            notifications_to_insert.append({
+                "id": user_id,
+                "notif_message": f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
+                "notif_date": dt_ph.strftime("%Y-%m-%d"),
+                "notif_time": dt_ph.strftime("%H:%M:%S"),
+                "notif_read": False,
+                "notification_type": "medrec_request",
+                "related_id": related_id
+            })
+            existing_keys.add(related_id)
 
-                dt_ph = to_manila_time(created_at)
-                notifications_to_insert.append({
-                    "id": user_id,
-                    "notif_message": f"{author_name} commented: \"{comment_text}\"",
-                    "notif_date": dt_ph.strftime("%Y-%m-%d"),
-                    "notif_time": dt_ph.strftime("%H:%M:%S"),
-                    "notif_read": False,
-                    "notification_type": "comment",
-                    "related_id": related_id
-                })
-                existing_keys.add(related_id)
-        except Exception:
-            pass
-
-        # ---------------- BULK INSERT ----------------
+        # ---------------- BULK INSERT NEW NOTIFICATIONS ----------------
         if notifications_to_insert:
-            try:
-                sr_client.table("notification").insert(notifications_to_insert).execute()
-            except Exception:
-                pass
+            sr_client.table("notification").insert(notifications_to_insert).execute()
 
-        # ---------------- FETCH ALL ----------------
-        try:
-            all_notifs_res = sr_client.table("notification").select("*").order("notif_date", desc=True).order("notif_time", desc=True).execute()
-            notifications = [
-                {
+        # ---------------- FETCH ALL NOTIFICATIONS ----------------
+        all_notifs_res = sr_client.table("notification") \
+            .select("*") \
+            .order("notif_date", desc=True) \
+            .order("notif_time", desc=True) \
+            .execute()
+
+        notifications = []
+        for row in (all_notifs_res.data or []):
+            message = row.get("notif_message", "").lower()
+            if any(keyword in message for keyword in ["veterinarian", "vet.", "registration:", "medical record"]):
+                notifications.append({
                     "id": row.get("id"),
                     "message": row.get("notif_message"),
                     "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
                     "read": row.get("notif_read", False),
-                    "type": row.get("notification_type","general"),
-                }
-                for row in (all_notifs_res.data or [])
-                if row.get("notif_message")
-            ]
-        except Exception:
-            notifications = []
+                    "type": row.get("notification_type", "general"),
+                })
 
         return Response(notifications, status=200)
 
@@ -2902,7 +2875,7 @@ def get_all_users(request):
         if not ctu_id:
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        print(f"🔍 Debug: Current ctu_id from token: {ctu_id}")
+        print(f"Debug: Current ctu_id from token: {ctu_id}")
 
         # ✅ Step 1: Get all approved users except current user
         users_res = safe_execute(
@@ -2913,7 +2886,7 @@ def get_all_users(request):
         )
 
         users = users_res.data or []
-        print(f"🔍 Debug: Found {len(users)} approved users (excluding current user)")
+        print(f"Debug: Found {len(users)} approved users (excluding current user)")
 
         if not users:
             return Response([], status=status.HTTP_200_OK)
@@ -2925,7 +2898,7 @@ def get_all_users(request):
         for u in users:
             role_groups.setdefault(u["role"], []).append(u["id"])
 
-        print(f"🔍 Debug: Role groups: {role_groups}")
+        print(f"Debug: Role groups: {role_groups}")
 
         profiles_map = {}
 
@@ -2937,7 +2910,7 @@ def get_all_users(request):
                 .select("vet_id, vet_fname, vet_mname, vet_lname, vet_profile_photo")
                 .in_("vet_id", ids)
             )
-            print(f"🔍 Debug: Found {len(res.data or [])} Veterinarian profiles")
+            print(f"Debug: Found {len(res.data or [])} Veterinarian profiles")
             for p in res.data or []:
                 full_name = " ".join(filter(None, [p.get("vet_fname"), p.get("vet_mname"), p.get("vet_lname")])).strip()
                 profiles_map[p["vet_id"]] = {
@@ -2953,7 +2926,7 @@ def get_all_users(request):
                 .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_image")
                 .in_("kutsero_id", ids)
             )
-            print(f"🔍 Debug: Found {len(res.data or [])} Kutsero profiles")
+            print(f"Debug: Found {len(res.data or [])} Kutsero profiles")
             for p in res.data or []:
                 full_name = " ".join(filter(None, [p.get("kutsero_fname"), p.get("kutsero_mname"), p.get("kutsero_lname")])).strip()
                 profiles_map[p["kutsero_id"]] = {
@@ -2969,7 +2942,7 @@ def get_all_users(request):
                 .select("op_id, op_fname, op_mname, op_lname, op_image")
                 .in_("op_id", ids)
             )
-            print(f"🔍 Debug: Found {len(res.data or [])} Horse Operator profiles")
+            print(f"Debug: Found {len(res.data or [])} Horse Operator profiles")
             for p in res.data or []:
                 full_name = " ".join(filter(None, [p.get("op_fname"), p.get("op_mname"), p.get("op_lname")])).strip()
                 profiles_map[p["op_id"]] = {
@@ -2985,7 +2958,7 @@ def get_all_users(request):
                 .select("user_id, pres_fname, pres_lname")  # Corrected field names
                 .in_("user_id", ids)
             )
-            print(f"🔍 Debug: Found {len(res.data or [])} Kutsero President profiles")
+            print(f"Debug: Found {len(res.data or [])} Kutsero President profiles")
             for p in res.data or []:
                 full_name = " ".join(filter(None, [p.get("pres_fname"), p.get("pres_lname")])).strip()
                 profiles_map[p["user_id"]] = {  # Use user_id as key
@@ -3002,7 +2975,7 @@ def get_all_users(request):
                     .select("dvmf_id, dvmf_fname, dvmf_lname")
                     .in_("dvmf_id", ids)
                 )
-                print(f"🔍 Debug: Found {len(res.data or [])} {role_key} profiles")
+                print(f"Debug: Found {len(res.data or [])} {role_key} profiles")
                 for p in res.data or []:
                     full_name = " ".join(filter(None, [p.get("dvmf_fname"), p.get("dvmf_lname")])).strip()
                     profiles_map[p["dvmf_id"]] = {
@@ -3019,7 +2992,7 @@ def get_all_users(request):
                     .select("ctu_id, ctu_fname, ctu_lname")
                     .in_("ctu_id", ids)
                 )
-                print(f"🔍 Debug: Found {len(res.data or [])} {role_key} profiles")
+                print(f"Debug: Found {len(res.data or [])} {role_key} profiles")
                 for p in res.data or []:
                     full_name = " ".join(filter(None, [p.get("ctu_fname"), p.get("ctu_lname")])).strip()
                     profiles_map[p["ctu_id"]] = {
@@ -3042,10 +3015,10 @@ def get_all_users(request):
                 "unread": 0
             })
 
-        print(f"🔍 Debug: Final user list: {len(all_users)} users")
+        print(f" Debug: Final user list: {len(all_users)} users")
         return Response(all_users, status=status.HTTP_200_OK)
 
     except Exception as e:
-        print("❌ Error fetching users:", str(e))
+        print("Error fetching users:", str(e))
         traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
