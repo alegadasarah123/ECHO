@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://localhost:8000/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
 
 const CtuSettings = () => {
   const [activeTab, setActiveTab] = useState("profile")
@@ -104,60 +104,65 @@ const CtuSettings = () => {
   };
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
-  const handleNotificationClick = async (notification) => {
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === notification.id ? { ...notif, read: true } : notif
-      )
-    );
+const handleNotificationClick = async (notification) => {
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev =>
+    prev.map(notif =>
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
 
-    try {
-      await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-        method: "POST",
-        credentials: "include",
-      });
-    } catch (err) {
-      showAlert("Error marking notification as read", "error")
-    }
+  // Mark notification as read in backend
+  try {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
+  }
 
-    const message = notification.message.toLowerCase();
+  // Handle navigation based on notification content
+  const message = notification.message.toLowerCase();
 
-    if (
-      message.includes("new registration") ||
-      message.includes("new veterinarian approved") ||
-      message.includes("veterinarian approved") ||
-      message.includes("veterinarian declined") ||
-      message.includes("veterinarian registered")
-    ) {
-      navigate("/CtuAccountApproval", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    navigate("/CtuAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("pending medical record access") || message.includes("requested access")) {
-      navigate("/CtuAccessRequest", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    navigate("/CtuAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
-      navigate("/CtuAnnouncement", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
-  };
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
+    navigate("/CtuAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+};
+
 
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -347,7 +352,7 @@ const CtuSettings = () => {
     }
 
     try {
-      const response = await fetch("http://localhost:8000/api/ctu_vetmed/signup/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/signup/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -497,7 +502,7 @@ const CtuSettings = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const res = await fetch("http://localhost:8000/api/ctu_vetmed/users/", {
+      const res = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/users/", {
         method: "GET",
         credentials: "include",
       })

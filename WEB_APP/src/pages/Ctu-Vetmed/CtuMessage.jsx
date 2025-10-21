@@ -702,7 +702,7 @@ const FloatingMessages = () => {
 
   const fetchCurrentUserId = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/ctu_vetmed/ctu_vet_profile/", {
+      const res = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/ctu_vet_profile/", {
         credentials: "include"
       });
       if (res.ok) {
@@ -814,7 +814,7 @@ const FloatingMessages = () => {
                 if (newMessageData.receiver_id === currentUserId && currentSelectedConv) {
                   try {
                     await fetch(
-                      `http://localhost:8000/api/ctu_vetmed/mark_messages_as_read/${currentSelectedConv.id}/`,
+                      `https://echo-ebl8.onrender.com/api/ctu_vetmed/mark_messages_as_read/${currentSelectedConv.id}/`,
                       { 
                         method: "PUT", 
                         credentials: "include",
@@ -943,7 +943,7 @@ const FloatingMessages = () => {
   const fetchConversations = async () => {
     try {
       const res = await fetch(
-        "http://localhost:8000/api/ctu_vetmed/get_conversations/", 
+        "https://echo-ebl8.onrender.com/api/ctu_vetmed/get_conversations/", 
         { credentials: "include" }
       );
       if (res.ok) {
@@ -961,7 +961,7 @@ const FloatingMessages = () => {
   const fetchAllUsers = async () => {
     try {
       const res = await fetch(
-        "http://localhost:8000/api/ctu_vetmed/get_all_users/",
+        "https://echo-ebl8.onrender.com/api/ctu_vetmed/get_all_users/",
         { credentials: "include" }
       );
       if (res.ok) {
@@ -993,7 +993,7 @@ const FloatingMessages = () => {
     
     try {
       const res = await fetch(
-        `http://localhost:8000/api/ctu_vetmed/get_conversation/${conversation.id}/`,
+        `https://echo-ebl8.onrender.com/api/ctu_vetmed/get_conversation/${conversation.id}/`,
         { credentials: "include" }
       );
       
@@ -1022,7 +1022,7 @@ const FloatingMessages = () => {
 
         try {
           const markReadResponse = await fetch(
-            `http://localhost:8000/api/ctu_vetmed/mark_messages_as_read/${conversation.id}/`,
+            `https://echo-ebl8.onrender.com/api/ctu_vetmed/mark_messages_as_read/${conversation.id}/`,
             { 
               method: "PUT", 
               credentials: "include",
@@ -1086,7 +1086,7 @@ const FloatingMessages = () => {
 
     try {
       const res = await fetch(
-        "http://localhost:8000/api/ctu_vetmed/send_message/",
+        "https://echo-ebl8.onrender.com/api/ctu_vetmed/send_message/",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

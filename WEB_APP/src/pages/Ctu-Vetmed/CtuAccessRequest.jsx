@@ -26,7 +26,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE_URL = "http://localhost:8000/api/ctu_vetmed"
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
 
 const SkeletonLoader = ({ activeTab }) => {
   const getGridConfig = () => {
@@ -129,7 +129,7 @@ function CtuAccessRequest() {
   // ✅ MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/mark_all_notifications_read/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -156,29 +156,25 @@ function CtuAccessRequest() {
   };
 
   // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
- // HANDLE INDIVIDUAL NOTIFICATION CLICK
-const handleNotificationClick = async (notification) => {
+ const handleNotificationClick = async (notification) => {
   // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev => 
-    prev.map(notif => 
+  setNotifications(prev =>
+    prev.map(notif =>
       notif.id === notification.id ? { ...notif, read: true } : notif
     )
   );
 
   // Mark notification as read in backend
   try {
-    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
       method: "POST",
       credentials: "include",
     });
-    const data = await res.json();
-    console.log("Mark notification read result:", data);
   } catch (err) {
     console.error("Error marking notification as read:", err);
   }
 
   // Handle navigation based on notification content
-  console.log('Notification clicked:', notification);
   const message = notification.message.toLowerCase();
 
   if (
@@ -188,7 +184,6 @@ const handleNotificationClick = async (notification) => {
     message.includes("veterinarian declined") ||
     message.includes("veterinarian registered")
   ) {
-    console.log("Navigating to Account Approval page");
     navigate("/CtuAccountApproval", {
       state: {
         highlightedNotification: notification,
@@ -199,7 +194,6 @@ const handleNotificationClick = async (notification) => {
   }
 
   if (message.includes("pending medical record access") || message.includes("requested access")) {
-    console.log("Navigating to Access Request page");
     navigate("/CtuAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -209,8 +203,8 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
-  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
-    console.log("Navigating to Announcement page");
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
     navigate("/CtuAnnouncement", {
       state: {
         highlightedNotification: notification,
@@ -219,9 +213,8 @@ const handleNotificationClick = async (notification) => {
     });
     return;
   }
-
-  console.warn("No matching route for notification:", notification);
 };
+
 
   // ✅ Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -234,7 +227,7 @@ const handleNotificationClick = async (notification) => {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -269,7 +262,7 @@ const handleNotificationClick = async (notification) => {
   // Fetch access requests
   const loadAccessRequests = useCallback(() => {
     setIsLoading(true)
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/medrec_access_requests/")
+    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/medrec_access_requests/")
       .then((res) => res.json())
       .then((data) => {
         const formatted = data.map((req) => ({
@@ -318,7 +311,7 @@ const handleNotificationClick = async (notification) => {
   const approveRequest = async (requestId) => {
   try {
     const res = await fetch(
-      `http://127.0.0.1:8000/api/ctu_vetmed/access-requests/${requestId}/approve/`,
+      `https://echo-ebl8.onrender.com/api/ctu_vetmed/access-requests/${requestId}/approve/`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -415,7 +408,7 @@ const handleNotificationClick = async (notification) => {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/ctu_vetmed/access-requests/${currentRequestId}/decline/`,
+        `https://echo-ebl8.onrender.com/api/ctu_vetmed/access-requests/${currentRequestId}/decline/`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },

@@ -33,7 +33,7 @@ import NotificationModal from "./DvmfNotif"
 const initialDirectoryData = []
 const initialNotifications = []
 
-const API_BASE = "http://127.0.0.1:8000/api/dvmf"
+const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf"
 
 function DvmfDirectory() {
   const navigate = useNavigate()
@@ -109,28 +109,25 @@ function DvmfDirectory() {
   }
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
-  const handleNotificationClick = async (notification) => {
+    const handleNotificationClick = async (notification) => {
   // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev => 
-    prev.map(notif => 
+  setNotifications(prev =>
+    prev.map(notif =>
       notif.id === notification.id ? { ...notif, read: true } : notif
     )
   );
 
   // Mark notification as read in backend
   try {
-    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
       method: "POST",
       credentials: "include",
     });
-    const data = await res.json();
-    console.log("Mark notification read result:", data);
   } catch (err) {
     console.error("Error marking notification as read:", err);
   }
 
   // Handle navigation based on notification content
-  console.log('Notification clicked:', notification);
   const message = notification.message.toLowerCase();
 
   if (
@@ -140,7 +137,6 @@ function DvmfDirectory() {
     message.includes("veterinarian declined") ||
     message.includes("veterinarian registered")
   ) {
-    console.log("Navigating to Account Approval page");
     navigate("/DvmfAccountApproval", {
       state: {
         highlightedNotification: notification,
@@ -151,7 +147,6 @@ function DvmfDirectory() {
   }
 
   if (message.includes("pending medical record access") || message.includes("requested access")) {
-    console.log("Navigating to Access Request page");
     navigate("/DvmfAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -161,8 +156,8 @@ function DvmfDirectory() {
     return;
   }
 
-  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
-    console.log("Navigating to Announcement page");
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
     navigate("/DvmfAnnouncement", {
       state: {
         highlightedNotification: notification,
@@ -171,10 +166,7 @@ function DvmfDirectory() {
     });
     return;
   }
-
-  console.warn("No matching route for notification:", notification);
 };
-
   // HANDLE OPENING USER MANAGEMENT FROM NOTIFICATIONS
   const handleOpenUserManagement = async (notification = null) => {
     console.log('Opening User Management from dashboard notification:', notification)
@@ -233,7 +225,7 @@ function DvmfDirectory() {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -357,7 +349,7 @@ function DvmfDirectory() {
   const handleView = async (person) => {
     try {
       // Optional: fetch full data from API if not already complete
-      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -397,7 +389,7 @@ function DvmfDirectory() {
   const loadDirectoryData = async () => {
     try {
       setLoading(true)
-      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -637,7 +629,7 @@ const getInitialsBackgroundColor = (initials) => {
       if (!fbValue || fbValue === "N/A") return null;
       
       // If it already starts with http, return as is
-      if (fbValue.startsWith('http://') || fbValue.startsWith('https://')) {
+      if (fbValue.startsWith('https://') || fbValue.startsWith('https://')) {
         return fbValue;
       }
       

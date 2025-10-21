@@ -25,7 +25,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
-const API_BASE = "http://127.0.0.1:8000/api/dvmf"
+const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf"
 
 const SkeletonLoader = () => (
   <div className="animate-pulse">
@@ -120,7 +120,7 @@ function DvmfAccountApproval() {
   const fetchCounts = async () => {
     setIsLoadingCounts(true)
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/dvmf/get-account-counts/")
+      const response = await fetch("https://echo-ebl8.onrender.com/api/dvmf/get-account-counts/")
       if (!response.ok) throw new Error("Failed to fetch data")
       const result = await response.json()
       setCounts(result.data || result)
@@ -262,7 +262,7 @@ function DvmfAccountApproval() {
       )
       setMessage(`Approving user ${vetId}...`)
 
-      const response = await fetch(`http://127.0.0.1:8000/api/dvmf/update-vet-status/${vetId}/`, {
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/update-vet-status/${vetId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -316,7 +316,7 @@ function DvmfAccountApproval() {
       )
       setMessage(`Declining user ${vetId}...`)
 
-      const response = await fetch(`http://127.0.0.1:8000/api/dvmf/update-vet-status/${vetId}/`, {
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/update-vet-status/${vetId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -380,7 +380,7 @@ function DvmfAccountApproval() {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/dvmf/get_vetnotifications/")
+    fetch("https://echo-ebl8.onrender.com/api/dvmf/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -430,28 +430,25 @@ function DvmfAccountApproval() {
   };
 
   // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
-  const handleNotificationClick = async (notification) => {
+    const handleNotificationClick = async (notification) => {
   // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev => 
-    prev.map(notif => 
+  setNotifications(prev =>
+    prev.map(notif =>
       notif.id === notification.id ? { ...notif, read: true } : notif
     )
   );
 
   // Mark notification as read in backend
   try {
-    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
       method: "POST",
       credentials: "include",
     });
-    const data = await res.json();
-    console.log("Mark notification read result:", data);
   } catch (err) {
     console.error("Error marking notification as read:", err);
   }
 
   // Handle navigation based on notification content
-  console.log('Notification clicked:', notification);
   const message = notification.message.toLowerCase();
 
   if (
@@ -461,7 +458,6 @@ function DvmfAccountApproval() {
     message.includes("veterinarian declined") ||
     message.includes("veterinarian registered")
   ) {
-    console.log("Navigating to Account Approval page");
     navigate("/DvmfAccountApproval", {
       state: {
         highlightedNotification: notification,
@@ -472,7 +468,6 @@ function DvmfAccountApproval() {
   }
 
   if (message.includes("pending medical record access") || message.includes("requested access")) {
-    console.log("Navigating to Access Request page");
     navigate("/DvmfAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -482,8 +477,8 @@ function DvmfAccountApproval() {
     return;
   }
 
-  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
-    console.log("Navigating to Announcement page");
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
     navigate("/DvmfAnnouncement", {
       state: {
         highlightedNotification: notification,
@@ -492,8 +487,6 @@ function DvmfAccountApproval() {
     });
     return;
   }
-
-  console.warn("No matching route for notification:", notification);
 };
 
   // ✅ Handle notifications update from modal
@@ -524,7 +517,7 @@ function DvmfAccountApproval() {
   const handleManualRefresh = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/dvmf/get-vet-profiles/")
+      const response = await fetch("https://echo-ebl8.onrender.com/api/dvmf/get-vet-profiles/")
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
       
       const result = await response.json()
@@ -557,7 +550,7 @@ function DvmfAccountApproval() {
     const loadVetProfiles = async () => {
       setIsLoading(true)
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/dvmf/get-vet-profiles/", {
+        const response = await fetch("https://echo-ebl8.onrender.com/api/dvmf/get-vet-profiles/", {
           signal: controller.signal,
         })
 

@@ -25,7 +25,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
 
 const SkeletonLoader = () => (
   <div className="animate-pulse">
@@ -120,7 +120,7 @@ function CtuAccountApproval() {
   const fetchCounts = async () => {
     setIsLoadingCounts(true)
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-account-counts/")
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get-account-counts/")
       if (!response.ok) throw new Error("Failed to fetch data")
       const result = await response.json()
       setCounts(result.data || result)
@@ -262,7 +262,7 @@ function CtuAccountApproval() {
       )
       setMessage(`Approving user ${vetId}...`)
 
-      const response = await fetch(`http://127.0.0.1:8000/api/ctu_vetmed/update-vet-status/${vetId}/`, {
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/update-vet-status/${vetId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -316,7 +316,7 @@ function CtuAccountApproval() {
       )
       setMessage(`Declining user ${vetId}...`)
 
-      const response = await fetch(`http://127.0.0.1:8000/api/ctu_vetmed/update-vet-status/${vetId}/`, {
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/update-vet-status/${vetId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -380,7 +380,7 @@ function CtuAccountApproval() {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -404,7 +404,7 @@ function CtuAccountApproval() {
   // ✅ MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -430,29 +430,25 @@ function CtuAccountApproval() {
   };
 
   // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
-  // HANDLE INDIVIDUAL NOTIFICATION CLICK
-const handleNotificationClick = async (notification) => {
+ const handleNotificationClick = async (notification) => {
   // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev => 
-    prev.map(notif => 
+  setNotifications(prev =>
+    prev.map(notif =>
       notif.id === notification.id ? { ...notif, read: true } : notif
     )
   );
 
   // Mark notification as read in backend
   try {
-    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
       method: "POST",
       credentials: "include",
     });
-    const data = await res.json();
-    console.log("Mark notification read result:", data);
   } catch (err) {
     console.error("Error marking notification as read:", err);
   }
 
   // Handle navigation based on notification content
-  console.log('Notification clicked:', notification);
   const message = notification.message.toLowerCase();
 
   if (
@@ -462,7 +458,6 @@ const handleNotificationClick = async (notification) => {
     message.includes("veterinarian declined") ||
     message.includes("veterinarian registered")
   ) {
-    console.log("Navigating to Account Approval page");
     navigate("/CtuAccountApproval", {
       state: {
         highlightedNotification: notification,
@@ -473,7 +468,6 @@ const handleNotificationClick = async (notification) => {
   }
 
   if (message.includes("pending medical record access") || message.includes("requested access")) {
-    console.log("Navigating to Access Request page");
     navigate("/CtuAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -483,8 +477,8 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
-  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
-    console.log("Navigating to Announcement page");
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
     navigate("/CtuAnnouncement", {
       state: {
         highlightedNotification: notification,
@@ -493,9 +487,8 @@ const handleNotificationClick = async (notification) => {
     });
     return;
   }
-
-  console.warn("No matching route for notification:", notification);
 };
+
   // ✅ Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
     console.log("Notifications updated from modal:", updatedNotifications);
@@ -524,7 +517,7 @@ const handleNotificationClick = async (notification) => {
   const handleManualRefresh = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-vet-profiles/")
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get-vet-profiles/")
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
       
       const result = await response.json()
@@ -557,7 +550,7 @@ const handleNotificationClick = async (notification) => {
     const loadVetProfiles = async () => {
       setIsLoading(true)
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-vet-profiles/", {
+        const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get-vet-profiles/", {
           signal: controller.signal,
         })
 

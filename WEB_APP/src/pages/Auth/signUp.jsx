@@ -1,10 +1,18 @@
-import { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { 
-  ArrowLeft, User, MapPin, Briefcase, Lock, Eye, EyeOff, 
-  Stethoscope, Upload, X, ZoomIn, ZoomOut, Check, AlertCircle, FileText
+import {
+  AlertCircle,
+  ArrowLeft,
+  Check,
+  Eye, EyeOff,
+  FileText,
+  Lock,
+  MapPin,
+  Stethoscope, Upload,
+  User,
+  X, ZoomIn
 } from "lucide-react";
-import { provinces, getCities, getBarangays } from "./philippinesData";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { getBarangays, getCities, provinces } from "./philippinesData";
 
 function SignUp() {
   const navigate = useNavigate();
@@ -348,7 +356,7 @@ function SignUp() {
 
       console.log("DEBUG: Sending form data with files");
 
-      const response = await fetch("http://127.0.0.1:8000/api/signup_vet/", {
+      const response = await fetch("http://echo-eb18.onrender.com/api/signup_vet/", {
         method: "POST",
         body: formData
       });

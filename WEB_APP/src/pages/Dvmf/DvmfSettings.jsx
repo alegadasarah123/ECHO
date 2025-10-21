@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
-const API_BASE = "http://127.0.0.1:8000/api/dvmf"
+const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf"
 
 const DvmfSettings = () => {
   const [activeTab, setActiveTab] = useState("profile")
@@ -103,60 +103,64 @@ const DvmfSettings = () => {
   };
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
-  const handleNotificationClick = async (notification) => {
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === notification.id ? { ...notif, read: true } : notif
-      )
-    );
+ const handleNotificationClick = async (notification) => {
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev =>
+    prev.map(notif =>
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
 
-    try {
-      await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-        method: "POST",
-        credentials: "include",
-      });
-    } catch (err) {
-      showAlert("Error marking notification as read", "error")
-    }
+  // Mark notification as read in backend
+  try {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
+  }
 
-    const message = notification.message.toLowerCase();
+  // Handle navigation based on notification content
+  const message = notification.message.toLowerCase();
 
-    if (
-      message.includes("new registration") ||
-      message.includes("new veterinarian approved") ||
-      message.includes("veterinarian approved") ||
-      message.includes("veterinarian declined") ||
-      message.includes("veterinarian registered")
-    ) {
-      navigate("/DvmfAccountApproval", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("pending medical record access") || message.includes("requested access")) {
-      navigate("/DvmfAccessRequest", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    navigate("/DvmfAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
-      navigate("/DvmfAnnouncement", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
-  };
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
+    navigate("/DvmfAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+};
 
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -222,7 +226,7 @@ const DvmfSettings = () => {
     setErrors({})
 
     try {
-      const res = await fetch("http://localhost:8000/api/dvmf/update_dvmf_user_profile/", {
+      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/update_dvmf_user_profile/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -264,7 +268,7 @@ const DvmfSettings = () => {
     }
 
     try {
-      const res = await fetch("http://localhost:8000/api/dvmf/dvmf_change_password/", {
+      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/dvmf_change_password/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -346,7 +350,7 @@ const DvmfSettings = () => {
     }
 
     try {
-      const response = await fetch("http://localhost:8000/api/dvmf/signup/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/dvmf/signup/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -448,7 +452,7 @@ const DvmfSettings = () => {
   // Fetch DVMF profile
   const fetchProfile = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/dvmf/get_dvmf_user_profiles/", {
+      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/get_dvmf_user_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -492,7 +496,7 @@ const DvmfSettings = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const res = await fetch("http://localhost:8000/api/dvmf/users/", {
+      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/users/", {
         method: "GET",
         credentials: "include",
       })

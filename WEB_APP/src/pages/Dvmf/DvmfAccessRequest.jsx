@@ -27,7 +27,7 @@ import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
 
-
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
 
 
 const SkeletonLoader = ({ activeTab }) => {
@@ -159,28 +159,25 @@ function DvmfAccessRequest() {
   };
 
   // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
-  const handleNotificationClick = async (notification) => {
+ const handleNotificationClick = async (notification) => {
   // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev => 
-    prev.map(notif => 
+  setNotifications(prev =>
+    prev.map(notif =>
       notif.id === notification.id ? { ...notif, read: true } : notif
     )
   );
 
   // Mark notification as read in backend
   try {
-    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
       method: "POST",
       credentials: "include",
     });
-    const data = await res.json();
-    console.log("Mark notification read result:", data);
   } catch (err) {
     console.error("Error marking notification as read:", err);
   }
 
   // Handle navigation based on notification content
-  console.log('Notification clicked:', notification);
   const message = notification.message.toLowerCase();
 
   if (
@@ -190,7 +187,6 @@ function DvmfAccessRequest() {
     message.includes("veterinarian declined") ||
     message.includes("veterinarian registered")
   ) {
-    console.log("Navigating to Account Approval page");
     navigate("/DvmfAccountApproval", {
       state: {
         highlightedNotification: notification,
@@ -201,7 +197,6 @@ function DvmfAccessRequest() {
   }
 
   if (message.includes("pending medical record access") || message.includes("requested access")) {
-    console.log("Navigating to Access Request page");
     navigate("/DvmfAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -211,8 +206,8 @@ function DvmfAccessRequest() {
     return;
   }
 
-  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
-    console.log("Navigating to Announcement page");
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
     navigate("/DvmfAnnouncement", {
       state: {
         highlightedNotification: notification,
@@ -221,9 +216,8 @@ function DvmfAccessRequest() {
     });
     return;
   }
-
-  console.warn("No matching route for notification:", notification);
 };
+
 
   // ✅ Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -236,7 +230,7 @@ function DvmfAccessRequest() {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/dvmf/get_vetnotifications/")
+    fetch("https://echo-eb18.onrender.com/api/dvmf/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -271,7 +265,7 @@ function DvmfAccessRequest() {
   // Fetch access requests
   const loadAccessRequests = useCallback(() => {
     setIsLoading(true)
-    fetch("http://127.0.0.1:8000/api/dvmf/medrec_access_requests/")
+    fetch("https://echo-eb18.onrender.com/api/dvmf/medrec_access_requests/")
       .then((res) => res.json())
       .then((data) => {
         const formatted = data.map((req) => ({
@@ -320,7 +314,7 @@ function DvmfAccessRequest() {
   const approveRequest = async (requestId) => {
   try {
     const res = await fetch(
-      `http://127.0.0.1:8000/api/dvmf/access-requests/${requestId}/approve/`,
+      `https://echo-eb18.onrender.com/api/dvmf/access-requests/${requestId}/approve/`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -417,7 +411,7 @@ function DvmfAccessRequest() {
 
     try {
       const response = await fetch(
-        `http://127.0.0.1:8000/api/dvmf/access-requests/${currentRequestId}/decline/`,
+        `hhttps://echo-eb18.onrender.com/api/dvmf/access-requests/${currentRequestId}/decline/`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },

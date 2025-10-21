@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://localhost:8000/api/ctu_vetmed";
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
 
 function CtuDashboard() {
   const navigate = useNavigate()
@@ -163,35 +163,43 @@ function CtuDashboard() {
   }
 
   // Data loading functions
-  const loadStats = useCallback(() => {
-    console.log("Loading statistics...")
-    setStatsLoading(true)
+const loadStats = useCallback(() => {
+  console.log("Loading statistics...");
+  setStatsLoading(true);
 
-    fetch("http://localhost:8000/api/ctu_vetmed/get_status_counts/", {
-    method: 'GET',
-    credentials: 'include',
-})
-
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
-        return res.json()
-      })
-      .then((data) => {
-        setrecordCount(data.pending || 0)
-        setvetCount(data.approved || 0)
-        setDeclinedCount(data.declined || 0)
-        setStatsLoading(false)
-      })
-      .catch((err) => {
-        console.error("Error fetching stats:", err)
-        setStatsLoading(false)
-      })
-  }, [])
+  fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_status_counts/", {
+    method: "GET",
+    credentials: "include", // 👈 ensures cookies/session are sent
+    headers: {
+      "Content-Type": "application/json",
+    },
+  })
+    .then((res) => {
+      if (!res.ok) {
+        if (res.status === 401) {
+          console.warn("Unauthorized – user might not be logged in.");
+        }
+        throw new Error(`HTTP error! Status: ${res.status}`);
+      }
+      return res.json();
+    })
+    .then((data) => {
+      setrecordCount(data.pending || 0);
+      setvetCount(data.approved || 0);
+      setDeclinedCount(data.declined || 0);
+    })
+    .catch((err) => {
+      console.error("Failed to load statistics:", err);
+    })
+    .finally(() => {
+      setStatsLoading(false);
+    });
+}, []);
 
 const loadRecentActivities = useCallback(() => {
   setActivitiesLoading(true);
 
-  fetch("http://localhost:8000/api/ctu_vetmed/get_recent_activity/", {
+  fetch("https://echo-eb18.onrender.com/api/ctu_vetmed/get_recent_activity/", {
     method: "GET",
     credentials: "include", // Needed for HttpOnly cookie
   })
@@ -224,7 +232,7 @@ const loadRecentActivities = useCallback(() => {
 }, []);
 
 const loadNotifications = useCallback(() => {
-  fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+  fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
     .then((res) => {
       if (!res.ok) throw new Error("Failed to fetch notifications");
       return res.json();
@@ -245,7 +253,7 @@ const loadNotifications = useCallback(() => {
 const loadSosEmergencies = useCallback(() => {
   setSosLoading(true);
 
-  fetch("http://localhost:8000/api/ctu_vetmed/get_sos_requests/", {
+  fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_sos_requests/", {
     method: "GET",
     credentials: "include",
   })
@@ -388,26 +396,23 @@ const loadSosEmergencies = useCallback(() => {
 // HANDLE INDIVIDUAL NOTIFICATION CLICK
 const handleNotificationClick = async (notification) => {
   // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev => 
-    prev.map(notif => 
+  setNotifications(prev =>
+    prev.map(notif =>
       notif.id === notification.id ? { ...notif, read: true } : notif
     )
   );
 
   // Mark notification as read in backend
   try {
-    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
       method: "POST",
       credentials: "include",
     });
-    const data = await res.json();
-    console.log("Mark notification read result:", data);
   } catch (err) {
     console.error("Error marking notification as read:", err);
   }
 
   // Handle navigation based on notification content
-  console.log('Notification clicked:', notification);
   const message = notification.message.toLowerCase();
 
   if (
@@ -417,7 +422,6 @@ const handleNotificationClick = async (notification) => {
     message.includes("veterinarian declined") ||
     message.includes("veterinarian registered")
   ) {
-    console.log("Navigating to Account Approval page");
     navigate("/CtuAccountApproval", {
       state: {
         highlightedNotification: notification,
@@ -428,7 +432,6 @@ const handleNotificationClick = async (notification) => {
   }
 
   if (message.includes("pending medical record access") || message.includes("requested access")) {
-    console.log("Navigating to Access Request page");
     navigate("/CtuAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -438,8 +441,8 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
-  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
-    console.log("Navigating to Announcement page");
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
     navigate("/CtuAnnouncement", {
       state: {
         highlightedNotification: notification,
@@ -448,8 +451,6 @@ const handleNotificationClick = async (notification) => {
     });
     return;
   }
-
-  console.warn("No matching route for notification:", notification);
 };
 
 

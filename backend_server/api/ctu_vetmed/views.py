@@ -767,9 +767,7 @@ from datetime import datetime, timedelta, timezone as dt_timezone
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from datetime import datetime, timedelta, timezone as dt_timezone
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
+
 
 @api_view(["GET"])
 def get_vetnotifications(request):
@@ -871,6 +869,37 @@ def get_vetnotifications(request):
             })
             existing_keys.add(related_id)
 
+
+        # ---------------- NEW COMMENT NOTIFICATIONS ----------------
+        comments_res = sr_client.table("comment") \
+            .select("id, comment_text, comment_date, user_id, announcement_id") \
+            .execute()
+
+        for comment in (comments_res.data or []):
+            user_id = comment.get("user_id")
+            comment_text = comment.get("comment_text", "")
+            comment_date = comment.get("comment_date")
+            announcement_id = comment.get("announcement_id")
+
+            if not user_id or not announcement_id:
+                continue
+
+            related_id = f"comment_{comment['id']}"
+            if related_id in existing_keys:
+                continue
+
+            dt_ph = to_manila_time(comment_date)
+            notifications_to_insert.append({
+                "id": user_id,
+                "notif_message": f"New comment added: '{comment_text[:50]}...'",
+                "notif_date": dt_ph.strftime("%Y-%m-%d"),
+                "notif_time": dt_ph.strftime("%H:%M:%S"),
+                "notif_read": False,
+                "notification_type": "comment",
+                "related_id": related_id
+            })
+            existing_keys.add(related_id)
+
         # ---------------- BULK INSERT NEW NOTIFICATIONS ----------------
         if notifications_to_insert:
             sr_client.table("notification").insert(notifications_to_insert).execute()
@@ -885,7 +914,7 @@ def get_vetnotifications(request):
         notifications = []
         for row in (all_notifs_res.data or []):
             message = row.get("notif_message", "").lower()
-            if any(keyword in message for keyword in ["veterinarian", "vet.", "registration:", "medical record"]):
+            if any(keyword in message for keyword in ["veterinarian", "vet.", "registration:", "medical record", "comment"]):
                 notifications.append({
                     "id": row.get("id"),
                     "message": row.get("notif_message"),
@@ -898,7 +927,6 @@ def get_vetnotifications(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
-
 
 
 

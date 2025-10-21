@@ -21,7 +21,7 @@ import {
 } from "lucide-react"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
 
 // Skeleton Loader Component
 const PostSkeletonLoader = () => (
@@ -116,49 +116,61 @@ const CtuAnnouncement = () => {
   })
 
   // Add useEffect to fetch current user
-  useEffect(() => {
-    const fetchCurrentUser = async () => {
-      setIsUserLoading(true)
-      try {
-        const response = await fetch("http://localhost:8000/api/ctu_vetmed/get_current_user/", {
-          credentials: "include",
-        })
+// Add useEffect to fetch current user
+useEffect(() => {
+  const fetchCurrentUser = async () => {
+    setIsUserLoading(true)
+    try {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_current_user/", {
+        method: "GET",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
 
-        if (response.ok) {
-          const userData = await response.json()
-          console.log("[v0] Fetched current user data:", userData)
-          setCurrentUser({
-            id: userData.id || userData.user_id,
-            name: userData.name || userData.username,
-            avatar: userData.avatar || "/Images/logo1.png",
-            role: userData.role || userData.user_type,
-          })
-        } else {
-         // console.warn("[v0] Failed to fetch current user, user may not be logged in")
-          // Set a default user state to prevent issues
-          setCurrentUser({
-            id: null,
-            name: null,
-            avatar: "/Images/logo1.png",
-            role: null,
-          })
-        }
-      } catch (error) {
-        //console.error("[v0] Error fetching current user:", error)
-        // Set a default user state on error too
+      if (response.status === 401) {
         setCurrentUser({
           id: null,
           name: null,
           avatar: "/Images/logo1.png",
           role: null,
         })
-      } finally {
-        setIsUserLoading(false)
+        return
       }
-    }
 
-    fetchCurrentUser()
-  }, [])
+      if (!response.ok) {
+        setCurrentUser({
+          id: null,
+          name: null,
+          avatar: "/Images/logo1.png",
+          role: null,
+        })
+        return
+      }
+
+      const userData = await response.json()
+      setCurrentUser({
+        id: userData.id || userData.user_id || null,
+        name: userData.name || userData.username || "Unknown User",
+        avatar: userData.avatar || "/Images/logo1.png",
+        role: userData.role || userData.user_type || "guest",
+      })
+    } catch {
+      setCurrentUser({
+        id: null,
+        name: null,
+        avatar: "/Images/logo1.png",
+        role: null,
+      })
+    } finally {
+      setIsUserLoading(false)
+    }
+  }
+
+  fetchCurrentUser()
+}, [])
+
 
   const styles = {
     container: {
@@ -560,7 +572,7 @@ const CtuAnnouncement = () => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/ctu_vetmed/get_comments/?post_id=${postId}`, {
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/get_comments/?post_id=${postId}`, {
         credentials: "include",
       })
 
@@ -802,7 +814,7 @@ const handleNotificationClick = async (notification) => {
   const loadAnnouncements = useCallback(async () => {
     setIsLoadingPosts(true)
     try {
-      const response = await fetch("http://localhost:8000/api/ctu_vetmed/announcements/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/announcements/", {
         credentials: "include",
       })
       const result = await response.json()
@@ -901,7 +913,7 @@ const handleNotificationClick = async (notification) => {
   // -------------------- ADD COMMENT -------------------- //
   const addComment = async (postId, commentText) => {
     try {
-      const response = await fetch("http://localhost:8000/api/ctu_vetmed/add_comment/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/add_comment/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -937,7 +949,7 @@ const editComment = async (commentId, newText) => {
   const payload = { comment_text: newText };
 
   const response = await fetch(
-    `http://localhost:8000/api/ctu_vetmed/edit_comment/${commentId}/`,
+    `https://echo-ebl8.onrender.com/api/ctu_vetmed/edit_comment/${commentId}/`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -963,7 +975,7 @@ const editComment = async (commentId, newText) => {
 const editReply = async (replyId, newText) => {
   try {
     const response = await fetch(
-      `http://localhost:8000/api/ctu_vetmed/edit_reply/${replyId}/`,
+      `https://echo-ebl8.onrender.com/api/ctu_vetmed/edit_reply/${replyId}/`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -1040,7 +1052,7 @@ const editReply = async (replyId, newText) => {
         announce_img: imagesBase64,
       }
 
-      const res = await fetch("http://localhost:8000/api/ctu_vetmed/create-post/", {
+      const res = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/create-post/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -1051,7 +1063,7 @@ const editReply = async (replyId, newText) => {
       if (!res.ok) throw new Error(result.error || "Failed to create post")
 
       const postData = result?.post
-      const backendBase = "http://127.0.0.1:8000"
+      const backendBase = "https://echo-ebl8.onrender.com"
 
       let imageUrls = []
       if (postData?.announce_img) {
@@ -1120,7 +1132,7 @@ const editReply = async (replyId, newText) => {
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/ctu_vetmed/edit_post/${postId}/`, {
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/edit_post/${postId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: {
@@ -1287,7 +1299,7 @@ const saveEditComment = async (commentId) => {
     }
 
     try {
-      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/add_reply/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/add_reply/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1396,47 +1408,33 @@ const saveEditComment = async (commentId) => {
   }, [])
 
   const isOwner = (postAuthor, postUserId = null) => {
-    console.log("[v0] === Ownership Check ===")
-    console.log("[v0] Post Author:", postAuthor)
-    console.log("[v0] Post User ID:", postUserId)
-    console.log("[v0] Current User Name:", currentUser.name)
-    console.log("[v0] Current User Role:", currentUser.role)
-    console.log("[v0] Current User ID:", currentUser.id)
-
-    // Check if user is logged in and has data
-    if (!currentUser.id || !currentUser.name) {
-      console.log("[v0] ❌ User not logged in or data missing")
-      return false
-    }
-
-    // First, check if user IDs match (most reliable)
-    if (postUserId && currentUser.id && postUserId === currentUser.id) {
-      console.log("[v0] ✅ User ID match - user is owner")
-      return true
-    }
-
-    // Normalize names for comparison
-    const normalizedPostAuthor = (postAuthor || "").trim().toLowerCase()
-    const normalizedUserName = (currentUser.name || "").trim().toLowerCase()
-    const normalizedUserRole = (currentUser.role || "").trim().toLowerCase()
-
-    console.log("[v0] Normalized Post Author:", normalizedPostAuthor)
-    console.log("[v0] Normalized User Name:", normalizedUserName)
-    console.log("[v0] Normalized User Role:", normalizedUserRole)
-
-    // Check if post author matches user's name or role
-    const isAuthorMatch =
-      normalizedPostAuthor === normalizedUserName ||
-      normalizedPostAuthor === normalizedUserRole ||
-      normalizedPostAuthor.includes(normalizedUserName) ||
-      normalizedPostAuthor.includes(normalizedUserRole) ||
-      normalizedUserName.includes(normalizedPostAuthor) ||
-      normalizedUserRole.includes(normalizedPostAuthor)
-
-    console.log("[v0] Is Author Match:", isAuthorMatch ? "✅ YES" : "❌ NO")
-
-    return isAuthorMatch
+  // Check if user is logged in and has data
+  if (!currentUser.id || !currentUser.name) {
+    return false
   }
+
+  // First, check if user IDs match (most reliable)
+  if (postUserId && currentUser.id && postUserId === currentUser.id) {
+    return true
+  }
+
+  // Normalize names for comparison
+  const normalizedPostAuthor = (postAuthor || "").trim().toLowerCase()
+  const normalizedUserName = (currentUser.name || "").trim().toLowerCase()
+  const normalizedUserRole = (currentUser.role || "").trim().toLowerCase()
+
+  // Check if post author matches user's name or role
+  const isAuthorMatch =
+    normalizedPostAuthor === normalizedUserName ||
+    normalizedPostAuthor === normalizedUserRole ||
+    normalizedPostAuthor.includes(normalizedUserName) ||
+    normalizedPostAuthor.includes(normalizedUserRole) ||
+    normalizedUserName.includes(normalizedPostAuthor) ||
+    normalizedUserRole.includes(normalizedPostAuthor)
+
+  return isAuthorMatch
+}
+
 
   // Debug function for dropdown
   const debugDropdown = (post) => {
