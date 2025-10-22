@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router'
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
     Alert,
     Dimensions,
@@ -10,9 +10,12 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View
+    View,
+    Image
 } from "react-native"
 import * as Location from "expo-location"
+import * as ImagePicker from "expo-image-picker"
+import * as SecureStore from "expo-secure-store"
 
 const { width, height } = Dimensions.get("window")
 
@@ -44,11 +47,21 @@ const getSafeAreaPadding = () => {
 
 interface SOSEmergencyProps {
     onBack: () => void
+    kutseroId?: string
 }
 
-export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
+interface SOSImage {
+    uri: string
+    type?: string
+    name?: string
+}
+
+export default function SOSEmergencyScreen({ onBack, kutseroId: propKutseroId }: SOSEmergencyProps) {
     const router = useRouter()
     const [contactNumber, setContactNumber] = useState("")
+    const [userName, setUserName] = useState("")
+    const [kutseroId, setKutseroId] = useState<string | null>(propKutseroId || null)
+    const [kutseroProfileId, setKutseroProfileId] = useState("")
     const [additionalInfo, setAdditionalInfo] = useState("")
     const [emergencyType, setEmergencyType] = useState("Injury/Trauma")
     const [horseStatus, setHorseStatus] = useState<string[]>([])
@@ -58,6 +71,9 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
     const [longitude, setLongitude] = useState<number | null>(null)
     const [showSuccessModal, setShowSuccessModal] = useState(false)
     const [showEmergencyTypeModal, setShowEmergencyTypeModal] = useState(false)
+    const [sosImages, setSOSImages] = useState<SOSImage[]>([])
+    const [isLoading, setIsLoading] = useState(false)
+    const [isLoadingProfile, setIsLoadingProfile] = useState(false)
     const safeArea = getSafeAreaPadding()
 
     const emergencyTypes = [
@@ -83,6 +99,181 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
         "Limping",
         "Showing Colic Signs"
     ]
+
+    // Load kutseroId from SecureStore if not provided as prop
+    useEffect(() => {
+        const loadKutseroId = async () => {
+            if (propKutseroId) {
+                console.log("[DEBUG] Using kutseroId from props:", propKutseroId)
+                setKutseroId(propKutseroId)
+                return
+            }
+
+            try {
+                console.log("[DEBUG] Attempting to load user data from SecureStore...")
+                
+                // Get the stored user data from SecureStore
+                const storedUserData = await SecureStore.getItemAsync("user_data")
+                
+                if (!storedUserData) {
+                    console.log("[DEBUG] ❌ No user data found in SecureStore")
+                    Alert.alert("Error", "User data not found. Please login again.")
+                    return
+                }
+
+                const parsedUserData = JSON.parse(storedUserData)
+                console.log("[DEBUG] Parsed user data:", parsedUserData)
+                
+                // Try to get kutsero_id from multiple sources
+                let extractedKutseroId: string | null = null
+                
+                if (parsedUserData.profile?.kutsero_id) {
+                    extractedKutseroId = parsedUserData.profile.kutsero_id
+                    console.log("[DEBUG] ✅ Found kutsero_id in profile:", extractedKutseroId)
+                } else if (parsedUserData.kutsero_id) {
+                    extractedKutseroId = parsedUserData.kutsero_id
+                    console.log("[DEBUG] ✅ Found kutsero_id at root level:", extractedKutseroId)
+                } else if (parsedUserData.id) {
+                    extractedKutseroId = parsedUserData.id
+                    console.log("[DEBUG] ✅ Found id at root level:", extractedKutseroId)
+                }
+                
+                if (extractedKutseroId) {
+                    setKutseroId(extractedKutseroId)
+                    console.log("[DEBUG] ✅ Successfully loaded kutseroId:", extractedKutseroId)
+                } else {
+                    console.log("[DEBUG] ❌ No kutsero_id found in user data")
+                    console.log("[DEBUG] User data structure:", JSON.stringify(parsedUserData, null, 2))
+                    Alert.alert("Error", "User ID not found. Please login again.")
+                }
+            } catch (error) {
+                console.error("[ERROR] Failed to load user data from SecureStore:", error)
+                Alert.alert("Error", "Failed to load user information")
+            }
+        }
+
+        loadKutseroId()
+    }, [propKutseroId])
+
+    // Fetch kutsero profile to display contact number
+    useEffect(() => {
+        const fetchKutseroProfile = async () => {
+            if (!kutseroId) {
+                console.log("[DEBUG] Skipping profile fetch - No kutseroId available yet")
+                return
+            }
+
+            console.log("[DEBUG] Fetching profile for kutseroId:", kutseroId)
+            setIsLoadingProfile(true)
+            
+            // Set kutseroProfileId immediately as a fallback
+            setKutseroProfileId(kutseroId)
+            console.log("[DEBUG] ⚠️ Pre-set kutseroProfileId to:", kutseroId)
+            
+            try {
+                const url = `http://192.168.1.8:8000/api/kutsero/profile/${kutseroId}/`
+                console.log("[DEBUG] Fetching from URL:", url)
+                
+                // Create a timeout promise
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Request timeout')), 10000)
+                })
+                
+                // Race between fetch and timeout
+                const fetchPromise = fetch(url, {
+                    method: "GET",
+                    headers: {
+                        "Content-Type": "application/json",
+                    },
+                })
+                
+                const response = await Promise.race([fetchPromise, timeoutPromise]) as Response
+
+                console.log("[DEBUG] Response status:", response.status)
+                console.log("[DEBUG] Response ok:", response.ok)
+
+                if (!response.ok) {
+                    // If response is not ok, we'll still use the kutseroId we already set
+                    console.log("[DEBUG] ⚠️ Profile fetch failed, but using pre-set kutseroId")
+                    
+                    // Try to parse error
+                    try {
+                        const errorText = await response.text()
+                        console.log("[DEBUG] Error response:", errorText)
+                    } catch (e) {
+                        console.log("[DEBUG] Could not read error response")
+                    }
+                    
+                    // Don't show alert, just continue with what we have
+                    return
+                }
+
+                const responseText = await response.text()
+                console.log("[DEBUG] Response length:", responseText.length, "bytes")
+
+                let result
+                try {
+                    result = JSON.parse(responseText)
+                } catch (parseError) {
+                    console.error("[ERROR] Failed to parse JSON:", parseError)
+                    console.log("[DEBUG] ⚠️ JSON parse failed, but continuing with pre-set kutseroId")
+                    return
+                }
+
+                console.log("[DEBUG] Parsed result success:", result.success)
+
+                if (result.success && result.data) {
+                    const profile = result.data
+                    console.log("[DEBUG] Profile data received (keys):", Object.keys(profile))
+
+                    // Update kutseroProfileId if we got a different ID from the profile
+                    if (profile.id && profile.id !== kutseroId) {
+                        setKutseroProfileId(profile.id)
+                        console.log("[DEBUG] ✅ Updated kutsero_profile UUID:", profile.id)
+                    } else {
+                        console.log("[DEBUG] ✅ Keeping kutseroProfileId as:", kutseroProfileId)
+                    }
+
+                    // Auto-fill contact number for display
+                    const phone = profile.phoneNumber || profile.kutsero_phone_num || profile.phone_number || profile.phone
+                    if (phone) {
+                        setContactNumber(phone)
+                        console.log("[DEBUG] ✅ Auto-filled contact number:", phone)
+                    } else {
+                        console.log("[DEBUG] ❌ No phone number found in profile")
+                        console.log("[DEBUG] Available profile fields:", Object.keys(profile))
+                    }
+
+                    // Auto-fill user name for display
+                    const firstName = profile.firstName || profile.kutsero_fname || profile.first_name || ""
+                    const lastName = profile.lastName || profile.kutsero_lname || profile.last_name || ""
+                    const fullName = `${firstName} ${lastName}`.trim()
+                    
+                    if (fullName) {
+                        setUserName(fullName)
+                        console.log("[DEBUG] ✅ Auto-filled user name:", fullName)
+                    } else {
+                        console.log("[DEBUG] ❌ No name found in profile")
+                    }
+                } else {
+                    console.log("[DEBUG] ⚠️ Invalid response structure, but continuing with pre-set kutseroId")
+                }
+            } catch (error) {
+                console.error("[ERROR] Error fetching profile:", error)
+                const errorMessage = error instanceof Error ? error.message : "Unknown error"
+                console.log("[DEBUG] ⚠️ Error occurred:", errorMessage)
+                console.log("[DEBUG] ⚠️ Continuing with pre-set kutseroId:", kutseroProfileId)
+                
+                // Don't show alert if we already have kutseroId set
+                // The user can still send SOS even without fetching full profile
+            } finally {
+                setIsLoadingProfile(false)
+                console.log("[DEBUG] Profile loading finished. Final kutseroProfileId:", kutseroProfileId)
+            }
+        }
+
+        fetchKutseroProfile()
+    }, [kutseroId])
 
     const toggleHorseStatus = (status: string) => {
         setHorseStatus(prev =>
@@ -124,25 +315,177 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
         }
     }
 
-    const handleSendSOS = async () => {
-        if (!contactNumber.trim()) {
-            Alert.alert("Error", "Please enter a contact number")
+    const handleImagePicker = async () => {
+        if (sosImages.length >= 5) {
+            Alert.alert("Maximum Images", "You can upload up to 5 images only.")
             return
         }
 
-        const sosData = {
-            user_id: "example_user_id_123",
-            contact_number: contactNumber,
-            additional_info: additionalInfo,
-            emergency_type: emergencyType,
-            horse_status: horseStatus,
-            description,
-            location_text: currentLocation,
-            latitude,
-            longitude,
+        Alert.alert("Select Photos", "Choose how you'd like to add photos of the emergency", [
+            {
+                text: "Camera",
+                onPress: () => openCamera(),
+            },
+            {
+                text: "Photo Library",
+                onPress: () => openImageLibrary(),
+            },
+            {
+                text: "Cancel",
+                style: "cancel",
+            },
+        ])
+    }
+
+    const openCamera = async () => {
+        try {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync()
+
+            if (status !== "granted") {
+                Alert.alert("Permission Denied", "Camera permission is required to take photos.")
+                return
+            }
+
+            const result = await ImagePicker.launchCameraAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [4, 3],
+                quality: 0.8,
+            })
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const asset = result.assets[0]
+                const imageUri = asset.uri
+
+                console.log("Camera image selected:", imageUri)
+
+                const imageData: SOSImage = {
+                    uri: imageUri,
+                    type: "image/jpeg",
+                    name: `sos_camera_${Date.now()}.jpg`,
+                }
+
+                setSOSImages(prev => [...prev, imageData])
+            }
+        } catch (error) {
+            console.error("Camera error:", error)
+            Alert.alert("Error", "Failed to open camera. Please try again.")
+        }
+    }
+
+    const openImageLibrary = async () => {
+        try {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+
+            if (status !== "granted") {
+                Alert.alert("Permission Denied", "Photo library permission is required to select photos.")
+                return
+            }
+
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                allowsEditing: true,
+                aspect: [4, 3],
+                quality: 0.8,
+                allowsMultipleSelection: false,
+            })
+
+            if (!result.canceled && result.assets && result.assets.length > 0) {
+                const asset = result.assets[0]
+                const imageUri = asset.uri
+
+                console.log("Gallery image selected:", imageUri)
+
+                const imageData: SOSImage = {
+                    uri: imageUri,
+                    type: "image/jpeg",
+                    name: `sos_gallery_${Date.now()}.jpg`,
+                }
+
+                setSOSImages(prev => [...prev, imageData])
+            }
+        } catch (error) {
+            console.error("Image picker error:", error)
+            Alert.alert("Error", "Failed to open photo library. Please try again.")
+        }
+    }
+
+    const removeImage = (index: number) => {
+        setSOSImages(prev => prev.filter((_, i) => i !== index))
+    }
+
+    const convertImageToBase64 = async (uri: string): Promise<string> => {
+        return new Promise((resolve, reject) => {
+            fetch(uri)
+                .then((response) => response.blob())
+                .then((blob) => {
+                    const reader = new FileReader()
+                    reader.onloadend = () => {
+                        resolve(reader.result as string)
+                    }
+                    reader.onerror = reject
+                    reader.readAsDataURL(blob)
+                })
+                .catch(reject)
+        })
+    }
+
+    const handleSendSOS = async () => {
+        if (isLoading) return
+
+        // Validate that we have the kutsero profile ID
+        if (!kutseroProfileId) {
+            console.error("[ERROR] No kutseroProfileId available")
+            console.log("[DEBUG] Current state:", {
+                kutseroId,
+                kutseroProfileId,
+                contactNumber,
+                userName
+            })
+            Alert.alert("Error", "Profile information not loaded. Please wait a moment and try again.")
+            return
         }
 
+        console.log("[DEBUG] Sending SOS with kutsero_profile:", kutseroProfileId)
+
+        setIsLoading(true)
+
         try {
+            // Convert images to base64
+            let imagesBase64: string[] = []
+            if (sosImages.length > 0) {
+                console.log(`Converting ${sosImages.length} images to base64...`)
+                for (const image of sosImages) {
+                    try {
+                        const base64 = await convertImageToBase64(image.uri)
+                        imagesBase64.push(base64)
+                    } catch (error) {
+                        console.error("Error converting image:", error)
+                    }
+                }
+                console.log(`Successfully converted ${imagesBase64.length} images`)
+            }
+
+            const sosData = {
+                kutsero_profile: kutseroProfileId,
+                contact_number: contactNumber,
+                user_name: userName,
+                additional_info: additionalInfo,
+                emergency_type: emergencyType,
+                horse_status: horseStatus,
+                description,
+                location_text: currentLocation,
+                latitude,
+                longitude,
+                images: imagesBase64,
+            }
+
+            console.log("[DEBUG] Sending SOS data:", {
+                ...sosData,
+                images: `${imagesBase64.length} images`,
+                kutsero_profile: sosData.kutsero_profile
+            })
+
             const response = await fetch("http://192.168.1.8:8000/api/kutsero/sos/create/", {
                 method: "POST",
                 headers: {
@@ -151,13 +494,12 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
                 body: JSON.stringify(sosData),
             })
 
+            console.log("[DEBUG] SOS Response status:", response.status)
+
             if (response.ok) {
                 setShowSuccessModal(true)
-                // Clear form after successful submission
                 setTimeout(() => {
                     setShowSuccessModal(false)
-                    // Reset all form fields
-                    setContactNumber("")
                     setAdditionalInfo("")
                     setEmergencyType("Injury/Trauma")
                     setHorseStatus([])
@@ -165,15 +507,18 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
                     setCurrentLocation("Tap to get current location")
                     setLatitude(null)
                     setLongitude(null)
+                    setSOSImages([])
                 }, 3000)
             } else {
                 const errorData = await response.json()
                 console.error("SOS Request Error:", errorData)
-                Alert.alert("Error", `Failed to send SOS alert. Status: ${response.status}`)
+                Alert.alert("Error", `Failed to send SOS alert: ${errorData.message || response.status}`)
             }
         } catch (error) {
             console.error("Network Error:", error)
             Alert.alert("Error", "An error occurred while sending the request.")
+        } finally {
+            setIsLoading(false)
         }
     }
 
@@ -210,14 +555,15 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
 
                     <View style={styles.inputGroup}>
                         <Text style={styles.inputLabel}>Contact Number *</Text>
-                        <TextInput
-                            style={styles.textInput}
-                            value={contactNumber}
-                            onChangeText={setContactNumber}
-                            placeholder="Enter emergency contact number"
-                            placeholderTextColor="#999"
-                            keyboardType="phone-pad"
-                        />
+                        <View style={styles.readOnlyInputContainer}>
+                            <TextInput
+                                style={[styles.textInput, styles.readOnlyInput]}
+                                value={isLoadingProfile ? "Loading..." : contactNumber}
+                                placeholder={isLoadingProfile ? "Loading contact number..." : "Contact number"}
+                                placeholderTextColor="#999"
+                                editable={false}
+                            />
+                        </View>
                     </View>
 
                     <View style={styles.inputGroup}>
@@ -225,6 +571,7 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
                         <TouchableOpacity 
                             style={styles.dropdownContainer}
                             onPress={() => setShowEmergencyTypeModal(true)}
+                            disabled={isLoading}
                         >
                             <Text style={styles.dropdownValue}>{emergencyType}</Text>
                             <View style={styles.dropdownArrow} />
@@ -242,6 +589,7 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
                                         horseStatus.includes(status) && styles.statusButtonActive
                                     ]}
                                     onPress={() => toggleHorseStatus(status)}
+                                    disabled={isLoading}
                                 >
                                     <Text style={[
                                         styles.statusButtonText,
@@ -265,6 +613,7 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
                             multiline
                             numberOfLines={4}
                             textAlignVertical="top"
+                            editable={!isLoading}
                         />
                     </View>
 
@@ -279,12 +628,17 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
                             multiline
                             numberOfLines={3}
                             textAlignVertical="top"
+                            editable={!isLoading}
                         />
                     </View>
 
                     <View style={styles.inputGroup}>
                         <Text style={styles.inputLabel}>Your Current Location</Text>
-                        <TouchableOpacity style={styles.locationContainer} onPress={getCurrentLocation}>
+                        <TouchableOpacity 
+                            style={styles.locationContainer} 
+                            onPress={getCurrentLocation}
+                            disabled={isLoading}
+                        >
                             <View style={styles.locationPin}>
                                 <View style={styles.locationDot} />
                             </View>
@@ -293,14 +647,37 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
                     </View>
 
                     <View style={styles.inputGroup}>
-                        <Text style={styles.inputLabel}>Upload Photos (Optional)</Text>
-                        <TouchableOpacity style={styles.uploadContainer}>
+                        <Text style={styles.inputLabel}>Upload Photos (Optional - Max 5)</Text>
+                        <TouchableOpacity 
+                            style={styles.uploadContainer} 
+                            onPress={handleImagePicker}
+                            disabled={isLoading || sosImages.length >= 5}
+                        >
                             <View style={styles.cameraIcon}>
                                 <View style={styles.cameraBody} />
                                 <View style={styles.cameraLens} />
                             </View>
-                            <Text style={styles.uploadText}>Add Photos</Text>
+                            <Text style={styles.uploadText}>
+                                {sosImages.length > 0 ? `${sosImages.length} photo(s) added` : "Add Photos"}
+                            </Text>
                         </TouchableOpacity>
+
+                        {sosImages.length > 0 && (
+                            <View style={styles.imagePreviewContainer}>
+                                {sosImages.map((image, index) => (
+                                    <View key={index} style={styles.imagePreviewWrapper}>
+                                        <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+                                        <TouchableOpacity
+                                            style={styles.removeImageButton}
+                                            onPress={() => removeImage(index)}
+                                            disabled={isLoading}
+                                        >
+                                            <Text style={styles.removeImageText}>✕</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                ))}
+                            </View>
+                        )}
                     </View>
                 </View>
             </ScrollView>
@@ -308,11 +685,14 @@ export default function SOSEmergencyScreen({ onBack }: SOSEmergencyProps) {
             {/* Send SOS Button */}
             <View style={[styles.bottomContainer, { paddingBottom: safeArea.bottom }]}>
                 <TouchableOpacity
-                    style={styles.sosButton}
+                    style={[styles.sosButton, (isLoading || isLoadingProfile) && styles.sosButtonDisabled]}
                     onPress={handleSendSOS}
                     activeOpacity={0.8}
+                    disabled={isLoading || isLoadingProfile}
                 >
-                    <Text style={styles.sosButtonText}>Send SOS Alert</Text>
+                    <Text style={styles.sosButtonText}>
+                        {isLoading ? "Sending SOS Alert..." : isLoadingProfile ? "Loading..." : "Send SOS Alert"}
+                    </Text>
                 </TouchableOpacity>
             </View>
 
@@ -485,6 +865,29 @@ const styles = StyleSheet.create({
         color: "#333",
         backgroundColor: "white",
     },
+    readOnlyInputContainer: {
+        position: "relative",
+    },
+    readOnlyInput: {
+        backgroundColor: "#F8F9FA",
+        color: "#555",
+        fontWeight: "500",
+    },
+    autoFillBadge: {
+        position: "absolute",
+        right: scale(12),
+        top: "50%",
+        transform: [{ translateY: -scale(10) }],
+        backgroundColor: "#48BB78",
+        paddingHorizontal: scale(8),
+        paddingVertical: scale(4),
+        borderRadius: scale(12),
+    },
+    autoFillText: {
+        fontSize: moderateScale(10),
+        color: "white",
+        fontWeight: "600",
+    },
     textArea: { height: verticalScale(80), textAlignVertical: "top" },
     dropdownContainer: {
         flexDirection: "row",
@@ -570,6 +973,44 @@ const styles = StyleSheet.create({
         left: scale(8),
     },
     uploadText: { fontSize: moderateScale(14), color: "#666", fontWeight: "500" },
+    imagePreviewContainer: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: scale(8),
+        marginTop: verticalScale(12),
+    },
+    imagePreviewWrapper: {
+        position: "relative",
+        width: scale(80),
+        height: scale(80),
+    },
+    imagePreview: {
+        width: "100%",
+        height: "100%",
+        borderRadius: scale(8),
+        backgroundColor: "#F0F0F0",
+    },
+    removeImageButton: {
+        position: "absolute",
+        top: -scale(8),
+        right: -scale(8),
+        width: scale(24),
+        height: scale(24),
+        borderRadius: scale(12),
+        backgroundColor: "#E53E3E",
+        justifyContent: "center",
+        alignItems: "center",
+        elevation: 2,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.3,
+        shadowRadius: 2,
+    },
+    removeImageText: {
+        color: "white",
+        fontSize: moderateScale(14),
+        fontWeight: "bold",
+    },
     bottomContainer: {
         backgroundColor: "white",
         paddingHorizontal: scale(16),
@@ -587,6 +1028,10 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.25,
         shadowRadius: 3.84,
+    },
+    sosButtonDisabled: {
+        backgroundColor: "#CCC",
+        opacity: 0.6,
     },
     sosButtonText: { fontSize: moderateScale(16), fontWeight: "bold", color: "white" },
     modalOverlay: {

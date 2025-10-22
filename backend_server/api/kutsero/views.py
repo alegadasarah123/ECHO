@@ -8,7 +8,6 @@ from datetime import datetime, date
 import uuid
 import requests
 import time
-from datetime import datetime, timezone
 import traceback
 import json
 import logging
@@ -21,6 +20,17 @@ from openai import OpenAI
 import openai
 import re
 from django.core.cache import cache
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from typing import Optional, Dict, Any # For type hints
+import base64
+from django.contrib.auth.decorators import login_required
+from django.urls import get_resolver
+import traceback
+import threading
+from rest_framework.permissions import AllowAny
+from datetime import datetime, timezone
+
 
 
 logger = logging.getLogger(__name__)
@@ -31,6 +41,7 @@ supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_ANON_K
 SUPABASE_SERVICE_ROLE_KEY = settings.SUPABASE_SERVICE_ROLE_KEY
 SUPABASE_URL = settings.SUPABASE_URL
 SUPABASE_ANON_KEY = settings.SUPABASE_ANON_KEY
+BUCKET_NAME = "kutsero_op_profile"
 
 # ------------------------------------------------ AI ASSISTANT API ------------------------------------------------
 
@@ -99,6 +110,570 @@ def get_chat_history(request):
     history = cache.get(history_key, [])
 
     return Response({"success": True, "history": history}, status=status.HTTP_200_OK)
+
+# ------------------------------------------------ Messages ------------------------------------------------
+def format_timestamp(ts):
+    """Helper to format ISO timestamp to readable string."""
+    if not ts:
+        return ""
+    dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
+    return dt.strftime('%Y-%m-%d %I:%M %p')
+
+
+@api_view(['GET'])
+def get_conversations(request):
+    """
+    Get all conversations for a user (latest message per partner).
+    """
+    try:
+        user_id = request.GET.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        # Fetch all messages where user is sender or receiver
+        messages_response = service_client.table("message").select(
+            "mes_id, user_id, receiver_id, mes_content, mes_date, is_read"
+        ).or_(f"user_id.eq.{user_id},receiver_id.eq.{user_id}").order(
+            "mes_date", desc=True
+        ).execute()
+
+        messages = messages_response.data or []
+
+        # Build conversation per partner
+        conversations_dict = {}
+        for msg in messages:
+            partner_id = msg['receiver_id'] if msg['user_id'] == user_id else msg['user_id']
+            if partner_id not in conversations_dict:
+                conversations_dict[partner_id] = {
+                    'partner_id': partner_id,
+                    'last_message': msg.get('mes_content'),
+                    'last_message_time': msg.get('mes_date'),
+                    'is_read': msg.get('is_read', False)
+                }
+
+        # Convert to list and sort by last_message_time
+        conversations_list = sorted(
+            conversations_dict.values(),
+            key=lambda x: x['last_message_time'],
+            reverse=True
+        )
+
+        return Response({
+            'conversations': conversations_list,
+            'total_count': len(conversations_list)
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"Error fetching conversations: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_messages(request):
+    """
+    Get all messages between two users.
+    """
+    try:
+        user_id = request.GET.get("user_id")
+        other_user_id = request.GET.get("other_user_id")
+        if not user_id or not other_user_id:
+            return Response({"error": "user_id and other_user_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        # Fetch messages between two users
+        messages_response = service_client.table("message").select(
+            "mes_id, user_id, receiver_id, mes_content, mes_date, is_read"
+        ).or_(
+            f"and(user_id.eq.{user_id},receiver_id.eq.{other_user_id}),"
+            f"and(user_id.eq.{other_user_id},receiver_id.eq.{user_id})"
+        ).order("mes_date", desc=False).execute()
+
+        messages = []
+        for msg in messages_response.data or []:
+            created_at = datetime.fromisoformat(msg['mes_date'].replace('Z', '+00:00'))
+            messages.append({
+                'id': str(msg['mes_id']),
+                'text': msg['mes_content'],
+                'isUser': str(msg['user_id']) == str(user_id),
+                'timestamp': created_at.strftime('%I:%M %p'),
+                'created_at': msg['mes_date']
+            })
+
+        # Mark unread messages as read
+        service_client.table("message").update({"is_read": True}).eq("user_id", other_user_id).eq("receiver_id", user_id).eq("is_read", False).execute()
+
+        return Response({
+            'success': True,
+            'messages': messages
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"Error fetching messages: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['POST'])
+def send_message(request):
+    """
+    Send a message to another user.
+    """
+    try:
+        sender_id = request.data.get("sender_id")
+        receiver_id = request.data.get("receiver_id")
+        content = request.data.get("content", "").strip()
+
+        if not sender_id or not receiver_id:
+            return Response({"error": "sender_id and receiver_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+        if not content:
+            return Response({"error": "Message content is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        # Insert message
+        message_response = service_client.table("message").insert({
+            "user_id": sender_id,
+            "receiver_id": receiver_id,
+            "mes_content": content,
+            "is_read": False
+        }).execute()
+
+        if not message_response.data:
+            return Response({"error": "Failed to send message"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        msg = message_response.data[0]
+        created_at = datetime.fromisoformat(msg['mes_date'].replace('Z', '+00:00'))
+
+        return Response({
+            'success': True,
+            'message': {
+                'id': str(msg['mes_id']),
+                'text': msg['mes_content'],
+                'isUser': True,
+                'timestamp': created_at.strftime('%I:%M %p'),
+                'created_at': msg['mes_date']
+            }
+        }, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        print(f"Error sending message: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+     
+@api_view(['GET'])
+def available_users(request):
+    """
+    Get all users that can be messaged (vets, kutseros, horse operators,
+    CTU vets, DVMF users)
+    """
+    try:
+        user_id = request.GET.get("user_id")
+        search_query = request.GET.get("search", "").lower()
+        role_filter = request.GET.get("role")  # Optional role filter
+        
+        if not user_id:
+            return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        users = []
+
+        # Kutséros
+        if role_filter in [None, "kutsero"]:
+            kutsero_profiles = service_client.table("kutsero_profile").select(
+                "kutsero_id, kutsero_fname, kutsero_lname, kutsero_username, kutsero_phone_num, kutsero_email"
+            ).neq("kutsero_id", user_id).execute()
+            
+            for p in kutsero_profiles.data or []:
+                display_name = p.get('kutsero_fname') or p.get('kutsero_username') or 'Unknown'
+                if p.get('kutsero_lname'):
+                    display_name += f" {p['kutsero_lname']}"
+                if search_query and search_query not in display_name.lower() and search_query not in (p.get('kutsero_email') or '').lower():
+                    continue
+                users.append({
+                    'id': p['kutsero_id'],
+                    'name': display_name,
+                    'role': 'kutsero',
+                    'avatar': '🐴',
+                    'email': p.get('kutsero_email'),
+                    'phone': p.get('kutsero_phone_num'),
+                    'status': 'active'
+                })
+
+        # Vets
+        if role_filter in [None, "vet"]:
+            vet_profiles = service_client.table("vet_profile").select(
+                "vet_id, vet_fname, vet_lname, vet_phone_num, vet_email"
+            ).neq("vet_id", user_id).execute()
+            
+            for p in vet_profiles.data or []:
+                display_name = f"Dr. {p.get('vet_fname', '')}"
+                if p.get('vet_lname'):
+                    display_name += f" {p['vet_lname']}"
+                if search_query and search_query not in display_name.lower() and search_query not in (p.get('vet_email') or '').lower():
+                    continue
+                users.append({
+                    'id': p['vet_id'],
+                    'name': display_name,
+                    'role': 'vet',
+                    'avatar': '👩‍⚕️',
+                    'email': p.get('vet_email'),
+                    'phone': p.get('vet_phone_num'),
+                    'status': 'active'
+                })
+
+        # Horse Operators
+        if role_filter in [None, "horse_operator"]:
+            op_profiles = service_client.table("horse_op_profile").select(
+                "op_id, op_fname, op_lname, op_phone_num, op_email"
+            ).neq("op_id", user_id).execute()
+            
+            for p in op_profiles.data or []:
+                display_name = p.get('op_fname', 'Unknown')
+                if p.get('op_lname'):
+                    display_name += f" {p['op_lname']}"
+                if search_query and search_query not in display_name.lower() and search_query not in (p.get('op_email') or '').lower():
+                    continue
+                users.append({
+                    'id': p['op_id'],
+                    'name': display_name,
+                    'role': 'horse_operator',
+                    'avatar': '👨‍💼',
+                    'email': p.get('op_email'),
+                    'phone': p.get('op_phone_num'),
+                    'status': 'active'
+                })
+
+        # CTU Vets
+        if role_filter in [None, "ctu_vet"]:
+            ctu_profiles = service_client.table("ctu_vet_profile").select(
+                "ctu_id, ctu_fname, ctu_lname, ctu_email, ctu_phonenum"
+            ).neq("ctu_id", user_id).execute()
+            
+            for p in ctu_profiles.data or []:
+                display_name = f"Dr. {p.get('ctu_fname', '')}"
+                if p.get('ctu_lname'):
+                    display_name += f" {p['ctu_lname']}"
+                if search_query and search_query not in display_name.lower() and search_query not in (p.get('ctu_email') or '').lower():
+                    continue
+                users.append({
+                    'id': p['ctu_id'],
+                    'name': display_name,
+                    'role': 'ctu_vet',
+                    'avatar': '🧑‍⚕️',
+                    'email': p.get('ctu_email'),
+                    'phone': p.get('ctu_phonenum'),
+                    'status': 'active'
+                })
+
+        # DVMF Users
+        if role_filter in [None, "dvmf_user"]:
+            dvmf_profiles = service_client.table("dvmf_user_profile").select(
+                "dvmf_id, dvmf_fname, dvmf_lname, dvmf_email, dvmf_phonenum"
+            ).neq("dvmf_id", user_id).execute()
+            
+            for p in dvmf_profiles.data or []:
+                display_name = p.get('dvmf_fname', 'Unknown')
+                if p.get('dvmf_lname'):
+                    display_name += f" {p['dvmf_lname']}"
+                if search_query and search_query not in display_name.lower() and search_query not in (p.get('dvmf_email') or '').lower():
+                    continue
+                users.append({
+                    'id': p['dvmf_id'],
+                    'name': display_name,
+                    'role': 'dvmf_user',
+                    'avatar': '🧑‍💼',
+                    'email': p.get('dvmf_email'),
+                    'phone': p.get('dvmf_phonenum'),
+                    'status': 'active'
+                })
+
+        # Sort users by name
+        users.sort(key=lambda x: x['name'])
+        
+        return Response({
+            'users': users,
+            'total_count': len(users)
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"Error fetching available users: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def conversations(request):
+    """
+    Fetch all conversations for a given user, grouped by conversation partner.
+    """
+    print("=" * 80)
+    print("CONVERSATIONS ENDPOINT CALLED")
+    print("=" * 80)
+    
+    try:
+        user_id = request.GET.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        print(f"Fetching conversations for user: {user_id}")
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        # Fetch all messages involving the user
+        messages_response = service_client.table("message").select("*").or_(
+            f"user_id.eq.{user_id},receiver_id.eq.{user_id}"
+        ).order("mes_date", desc=True).execute()
+
+        messages = messages_response.data or []
+        print(f"Found {len(messages)} total messages")
+
+        # Dictionary to hold conversations
+        conversations_dict = {}
+
+        for msg in messages:
+            # Determine the other user ID and ensure it's a string
+            other_user_id = str(msg['receiver_id']) if str(msg['user_id']) == str(user_id) else str(msg['user_id'])
+
+            if other_user_id not in conversations_dict:
+                conversations_dict[other_user_id] = {
+                    'other_user_id': other_user_id,
+                    'last_message': msg.get('mes_content'),
+                    'last_message_time': msg.get('mes_date'),
+                    'is_read': msg.get('is_read', False)
+                }
+
+        print(f"Grouped into {len(conversations_dict)} conversations")
+        print(f"Other user IDs: {list(conversations_dict.keys())}")
+
+        # Fetch partner information for each conversation
+        conversations_list = []
+        for other_user_id, conv_data in conversations_dict.items():
+            print(f"\n{'='*60}")
+            print(f"Looking up user: {other_user_id}")
+            print(f"User ID type: {type(other_user_id)}")
+            print(f"User ID length: {len(other_user_id)}")
+            user_info = None
+            
+            # Check kutsero_profile table
+            try:
+                print(f"\nQuerying kutsero_profile WHERE kutsero_id = '{other_user_id}'")
+                
+                kutsero_response = service_client.table("kutsero_profile").select("*").eq("kutsero_id", other_user_id).execute()
+                
+                print(f"Response data: {kutsero_response.data}")
+                print(f"Number of results: {len(kutsero_response.data) if kutsero_response.data else 0}")
+                
+                if kutsero_response.data and len(kutsero_response.data) > 0:
+                    user = kutsero_response.data[0]
+                    print(f"Found user data: {user}")
+                    
+                    fname = str(user.get('kutsero_fname', '')).strip()
+                    lname = str(user.get('kutsero_lname', '')).strip()
+                    username = str(user.get('kutsero_username', '')).strip()
+                    
+                    print(f"fname: '{fname}', lname: '{lname}', username: '{username}'")
+                    
+                    # Build name with fallbacks
+                    if fname and lname:
+                        name = f"{fname} {lname}"
+                    elif fname:
+                        name = fname
+                    elif lname:
+                        name = lname
+                    elif username:
+                        name = username
+                    else:
+                        name = 'Kutsero User'
+                    
+                    user_info = {
+                        'name': name,
+                        'email': user.get('kutsero_email', ''),
+                        'role': 'kutsero',
+                        'avatar': '🐴',
+                        'status': user.get('kutsero_status', 'pending')
+                    }
+                    print(f"✓ SUCCESS - Found in kutsero_profile: {name}")
+                else:
+                    print(f"✗ No results from kutsero_profile")
+            except Exception as e:
+                print(f"✗ ERROR checking kutsero_profile: {e}")
+                import traceback
+                traceback.print_exc()
+            
+            # Check vet_profile table
+            if not user_info:
+                try:
+                    print(f"\nQuerying vet_profile WHERE vet_id = '{other_user_id}'")
+                    vet_response = service_client.table("vet_profile").select("*").eq("vet_id", other_user_id).execute()
+                    print(f"Number of results: {len(vet_response.data) if vet_response.data else 0}")
+                    
+                    if vet_response.data and len(vet_response.data) > 0:
+                        user = vet_response.data[0]
+                        
+                        fname = str(user.get('vet_fname', '')).strip()
+                        lname = str(user.get('vet_lname', '')).strip()
+                        username = str(user.get('vet_username', '')).strip()
+                        
+                        if fname and lname:
+                            name = f"{fname} {lname}"
+                        elif fname:
+                            name = fname
+                        elif lname:
+                            name = lname
+                        elif username:
+                            name = username
+                        else:
+                            name = 'Vet User'
+                        
+                        user_info = {
+                            'name': name,
+                            'email': user.get('vet_email', ''),
+                            'role': 'vet',
+                            'avatar': '👩‍⚕️',
+                            'status': user.get('vet_status', 'pending')
+                        }
+                        print(f"✓ SUCCESS - Found in vet_profile: {name}")
+                except Exception as e:
+                    print(f"✗ ERROR checking vet_profile: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # Check horse_op_profile table
+            if not user_info:
+                try:
+                    print(f"\nQuerying horse_op_profile WHERE operator_id = '{other_user_id}'")
+                    operator_response = service_client.table("horse_op_profile").select("*").eq("operator_id", other_user_id).execute()
+                    print(f"Number of results: {len(operator_response.data) if operator_response.data else 0}")
+                    
+                    if operator_response.data and len(operator_response.data) > 0:
+                        user = operator_response.data[0]
+                        
+                        fname = str(user.get('operator_fname', '')).strip()
+                        lname = str(user.get('operator_lname', '')).strip()
+                        username = str(user.get('operator_username', '')).strip()
+                        
+                        if fname and lname:
+                            name = f"{fname} {lname}"
+                        elif fname:
+                            name = fname
+                        elif lname:
+                            name = lname
+                        elif username:
+                            name = username
+                        else:
+                            name = 'Operator User'
+                        
+                        user_info = {
+                            'name': name,
+                            'email': user.get('operator_email', ''),
+                            'role': 'horse_operator',
+                            'avatar': '👨‍💼',
+                            'status': user.get('operator_status', 'pending')
+                        }
+                        print(f"✓ SUCCESS - Found in horse_op_profile: {name}")
+                except Exception as e:
+                    print(f"✗ ERROR checking horse_op_profile: {e}")
+                    import traceback
+                    traceback.print_exc()
+            
+            # If user not found in any table
+            if not user_info:
+                print(f"\n⚠ WARNING: User {other_user_id} NOT FOUND in any profile table!")
+                user_info = {
+                    'name': 'Unknown User',
+                    'email': '',
+                    'role': 'unknown',
+                    'avatar': '👤',
+                    'status': 'unknown'
+                }
+            
+            # Combine conversation data with user info
+            conversations_list.append({
+                'id': f"{user_id}_{other_user_id}",
+                'partner_id': other_user_id,
+                'sender': user_info['name'],
+                'partner_name': user_info['name'],
+                'email': user_info['email'],
+                'role': user_info['role'],
+                'avatar': user_info['avatar'],
+                'status': user_info['status'],
+                'last_message': conv_data['last_message'],
+                'preview': conv_data['last_message'],
+                'last_message_time': conv_data['last_message_time'],
+                'timestamp': conv_data['last_message_time'],
+                'is_read': conv_data['is_read'],
+                'unread': not conv_data['is_read'],
+                'unread_count': 0 if conv_data['is_read'] else 1
+            })
+
+        # Sort by last message time
+        conversations_list = sorted(
+            conversations_list,
+            key=lambda x: x['last_message_time'] if x['last_message_time'] else '',
+            reverse=True
+        )
+
+        print(f"\n{'='*60}")
+        print(f"Returning {len(conversations_list)} conversations")
+        print(f"Conversations: {[c['sender'] for c in conversations_list]}")
+        print("=" * 80)
+
+        return Response({
+            'conversations': conversations_list,
+            'total_count': len(conversations_list)
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"❌ ERROR in conversations endpoint: {e}")
+        import traceback
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def debug_user_lookup(request):
+    """
+    Debug endpoint to check where a user exists
+    """
+    try:
+        user_id = request.GET.get("user_id")
+        if not user_id:
+            return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        results = {}
+        
+        # Check users table
+        try:
+            users_response = service_client.table("users").select("*").eq("id", user_id).execute()
+            results['users_table'] = users_response.data
+        except Exception as e:
+            results['users_table_error'] = str(e)
+        
+        # Check kutsero table
+        try:
+            kutsero_response = service_client.table("kutsero").select("*").eq("kutsero_id", user_id).execute()
+            results['kutsero_table'] = kutsero_response.data
+        except Exception as e:
+            results['kutsero_table_error'] = str(e)
+        
+        # Check vet table
+        try:
+            vet_response = service_client.table("vet").select("*").eq("vet_id", user_id).execute()
+            results['vet_table'] = vet_response.data
+        except Exception as e:
+            results['vet_table_error'] = str(e)
+        
+        # Check horse_operator table
+        try:
+            operator_response = service_client.table("horse_operator").select("*").eq("operator_id", user_id).execute()
+            results['horse_operator_table'] = operator_response.data
+        except Exception as e:
+            results['horse_operator_table_error'] = str(e)
+        
+        return Response(results, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
     
 # ------------------------------------------------ HORSE ASSIGNMENT API ------------------------------------------------
 
@@ -1415,126 +1990,68 @@ def update_water_schedule(request):
 
 @api_view(['POST'])
 def mark_water_completed(request):
-    """Mark water schedule as completed and create log entry"""
     try:
-        data = request.data
-        print(f"Received data: {data}")
-        
-        # ✅ Validate required fields
-        required_fields = ['kutsero_id', 'horse_id', 'water_id', 'horse_name']
-        missing_fields = [field for field in required_fields if field not in data or not data.get(field)]
-        if missing_fields:
-            error_msg = f'Missing required fields: {", ".join(missing_fields)}'
-            print(f"Error: {error_msg}")
-            return Response({
-                'success': False,
-                'error': error_msg
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # ✅ Get kutsero name
-        kutsero_name = data.get('kutsero_name')
-        if not kutsero_name:
-            print(f"Fetching kutsero name from kutsero_profile for kutsero_id: {data['kutsero_id']}")
-            kutsero_response = supabase.table('kutsero_profile') \
-                .select('kutsero_fname, kutsero_lname') \
-                .eq('kutsero_id', data['kutsero_id']) \
-                .execute()
-            
-            if kutsero_response.data:
-                kutsero = kutsero_response.data[0]
-                kutsero_name = f"{kutsero.get('kutsero_fname', '')} {kutsero.get('kutsero_lname', '')}".strip()
-                print(f"Found kutsero name: {kutsero_name}")
-            else:
-                kutsero_name = 'Unknown Kutsero'
-                print("Kutsero not found, using default name")
+        kutsero_id = request.data.get('kutsero_id')
+        horse_id = request.data.get('horse_id')
+        water_id = request.data.get('water_id')
+        horse_name = request.data.get('horse_name')
+        kutsero_name = request.data.get('kutsero_name')
 
-        # ✅ Fetch water schedule
-        print(f"Fetching water schedule for water_id: {data['water_id']}")
-        water_response = supabase.table('water_detail') \
-            .select('*') \
-            .eq('water_id', data['water_id']) \
-            .eq('kutsero_id', data['kutsero_id']) \
-            .eq('horse_id', data['horse_id']) \
+        print(f"✅ Received data: kutsero_name={kutsero_name}, horse_name={horse_name}")
+
+        # Fetch the water schedule (correct table name)
+        water_schedule_response = supabase.table('water_detail')\
+            .select('*')\
+            .eq('water_id', water_id)\
             .execute()
-        
-        if not water_response.data:
+
+        if not water_schedule_response.data:
             return Response({
                 'success': False,
                 'error': 'Water schedule not found'
             }, status=status.HTTP_404_NOT_FOUND)
-        
-        water_schedule = water_response.data[0]
-        print(f"Water schedule response: {water_schedule}")
 
-        # ✅ Already completed check
-        if water_schedule.get('completed'):
-            print(f"Water schedule {data['water_id']} is already completed")
-            return Response({
-                'success': True,
-                'message': f'Water already marked as given for {data["horse_name"]}',
-                'already_completed': True,
-                'data': {
-                    'water_id': data['water_id'],
-                    'completed': True,
-                    'completed_at': water_schedule.get('completed_at')
-                }
-            })
+        water_schedule = water_schedule_response.data[0]
 
-        # ✅ Mark as completed
-        completed_at = datetime.now().isoformat()
-        supabase.table('water_detail') \
-            .update({
-                'completed': True,
-                'completed_at': completed_at
-            }) \
-            .eq('water_id', data['water_id']) \
-            .execute()
+        # Get today's date
+        today_date = datetime.now().strftime('%Y-%m-%d')
 
-        # ✅ Create log entry
-        wlog_id = str(uuid.uuid4())
-        current_date = datetime.now().date().isoformat()
-        current_time = datetime.now().strftime('%I:%M %p')
-
-        # ✅ Safely get horse_op_id (from op_id or fallback)
-        horse_op_id = water_schedule.get('op_id') or 'UNKNOWN_OP_ID'
-        if horse_op_id == 'UNKNOWN_OP_ID':
-            print("⚠️ Warning: water_detail.op_id is NULL, using fallback ID.")
-
-        log_data = {
-            'wlog_id': wlog_id,
+        # ✅ Include all required fields + generate wlog_id
+        water_log_data = {
+            'wlog_id': str(uuid.uuid4()),  # Auto-generate UUID
+            'kutsero_id': kutsero_id,
+            'horse_id': horse_id,
+            'wlog_date': today_date,
+            'wlog_period': water_schedule.get('water_period'),
+            'wlog_time': water_schedule.get('water_time'),
+            'wlog_amount': water_schedule.get('water_amount'),
             'wlog_user_full_name': kutsero_name,
-            'wlog_date': current_date,
-            'wlog_period': water_schedule['water_period'],
-            'wlog_time': current_time,
-            'wlog_amount': water_schedule['water_amount'],
             'wlog_status': 'Given',
             'wlog_action': 'Completed',
-            'user_id': data['kutsero_id'],
-            'horse_id': data['horse_id'],
-            'kutsero_id': data['kutsero_id'],
-            'horse_op_id': horse_op_id,  # ✅ FIXED LINE
-            'created_at': datetime.now().isoformat()
         }
 
-        log_response = supabase.table('water_log').insert(log_data).execute()
-        print(f"Water log inserted successfully: {log_response.data}")
+        print(f"💾 Creating water log with data: {water_log_data}")
 
-        # ✅ Return success
+        # Insert water log
+        log_response = supabase.table('water_log').insert(water_log_data).execute()
+
+        # ✅ Update the correct table (water_detail)
+        supabase.table('water_detail')\
+            .update({
+                'completed': True,
+                'completed_at': datetime.now().isoformat()
+            })\
+            .eq('water_id', water_id)\
+            .execute()
+
         return Response({
             'success': True,
-            'message': f'Water marked as given for {data["horse_name"]}',
-            'data': {
-                'water_id': data['water_id'],
-                'completed': True,
-                'completed_at': completed_at,
-                'log_id': wlog_id
-            }
+            'message': f'Water marked as given for {horse_name}',
+            'data': log_response.data
         })
 
     except Exception as e:
-        print(f"Error in mark_water_completed: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        print(f"❌ Error: {str(e)}")
         return Response({
             'success': False,
             'error': str(e)
@@ -1631,6 +2148,8 @@ def get_water_logs(request):
         log_date = request.GET.get('log_date')
         log_period = request.GET.get('log_period')
         
+        print(f"🔍 GET_WATER_LOGS - Request params: kutsero_id={kutsero_id}, horse_id={horse_id}, log_date={log_date}, log_period={log_period}")
+        
         if not kutsero_id or not horse_id:
             return Response({
                 'success': False,
@@ -1653,6 +2172,8 @@ def get_water_logs(request):
             .order('wlog_time', desc=True)\
             .execute()
         
+        print(f"📊 Database response data: {response.data}")
+        
         return Response({
             'success': True,
             'data': response.data,
@@ -1660,7 +2181,7 @@ def get_water_logs(request):
         })
         
     except Exception as e:
-        print(f"Error in get_water_logs: {str(e)}")
+        print(f"❌ Error in get_water_logs: {str(e)}")
         return Response({
             'success': False,
             'error': str(e)
@@ -1671,7 +2192,7 @@ def get_water_logs(request):
 @api_view(['GET'])
 def get_kutsero_profile(request, kutsero_id):
     """
-    Get kutsero profile by kutsero_id - formatted for frontend
+    Get kutsero profile by kutsero_id - formatted for frontend with image from Supabase storage
     """
     try:
         # Query by kutsero_id field, not primary key id
@@ -1686,6 +2207,37 @@ def get_kutsero_profile(request, kutsero_id):
         
         profile = response.data[0]
         
+        # Handle profile image URL from Supabase storage
+        kutsero_image_url = None
+        kutsero_image = profile.get('kutsero_image')
+        
+        if kutsero_image:
+            try:
+                # Supabase storage configuration
+                BUCKET_NAME = "kutsero_op_profile"
+                
+                # Check if it's already a full URL
+                if isinstance(kutsero_image, str) and kutsero_image.startswith('http'):
+                    kutsero_image_url = kutsero_image
+                    logger.info(f"Kutsero image is already a full URL: {kutsero_image_url}")
+                # Check if it's a base64 string (starts with data:image)
+                elif isinstance(kutsero_image, str) and kutsero_image.startswith('data:image'):
+                    kutsero_image_url = kutsero_image
+                    logger.info(f"Kutsero image is base64 data")
+                # Otherwise, it's a filename - construct the Supabase storage URL
+                elif isinstance(kutsero_image, str) and kutsero_image.strip():
+                    filename = kutsero_image.strip()
+                    kutsero_image_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{filename}"
+                    logger.info(f"Constructed kutsero image URL: {kutsero_image_url}")
+                else:
+                    logger.warning(f"Could not parse kutsero image for kutsero_id {kutsero_id}")
+                    
+            except Exception as img_error:
+                logger.warning(f"Error parsing kutsero image for kutsero_id {kutsero_id}: {img_error}")
+                kutsero_image_url = None
+        else:
+            logger.info(f"No kutsero image for kutsero_id {kutsero_id}")
+        
         # Format data to match your frontend formData structure
         formatted_profile = {
             # Step 1 - Location Info
@@ -1693,9 +2245,9 @@ def get_kutsero_profile(request, kutsero_id):
             'municipality': profile.get('kutsero_municipality', ''),
             'barangay': profile.get('kutsero_brgy', ''),
             'zipCode': profile.get('kutsero_zipcode', ''),
-            'houseNumber': '',  # Not in your DB schema, keeping empty
-            'route': '',        # Not in your DB schema, keeping empty
-            'to': '',          # Not in your DB schema, keeping empty
+            'houseNumber': '',
+            'route': '',
+            'to': '',
             
             # Step 2 - Personal Info
             'firstName': profile.get('kutsero_fname', ''),
@@ -1703,14 +2255,17 @@ def get_kutsero_profile(request, kutsero_id):
             'lastName': profile.get('kutsero_lname', ''),
             'dateOfBirth': profile.get('kutsero_dob', ''),
             'sex': profile.get('kutsero_sex', ''),
-            'phoneNumber': profile.get('kutsero_phone', ''),
+            'phoneNumber': profile.get('kutsero_phone_num', ''),
             'province': profile.get('kutsero_province', ''),
             
             # Step 3 - Account Info
             'email': profile.get('kutsero_email', ''),
             'facebook': profile.get('kutsero_fb', ''),
             'username': profile.get('kutsero_username', ''),
-            'password': '••••••••••',  # Never return real password
+            'password': '••••••••••',
+            
+            # Profile Picture - Full Supabase storage URL or base64
+            'profilePicture': kutsero_image_url,
             
             # Additional info
             'kutsero_id': profile.get('kutsero_id'),
@@ -1725,6 +2280,7 @@ def get_kutsero_profile(request, kutsero_id):
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
+        logger.error(f"Error in get_kutsero_profile: {e}")
         return Response({
             'success': False,
             'message': 'Internal server error',
@@ -1732,117 +2288,69 @@ def get_kutsero_profile(request, kutsero_id):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@api_view(['PUT', 'POST'])
+@api_view(['PUT'])
 def update_kutsero_profile(request, kutsero_id):
     """
-    Update kutsero profile - accepts frontend formData format
+    Update kutsero profile with image support (base64 or filename)
     """
     try:
-        # Check if profile exists
-        existing_profile = supabase.table('kutsero_profile').select('*').eq('kutsero_id', kutsero_id).execute()
+        data = request.data
         
-        if not existing_profile.data:
-            return Response({
-                'success': False,
-                'message': 'Kutsero profile not found',
-                'data': None
-            }, status=status.HTTP_404_NOT_FOUND)
+        # Prepare update data
+        update_data = {
+            'kutsero_fname': data.get('firstName', ''),
+            'kutsero_lname': data.get('lastName', ''),
+            'kutsero_mname': data.get('middleName', ''),
+            'kutsero_email': data.get('email', ''),
+            'kutsero_phone_num': data.get('phoneNumber', ''),
+            'kutsero_username': data.get('username', ''),
+            'kutsero_city': data.get('city', ''),
+            'kutsero_municipality': data.get('municipality', ''),
+            'kutsero_brgy': data.get('barangay', ''),
+            'kutsero_zipcode': data.get('zipCode', ''),
+            'kutsero_province': data.get('province', ''),
+            'kutsero_dob': data.get('dateOfBirth', ''),
+            'kutsero_sex': data.get('sex', ''),
+            'kutsero_fb': data.get('facebook', ''),
+        }
         
-        # Map frontend formData to database fields
-        form_data = request.data
-        update_data = {}
-        
-        # Step 1 - Location Info
-        if 'city' in form_data:
-            update_data['kutsero_city'] = form_data['city']
-        if 'municipality' in form_data:
-            update_data['kutsero_municipality'] = form_data['municipality']
-        if 'barangay' in form_data:
-            update_data['kutsero_bray'] = form_data['barangay']
-        if 'zipCode' in form_data:
-            update_data['kutsero_zipcode'] = form_data['zipCode']
-        # Note: houseNumber, route, to are not in DB schema
-        
-        # Step 2 - Personal Info
-        if 'firstName' in form_data:
-            update_data['kutsero_fname'] = form_data['firstName']
-        if 'middleName' in form_data:
-            update_data['kutsero_mname'] = form_data['middleName']
-        if 'lastName' in form_data:
-            update_data['kutsero_lname'] = form_data['lastName']
-        if 'dateOfBirth' in form_data:
-            update_data['kutsero_dob'] = form_data['dateOfBirth']
-        if 'sex' in form_data:
-            update_data['kutsero_sex'] = form_data['sex']
-        if 'phoneNumber' in form_data:
-            update_data['kutsero_phone'] = form_data['phoneNumber']
-        if 'province' in form_data:
-            update_data['kutsero_province'] = form_data['province']
-        
-        # Step 3 - Account Info
-        if 'email' in form_data:
-            update_data['kutsero_email'] = form_data['email']
-        if 'facebook' in form_data:
-            update_data['kutsero_fb'] = form_data['facebook']
-        if 'username' in form_data:
-            update_data['kutsero_username'] = form_data['username']
-        # Note: Password handling would need proper encryption in real app
-        
-        # Basic validation
-        if 'firstName' in form_data and not form_data['firstName'].strip():
-            return Response({
-                'success': False,
-                'message': 'First name is required',
-                'data': None
-            }, status=status.HTTP_400_BAD_REQUEST)
+        # Handle profile picture if provided
+        # Can be: base64 string, filename, or full URL
+        if 'profilePicture' in data and data['profilePicture']:
+            kutsero_image_data = data['profilePicture']
             
-        if 'lastName' in form_data and not form_data['lastName'].strip():
-            return Response({
-                'success': False,
-                'message': 'Last name is required',
-                'data': None
-            }, status=status.HTTP_400_BAD_REQUEST)
-            
-        if 'email' in form_data and form_data['email']:
-            email = form_data['email']
-            if '@' not in email or '.' not in email:
-                return Response({
-                    'success': False,
-                    'message': 'Please enter a valid email address',
-                    'data': None
-                }, status=status.HTTP_400_BAD_REQUEST)
+            # If it's a base64 string or filename, store it as-is
+            # The frontend will handle base64, and filenames will be constructed into URLs on GET
+            if isinstance(kutsero_image_data, str):
+                update_data['kutsero_image'] = kutsero_image_data
+                logger.info(f"Updating kutsero_image for kutsero_id {kutsero_id}")
         
-        if 'phoneNumber' in form_data and not form_data['phoneNumber'].strip():
-            return Response({
-                'success': False,
-                'message': 'Phone number is required',
-                'data': None
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Update the profile
+        # Update in Supabase
         response = supabase.table('kutsero_profile').update(update_data).eq('kutsero_id', kutsero_id).execute()
         
-        if response.data:
-            return Response({
-                'success': True,
-                'message': 'Your profile information has been updated successfully!',
-                'data': response.data[0]
-            }, status=status.HTTP_200_OK)
-        else:
+        if not response.data:
             return Response({
                 'success': False,
-                'message': 'Failed to update profile',
-                'data': None
+                'message': 'Failed to update profile'
             }, status=status.HTTP_400_BAD_REQUEST)
         
+        logger.info(f"Successfully updated profile for kutsero_id {kutsero_id}")
+        
+        return Response({
+            'success': True,
+            'message': 'Profile updated successfully',
+            'data': response.data[0]
+        }, status=status.HTTP_200_OK)
+        
     except Exception as e:
+        logger.error(f"Error in update_kutsero_profile: {e}")
         return Response({
             'success': False,
             'message': 'Internal server error',
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
+    
 @api_view(['POST'])
 def create_kutsero_profile(request):
     """
@@ -2043,547 +2551,536 @@ def search_kutsero_profiles(request):
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# ------------------------------------------------ WATER MANAGEMENT API ------------------------------------------------
-
+@api_view(['GET', 'PUT', 'POST'])
+def kutsero_profile(request, kutsero_id):
+    """
+    Handle kutsero profile - GET to retrieve, PUT/POST to update
+    """
+    if request.method == 'GET':
+        try:
+            # Fetch profile data
+            response = supabase.table('kutsero_profile').select('*').eq('kutsero_id', kutsero_id).execute()
+            
+            if response.data and len(response.data) > 0:
+                profile_data = response.data[0]
+                
+                # Map database fields to frontend format
+                mapped_data = {
+                    'city': profile_data.get('kutsero_city', ''),
+                    'municipality': profile_data.get('kutsero_municipality', ''),
+                    'barangay': profile_data.get('kutsero_brgy', ''),
+                    'zipCode': profile_data.get('kutsero_zipcode', ''),
+                    'houseNumber': '',  # Not in DB
+                    'route': '',  # Not in DB
+                    'to': '',  # Not in DB
+                    'firstName': profile_data.get('kutsero_fname', ''),
+                    'middleName': profile_data.get('kutsero_mname', ''),
+                    'lastName': profile_data.get('kutsero_lname', ''),
+                    'dateOfBirth': profile_data.get('kutsero_dob', ''),
+                    'sex': profile_data.get('kutsero_sex', ''),
+                    'phoneNumber': profile_data.get('kutsero_phone_num', ''),
+                    'province': profile_data.get('kutsero_province', ''),
+                    'email': profile_data.get('kutsero_email', ''),
+                    'facebook': profile_data.get('kutsero_fb', ''),
+                    'username': profile_data.get('kutsero_username', ''),
+                    'profilePicture': profile_data.get('kutsero_image', None),
+                }
+                
+                return Response({
+                    'success': True,
+                    'message': 'Profile retrieved successfully',
+                    'data': mapped_data
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'message': 'Profile not found',
+                    'data': None
+                }, status=status.HTTP_404_NOT_FOUND)
+                
+        except Exception as e:
+            print(f"Error fetching profile: {str(e)}")
+            return Response({
+                'success': False,
+                'message': 'Failed to fetch profile',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+    elif request.method in ['PUT', 'POST']:
+        try:
+            # Check if profile exists
+            existing_profile = supabase.table('kutsero_profile').select('*').eq('kutsero_id', kutsero_id).execute()
+            
+            if not existing_profile.data:
+                return Response({
+                    'success': False,
+                    'message': 'Kutsero profile not found',
+                    'data': None
+                }, status=status.HTTP_404_NOT_FOUND)
+            
+            # Map frontend formData to database fields
+            form_data = request.data
+            update_data = {}
+            
+            # Step 1 - Location Info (only fields that exist in DB)
+            if 'city' in form_data:
+                update_data['kutsero_city'] = form_data['city']
+            if 'municipality' in form_data:
+                update_data['kutsero_municipality'] = form_data['municipality']
+            if 'barangay' in form_data:
+                update_data['kutsero_brgy'] = form_data['barangay']
+            if 'zipCode' in form_data:
+                update_data['kutsero_zipcode'] = form_data['zipCode']
+            # Skip houseNumber, route, to - not in database
+            
+            # Step 2 - Personal Info
+            if 'firstName' in form_data:
+                update_data['kutsero_fname'] = form_data['firstName']
+            if 'middleName' in form_data:
+                update_data['kutsero_mname'] = form_data['middleName']
+            if 'lastName' in form_data:
+                update_data['kutsero_lname'] = form_data['lastName']
+            if 'dateOfBirth' in form_data:
+                update_data['kutsero_dob'] = form_data['dateOfBirth']
+            if 'sex' in form_data:
+                update_data['kutsero_sex'] = form_data['sex']
+            if 'phoneNumber' in form_data:
+                update_data['kutsero_phone_num'] = form_data['phoneNumber']
+            if 'province' in form_data:
+                update_data['kutsero_province'] = form_data['province']
+            
+            # Step 3 - Account Info
+            if 'email' in form_data:
+                update_data['kutsero_email'] = form_data['email']
+            if 'facebook' in form_data:
+                update_data['kutsero_fb'] = form_data['facebook']
+            if 'username' in form_data:
+                update_data['kutsero_username'] = form_data['username']
+            
+            # Handle profile picture (base64 string)
+            if 'profilePicture' in form_data and form_data['profilePicture']:
+                update_data['kutsero_image'] = form_data['profilePicture']
+            
+            # Basic validation
+            if 'firstName' in form_data and not form_data['firstName'].strip():
+                return Response({
+                    'success': False,
+                    'message': 'First name is required',
+                    'data': None
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+            if 'lastName' in form_data and not form_data['lastName'].strip():
+                return Response({
+                    'success': False,
+                    'message': 'Last name is required',
+                    'data': None
+                }, status=status.HTTP_400_BAD_REQUEST)
+                
+            if 'email' in form_data and form_data['email']:
+                email = form_data['email']
+                if '@' not in email or '.' not in email:
+                    return Response({
+                        'success': False,
+                        'message': 'Please enter a valid email address',
+                        'data': None
+                    }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if 'phoneNumber' in form_data and not form_data['phoneNumber'].strip():
+                return Response({
+                    'success': False,
+                    'message': 'Phone number is required',
+                    'data': None
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            print(f"Updating profile with data: {update_data}")  # Debug log
+            
+            # Update the profile
+            response = supabase.table('kutsero_profile').update(update_data).eq('kutsero_id', kutsero_id).execute()
+            
+            if response.data:
+                return Response({
+                    'success': True,
+                    'message': 'Your profile information has been updated successfully!',
+                    'data': response.data[0]
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({
+                    'success': False,
+                    'message': 'Failed to update profile',
+                    'data': None
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+        except Exception as e:
+            print(f"Error updating profile: {str(e)}")
+            return Response({
+                'success': False,
+                'message': 'Internal server error',
+                'error': str(e)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # ------------------------------------------------ ANNOUNCEMENT ------------------------------------------------
-@api_view(['GET'])
-def get_current_assignment(request, kutsero_id):
-    """
-    Get current active horse assignment for a kutsero
-    Example: /api/assignments/kutsero/123/current
-    """
-    try:
-        today = datetime.now().date().isoformat()
-        
-        # Get current assignment
-        data = supabase.table("horse_assignment").select("""
-            *,
-            horse_profile:horse_id (
-                id,
-                horse_name,
-                horse_breed,
-                horse_age,
-                health_status,
-                status,
-                last_checkup,
-                next_checkup,
-                horse_image
-            )
-        """).eq("kutsero_id", kutsero_id).eq("date_start", today).eq("status", "active").execute()
-        
-        if not data.data:
-            return Response({"error": "No current assignment found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        assignment = data.data[0]
-        horse = assignment.get("horse_profile")
-        
-        if not horse:
-            return Response({"error": "Horse data not found"}, status=status.HTTP_404_NOT_FOUND)
-        
-        response_data = {
-            "assign_id": assignment.get("assign_id"),
-            "date_start": assignment.get("date_start"),
-            "date_end": assignment.get("date_end"),
-            "status": assignment.get("status"),
-            "horse": {
-                "id": str(horse.get("id")),
-                "name": horse.get("horse_name"),
-                "breed": horse.get("horse_breed"),
-                "age": horse.get("horse_age"),
-                "healthStatus": horse.get("health_status", "Healthy"),
-                "status": horse.get("status", "Ready for work"),
-                "lastCheckup": horse.get("last_checkup"),
-                "nextCheckup": horse.get("next_checkup"),
-                "image": horse.get("horse_image")
-            }
-        }
-        
-        return Response(response_data, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['PUT'])
-def update_assignment_status(request, assign_id):
-    """
-    Update assignment status (e.g., complete assignment)
-    """
-    new_status = request.data.get("status")
-    
-    if not new_status:
-        return Response({"error": "Status is required"}, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        payload = {
-            "status": new_status,
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        data = service_client.table("horse_assignment").update(payload).eq("assign_id", assign_id).execute()
-        
-        if data.data:
-            return Response({
-                "message": "Assignment status updated successfully", 
-                "data": data.data[0]
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND)
-            
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['DELETE'])
-def cancel_assignment(request, assign_id):
-    """
-    Cancel/delete an assignment
-    """
-    try:
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        data = service_client.table("horse_assignment").delete().eq("assign_id", assign_id).execute()
-        
-        if data.data:
-            return Response({"message": "Assignment cancelled successfully"}, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Assignment not found"}, status=status.HTTP_404_NOT_FOUND)
-            
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['GET'])
-def get_available_horses(request):
-    """
-    Get horses that are available for assignment on a specific date
-    Example: /api/horses/available?date=2024-05-30
-    """
-    date = request.GET.get("date")
-    
-    if not date:
-        return Response({"error": "Date parameter is required"}, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        # Get all horses
-        all_horses = supabase.table("horse_profile").select("*").execute()
-        
-        # Get assigned horses for the specific date
-        assigned_horses = supabase.table("horse_assignment").select("horse_id").eq("date_start", date).eq("status", "active").execute()
-        
-        assigned_horse_ids = [assignment["horse_id"] for assignment in assigned_horses.data]
-        
-        # Filter available horses
-        available_horses = []
-        for horse in all_horses.data:
-            if horse["id"] not in assigned_horse_ids:
-                horse_data = {
-                    "id": str(horse.get("id")),
-                    "name": horse.get("horse_name"),
-                    "healthStatus": horse.get("health_status", "Healthy"),
-                    "status": horse.get("status", "Ready for work"),
-                    "breed": horse.get("horse_breed"),
-                    "age": horse.get("horse_age"),
-                    "lastCheckup": horse.get("last_checkup"),
-                    "nextCheckup": horse.get("next_checkup"),
-                    "image": horse.get("horse_image")
-                }
-                available_horses.append(horse_data)
-        
-        return Response(available_horses, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-# Additional API endpoints for complete horse management
-
-@api_view(['POST'])
-def check_in_horse(request):
-    """
-    Check in with an assigned horse
-    """
-    kutsero_id = request.data.get("kutsero_id")
-    horse_id = request.data.get("horse_id")
-    check_in_time = request.data.get("check_in_time")
-    
-    if not all([kutsero_id, horse_id, check_in_time]):
-        return Response({
-            "error": "kutsero_id, horse_id, and check_in_time are required"
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        today = datetime.now().date().isoformat()
-        
-        # Find the assignment
-        assignment_data = supabase.table("horse_assignment").select("*").eq(
-            "kutsero_id", kutsero_id
-        ).eq("horse_id", horse_id).eq("date_start", today).eq("status", "active").execute()
-        
-        if not assignment_data.data:
-            return Response({
-                "error": "No active assignment found for today"
-            }, status=status.HTTP_404_NOT_FOUND)
-        
-        # Update assignment with check-in time
-        payload = {
-            "check_in_time": check_in_time,
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        data = service_client.table("horse_assignment").update(payload).eq(
-            "assign_id", assignment_data.data[0]["assign_id"]
-        ).execute()
-        
-        if data.data:
-            return Response({
-                "message": "Checked in successfully",
-                "data": data.data[0]
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Failed to update check-in"}, status=status.HTTP_400_BAD_REQUEST)
-            
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['POST'])
-def check_out_horse(request):
-    """
-    Check out from an assigned horse
-    """
-    kutsero_id = request.data.get("kutsero_id")
-    horse_id = request.data.get("horse_id")
-    check_out_time = request.data.get("check_out_time")
-    
-    if not all([kutsero_id, horse_id, check_out_time]):
-        return Response({
-            "error": "kutsero_id, horse_id, and check_out_time are required"
-        }, status=status.HTTP_400_BAD_REQUEST)
-    
-    try:
-        today = datetime.now().date().isoformat()
-        
-        # Find the assignment
-        assignment_data = supabase.table("horse_assignment").select("*").eq(
-            "kutsero_id", kutsero_id
-        ).eq("horse_id", horse_id).eq("date_start", today).eq("status", "active").execute()
-        
-        if not assignment_data.data:
-            return Response({
-                "error": "No active assignment found for today"
-            }, status=status.HTTP_404_NOT_FOUND)
-        
-        # Update assignment with check-out time and complete status
-        payload = {
-            "check_out_time": check_out_time,
-            "status": "completed",
-            "updated_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        data = service_client.table("horse_assignment").update(payload).eq(
-            "assign_id", assignment_data.data[0]["assign_id"]
-        ).execute()
-        
-        if data.data:
-            return Response({
-                "message": "Checked out successfully",
-                "data": data.data[0]
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Failed to update check-out"}, status=status.HTTP_400_BAD_REQUEST)
-            
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['GET'])
-def get_horse_assignment_history(request, kutsero_id):
-    """
-    Get assignment history for a kutsero with pagination
-    Example: /api/assignments/kutsero/123/history?page=1&limit=10
-    """
-    try:
-        page = int(request.GET.get('page', 1))
-        limit = int(request.GET.get('limit', 10))
-        offset = (page - 1) * limit
-        
-        # Get total count
-        count_data = supabase.table("horse_assignment").select(
-            "assign_id", count="exact"
-        ).eq("kutsero_id", kutsero_id).execute()
-        
-        total_count = count_data.count if count_data.count else 0
-        
-        # Get paginated data
-        data = supabase.table("horse_assignment").select("""
-            *,
-            horse_profile:horse_id (
-                id,
-                horse_name,
-                horse_breed,
-                horse_age,
-                health_status,
-                horse_image
-            )
-        """).eq("kutsero_id", kutsero_id).order(
-            "created_at", desc=True
-        ).range(offset, offset + limit - 1).execute()
-        
-        # Transform data
-        assignments = []
-        for assignment in data.data:
-            horse = assignment.get("horse_profile")
-            if horse:
-                assignment_data = {
-                    "assign_id": assignment.get("assign_id"),
-                    "date_start": assignment.get("date_start"),
-                    "date_end": assignment.get("date_end"),
-                    "status": assignment.get("status"),
-                    "check_in_time": assignment.get("check_in_time"),
-                    "check_out_time": assignment.get("check_out_time"),
-                    "created_at": assignment.get("created_at"),
-                    "horse": {
-                        "id": str(horse.get("id")),
-                        "name": horse.get("horse_name"),
-                        "breed": horse.get("horse_breed"),
-                        "age": horse.get("horse_age"),
-                        "healthStatus": horse.get("health_status", "Healthy"),
-                        "image": horse.get("horse_image")
-                    }
-                }
-                assignments.append(assignment_data)
-        
-        return Response({
-            "assignments": assignments,
-            "pagination": {
-                "page": page,
-                "limit": limit,
-                "total": total_count,
-                "pages": (total_count + limit - 1) // limit
-            }
-        }, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['GET'])
-def get_assignment_statistics(request, kutsero_id):
-    """
-    Get assignment statistics for a kutsero
-    Example: /api/assignments/kutsero/123/statistics
-    """
-    try:
-        # Get all assignments for the kutsero
-        data = supabase.table("horse_assignment").select("*").eq("kutsero_id", kutsero_id).execute()
-        
-        assignments = data.data
-        total_assignments = len(assignments)
-        completed_assignments = len([a for a in assignments if a["status"] == "completed"])
-        active_assignments = len([a for a in assignments if a["status"] == "active"])
-        cancelled_assignments = len([a for a in assignments if a["status"] == "cancelled"])
-        
-        # Get unique horses worked with
-        unique_horses = len(set([a["horse_id"] for a in assignments]))
-        
-        # Get current month statistics
-        current_month = datetime.now().strftime("%Y-%m")
-        current_month_assignments = [
-            a for a in assignments 
-            if a["date_start"] and a["date_start"].startswith(current_month)
-        ]
-        
-        statistics = {
-            "total_assignments": total_assignments,
-            "completed_assignments": completed_assignments,
-            "active_assignments": active_assignments,
-            "cancelled_assignments": cancelled_assignments,
-            "unique_horses_worked": unique_horses,
-            "current_month_assignments": len(current_month_assignments),
-            "completion_rate": round((completed_assignments / total_assignments * 100), 2) if total_assignments > 0 else 0
-        }
-        
-        return Response(statistics, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-@api_view(['GET'])
-def get_horses_with_assignment_status(request):
-    """
-    Get all horses with their current assignment status
-    Example: /api/horses/with-status?date=2024-12-01
-    """
-    date = request.GET.get("date", datetime.now().date().isoformat())
-    
-    try:
-        # Get all horses
-        horses_data = supabase.table("horse_profile").select("*").execute()
-        
-        # Get assignments for the specified date
-        assignments_data = supabase.table("horse_assignment").select("""
-            horse_id,
-            kutsero_id,
-            status,
-            check_in_time,
-            check_out_time
-        """).eq("date_start", date).execute()
-        
-        # Create assignment lookup
-        assignments_lookup = {a["horse_id"]: a for a in assignments_data.data}
-        
-        # Transform data
-        horses_with_status = []
-        for horse in horses_data.data:
-            assignment = assignments_lookup.get(horse["id"])
-            
-            horse_data = {
-                "id": str(horse.get("id")),
-                "name": horse.get("horse_name"),
-                "healthStatus": horse.get("health_status", "Healthy"),
-                "status": horse.get("status", "Ready for work"),
-                "breed": horse.get("horse_breed"),
-                "age": horse.get("horse_age"),
-                "image": horse.get("horse_image"),
-                "assignmentStatus": {
-                    "isAssigned": assignment is not None,
-                    "assignedTo": assignment.get("kutsero_id") if assignment else None,
-                    "assignmentStatus": assignment.get("status") if assignment else None,
-                    "checkInTime": assignment.get("check_in_time") if assignment else None,
-                    "checkOutTime": assignment.get("check_out_time") if assignment else None,
-                }
-            }
-            horses_with_status.append(horse_data)
-        
-        return Response(horses_with_status, status=status.HTTP_200_OK)
-        
-    except Exception as e:
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 @api_view(["GET"])
 def get_announcements(request):
     """
-    Fetch announcements from Supabase with comment counts and images
+    Fetch announcements from Supabase with comment counts and multiple images.
+    Each announcement includes the first and last name of the user who posted it.
     """
     try:
         logger.info("Fetching announcements...")
-        
+
         if 'supabase' not in globals():
             logger.error("Supabase client not initialized")
             return Response(
-                {"error": "Database connection not available"}, 
+                {"error": "Database connection not available"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
-        try:
-            announcements_response = supabase.table("announcement") \
-                .select("*") \
-                .order("announce_date", desc=True) \
-                .execute()
-        except Exception as db_error:
-            logger.error(f"Database query failed: {db_error}")
-            return Response(
-                {"error": "Failed to fetch announcements from database"}, 
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+
+        # Fetch announcements
+        announcements_response = supabase.table("announcement") \
+            .select("*") \
+            .order("announce_date", desc=True) \
+            .execute()
 
         logger.info(f"Found {len(announcements_response.data) if announcements_response.data else 0} announcements")
 
-        if announcements_response.data:
-            announcements_with_counts = []
-            
-            # Supabase configuration
-            SUPABASE_URL = "https://drgknejiqupegkyxfaab.supabase.co"
-            BUCKET_NAME = "announcement-img"
-            
-            for announcement in announcements_response.data:
-                announce_id = announcement.get("announce_id")
-                if not announce_id:
-                    logger.warning(f"Skipping announcement without announce_id")
-                    continue
-                
-                # Get comment count
-                comment_count = 0
-                try:
-                    comment_count_response = supabase.table("comment") \
-                        .select("id", count="exact") \
-                        .eq("announcement_id", announce_id) \
-                        .execute()
-                    
-                    comment_count = comment_count_response.count or 0
-                except Exception as comment_error:
-                    logger.warning(f"Error getting comment count for announcement {announce_id}: {comment_error}")
-                    comment_count = 0
-                
-                # Handle image URL
-                image_url = None
-                announce_img = announcement.get("announce_img")
-                
-                if announce_img:
-                    try:
-                        # Check if it's a JSON array string
-                        if isinstance(announce_img, str) and announce_img.startswith('['):
-                            import json
-                            img_array = json.loads(announce_img)
-                            if img_array and len(img_array) > 0:
-                                # Get the first URL from the array
-                                image_url = img_array[0]
-                        # Check if it's already a full URL
-                        elif isinstance(announce_img, str) and announce_img.startswith('http'):
-                            image_url = announce_img
-                        # Otherwise, it's just a filename - construct the URL
-                        elif isinstance(announce_img, str) and announce_img.strip():
-                            filename = announce_img.strip()
-                            image_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{filename}"
-                        
-                        if image_url:
-                            logger.info(f"Image URL for announcement {announce_id}: {image_url}")
-                        else:
-                            logger.info(f"Could not parse image for announcement {announce_id}")
-                    except Exception as img_error:
-                        logger.warning(f"Error parsing image for announcement {announce_id}: {img_error}")
-                        image_url = None
-                else:
-                    logger.info(f"No image for announcement {announce_id}")
-                
-                # Build announcement data
-                announcement_data = {
-                    "id": str(announce_id),
-                    "announce_id": announce_id,
-                    "announce_title": announcement.get("announce_title", "Untitled"),
-                    "announce_content": announcement.get("announce_content", ""),
-                    "announce_date": announcement.get("announce_date", ""),
-                    "announce_status": announcement.get("announce_status", "active"),
-                    "created_at": announcement.get("created_at", ""),
-                    "comment_count": comment_count,
-                    "user_name": "CTU Announcement",
-                    "image_url": image_url
-                }
-                
-                announcements_with_counts.append(announcement_data)
-            
-            logger.info(f"Returning {len(announcements_with_counts)} valid announcements")
-            return Response(
-                {"announcements": announcements_with_counts}, 
-                status=status.HTTP_200_OK
-            )
-        else:
-            logger.info("No announcements found")
+        if not announcements_response.data:
             return Response({"announcements": []}, status=status.HTTP_200_OK)
+
+        announcements_with_counts = []
+        SUPABASE_BASE_URL = "https://drgknejiqupegkyxfaab.supabase.co"
+        BUCKET_NAME = "announcement-img"
+
+        # Create service client
+        service_client = create_client(SUPABASE_BASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        for announcement in announcements_response.data:
+            announce_id = announcement.get("announce_id")
+            if not announce_id:
+                continue
+
+            # 🔹 Get comment count
+            comment_count = 0
+            try:
+                comment_count_response = supabase.table("comment") \
+                    .select("id", count="exact") \
+                    .eq("announcement_id", announce_id) \
+                    .execute()
+                comment_count = comment_count_response.count or 0
+            except Exception as comment_error:
+                logger.warning(f"Error getting comment count for {announce_id}: {comment_error}")
+
+            # 🔹 Get user info (fetch actual first and last name)
+            user_info = None
+            user_name = "Unknown User"
+
+            user_id = (
+                announcement.get("user_id")
+                or announcement.get("created_by")
+                or announcement.get("author_id")
+                or announcement.get("ctu_id")
+                or announcement.get("dvmf_id")
+            )
+
+            if user_id:
+                try:
+                    # Try CTU user first
+                    user_response = service_client.table("ctu_vet_profile") \
+                        .select("ctu_fname, ctu_lname") \
+                        .eq("ctu_id", user_id) \
+                        .execute()
+
+                    if user_response.data and len(user_response.data) > 0:
+                        user_info = user_response.data[0]
+                        fname = user_info.get("ctu_fname", "").strip()
+                        lname = user_info.get("ctu_lname", "").strip()
+                        user_name = f"{fname} {lname}".strip() if (fname or lname) else "Unknown User"
+                        logger.info(f"CTU user found: {user_name}")
+                    else:
+                        # Try DVMF user next
+                        user_response = service_client.table("dvmf_user_profile") \
+                            .select("dvmf_fname, dvmf_lname") \
+                            .eq("dvmf_id", user_id) \
+                            .execute()
+
+                        if user_response.data and len(user_response.data) > 0:
+                            user_info = user_response.data[0]
+                            fname = user_info.get("dvmf_fname", "").strip()
+                            lname = user_info.get("dvmf_lname", "").strip()
+                            user_name = f"{fname} {lname}".strip() if (fname or lname) else "Unknown User"
+                            logger.info(f"DVMF user found: {user_name}")
+                        else:
+                            logger.warning(f"User not found in either table for ID {user_id}")
+                except Exception as user_error:
+                    logger.error(f"Error fetching user info: {user_error}")
+
+            # 🔹 Handle multiple image URLs
+            image_urls = []
+            announce_img = announcement.get("announce_img")
+
+            if announce_img:
+                try:
+                    import json
+                    if isinstance(announce_img, str) and announce_img.startswith('['):
+                        img_array = json.loads(announce_img)
+                        for img in img_array:
+                            if isinstance(img, str):
+                                if img.startswith('http'):
+                                    image_urls.append(img)
+                                elif img.strip():
+                                    image_urls.append(f"{SUPABASE_BASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{img.strip()}")
+                    elif isinstance(announce_img, str) and announce_img.startswith('http'):
+                        image_urls.append(announce_img)
+                    elif isinstance(announce_img, str) and ',' in announce_img:
+                        filenames = [f.strip() for f in announce_img.split(',') if f.strip()]
+                        for f in filenames:
+                            if f.startswith('http'):
+                                image_urls.append(f)
+                            else:
+                                image_urls.append(f"{SUPABASE_BASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{f}")
+                    elif isinstance(announce_img, str) and announce_img.strip():
+                        image_urls.append(f"{SUPABASE_BASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{announce_img.strip()}")
+                except Exception as img_error:
+                    logger.warning(f"Error parsing images for {announce_id}: {img_error}")
+
+            # 🔹 Combine all info into one response object
+            announcement_data = {
+                "id": str(announce_id),
+                "announce_id": announce_id,
+                "announce_title": announcement.get("announce_title", "Untitled"),
+                "announce_content": announcement.get("announce_content", ""),
+                "announce_date": announcement.get("announce_date", ""),
+                "announce_status": announcement.get("announce_status", "active"),
+                "created_at": announcement.get("created_at", ""),
+                "comment_count": comment_count,
+                "user_name": user_name,  # ✅ First + Last name only
+                "user_info": user_info,
+                "image_url": image_urls or None
+            }
+
+            announcements_with_counts.append(announcement_data)
+
+        logger.info(f"Returning {len(announcements_with_counts)} announcements")
+        return Response(
+            {"announcements": announcements_with_counts},
+            status=status.HTTP_200_OK
+        )
 
     except Exception as e:
         logger.error(f"Error in get_announcements: {e}")
         logger.error(traceback.format_exc())
         return Response(
-            {"error": "Internal server error occurred while fetching announcements"}, 
+            {"error": "Internal server error occurred while fetching announcements"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
     
+def fetch_user_details(service_client, user_id, logger):
+    """
+    Helper function to fetch user details from multiple possible tables
+    Uses service client to bypass RLS policies
+    Returns a dict with user information or defaults for unknown users
+    """
+    try:
+        if not user_id:
+            return {
+                "fname": "Anonymous",
+                "lname": "User",
+                "username": "Anonymous User",
+                "email": None,
+            }
+        
+        logger.info(f"[DEBUG] Fetching user details for user_id: {user_id}")
+        
+        # Try kutsero_profile table first
+        try:
+            logger.info(f"[DEBUG] Checking kutsero_profile for user_id: {user_id}")
+            profile_response = service_client.table("kutsero_profile") \
+                .select("*") \
+                .eq("kutsero_id", user_id) \
+                .execute()
+            
+            logger.info(f"[DEBUG] kutsero_profile response: {profile_response.data}")
+            
+            if profile_response.data and len(profile_response.data) > 0:
+                profile_data = profile_response.data[0]
+                fname = profile_data.get("kutsero_fname", "Unknown")
+                lname = profile_data.get("kutsero_lname", "User")
+                username = profile_data.get("kutsero_username")
+                
+                logger.info(f"[DEBUG] Found in kutsero_profile: {fname} {lname}")
+                return {
+                    "fname": fname,
+                    "lname": lname,
+                    "username": username if username else f"{fname} {lname}".strip(),
+                    "email": None,
+                }
+        except Exception as e:
+            logger.warning(f"[WARN] Error checking kutsero_profile: {e}")
+        
+        # Try ctu_vet_profile table
+        try:
+            logger.info(f"[DEBUG] Checking ctu_vet_profile for ctu_id: {user_id}")
+            ctu_response = service_client.table("ctu_vet_profile") \
+                .select("*") \
+                .eq("ctu_id", user_id) \
+                .execute()
+            
+            logger.info(f"[DEBUG] ctu_vet_profile response: {ctu_response.data}")
+            
+            if ctu_response.data and len(ctu_response.data) > 0:
+                ctu_data = ctu_response.data[0]
+                # Try to get full name first, then fall back to fname/lname
+                full_name = ctu_data.get("ctu_name") or ctu_data.get("name")
+                
+                if full_name:
+                    # Split full name into first and last
+                    name_parts = full_name.split(maxsplit=1)
+                    fname = name_parts[0] if len(name_parts) > 0 else "CTU"
+                    lname = name_parts[1] if len(name_parts) > 1 else "User"
+                else:
+                    # Use separate name fields
+                    fname = ctu_data.get("ctu_fname", "CTU")
+                    lname = ctu_data.get("ctu_lname", "User")
+                
+                username = ctu_data.get("ctu_username")
+                
+                logger.info(f"[DEBUG] Found in ctu_vet_profile: {fname} {lname}")
+                return {
+                    "fname": fname,
+                    "lname": lname,
+                    "username": username if username else f"{fname} {lname}".strip(),
+                    "email": None,
+                }
+        except Exception as e:
+            logger.warning(f"[WARN] Error checking ctu_vet_profile: {e}")
+        
+        # Try dvmf_user_profile table
+        try:
+            logger.info(f"[DEBUG] Checking dvmf_user_profile for dvmf_id: {user_id}")
+            dvmf_response = service_client.table("dvmf_user_profile") \
+                .select("*") \
+                .eq("dvmf_id", user_id) \
+                .execute()
+            
+            logger.info(f"[DEBUG] dvmf_user_profile response: {dvmf_response.data}")
+            
+            if dvmf_response.data and len(dvmf_response.data) > 0:
+                dvmf_data = dvmf_response.data[0]
+                # Try to get full name first, then fall back to fname/lname
+                full_name = dvmf_data.get("dvmf_name") or dvmf_data.get("name")
+                
+                if full_name:
+                    # Split full name into first and last
+                    name_parts = full_name.split(maxsplit=1)
+                    fname = name_parts[0] if len(name_parts) > 0 else "DVMF"
+                    lname = name_parts[1] if len(name_parts) > 1 else "User"
+                else:
+                    # Use separate name fields
+                    fname = dvmf_data.get("dvmf_fname", "DVMF")
+                    lname = dvmf_data.get("dvmf_lname", "User")
+                
+                username = dvmf_data.get("dvmf_username")
+                
+                logger.info(f"[DEBUG] Found in dvmf_user_profile: {fname} {lname}")
+                return {
+                    "fname": fname,
+                    "lname": lname,
+                    "username": username if username else f"{fname} {lname}".strip(),
+                    "email": None,
+                }
+        except Exception as e:
+            logger.warning(f"[WARN] Error checking dvmf_user_profile: {e}")
+        
+        # Try generic users table as last resort
+        try:
+            logger.info(f"[DEBUG] Checking users table for id: {user_id}")
+            user_response = service_client.table("users") \
+                .select("*") \
+                .eq("id", user_id) \
+                .execute()
+            
+            logger.info(f"[DEBUG] users table response: {user_response.data}")
+            
+            if user_response.data and len(user_response.data) > 0:
+                user_data = user_response.data[0]
+                
+                # Try different possible field names
+                fname = (user_data.get("first_name") or 
+                        user_data.get("fname") or 
+                        user_data.get("name") or "User")
+                lname = (user_data.get("last_name") or 
+                        user_data.get("lname") or "")
+                username = user_data.get("username")
+                
+                # If we have a full name field and no separate fname/lname
+                if not lname and "name" in user_data:
+                    name_parts = user_data["name"].split(maxsplit=1)
+                    fname = name_parts[0] if len(name_parts) > 0 else "User"
+                    lname = name_parts[1] if len(name_parts) > 1 else ""
+                
+                # Fallback: use first 8 chars of ID as identifier
+                if fname == "User" and not lname:
+                    user_id_str = str(user_data.get("id", ""))
+                    lname = user_id_str[:8]
+                
+                logger.info(f"[DEBUG] Found in users table: {fname} {lname}")
+                return {
+                    "fname": fname,
+                    "lname": lname if lname else "User",
+                    "username": username if username else f"{fname} {lname}".strip() if lname else fname,
+                    "email": None,
+                }
+        except Exception as e:
+            logger.warning(f"[WARN] Error checking users table: {e}")
+        
+        # User not found in any table - let's try one more thing: check auth.users
+        try:
+            logger.info(f"[DEBUG] Checking auth.users table for id: {user_id}")
+            auth_response = service_client.table("auth.users") \
+                .select("*") \
+                .eq("id", user_id) \
+                .execute()
+            
+            logger.info(f"[DEBUG] auth.users response: {auth_response.data}")
+            
+            if auth_response.data and len(auth_response.data) > 0:
+                auth_data = auth_response.data[0]
+                email = auth_data.get("email", "")
+                
+                # Use email username as identifier
+                email_username = email.split("@")[0] if email else f"User {str(user_id)[:8]}"
+                
+                logger.info(f"[DEBUG] Found in auth.users: {email}")
+                return {
+                    "fname": email_username,
+                    "lname": "User",
+                    "username": email_username,
+                    "email": email,
+                }
+        except Exception as e:
+            logger.warning(f"[WARN] Error checking auth.users: {e}")
+        
+        # User not found in any table
+        logger.warning(f"[WARN] User {user_id} not found in any profile table")
+        logger.warning(f"[WARN] Returning default values for Unknown User")
+        return {
+            "fname": "Unknown",
+            "lname": "User",
+            "username": "Unknown User",
+            "email": None,
+        }
+        
+    except Exception as e:
+        logger.error(f"[ERROR] Error in fetch_user_details: {e}")
+        return {
+            "fname": "Unknown",
+            "lname": "User",
+            "username": "Unknown User",
+            "email": None,
+        }
+
+
 @api_view(["GET", "POST"])
 def announcement_comments_handler(request, announcement_id):
     """
@@ -2597,14 +3094,12 @@ def announcement_comments_handler(request, announcement_id):
             logger.error(f"[ERROR] Invalid announcement ID: {announcement_id}")
             return Response({"error": "Invalid announcement ID"}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Check if supabase client is available
-        if 'supabase' not in globals():
-            logger.error("[ERROR] Supabase client not initialized")
-            return Response({"error": "Database connection not available"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # Create service client to bypass RLS policies
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
         # Check if announcement exists (using announce_id)
         try:
-            announcement_response = supabase.table("announcement") \
+            announcement_response = service_client.table("announcement") \
                 .select("announce_id") \
                 .eq("announce_id", announcement_id) \
                 .execute()
@@ -2623,9 +3118,10 @@ def announcement_comments_handler(request, announcement_id):
                 
                 # Fetch comments with error handling
                 try:
-                    comments_response = supabase.table("comment") \
+                    comments_response = service_client.table("comment") \
                         .select("*") \
                         .eq("announcement_id", announcement_id) \
+                        .is_("parent_comment_id", "null") \
                         .order("comment_date", desc=True) \
                         .execute()
                 except Exception as db_error:
@@ -2638,62 +3134,36 @@ def announcement_comments_handler(request, announcement_id):
                 if comments_response.data:
                     for comment in comments_response.data:
                         try:
+                            comment_id = str(comment.get("id", ""))
+                            
                             formatted_comment = {
-                                "id": str(comment.get("id", "")),
+                                "id": comment_id,
                                 "comment_text": comment.get("comment_text", ""),
                                 "comment_date": comment.get("comment_date", ""),
                                 "user_id": comment.get("user_id", ""),
                                 "announcement_id": comment.get("announcement_id", ""),
+                                "parent_comment_id": comment.get("parent_comment_id"),
                             }
                             
-                            # Try to fetch user details from kutsero_profile table
+                            # Fetch reply count for this comment
                             try:
-                                user_id = comment.get("user_id")
-                                if user_id:
-                                    logger.info(f"[DEBUG] Looking up user_id: {user_id}")
-                                    
-                                    # The user_id from comments should match kutsero_profile.kutsero_id
-                                    profile_response = supabase.table("kutsero_profile") \
-                                        .select("kutsero_id, kutsero_fname, kutsero_lname, kutsero_mname") \
-                                        .eq("kutsero_id", user_id) \
-                                        .execute()
-                                    
-                                    logger.info(f"[DEBUG] Profile response: {profile_response.data}")
-                                    
-                                    if profile_response.data and len(profile_response.data) > 0:
-                                        profile_data = profile_response.data[0]
-                                        formatted_comment.update({
-                                            "kutsero_fname": profile_data.get("kutsero_fname", "Unknown"),
-                                            "kutsero_lname": profile_data.get("kutsero_lname", "User"),
-                                            "kutsero_username": f"{profile_data.get('kutsero_fname', '')} {profile_data.get('kutsero_lname', '')}".strip(),
-                                            "user_email": None,  # Email not in kutsero_profile table
-                                        })
-                                        logger.info(f"[DEBUG] Found profile: {profile_data.get('kutsero_fname')} {profile_data.get('kutsero_lname')}")
-                                    else:
-                                        logger.warning(f"[WARN] No profile found for user_id: {user_id}")
-                                        
-                                        # Debug: Check what profiles are available
-                                        debug_profiles = supabase.table("kutsero_profile") \
-                                            .select("kutsero_id, kutsero_fname") \
-                                            .limit(3) \
-                                            .execute()
-                                        logger.info(f"[DEBUG] Available profile kutsero_ids: {[p.get('kutsero_id') for p in debug_profiles.data] if debug_profiles.data else 'None'}")
-                                        
-                                        # Default values if profile not found
-                                        formatted_comment.update({
-                                            "kutsero_fname": "Unknown",
-                                            "kutsero_lname": "User",
-                                            "kutsero_username": None,
-                                            "user_email": None,
-                                        })
-                            except Exception as user_error:
-                                logger.warning(f"[WARN] Error fetching kutsero profile for comment {comment.get('id')}: {user_error}")
-                                formatted_comment.update({
-                                    "kutsero_fname": "Unknown",
-                                    "kutsero_lname": "User",
-                                    "kutsero_username": None,
-                                    "user_email": None,
-                                })
+                                reply_count_response = service_client.table("comment") \
+                                    .select("id", count="exact") \
+                                    .eq("parent_comment_id", comment_id) \
+                                    .execute()
+                                formatted_comment["reply_count"] = reply_count_response.count or 0
+                            except Exception as e:
+                                logger.warning(f"[WARN] Failed to get reply count: {e}")
+                                formatted_comment["reply_count"] = 0
+                            
+                            # Fetch user details using the helper function
+                            user_details = fetch_user_details(service_client, comment.get("user_id"), logger)
+                            formatted_comment.update({
+                                "kutsero_fname": user_details["fname"],
+                                "kutsero_lname": user_details["lname"],
+                                "kutsero_username": user_details["username"],
+                                "user_email": user_details["email"],
+                            })
                             
                             formatted_comments.append(formatted_comment)
                             
@@ -2709,25 +3179,26 @@ def announcement_comments_handler(request, announcement_id):
                 return Response({"error": "Failed to fetch comments"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 
         elif request.method == "POST":
-            return handle_post_comment(request, announcement_id)
+            return handle_post_comment(request, announcement_id, service_client)
             
     except Exception as e:
         logger.error(f"[ERROR] Error in announcement_comments_handler: {e}")
         logger.error(traceback.format_exc())
         return Response({"error": "Internal server error"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-def handle_post_comment(request, announcement_id):
+    
+    
+def handle_post_comment(request, announcement_id, service_client):
     """
-    Handle POST request for creating a new comment
+    Handle POST request for creating a new comment or reply
     """
     try:
         logger.info(f"[DEBUG] Posting comment to announcement: {announcement_id}")
         logger.info(f"[DEBUG] Raw request data: {request.data}")
-        logger.info(f"[DEBUG] Request content type: {request.content_type}")
         
         # Get and validate request data
         comment_text = request.data.get("comment_text", "").strip() if request.data else ""
         user_id = request.data.get("user_id") if request.data else None
+        parent_comment_id = request.data.get("parent_comment_id") if request.data else None
         
         # Also check for kutsero_id in case frontend is still sending old field name
         if not user_id:
@@ -2735,9 +3206,9 @@ def handle_post_comment(request, announcement_id):
             if user_id:
                 logger.info(f"[DEBUG] Found kutsero_id instead of user_id: {user_id}")
 
-        logger.info(f"[DEBUG] Comment data: text='{comment_text[:50] if comment_text else ''}...', user_id={user_id}")
+        logger.info(f"[DEBUG] Comment data: text='{comment_text[:50] if comment_text else ''}...', user_id={user_id}, parent_comment_id={parent_comment_id}")
 
-        # Validation with more specific error messages
+        # Validation
         if not comment_text:
             logger.error("[ERROR] Comment text is missing or empty")
             return Response({"error": "Comment text is required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -2750,37 +3221,61 @@ def handle_post_comment(request, announcement_id):
             logger.error("[ERROR] User ID is missing")
             return Response({"error": "User ID is required"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # If parent_comment_id is provided, verify it exists
+        if parent_comment_id:
+            try:
+                parent_check = service_client.table("comment") \
+                    .select("id") \
+                    .eq("id", parent_comment_id) \
+                    .execute()
+                
+                if not parent_check.data:
+                    logger.error(f"[ERROR] Parent comment not found: {parent_comment_id}")
+                    return Response({"error": "Parent comment not found"}, status=status.HTTP_404_NOT_FOUND)
+            except Exception as e:
+                logger.error(f"[ERROR] Failed to verify parent comment: {e}")
+
         # Insert comment with error handling
         comment_data = {
             "comment_text": comment_text,
             "user_id": str(user_id),
             "announcement_id": str(announcement_id),
-            "comment_date": datetime.now().isoformat()
+            "comment_date": datetime.now().isoformat(),
+            "parent_comment_id": str(parent_comment_id) if parent_comment_id else None
         }
 
         logger.info(f"[DEBUG] Inserting comment data: {comment_data}")
 
         try:
-            response = supabase.table("comment").insert(comment_data).execute()
+            response = service_client.table("comment").insert(comment_data).execute()
         except Exception as db_error:
             logger.error(f"[ERROR] Failed to insert comment: {db_error}")
             return Response({"error": "Failed to save comment to database"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         if response.data and len(response.data) > 0:
             comment = response.data[0]
+            
+            # Format the newly created comment
             formatted_comment = {
                 "id": str(comment.get("id", "")),
                 "comment_text": comment.get("comment_text", ""),
                 "comment_date": comment.get("comment_date", ""),
                 "user_id": comment.get("user_id", ""),
                 "announcement_id": comment.get("announcement_id", ""),
-                "kutsero_fname": "Current",
-                "kutsero_lname": "User",
-                "kutsero_username": None,
-                "user_email": None,
+                "parent_comment_id": comment.get("parent_comment_id"),
+                "reply_count": 0,
             }
+            
+            # Fetch user details using the helper function
+            user_details = fetch_user_details(service_client, comment.get("user_id"), logger)
+            formatted_comment.update({
+                "kutsero_fname": user_details["fname"],
+                "kutsero_lname": user_details["lname"],
+                "kutsero_username": user_details["username"],
+                "user_email": user_details["email"],
+            })
 
-            logger.info(f"[DEBUG] Comment posted successfully: {comment.get('id')}")
+            logger.info(f"[DEBUG] Comment posted successfully by {user_details['username']}: {comment.get('id')}")
 
             return Response({
                 "message": "Comment posted successfully",
@@ -2794,7 +3289,8 @@ def handle_post_comment(request, announcement_id):
         logger.error(f"[ERROR] Error in handle_post_comment: {e}")
         logger.error(traceback.format_exc())
         return Response({"error": "Failed to post comment"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+        
+        
 # Legacy function for backward compatibility
 @api_view(["GET"])
 def get_announcement_comments(request, announcement_id):
@@ -2803,13 +3299,75 @@ def get_announcement_comments(request, announcement_id):
     """
     return announcement_comments_handler(request, announcement_id)
 
-@api_view(["POST"])
 def post_announcement_comment(request, announcement_id):
     """
     Legacy function - redirects to the main handler
     """
     return announcement_comments_handler(request, announcement_id)
 
+@api_view(["GET"])
+def get_comment_replies(request, comment_id):
+    """
+    Get all replies for a specific comment
+    """
+    try:
+        logger.info(f"[DEBUG] Fetching replies for comment ID: {comment_id}")
+        
+        if not comment_id:
+            return Response({"error": "Invalid comment ID"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if supabase client is available
+        if 'supabase' not in globals():
+            logger.error("[ERROR] Supabase client not initialized")
+            return Response({"error": "Database connection not available"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        # Fetch replies
+        try:
+            replies_response = supabase.table("comment") \
+                .select("*") \
+                .eq("parent_comment_id", comment_id) \
+                .order("comment_date", desc=False) \
+                .execute()
+            
+            logger.info(f"[DEBUG] Found {len(replies_response.data) if replies_response.data else 0} replies")
+        except Exception as db_error:
+            logger.error(f"[ERROR] Failed to fetch replies: {db_error}")
+            return Response({"error": "Failed to fetch replies"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        formatted_replies = []
+        if replies_response.data:
+            for reply in replies_response.data:
+                try:
+                    formatted_reply = {
+                        "id": str(reply.get("id", "")),
+                        "comment_text": reply.get("comment_text", ""),
+                        "comment_date": reply.get("comment_date", ""),
+                        "user_id": reply.get("user_id", ""),
+                        "announcement_id": reply.get("announcement_id", ""),
+                        "parent_comment_id": reply.get("parent_comment_id", ""),
+                    }
+                    
+                    # Fetch user details using the helper function
+                    user_details = fetch_user_details(supabase, reply.get("user_id"), logger)
+                    formatted_reply.update({
+                        "kutsero_fname": user_details["fname"],
+                        "kutsero_lname": user_details["lname"],
+                        "kutsero_username": user_details["username"],
+                        "user_email": user_details["email"],
+                    })
+                    
+                    formatted_replies.append(formatted_reply)
+                except Exception as e:
+                    logger.warning(f"[WARN] Error processing reply: {e}")
+                    continue
+        
+        logger.info(f"[DEBUG] Returning {len(formatted_replies)} formatted replies")
+        return Response({"replies": formatted_replies}, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"[ERROR] Error in get_comment_replies: {e}")
+        logger.error(traceback.format_exc())
+        return Response({"error": "Failed to fetch replies"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 # ------------------------------------------------ CALENDAR ------------------------------------------------
 
 @api_view(['GET'])
@@ -2916,81 +3474,1385 @@ def delete_calendar_event(request, event_id):
 @api_view(['POST'])
 def create_sos_request(request):
     """
-    Create a new SOS request
+    Create a new SOS request with optional image uploads
+    Stores first image URL in sos_requests.sos_image field
+    Auto-fills contact number and name from kutsero profile
     """
     try:
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
+        # Get all required fields
         user_id = request.data.get("user_id")
-        contact_number = request.data.get("contact_number")
+        user_name = request.data.get("user_name")
+        kutsero_profile_id = request.data.get("kutsero_profile")
+        contact_number = request.data.get("contact_number") or request.data.get("contact_num")
         additional_info = request.data.get("additional_info")
         emergency_type = request.data.get("emergency_type")
-        horse_status = request.data.get("horse_status")  # array from frontend
+        horse_status = request.data.get("horse_status")
         description = request.data.get("description")
         location_text = request.data.get("location_text")
         latitude = request.data.get("latitude")
         longitude = request.data.get("longitude")
+        images = request.data.get("images", []) or request.data.get("sos_images", [])
 
-        if not user_id:
-            return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        print(f"[DEBUG] Received request data keys: {request.data.keys()}")
+        print(f"[DEBUG] Number of images: {len(images) if images else 0}")
+        print(f"[DEBUG] Kutsero Profile ID: {kutsero_profile_id}")
 
-        response = service_client.table("sos_requests").insert({
+        # Fetch kutsero profile data if kutsero_profile_id is provided
+        if kutsero_profile_id:
+            try:
+                # Validate UUID format
+                uuid.UUID(kutsero_profile_id)
+                
+                # Fetch kutsero profile from database
+                profile_url = f"{SUPABASE_URL}/rest/v1/kutsero_profile"
+                profile_headers = {
+                    "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                }
+                profile_params = {"id": f"eq.{kutsero_profile_id}", "select": "kutsero_fname,kutsero_lname,kutsero_phone_num"}
+                
+                profile_response = requests.get(profile_url, headers=profile_headers, params=profile_params)
+                
+                if profile_response.status_code == 200:
+                    profile_data = profile_response.json()
+                    if profile_data and len(profile_data) > 0:
+                        profile = profile_data[0]
+                        
+                        # Auto-fill contact number if not provided
+                        if not contact_number and profile.get("kutsero_phone_num"):
+                            contact_number = profile.get("kutsero_phone_num")
+                            print(f"[DEBUG] Auto-filled contact_number from profile: {contact_number}")
+                        
+                        # Auto-fill user name if not provided
+                        if not user_name:
+                            fname = profile.get("kutsero_fname", "")
+                            lname = profile.get("kutsero_lname", "")
+                            user_name = f"{fname} {lname}".strip()
+                            print(f"[DEBUG] Auto-filled user_name from profile: {user_name}")
+                    else:
+                        print(f"[WARNING] No profile found for kutsero_profile_id: {kutsero_profile_id}")
+                else:
+                    print(f"[WARNING] Failed to fetch profile: {profile_response.status_code}")
+                    
+            except (ValueError, AttributeError) as e:
+                print(f"[WARNING] Invalid UUID format for kutsero_profile_id: {kutsero_profile_id}, error: {e}")
+
+        # Validate required fields
+        if not contact_number:
+            return Response({"error": "contact_number is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Upload images first if provided
+        uploaded_images = []
+        first_image_url = None
+
+        if images and len(images) > 0:
+            print(f"[DEBUG] Processing {len(images)} images")
+            
+            for idx, image_data in enumerate(images):
+                try:
+                    image_base64 = image_data
+                    
+                    # Handle base64 string
+                    if isinstance(image_base64, str):
+                        if ";base64," in image_base64:
+                            # Extract format and base64 data
+                            format_part, imgstr = image_base64.split(";base64,")
+                            ext = format_part.split("/")[-1] if "/" in format_part else "jpg"
+                        else:
+                            imgstr = image_base64
+                            ext = "jpg"
+                    else:
+                        continue
+                    
+                    # Decode base64 to bytes
+                    file_bytes = base64.b64decode(imgstr)
+                    print(f"[DEBUG] Decoded image {idx + 1}, size: {len(file_bytes)} bytes")
+                    
+                    # Generate unique filename
+                    timestamp = int(datetime.now().timestamp() * 1000)
+                    file_name = f"sos_{timestamp}_{uuid.uuid4().hex[:8]}_{idx}.{ext}"
+                    
+                    # Upload to Supabase Storage using REST API
+                    print(f"[DEBUG] Uploading to bucket 'sos_image' with filename: {file_name}")
+                    upload_url = f"{SUPABASE_URL}/storage/v1/object/sos_image/{file_name}"
+                    upload_headers = {
+                        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                        "Content-Type": f"image/{ext}",
+                    }
+                    
+                    upload_response = requests.post(upload_url, data=file_bytes, headers=upload_headers)
+                    print(f"[DEBUG] Upload status: {upload_response.status_code}")
+                    print(f"[DEBUG] Upload response: {upload_response.text}")
+                    
+                    if upload_response.status_code in [200, 201]:
+                        # Construct public URL
+                        public_url = f"{SUPABASE_URL}/storage/v1/object/public/sos_image/{file_name}"
+                        print(f"[DEBUG] Image URL: {public_url}")
+                        
+                        uploaded_images.append({
+                            "file_name": file_name,
+                            "url": public_url
+                        })
+                        
+                        # Store the first image URL
+                        if idx == 0:
+                            first_image_url = public_url
+                        
+                        print(f"[SUCCESS] Successfully uploaded image {idx + 1}: {file_name}")
+                    else:
+                        print(f"[ERROR] Upload failed with status {upload_response.status_code}")
+                    
+                except Exception as img_error:
+                    print(f"[ERROR] Error uploading image {idx + 1}: {str(img_error)}")
+                    import traceback
+                    print(f"[TRACEBACK] {traceback.format_exc()}")
+                    continue
+
+        # Build the insert data based on your table structure
+        insert_data = {
             "contact_number": contact_number,
-            "additional_info": additional_info,
-            "emergency_type": emergency_type,
-            "horse_status": horse_status,  # store as array (Supabase supports JSON/array fields)
-            "description": description,
-            "location_text": location_text,
-            "latitude": latitude,
-            "longitude": longitude,
             "status": "pending",
-            "created_at": datetime.utcnow().isoformat()
-        }).execute()
+        }
+        
+        # Add the first image URL to sos_image column
+        if first_image_url:
+            insert_data["sos_image"] = first_image_url
+        
+        # Add optional fields if provided
+        if additional_info:
+            insert_data["additional_info"] = additional_info
+        if emergency_type:
+            insert_data["emergency_type"] = emergency_type
+        if horse_status:
+            insert_data["horse_status"] = horse_status
+        if description:
+            insert_data["description"] = description
+        if location_text:
+            insert_data["location_text"] = location_text
+        if latitude:
+            insert_data["latitude"] = float(latitude)
+        if longitude:
+            insert_data["longitude"] = float(longitude)
+        
+        # Only add user_id if it's a valid UUID
+        if user_id:
+            try:
+                # Validate UUID format
+                uuid.UUID(user_id)
+                insert_data["user_id"] = user_id
+                print(f"[DEBUG] Valid user_id added: {user_id}")
+            except (ValueError, AttributeError):
+                print(f"[WARNING] Invalid UUID format for user_id: {user_id}, skipping")
+        
+        if user_name:
+            insert_data["user_name"] = user_name
+            print(f"[DEBUG] User name added: {user_name}")
 
-        return Response({"message": "SOS request created", "data": response.data}, status=status.HTTP_201_CREATED)
+        # Note: We're NOT storing kutsero_profile_id because it's a separate table
+        # The contact_number and user_name are already stored, which is sufficient
+        print(f"[DEBUG] Not storing kutsero_profile_id - using contact_number and user_name instead")
+
+        # Insert into sos_requests table using REST API
+        print(f"[DEBUG] Creating SOS request with data: {insert_data}")
+        insert_url = f"{SUPABASE_URL}/rest/v1/sos_requests"
+        insert_headers = {
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+        }
+        
+        sos_response = requests.post(insert_url, json=insert_data, headers=insert_headers)
+        sos_json = sos_response.json()
+        print(f"[DEBUG] SOS insert status: {sos_response.status_code}")
+        print(f"[DEBUG] SOS insert response: {sos_json}")
+
+        if sos_response.status_code not in [200, 201]:
+            print(f"[ERROR] Failed to create SOS request")
+            
+            # Cleanup uploaded images if SOS request creation fails
+            if uploaded_images:
+                for img in uploaded_images:
+                    try:
+                        file_name = img["file_name"]
+                        delete_url = f"{SUPABASE_URL}/storage/v1/object/sos_image/{file_name}"
+                        delete_headers = {
+                            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                        }
+                        requests.delete(delete_url, headers=delete_headers)
+                        print(f"[DEBUG] Cleaned up uploaded image: {file_name}")
+                    except Exception as e:
+                        print(f"[ERROR] Failed to cleanup image: {e}")
+            
+            return Response(
+                {"error": "Failed to create SOS request", "details": sos_json},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        sos_request_id = sos_json[0].get('id') if isinstance(sos_json, list) else sos_json.get('id')
+        print(f"[SUCCESS] Created SOS request with ID: {sos_request_id}")
+
+        return Response({
+            "message": "SOS request created successfully",
+            "data": sos_json[0] if isinstance(sos_json, list) else sos_json,
+            "images_uploaded": len(uploaded_images),
+            "images": uploaded_images
+        }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
-        print(f"Error creating SOS request: {e}")
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        print(f"[ERROR] Error creating SOS request: {e}")
+        import traceback
+        print(f"[TRACEBACK] {traceback.format_exc()}")
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @api_view(['GET'])
 def list_sos_requests(request):
     """
-    Get all SOS requests (latest first)
+    Get all SOS requests with their associated images (latest first)
     """
     try:
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-        response = service_client.table("sos_requests").select("*").order("created_at", desc=True).execute()
+        # Get all SOS requests
+        sos_response = service_client.table("sos_requests")\
+            .select("*")\
+            .order("created_at", desc=True)\
+            .execute()
 
-        return Response({"sos_requests": response.data}, status=status.HTTP_200_OK)
+        sos_requests = sos_response.data
+
+        # For each SOS request, fetch associated images
+        for sos_request in sos_requests:
+            sos_id = sos_request.get('id')
+            
+            # Get images for this SOS request
+            images_response = service_client.table("sos_image")\
+                .select("*")\
+                .eq("sos_request_id", sos_id)\
+                .order("uploaded_at", desc=False)\
+                .execute()
+            
+            sos_request['images'] = images_response.data
+
+        return Response({
+            "sos_requests": sos_requests
+        }, status=status.HTTP_200_OK)
 
     except Exception as e:
         print(f"Error fetching SOS requests: {e}")
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
 @api_view(['GET'])
+def get_sos_request_detail(request, sos_id):
+    """
+    Get a single SOS request with all its images
+    """
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        # Get the SOS request
+        sos_response = service_client.table("sos_requests")\
+            .select("*")\
+            .eq("id", sos_id)\
+            .execute()
+
+        if not sos_response.data or len(sos_response.data) == 0:
+            return Response(
+                {"error": "SOS request not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        sos_request = sos_response.data[0]
+
+        # Get images for this SOS request
+        images_response = service_client.table("sos_image")\
+            .select("*")\
+            .eq("sos_request_id", sos_id)\
+            .order("uploaded_at", desc=False)\
+            .execute()
+
+        sos_request['images'] = images_response.data
+
+        return Response({
+            "sos_request": sos_request
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"Error fetching SOS request detail: {e}")
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['DELETE'])
+def delete_sos_image(request, image_id):
+    """
+    Delete a specific SOS image
+    """
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        # Get the image record to get the file name
+        image_response = service_client.table("sos_image")\
+            .select("*")\
+            .eq("id", image_id)\
+            .execute()
+
+        if not image_response.data or len(image_response.data) == 0:
+            return Response(
+                {"error": "Image not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        image_record = image_response.data[0]
+        file_name = image_record.get('file_name')
+
+        # Delete from storage
+        service_client.storage.from_("sos_image").remove([file_name])
+
+        # Delete from database
+        service_client.table("sos_image").delete().eq("id", image_id).execute()
+
+        return Response({
+            "message": "Image deleted successfully"
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"Error deleting SOS image: {e}")
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(['PATCH'])
+def update_sos_status(request, sos_id):
+    """
+    Update SOS request status (e.g., pending, in_progress, resolved)
+    """
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+        new_status = request.data.get("status")
+        
+        if not new_status:
+            return Response(
+                {"error": "status is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Update the status
+        response = service_client.table("sos_requests")\
+            .update({"status": new_status})\
+            .eq("id", sos_id)\
+            .execute()
+
+        if not response.data or len(response.data) == 0:
+            return Response(
+                {"error": "SOS request not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        return Response({
+            "message": "Status updated successfully",
+            "data": response.data[0]
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"Error updating SOS status: {e}")
+        return Response(
+            {"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
 def debug_urls(request):
     """
-    Debug endpoint to see all registered URLs
+    Returns a list of all registered URL patterns for debugging.
     """
-    url_patterns = []
     resolver = get_resolver()
-    
-    # Function to recursively extract URLs
-    def extract_urls(patterns, prefix=''):
-        for pattern in patterns:
-            if hasattr(pattern, 'url_patterns'):
-                # This is an include
-                extract_urls(pattern.url_patterns, prefix + str(pattern.pattern))
-            else:
-                url_patterns.append({
-                    'pattern': prefix + str(pattern.pattern),
-                    'name': getattr(pattern, 'name', 'N/A'),
-                    'callback': pattern.callback.__name__ if hasattr(pattern, 'callback') else 'N/A'
-                })
-    
-    extract_urls(resolver.url_patterns)
-    return Response({'url_patterns': url_patterns})
+    all_urls = []
 
+    for pattern in resolver.url_patterns:
+        all_urls.append(str(pattern.pattern))
+
+    return JsonResponse({"urls": all_urls})
+
+# ------------------------------------------------ USERS ------------------------------------------------
+
+@api_view(['GET'])
+def get_all_users(request):
+    """
+    Get all users from all user types (kutsero, vet, horse_operator, ctu_vet, dvmf_user)
+    Returns a unified list with consistent structure
+    """
+    try:
+        user_id = request.GET.get("user_id")
+        search_query = request.GET.get("query", "").lower()
+        role_filter = request.GET.get("role")
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        users = []
+
+        # Kutseros
+        if role_filter in [None, "kutsero"]:
+            try:
+                if user_id:
+                    kutsero_profiles = service_client.table("kutsero_profile").select(
+                        "kutsero_id, kutsero_fname, kutsero_lname, kutsero_username, kutsero_phone_num, kutsero_email, users!inner(status)"
+                    ).neq("kutsero_id", user_id).execute()
+                else:
+                    kutsero_profiles = service_client.table("kutsero_profile").select(
+                        "kutsero_id, kutsero_fname, kutsero_lname, kutsero_username, kutsero_phone_num, kutsero_email, users!inner(status)"
+                    ).execute()
+                
+                for p in kutsero_profiles.data or []:
+                    # Filter out declined and pending users
+                    if p.get('users', {}).get('status') in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = p.get('kutsero_fname') or p.get('kutsero_username') or 'Unknown'
+                    if p.get('kutsero_lname'):
+                        display_name += f" {p['kutsero_lname']}"
+                    
+                    if search_query and search_query not in display_name.lower() and search_query not in (p.get('kutsero_email') or '').lower():
+                        continue
+                    
+                    users.append({
+                        'id': p['kutsero_id'],
+                        'name': display_name,
+                        'role': 'Kutsero',
+                        'user_type': 'kutsero',
+                        'user_status': p.get('users', {}).get('status', 'active'),
+                        'avatar': '🐴',
+                        'email': p.get('kutsero_email'),
+                        'phone': p.get('kutsero_phone_num'),
+                        'status': p.get('users', {}).get('status', 'active')
+                    })
+            except Exception as e:
+                print(f"Error fetching kutseros: {e}")
+
+        # Vets
+        if role_filter in [None, "vet"]:
+            try:
+                if user_id:
+                    vet_profiles = service_client.table("vet_profile").select(
+                        "vet_id, vet_fname, vet_lname, vet_phone_num, vet_email, users!inner(status)"
+                    ).neq("vet_id", user_id).execute()
+                else:
+                    vet_profiles = service_client.table("vet_profile").select(
+                        "vet_id, vet_fname, vet_lname, vet_phone_num, vet_email, users!inner(status)"
+                    ).execute()
+                
+                for p in vet_profiles.data or []:
+                    # Filter out declined and pending users
+                    if p.get('users', {}).get('status') in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = f"Dr. {p.get('vet_fname', '')}"
+                    if p.get('vet_lname'):
+                        display_name += f" {p['vet_lname']}"
+                    
+                    if search_query and search_query not in display_name.lower() and search_query not in (p.get('vet_email') or '').lower():
+                        continue
+                    
+                    users.append({
+                        'id': p['vet_id'],
+                        'name': display_name,
+                        'role': 'Veterinarian',
+                        'user_type': 'vet',
+                        'user_status': p.get('users', {}).get('status', 'active'),
+                        'avatar': '👩‍⚕️',
+                        'email': p.get('vet_email'),
+                        'phone': p.get('vet_phone_num'),
+                        'status': p.get('users', {}).get('status', 'active')
+                    })
+            except Exception as e:
+                print(f"Error fetching vets: {e}")
+
+        # Horse Operators
+        if role_filter in [None, "horse_operator"]:
+            try:
+                if user_id:
+                    op_profiles = service_client.table("horse_op_profile").select(
+                        "op_id, op_fname, op_lname, op_phone_num, op_email, users!inner(status)"
+                    ).neq("op_id", user_id).execute()
+                else:
+                    op_profiles = service_client.table("horse_op_profile").select(
+                        "op_id, op_fname, op_lname, op_phone_num, op_email, users!inner(status)"
+                    ).execute()
+                
+                for p in op_profiles.data or []:
+                    # Filter out declined and pending users
+                    if p.get('users', {}).get('status') in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = p.get('op_fname', 'Unknown')
+                    if p.get('op_lname'):
+                        display_name += f" {p['op_lname']}"
+                    
+                    if search_query and search_query not in display_name.lower() and search_query not in (p.get('op_email') or '').lower():
+                        continue
+                    
+                    users.append({
+                        'id': p['op_id'],
+                        'name': display_name,
+                        'role': 'Horse Operator',
+                        'user_type': 'operator',
+                        'user_status': p.get('users', {}).get('status', 'active'),
+                        'avatar': '👨‍💼',
+                        'email': p.get('op_email'),
+                        'phone': p.get('op_phone_num'),
+                        'status': p.get('users', {}).get('status', 'active')
+                    })
+            except Exception as e:
+                print(f"Error fetching horse operators: {e}")
+
+        # CTU Vets
+        if role_filter in [None, "ctu_vet"]:
+            try:
+                if user_id:
+                    ctu_profiles = service_client.table("ctu_vet_profile").select(
+                        "ctu_id, ctu_fname, ctu_lname, ctu_email, ctu_phonenum, users!inner(status)"
+                    ).neq("ctu_id", user_id).execute()
+                else:
+                    ctu_profiles = service_client.table("ctu_vet_profile").select(
+                        "ctu_id, ctu_fname, ctu_lname, ctu_email, ctu_phonenum, users!inner(status)"
+                    ).execute()
+                
+                for p in ctu_profiles.data or []:
+                    # Filter out declined and pending users
+                    if p.get('users', {}).get('status') in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = f"Dr. {p.get('ctu_fname', '')}"
+                    if p.get('ctu_lname'):
+                        display_name += f" {p['ctu_lname']}"
+                    
+                    if search_query and search_query not in display_name.lower() and search_query not in (p.get('ctu_email') or '').lower():
+                        continue
+                    
+                    users.append({
+                        'id': p['ctu_id'],
+                        'name': display_name,
+                        'role': 'Ctu-Vetmed',
+                        'user_type': 'ctu_vet',
+                        'user_status': p.get('users', {}).get('status', 'active'),
+                        'avatar': '🧑‍⚕️',
+                        'email': p.get('ctu_email'),
+                        'phone': p.get('ctu_phonenum'),
+                        'status': p.get('users', {}).get('status', 'active')
+                    })
+            except Exception as e:
+                print(f"Error fetching CTU vets: {e}")
+
+        # DVMF Users
+        if role_filter in [None, "dvmf_user"]:
+            try:
+                if user_id:
+                    dvmf_profiles = service_client.table("dvmf_user_profile").select(
+                        "dvmf_id, dvmf_fname, dvmf_lname, dvmf_email, dvmf_phonenum, users!inner(status)"
+                    ).neq("dvmf_id", user_id).execute()
+                else:
+                    dvmf_profiles = service_client.table("dvmf_user_profile").select(
+                        "dvmf_id, dvmf_fname, dvmf_lname, dvmf_email, dvmf_phonenum, users!inner(status)"
+                    ).execute()
+                
+                for p in dvmf_profiles.data or []:
+                    # Filter out declined and pending users
+                    if p.get('users', {}).get('status') in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = p.get('dvmf_fname', 'Unknown')
+                    if p.get('dvmf_lname'):
+                        display_name += f" {p['dvmf_lname']}"
+                    
+                    if search_query and search_query not in display_name.lower() and search_query not in (p.get('dvmf_email') or '').lower():
+                        continue
+                    
+                    users.append({
+                        'id': p['dvmf_id'],
+                        'name': display_name,
+                        'role': 'Dvmf',
+                        'user_type': 'dvmf_user',
+                        'user_status': p.get('users', {}).get('status', 'active'),
+                        'avatar': '🧑‍💼',
+                        'email': p.get('dvmf_email'),
+                        'phone': p.get('dvmf_phonenum'),
+                        'status': p.get('users', {}).get('status', 'active')
+                    })
+            except Exception as e:
+                print(f"Error fetching DVMF users: {e}")
+
+        users.sort(key=lambda x: x['name'])
+        return Response({
+            'success': True,
+            'users': users,
+            'total_count': len(users)
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"Error fetching all users: {e}")
+        return Response({
+            'success': False,
+            'error': str(e),
+            'users': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def search_all_users(request):
+    """
+    Search users by name across all user types
+    """
+    try:
+        query = request.GET.get('query', '').strip().lower()
+        limit = int(request.GET.get('limit', 10))
+        user_id = request.GET.get('user_id')
+        role_filter = request.GET.get('role')
+
+        if not query:
+            return Response({
+                'success': False,
+                'message': 'Query parameter is required',
+                'data': []
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        users = []
+
+        # Kutseros
+        if role_filter in [None, "kutsero"]:
+            try:
+                if user_id:
+                    kutsero_profiles = service_client.table("kutsero_profile").select(
+                        "kutsero_id, kutsero_fname, kutsero_lname, kutsero_username, kutsero_phone_num, kutsero_email, users!inner(status)"
+                    ).neq("kutsero_id", user_id).execute()
+                else:
+                    kutsero_profiles = service_client.table("kutsero_profile").select(
+                        "kutsero_id, kutsero_fname, kutsero_lname, kutsero_username, kutsero_phone_num, kutsero_email, users!inner(status)"
+                    ).execute()
+                
+                for p in kutsero_profiles.data or []:
+                    # Filter out declined and pending users
+                    if p.get('users', {}).get('status') in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = p.get('kutsero_fname') or p.get('kutsero_username') or 'Unknown'
+                    if p.get('kutsero_lname'):
+                        display_name += f" {p['kutsero_lname']}"
+                    
+                    if query in display_name.lower() or query in (p.get('kutsero_email') or '').lower():
+                        users.append({
+                            'id': p['kutsero_id'],
+                            'name': display_name,
+                            'role': 'Kutsero',
+                            'user_type': 'kutsero',
+                            'user_status': p.get('users', {}).get('status', 'active'),
+                            'avatar': '🐴',
+                            'email': p.get('kutsero_email'),
+                            'phone': p.get('kutsero_phone_num'),
+                            'status': p.get('users', {}).get('status', 'active')
+                        })
+            except Exception as e:
+                print(f"Error searching kutseros: {e}")
+
+        # Vets
+        if role_filter in [None, "vet"]:
+            try:
+                if user_id:
+                    vet_profiles = service_client.table("vet_profile").select(
+                        "vet_id, vet_fname, vet_lname, vet_phone_num, vet_email, users!inner(status)"
+                    ).neq("vet_id", user_id).execute()
+                else:
+                    vet_profiles = service_client.table("vet_profile").select(
+                        "vet_id, vet_fname, vet_lname, vet_phone_num, vet_email, users!inner(status)"
+                    ).execute()
+                
+                for p in vet_profiles.data or []:
+                    # Filter out declined and pending users
+                    if p.get('users', {}).get('status') in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = f"Dr. {p.get('vet_fname', '')}"
+                    if p.get('vet_lname'):
+                        display_name += f" {p['vet_lname']}"
+                    
+                    if query in display_name.lower() or query in (p.get('vet_email') or '').lower():
+                        users.append({
+                            'id': p['vet_id'],
+                            'name': display_name,
+                            'role': 'Veterinarian',
+                            'user_type': 'vet',
+                            'user_status': p.get('users', {}).get('status', 'active'),
+                            'avatar': '👩‍⚕️',
+                            'email': p.get('vet_email'),
+                            'phone': p.get('vet_phone_num'),
+                            'status': p.get('users', {}).get('status', 'active')
+                        })
+            except Exception as e:
+                print(f"Error searching vets: {e}")
+
+        # Horse Operators
+        if role_filter in [None, "horse_operator"]:
+            try:
+                if user_id:
+                    op_profiles = service_client.table("horse_op_profile").select(
+                        "op_id, op_fname, op_lname, op_phone_num, op_email, users!inner(status)"
+                    ).neq("op_id", user_id).execute()
+                else:
+                    op_profiles = service_client.table("horse_op_profile").select(
+                        "op_id, op_fname, op_lname, op_phone_num, op_email, users!inner(status)"
+                    ).execute()
+                
+                for p in op_profiles.data or []:
+                    # Filter out declined and pending users
+                    if p.get('users', {}).get('status') in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = p.get('op_fname', 'Unknown')
+                    if p.get('op_lname'):
+                        display_name += f" {p['op_lname']}"
+                    
+                    if query in display_name.lower() or query in (p.get('op_email') or '').lower():
+                        users.append({
+                            'id': p['op_id'],
+                            'name': display_name,
+                            'role': 'Horse Operator',
+                            'user_type': 'operator',
+                            'user_status': p.get('users', {}).get('status', 'active'),
+                            'avatar': '👨‍💼',
+                            'email': p.get('op_email'),
+                            'phone': p.get('op_phone_num'),
+                            'status': p.get('users', {}).get('status', 'active')
+                        })
+            except Exception as e:
+                print(f"Error searching horse operators: {e}")
+
+        # CTU Vets
+        if role_filter in [None, "ctu_vet"]:
+            try:
+                if user_id:
+                    ctu_profiles = service_client.table("ctu_vet_profile").select(
+                        "ctu_id, ctu_fname, ctu_lname, ctu_email, ctu_phonenum, users!inner(status)"
+                    ).neq("ctu_id", user_id).execute()
+                else:
+                    ctu_profiles = service_client.table("ctu_vet_profile").select(
+                        "ctu_id, ctu_fname, ctu_lname, ctu_email, ctu_phonenum, users!inner(status)"
+                    ).execute()
+                
+                for p in ctu_profiles.data or []:
+                    # Filter out declined and pending users
+                    if p.get('users', {}).get('status') in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = f"Dr. {p.get('ctu_fname', '')}"
+                    if p.get('ctu_lname'):
+                        display_name += f" {p['ctu_lname']}"
+                    
+                    if query in display_name.lower() or query in (p.get('ctu_email') or '').lower():
+                        users.append({
+                            'id': p['ctu_id'],
+                            'name': display_name,
+                            'role': 'Ctu-Vetmed',
+                            'user_type': 'ctu_vet',
+                            'user_status': p.get('users', {}).get('status', 'active'),
+                            'avatar': '🧑‍⚕️',
+                            'email': p.get('ctu_email'),
+                            'phone': p.get('ctu_phonenum'),
+                            'status': p.get('users', {}).get('status', 'active')
+                        })
+            except Exception as e:
+                print(f"Error searching CTU vets: {e}")
+
+        # DVMF Users
+        if role_filter in [None, "dvmf_user"]:
+            try:
+                if user_id:
+                    dvmf_profiles = service_client.table("dvmf_user_profile").select(
+                        "dvmf_id, dvmf_fname, dvmf_lname, dvmf_email, dvmf_phonenum, users!inner(status)"
+                    ).neq("dvmf_id", user_id).execute()
+                else:
+                    dvmf_profiles = service_client.table("dvmf_user_profile").select(
+                        "dvmf_id, dvmf_fname, dvmf_lname, dvmf_email, dvmf_phonenum, users!inner(status)"
+                    ).execute()
+                
+                for p in dvmf_profiles.data or []:
+                    # Filter out declined and pending users
+                    if p.get('users', {}).get('status') in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = p.get('dvmf_fname', 'Unknown')
+                    if p.get('dvmf_lname'):
+                        display_name += f" {p['dvmf_lname']}"
+                    
+                    if query in display_name.lower() or query in (p.get('dvmf_email') or '').lower():
+                        users.append({
+                            'id': p['dvmf_id'],
+                            'name': display_name,
+                            'role': 'Dvmf',
+                            'user_type': 'dvmf_user',
+                            'user_status': p.get('users', {}).get('status', 'active'),
+                            'avatar': '🧑‍💼',
+                            'email': p.get('dvmf_email'),
+                            'phone': p.get('dvmf_phonenum'),
+                            'status': p.get('users', {}).get('status', 'active')
+                        })
+            except Exception as e:
+                print(f"Error searching DVMF users: {e}")
+
+        users.sort(key=lambda x: x['name'])
+        users = users[:limit]
+        print(f"📊 Found {len(users)} matching users for query: {query}")
+        
+        return Response({
+            'success': True,
+            'message': f'Found {len(users)} users',
+            'data': users,
+            'users': users
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"Error in search_all_users: {str(e)}")
+        return Response({
+            'success': False,
+            'message': 'Internal server error',
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['GET'])
+def get_user_profile(request, user_id):
+    """
+    Get detailed user profile information for any user type
+    """
+    try:
+        logger.info(f"Fetching profile for user_id: {user_id}")
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Try to find user in different tables
+        user_data = None
+        user_type = None
+        
+        # Check kutsero_profile
+        try:
+            kutsero = service_client.table("kutsero_profile").select("*").eq("kutsero_id", user_id).execute()
+            if kutsero.data and len(kutsero.data) > 0:
+                profile = kutsero.data[0]
+                logger.info(f"Found kutsero profile: {profile}")
+                user_data = {
+                    "id": profile.get("kutsero_id"),
+                    "email": profile.get("kutsero_email"),
+                    "role": "Kutsero",
+                    "status": profile.get("status", "active"),
+                    "profile": {
+                        "fname": profile.get("kutsero_fname"),
+                        "mname": profile.get("kutsero_mname"),
+                        "lname": profile.get("kutsero_lname"),
+                        "username": profile.get("kutsero_username"),
+                        "email": profile.get("kutsero_email"),
+                        "phone": profile.get("kutsero_phone_num"),
+                        "city": profile.get("kutsero_city"),
+                        "province": profile.get("kutsero_province"),
+                        "profile_image": profile.get("kutsero_image")
+                    }
+                }
+                user_type = "kutsero"
+                logger.info(f"Kutsero profile - city: {profile.get('kutsero_city')}, province: {profile.get('kutsero_province')}, image: {profile.get('kutsero_image')}")
+        except Exception as e:
+            logger.error(f"Error checking kutsero: {e}")
+        
+        # Check vet_profile
+        if not user_data:
+            try:
+                vet = service_client.table("vet_profile").select("*").eq("vet_id", user_id).execute()
+                if vet.data and len(vet.data) > 0:
+                    profile = vet.data[0]
+                    logger.info(f"Found vet profile: {profile}")
+                    user_data = {
+                        "id": profile.get("vet_id"),
+                        "email": profile.get("vet_email"),
+                        "role": "Veterinarian",
+                        "status": profile.get("status", "active"),
+                        "profile": {
+                            "fname": profile.get("vet_fname"),
+                            "mname": profile.get("vet_mname"),
+                            "lname": profile.get("vet_lname"),
+                            "username": profile.get("vet_username"),
+                            "email": profile.get("vet_email"),
+                            "phone": profile.get("vet_phone_num"),
+                            "city": profile.get("vet_city"),
+                            "province": profile.get("vet_province"),
+                            "profile_image": profile.get("vet_profile_photo")
+                        }
+                    }
+                    user_type = "vet"
+                    logger.info(f"Vet profile - city: {profile.get('vet_city')}, province: {profile.get('vet_province')}, image: {profile.get('vet_profile_photo')}")
+            except Exception as e:
+                logger.error(f"Error checking vet: {e}")
+        
+        # Check horse_op_profile
+        if not user_data:
+            try:
+                op = service_client.table("horse_op_profile").select("*").eq("op_id", user_id).execute()
+                if op.data and len(op.data) > 0:
+                    profile = op.data[0]
+                    logger.info(f"Found horse operator profile: {profile}")
+                    user_data = {
+                        "id": profile.get("op_id"),
+                        "email": profile.get("op_email"),
+                        "role": "Horse Operator",
+                        "status": profile.get("status", "active"),
+                        "profile": {
+                            "fname": profile.get("op_fname"),
+                            "mname": profile.get("op_mname"),
+                            "lname": profile.get("op_lname"),
+                            "username": profile.get("op_username"),
+                            "email": profile.get("op_email"),
+                            "phone": profile.get("op_phone_num"),
+                            "city": profile.get("op_city"),
+                            "province": profile.get("op_province"),
+                            "profile_image": profile.get("op_image")
+                        }
+                    }
+                    user_type = "operator"
+                    logger.info(f"Horse operator profile - city: {profile.get('op_city')}, province: {profile.get('op_province')}, image: {profile.get('op_image')}")
+            except Exception as e:
+                logger.error(f"Error checking horse operator: {e}")
+        
+        # Check ctu_vet_profile
+        if not user_data:
+            try:
+                ctu = service_client.table("ctu_vet_profile").select("*").eq("ctu_id", user_id).execute()
+                if ctu.data and len(ctu.data) > 0:
+                    profile = ctu.data[0]
+                    logger.info(f"Found CTU vet profile: {profile}")
+                    user_data = {
+                        "id": profile.get("ctu_id"),
+                        "email": profile.get("ctu_email"),
+                        "role": "Ctu-Vetmed",
+                        "status": profile.get("status", "active"),
+                        "profile": {
+                            "fname": profile.get("ctu_fname"),
+                            "mname": profile.get("ctu_mname"),
+                            "lname": profile.get("ctu_lname"),
+                            "username": profile.get("ctu_username"),
+                            "email": profile.get("ctu_email"),
+                            "phone": profile.get("ctu_phonenum"),
+                            "city": profile.get("ctu_city"),
+                            "province": profile.get("ctu_province"),
+                            "profile_image": profile.get("ctu_profile_photo")
+                        }
+                    }
+                    user_type = "ctu_vet"
+                    logger.info(f"CTU vet profile - city: {profile.get('ctu_city')}, province: {profile.get('ctu_province')}, image: {profile.get('ctu_profile_photo')}")
+            except Exception as e:
+                logger.error(f"Error checking CTU vet: {e}")
+        
+        # Check dvmf_user_profile
+        if not user_data:
+            try:
+                dvmf = service_client.table("dvmf_user_profile").select("*").eq("dvmf_id", user_id).execute()
+                if dvmf.data and len(dvmf.data) > 0:
+                    profile = dvmf.data[0]
+                    logger.info(f"Found DVMF user profile: {profile}")
+                    user_data = {
+                        "id": profile.get("dvmf_id"),
+                        "email": profile.get("dvmf_email"),
+                        "role": "Dvmf",
+                        "status": profile.get("status", "active"),
+                        "profile": {
+                            "fname": profile.get("dvmf_fname"),
+                            "mname": profile.get("dvmf_mname"),
+                            "lname": profile.get("dvmf_lname"),
+                            "username": profile.get("dvmf_username"),
+                            "email": profile.get("dvmf_email"),
+                            "phone": profile.get("dvmf_phonenum"),
+                            "city": profile.get("dvmf_city"),
+                            "province": profile.get("dvmf_province"),
+                            "profile_image": profile.get("dvmf_profile_photo")
+                        }
+                    }
+                    user_type = "dvmf_user"
+                    logger.info(f"DVMF user profile - city: {profile.get('dvmf_city')}, province: {profile.get('dvmf_province')}, image: {profile.get('dvmf_profile_photo')}")
+            except Exception as e:
+                logger.error(f"Error checking DVMF user: {e}")
+        
+        if user_data:
+            logger.info(f"Successfully found user: {user_type}")
+            logger.info(f"Profile image URL: {user_data['profile'].get('profile_image')}")
+            return Response({
+                'success': True,
+                'user': user_data,
+                'user_type': user_type
+            }, status=status.HTTP_200_OK)
+        else:
+            logger.warning(f"User not found: {user_id}")
+            return Response({
+                'success': False,
+                'error': 'User not found'
+            }, status=status.HTTP_404_NOT_FOUND)
+            
+    except Exception as e:
+        logger.error(f"Error fetching user profile: {e}")
+        logger.error(traceback.format_exc())
+        return Response({
+            'success': False,
+            'error': str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+@api_view(['GET'])
+def get_user_announcements(request, user_id):
+    """
+    Get all announcements posted by a specific user (DVMF or CTU-Vetmed)
+    Returns announcements with images (supports multiple images)
+    """
+    try:
+        logger.info(f"=== GET USER ANNOUNCEMENTS START ===")
+        logger.info(f"User ID received: {user_id}")
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Supabase storage configuration
+        BUCKET_NAME = "announcement-img"
+        
+        # First, let's check what's in the announcement table
+        logger.info("Checking announcement table structure...")
+        sample_announcement = service_client.table("announcement").select("*").limit(1).execute()
+        if sample_announcement.data:
+            logger.info(f"Announcement table columns: {list(sample_announcement.data[0].keys())}")
+        
+        # Fetch ALL announcements first to debug
+        logger.info("Fetching ALL announcements to check data...")
+        all_announcements = service_client.table("announcement").select("*").limit(5).execute()
+        if all_announcements.data:
+            for ann in all_announcements.data:
+                logger.info(f"Sample announcement: ID={ann.get('announce_id')}, "
+                          f"Title={ann.get('announce_title')}, "
+                          f"user_id={ann.get('user_id')}, "
+                          f"created_by={ann.get('created_by')}, "
+                          f"author_id={ann.get('author_id')}")
+        
+        # Try to fetch announcements for this user - try different possible column names
+        announcements_response = None
+        column_used = None
+        
+        # Try user_id
+        try:
+            logger.info(f"Attempting to fetch with user_id = {user_id}")
+            announcements_response = service_client.table("announcement") \
+                .select("*") \
+                .eq("user_id", user_id) \
+                .order("announce_date", desc=True) \
+                .execute()
+            if announcements_response.data and len(announcements_response.data) > 0:
+                column_used = "user_id"
+                logger.info(f"Found {len(announcements_response.data)} announcements using 'user_id'")
+        except Exception as e:
+            logger.error(f"Error with user_id query: {e}")
+        
+        # Try created_by if no results
+        if not announcements_response or not announcements_response.data or len(announcements_response.data) == 0:
+            try:
+                logger.info(f"Attempting to fetch with created_by = {user_id}")
+                announcements_response = service_client.table("announcement") \
+                    .select("*") \
+                    .eq("created_by", user_id) \
+                    .order("announce_date", desc=True) \
+                    .execute()
+                if announcements_response.data and len(announcements_response.data) > 0:
+                    column_used = "created_by"
+                    logger.info(f"Found {len(announcements_response.data)} announcements using 'created_by'")
+            except Exception as e:
+                logger.error(f"Error with created_by query: {e}")
+        
+        # Try author_id if still no results
+        if not announcements_response or not announcements_response.data or len(announcements_response.data) == 0:
+            try:
+                logger.info(f"Attempting to fetch with author_id = {user_id}")
+                announcements_response = service_client.table("announcement") \
+                    .select("*") \
+                    .eq("author_id", user_id) \
+                    .order("announce_date", desc=True) \
+                    .execute()
+                if announcements_response.data and len(announcements_response.data) > 0:
+                    column_used = "author_id"
+                    logger.info(f"Found {len(announcements_response.data)} announcements using 'author_id'")
+            except Exception as e:
+                logger.error(f"Error with author_id query: {e}")
+        
+        # Try ctu_id or dvmf_id if still no results
+        if not announcements_response or not announcements_response.data or len(announcements_response.data) == 0:
+            try:
+                logger.info(f"Attempting to fetch with ctu_id = {user_id}")
+                announcements_response = service_client.table("announcement") \
+                    .select("*") \
+                    .eq("ctu_id", user_id) \
+                    .order("announce_date", desc=True) \
+                    .execute()
+                if announcements_response.data and len(announcements_response.data) > 0:
+                    column_used = "ctu_id"
+                    logger.info(f"Found {len(announcements_response.data)} announcements using 'ctu_id'")
+            except Exception as e:
+                logger.error(f"Error with ctu_id query: {e}")
+        
+        if not announcements_response or not announcements_response.data or len(announcements_response.data) == 0:
+            try:
+                logger.info(f"Attempting to fetch with dvmf_id = {user_id}")
+                announcements_response = service_client.table("announcement") \
+                    .select("*") \
+                    .eq("dvmf_id", user_id) \
+                    .order("announce_date", desc=True) \
+                    .execute()
+                if announcements_response.data and len(announcements_response.data) > 0:
+                    column_used = "dvmf_id"
+                    logger.info(f"Found {len(announcements_response.data)} announcements using 'dvmf_id'")
+            except Exception as e:
+                logger.error(f"Error with dvmf_id query: {e}")
+        
+        logger.info(f"Final result count: {len(announcements_response.data) if announcements_response and announcements_response.data else 0}")
+        logger.info(f"Column used: {column_used}")
+        
+        # Fetch user information
+        user_info = None
+        user_name = "Unknown User"
+        
+        if user_id:
+            try:
+                # Try to fetch from ctu_vet_profile table first
+                logger.info(f"Attempting to fetch user info from ctu_vet_profile for user_id: {user_id}")
+                user_response = service_client.table("ctu_vet_profile") \
+                    .select("*") \
+                    .eq("ctu_id", user_id) \
+                    .execute()
+                
+                if user_response.data and len(user_response.data) > 0:
+                    user_info = user_response.data[0]
+                    user_name = user_info.get("ctu_name") or user_info.get("name") or "CTU User"
+                    logger.info(f"Found CTU user: {user_name}")
+                else:
+                    logger.info(f"User not found in ctu_vet_profile, trying dvmf_user_profile")
+                    
+                    # Try dvmf_user_profile table
+                    user_response = service_client.table("dvmf_user_profile") \
+                        .select("*") \
+                        .eq("dvmf_id", user_id) \
+                        .execute()
+                    
+                    if user_response.data and len(user_response.data) > 0:
+                        user_info = user_response.data[0]
+                        user_name = user_info.get("dvmf_name") or user_info.get("name") or "DVMF User"
+                        logger.info(f"Found DVMF user: {user_name}")
+                    else:
+                        logger.warning(f"User not found in either ctu_vet_profile or dvmf_user_profile")
+            except Exception as user_error:
+                logger.error(f"Error fetching user information: {user_error}")
+        
+        announcements_list = []
+        
+        if announcements_response and announcements_response.data:
+            for announcement in announcements_response.data:
+                announce_id = announcement.get("announce_id")
+                if not announce_id:
+                    logger.warning("Skipping announcement without announce_id")
+                    continue
+                
+                logger.info(f"Processing announcement {announce_id}: {announcement.get('announce_title')}")
+                
+                # Handle image URLs - parse as array for multiple images
+                image_urls = []
+                announce_img = announcement.get("announce_img")
+                
+                logger.info(f"Announcement {announce_id} image data: {announce_img}")
+                
+                if announce_img:
+                    try:
+                        # Check if it's a JSON array string
+                        if isinstance(announce_img, str) and announce_img.startswith('['):
+                            import json
+                            img_array = json.loads(announce_img)
+                            logger.info(f"Parsed image array: {img_array}")
+                            if img_array and isinstance(img_array, list):
+                                # Process ALL images in the array
+                                for img in img_array:
+                                    if isinstance(img, str):
+                                        if img.startswith('http'):
+                                            image_urls.append(img)
+                                        elif img.strip():
+                                            filename = img.strip()
+                                            full_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{filename}"
+                                            image_urls.append(full_url)
+                        # Check if it's already a full URL (single image)
+                        elif isinstance(announce_img, str) and announce_img.startswith('http'):
+                            image_urls.append(announce_img)
+                        # Check if it's a comma-separated list of filenames
+                        elif isinstance(announce_img, str) and ',' in announce_img:
+                            filenames = [f.strip() for f in announce_img.split(',') if f.strip()]
+                            for filename in filenames:
+                                if filename.startswith('http'):
+                                    image_urls.append(filename)
+                                else:
+                                    full_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{filename}"
+                                    image_urls.append(full_url)
+                        # Otherwise, it's just a filename - construct the URL
+                        elif isinstance(announce_img, str) and announce_img.strip():
+                            filename = announce_img.strip()
+                            full_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{filename}"
+                            image_urls.append(full_url)
+                        
+                        logger.info(f"Final image URLs for announcement {announce_id}: {image_urls} (Total: {len(image_urls)})")
+                    except Exception as img_error:
+                        logger.warning(f"Error parsing images for announcement {announce_id}: {img_error}")
+                        image_urls = []
+                
+                # Build announcement data - return array of images or None and include user info
+                announcement_data = {
+                    "id": str(announce_id),
+                    "title": announcement.get("announce_title", "Untitled"),
+                    "content": announcement.get("announce_content", ""),
+                    "created_at": announcement.get("announce_date") or announcement.get("created_at", ""),
+                    "updated_at": announcement.get("updated_at"),
+                    "image_url": image_urls if len(image_urls) > 0 else None,
+                    "user_name": user_name,
+                    "user_info": user_info
+                }
+                
+                logger.info(f"Added announcement: {announcement_data['title']} with {len(image_urls)} images by {user_name}")
+                announcements_list.append(announcement_data)
+        
+        logger.info(f"Returning {len(announcements_list)} announcements for user {user_id}")
+        logger.info(f"=== GET USER ANNOUNCEMENTS END ===")
+        
+        return Response({
+            'success': True,
+            'announcements': announcements_list,
+            'debug_info': {
+                'user_id': user_id,
+                'column_used': column_used,
+                'total_found': len(announcements_list),
+                'user_name': user_name
+            }
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error fetching user announcements: {e}")
+        logger.error(traceback.format_exc())
+        return Response({
+            'success': False,
+            'error': str(e),
+            'announcements': []
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# ------------------------------------------------ FORGOT PASSWORD ------------------------------------------------
+@api_view(["POST"])
+def forgot_password(request):
+    """
+    Check if email exists in Supabase
+    """
+    email = request.data.get("email")
+    
+    if not email:
+        return Response(
+            {"error": "Email is required."}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # Get all users from Supabase
+    url = f"{settings.SUPABASE_URL}/auth/v1/admin/users"
+    headers = {
+        "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+    }
+    
+    resp = requests.get(url, headers=headers)
+    
+    if not resp.ok:
+        return Response(
+            {"error": "Failed to query Supabase."}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    data = resp.json()
+    users = data.get("users", [])
+    
+    # Check if email exists
+    user = next((u for u in users if u.get("email") == email), None)
+    
+    if not user:
+        return Response(
+            {"exists": False, "error": "Email not registered."}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    return Response(
+        {"exists": True}, 
+        status=status.HTTP_200_OK
+    )
+
+
+@api_view(["POST"])
+def reset_password(request):
+    """
+    Reset user password in Supabase
+    """
+    email = request.data.get("email")
+    new_password = request.data.get("newPassword")
+    
+    if not email or not new_password:
+        return Response(
+            {"error": "Email and new password are required."}, 
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    # 1. Get all users from Supabase
+    url = f"{settings.SUPABASE_URL}/auth/v1/admin/users"
+    headers = {
+        "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
+        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
+    }
+    
+    resp = requests.get(url, headers=headers)
+    
+    if not resp.ok:
+        return Response(
+            {"error": "Failed to query Supabase."}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    data = resp.json()
+    users = data.get("users", [])
+    
+    # 2. Find user by email
+    user = next((u for u in users if u.get("email") == email), None)
+    
+    if not user:
+        return Response(
+            {"error": "Email not registered."}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
+    
+    user_id = user.get("id")
+    
+    # 3. Update password in Supabase
+    update_url = f"{settings.SUPABASE_URL}/auth/v1/admin/users/{user_id}"
+    payload = {"password": new_password}
+    
+    update_resp = requests.put(update_url, headers=headers, json=payload)
+    
+    if not update_resp.ok:
+        return Response(
+            {"error": "Failed to reset password."}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
+    return Response(
+        {"success": True, "message": "Password reset successful."}, 
+        status=status.HTTP_200_OK
+    )

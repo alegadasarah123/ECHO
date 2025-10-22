@@ -37,13 +37,12 @@ urlpatterns = [
     path('water-logs/', views.get_water_logs, name='get_water_logs'),
 
      # Get single kutsero profile by kutsero_id (string identifier) 
-    path('profile/<str:kutsero_id>/', views.get_kutsero_profile, name='get_kutsero_profile'),
+
+    path('profile/<str:kutsero_id>/', views.kutsero_profile, name='kutsero_profile'),
     
     # Create new kutsero profile
     path('profile/create/', views.create_kutsero_profile, name='create_kutsero_profile'),
     
-    # Update kutsero profile by kutsero_id 
-    path('profile/<str:kutsero_id>/update/', views.update_kutsero_profile, name='update_kutsero_profile'),
     
     # Get all kutsero profiles
     path('profiles/', views.get_all_kutsero_profiles, name='get_all_kutsero_profiles'),
@@ -51,35 +50,47 @@ urlpatterns = [
     # Search kutsero profiles
     path('profiles/search/', views.search_kutsero_profiles, name='search_kutsero_profiles'),
 
-    # Horse Assignment URLs
-    path('assignments/assign/', views.assign_horse, name='assign_horse'),
-    path('assignments/kutsero/<str:kutsero_id>/', views.get_user_assignments, name='get_user_assignments'),
-    path('assignments/kutsero/<str:kutsero_id>/current/', views.get_current_assignment, name='get_current_assignment'),
-    path('assignments/kutsero/<str:kutsero_id>/history/', views.get_horse_assignment_history, name='get_assignment_history'),
-    path('assignments/kutsero/<str:kutsero_id>/statistics/', views.get_assignment_statistics, name='get_assignment_statistics'),
-    path('assignments/<int:assign_id>/status/', views.update_assignment_status, name='update_assignment_status'),
-    path('assignments/<int:assign_id>/cancel/', views.cancel_assignment, name='cancel_assignment'),
-    
-    # Check-in/Check-out URLs
-    path('assignments/checkin/', views.check_in_horse, name='check_in_horse'),
-    path('assignments/checkout/', views.check_out_horse, name='check_out_horse'),
-
     # Announcements
     # Announcements
     path('announcements/', views.get_announcements, name='get_announcements'),
     path('announcements/<str:announcement_id>/comments/', views.announcement_comments_handler, name='announcement_comments'),
+    path('comments/<str:comment_id>/replies/', views.get_comment_replies, name='get_comment_replies'),
 
     # Calendar endpoints
     path('get-calendar-events/', views.get_calendar_events, name='get_calendar_events'),
     path('create-calendar-event/', views.create_calendar_event, name='create_calendar_event'),
     path('delete-calendar-event/<int:event_id>/', views.delete_calendar_event, name='delete_calendar_event'),
 
-    path("sos/create/", views.create_sos_request, name="create_sos_request"),
+    # SOS endpoints
+    path('sos/create/', views.create_sos_request, name='create_sos_request'),
+    path('sos/list/', views.list_sos_requests, name='list_sos_requests'),
+    path('sos/<str:sos_id>/', views.get_sos_request_detail, name='get_sos_request_detail'),
+    
 
     path('debug/urls/', views.debug_urls, name='debug_urls'),
 
     path('ai_assistant/', views.ai_assistant, name='ai_assistant'),
-    path("chat-history/", views.get_chat_history, name="chat_history"),
+    path('get_chat_history/', views.get_chat_history, name='get_chat_history'),
+
+    path('conversations/', views.get_conversations, name='get_conversations'),
+    path('get_messages/', views.get_messages, name='get_messages'),
+    path('send_message/', views.send_message, name='send_message'),
+    path('available_users/', views.available_users, name='available_users'),
+    path('debug_user_lookup/', views.debug_user_lookup, name='debug_user_lookup'),
+
+    # Profile endpoints
+    path('get_user_profile/<str:user_id>/', views.get_user_profile, name='get_user_profile'),
+
+    # Search endpoint
+    path('search_all_users/', views.search_all_users, name='search_all_users'),
+    path('get_all_users/', views.get_all_users, name='get_all_users'),
+    path('get_user_announcements/<str:user_id>/', views.get_user_announcements, name='get_user_announcements'),
+
+    # Forgot Password endpoints
+    path('forgot-password/', views.forgot_password, name='forgot_password'),
+    path('reset-password/', views.reset_password, name='reset_password'),
+
+
 ]
 
 

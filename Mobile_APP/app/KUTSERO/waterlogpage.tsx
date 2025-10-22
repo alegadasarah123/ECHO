@@ -46,31 +46,76 @@ export default function WaterLogPage({ onBack, logs, horseName, onRefresh }: Wat
   };
 
   const formatDate = (dateString: string): string => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
+    try {
+      // Handle different date formats
+      let date: Date;
+      
+      if (dateString.includes('T')) {
+        // ISO format
+        date = new Date(dateString);
+      } else {
+        // Assume YYYY-MM-DD format
+        date = new Date(dateString + 'T00:00:00');
+      }
+      
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
 
-    if (date.toDateString() === today.toDateString()) {
-      return 'Today';
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return 'Yesterday';
-    } else {
-      return date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric', 
-        year: 'numeric' 
-      });
+      // Reset time part for date comparison
+      today.setHours(0, 0, 0, 0);
+      yesterday.setHours(0, 0, 0, 0);
+      date.setHours(0, 0, 0, 0);
+
+      if (date.getTime() === today.getTime()) {
+        return 'Today';
+      } else if (date.getTime() === yesterday.getTime()) {
+        return 'Yesterday';
+      } else {
+        return date.toLocaleDateString('en-US', { 
+          month: 'short', 
+          day: 'numeric', 
+          year: 'numeric' 
+        });
+      }
+    } catch (error) {
+      console.log('❌ Error formatting date:', dateString, error);
+      return dateString || 'Invalid Date';
     }
   };
 
-  const formatTime = (dateString: string): string => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit',
-      hour12: true 
-    });
+  const formatTime = (timeString: string): string => {
+    try {
+      // If it's already a time string like "06:00 AM", return as is
+      if (timeString && (timeString.includes('AM') || timeString.includes('PM'))) {
+        return timeString;
+      }
+      
+      // If it's an ISO string, parse it
+      if (timeString && timeString.includes('T')) {
+        const date = new Date(timeString);
+        return date.toLocaleTimeString('en-US', { 
+          hour: 'numeric', 
+          minute: '2-digit',
+          hour12: true 
+        });
+      }
+      
+      // If it's just a time without AM/PM, try to parse it
+      if (timeString && timeString.includes(':')) {
+        const [hours, minutes] = timeString.split(':');
+        const hourNum = parseInt(hours);
+        const period = hourNum >= 12 ? 'PM' : 'AM';
+        const hour12 = hourNum % 12 || 12;
+        return `${hour12}:${minutes.padStart(2, '0')} ${period}`;
+      }
+      
+      // Fallback: return the original string or default
+      return timeString || 'Unknown Time';
+    } catch (error) {
+      console.log('❌ Error formatting time:', timeString, error);
+      return timeString || 'Unknown Time';
+    }
   };
 
   const filteredLogs = selectedPeriod === 'All Periods' 
@@ -87,6 +132,20 @@ export default function WaterLogPage({ onBack, logs, horseName, onRefresh }: Wat
     return groups;
   }, {} as Record<string, WaterLog[]>);
 
+  // Function to generate a unique key for each log item
+  const generateLogKey = (log: WaterLog, index: number): string => {
+    // Use log_id if available and not empty, otherwise create a composite key
+    if (log.log_id && log.log_id.trim() !== '') {
+      return log.log_id;
+    }
+    // Fallback: create a unique key using date, time, and index
+    return `${log.log_date}-${log.log_time}-${log.log_period}-${index}`;
+  };
+
+  console.log('📱 WaterLogPage - Current logs:', logs);
+  console.log('📱 WaterLogPage - Filtered logs:', filteredLogs);
+  console.log('📱 WaterLogPage - Grouped logs:', groupedLogs);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="light-content" backgroundColor="#06B6D4" />
@@ -98,7 +157,7 @@ export default function WaterLogPage({ onBack, logs, horseName, onRefresh }: Wat
         
         <View style={styles.headerCenter}>
           <FontAwesome5 name="clipboard-list" size={20} color="#fff" />
-          <Text style={styles.headerTitle}>Water Log</Text>
+          <Text style={styles.headerTitle}>Water Log - {horseName}</Text>
         </View>
         
         <TouchableOpacity style={styles.refreshButton} onPress={onRefresh}>
@@ -148,7 +207,7 @@ export default function WaterLogPage({ onBack, logs, horseName, onRefresh }: Wat
                 <FontAwesome5 name="tint" size={20} color="#3B82F6" />
               </View>
               <Text style={styles.statValue}>{filteredLogs.length}</Text>
-              <Text style={styles.statLabel}>Total Watering</Text>
+              <Text style={styles.statLabel}>Total Entries</Text>
             </View>
             <View style={styles.statDivider} />
             <View style={styles.statItem}>
@@ -156,7 +215,7 @@ export default function WaterLogPage({ onBack, logs, horseName, onRefresh }: Wat
                 <FontAwesome5 name="check-circle" size={20} color="#10B981" />
               </View>
               <Text style={styles.statValue}>
-                {filteredLogs.filter(log => log.log_status === 'Completed').length}
+                {filteredLogs.filter(log => log.log_status === 'Given' || log.log_status === 'Completed').length}
               </Text>
               <Text style={styles.statLabel}>Completed</Text>
             </View>
@@ -167,7 +226,10 @@ export default function WaterLogPage({ onBack, logs, horseName, onRefresh }: Wat
               <FontAwesome5 name="clipboard-list" size={48} color="#9CA3AF" />
               <Text style={styles.emptyTitle}>No water logs found</Text>
               <Text style={styles.emptySubtitle}>
-                Water logs will appear here once you mark water schedules as given
+                {selectedPeriod === 'All Periods' 
+                  ? 'Water logs will appear here once you mark water schedules as given'
+                  : `No water logs found for ${selectedPeriod} period`
+                }
               </Text>
             </View>
           ) : (
@@ -181,8 +243,8 @@ export default function WaterLogPage({ onBack, logs, horseName, onRefresh }: Wat
                     <View style={styles.dateLine} />
                   </View>
                   
-                  {dateLogs.map((log) => (
-                    <View key={log.log_id} style={styles.logCard}>
+                  {dateLogs.map((log, index) => (
+                    <View key={generateLogKey(log, index)} style={styles.logCard}>
                       <View style={styles.logHeader}>
                         <View style={styles.logHeaderLeft}>
                           <View style={[
@@ -197,14 +259,43 @@ export default function WaterLogPage({ onBack, logs, horseName, onRefresh }: Wat
                           </View>
                           <View>
                             <Text style={styles.logPeriod}>{log.log_period}</Text>
-                            <Text style={styles.logScheduledTime}>{log.log_time}</Text>
+                            <Text style={styles.logScheduledTime}>
+                              Scheduled: {formatTime(log.log_time)}
+                            </Text>
                           </View>
                         </View>
-                        <View style={styles.statusBadge}>
-                          <View style={styles.statusIconContainer}>
-                            <FontAwesome5 name="check" size={10} color="#fff" />
+                        <View style={[
+                          styles.statusBadge,
+                          { 
+                            backgroundColor: (log.log_status === 'Given' || log.log_status === 'Completed') 
+                              ? '#DCFCE7' 
+                              : '#FEF3C7' 
+                          }
+                        ]}>
+                          <View style={[
+                            styles.statusIconContainer,
+                            { 
+                              backgroundColor: (log.log_status === 'Given' || log.log_status === 'Completed') 
+                                ? '#10B981' 
+                                : '#F59E0B' 
+                            }
+                          ]}>
+                            <FontAwesome5 
+                              name={(log.log_status === 'Given' || log.log_status === 'Completed') ? "check" : "clock"} 
+                              size={10} 
+                              color="#fff" 
+                            />
                           </View>
-                          <Text style={styles.statusText}>{log.log_status}</Text>
+                          <Text style={[
+                            styles.statusText,
+                            { 
+                              color: (log.log_status === 'Given' || log.log_status === 'Completed') 
+                                ? '#065F46' 
+                                : '#92400E' 
+                            }
+                          ]}>
+                            {log.log_status}
+                          </Text>
                         </View>
                       </View>
                       
@@ -214,26 +305,52 @@ export default function WaterLogPage({ onBack, logs, horseName, onRefresh }: Wat
                         <View style={styles.logDetailRow}>
                           <FontAwesome5 name="tint" size={14} color="#06B6D4" />
                           <Text style={styles.logDetailLabel}>Amount:</Text>
-                          <Text style={styles.logDetailValue}>{log.log_amount}</Text>
+                          <Text style={styles.logDetailValue}>
+                            {log.log_amount || 'Not specified'}
+                          </Text>
                         </View>
                         
                         <View style={styles.logDetailRow}>
                           <FontAwesome5 name="user" size={14} color="#8B5A2B" />
                           <Text style={styles.logDetailLabel}>Given by:</Text>
-                          <Text style={styles.logDetailValue}>{log.log_kutsero_full_name}</Text>
+                          <Text style={styles.logDetailValue}>
+                            {log.log_kutsero_full_name || 'Unknown User'}
+                          </Text>
                         </View>
                         
                         <View style={styles.logDetailRow}>
                           <FontAwesome5 name="clock" size={14} color="#64748B" />
-                          <Text style={styles.logDetailLabel}>Time:</Text>
-                          <Text style={styles.logDetailValue}>{formatTime(log.created_at)}</Text>
+                          <Text style={styles.logDetailLabel}>Completed at:</Text>
+                          <Text style={styles.logDetailValue}>
+                            {formatTime(log.created_at)}
+                          </Text>
                         </View>
                       </View>
                       
                       <View style={styles.logFooter}>
-                        <View style={styles.actionBadge}>
-                          <FontAwesome5 name="check-double" size={10} color="#10B981" />
-                          <Text style={styles.actionText}>{log.log_action}</Text>
+                        <View style={[
+                          styles.actionBadge,
+                          { 
+                            backgroundColor: log.log_action === 'Completed' 
+                              ? '#F0FDF4' 
+                              : '#FFFBEB' 
+                          }
+                        ]}>
+                          <FontAwesome5 
+                            name={log.log_action === 'Completed' ? "check-double" : "exclamation"} 
+                            size={10} 
+                            color={log.log_action === 'Completed' ? '#10B981' : '#F59E0B'} 
+                          />
+                          <Text style={[
+                            styles.actionText,
+                            { 
+                              color: log.log_action === 'Completed' 
+                                ? '#15803D' 
+                                : '#92400E' 
+                            }
+                          ]}>
+                            {log.log_action}
+                          </Text>
                         </View>
                       </View>
                     </View>
@@ -248,7 +365,10 @@ export default function WaterLogPage({ onBack, logs, horseName, onRefresh }: Wat
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#06B6D4' },
+  safeArea: { 
+    flex: 1, 
+    backgroundColor: '#06B6D4' 
+  },
   
   header: { 
     flexDirection: 'row', 
@@ -279,10 +399,11 @@ const styles = StyleSheet.create({
     marginHorizontal: 16 
   },
   headerTitle: { 
-    fontSize: 20, 
+    fontSize: 18, 
     fontWeight: '700', 
     color: '#fff', 
-    marginLeft: 8 
+    marginLeft: 8,
+    textAlign: 'center'
   },
   refreshButton: { 
     width: 44, 
@@ -445,13 +566,11 @@ const styles = StyleSheet.create({
   statusBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    backgroundColor: '#DCFCE7', 
     paddingHorizontal: 10, 
     paddingVertical: 6, 
     borderRadius: 16 
   },
   statusIconContainer: { 
-    backgroundColor: '#10B981', 
     borderRadius: 8, 
     width: 16, 
     height: 16, 
@@ -460,7 +579,6 @@ const styles = StyleSheet.create({
     marginRight: 5 
   },
   statusText: { 
-    color: '#065F46', 
     fontSize: 12, 
     fontWeight: '600' 
   },
@@ -483,7 +601,8 @@ const styles = StyleSheet.create({
     color: '#64748B', 
     fontWeight: '500', 
     marginLeft: 8, 
-    marginRight: 6 
+    marginRight: 6,
+    width: 90
   },
   logDetailValue: { 
     fontSize: 14, 
@@ -502,13 +621,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row', 
     alignItems: 'center', 
     alignSelf: 'flex-start', 
-    backgroundColor: '#F0FDF4', 
     paddingHorizontal: 10, 
     paddingVertical: 6, 
     borderRadius: 12 
   },
   actionText: { 
-    color: '#15803D', 
     fontSize: 12, 
     fontWeight: '600', 
     marginLeft: 6 

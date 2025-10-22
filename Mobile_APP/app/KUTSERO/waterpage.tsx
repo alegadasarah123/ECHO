@@ -4,7 +4,6 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import FeedLogPage from './FeedLogPage';
 import WaterLogPage from './waterlogpage';
 
-// API Configuration - Replace with your actual API URL
 const API_BASE_URL = 'http://192.168.1.8:8000/api/kutsero';
 
 interface FeedLog {
@@ -213,6 +212,8 @@ const saveWaterSchedule = async (waterData: any): Promise<{ success: boolean; er
 
 const markWaterCompleted = async (kutseronId: string, horseId: string, waterId: string, kutseronName: string, horseName: string): Promise<{ success: boolean; error?: string; message?: string }> => {
   try {
+    console.log('Mark water completed - Sending:', { kutsero_id: kutseronId, horse_id: horseId, water_id: waterId });
+
     const response = await fetch(`${API_BASE_URL}/water-schedule/mark-completed/`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -220,38 +221,93 @@ const markWaterCompleted = async (kutseronId: string, horseId: string, waterId: 
         kutsero_id: kutseronId,
         horse_id: horseId,
         water_id: waterId,
-        kutsero_name: kutseronName,
         horse_name: horseName,
-        user_type: 'kutsero',
+        kutsero_name: kutseronName,
       }),
     });
     
     if (!response.ok) {
-      return { success: false, error: `Server error: ${response.status}` };
+      const errorText = await response.text();
+      return { success: false, error: `Server error: ${response.status} - ${errorText}` };
     }
 
-    return await response.json();
+    const result = await response.json();
+    return result;
   } catch (error) {
-    return { success: false, error: 'Network error occurred' };
+    return { success: false, error: `Network error: ${error instanceof Error ? error.message : String(error)}` };
   }
 };
 
-const fetchWaterLogs = async (kutseronId: string, horseId: string, logDate?: string, logPeriod?: string): Promise<WaterLog[]> => {
+const fetchWaterLogs = async (
+  kutseronId: string,
+  horseId: string,
+  horseName: string,
+  logDate?: string,
+  logPeriod?: string
+): Promise<WaterLog[]> => {
   try {
-    let url = `${API_BASE_URL}/water-logs/?kutsero_id=${kutseronId}&horse_id=${horseId}&user_type=kutsero`;
+    let url = `${API_BASE_URL}/water-logs/?kutsero_id=${kutseronId}&horse_id=${horseId}`;
     if (logDate) url += `&log_date=${logDate}`;
     if (logPeriod && logPeriod !== 'All Periods') url += `&log_period=${logPeriod}`;
-    
+
+    console.log('Fetching from:', url);
+
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
     });
-    
-    if (!response.ok) return [];
+
+    if (!response.ok) {
+      console.log('API returned:', response.status);
+      return [];
+    }
 
     const data = await response.json();
-    return data.success ? (data.data || []) : [];
+    console.log('API Response:', data);
+
+    if (!data.success) {
+      console.log('success is false');
+      return [];
+    }
+
+    if (!Array.isArray(data.data)) {
+      console.log('data.data is not an array');
+      return [];
+    }
+
+    if (data.data.length === 0) {
+      console.log('data.data is empty');
+      return [];
+    }
+
+    console.log(`Got ${data.data.length} logs from API`);
+
+    const transformedLogs: WaterLog[] = data.data.map((rawLog: any, index: number) => {
+      console.log(`Transforming log ${index}`);
+      console.log('Raw:', { wlog_id: rawLog.wlog_id, wlog_date: rawLog.wlog_date, wlog_amount: rawLog.wlog_amount, wlog_user_full_name: rawLog.wlog_user_full_name });
+
+      const transformed: WaterLog = {
+        log_id: rawLog.wlog_id ?? '',
+        log_kutsero_full_name: rawLog.wlog_user_full_name ?? 'Unknown',
+        log_date: rawLog.wlog_date ?? '',
+        log_period: rawLog.wlog_period ?? '',
+        log_time: rawLog.wlog_time ?? '',
+        log_amount: rawLog.wlog_amount ?? '',
+        log_status: rawLog.wlog_status ?? '',
+        log_action: rawLog.wlog_action ?? '',
+        created_at: rawLog.created_at ?? '',
+        horse_name: horseName,
+      };
+
+      console.log(`Transformed ${index}:`, { log_date: transformed.log_date, log_amount: transformed.log_amount, log_kutsero_full_name: transformed.log_kutsero_full_name });
+      return transformed;
+    });
+
+    console.log('Successfully transformed all logs');
+    console.log('Final logs:', transformedLogs);
+    return transformedLogs;
   } catch (error) {
+    console.log('Error in fetchWaterLogs:', error);
     return [];
   }
 };
@@ -287,7 +343,6 @@ const resetDailyAPI = async (kutseronId: string, horseId: string, type: 'feed' |
 export default function FeedPage({ onBack, feedType, horseName, horseId, userId, userName }: FeedPageProps) {
   const isWater = feedType === 'water';
   
-  // Feed states
   const [feedingSchedule, setFeedingSchedule] = useState<MealSchedule[]>([]);
   const [feedLogs, setFeedLogs] = useState<FeedLog[]>([]);
   const [feedTypes, setFeedTypes] = useState<FeedType[]>([
@@ -298,14 +353,12 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
   ]);
   const [editingMeal, setEditingMeal] = useState<MealSchedule | null>(null);
   
-  // Water states
   const [waterSchedule, setWaterSchedule] = useState<WaterSchedule[]>([]);
   const [waterLogs, setWaterLogs] = useState<WaterLog[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState('Morning');
   const [waterAmount, setWaterAmount] = useState('');
   const [editingWater, setEditingWater] = useState<WaterSchedule | null>(null);
   
-  // Shared states
   const [showEditView, setShowEditView] = useState(false);
   const [showAddView, setShowAddView] = useState(false);
   const [showLog, setShowLog] = useState(false);
@@ -325,7 +378,7 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
       if (isWater) {
         const schedule = await fetchWaterSchedule(userId, horseId);
         setWaterSchedule(schedule);
-        const logs = await fetchWaterLogs(userId, horseId);
+        const logs = await fetchWaterLogs(userId, horseId, horseName);
         setWaterLogs(logs);
       } else {
         const schedule = await fetchFeedingSchedule(userId, horseId);
@@ -480,17 +533,11 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
 
   const handleTimeChange = (field: 'hour' | 'minute' | 'period', value: string): void => {
     if (field === 'hour') {
-      const hourNum = parseInt(value);
-      if (value === '' || (hourNum >= 1 && hourNum <= 12)) {
-        setFeedingTime(prev => ({ ...prev, [field]: value }));
-      }
+      setFeedingTime(prev => ({ ...prev, hour: value }));
     } else if (field === 'minute') {
-      const minuteNum = parseInt(value);
-      if (value === '' || (minuteNum >= 0 && minuteNum <= 59)) {
-        setFeedingTime(prev => ({ ...prev, [field]: value.padStart(2, '0') }));
-      }
-    } else {
-      setFeedingTime(prev => ({ ...prev, [field]: value.toUpperCase() }));
+      setFeedingTime(prev => ({ ...prev, minute: value }));
+    } else if (field === 'period') {
+      setFeedingTime(prev => ({ ...prev, period: value.toUpperCase() }));
     }
   };
 
@@ -571,16 +618,12 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
         await loadSchedule();
         setShowEditView(false);
         setShowAddView(false);
-        
-        Alert.alert(
-          'Success', 
-          `${isWater ? 'Water' : 'Feeding'} schedule ${showEditView ? 'updated' : 'added'} successfully for ${horseName}!`
-        );
+        Alert.alert('Success', `${isWater ? 'Water' : 'Feeding'} schedule saved successfully for ${horseName}!`);
       } else {
-        Alert.alert('Error', result.error || `Failed to save ${isWater ? 'water' : 'feeding'} schedule. Please try again.`);
+        Alert.alert('Error', result.error || `Failed to save ${isWater ? 'water' : 'feeding'} schedule.`);
       }
     } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      Alert.alert('Error', 'An unexpected error occurred.');
     } finally {
       setSaving(false);
     }
@@ -599,90 +642,64 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
       
       if (result.success) {
         await loadSchedule();
-        Alert.alert(
-          'Success', 
-          result.message || `${isWater ? 'Water marked as given' : 'Meal marked as fed'} for ${horseName}!`,
-          [{ text: 'OK', onPress: () => setShowLog(true) }]
-        );
+        Alert.alert('Success', result.message || `${isWater ? 'Water' : 'Meal'} marked successfully!`, [
+          { text: 'OK', onPress: () => setShowLog(true) }
+        ]);
       } else {
-        Alert.alert('Error', result.error || `Failed to mark as ${isWater ? 'given' : 'fed'}. Please try again.`);
+        Alert.alert('Error', result.error || 'Failed to mark as complete.');
       }
     } catch (error) {
-      Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+      Alert.alert('Error', 'An unexpected error occurred.');
     }
   };
 
   const resetDaily = async (): Promise<void> => {
-    Alert.alert(
-      `Reset Daily ${isWater ? 'Water' : 'Feeds'}`, 
-      `Are you sure you want to reset all ${isWater ? 'watering' : 'feeding'} statuses for today?`, 
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Reset', style: 'destructive', onPress: async () => {
-          try {
-            const result = await resetDailyAPI(userId, horseId, feedType);
-            
-            if (result.success) {
-              await loadSchedule();
-              Alert.alert('Success', result.message || `Daily ${isWater ? 'water' : 'feeds'} reset successfully`);
-            } else {
-              Alert.alert('Error', result.error || `Failed to reset. Please try again.`);
-            }
-          } catch (error) {
-            Alert.alert('Error', 'An unexpected error occurred. Please try again.');
+    Alert.alert(`Reset Daily ${isWater ? 'Water' : 'Feeds'}`, `Reset all statuses for today?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Reset', style: 'destructive', onPress: async () => {
+        try {
+          const result = await resetDailyAPI(userId, horseId, feedType);
+          if (result.success) {
+            await loadSchedule();
+            Alert.alert('Success', 'Reset successfully');
+          } else {
+            Alert.alert('Error', result.error || 'Failed to reset.');
           }
-        }}
-      ]
-    );
+        } catch (error) {
+          Alert.alert('Error', 'An error occurred.');
+        }
+      }}
+    ]);
   };
 
-  const handleShowLog = () => {
-    setShowLog(true);
-  };
+  const handleShowLog = () => setShowLog(true);
 
   const handleRefreshLogs = async () => {
     try {
       if (isWater) {
-        const logs = await fetchWaterLogs(userId, horseId);
+        const logs = await fetchWaterLogs(userId, horseId, horseName);
         setWaterLogs(logs);
       } else {
         const logs = await fetchFeedLogs(userId, horseId);
         setFeedLogs(logs);
       }
     } catch (error) {
-      Alert.alert('Error', `Failed to refresh ${isWater ? 'water' : 'feed'} logs. Please try again.`);
+      Alert.alert('Error', 'Failed to refresh logs.');
     }
   };
 
-  // Theme colors
   const themeColor = isWater ? '#06B6D4' : '#CD853F';
   const headerIcon = isWater ? 'tint' : 'horse-head';
   const emptyIcon = isWater ? 'tint' : 'utensils';
 
-  // ============================================================================
-  // RENDER LOG PAGE
-  // ============================================================================
   if (showLog) {
     return isWater ? (
-      <WaterLogPage 
-        onBack={() => setShowLog(false)}
-        logs={waterLogs}
-        horseName={horseName}
-        onRefresh={handleRefreshLogs}
-      />
+      <WaterLogPage onBack={() => setShowLog(false)} logs={waterLogs} horseName={horseName} onRefresh={handleRefreshLogs} />
     ) : (
-      <FeedLogPage 
-        onBack={() => setShowLog(false)}
-        logs={feedLogs}
-        horseName={horseName}
-        onRefresh={handleRefreshLogs}
-      />
+      <FeedLogPage onBack={() => setShowLog(false)} logs={feedLogs} horseName={horseName} onRefresh={handleRefreshLogs} />
     );
   }
 
-  // ============================================================================
-  // RENDER EDIT/ADD VIEW
-  // ============================================================================
   if (showEditView || showAddView) {
     return (
       <SafeAreaView style={[styles.safeArea, { backgroundColor: themeColor }]}>
@@ -701,30 +718,10 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>{isWater ? 'Watering' : 'Feeding'} Time</Text>
               <View style={styles.timeInputContainer}>
-                <TextInput 
-                  style={styles.timeInput} 
-                  value={feedingTime.hour} 
-                  onChangeText={(value) => handleTimeChange('hour', value)} 
-                  placeholder="HH" 
-                  keyboardType="numeric" 
-                  maxLength={2} 
-                />
+                <TextInput style={styles.timeInput} value={feedingTime.hour} onChangeText={(value) => handleTimeChange('hour', value)} placeholder="HH" keyboardType="numeric" maxLength={2} />
                 <Text style={styles.timeSeparator}>:</Text>
-                <TextInput 
-                  style={styles.timeInput} 
-                  value={feedingTime.minute} 
-                  onChangeText={(value) => handleTimeChange('minute', value)} 
-                  placeholder="MM" 
-                  keyboardType="numeric" 
-                  maxLength={2} 
-                />
-                <TextInput 
-                  style={styles.periodInput} 
-                  value={feedingTime.period} 
-                  onChangeText={(value) => handleTimeChange('period', value.toUpperCase())} 
-                  placeholder="AM/PM" 
-                  maxLength={2} 
-                />
+                <TextInput style={styles.timeInput} value={feedingTime.minute} onChangeText={(value) => handleTimeChange('minute', value)} placeholder="MM" keyboardType="numeric" maxLength={2} />
+                <TextInput style={styles.periodInput} value={feedingTime.period} onChangeText={(value) => handleTimeChange('period', value.toUpperCase())} placeholder="AM/PM" maxLength={2} />
               </View>
             </View>
 
@@ -734,26 +731,9 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                   <Text style={styles.sectionTitle}>Period</Text>
                   <View style={styles.periodContainer}>
                     {periods.map((period) => (
-                      <TouchableOpacity
-                        key={period}
-                        style={[
-                          styles.periodButton,
-                          selectedPeriod === period && styles.periodButtonActive,
-                          { borderColor: getPeriodColor(period) }
-                        ]}
-                        onPress={() => setSelectedPeriod(period)}
-                      >
-                        <FontAwesome5 
-                          name={getPeriodIcon(period)} 
-                          size={18} 
-                          color={selectedPeriod === period ? '#fff' : getPeriodColor(period)} 
-                        />
-                        <Text style={[
-                          styles.periodButtonText,
-                          selectedPeriod === period && styles.periodButtonTextActive
-                        ]}>
-                          {period}
-                        </Text>
+                      <TouchableOpacity key={period} style={[styles.periodButton, selectedPeriod === period && styles.periodButtonActive, { borderColor: getPeriodColor(period) }]} onPress={() => setSelectedPeriod(period)}>
+                        <FontAwesome5 name={getPeriodIcon(period)} size={18} color={selectedPeriod === period ? '#fff' : getPeriodColor(period)} />
+                        <Text style={[styles.periodButtonText, selectedPeriod === period && styles.periodButtonTextActive]}>{period}</Text>
                       </TouchableOpacity>
                     ))}
                   </View>
@@ -761,12 +741,7 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
 
                 <View style={styles.section}>
                   <Text style={styles.sectionTitle}>Water Amount</Text>
-                  <TextInput 
-                    style={styles.amountInputFull} 
-                    value={waterAmount} 
-                    onChangeText={setWaterAmount} 
-                    placeholder="Enter water amount (e.g., 5 liters)" 
-                  />
+                  <TextInput style={styles.amountInputFull} value={waterAmount} onChangeText={setWaterAmount} placeholder="Enter water amount (e.g., 5 liters)" />
                 </View>
               </>
             ) : (
@@ -776,12 +751,7 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                   {feedTypes.map((feed) => (
                     <View key={feed.id} style={styles.feedTypeCard}>
                       <Text style={styles.feedTypeName}>{feed.name}</Text>
-                      <TextInput 
-                        style={styles.amountInput} 
-                        value={feed.amount} 
-                        onChangeText={(value) => handleAmountChange(feed.id, value)} 
-                        placeholder="Enter amount" 
-                      />
+                      <TextInput style={styles.amountInput} value={feed.amount} onChangeText={(value) => handleAmountChange(feed.id, value)} placeholder="Enter amount" />
                     </View>
                   ))}
                 </View>
@@ -797,28 +767,14 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
           <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
             <Text style={styles.cancelButtonText}>Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.saveButton, saving && styles.saveButtonDisabled, { backgroundColor: saving ? '#9CA3AF' : themeColor }]} 
-            onPress={handleSaveChanges}
-            disabled={saving}
-          >
-            <Text style={styles.saveButtonText}>
-              {saving 
-                ? 'Saving...' 
-                : showEditView 
-                  ? 'Save Changes' 
-                  : `Add ${isWater ? 'Schedule' : 'Meal'}`
-              }
-            </Text>
+          <TouchableOpacity style={[styles.saveButton, saving && styles.saveButtonDisabled, { backgroundColor: saving ? '#9CA3AF' : themeColor }]} onPress={handleSaveChanges} disabled={saving}>
+            <Text style={styles.saveButtonText}>{saving ? 'Saving...' : showEditView ? 'Save Changes' : `Add ${isWater ? 'Schedule' : 'Meal'}`}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
     );
   }
 
-  // ============================================================================
-  // RENDER MAIN SCHEDULE VIEW
-  // ============================================================================
   return (
     <SafeAreaView style={[styles.safeArea, { backgroundColor: themeColor }]}>
       <StatusBar barStyle="light-content" backgroundColor={themeColor} />
@@ -843,13 +799,13 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
         <View style={styles.content}>
           {loading ? (
             <View style={styles.loadingContainer}>
-              <Text style={styles.loadingText}>Loading {isWater ? 'water' : 'feeding'} schedule...</Text>
+              <Text style={styles.loadingText}>Loading...</Text>
             </View>
           ) : (isWater ? waterSchedule : feedingSchedule).length === 0 ? (
             <View style={styles.emptyContainer}>
               <FontAwesome5 name={emptyIcon} size={48} color="#9CA3AF" />
-              <Text style={styles.emptyTitle}>No {isWater ? 'water' : 'feeding'} schedule found</Text>
-              <Text style={styles.emptySubtitle}>Add your first {isWater ? 'watering schedule' : 'meal'} to get started</Text>
+              <Text style={styles.emptyTitle}>No {isWater ? 'water' : 'feeding'} schedule</Text>
+              <Text style={styles.emptySubtitle}>Add your first {isWater ? 'watering schedule' : 'meal'}</Text>
             </View>
           ) : isWater ? (
             waterSchedule.map((water) => (
@@ -857,15 +813,8 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                 <View style={styles.cardHeader}>
                   <View style={styles.itemInfo}>
                     <View style={styles.periodRow}>
-                      <View style={[
-                        styles.periodIndicator, 
-                        { backgroundColor: getPeriodColor(water.water_period) }
-                      ]}>
-                        <FontAwesome5 
-                          name={getPeriodIcon(water.water_period)} 
-                          size={14} 
-                          color="#fff" 
-                        />
+                      <View style={[styles.periodIndicator, { backgroundColor: getPeriodColor(water.water_period) }]}>
+                        <FontAwesome5 name={getPeriodIcon(water.water_period)} size={14} color="#fff" />
                       </View>
                       <Text style={styles.itemTitle}>{water.water_period}</Text>
                     </View>
@@ -890,10 +839,7 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                       <Text style={styles.completedText}>Completed</Text>
                     </View>
                   ) : (
-                    <TouchableOpacity 
-                      style={[styles.markButton, { backgroundColor: themeColor }]} 
-                      onPress={() => handleMarkAsComplete(water.water_id)}
-                    >
+                    <TouchableOpacity style={[styles.markButton, { backgroundColor: themeColor }]} onPress={() => handleMarkAsComplete(water.water_id)}>
                       <Text style={styles.markButtonText}>Mark as Given</Text>
                     </TouchableOpacity>
                   )}
@@ -930,10 +876,7 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                       <Text style={styles.completedText}>Completed</Text>
                     </View>
                   ) : (
-                    <TouchableOpacity 
-                      style={[styles.markButton, { backgroundColor: themeColor }]} 
-                      onPress={() => handleMarkAsComplete(meal.fd_id)}
-                    >
+                    <TouchableOpacity style={[styles.markButton, { backgroundColor: themeColor }]} onPress={() => handleMarkAsComplete(meal.fd_id)}>
                       <Text style={styles.markButtonText}>Mark as Fed</Text>
                     </TouchableOpacity>
                   )}
@@ -946,7 +889,7 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
             <View style={styles.addIconContainer}>
               <FontAwesome5 name="plus" size={16} color="#fff" />
             </View>
-            <Text style={styles.addButtonText}>Add New {isWater ? 'Water Schedule' : 'Meal'}</Text>
+            <Text style={styles.addButtonText}>Add New {isWater ? 'Water' : 'Meal'}</Text>
           </TouchableOpacity>
           
           {(isWater ? waterSchedule : feedingSchedule).length > 0 && (
@@ -954,7 +897,7 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
               <View style={styles.resetIconContainer}>
                 <FontAwesome5 name="redo" size={14} color="#fff" />
               </View>
-              <Text style={styles.resetButtonText}>Reset Daily {isWater ? 'Water' : 'Feeds'}</Text>
+              <Text style={styles.resetButtonText}>Reset Daily</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -963,9 +906,6 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
   );
 }
 
-// ============================================================================
-// STYLES
-// ============================================================================
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 18, elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.15, shadowRadius: 4 },
@@ -990,17 +930,17 @@ const styles = StyleSheet.create({
   periodButtonTextActive: { color: '#fff' },
   amountInputFull: { backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, fontWeight: '500', borderWidth: 2, borderColor: '#E2E8F0', color: '#334155' },
   feedTypesGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 20 },
-  feedTypeCard: { width: '48%', backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 2, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
+  feedTypeCard: { width: '48%', backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 2, borderColor: '#E2E8F0' },
   feedTypeName: { fontSize: 16, fontWeight: '700', color: '#1E293B', textAlign: 'center', marginBottom: 12 },
   amountInput: { backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, fontWeight: '500', borderWidth: 2, borderColor: '#E2E8F0', color: '#334155' },
-  addFeedButton: { backgroundColor: '#3B82F6', borderRadius: 16, paddingVertical: 16, alignItems: 'center', shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
+  addFeedButton: { backgroundColor: '#3B82F6', borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
   addFeedButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   bottomButtons: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 20, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#E2E8F0', gap: 12 },
-  cancelButton: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#94A3B8', borderRadius: 16, paddingHorizontal: 24, paddingVertical: 14, flex: 1, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 4, elevation: 1 },
+  cancelButton: { backgroundColor: '#FFFFFF', borderWidth: 2, borderColor: '#94A3B8', borderRadius: 16, paddingHorizontal: 24, paddingVertical: 14, flex: 1, alignItems: 'center' },
   cancelButtonText: { color: '#64748B', fontSize: 16, fontWeight: '600' },
-  saveButton: { borderRadius: 16, paddingHorizontal: 24, paddingVertical: 14, flex: 1, alignItems: 'center', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
+  saveButton: { borderRadius: 16, paddingHorizontal: 24, paddingVertical: 14, flex: 1, alignItems: 'center' },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  saveButtonDisabled: { backgroundColor: '#9CA3AF', shadowOpacity: 0, elevation: 0 },
+  saveButtonDisabled: { backgroundColor: '#9CA3AF' },
   scheduleCard: { backgroundColor: '#FFFFFF', borderRadius: 16, marginBottom: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   itemInfo: { flex: 1 },
@@ -1020,10 +960,10 @@ const styles = StyleSheet.create({
   completedText: { color: '#065F46', fontSize: 14, fontWeight: '600' },
   markButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
   markButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
-  addButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderRadius: 16, marginBottom: 16, shadowColor: '#10B981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
+  addButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderRadius: 16, marginBottom: 16 },
   addIconContainer: { backgroundColor: 'rgba(255, 255, 255, 0.2)', borderRadius: 12, width: 32, height: 32, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   addButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
-  resetButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EF4444', paddingVertical: 16, borderRadius: 16, marginTop: 20, shadowColor: '#EF4444', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
+  resetButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EF4444', paddingVertical: 16, borderRadius: 16, marginTop: 20 },
   resetIconContainer: { backgroundColor: 'rgba(255, 255, 255, 0.2)', borderRadius: 10, width: 28, height: 28, justifyContent: 'center', alignItems: 'center', marginRight: 8 },
   resetButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 60 },

@@ -166,6 +166,7 @@ interface DropdownFieldProps {
   options: string[]
   onSelect: (value: string) => void
   disabled?: boolean
+  error?: string // Added error prop
 }
 
 interface ProfilePicture {
@@ -203,6 +204,72 @@ interface FormData {
   houseAddress: string
   route: string
   to: string
+  termsAccepted: boolean
+}
+
+const calculatePasswordStrength = (password: string): { strength: string; score: number; color: string } => {
+  let score = 0
+
+  if (password.length === 0) {
+    return { strength: "", score: 0, color: "#E0E0E0" }
+  }
+
+  // Length check
+  if (password.length >= 8) score += 1
+  if (password.length >= 12) score += 1
+
+  // Character variety checks
+  if (/[a-z]/.test(password)) score += 1 // lowercase
+  if (/[A-Z]/.test(password)) score += 1 // uppercase
+  if (/[0-9]/.test(password)) score += 1 // numbers
+  if (/[^a-zA-Z0-9]/.test(password)) score += 1 // special characters
+
+  // Determine strength level
+  if (score <= 2) {
+    return { strength: "Weak", score, color: "#FF4444" }
+  } else if (score <= 4) {
+    return { strength: "Medium", score, color: "#FFA500" }
+  } else {
+    return { strength: "Strong", score, color: "#4CAF50" }
+  }
+}
+
+const isValidEmail = (email: string): boolean => {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
+
+const isValidPhoneNumber = (phone: string): boolean => {
+  // Philippine phone number format (09xxxxxxxxx or +639xxxxxxxxx)
+  const phoneRegex = /^(\+639|09)\d{9}$/
+  return phoneRegex.test(phone.replace(/\s/g, ""))
+}
+
+const getInitials = (firstName: string, lastName: string): string => {
+  const firstInitial = firstName.trim().charAt(0).toUpperCase()
+  const lastInitial = lastName.trim().charAt(0).toUpperCase()
+  return `${firstInitial}${lastInitial}`
+}
+
+const getAvatarColor = (firstName: string, lastName: string): string => {
+  const colors = [
+    "#D97706", // Orange (like the example)
+    "#DC2626", // Red
+    "#059669", // Green
+    "#2563EB", // Blue
+    "#7C3AED", // Purple
+    "#DB2777", // Pink
+    "#0891B2", // Cyan
+    "#EA580C", // Deep Orange
+  ]
+
+  const nameString = `${firstName}${lastName}`.toLowerCase()
+  let hash = 0
+  for (let i = 0; i < nameString.length; i++) {
+    hash = nameString.charCodeAt(i) + ((hash << 5) - hash)
+  }
+
+  return colors[Math.abs(hash) % colors.length]
 }
 
 export default function Signup() {
@@ -214,6 +281,9 @@ export default function Signup() {
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  const [errors, setErrors] = useState<{ [key: string]: string }>({})
+  const [passwordStrength, setPasswordStrength] = useState({ strength: "", score: 0, color: "#E0E0E0" })
 
   const [formData, setFormData] = useState<FormData>({
     firstName: "",
@@ -237,6 +307,7 @@ export default function Signup() {
     houseAddress: "",
     route: "",
     to: "",
+    termsAccepted: false,
   })
 
   const updateFormData = (field: string, value: any) => {
@@ -247,10 +318,132 @@ export default function Signup() {
       }
       return updated
     })
+
+    // Clear error for this field when user starts typing
+    if (errors[field]) {
+      setErrors((prev) => {
+        const newErrors = { ...prev }
+        delete newErrors[field]
+        return newErrors
+      })
+    }
+
+    // Update password strength in real-time
+    if (field === "password") {
+      setPasswordStrength(calculatePasswordStrength(value))
+    }
+  }
+
+  const calculateAge = (birthDate: Date): number => {
+    const today = new Date()
+    let age = today.getFullYear() - birthDate.getFullYear()
+    const monthDiff = today.getMonth() - birthDate.getMonth()
+
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--
+    }
+
+    return age
+  }
+
+  const validateStep = (step: number): boolean => {
+    const newErrors: { [key: string]: string } = {}
+
+    switch (step) {
+      case 1:
+        if (!formData.firstName.trim()) {
+          newErrors.firstName = "First name is required"
+        }
+        if (!formData.lastName.trim()) {
+          newErrors.lastName = "Last name is required"
+        }
+        if (!formData.sex) {
+          newErrors.sex = "Please select your sex"
+        }
+        if (!formData.phoneNumber.trim()) {
+          newErrors.phoneNumber = "Phone number is required"
+        } else if (!isValidPhoneNumber(formData.phoneNumber)) {
+          newErrors.phoneNumber = "Invalid phone number format (use 09xxxxxxxxx)"
+        }
+
+        const age = calculateAge(formData.dateOfBirth)
+        if (age < 18) {
+          newErrors.dateOfBirth = "You must be at least 18 years old"
+          Alert.alert("Age Requirement", "You must be at least 18 years old to register for ECHO.", [{ text: "OK" }])
+        }
+        break
+
+      case 2:
+        if (!formData.role) {
+          newErrors.role = "Please select your role"
+          Alert.alert("Error", "Please select your role to continue")
+        }
+        break
+
+      case 3:
+        if (!formData.province) {
+          newErrors.province = "Province is required"
+        }
+        if (!formData.city) {
+          newErrors.city = "City/Municipality is required"
+        }
+        if (!formData.barangay.trim()) {
+          newErrors.barangay = "Barangay is required"
+        }
+        if (!formData.zipCode.trim()) {
+          newErrors.zipCode = "Zip code is required"
+        } else if (!/^\d{4}$/.test(formData.zipCode)) {
+          newErrors.zipCode = "Zip code must be 4 digits"
+        }
+        if (!formData.houseAddress.trim()) {
+          newErrors.houseAddress = "House address is required"
+        }
+        if (!formData.route) {
+          newErrors.route = "Route is required"
+        }
+        if (!formData.to) {
+          newErrors.to = "Destination is required"
+        }
+        break
+
+      case 5:
+        if (!formData.email.trim()) {
+          newErrors.email = "Email is required"
+        } else if (!isValidEmail(formData.email)) {
+          newErrors.email = "Please enter a valid email address"
+        }
+
+        if (!formData.password) {
+          newErrors.password = "Password is required"
+        } else if (formData.password.length < 8) {
+          newErrors.password = "Password must be at least 8 characters"
+        }
+
+        if (!formData.confirmPassword) {
+          newErrors.confirmPassword = "Please confirm your password"
+        } else if (formData.password !== formData.confirmPassword) {
+          newErrors.confirmPassword = "Passwords do not match"
+        }
+        break
+    }
+
+    setErrors(newErrors)
+
+    if (Object.keys(newErrors).length > 0) {
+      const firstError = Object.values(newErrors)[0]
+      Alert.alert("Validation Error", firstError)
+      return false
+    }
+
+    return true
   }
 
   const nextStep = () => {
-    if (currentStep < 6) {
+    if (!validateStep(currentStep)) {
+      return
+    }
+
+    if (currentStep < 7) {
       setCurrentStep(currentStep + 1)
     }
   }
@@ -291,15 +484,13 @@ export default function Signup() {
 
   const openCamera = async () => {
     try {
-      // Request camera permissions
       const { status } = await ImagePicker.requestCameraPermissionsAsync()
-      
+
       if (status !== "granted") {
         Alert.alert("Permission Denied", "Camera permission is required to take photos.")
         return
       }
 
-      // Launch camera
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -330,15 +521,13 @@ export default function Signup() {
 
   const openImageLibrary = async () => {
     try {
-      // Request media library permissions
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
-      
+
       if (status !== "granted") {
         Alert.alert("Permission Denied", "Photo library permission is required to select photos.")
         return
       }
 
-      // Launch image library
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
@@ -367,7 +556,6 @@ export default function Signup() {
     }
   }
 
-  // Helper function to convert image to base64
   const convertImageToBase64 = async (uri: string): Promise<string> => {
     return new Promise((resolve, reject) => {
       fetch(uri)
@@ -387,41 +575,46 @@ export default function Signup() {
   const handleSignUp = async () => {
     if (isLoading) return
 
-    // Validation
-    if (!formData.firstName.trim() || !formData.lastName.trim()) {
-      Alert.alert("Error", "Please fill in all required fields")
+    if (!formData.termsAccepted) {
+      Alert.alert("Error", "Please accept the Terms and Conditions to continue")
       return
     }
 
+    // Validate all required fields
+    const validationErrors: { [key: string]: string } = {}
+
+    if (!formData.firstName.trim()) validationErrors.firstName = "First name is required"
+    if (!formData.lastName.trim()) validationErrors.lastName = "Last name is required"
     if (!formData.email.trim()) {
-      Alert.alert("Error", "Email is required")
-      return
+      validationErrors.email = "Email is required"
+    } else if (!isValidEmail(formData.email)) {
+      validationErrors.email = "Invalid email format"
     }
-
-    if (!formData.email.includes("@")) {
-      Alert.alert("Error", "Please enter a valid email address")
-      return
+    if (!formData.password) {
+      validationErrors.password = "Password is required"
+    } else if (formData.password.length < 8) {
+      validationErrors.password = "Password must be at least 8 characters"
     }
-
-    if (!formData.role) {
-      Alert.alert("Error", "Please select your role")
-      return
-    }
-
     if (formData.password !== formData.confirmPassword) {
-      Alert.alert("Error", "Passwords do not match")
-      return
+      validationErrors.confirmPassword = "Passwords do not match"
+    }
+    if (!formData.role) validationErrors.role = "Role is required"
+    if (!formData.phoneNumber.trim()) {
+      validationErrors.phoneNumber = "Phone number is required"
+    } else if (!isValidPhoneNumber(formData.phoneNumber)) {
+      validationErrors.phoneNumber = "Invalid phone number format"
     }
 
-    if (formData.password.length < 6) {
-      Alert.alert("Error", "Password must be at least 6 characters long")
+    if (Object.keys(validationErrors).length > 0) {
+      setErrors(validationErrors)
+      const firstError = Object.values(validationErrors)[0]
+      Alert.alert("Validation Error", firstError)
       return
     }
 
     setIsLoading(true)
 
     try {
-      // Convert profile picture to base64 if exists
       let profileImageBase64 = null
       if (formData.profilePicture && formData.profilePicture.uri) {
         try {
@@ -436,7 +629,6 @@ export default function Signup() {
         }
       }
 
-      // Prepare JSON body data
       const bodyData = {
         firstName: formData.firstName,
         middleName: formData.middleName,
@@ -515,9 +707,12 @@ export default function Signup() {
                   houseAddress: "",
                   route: "",
                   to: "",
+                  termsAccepted: false,
                 })
                 setSelectedImage(null)
                 setCurrentStep(1)
+                setErrors({})
+                setPasswordStrength({ strength: "", score: 0, color: "#E0E0E0" })
                 router.replace("/auth/login")
               },
             },
@@ -529,20 +724,49 @@ export default function Signup() {
 
         try {
           const errorData = JSON.parse(errorText)
-          Alert.alert("Error", errorData.message || "Failed to create account. Please try again.")
+
+          if (errorData.message && errorData.message.toLowerCase().includes("email")) {
+            if (
+              errorData.message.toLowerCase().includes("already") ||
+              errorData.message.toLowerCase().includes("exists") ||
+              errorData.message.toLowerCase().includes("taken")
+            ) {
+              Alert.alert("Email Already Used", "A user with that email already exists.", [
+                { text: "Try Again", style: "cancel" },
+                { text: "Go to Login", onPress: () => router.replace("/auth/login") },
+              ])
+              setErrors({ email: "A user with that email already exists" })
+              setCurrentStep(5) // Go back to credentials step
+              return
+            }
+          }
+
+          Alert.alert("Registration Error", errorData.message || "Failed to create account. Please try again.")
         } catch {
-          Alert.alert("Error", `Server error (${response.status}). Please try again.`)
+          let errorMessage = "Failed to create account. Please try again."
+
+          if (response.status === 409) {
+            errorMessage = "A user with that email already exists."
+            setErrors({ email: "A user with that email already exists" })
+            setCurrentStep(5)
+          } else if (response.status === 400) {
+            errorMessage = "Invalid information provided. Please check your details."
+          } else if (response.status === 500) {
+            errorMessage = "Server error. Please try again later."
+          }
+
+          Alert.alert("Error", errorMessage)
         }
       }
     } catch (error: any) {
       console.error("Signup error:", error)
 
       if (error.name === "AbortError") {
-        Alert.alert("Error", "Request timed out. Please check your connection and try again.")
+        Alert.alert("Request Timeout", "The request took too long. Please check your connection and try again.")
       } else if (error.message.includes("Network")) {
-        Alert.alert("Error", "Network error. Please check your connection and try again.")
+        Alert.alert("Network Error", "Unable to connect to the server. Please check your internet connection.")
       } else {
-        Alert.alert("Error", "An unexpected error occurred. Please try again.")
+        Alert.alert("Unexpected Error", "Something went wrong. Please try again later.")
       }
     } finally {
       setIsLoading(false)
@@ -553,20 +777,29 @@ export default function Signup() {
     router.replace("/auth/login")
   }
 
-  const DropdownField = ({ label, value, placeholder, options, onSelect, disabled = false }: DropdownFieldProps) => {
+  const DropdownField = ({
+    label,
+    value,
+    placeholder,
+    options,
+    onSelect,
+    disabled = false,
+    error,
+  }: DropdownFieldProps & { error?: string }) => {
     const dropdownKey = label.toLowerCase().replace(/\s+/g, "")
 
     return (
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>{label}</Text>
         <TouchableOpacity
-          style={[styles.dropdownContainer, disabled && styles.disabledDropdown]}
+          style={[styles.dropdownContainer, disabled && styles.disabledDropdown, error && styles.inputError]}
           onPress={() => !disabled && setDropdownVisible(dropdownKey)}
           disabled={disabled}
         >
           <Text style={[styles.dropdownText, !value && styles.placeholderText]}>{value || placeholder}</Text>
           <Text style={styles.dropdownArrow}>▼</Text>
         </TouchableOpacity>
+        {error && <Text style={styles.errorText}>{error}</Text>}
 
         <Modal
           visible={dropdownVisible === dropdownKey}
@@ -609,12 +842,13 @@ export default function Signup() {
         <Text style={styles.sectionTitle}>Your Name</Text>
         <View style={styles.inputContainer}>
           <TextInput
-            style={styles.textInput}
+            style={[styles.textInput, errors.firstName && styles.inputError]}
             value={formData.firstName}
             onChangeText={(value) => updateFormData("firstName", value)}
             placeholder="First Name"
             placeholderTextColor="#999"
           />
+          {errors.firstName && <Text style={styles.errorText}>{errors.firstName}</Text>}
         </View>
 
         <View style={styles.inputContainer}>
@@ -629,20 +863,25 @@ export default function Signup() {
 
         <View style={styles.inputContainer}>
           <TextInput
-            style={styles.textInput}
+            style={[styles.textInput, errors.lastName && styles.inputError]}
             value={formData.lastName}
             onChangeText={(value) => updateFormData("lastName", value)}
             placeholder="Last Name"
             placeholderTextColor="#999"
           />
+          {errors.lastName && <Text style={styles.errorText}>{errors.lastName}</Text>}
         </View>
 
         <View style={styles.inputContainer}>
           <Text style={styles.inputLabel}>Date of Birth</Text>
-          <TouchableOpacity style={styles.dateInputContainer} onPress={() => setShowDatePicker(true)}>
+          <TouchableOpacity
+            style={[styles.dateInputContainer, errors.dateOfBirth && styles.inputError]}
+            onPress={() => setShowDatePicker(true)}
+          >
             <Text style={styles.dateText}>{formatDate(formData.dateOfBirth)}</Text>
             <Text style={styles.calendarIcon}>📅</Text>
           </TouchableOpacity>
+          {errors.dateOfBirth && <Text style={styles.errorText}>{errors.dateOfBirth}</Text>}
 
           {showDatePicker && (
             <DateTimePicker
@@ -661,18 +900,20 @@ export default function Signup() {
           placeholder="Please Select"
           options={sexOptions}
           onSelect={(value) => updateFormData("sex", value)}
+          error={errors.sex}
         />
 
         <View style={styles.inputContainer}>
           <Text style={styles.inputLabel}>Phone Number</Text>
           <TextInput
-            style={styles.textInput}
+            style={[styles.textInput, errors.phoneNumber && styles.inputError]}
             value={formData.phoneNumber}
             onChangeText={(value) => updateFormData("phoneNumber", value)}
-            placeholder="Your Contact Number"
+            placeholder="09XXXXXXXXX"
             placeholderTextColor="#999"
             keyboardType="phone-pad"
           />
+          {errors.phoneNumber && <Text style={styles.errorText}>{errors.phoneNumber}</Text>}
         </View>
 
         <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
@@ -777,6 +1018,7 @@ export default function Signup() {
             updateFormData("municipality", "")
             updateFormData("barangay", "")
           }}
+          error={errors.province}
         />
 
         <DropdownField
@@ -790,6 +1032,7 @@ export default function Signup() {
             updateFormData("barangay", "")
           }}
           disabled={!formData.province}
+          error={errors.city}
         />
 
         {availableBarangays.length > 0 && (
@@ -800,6 +1043,7 @@ export default function Signup() {
             options={availableBarangays}
             onSelect={(value) => updateFormData("barangay", value)}
             disabled={!formData.city}
+            error={errors.barangay}
           />
         )}
 
@@ -807,36 +1051,40 @@ export default function Signup() {
           <View style={styles.inputContainer}>
             <Text style={styles.inputLabel}>Barangay</Text>
             <TextInput
-              style={styles.textInput}
+              style={[styles.textInput, errors.barangay && styles.inputError]}
               value={formData.barangay}
               onChangeText={(value) => updateFormData("barangay", value)}
               placeholder="Enter your barangay"
               placeholderTextColor="#999"
             />
+            {errors.barangay && <Text style={styles.errorText}>{errors.barangay}</Text>}
           </View>
         )}
 
         <View style={styles.inputContainer}>
           <Text style={styles.inputLabel}>Zip Code</Text>
           <TextInput
-            style={styles.textInput}
+            style={[styles.textInput, errors.zipCode && styles.inputError]}
             value={formData.zipCode}
             onChangeText={(value) => updateFormData("zipCode", value)}
-            placeholder="Enter zip code"
+            placeholder="Enter zip code (4 digits)"
             placeholderTextColor="#999"
             keyboardType="numeric"
+            maxLength={4}
           />
+          {errors.zipCode && <Text style={styles.errorText}>{errors.zipCode}</Text>}
         </View>
 
         <View style={styles.inputContainer}>
           <Text style={styles.inputLabel}>House Number or Street Address</Text>
           <TextInput
-            style={styles.textInput}
+            style={[styles.textInput, errors.houseAddress && styles.inputError]}
             value={formData.houseAddress}
             onChangeText={(value) => updateFormData("houseAddress", value)}
             placeholder="Enter your address"
             placeholderTextColor="#999"
           />
+          {errors.houseAddress && <Text style={styles.errorText}>{errors.houseAddress}</Text>}
         </View>
 
         <DropdownField
@@ -845,6 +1093,7 @@ export default function Signup() {
           placeholder="Please Select"
           options={routeOptions}
           onSelect={(value) => updateFormData("route", value)}
+          error={errors.route}
         />
 
         <DropdownField
@@ -853,6 +1102,7 @@ export default function Signup() {
           placeholder="Please Select"
           options={toOptions}
           onSelect={(value) => updateFormData("to", value)}
+          error={errors.to}
         />
 
         <View style={styles.buttonRow}>
@@ -920,7 +1170,7 @@ export default function Signup() {
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>Email Address</Text>
         <TextInput
-          style={styles.textInput}
+          style={[styles.textInput, errors.email && styles.inputError]}
           value={formData.email}
           onChangeText={(value) => updateFormData("email", value)}
           placeholder="Your Email Address"
@@ -928,11 +1178,12 @@ export default function Signup() {
           keyboardType="email-address"
           autoCapitalize="none"
         />
+        {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
       </View>
 
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>Password</Text>
-        <View style={styles.passwordInputContainer}>
+        <View style={[styles.passwordInputContainer, errors.password && styles.inputError]}>
           <TextInput
             style={styles.passwordInput}
             value={formData.password}
@@ -957,12 +1208,35 @@ export default function Signup() {
             </View>
           </TouchableOpacity>
         </View>
-        <Text style={styles.helperText}>Must be at least 8 characters</Text>
+
+        {formData.password.length > 0 && (
+          <View style={styles.passwordStrengthContainer}>
+            <View style={styles.passwordStrengthBar}>
+              <View
+                style={[
+                  styles.passwordStrengthFill,
+                  {
+                    width: `${(passwordStrength.score / 6) * 100}%`,
+                    backgroundColor: passwordStrength.color,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={[styles.passwordStrengthText, { color: passwordStrength.color }]}>
+              {passwordStrength.strength}
+            </Text>
+          </View>
+        )}
+
+        <Text style={styles.helperText}>
+          Must be at least 8 characters. Use uppercase, lowercase, numbers, and symbols for a stronger password.
+        </Text>
+        {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
       </View>
 
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>Confirm Password</Text>
-        <View style={styles.passwordInputContainer}>
+        <View style={[styles.passwordInputContainer, errors.confirmPassword && styles.inputError]}>
           <TextInput
             style={styles.passwordInput}
             value={formData.confirmPassword}
@@ -990,6 +1264,7 @@ export default function Signup() {
             </View>
           </TouchableOpacity>
         </View>
+        {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
       </View>
 
       <View style={styles.buttonRow}>
@@ -1029,6 +1304,15 @@ export default function Signup() {
         <View style={styles.profilePicturePlaceholder}>
           {selectedImage ? (
             <Image source={{ uri: selectedImage }} style={styles.profileImage} />
+          ) : formData.firstName && formData.lastName ? (
+            <View
+              style={[
+                styles.initialsAvatar,
+                { backgroundColor: getAvatarColor(formData.firstName, formData.lastName) },
+              ]}
+            >
+              <Text style={styles.initialsText}>{getInitials(formData.firstName, formData.lastName)}</Text>
+            </View>
           ) : (
             <View style={styles.profileIcon}>
               <View style={styles.profileHead} />
@@ -1066,9 +1350,179 @@ export default function Signup() {
           <Text style={styles.prevButtonText}>Previous</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={[styles.signUpButton, isLoading && styles.disabledButton]}
-          onPress={handleSignUp}
+          style={[styles.nextButton, isLoading && styles.disabledButton]}
+          onPress={nextStep}
           disabled={isLoading}
+        >
+          <Text style={styles.nextButtonText}>Next</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.signInLinkContainer}>
+        <Text style={styles.signInText}>
+          Already have an account?{" "}
+          <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
+            <Text style={styles.signInLink}>Sign in</Text>
+          </TouchableOpacity>
+        </Text>
+      </View>
+    </ScrollView>
+  )
+
+  const renderStep7 = () => (
+    <View style={styles.stepContainer}>
+      <Text style={styles.stepTitle}>Terms & Conditions</Text>
+      <Text style={styles.stepSubtitle}>Please read and accept our terms to continue</Text>
+
+      <ScrollView style={styles.termsScrollView} showsVerticalScrollIndicator={true}>
+        <View style={styles.termsContent}>
+          <Text style={styles.termsMainTitle}>Terms & Policies</Text>
+          <Text style={styles.termsIntro}>
+            Welcome to ECHO, a digital platform designed to monitor, manage, and improve the health and welfare of
+            tartanilla horses in Cebu. By accessing or using the system, users agree to adhere to these Terms and
+            Policies.
+          </Text>
+
+          <Text style={styles.termsSectionTitle}>User Eligibility</Text>
+          <Text style={styles.termsText}>
+            • Users include Kutseros (caretakers/operators), veterinarians, and DVMF officials aged 18 or older.
+          </Text>
+          <Text style={styles.termsText}>
+            • Users must register with accurate information and keep login details confidential.
+          </Text>
+
+          <Text style={styles.termsSectionTitle}>User Responsibilities</Text>
+          <Text style={styles.termsText}>
+            • Use the system solely for authorized purposes related to horse health and welfare.
+          </Text>
+          <Text style={styles.termsText}>
+            • Ensure all data entered (horse details, health info) are correct and respectful of privacy.
+          </Text>
+          <Text style={styles.termsText}>
+            • Report any issues, errors, or suspicious activities immediately to the support team.
+          </Text>
+          <Text style={styles.termsText}>• Not attempt to modify, disrupt, or misuse the platform.</Text>
+
+          <Text style={styles.termsSectionTitle}>Data Privacy and Security</Text>
+          <Text style={styles.termsText}>
+            • Personal data and horse records are stored securely and used only for system operations.
+          </Text>
+          <Text style={styles.termsText}>
+            • Access to sensitive information is role-based and restricted to authorized users.
+          </Text>
+          <Text style={styles.termsText}>• Users should not share login credentials or allow unauthorized access.</Text>
+
+          <Text style={styles.termsSectionTitle}>System Usage</Text>
+          <Text style={styles.termsText}>
+            • The platform requires internet access; offline functionality is not supported.
+          </Text>
+          <Text style={styles.termsText}>
+            • Users must not employ automation or hacking techniques to interfere with the system.
+          </Text>
+          <Text style={styles.termsText}>
+            • The developers are not responsible for system downtime or technical issues beyond their control.
+          </Text>
+
+          <Text style={styles.termsSectionTitle}>Intellectual Property</Text>
+          <Text style={styles.termsText}>
+            All system content, features, logos, trademarks, and source code are owned by the system developers or
+            licensors. Users are prohibited from copying, reproducing, modifying, or distributing any system content
+            without explicit permission.
+          </Text>
+
+          <Text style={styles.termsSectionTitle}>Limitation of Liability</Text>
+          <Text style={styles.termsText}>
+            • ECHO aims to assist in early detection and management of horse health issues but is not a substitute for
+            professional veterinary advice.
+          </Text>
+          <Text style={styles.termsText}>
+            • The developers and administrators are not liable for any damages resulting from system use or inability to
+            access the platform.
+          </Text>
+          <Text style={styles.termsText}>
+            • The platform may experience occasional downtime; no guarantees are provided for uninterrupted service.
+          </Text>
+
+          <Text style={styles.termsSectionTitle}>Updates and Amendments</Text>
+          <Text style={styles.termsText}>
+            • These Terms and Policies may be updated periodically to reflect system improvements, legal updates, or
+            changes in functionality.
+          </Text>
+          <Text style={styles.termsText}>
+            • Continued use of the platform after updates constitutes acceptance of the revised policies.
+          </Text>
+          <Text style={styles.termsText}>
+            • Users will be notified of significant changes via system notifications or email.
+          </Text>
+
+          <Text style={styles.termsSectionTitle}>Termination and Suspension</Text>
+          <Text style={styles.termsText}>
+            • Accounts may be suspended or terminated for violations, misuse, or malicious activities.
+          </Text>
+          <Text style={styles.termsText}>
+            • Users may request account deletion, which will remove all user-specific data and horse records from the
+            system.
+          </Text>
+          <Text style={styles.termsText}>• Terminated users lose access to all platform features.</Text>
+
+          <Text style={styles.termsSectionTitle}>Compliance with Laws</Text>
+          <Text style={styles.termsText}>
+            • Users agree to comply with local laws, regulations, and ethical standards for animal welfare.
+          </Text>
+          <Text style={styles.termsText}>• The system adheres to Philippine data privacy laws and regulations.</Text>
+
+          <Text style={styles.termsSectionTitle}>Support & Communication</Text>
+          <Text style={styles.termsText}>
+            Support is available through email, Facebook, and in-app help features. Users can report issues, give
+            feedback, or request assistance via:
+          </Text>
+          <Text style={styles.termsText}>• Email: echosupport@gmail.com</Text>
+          <Text style={styles.termsText}>• Facebook: fb.com/echo</Text>
+          <Text style={styles.termsText}>
+            Emergency and critical alerts can be sent via the system's emergency alert feature, which notifies
+            veterinarians and authorities promptly.
+          </Text>
+
+          <Text style={styles.termsSectionTitle}>User Agreement</Text>
+          <Text style={styles.termsText}>• Registering an account implies acceptance of these Terms and Policies.</Text>
+          <Text style={styles.termsText}>• Users agree to use the platform responsibly and ethically.</Text>
+
+          <Text style={styles.termsSectionTitle}>Data Retention & Confidentiality</Text>
+          <Text style={styles.termsText}>
+            • Data will be stored securely and retained only for the duration necessary to fulfill the system's purpose.
+          </Text>
+          <Text style={styles.termsText}>
+            • Users' data will not be shared with unauthorized parties unless required by law or for system support.
+          </Text>
+          <Text style={styles.termsText}>
+            • The system encourages users to provide feedback for continuous improvement.
+          </Text>
+          <Text style={styles.termsText}>• Feedback can be submitted via email or the Facebook page.</Text>
+        </View>
+      </ScrollView>
+
+      <TouchableOpacity
+        style={styles.checkboxContainer}
+        onPress={() => updateFormData("termsAccepted", !formData.termsAccepted)}
+      >
+        <View style={[styles.checkbox, formData.termsAccepted && styles.checkboxChecked]}>
+          {formData.termsAccepted && <Text style={styles.checkmark}>✓</Text>}
+        </View>
+        <Text style={styles.checkboxLabel}>I have read and agree to the Terms & Conditions</Text>
+      </TouchableOpacity>
+
+      <View style={styles.buttonRow}>
+        <TouchableOpacity
+          style={[styles.prevButton, isLoading && styles.disabledButton]}
+          onPress={prevStep}
+          disabled={isLoading}
+        >
+          <Text style={styles.prevButtonText}>Previous</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.signUpButton, (isLoading || !formData.termsAccepted) && styles.disabledButton]}
+          onPress={handleSignUp}
+          disabled={isLoading || !formData.termsAccepted}
         >
           <Text style={styles.signUpButtonText}>{isLoading ? "Creating Account..." : "Sign Up"}</Text>
         </TouchableOpacity>
@@ -1082,7 +1536,7 @@ export default function Signup() {
           </TouchableOpacity>
         </Text>
       </View>
-    </ScrollView>
+    </View>
   )
 
   const renderCurrentStep = () => {
@@ -1099,6 +1553,8 @@ export default function Signup() {
         return renderStep5()
       case 6:
         return renderStep6()
+      case 7:
+        return renderStep7()
       default:
         return renderStep1()
     }
@@ -1118,12 +1574,12 @@ export default function Signup() {
         </View>
 
         <View style={styles.progressContainer}>
-          {[1, 2, 3, 4, 5, 6].map((step) => (
+          {[1, 2, 3, 4, 5, 6, 7].map((step) => (
             <View key={step} style={styles.progressStep}>
               <View style={[styles.progressCircle, currentStep >= step && styles.progressCircleActive]}>
                 <Text style={[styles.progressText, currentStep >= step && styles.progressTextActive]}>{step}</Text>
               </View>
-              {step < 6 && <View style={[styles.progressLine, currentStep > step && styles.progressLineActive]} />}
+              {step < 7 && <View style={[styles.progressLine, currentStep > step && styles.progressLineActive]} />}
             </View>
           ))}
         </View>
@@ -1135,6 +1591,38 @@ export default function Signup() {
 }
 
 const styles = StyleSheet.create({
+  inputError: {
+    borderColor: "#FF4444",
+    borderWidth: 2,
+  },
+  errorText: {
+    color: "#FF4444",
+    fontSize: moderateScale(12),
+    marginTop: moderateScale(4),
+    marginLeft: moderateScale(2),
+  },
+
+  passwordStrengthContainer: {
+    marginTop: moderateScale(8),
+    marginBottom: moderateScale(4),
+  },
+  passwordStrengthBar: {
+    height: moderateScale(6),
+    backgroundColor: "#E0E0E0",
+    borderRadius: moderateScale(3),
+    overflow: "hidden",
+    marginBottom: moderateScale(6),
+  },
+  passwordStrengthFill: {
+    height: "100%",
+    borderRadius: moderateScale(3),
+  },
+  passwordStrengthText: {
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+    textAlign: "right",
+  },
+
   container: {
     flex: 1,
     backgroundColor: "#B8763E",
@@ -1480,20 +1968,28 @@ const styles = StyleSheet.create({
     marginVertical: moderateScale(30),
   },
   profilePicturePlaceholder: {
-    width: moderateScale(120),
-    height: moderateScale(120),
-    borderRadius: moderateScale(60),
-    backgroundColor: "#F0F0F0",
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    backgroundColor: "#E5E7EB",
     justifyContent: "center",
     alignItems: "center",
-    borderWidth: 3,
-    borderColor: "#E0E0E0",
-    borderStyle: "dashed",
+    overflow: "hidden",
   },
   profileImage: {
-    width: moderateScale(120),
-    height: moderateScale(120),
-    borderRadius: moderateScale(60),
+    width: "100%",
+    height: "100%",
+  },
+  initialsAvatar: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  initialsText: {
+    fontSize: 60,
+    fontWeight: "bold",
+    color: "#FFFFFF",
   },
   profileIcon: {
     alignItems: "center",
@@ -1614,5 +2110,74 @@ const styles = StyleSheet.create({
     color: "#B8763E",
     fontWeight: "600",
     textDecorationLine: "underline",
+  },
+  termsScrollView: {
+    flex: 1,
+    backgroundColor: "#F9F9F9",
+    borderRadius: moderateScale(10),
+    marginBottom: moderateScale(15),
+    maxHeight: height * 0.5,
+  },
+  termsContent: {
+    padding: moderateScale(20),
+  },
+  termsMainTitle: {
+    fontSize: moderateScale(20),
+    fontWeight: "bold",
+    color: "#B8763E",
+    marginBottom: moderateScale(10),
+    textAlign: "center",
+  },
+  termsIntro: {
+    fontSize: moderateScale(14),
+    color: "#333333",
+    lineHeight: moderateScale(20),
+    marginBottom: moderateScale(20),
+    textAlign: "justify",
+  },
+  termsSectionTitle: {
+    fontSize: moderateScale(16),
+    fontWeight: "bold",
+    color: "#333333",
+    marginTop: moderateScale(15),
+    marginBottom: moderateScale(8),
+  },
+  termsText: {
+    fontSize: moderateScale(13),
+    color: "#555555",
+    lineHeight: moderateScale(20),
+    marginBottom: moderateScale(6),
+    textAlign: "justify",
+  },
+  checkboxContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: moderateScale(15),
+    paddingHorizontal: moderateScale(5),
+  },
+  checkbox: {
+    width: moderateScale(24),
+    height: moderateScale(24),
+    borderWidth: 2,
+    borderColor: "#B8763E",
+    borderRadius: moderateScale(4),
+    marginRight: moderateScale(10),
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  checkboxChecked: {
+    backgroundColor: "#B8763E",
+  },
+  checkmark: {
+    color: "#FFFFFF",
+    fontSize: moderateScale(16),
+    fontWeight: "bold",
+  },
+  checkboxLabel: {
+    flex: 1,
+    fontSize: moderateScale(14),
+    color: "#333333",
+    lineHeight: moderateScale(20),
   },
 })
