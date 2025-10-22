@@ -3,7 +3,6 @@ import {
   ClipboardList,
   FileText,
   Folder,
-  Heart,
   LayoutDashboard,
   LogOut,
   Megaphone,
@@ -12,19 +11,39 @@ import {
   UserCheck,
   X
 } from 'lucide-react';
-import { useState } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { forwardRef, useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 
-const DvmfSidebars = () => { 
+const DvmfSidebars = forwardRef((props, ref) => { 
   const location = useLocation();
   const navigate = useNavigate();
   const [showLogoutModal, setShowLogoutModal] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  // Get initial state from localStorage or default to false
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem("sidebarCollapsed")
+    return saved ? JSON.parse(saved) : false
+  })
+
+  // Save to localStorage whenever state changes
+  useEffect(() => {
+    localStorage.setItem("sidebarCollapsed", JSON.stringify(isSidebarCollapsed))
+  }, [isSidebarCollapsed])
 
   const handleLogout = () => {
     localStorage.clear();
     navigate('/');
   };
+
+  const handleToggleSidebar = () => {
+    setIsSidebarCollapsed(!isSidebarCollapsed)
+  }
+
+  // This function handles navigation without affecting sidebar state
+  const handleNavigation = (path) => {
+    navigate(path)
+    // Sidebar state remains the same
+  }
 
   const sidebarItems = [
     { icon: LayoutDashboard, label: "Dashboard", path: "/DvmfDashboard" },
@@ -40,11 +59,11 @@ const DvmfSidebars = () => {
   return (
     <>
       <style>{`
-        /* Global & Basic Styles */
+        /* Sidebar */
         .sidebar {
           background-color: #FFFFFF;
           color: #362205;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          transition: all 0.3s ease;
           position: relative;
           z-index: 1000;
           height: 100vh;
@@ -53,62 +72,39 @@ const DvmfSidebars = () => {
           box-shadow: 0 0 60px -15px rgba(0, 0, 0, 0.25);
           overflow: hidden;
         }
-
         .sidebar-expanded { width: 250px; }
         .sidebar-collapsed { width: 70px; }
 
         /* Header */
         .sidebar-header {
-          padding: 24px 20px;
+          padding: 20px;
           display: flex;
           align-items: center;
           justify-content: space-between;
           background: #FFFFFF;
+          gap: 10px;
         }
-
         .sidebar-logo-container {
           display: flex;
           align-items: center;
-          gap: 12px;
+          flex: 1;
           overflow: hidden;
         }
-
         .sidebar-logo {
-          width: 42px;
-          height: 42px;
-          background: #0F3D5A; /* updated */
-          border-radius: 12px;
+          max-width: 160px;
+          height: auto;
           display: flex;
           align-items: center;
           justify-content: center;
           flex-shrink: 0;
-          box-shadow: 0 4px 20px -2px rgba(15, 61, 90, 0.3); /* adjusted */
-        }
-
-        .sidebar-logo-icon {
-          width: 22px;
-          height: 22px;
-          color: white;
-        }
-
-        .sidebar-brand {
           overflow: hidden;
-          transition: all 0.3s ease;
-          white-space: nowrap;
         }
 
-        .sidebar-brand-title {
-          font-weight: 700;
-          font-size: 18px;
-          display: block;
-          color: #362205;
-          letter-spacing: 0.5px;
-        }
-
-        .sidebar-brand-subtitle {
-          font-size: 12px;
-          color: #1E4F6B; /* updated muted blue */
-          margin-top: 2px;
+        .sidebar-logo-img {
+          width: 100%;
+          height: auto;
+          object-fit: contain;
+          filter: contrast(1.3) brightness(1.1);
         }
 
         .menu-button {
@@ -123,13 +119,11 @@ const DvmfSidebars = () => {
           transition: all 0.2s ease;
           color: #362205;
         }
-
         .menu-button:hover {
           background: #F0F0F0;
-          color: #0F3D5A; /* updated */
+          color: #0F3D5A;
           transform: rotate(90deg);
         }
-
         .menu-icon {
           width: 20px;
           height: 20px;
@@ -143,7 +137,6 @@ const DvmfSidebars = () => {
           flex-direction: column;
           gap: 6px;
         }
-
         .sidebar-nav-item {
           display: flex;
           align-items: center;
@@ -154,8 +147,15 @@ const DvmfSidebars = () => {
           color: #362205;
           position: relative;
           overflow: hidden;
+          cursor: pointer;
         }
-
+        
+        /* Fix for collapsed state */
+        .sidebar-collapsed .sidebar-nav-item {
+          justify-content: center;
+          padding: 14px;
+        }
+        
         .sidebar-nav-item:before {
           content: '';
           position: absolute;
@@ -163,51 +163,40 @@ const DvmfSidebars = () => {
           top: 0;
           height: 100%;
           width: 4px;
-          background: linear-gradient(to bottom, #0F3D5A, #0c3048); /* updated */
+          background: linear-gradient(to bottom, #0F3D5A, #0c3048);
           opacity: 0;
           transition: opacity 0.3s ease;
         }
-
         .sidebar-nav-item:hover {
           background: #F0F0F0;
-          transform: scale(1.02);         
+          transform: scale(1.02);
         }
-
         .sidebar-nav-item:hover:before {
           opacity: 1;
         }
-
-        .sidebar-nav-item:hover .sidebar-nav-label {
-          color: #0F3D5A; /* updated */
-        }
+        .sidebar-nav-item:hover .sidebar-nav-label,
         .sidebar-nav-item:hover .sidebar-nav-icon {
-          color: #0F3D5A; /* updated */
+          color: #0F3D5A;
         }
-
         .sidebar-nav-item-active {
           background-color: #F8F8F8;
-          color: #0F3D5A; /* updated */
+          color: #0F3D5A;
           font-weight: 600;
           box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
         }
-
         .sidebar-nav-item-active:before {
           opacity: 1;
-          background: #0F3D5A; /* updated */
-          box-shadow: none;
+          background: #0F3D5A;
         }
-        
         .sidebar-nav-item-active .sidebar-nav-icon {
-          color: #0F3D5A; /* updated */
+          color: #0F3D5A;
         }
-
         .sidebar-nav-icon {
           width: 20px;
           height: 20px;
           flex-shrink: 0;
           transition: all 0.2s ease;
         }
-
         .sidebar-nav-label {
           margin-left: 14px;
           transition: all 0.3s ease;
@@ -215,6 +204,11 @@ const DvmfSidebars = () => {
           white-space: nowrap;
           font-size: 14px;
           font-weight: 500;
+        }
+
+        /* Hide labels when sidebar is collapsed */
+        .sidebar-collapsed .sidebar-nav-label {
+          display: none;
         }
 
         /* Tooltip */
@@ -225,7 +219,7 @@ const DvmfSidebars = () => {
           left: 100%;
           top: 50%;
           transform: translateY(-50%) translateX(8px);
-          background: #0F3D5A; /* updated */
+          background: #0F3D5A;
           color: white;
           padding: 8px 14px;
           border-radius: 6px;
@@ -233,11 +227,10 @@ const DvmfSidebars = () => {
           transition: all 0.2s ease;
           font-size: 13px;
           z-index: 1000;
-          box-shadow: 0 4px 15px rgba(15, 61, 90, 0.25); /* adjusted */
+          box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
           pointer-events: none;
-          border: 1px solid rgba(15, 61, 90, 0.4); /* adjusted */
+          border: 1px solid rgba(0, 0, 0, 0.3);
         }
-
         .sidebar-tooltip::before {
           content: '';
           position: absolute;
@@ -246,11 +239,12 @@ const DvmfSidebars = () => {
           transform: translateY(-50%);
           border-width: 6px;
           border-style: solid;
-          border-color: transparent #0F3D5A transparent transparent; /* updated */
+          border-color: transparent #0F3D5A transparent transparent;
         }
-
-        .sidebar-nav-item:hover .sidebar-tooltip,
-        .sidebar-logout-button:hover .sidebar-tooltip {
+        
+        /* Show tooltip only when sidebar is collapsed */
+        .sidebar-collapsed .sidebar-nav-item:hover .sidebar-tooltip,
+        .sidebar-collapsed .sidebar-logout-button:hover .sidebar-tooltip {
           visibility: visible;
           opacity: 1;
           transform: translateY(-50%) translateX(12px);
@@ -261,7 +255,6 @@ const DvmfSidebars = () => {
           padding: 20px;
           border-top: 1px solid #E0E0E0;
         }
-
         .sidebar-logout-button {
           display: flex;
           align-items: center;
@@ -272,14 +265,30 @@ const DvmfSidebars = () => {
           color: #362205;
           position: relative;
         }
-
+        
+        /* Fix for collapsed logout button */
+        .sidebar-collapsed .sidebar-logout-button {
+          justify-content: center;
+          padding: 14px;
+        }
+        
         .sidebar-logout-button:hover {
           background: #F0F0F0;
           color: #120A01;
           transform: translateX(4px);
         }
 
-        /* Modal */
+        /* Hide logout text when collapsed */
+        .sidebar-collapsed .sidebar-logout-button .sidebar-nav-label {
+          display: none;
+        }
+
+        /* Hide logo when collapsed */
+        .sidebar-collapsed .sidebar-logo {
+          display: none;
+        }
+
+        /* Modal styles remain the same */
         .logout-modal-overlay {
           position: fixed;
           inset: 0;
@@ -291,7 +300,6 @@ const DvmfSidebars = () => {
           animation: fadeIn 0.2s ease;
           backdrop-filter: blur(4px);
         }
-
         .logout-modal {
           background-color: #FFFFFF;
           border-radius: 16px;
@@ -302,20 +310,17 @@ const DvmfSidebars = () => {
           animation: scaleIn 0.2s ease;
           border: 1px solid #E0E0E0;
         }
-
         .logout-modal-header {
           display: flex;
           align-items: center;
           justify-content: space-between;
           margin-bottom: 20px;
         }
-
         .logout-modal-title {
           font-size: 20px;
           font-weight: 600;
           color: #362205;
         }
-
         .logout-modal-close {
           background: #F0F0F0;
           border: none;
@@ -328,25 +333,21 @@ const DvmfSidebars = () => {
           justify-content: center;
           transition: all 0.2s ease;
         }
-
         .logout-modal-close:hover {
           background: #E0E0E0;
-          color: #0F3D5A; /* updated */
+          color: #120A01;
         }
-
         .logout-modal-text {
           font-size: 15px;
           color: #614624;
           margin-bottom: 28px;
           line-height: 1.6;
         }
-
         .logout-modal-actions {
           display: flex;
           justify-content: flex-end;
           gap: 14px;
         }
-
         .logout-modal-cancel {
           padding: 12px 20px;
           font-size: 14px;
@@ -358,62 +359,46 @@ const DvmfSidebars = () => {
           cursor: pointer;
           transition: all 0.2s ease;
         }
-
         .logout-modal-cancel:hover {
           background: #D8D8D8;
           color: #120A01;
         }
-
         .logout-modal-confirm {
           padding: 12px 20px;
           font-size: 14px;
           font-weight: 500;
           color: white;
-          background: linear-gradient(135deg, #0F3D5A 0%, #0c3048 100%); /* updated */
+          background: linear-gradient(135deg, #0F3D5A 0%, #0c3048 100%);
           border-radius: 10px;
           border: none;
           cursor: pointer;
           transition: all 0.2s ease;
-          box-shadow: 0 4px 12px rgba(15, 61, 90, 0.4); /* adjusted */
+          box-shadow: 0 4px 12px rgba(15, 61, 90, 0.4);
         }
-
         .logout-modal-confirm:hover {
           transform: translateY(-2px);
-          box-shadow: 0 6px 16px rgba(15, 61, 90, 0.5); /* adjusted */
-          background: linear-gradient(135deg, #0d3550 0%, #092739 100%); /* darker hover */
+          box-shadow: 0 6px 16px rgba(15, 61, 90, 0.5);
+          background: linear-gradient(135deg, #0d3550 0%, #092739 100%);
         }
-
         @keyframes fadeIn {
           from { opacity: 0; }
           to { opacity: 1; }
         }
-
         @keyframes scaleIn {
           from { transform: scale(0.95); opacity: 0; }
           to { transform: scale(1); opacity: 1; }
         }
       `}</style>
 
-      <div
-        className={`sidebar ${isSidebarCollapsed ? 'sidebar-collapsed' : 'sidebar-expanded'}`}
-      >
+      <div ref={ref} className={`sidebar ${isSidebarCollapsed ? "sidebar-collapsed" : "sidebar-expanded"}`}>
         {/* Header */}
         <div className="sidebar-header">
           <div className="sidebar-logo-container">
             <div className="sidebar-logo">
-              <Heart className="sidebar-logo-icon" />
+              <img src="/Images/echo.png" alt="ECHO Logo" className="sidebar-logo-img" />
             </div>
-            {!isSidebarCollapsed && (
-              <div className="sidebar-brand">
-                <span className="sidebar-brand-title">ECHO</span>
-                <p className="sidebar-brand-subtitle">DVMF</p>
-              </div>
-            )}
           </div>
-          <button
-            className="menu-button"
-            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          >
+          <button className="menu-button" onClick={handleToggleSidebar}>
             <Menu className="menu-icon" />
           </button>
         </div>
@@ -421,38 +406,24 @@ const DvmfSidebars = () => {
         {/* Navigation */}
         <nav className="sidebar-nav">
           {sidebarItems.map(({ icon: Icon, label, path }, index) => {
-            let isActive = false;
-
-            if (path === "/VetAppointments") {
-              isActive =
-                location.pathname.startsWith("/VetAppointments") ||
-                location.pathname.startsWith("/VetAppointmentDetails");
-            } else if (path === "/VetAppointmentRequests") {
-              isActive = location.pathname.startsWith("/VetAppointmentRequests");
-            } else {
-              isActive = location.pathname === path;
-            }
-
+            const isActive = location.pathname === path
             return (
-              <Link
+              <div
                 key={index}
-                to={path}
-                className={`sidebar-nav-item ${isActive ? 'sidebar-nav-item-active' : ''}`}
+                onClick={() => handleNavigation(path)}
+                className={`sidebar-nav-item ${isActive ? "sidebar-nav-item-active" : ""}`}
               >
                 <Icon className="sidebar-nav-icon" />
                 {!isSidebarCollapsed && <span className="sidebar-nav-label">{label}</span>}
                 {isSidebarCollapsed && <span className="sidebar-tooltip">{label}</span>}
-              </Link>
-            );
+              </div>
+            )
           })}
         </nav>
 
         {/* Logout */}
         <div className="sidebar-logout">
-          <div
-            onClick={() => setShowLogoutModal(true)}
-            className="sidebar-logout-button"
-          >
+          <div onClick={() => setShowLogoutModal(true)} className="sidebar-logout-button">
             <LogOut className="sidebar-nav-icon" />
             {!isSidebarCollapsed && <span className="sidebar-nav-label">Log Out</span>}
             {isSidebarCollapsed && <span className="sidebar-tooltip">Log Out</span>}
@@ -466,10 +437,7 @@ const DvmfSidebars = () => {
           <div className="logout-modal" onClick={(e) => e.stopPropagation()}>
             <div className="logout-modal-header">
               <h2 className="logout-modal-title">Confirm Logout</h2>
-              <button
-                className="logout-modal-close"
-                onClick={() => setShowLogoutModal(false)}
-              >
+              <button className="logout-modal-close" onClick={() => setShowLogoutModal(false)}>
                 <X size={20} />
               </button>
             </div>
@@ -477,16 +445,10 @@ const DvmfSidebars = () => {
               Are you sure you want to log out your account? You'll need to sign in again to access your dashboard.
             </p>
             <div className="logout-modal-actions">
-              <button
-                onClick={() => setShowLogoutModal(false)}
-                className="logout-modal-cancel"
-              >
+              <button onClick={() => setShowLogoutModal(false)} className="logout-modal-cancel">
                 Cancel
               </button>
-              <button
-                onClick={handleLogout}
-                className="logout-modal-confirm"
-              >
+              <button onClick={handleLogout} className="logout-modal-confirm">
                 Log Out
               </button>
             </div>
@@ -494,7 +456,9 @@ const DvmfSidebars = () => {
         </div>
       )}
     </>
-  );
-};
+  )
+})
 
-export default DvmfSidebars;
+DvmfSidebars.displayName = "DvmfSidebars"
+
+export default DvmfSidebars

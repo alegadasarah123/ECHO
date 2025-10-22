@@ -249,7 +249,7 @@ const SettingsPage = () => {
       const data = await res.json();
 
       if (res.ok) {
-        setSuccessMessage("Profile saved successfully! 🎉");
+        setSuccessMessage("Profile saved successfully!");
         setEditing(false);
         setProfileExists(true);
         setOriginalProfile(profile); // Update original data

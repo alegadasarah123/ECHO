@@ -4,6 +4,8 @@ import {
   AlertTriangle,
   Bell,
   CheckCircle,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   CreditCard,
   Eye,
@@ -23,7 +25,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
 
 const SkeletonLoader = () => (
   <div className="animate-pulse">
@@ -45,7 +47,7 @@ function CtuAccountApproval() {
   const navigate = useNavigate()
 
   const [registrationData, setRegistrationData] = useState([])
-  const [message, setMessage] = useState("") // For showing confirmation messages
+  const [message, setMessage] = useState("")
   const [vetProfiles, setVetProfiles] = useState([])
 
   const [activeTab, setActiveTab] = useState("pending")
@@ -57,6 +59,8 @@ function CtuAccountApproval() {
 
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingCounts, setIsLoadingCounts] = useState(true)
+  const [isActionLoading, setIsActionLoading] = useState(false) // NEW: Loading state for approve/decline actions
+  const [loadingActionId, setLoadingActionId] = useState(null) // NEW: Track which action is loading
 
   const [notifications, setNotifications] = useState([])
   const [notifsOpen, setNotifsOpen] = useState(false)
@@ -76,10 +80,14 @@ function CtuAccountApproval() {
 
   const [declineReason, setDeclineReason] = useState("")
 
-  // State for managing pinned posts (if this component were to handle posts)
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
+
+  // State for managing pinned posts
   const [pinnedPosts, setPinnedPosts] = useState(new Set())
   const [showDropdown, setShowDropdown] = useState({})
-  const [posts, setPosts] = useState([]) // Assuming 'posts' is relevant for some functionality
+  const [posts, setPosts] = useState([])
 
   // Helper to format time for notifications
   const formatTimeAgo = useCallback((timestamp) => {
@@ -108,21 +116,22 @@ function CtuAccountApproval() {
     declined: 0,
   })
 
-  useEffect(() => {
-    const fetchCounts = async () => {
-      setIsLoadingCounts(true)
-      try {
-        const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-account-counts/")
-        if (!response.ok) throw new Error("Failed to fetch data")
-        const result = await response.json()
-        setCounts(result.data || result)
-      } catch (error) {
-        console.error("Error fetching counts:", error)
-      } finally {
-        setIsLoadingCounts(false)
-      }
+  // ✅ Refresh counts function
+  const fetchCounts = async () => {
+    setIsLoadingCounts(true)
+    try {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get-account-counts/")
+      if (!response.ok) throw new Error("Failed to fetch data")
+      const result = await response.json()
+      setCounts(result.data || result)
+    } catch (error) {
+      console.error("Error fetching counts:", error)
+    } finally {
+      setIsLoadingCounts(false)
     }
+  }
 
+  useEffect(() => {
     fetchCounts()
   }, [])
 
@@ -130,7 +139,6 @@ function CtuAccountApproval() {
     const debounceTimer = setTimeout(() => {
       if (searchTerm) {
         setIsSearching(true)
-        // Simulate search delay
         setTimeout(() => {
           const filtered = registrationData.filter(
             (user) =>
@@ -153,7 +161,6 @@ function CtuAccountApproval() {
   const filterRegistrations = useCallback(() => {
     let filtered = registrationData
 
-    // Correctly filter by nested status
     filtered = filtered.filter((user) => user.users?.status === activeTab)
 
     if (searchTerm) {
@@ -168,10 +175,18 @@ function CtuAccountApproval() {
     return filtered
   }, [registrationData, activeTab, searchTerm])
 
+  // Get paginated data
+  const getPaginatedData = () => {
+    const filteredRegistrations = filterRegistrations()
+    const startIndex = (currentPage - 1) * itemsPerPage
+    const endIndex = startIndex + itemsPerPage
+    return filteredRegistrations.slice(startIndex, endIndex)
+  }
+
   const viewDetails = (vetId, status) => {
     const user = registrationData.find((u) => u.vet_id === vetId)
     if (user) {
-      setSelectedUser({ ...user, status }) // Pass status to modal for conditional buttons
+      setSelectedUser({ ...user, status })
       setIsViewDetailsModalOpen(true)
       setModalActiveTab("personal")
     } else {
@@ -222,6 +237,7 @@ function CtuAccountApproval() {
     setIsConfirmationModalOpen(false)
     setSelectedUser(null)
     setConfirmationDetails({ title: "", message: "", action: "" })
+    setDeclineReason("") // Reset decline reason when closing
   }
 
   const confirmAction = () => {
@@ -230,17 +246,23 @@ function CtuAccountApproval() {
     } else if (confirmationDetails.action === "decline" && selectedUser) {
       declineUser(selectedUser.vet_id)
     }
-    closeConfirmation()
   }
 
-  // -------------------- Approve a single user --------------------
+  // -------------------- UPDATED: Approve a single user with loading state --------------------
   const approveUser = async (vetId) => {
+    setIsActionLoading(true)
+    setLoadingActionId(vetId)
+    
     try {
       // Optimistically update the UI first
-      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "approved" } : u)))
+      setRegistrationData((prev) => 
+        prev.map((u) => 
+          u.vet_id === vetId ? { ...u, users: { ...u.users, status: "approved" } } : u
+        )
+      )
       setMessage(`Approving user ${vetId}...`)
 
-      const response = await fetch(`http://127.0.0.1:8000/api/ctu_vetmed/update-vet-status/${vetId}/`, {
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/update-vet-status/${vetId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -255,29 +277,46 @@ function CtuAccountApproval() {
       const data = await response.json()
       setMessage(`User ${vetId} approved successfully!`)
       
-      // Refresh counts after approval
-      fetchCounts()
+      // Refresh data after approval
+      await handleManualRefresh()
+      await fetchCounts()
+      
       console.log("User approved:", data)
     } catch (err) {
       console.error(err)
       // Rollback UI if failed
-      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u)))
+      setRegistrationData((prev) => 
+        prev.map((u) => 
+          u.vet_id === vetId ? { ...u, users: { ...u.users, status: "pending" } } : u
+        )
+      )
       setMessage(`Error: ${err.message}`)
+    } finally {
+      setIsActionLoading(false)
+      setLoadingActionId(null)
+      closeConfirmation()
     }
   }
 
-  // -------------------- Decline a single user --------------------
+  // -------------------- UPDATED: Decline a single user with loading state --------------------
   const declineUser = async (vetId) => {
     if (!declineReason) {
       setMessage("Please enter a reason for decline.")
       return
     }
 
+    setIsActionLoading(true)
+    setLoadingActionId(vetId)
+
     try {
-      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "declined" } : u)))
+      setRegistrationData((prev) => 
+        prev.map((u) => 
+          u.vet_id === vetId ? { ...u, users: { ...u.users, status: "declined" } } : u
+        )
+      )
       setMessage(`Declining user ${vetId}...`)
 
-      const response = await fetch(`http://127.0.0.1:8000/api/ctu_vetmed/update-vet-status/${vetId}/`, {
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/update-vet-status/${vetId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -291,20 +330,31 @@ function CtuAccountApproval() {
 
       const data = await response.json()
       setMessage(`User ${vetId} declined successfully!`)
-      setDeclineReason("") // clear reason after successful decline
       
-      // Refresh counts after decline
-      fetchCounts()
+      // Refresh data after decline
+      await handleManualRefresh()
+      await fetchCounts()
+      
       console.log("User declined:", data)
     } catch (err) {
       console.error(err)
-      setRegistrationData((prev) => prev.map((u) => (u.vet_id === vetId ? { ...u, status: "pending" } : u)))
+      setRegistrationData((prev) => 
+        prev.map((u) => 
+          u.vet_id === vetId ? { ...u, users: { ...u.users, status: "pending" } } : u
+        )
+      )
       setMessage(`Error: ${err.message}`)
+    } finally {
+      setIsActionLoading(false)
+      setLoadingActionId(null)
+      setDeclineReason("")
+      closeConfirmation()
     }
   }
 
   const handleSearchInput = (e) => {
     setSearchTerm(e.target.value)
+    setCurrentPage(1)
     if (e.target.value) {
       setIsSearching(true)
     }
@@ -320,55 +370,139 @@ function CtuAccountApproval() {
 
   const loadStats = useCallback(() => {
     console.log("Loading stats...")
-    // In a real app, this would fetch dashboard statistics
   }, [])
 
   const loadRecentActivities = useCallback(() => {
     console.log("Loading recent activities...")
-    // In a real app, this would fetch recent activities
   }, [])
 
   // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
       })
-      .then((result) => {
-        // Extract data from response if needed
-        const data = result.data || result
+      .then((data) => {
+        console.log("Raw notifications data:", data);
         const formatted = data.map((notif) => ({
           id: notif.id,
           message: notif.message,
           date: notif.date || new Date().toISOString(),
+          read: notif.read || false,
+          type: notif.type || "general"
         }))
+        console.log("Formatted notifications:", formatted);
+        console.log("Unread count:", formatted.filter(n => !n.read).length);
         setNotifications(formatted)
       })
       .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
-  // ✅ Refresh counts function
-  const fetchCounts = async () => {
+  // ✅ MARK ALL NOTIFICATIONS AS READ
+  const handleMarkAllAsRead = async () => {
     try {
-      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-account-counts/")
-      if (!response.ok) throw new Error("Failed to fetch data")
-      const result = await response.json()
-      setCounts(result.data || result)
-    } catch (error) {
-      console.error("Error fetching counts:", error)
+      const res = await fetch(`https://echo-ebl8.onrender.com/mark_all_notifications_read/`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to mark all as read");
+      }
+      
+      const data = await res.json();
+      console.log("Mark all as read result:", data);
+
+      setNotifications(prev =>
+        prev.map(notif => ({ ...notif, read: true }))
+      );
+      
+    } catch (err) {
+      console.error("Error marking all as read:", err);
     }
+  };
+
+  // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
+ const handleNotificationClick = async (notification) => {
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev =>
+    prev.map(notif =>
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
+
+  // Mark notification as read in backend
+  try {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
   }
 
-  // ✅ Auto-refresh notifications every 60s (reduced from 10s)
+  // Handle navigation based on notification content
+  const message = notification.message.toLowerCase();
+
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    navigate("/CtuAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    navigate("/CtuAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
+    navigate("/CtuAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+};
+
+  // ✅ Handle notifications update from modal
+  const handleNotificationsUpdate = (updatedNotifications) => {
+    console.log("Notifications updated from modal:", updatedNotifications);
+    console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
+    setNotifications(updatedNotifications);
+  };
+
+  // ✅ Auto-refresh notifications every 60s
   useEffect(() => {
-    loadNotifications() // load once
+    loadNotifications()
 
     const interval = setInterval(() => {
       loadNotifications()
-    }, 60000) // 60 seconds
+    }, 60000)
 
     return () => clearInterval(interval)
   }, [loadNotifications])
@@ -379,13 +513,44 @@ function CtuAccountApproval() {
     loadNotifications()
   }, [loadStats, loadRecentActivities, loadNotifications])
 
+  // Manual refresh function - UPDATED to be more robust
+  const handleManualRefresh = async () => {
+    setIsLoading(true)
+    try {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get-vet-profiles/")
+      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+      
+      const result = await response.json()
+      const data = result.data || []
+      
+      const processedData = data.map((item) => {
+        let statusValue = item.status
+        if (!statusValue && item.users && item.users.status) {
+          statusValue = item.users.status
+        }
+
+        return {
+          ...item,
+          status: statusValue || "pending",
+          type: item.type || "Veterinarian",
+        }
+      })
+
+      setRegistrationData(processedData)
+    } catch (error) {
+      console.error("Failed to refresh data:", error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   useEffect(() => {
-    const controller = new AbortController() // for cancelling fetch on unmount
+    const controller = new AbortController()
 
     const loadVetProfiles = async () => {
       setIsLoading(true)
       try {
-        const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-vet-profiles/", {
+        const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get-vet-profiles/", {
           signal: controller.signal,
         })
 
@@ -396,11 +561,9 @@ function CtuAccountApproval() {
         const result = await response.json()
         console.log("Fetched vet profiles response:", result)
 
-        // Extract the data array from the response
         const data = result.data || []
         console.log("Extracted vet profiles data:", data)
 
-        // Process each item safely
         const processedData = data.map((item, index) => {
           let statusValue = item.status
           if (!statusValue && item.users && item.users.status) {
@@ -414,7 +577,6 @@ function CtuAccountApproval() {
           }
         })
 
-        // Log processed items
         processedData.forEach((item, index) => {
           console.log(`[Processed Item ${index}]`, {
             id: item.vet_id,
@@ -435,13 +597,10 @@ function CtuAccountApproval() {
       }
     }
 
-    loadVetProfiles() // initial load only
-    
-    // REMOVED auto-refresh interval for vet profiles
-    // Only manual refreshes now
+    loadVetProfiles()
 
     return () => {
-      controller.abort() // cancel fetch if component unmounts
+      controller.abort()
     }
   }, [])
 
@@ -452,7 +611,6 @@ function CtuAccountApproval() {
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      // Close notification dropdown
       if (
         notificationBellRef.current &&
         !notificationBellRef.current.contains(event.target) &&
@@ -461,7 +619,6 @@ function CtuAccountApproval() {
       ) {
         setIsNotificationDropdownOpen(false)
       }
-      // Close view details modal
       if (
         isViewDetailsModalOpen &&
         viewDetailsModalOverlayRef.current &&
@@ -469,7 +626,6 @@ function CtuAccountApproval() {
       ) {
         closeModal()
       }
-      // Close confirmation modal
       if (
         isConfirmationModalOpen &&
         confirmationOverlayRef.current &&
@@ -485,17 +641,33 @@ function CtuAccountApproval() {
   }, [isNotificationDropdownOpen, isViewDetailsModalOpen, isConfirmationModalOpen])
 
   const filteredRegistrations = filterRegistrations()
+  const paginatedRegistrations = getPaginatedData()
+  const totalPages = Math.ceil(filteredRegistrations.length / itemsPerPage)
+
+  // Calculate unread notifications count
+  const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
+
+  // Pagination handlers
+  const goToPage = (page) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page)
+    }
+  }
+
+  const handleItemsPerPageChange = (e) => {
+    setItemsPerPage(Number(e.target.value))
+    setCurrentPage(1)
+  }
 
   const togglePin = (postId) => {
     setPinnedPosts((prev) => {
       const updated = new Set(prev)
-      updated.add(postId) // only add, never delete
+      updated.add(postId)
       return updated
     })
 
     setShowDropdown((prev) => ({ ...prev, [postId]: false }))
 
-    // Reorder posts: pinned posts first, then regular posts by timestamp
     setPosts((prev) => {
       const pinned = []
       const unpinned = []
@@ -517,8 +689,8 @@ function CtuAccountApproval() {
 
   const handleTabChange = (tabName) => {
     setActiveTab(tabName)
+    setCurrentPage(1)
     setIsLoading(true)
-    // Simulate loading delay for tab change
     setTimeout(() => {
       setIsLoading(false)
     }, 500)
@@ -538,38 +710,6 @@ function CtuAccountApproval() {
     }
   };
 
-  // Manual refresh function
-  const handleManualRefresh = async () => {
-    setIsLoading(true)
-    try {
-      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get-vet-profiles/")
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
-      
-      const result = await response.json()
-      const data = result.data || []
-      
-      const processedData = data.map((item) => {
-        let statusValue = item.status
-        if (!statusValue && item.users && item.users.status) {
-          statusValue = item.users.status
-        }
-
-        return {
-          ...item,
-          status: statusValue || "pending",
-          type: item.type || "Veterinarian",
-        }
-      })
-
-      setRegistrationData(processedData)
-      await fetchCounts() // Also refresh counts
-    } catch (error) {
-      console.error("Failed to refresh data:", error)
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
       <div className="sidebars" id="sidebasr">
@@ -577,8 +717,13 @@ function CtuAccountApproval() {
       </div>
 
       <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
-        <header className="bg-white px-6 py-[18px] flex items-center justify-between shadow-sm flex-wrap gap-4">
-          <h1 className="text-2xl font-bold text-black">Account Approval</h1>
+        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+          <div className="flex flex-col ">
+            <h2 className="text-2xl font-bold text-[#b91c1c]">Account Approval</h2>
+            <p className="text-sm text-gray-600 mt-1 font-normal">
+              Manage veterinarian user requests, approvals, and declines
+            </p>
+          </div>
 
           <div className="flex items-center gap-4">
             {/* Manual Refresh Icon */}
@@ -597,13 +742,14 @@ function CtuAccountApproval() {
 
             {/* 🔔 Notification Bell */}
             <button
+              ref={notificationBellRef}
               className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
               onClick={() => setNotifsOpen(!notifsOpen)}
             >
               <Bell size={24} color="#374151" />
-              {notifications.length > 0 && (
-                <span className="absolute top-0.5 right-0.5 bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[20px] text-center">
-                  {notifications.length}
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold min-w-[20px]">
+                  {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
                 </span>
               )}
             </button>
@@ -613,10 +759,10 @@ function CtuAccountApproval() {
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            onNotificationsUpdate={handleNotificationsUpdate}
           />
         </header>
 
@@ -711,9 +857,6 @@ function CtuAccountApproval() {
                 <option value="month">This Month</option>
               </select>
             </div>
-
-            {/* For Approved Tab */}
-            {activeTab === "approved"}
           </div>
 
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -742,70 +885,142 @@ function CtuAccountApproval() {
                 </p>
               </div>
             ) : (
-              filteredRegistrations.map((user) => (
-                <div
-                  key={user.vet_id}
-                  className="flex items-center p-4 border-b border-gray-100 transition-colors duration-200 min-h-[80px] overflow-y-auto hover:bg-gray-50 last:border-b-0"
-                >
-                  {/* Profile Photo */}
-                  <div className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center text-white font-semibold text-base mr-4 flex-shrink-0 overflow-hidden">
-                    {user.vet_profile_photo ? (
-                      <img 
-                        src={user.vet_profile_photo} 
-                        alt={`${user.vet_fname} ${user.vet_lname}`}
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          // If image fails to load, show initials as fallback
-                          e.target.style.display = 'none';
-                          const fallback = document.createElement('div');
-                          fallback.className = 'w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold';
-                          fallback.textContent = user.vet_fname.charAt(0) + user.vet_lname.charAt(0);
-                          e.target.parentNode.appendChild(fallback);
-                        }}
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold">
-                        {user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}
+              <>
+                {paginatedRegistrations.map((user) => (
+                  <div
+                    key={user.vet_id}
+                    className="flex items-center p-4 border-b border-gray-100 transition-colors duration-200 min-h-[80px] overflow-y-auto hover:bg-gray-50 last:border-b-0"
+                  >
+                    {/* Profile Photo */}
+                    <div className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center text-white font-semibold text-base mr-4 flex-shrink-0 overflow-hidden">
+                      {user.vet_profile_photo ? (
+                        <img 
+                          src={user.vet_profile_photo} 
+                          alt={`${user.vet_fname} ${user.vet_lname}`}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            const fallback = document.createElement('div');
+                            fallback.className = 'w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold';
+                            fallback.textContent = user.vet_fname.charAt(0) + user.vet_lname.charAt(0);
+                            e.target.parentNode.appendChild(fallback);
+                          }}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold">
+                          {user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-gray-900 text-sm mb-0.5 break-words">
+                        {user.vet_fname} {user.vet_mname} {user.vet_lname}
+                        <span
+                          className={`inline-block py-1 px-2 rounded-xl text-xs font-medium ml-2 text-black ${
+                            user.users?.status === "approved"
+                              ? "bg-green-600 text-white"
+                              : user.users?.status === "pending"
+                                ? "bg-orange-500 text-white"
+                                : user.users?.status === "declined"
+                                  ? "bg-red-500 text-white"
+                                  : ""
+                          }`}
+                        >
+                          {user.users?.status}
+                        </span>
                       </div>
-                    )}
-                  </div>
+                      <div className="text-gray-500 text-xs mb-0.5 break-words">{user.vet_email}</div>
+                      <div className="text-gray-500 text-xs break-words">
+                        {user.vet_city}, {user.vet_province}
+                        {user.users?.status === "declined" && user.decline_reason
+                          ? ` - Reason: ${user.decline_reason}`
+                          : ""}
+                      </div>
+                    </div>
 
-                  <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 text-sm mb-0.5 break-words">
-                      {user.vet_fname} {user.vet_mname} {user.vet_lname}
-                      <span
-                        className={`inline-block py-1 px-2 rounded-xl text-xs font-medium ml-2 text-black ${
-                          user.users?.status === "approved"
-                            ? "bg-green-600 text-white"
-                            : user.users?.status === "pending"
-                              ? "bg-orange-500 text-white"
-                              : user.users?.status === "declined"
-                                ? "bg-red-500 text-white"
-                                : ""
-                        }`}
+                    <div className="flex gap-2 ml-4 flex-wrap">
+                      <button
+                        className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px] "
+                        onClick={() => viewDetails(user.vet_id, user.status)}
                       >
-                        {user.users?.status}
-                      </span>
-                    </div>
-                    <div className="text-gray-500 text-xs mb-0.5 break-words">{user.vet_email}</div>
-                    <div className="text-gray-500 text-xs break-words">
-                      {user.vet_city}, {user.vet_province}
-                      {user.users?.status === "declined" && user.decline_reason
-                        ? ` - Reason: ${user.decline_reason}`
-                        : ""}
+                        <Eye size={16} />
+                      </button>
                     </div>
                   </div>
+                ))}
+                
+                {/* Pagination Controls */}
+                {filteredRegistrations.length > 0 && (
+                  <div className="flex justify-between items-center bg-gray-50 px-6 py-4 border-t border-gray-200">
+                    <div className="text-sm text-gray-600 flex items-center gap-3">
+                      Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
+                      {Math.min(currentPage * itemsPerPage, filteredRegistrations.length)} of {filteredRegistrations.length} results
+                    </div>
 
-                  <div className="flex gap-2 ml-4 flex-wrap">
-                    <button
-                      className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px] "
-                      onClick={() => viewDetails(user.vet_id, user.status)}
-                    >
-                      <Eye size={16} />
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">Show:</span>
+                        <select
+                          value={itemsPerPage}
+                          onChange={handleItemsPerPageChange}
+                          className="px-3 py-2 border border-gray-300 rounded bg-white text-sm"
+                        >
+                          <option value="5">5</option>
+                          <option value="10">10</option>
+                          <option value="20">20</option>
+                          <option value="50">50</option>
+                        </select>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          className="flex items-center justify-center w-10 h-10 border border-gray-300 bg-white text-gray-700 rounded-md cursor-pointer transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => goToPage(currentPage - 1)}
+                          disabled={currentPage === 1}
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                          let pageNum
+                          if (totalPages <= 5) {
+                            pageNum = i + 1
+                          } else if (currentPage <= 3) {
+                            pageNum = i + 1
+                          } else if (currentPage >= totalPages - 2) {
+                            pageNum = totalPages - 4 + i
+                          } else {
+                            pageNum = currentPage - 2 + i
+                          }
+
+                          return (
+                            <button
+                              key={pageNum}
+                              className={`flex items-center justify-center min-w-[40px] h-10 px-3 border border-gray-300 rounded-md text-sm cursor-pointer transition-all duration-200 ${
+                                currentPage === pageNum
+                                  ? "bg-red-700 text-white border-red-700"
+                                  : "bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
+                              }`}
+                              onClick={() => goToPage(pageNum)}
+                            >
+                              {pageNum}
+                            </button>
+                          )
+                        })}
+
+                        <button
+                          className="flex items-center justify-center w-10 h-10 border border-gray-300 bg-white text-gray-700 rounded-md cursor-pointer transition-all duration-200 hover:bg-gray-50 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => goToPage(currentPage + 1)}
+                          disabled={currentPage === totalPages}
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))
+                )}
+              </>
             )}
           </div>
         </div>
@@ -1106,9 +1321,6 @@ function CtuAccountApproval() {
                     <h4 className="text-base font-semibold text-gray-900 m-0">Documents</h4>
                   </div>
                   
-                  {/* Profile Photo REMOVED from documents section - now only displayed in profile */}
-
-                  {/* License Documents */}
                   <div>
                     <h5 className="text-sm font-semibold text-gray-700 mb-3">License Documents</h5>
                     <div className="flex flex-col items-center justify-center p-5 border border-dashed border-gray-300 rounded-lg text-center">
@@ -1117,7 +1329,6 @@ function CtuAccountApproval() {
                           {parseDocuments(selectedUser.vet_documents).map((docUrl, index) => (
                             <div key={index} className="mb-4 last:mb-0">
                               <div className="relative w-full max-w-md mx-auto">
-                                {/* Check if it's an image or PDF */}
                                 {docUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/) ? (
                                   <img
                                     src={docUrl}
@@ -1163,23 +1374,34 @@ function CtuAccountApproval() {
               )}
             </div>
 
-            <div className="flex justify-end pt-4 border-t border-gray-200 gap-3 flex-wrap">
+            {/* COMPACT BUTTONS - UPDATED with loading states */}
+            <div className="flex justify-end pt-4 border-t border-gray-200 gap-2 flex-wrap">
               {selectedUser?.users?.status === "pending" && (
                 <>
                   <button
-                    className="inline-flex items-center gap-1.5 py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 flex-1 min-h-[40px] bg-green-500 text-white hover:bg-green-600"
+                    className="inline-flex items-center gap-1.5 py-2 px-3 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 bg-green-500 text-white hover:bg-green-600 min-w-[100px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => showApproveConfirmation(selectedUser.vet_id)}
+                    disabled={isActionLoading && loadingActionId === selectedUser.vet_id}
                   >
-                    <CheckCircle size={16} />
-                    Approve
+                    {isActionLoading && loadingActionId === selectedUser.vet_id ? (
+                      <RefreshCw size={16} className="animate-spin" />
+                    ) : (
+                      <CheckCircle size={16} />
+                    )}
+                    {isActionLoading && loadingActionId === selectedUser.vet_id ? "Processing..." : "Approve"}
                   </button>
 
                   <button
-                    className="inline-flex items-center gap-1.5 py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 flex-1 min-h-[40px] bg-red-500 text-white hover:bg-red-600"
+                    className="inline-flex items-center gap-1.5 py-2 px-3 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 bg-red-500 text-white hover:bg-red-600 min-w-[100px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
                     onClick={() => showDeclineConfirmation(selectedUser.vet_id)}
+                    disabled={isActionLoading && loadingActionId === selectedUser.vet_id}
                   >
-                    <XCircle size={16} />
-                    Decline
+                    {isActionLoading && loadingActionId === selectedUser.vet_id ? (
+                      <RefreshCw size={16} className="animate-spin" />
+                    ) : (
+                      <XCircle size={16} />
+                    )}
+                    {isActionLoading && loadingActionId === selectedUser.vet_id ? "Processing..." : "Decline"}
                   </button>
                 </>
               )}
@@ -1188,7 +1410,7 @@ function CtuAccountApproval() {
         </div>
       )}
 
-      {/* Confirmation Modal */}
+      {/* Confirmation Modal - UPDATED with loading states */}
       {isConfirmationModalOpen && (
         <div
           className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay"
@@ -1205,25 +1427,37 @@ function CtuAccountApproval() {
                 value={declineReason}
                 onChange={(e) => setDeclineReason(e.target.value)}
                 className="w-full p-2 mt-2.5 rounded border border-gray-300 resize-y"
+                disabled={isActionLoading}
               />
             )}
 
             <div className="flex gap-3 justify-center flex-wrap">
               <button
-                className="py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 min-h-[40px] flex-1 min-w-[80px] bg-gray-500 text-white hover:bg-gray-600"
+                className="py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 min-h-[40px] flex-1 min-w-[80px] bg-gray-500 text-white hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
                 onClick={closeConfirmation}
+                disabled={isActionLoading}
               >
                 Cancel
               </button>
               <button
-                className={`py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 min-h-[40px] flex-1 min-w-[80px] ${
+                className={`py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 min-h-[40px] flex-1 min-w-[80px] flex items-center justify-center gap-2 ${
                   confirmationDetails.action === "approve"
                     ? "bg-green-500 text-white hover:bg-green-600"
                     : "bg-red-500 text-white hover:bg-red-600"
-                }`}
+                } disabled:opacity-50 disabled:cursor-not-allowed`}
                 onClick={confirmAction}
+                disabled={isActionLoading || (confirmationDetails.action === "decline" && !declineReason)}
               >
-                {confirmationDetails.action === "approve" ? "Approve" : "Decline"}
+                {isActionLoading ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    Processing...
+                  </>
+                ) : confirmationDetails.action === "approve" ? (
+                  "Approve"
+                ) : (
+                  "Decline"
+                )}
               </button>
             </div>
           </div>

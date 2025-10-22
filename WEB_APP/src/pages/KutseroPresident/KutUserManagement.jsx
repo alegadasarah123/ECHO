@@ -43,6 +43,38 @@ const formatDate = (dateString) => {
   }
 }
 
+// Function to get initials from name
+const getInitials = (name) => {
+  if (!name || name === "N/A") return "NA";
+  
+  const names = name.split(' ').filter(name => name.trim() !== '');
+  let initials = '';
+  
+  if (names.length === 0) {
+    return "NA";
+  } else if (names.length === 1) {
+    initials = names[0].charAt(0).toUpperCase();
+  } else {
+    initials = (names[0].charAt(0) + names[names.length - 1].charAt(0)).toUpperCase();
+  }
+  
+  return initials;
+};
+
+// Function to create initial avatar
+const createInitialAvatar = (initials, backgroundColor = "#D2691E", size = 120) => {
+  const svg = `
+    <svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
+      <rect width="100%" height="100%" fill="${backgroundColor}"/>
+      <text x="50%" y="50%" font-family="Arial, sans-serif" font-size="${size * 0.4}" 
+            fill="white" text-anchor="middle" dy=".35em" font-weight="bold">
+        ${initials}
+      </text>
+    </svg>
+  `;
+  return `data:image/svg+xml;base64,${btoa(svg)}`;
+};
+
 const UserManagement = () => {
   const location = useLocation();
   
@@ -57,6 +89,9 @@ const UserManagement = () => {
   const [notifOpen, setNotifOpen] = useState(false)
   const [alert, setAlert] = useState(null)
   const [showAlert, setShowAlert] = useState(false)
+
+  // NEW: State for enlarged profile image
+  const [enlargedImage, setEnlargedImage] = useState(null)
 
   // Notification states
   const [notifications, setNotifications] = useState([])
@@ -100,6 +135,21 @@ const UserManagement = () => {
     { id: "approval", label: "User Approval", icon: Users },
     { id: "accounts", label: "User Accounts", icon: CheckCircle }
   ]
+
+  // NEW: Function to handle profile image click
+  const handleProfileImageClick = (user) => {
+    setEnlargedImage({
+      src: user.profilePicture || user.profile_picture || "/placeholder.svg",
+      alt: `${user.name}'s profile picture`,
+      initials: getInitials(user.name),
+      name: user.name
+    })
+  }
+
+  // NEW: Function to close enlarged image view
+  const closeEnlargedImage = () => {
+    setEnlargedImage(null)
+  }
 
   // UPDATED: Fetch notifications from backend - using the loading object
   const fetchNotifications = async () => {
@@ -811,7 +861,7 @@ const UserManagement = () => {
                           ) : (
                             <tr>
                               <td colSpan="5" className="py-8 text-center text-gray-500">
-                                <div className="flex flex-col items-center gap-2">
+                                <div className="flex flex-col items-center gap=2">
                                   <Users size={32} className="text-gray-300" />
                                   <p className="text-sm">No users found</p>
                                 </div>
@@ -825,7 +875,7 @@ const UserManagement = () => {
                   
                   {/* Pagination Controls - Attached directly to table */}
                   {getFilteredApprovalUsers().length > 0 && !loading.approval && (
-                    <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
+                    <div className="flex flex-col sm:flex-row items-center justify-between px=6 py-4 bg-gray-50 border-t border-gray-200">
                       <div className="text-sm text-gray-600 mb-4 sm:mb-0">
                         Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to{" "}
                         <span className="font-medium">
@@ -1051,7 +1101,7 @@ const UserManagement = () => {
 
                     {!loading.accounts && getFilteredAccountUsers().length === 0 && (
                       <div className="py-8 text-center text-gray-500">
-                        <div className="flex flex-col items-center gap-2">
+                        <div className="flex flex-col items-center gap=2">
                           <Users size={32} className="text-gray-300" />
                           <p className="text-sm">No users found</p>
                         </div>
@@ -1061,7 +1111,7 @@ const UserManagement = () => {
                   
                   {/* Pagination Controls - Attached directly to table */}
                   {getFilteredAccountUsers().length > 0 && !loading.accounts && (
-                    <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
+                    <div className="flex flex-col sm:flex-row items-center justify-between px=6 py-4 bg-gray-50 border-t border-gray-200">
                       <div className="text-sm text-gray-600 mb-4 sm:mb-0">
                         Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to{" "}
                         <span className="font-medium">
@@ -1142,7 +1192,7 @@ const UserManagement = () => {
           </div>
         </div>
         
-        {/* User Detail Modal - UPDATED to show decline reason */}
+        {/* User Detail Modal - UPDATED with clickable profile image */}
         {showModal && selectedUser && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm bg-opacity-50 flex items-center justify-center z-1000 p-5" onClick={handleCloseModal}>
             <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -1159,11 +1209,26 @@ const UserManagement = () => {
                 <div className="p-6">
                   <div className="flex gap-8 flex-wrap">
                     <div className="flex flex-col items-center min-w-[200px]">
-                      <img
-                        src={selectedUser.profilePicture || selectedUser.profile_picture || "/placeholder.svg"}
-                        alt="Profile"
-                        className="w-32 h-32 rounded-full object-cover border-4 border-gray-100 shadow-md"
-                      />
+                      {/* CLICKABLE PROFILE IMAGE */}
+                      <div 
+                        className="w-32 h-32 rounded-full object-cover border-4 border-gray-100 shadow-md cursor-pointer transition-all duration-200 hover:scale-105 hover:shadow-lg"
+                        onClick={() => handleProfileImageClick(selectedUser)}
+                      >
+                        <img
+                          src={selectedUser.profilePicture || selectedUser.profile_picture || "/placeholder.svg"}
+                          alt="Profile"
+                          className="w-full h-full rounded-full object-cover"
+                          onError={(e) => {
+                            // If image fails to load, create an initial avatar
+                            const initials = getInitials(selectedUser.name);
+                            if (initials && initials !== "NA") {
+                              e.target.src = createInitialAvatar(initials, "#D2691E");
+                            } else {
+                              e.target.src = "https://via.placeholder.com/120x120?text=Profile";
+                            }
+                          }}
+                        />
+                      </div>
                       <h2 className="mt-2.5 mb-1.5 text-xl font-semibold">{selectedUser.name}</h2>
                       <p className="m-0 mb-2.5 text-gray-500">{selectedUser.role}</p>
                       {activeTab === "approval" && (
@@ -1271,6 +1336,50 @@ const UserManagement = () => {
                     </button>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* NEW: Enlarged Profile Image Modal */}
+        {enlargedImage && (
+          <div 
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-1001 p-5"
+            onClick={closeEnlargedImage}
+          >
+            <div 
+              className="relative flex flex-col items-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <button 
+                className="absolute -top-16 right-0 bg-none border-none text-3xl cursor-pointer text-white p-1 rounded-md transition-all duration-200 hover:bg-white/20 z-10"
+                onClick={closeEnlargedImage}
+              >
+                ✕
+              </button>
+              
+              {/* Profile image - Fixed size */}
+              <div className="bg-white rounded-lg overflow-hidden shadow-2xl">
+                <img
+                  src={enlargedImage.src}
+                  alt={enlargedImage.alt}
+                  className="w-96 h-96 object-cover"
+                  onError={(e) => {
+                    // If image fails to load, create an initial avatar
+                    const initials = getInitials(enlargedImage.name);
+                    if (initials && initials !== "NA") {
+                      e.target.src = createInitialAvatar(initials, "#D2691E", 384);
+                    } else {
+                      e.target.src = "https://via.placeholder.com/384x384?text=Profile";
+                    }
+                  }}
+                />
+              </div>
+              
+              {/* User name caption */}
+              <div className="mt-4 text-center">
+                <p className="text-white text-lg font-semibold m-0">{enlargedImage.name}</p>
               </div>
             </div>
           </div>

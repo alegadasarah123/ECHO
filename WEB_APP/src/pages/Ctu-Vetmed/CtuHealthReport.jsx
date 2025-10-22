@@ -8,6 +8,8 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
+
 function CtuHealthReport() {
   const navigate = useNavigate()
 
@@ -41,10 +43,107 @@ function CtuHealthReport() {
     return `${Math.floor(diffInMinutes / 1440)}d ago`
   }, [])
 
+  // MARK ALL NOTIFICATIONS AS READ
+  const handleMarkAllAsRead = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to mark all as read");
+      }
+      
+      const data = await res.json();
+      console.log("Mark all as read result:", data);
+
+      // Update frontend state
+      setNotifications(prev =>
+        prev.map(notif => ({ ...notif, read: true }))
+      );
+      
+    } catch (err) {
+      console.error("Error marking all as read:", err);
+    }
+  };
+
+  // HANDLE INDIVIDUAL NOTIFICATION CLICK
+  const handleNotificationClick = async (notification) => {
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev =>
+    prev.map(notif =>
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
+
+  // Mark notification as read in backend
+  try {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
+  }
+
+  // Handle navigation based on notification content
+  const message = notification.message.toLowerCase();
+
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    navigate("/CtuAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    navigate("/CtuAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
+    navigate("/CtuAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+};
+
+
+  // Handle notifications update from modal
+  const handleNotificationsUpdate = (updatedNotifications) => {
+    console.log("Notifications updated from modal:", updatedNotifications);
+    console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
+    setNotifications(updatedNotifications);
+  };
+
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+    fetch(`${API_BASE}/get_vetnotifications/`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -54,6 +153,8 @@ function CtuHealthReport() {
           id: notif.id,
           message: notif.message,
           date: notif.date || new Date().toISOString(),
+          read: notif.read || false,
+          type: notif.type || "general"
         }))
         setNotifications(formatted)
       })
@@ -70,7 +171,7 @@ function CtuHealthReport() {
 
   const loadStatistics = useCallback(() => {
     // Fetch statistics based on horse_status
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_horse_statistics/")
+    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_horse_statistics/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch statistics")
         return res.json()
@@ -354,6 +455,9 @@ pdf.text(footerText, pageWidth - textWidth - 20, 290);
 
   const { maxValue: yAxisMax, steps: yAxisSteps } = getYAxisScale();
 
+  // Calculate unread notifications count
+  const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
+
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full m-0 p-0 box-border">
       <div className="sidebars" id="sidebars">
@@ -361,19 +465,24 @@ pdf.text(footerText, pageWidth - textWidth - 20, 290);
       </div>
 
       <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
-        <header className="bg-white py-[18px] px-6 flex items-center justify-between shadow-sm flex-wrap gap-4">
-          <div className="dashboard-container">
-            <h2 className="text-[22px] font-bold text-black">Health Reports</h2>
-          </div>
+        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+          <div className="flex flex-col w-full sm:w-2/3 md:w-1/2 lg:w-1/3">
+  <h2 className="text-2xl font-bold text-[#b91c1c]">Health Report</h2>
+  <p className="text-sm text-gray-500 mt-1 font-normal">
+  Track overall horse health and monitor monthly status
+</p>
+
+</div>
 
           <button
-            className="relative bg-transparent border-none cursor-pointer p-2 rounded-full"
+            ref={notificationBellRef}
+            className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
             onClick={() => setNotifsOpen(!notifsOpen)}
           >
             <Bell size={24} color="#374151" />
-            {notifications.length > 0 && (
-              <span className="absolute top-[2px] right-[2px] bg-red-500 text-white rounded-full px-1.5 py-0.5 text-xs font-bold min-w-[15px] min-h-[15px] flex items-center justify-center">
-                {notifications.length}
+            {unreadNotificationsCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold min-w-[20px]">
+                {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
               </span>
             )}
           </button>
@@ -381,10 +490,10 @@ pdf.text(footerText, pageWidth - textWidth - 20, 290);
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            onNotificationsUpdate={handleNotificationsUpdate}
           />
         </header>
 

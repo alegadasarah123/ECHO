@@ -4,6 +4,7 @@ import {FileText,Heart,Search,Menu, Eye, MessageCircle,Bell,PawPrint,User,Phone,
 import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
 import ProfileModal from '@/components/modal/profileModal';
+import MEDICALRECORDDETAILS from './MedRecordDetails'; // Import the component
 
 const VetAccessRequests = () => {
   const [selectedFilter, setSelectedFilter] = useState('all');
@@ -18,6 +19,10 @@ const VetAccessRequests = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [medicalRecords, setMedicalRecords] = useState([]);
   const [error, setError] = useState(null);
+  
+  // NEW STATE: Track if we should show medical record details
+  const [showMedicalRecordDetails, setShowMedicalRecordDetails] = useState(false);
+  const [selectedMedicalRecordId, setSelectedMedicalRecordId] = useState(null);
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -99,6 +104,22 @@ const VetAccessRequests = () => {
   const handleRefresh = () => {
     fetchMedicalRecords();
   };
+
+  const handleViewRecord = (record) => {
+    console.log("View record clicked:", record);
+    console.log("Record ID:", record.id);
+    
+    // Navigate to medical record details instead of opening modal
+    setSelectedMedicalRecordId(record.id);
+    setSelectedRecord(record);
+    setShowMedicalRecordDetails(true);
+  };
+
+  const handleBackToRecords = () => {
+    setShowMedicalRecordDetails(false);
+    setSelectedMedicalRecordId(null);
+    setSelectedRecord(null);
+  };
   
   useEffect(() => {
     fetchProfile();
@@ -109,11 +130,6 @@ const VetAccessRequests = () => {
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedFilter, searchTerm]);
-
-  const handleViewRecord = (record) => {
-    setSelectedRecord(record);
-    setIsModalOpen(true);
-  };
 
   const closeModal = () => {
     setIsModalOpen(false);
@@ -214,6 +230,18 @@ const VetAccessRequests = () => {
   );
 
   const profileDisplay = getProfileDisplay();
+
+  // If showing medical record details, render that component instead
+  if (showMedicalRecordDetails) {
+    console.log("Showing MEDICALRECORDDETAILS with ID:", selectedMedicalRecordId);
+    return (
+      <MEDICALRECORDDETAILS 
+        recordId={selectedMedicalRecordId}
+        recordData={selectedRecord}
+        onBack={handleBackToRecords}
+      />
+    );
+  }
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -367,19 +395,18 @@ const VetAccessRequests = () => {
                             {record.status?.charAt(0).toUpperCase() + record.status?.slice(1)}
                           </span>
                         </td>
-                          <td className="px-4 py-4 text-center">
-                            <div className="flex justify-center space-x-2">
-                              <button 
-                                onClick={() => handleViewAppointment(appointment)}
-                                className="cursor-pointer flex items-center text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-900 px-3 py-2 rounded-lg transition-colors"
-                                title="View Details"
-                              >
-                                <Eye className="w-4 h-4 mr-1" />
-                                View
-                              </button>
-                            </div>
-                          </td>
-
+                        <td className="px-4 py-4 text-center">
+                          <div className="flex justify-center space-x-2">
+                            <button 
+                              onClick={() => handleViewRecord(record)}
+                              className="cursor-pointer flex items-center text-sm bg-blue-50 hover:bg-blue-100 text-blue-700 hover:text-blue-900 px-3 py-2 rounded-lg transition-colors"
+                              title="View Medical Records"
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              View
+                            </button>
+                          </div>
+                        </td>
                       </tr>
                     ))
                   ) : (

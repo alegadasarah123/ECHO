@@ -1,60 +1,1412 @@
 "use client"
 import Sidebar from "@/components/DvmfSidebar"
-import { ArrowLeft, Bell, ClipboardList, Eye, Printer, Search, Stethoscope, Syringe, X } from "lucide-react"
+import { jsPDF } from "jspdf"
+
+import {
+  Bell,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  Download,
+  Eye,
+  FileText,
+  Image as ImageIcon,
+  Mail,
+  MapPin,
+  Phone,
+  RefreshCw,
+  Search,
+  Stethoscope,
+  Syringe,
+  User
+} from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
+const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf"
+const TableSkeleton = () => {
+  return (
+    <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      <div className="bg-gray-50 grid grid-cols-[1.2fr_1.2fr_1.2fr_1.5fr_1fr_1fr] py-4 px-5 font-semibold text-gray-600 text-sm border-b border-gray-200">
+        <div>Horse Name</div>
+        <div>Horse Color</div>
+        <div>Owner</div>
+        <div>Location</div>
+        <div>Status</div>
+        <div className="text-center">Action</div>
+      </div>
+      {[...Array(10)].map((_, index) => (
+        <div
+          key={index}
+          className="grid grid-cols-[1.2fr_1.2fr_1.2fr_1.5fr_1fr_1fr] py-4 px-5 border-b border-gray-100 items-center min-h-[40px] animate-pulse"
+        >
+          <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+          <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+          <div className="h-4 bg-gray-200 rounded w-4/5"></div>
+          <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+          <div className="h-6 bg-gray-200 rounded-full w-16"></div>
+          <div className="flex justify-center">
+            <div className="h-8 bg-gray-200 rounded w-16"></div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Horse Detail Skeleton Loader
+const HorseDetailSkeleton = () => {
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6 animate-pulse">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="h-5 w-5 bg-gray-200 rounded"></div>
+        <div className="h-4 bg-gray-200 rounded w-32"></div>
+      </div>
+
+      <div className="bg-gray-50 rounded-lg p-5 mb-5">
+        <div className="flex items-center mb-5 flex-wrap gap-4">
+          <div className="w-20 h-20 rounded bg-gray-200 mr-5 flex-shrink-0"></div>
+          <div className="horse-basic-info">
+            <div className="h-6 bg-gray-200 rounded w-32 mb-2"></div>
+            <div className="h-4 bg-gray-200 rounded w-48"></div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {[...Array(6)].map((_, index) => (
+            <div key={index} className="flex flex-col">
+              <div className="h-3 bg-gray-200 rounded w-16 mb-2"></div>
+              <div className="h-4 bg-gray-200 rounded w-24"></div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="h-5 bg-gray-200 rounded w-48 mb-4"></div>
+      
+      {/* Medical Record History Skeleton */}
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-5">
+        <div className="bg-gray-50 grid grid-cols-5 gap-4 py-3 px-4 border-b border-gray-200">
+          {[...Array(5)].map((_, index) => (
+            <div key={index} className="h-4 bg-gray-200 rounded"></div>
+          ))}
+        </div>
+        {[...Array(3)].map((_, index) => (
+          <div key={index} className="grid grid-cols-5 gap-4 py-3 px-4 border-b border-gray-100 items-center min-h-[50px]">
+            {[...Array(5)].map((_, colIndex) => (
+              <div key={colIndex} className="h-4 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/* Treatment History Skeleton */}
+      <div className="h-5 bg-gray-200 rounded w-48 mb-4"></div>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-gray-50 grid grid-cols-5 gap-4 py-3 px-4 border-b border-gray-200">
+          {[...Array(5)].map((_, index) => (
+            <div key={index} className="h-4 bg-gray-200 rounded"></div>
+          ))}
+        </div>
+        {[...Array(3)].map((_, index) => (
+          <div key={index} className="grid grid-cols-5 gap-4 py-3 px-4 border-b border-gray-100 items-center min-h-[50px]">
+            {[...Array(5)].map((_, colIndex) => (
+              <div key={colIndex} className="h-4 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Medical Record Detail Skeleton
+const MedicalRecordDetailSkeleton = () => {
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6 animate-pulse">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="h-5 w-5 bg-gray-200 rounded"></div>
+        <div className="h-4 bg-gray-200 rounded w-32"></div>
+      </div>
+
+      <div className="flex items-center mb-5 flex-wrap gap-4">
+        <div className="w-12 h-12 rounded bg-gray-200 mr-4 flex-shrink-0"></div>
+        <div className="profile-info">
+          <div className="h-5 bg-gray-200 rounded w-32 mb-2"></div>
+          <div className="h-6 bg-gray-200 rounded-full w-20"></div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 mb-6">
+        {[...Array(6)].map((_, index) => (
+          <div key={index} className="flex flex-col">
+            <div className="h-3 bg-gray-200 rounded w-16 mb-2"></div>
+            <div className="h-4 bg-gray-200 rounded w-24"></div>
+          </div>
+        ))}
+      </div>
+
+      <div className="mb-6">
+        <div className="h-5 bg-gray-200 rounded w-48 mb-4"></div>
+
+        <div className="bg-blue-50 rounded-lg p-4 mb-5">
+          <div className="h-4 bg-gray-200 rounded w-32 mb-3"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {[...Array(5)].map((_, index) => (
+              <div key={index} className="h-4 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        </div>
+
+        <div className="h-4 bg-gray-200 rounded w-32 mb-4"></div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+          {[...Array(3)].map((_, index) => (
+            <div key={index} className="bg-white border border-gray-200 rounded-md p-3 text-center">
+              <div className="h-6 bg-gray-200 rounded mb-2"></div>
+              <div className="h-3 bg-gray-200 rounded w-20 mx-auto"></div>
+            </div>
+          ))}
+        </div>
+
+        {[...Array(7)].map((_, index) => (
+          <div key={index} className="bg-gray-50 rounded-lg p-4 mb-5">
+            <div className="h-4 bg-gray-200 rounded w-32 mb-3"></div>
+            <div className="h-4 bg-gray-200 rounded"></div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex justify-center">
+        <div className="h-10 bg-gray-200 rounded w-40"></div>
+      </div>
+    </div>
+  )
+}
+
+// Treatment History Detail Skeleton
+const TreatmentHistoryDetailSkeleton = () => {
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6 animate-pulse">
+      <div className="flex items-center gap-2 mb-6">
+        <div className="h-5 w-5 bg-gray-200 rounded"></div>
+        <div className="h-4 bg-gray-200 rounded w-32"></div>
+      </div>
+
+      <div>
+        <div className="h-5 bg-gray-200 rounded w-48 mb-5"></div>
+
+        <div className="bg-blue-50 rounded-lg p-4 mb-5">
+          <div className="h-4 bg-gray-200 rounded w-32 mb-3"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {[...Array(5)].map((_, index) => (
+              <div key={index} className="h-4 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mb-5">
+          <div className="h-4 bg-gray-200 rounded w-48 mb-4"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+            {[...Array(3)].map((_, index) => (
+              <div key={index} className="bg-white border border-gray-200 rounded-md p-3 text-center">
+                <div className="h-6 bg-gray-200 rounded mb-2"></div>
+                <div className="h-3 bg-gray-200 rounded w-20 mx-auto"></div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {[...Array(4)].map((_, index) => (
+          <div key={index} className="bg-gray-50 rounded-lg p-4 mb-5">
+            <div className="h-4 bg-gray-200 rounded w-32 mb-3"></div>
+            <div className="h-4 bg-gray-200 rounded"></div>
+          </div>
+        ))}
+
+        <div className="flex justify-center">
+          <div className="h-10 bg-gray-200 rounded w-40"></div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const Pagination = ({ currentPage, totalPages, onPageChange, totalItems, itemsPerPage, onItemsPerPageChange }) => {
+  const startItem = (currentPage - 1) * itemsPerPage + 1
+  const endItem = Math.min(currentPage * itemsPerPage, totalItems)
+
+  const getPageNumbers = () => {
+    const pages = []
+    const maxVisiblePages = 3
+
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i)
+      }
+    } else {
+      if (currentPage <= 2) {
+        for (let i = 1; i <= 3; i++) {
+          pages.push(i)
+        }
+      } else if (currentPage >= totalPages - 1) {
+        for (let i = totalPages - 2; i <= totalPages; i++) {
+          pages.push(i)
+        }
+      } else {
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+          pages.push(i)
+        }
+      }
+    }
+
+    return pages
+  }
+
+  return (
+    <div className="flex items-center justify-between px-6 py-4 bg-white border-t border-gray-200">
+      <div className="text-sm text-gray-700">
+        Showing {startItem} to {endItem} of {totalItems} results
+      </div>
+
+      <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2">
+          <span className="text-sm text-gray-700">Show:</span>
+          <select
+            value={itemsPerPage}
+            onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
+            className="border border-gray-300 rounded px-2 py-1 text-sm bg-white"
+          >
+            <option value={5}>5</option>
+            <option value={10}>10</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+          </select>
+        </div>
+
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="inline-flex items-center px-2 py-1 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ChevronLeft size={16} />
+          </button>
+
+          {getPageNumbers().map((page, index) => (
+            <button
+              key={index}
+              onClick={() => onPageChange(page)}
+              className={`px-3 py-1 text-sm font-medium rounded ${
+                page === currentPage
+                  ? "bg-red-600 text-white"
+                  : "text-gray-700 bg-white border border-gray-300 hover:bg-gray-50"
+              }`}
+            >
+              {page}
+            </button>
+          ))}
+
+          <button
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="inline-flex items-center px-2 py-1 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Enhanced PDF Export Function with Tables & Spacing
+const exportToPDF = async (data, filename = "document.pdf", type = "medical") => {
+  try {
+    const pdf = new jsPDF();
+    const { horse, medicalRecord, treatmentHistory } = data;
+
+    // Helper function to parse lab images for PDF
+    const parseLabImages = (labImgData) => {
+      if (!labImgData) return [];
+      
+      try {
+        if (typeof labImgData === 'string' && labImgData.startsWith('[')) {
+          return JSON.parse(labImgData);
+        }
+        if (Array.isArray(labImgData)) {
+          return labImgData;
+        }
+        if (typeof labImgData === 'string') {
+          return [labImgData];
+        }
+      } catch (error) {
+        console.error('Error parsing lab images:', error);
+      }
+      
+      return [];
+    };
+
+    // Colors
+    const primaryColor = [220, 53, 69]; // Red headers
+    const darkColor = [51, 51, 51]; // Text
+
+    pdf.setFont("helvetica");
+
+    // Header background
+    pdf.setFillColor(...primaryColor);
+    pdf.rect(0, 0, 210, 25, "F");
+
+    // Header text
+    pdf.setTextColor(255, 255, 255);
+    pdf.setFontSize(18);
+    pdf.setFont("helvetica", "bold");
+    pdf.text(
+      type === "medical" ? "MEDICAL RECORD" : "TREATMENT RECORD",
+      105,
+      16,
+      { align: "center" }
+    );
+
+    // Date
+    pdf.setFontSize(9);
+    pdf.text(`Exported on: ${new Date().toLocaleDateString()}`, 200, 22, {
+      align: "right",
+    });
+
+    let yPosition = 35;
+
+    // --- Section helper ---
+    const addSection = (title, content) => {
+      if (yPosition > 270) {
+        pdf.addPage();
+        yPosition = 20;
+      }
+
+      // consistent top spacing
+      yPosition += 4;
+
+      pdf.setTextColor(...primaryColor);
+      pdf.setFontSize(13);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(title, 15, yPosition);
+      yPosition += 6;
+
+      if (content) {
+        pdf.setTextColor(...darkColor);
+        pdf.setFontSize(10);
+        pdf.setFont("helvetica", "normal");
+
+        const lines = pdf.splitTextToSize(content, 180);
+        lines.forEach((line) => {
+          if (yPosition > 270) {
+            pdf.addPage();
+            yPosition = 20;
+          }
+          pdf.text(line, 20, yPosition);
+          yPosition += 5;
+        });
+      }
+
+      yPosition += 2; // tighter bottom spacing
+    };
+
+    // --- Key-value helper ---
+    const addKeyValue = (key, value) => {
+      if (yPosition > 270) {
+        pdf.addPage();
+        yPosition = 20;
+      }
+
+      pdf.setTextColor(...darkColor);
+      pdf.setFontSize(10);
+
+      pdf.setFont("helvetica", "bold");
+      pdf.text(`${key}:`, 20, yPosition);
+
+      pdf.setFont("helvetica", "normal");
+      const valueLines = pdf.splitTextToSize(value || "N/A", 120);
+
+      if (valueLines.length === 1) {
+        pdf.text(valueLines[0], 70, yPosition);
+        yPosition += 5;
+      } else {
+        pdf.text(valueLines[0], 70, yPosition);
+        yPosition += 5;
+        for (let i = 1; i < valueLines.length; i++) {
+          if (yPosition > 270) {
+            pdf.addPage();
+            yPosition = 20;
+          }
+          pdf.text(valueLines[i], 70, yPosition);
+          yPosition += 5;
+        }
+      }
+    };
+
+    // --- Table row helper ---
+    const addTableRow = (data) => {
+      if (yPosition > 270) {
+        pdf.addPage();
+        yPosition = 20;
+      }
+
+      pdf.setFontSize(10);
+      pdf.setTextColor(...darkColor);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(data[0], 20, yPosition);
+      pdf.setFont("helvetica", "normal");
+      pdf.text(data[1], 60, yPosition);
+
+      if (data[2]) {
+        pdf.setFont("helvetica", "bold");
+        pdf.text(data[2], 110, yPosition);
+        pdf.setFont("helvetica", "normal");
+        pdf.text(data[3], 150, yPosition);
+      }
+
+      yPosition += 5;
+    };
+
+    // --- Medical Record ---
+    if (type === "medical") {
+      addSection("Horse Information", "");
+      addKeyValue("Name", horse?.horse_name || "N/A");
+      addKeyValue("Breed", horse?.horse_breed || "N/A");
+      addKeyValue("Age", horse?.horse_age || "N/A");
+      addKeyValue("Sex", horse?.horse_sex || "N/A");
+      addKeyValue("Owner", horse?.owner_fullname || "N/A");
+      addKeyValue("Contact", horse?.owner_phone || "N/A");
+      addKeyValue("Location", horse?.location || "N/A");
+
+      addSection("Record Information", "");
+      addKeyValue("Record Date", medicalRecord.medrec_date || "N/A");
+      addKeyValue(
+        "Follow-up Date",
+        medicalRecord.medrec_followup_date || "No follow-up scheduled"
+      );
+      addKeyValue("Horse Status", medicalRecord.medrec_horsestatus || "N/A");
+      addKeyValue("Veterinarian", medicalRecord.vet_name || "N/A");
+
+      addSection("Vital Signs", "");
+      addTableRow([
+        "Temperature",
+        `${medicalRecord.medrec_body_temp || "N/A"} °C`,
+        "Heart Rate",
+        `${medicalRecord.medrec_heart_rate || "N/A"} bpm`,
+      ]);
+      addTableRow([
+        "Resp. Rate",
+        `${medicalRecord.medrec_resp_rate || "N/A"} breaths/min`,
+        "",
+        "",
+      ]);
+
+      addSection("Diagnosis", medicalRecord.medrec_diagnosis || "No diagnosis");
+      addSection(
+        "Clinical Signs",
+        medicalRecord.medrec_clinical_signs || "No signs recorded"
+      );
+      addSection(
+        "Prognosis",
+        medicalRecord.medrec_prognosis || "No prognosis recorded"
+      );
+      addSection(
+        "Recommendations",
+        medicalRecord.medrec_recommendation || "No recommendations"
+      );
+      addSection(
+        "Diagnostic Protocol",
+        medicalRecord.medrec_diagnostic_protocol || "No protocol recorded"
+      );
+
+      // Laboratory Results Section in PDF
+      addSection("Laboratory Results", "");
+      addKeyValue("Lab Results", medicalRecord.medrec_lab_results || "No lab results available");
+      
+      const labImages = parseLabImages(medicalRecord.medrec_lab_img);
+      if (labImages.length > 0) {
+        addKeyValue("Lab Images", `${labImages.length} image(s) available - See system for details`);
+      } else {
+        addKeyValue("Lab Images", "No lab images available");
+      }
+    } else {
+      // --- Treatment Record ---
+      addSection("Horse Information", "");
+      addKeyValue("Name", horse?.horse_name || "N/A");
+      addKeyValue("Breed", horse?.horse_breed || "N/A");
+      addKeyValue("Age", horse?.horse_age || "N/A");
+      addKeyValue("Owner", horse?.owner_fullname || "N/A");
+
+      addSection("Treatment Record", "");
+      addKeyValue(
+        "Treatment Date",
+        treatmentHistory.treatment_date || "N/A"
+      );
+      addKeyValue(
+        "Follow-up Date",
+        treatmentHistory.followup_date ||
+          treatmentHistory.parent_record?.medrec_followup_date ||
+          "N/A"
+      );
+      addKeyValue("Administered By", treatmentHistory.vet_name || "N/A");
+      addKeyValue(
+        "Veterinarian",
+        medicalRecord?.vet_name || treatmentHistory.vet_name || "N/A"
+      );
+      addKeyValue(
+        "Horse Status",
+        treatmentHistory.parent_record?.medrec_horsestatus || "N/A"
+      );
+      addKeyValue(
+        "Recommendation",
+        treatmentHistory.medrec_recommendation || "N/A"
+      );
+
+      addSection("Medical Data at Time of Treatment", "");
+      addTableRow([
+        "Temperature",
+        `${treatmentHistory.medrec_bodytemp || "N/A"} °C`,
+        "Heart Rate",
+        `${treatmentHistory.medrec_heart_rate || "N/A"} bpm`,
+      ]);
+      addTableRow([
+        "Resp. Rate",
+        `${treatmentHistory.medrec_resp_rate || "N/A"} breaths/min`,
+        "",
+        "",
+      ]);
+
+      addSection(
+        "Clinical Signs",
+        treatmentHistory.medrec_clinical_sign || "No information available"
+      );
+      addSection(
+        "Diagnosis",
+        treatmentHistory.medrec_diagnosis || "No information available"
+      );
+
+      addSection("Treatment Details", "");
+      addKeyValue(
+        "Treatment Name",
+        treatmentHistory.treatment_name || "No information available"
+      );
+      addKeyValue("Dosage", treatmentHistory.treatment_dosage || "N/A");
+      addKeyValue("Duration", treatmentHistory.treatment_duration || "N/A");
+      addKeyValue("Outcome", treatmentHistory.treatment_outcome || "N/A");
+    }
+
+    // --- Footer ---
+    const pageCount = pdf.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      pdf.setPage(i);
+      pdf.setFontSize(8);
+      pdf.setTextColor(150, 150, 150);
+      pdf.text(`Page ${i} of ${pageCount}`, 105, 290, { align: "center" });
+      pdf.text("DVMF Veterinary Medicine System", 200, 290, { align: "right" });
+    }
+
+    pdf.save(filename);
+    return true;
+  } catch (error) {
+    console.error("Error generating PDF:", error);
+    return false;
+  }
+};
+
+// Medical Record Detail Component
+const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) => {
+  if (!medicalRecord) return null;
+
+  // State to track image loading errors
+  const [imageErrors, setImageErrors] = useState({});
+
+  // Helper function to parse lab images and detect file types
+  const parseLabImages = (labImgData) => {
+    if (!labImgData) return [];
+    
+    try {
+      let files = [];
+      
+      // If it's a string that looks like JSON array, parse it
+      if (typeof labImgData === 'string' && labImgData.startsWith('[')) {
+        files = JSON.parse(labImgData);
+      }
+      // If it's already an array, use it
+      else if (Array.isArray(labImgData)) {
+        files = labImgData;
+      }
+      // If it's a single string URL, wrap it in array
+      else if (typeof labImgData === 'string') {
+        files = [labImgData];
+      }
+      
+      // Add file type information
+      const filesWithType = files.map(url => {
+        const lowerUrl = url.toLowerCase();
+        if (lowerUrl.match(/\.pdf$/)) {
+          return { url, type: 'pdf' };
+        } else {
+          return { url, type: 'image' };
+        }
+      });
+      
+      return filesWithType;
+      
+    } catch (error) {
+      console.error('Error parsing lab images:', error);
+    }
+    
+    return [];
+  };
+
+  const handleImageError = (index) => {
+    setImageErrors(prev => ({ ...prev, [index]: true }));
+  };
+
+  const labFiles = parseLabImages(medicalRecord.medrec_lab_img);
+
+  const handleExportPDF = async () => {
+    const success = await exportToPDF(
+      { horse, medicalRecord }, 
+      `medical-record-${horse?.horse_name || 'unknown'}.pdf`,
+      'medical'
+    );
+    if (success) {
+      onExportPDF();
+    } else {
+      alert('Failed to export PDF. Please try again.');
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      <button
+        onClick={onBack}
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
+      >
+        <ChevronLeft size={20} />
+        Back to Horse Details
+      </button>
+
+      <div className="mb-6">
+        <h5 className="text-base font-semibold text-red-700 mb-4 border-b-2 border-gray-200 pb-1.5">
+          Medical Record Details
+        </h5>
+
+        {/* Information Section */}
+        <div className="bg-blue-50 rounded-lg p-4 mb-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="text-sm mb-2">
+              <strong>Follow-up Date:</strong> {medicalRecord.medrec_followup_date || "No follow-up scheduled"}
+            </div>
+            <div className="text-sm mb-2">
+              <strong>Date:</strong> {medicalRecord.medrec_date || "N/A"}
+            </div>
+            <div className="text-sm mb-2">
+              <strong>Administered By:</strong> {medicalRecord.vet_name || "N/A"}
+            </div>
+            <div className="text-sm mb-2">
+              <strong>Horse Status:</strong> 
+              <span className={`inline-block py-0.5 px-2 rounded-xl text-xs font-medium ml-2 ${
+                medicalRecord.medrec_horsestatus?.toLowerCase() === "healthy" 
+                  ? "bg-green-100 text-green-800"
+                  : medicalRecord.medrec_horsestatus?.toLowerCase() === "sick"
+                    ? "bg-red-100 text-red-600"
+                    : medicalRecord.medrec_horsestatus?.toLowerCase() === "unhealthy"
+                      ? "bg-yellow-100 text-yellow-600"
+                      : "bg-gray-100 text-gray-600"
+              }`}>
+                {medicalRecord.medrec_horsestatus || "N/A"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="text-sm font-semibold text-gray-900 mb-4">Vital Signs</div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+          <div className="bg-white border border-gray-200 rounded-md p-3 text-center">
+            <div className="text-lg font-semibold text-gray-900 mb-1">
+              {medicalRecord.medrec_body_temp || "N/A"}°C
+            </div>
+            <div className="text-xs text-gray-500">Temperature</div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-md p-3 text-center">
+            <div className="text-lg font-semibold text-gray-900 mb-1">
+              {medicalRecord.medrec_heart_rate || "N/A"} bpm
+            </div>
+            <div className="text-xs text-gray-500">Heart Rate</div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-md p-3 text-center">
+            <div className="text-lg font-semibold text-gray-900 mb-1">
+              {medicalRecord.medrec_resp_rate || "N/A"} breaths/min
+            </div>
+            <div className="text-xs text-gray-500">Respiratory Rate</div>
+          </div>
+        </div>
+
+        {/* Laboratory Results Section */}
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <div className="text-sm font-semibold text-gray-900 mb-2">Laboratory Results</div>
+          <div className="space-y-4">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <FileText size={16} className="text-blue-600" />
+                <span className="text-sm font-medium text-gray-700">Lab Results:</span>
+              </div>
+              <p className="text-sm text-gray-700 leading-6 ml-6">
+                {medicalRecord.medrec_lab_results || "No lab results available"}
+              </p>
+            </div>
+            
+            {/* Lab Files Section - Only show if there are files */}
+            {labFiles.length > 0 && (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <ImageIcon size={16} className="text-green-600" />
+                  <span className="text-sm font-medium text-gray-700">Lab Files:</span>
+                </div>
+                <div className="ml-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {labFiles.map((file, index) => (
+                      <div key={index} className="flex flex-col space-y-2">
+                        {file.type === 'image' ? (
+                          // Display image files with error handling
+                          !imageErrors[index] ? (
+                            <>
+                              <img 
+                                src={file.url} 
+                                alt={`Laboratory test result ${index + 1}`}
+                                className="max-w-full h-auto max-h-64 rounded-lg border border-gray-200"
+                                onError={() => handleImageError(index)}
+                              />
+                              <a 
+                                href={file.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-sm text-blue-600 hover:text-blue-800 underline text-center"
+                              >
+                                View full size image
+                              </a>
+                            </>
+                          ) : (
+                            <div className="text-sm text-gray-500 italic text-center p-4 bg-gray-100 rounded-lg border border-gray-200">
+                              Lab image failed to load or is unavailable
+                            </div>
+                          )
+                        ) : (
+                          // Display PDF files - always show the link without trying to render as image
+                          <>
+                            <div className="bg-gray-100 rounded-lg border border-gray-200 p-8 text-center">
+                              <FileText size={48} className="text-red-500 mx-auto mb-2" />
+                              <p className="text-sm text-gray-600 mb-3">PDF Document</p>
+                            </div>
+                            <a 
+                              href={file.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-600 hover:text-blue-800 underline text-center"
+                            >
+                              View PDF document
+                            </a>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <div className="text-sm font-semibold text-gray-900 mb-2">Diagnosis</div>
+          <p className="text-sm leading-6 text-gray-700 mb-2">
+            {medicalRecord.medrec_diagnosis || "No diagnosis available"}
+          </p>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <div className="text-sm font-semibold text-gray-900 mb-2">Clinical Signs</div>
+          <p className="text-sm text-gray-700 leading-6">
+            {medicalRecord.medrec_clinical_signs || "No signs recorded"}
+          </p>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <div className="text-sm font-semibold text-gray-900 mb-2">Prognosis</div>
+          <p className="text-sm text-gray-700 leading-6">
+            {medicalRecord.medrec_prognosis || "No prognosis recorded"}
+          </p>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <div className="text-sm font-semibold text-gray-900 mb-2">Recommendations</div>
+          <p className="text-sm text-gray-700 leading-6">
+            {medicalRecord.medrec_recommendation || "No recommendations available"}
+          </p>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <div className="text-sm font-semibold text-gray-900 mb-2">Diagnostic Protocol</div>
+          <p className="text-sm text-gray-700 leading-6">
+            {medicalRecord.medrec_diagnostic_protocol || "No diagnostic protocol recorded"}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex justify-center">
+        <button
+          className="inline-flex items-center justify-center gap-1 bg-green-500 text-white border-none py-3 px-6 rounded-md text-sm font-medium cursor-pointer transition-colors hover:bg-green-600 min-h-[44px] max-w-[200px] w-full"
+          onClick={handleExportPDF}
+        >
+          <Download size={16} />
+          Export PDF
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// Treatment History Detail Component
+const TreatmentHistoryDetailView = ({ treatmentHistory, horse, onBack, onExportPDF }) => {
+  if (!treatmentHistory) return null;
+
+  const handleExportPDF = async () => {
+    const success = await exportToPDF(
+      { horse, treatmentHistory }, 
+      `treatment-history-${horse?.horse_name || 'unknown'}.pdf`,
+      'treatment'
+    );
+    if (success) {
+      onExportPDF();
+    } else {
+      alert('Failed to export PDF. Please try again.');
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      <button
+        onClick={onBack}
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
+      >
+        <ChevronLeft size={20} />
+        Back to Horse Details
+      </button>
+
+      <div>
+        <h4 className="text-lg font-semibold text-red-700 mb-5">Treatment History Details</h4>
+
+        <div className="bg-blue-50 rounded-lg p-4 mb-5">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="text-sm mb-2">
+              <strong>Follow-up Date:</strong> {treatmentHistory.followup_date || treatmentHistory.parent_record?.medrec_followup_date || "N/A"}
+            </div>
+            <div className="text-sm mb-2">
+              <strong>Date:</strong> {treatmentHistory.treatment_date || "N/A"}
+            </div>
+            <div className="text-sm mb-2">
+              <strong>Administered By:</strong> {treatmentHistory.vet_name || "N/A"}
+            </div>
+            <div className="text-sm mb-2">
+              <strong>Horse Status:</strong> 
+              <span className={`inline-block py-0.5 px-2 rounded-xl text-xs font-medium ml-2 ${
+                treatmentHistory.parent_record?.medrec_horsestatus?.toLowerCase() === "healthy" 
+                  ? "bg-green-100 text-green-800"
+                  : treatmentHistory.parent_record?.medrec_horsestatus?.toLowerCase() === "sick"
+                    ? "bg-red-100 text-red-600"
+                    : treatmentHistory.parent_record?.medrec_horsestatus?.toLowerCase() === "unhealthy"
+                      ? "bg-yellow-100 text-yellow-600"
+                      : "bg-gray-100 text-gray-600"
+              }`}>
+                {treatmentHistory.parent_record?.medrec_horsestatus || "N/A"}
+              </span>
+            </div>
+          
+          </div>
+        </div>
+
+        <div className="mb-5">
+          <div className="text-sm font-semibold text-red-700 mb-3">Medical Data at Time of Treatment</div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
+            <div className="bg-white border border-gray-200 rounded-md p-3 text-center">
+              <div className="text-lg font-semibold text-gray-900 mb-1">
+                {treatmentHistory.medrec_bodytemp || "N/A"} °C
+              </div>
+              <div className="text-xs text-gray-500">Temperature</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-md p-3 text-center">
+              <div className="text-lg font-semibold text-gray-900 mb-1">
+                {treatmentHistory.medrec_heart_rate || "N/A"} bpm
+              </div>
+              <div className="text-xs text-gray-500">Heart Rate</div>
+            </div>
+            <div className="bg-white border border-gray-200 rounded-md p-3 text-center">
+              <div className="text-lg font-semibold text-gray-900 mb-1">
+                {treatmentHistory.medrec_resp_rate || "N/A"} breaths/min
+              </div>
+              <div className="text-xs text-gray-500">Respiratory Rate</div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <div className="text-sm font-semibold text-gray-900 mb-3">Recommendations</div>
+          <p className="text-sm text-gray-700 leading-6">
+            {treatmentHistory.medrec_recommendation  || "No information available"}
+          </p>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <div className="text-sm font-semibold text-gray-900 mb-3">Clinical Signs</div>
+          <p className="text-sm text-gray-700 leading-6">
+            {treatmentHistory.medrec_clinical_sign || "No information available"}
+          </p>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <div className="text-sm font-semibold text-gray-900 mb-3">Diagnosis</div>
+          <p className="text-sm text-gray-700 leading-6">
+            {treatmentHistory.medrec_diagnosis || "No information available"}
+          </p>
+        </div>
+
+        <div className="bg-gray-50 rounded-lg p-4 mb-5">
+          <div className="text-sm font-semibold text-gray-900 mb-3">Treatment Details</div>
+          <p className="text-sm text-gray-700 leading-6 mb-2">
+            <span className="font-semibold">Treatment Name: </span>
+            {treatmentHistory.treatment_name || "No information available"}
+          </p>
+          <p className="text-sm text-gray-700 leading-6 mb-2">
+            <span className="font-semibold">Dosage: </span>
+            {treatmentHistory.treatment_dosage || "N/A"}
+          </p>
+          <p className="text-sm text-gray-700 leading-6 mb-2">
+            <span className="font-semibold">Duration: </span>
+            {treatmentHistory.treatment_duration || "N/A"}
+          </p>
+          <p className="text-sm text-gray-700 leading-6 mb-2">
+            <span className="font-semibold">Outcome: </span>
+            {treatmentHistory.treatment_outcome || "N/A"}
+          </p>
+        </div>
+
+        <div className="flex justify-center">
+          <button
+            className="inline-flex items-center justify-center gap-1 bg-green-500 text-white border-none py-3 px-6 rounded-md text-sm font-medium cursor-pointer transition-colors hover:bg-green-600 min-h-[44px] max-w-[200px] w-full"
+            onClick={handleExportPDF}
+          >
+            <Download size={16} />
+            Export PDF
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Horse Detail Component
+const HorseDetailView = ({ horse, onBack, onViewMedicalRecord, onViewTreatmentHistory }) => {
+  if (!horse) return null;
+
+  const displayWeight = () => {
+    const weight = horse.horse_weight;
+    if (!weight || weight === "" || weight === "0") return "N/A";
+    return `${weight} kg`;
+  };
+
+  const displayHeight = () => {
+    const height = horse.horse_height;
+    if (!height || height === "" || height === "0") return "N/A";
+    return `${height} hands`;
+  };
+
+  const transformMedicalRecords = () => {
+    if (!horse.horse_medical_record || horse.horse_medical_record.length === 0) {
+      return {
+        medrec_history: [],
+        treatment_history: []
+      };
+    }
+
+    const medrecHistory = horse.horse_medical_record.map((record, index) => ({
+      history_id: record.medrec_id || index,
+      change_date: record.medrec_date,
+      prev_diagnosis: record.medrec_diagnosis,
+      vet_name: record.vet_name || "Veterinarian",
+      horse_status: record.medrec_horsestatus,
+      followup_date: record.medrec_followup_date,
+      full_record: record
+    }));
+
+    const treatmentHistory = horse.horse_medical_record.flatMap(record => 
+      record.horse_treatment && record.horse_treatment.length > 0 
+        ? record.horse_treatment.map((treatment, idx) => ({
+            treatment_id: treatment.treatment_id || `${record.medrec_id}-${idx}`,
+            treatment_date: record.medrec_date,
+            treatment_info: treatment.treatment_name,
+            vet_name: record.vet_name || "Veterinarian",
+            treatment_remark: treatment.treatment_outcome || "Completed",
+            treatment_dosage: treatment.treatment_dosage,
+            treatment_duration: treatment.treatment_duration,
+            treatment_name: treatment.treatment_name,
+            followup_date: treatment.followup_date,
+            medrec_bodytemp: record.medrec_body_temp,
+            medrec_heart_rate: record.medrec_heart_rate,
+            medrec_resp_rate: record.medrec_resp_rate,
+            medrec_clinical_sign: record.medrec_clinical_signs,
+            medrec_diagnosis: record.medrec_diagnosis,
+            medrec_recommendation: record.medrec_recommendation,
+            full_treatment: treatment,
+            parent_record: record
+          }))
+        : []
+    );
+
+    return {
+      medrec_history: medrecHistory,
+      treatment_history: treatmentHistory
+    };
+  };
+
+  const medicalData = transformMedicalRecords();
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm p-6">
+      <button
+        onClick={onBack}
+        className="inline-flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
+      >
+        <ChevronLeft size={20} />
+        Back to Horse Records
+      </button>
+
+      {/* Square Profile and Info Layout */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        {/* Horse Information Section */}
+        <div className="flex flex-col md:flex-row items-start md:items-start space-x-0 md:space-x-6">
+          <div className="relative flex-shrink-0">
+            <div className="w-32 h-32 md:w-40 md:h-40 rounded-xl bg-gray-300 flex items-center justify-center overflow-hidden border-2 border-white shadow-md">
+              {horse.horse_image ? (
+                <img 
+                  src={horse.horse_image} 
+                  alt={horse.horse_name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
+                />
+              ) : null}
+              <div className={`w-full h-full flex items-center justify-center text-3xl font-semibold text-gray-500 ${horse.horse_image ? 'hidden' : 'flex'}`}>
+                {horse.horse_name ? horse.horse_name.charAt(0) : "H"}
+              </div>
+            </div>
+            
+            {/* Status Badge */}
+            <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
+              <span className={`inline-block py-1 px-3 rounded-full border shadow-sm text-xs font-semibold ${
+                horse.horse_status?.toLowerCase() === "healthy" 
+                  ? "bg-green-100 text-green-800 border-green-200"
+                  : horse.horse_status?.toLowerCase() === "sick"
+                    ? "bg-red-100 text-red-800 border-red-200"
+                    : horse.horse_status?.toLowerCase() === "unhealthy"
+                      ? "bg-yellow-100 text-yellow-800 border-yellow-200"
+                      : "bg-gray-100 text-gray-800 border-gray-200"
+              }`}>
+                {horse.horse_status || "No Status"}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex-1 mt-6 md:mt-0 flex flex-col justify-start text-left">
+            <h2 className="text-2xl font-bold text-gray-800">{horse.horse_name || "Unknown Horse"}</h2>
+            <div className="flex items-center space-x-4 mt-1">
+              <span className="text-indigo-600 font-semibold">{horse.horse_breed || "Unknown Breed"}</span>
+              <span className="text-gray-600">({horse.horse_sex || "Unknown"})</span>
+            </div>
+            <span className="mt-1 block text-gray-700">{horse.horse_color || "Unknown"} Coat</span>
+
+            <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-gray-600 text-sm mt-4">
+              <span>DOB: <strong className="text-gray-800">{horse.horse_dob || "Unknown"}</strong></span>
+              <span>Age: <strong className="text-gray-800">{horse.horse_age || "Unknown"}</strong></span>
+              <span>Height: <strong className="text-gray-800">{displayHeight()}</strong></span>
+              <span>Weight: <strong className="text-gray-800">{displayWeight()}</strong></span>
+            </div>
+          </div>
+        </div>
+
+        {/* Owner Information Section */}
+        <div>
+          <div className="flex items-center space-x-2 mb-4">
+            <div className="w-8 h-8 bg-gradient-to-br from-emerald-400 to-teal-600 rounded-xl flex items-center justify-center shadow-md">
+              <User className="w-4 h-4 text-white" />
+            </div>
+            <h2 className="text-lg font-bold text-gray-800">Owner Information</h2>
+          </div>
+
+          <div className="space-y-3">
+            <p className="font-bold text-gray-800 text-lg">
+              {horse.owner_fullname || "Unknown Owner"}
+            </p>
+
+            <div className="space-y-2">
+              <div className="flex items-center space-x-2 text-sm">
+                <div className="w-6 h-6 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Phone className="w-3 h-3 text-blue-600" />
+                </div>
+                <span className="text-gray-700">{horse.owner_phone || "Phone not available"}</span>
+              </div>
+
+              <div className="flex items-center space-x-2 text-sm">
+                <div className="w-6 h-6 bg-green-100 rounded-lg flex items-center justify-center">
+                  <MapPin className="w-3 h-3 text-green-600" />
+                </div>
+                <span className="text-gray-700">{horse.location || "Address not available"}</span>
+              </div>
+
+              <div className="flex items-center space-x-2 text-sm">
+                <div className="w-6 h-6 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <Mail className="w-3 h-3 text-purple-600" />
+                </div>
+                <span className="text-gray-700">{horse.owner_email || "Email not available"}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="text-base font-semibold text-gray-900 mb-4">Medical Record History</div>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-5">
+        <div className="bg-gray-50 grid grid-cols-5 gap-4 py-3 px-4 font-semibold text-gray-700 text-xs border-b border-gray-200">
+          <div>Date</div>
+          <div>Diagnosis</div>
+          <div>Status</div>
+          <div>Veterinarian</div>
+          <div className="text-center">Action</div>
+        </div>
+
+        {medicalData.medrec_history.length > 0 ? (
+          medicalData.medrec_history.map((history) => (
+            <div
+              className="grid grid-cols-5 gap-4 py-3 px-4 border-b border-gray-100 items-center text-sm min-h-[50px]"
+              key={history.history_id}
+            >
+              <div className="flex items-center">{history.change_date || "N/A"}</div>
+              <div className="flex items-center">{history.prev_diagnosis || "No diagnosis"}</div>
+              <div className="flex items-center">
+                <span className={`inline-block py-1 px-2 rounded-xl text-xs font-medium ${
+                  history.horse_status?.toLowerCase() === "healthy" 
+                    ? "bg-green-100 text-green-800"
+                    : history.horse_status?.toLowerCase() === "sick"
+                      ? "bg-red-100 text-red-600"
+                      : history.horse_status?.toLowerCase() === "unhealthy"
+                        ? "bg-yellow-100 text-yellow-600"
+                        : "bg-gray-100 text-gray-600"
+                }`}>
+                  {history.horse_status || "N/A"}
+                </span>
+              </div>
+              <div className="flex items-center">{history.vet_name || "N/A"}</div>
+              <div className="flex items-center justify-center">
+                <button
+                  className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px] w-full max-w-[60px]"
+                  onClick={() => onViewMedicalRecord(horse, history.full_record)}
+                >
+                  <Eye size={16} />
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="flex flex-col items-center justify-center text-center p-8">
+            <Stethoscope size={48} className="opacity-50 mb-4" />
+            <h3 className="text-lg mb-2 text-gray-700">No medical record history</h3>
+            <p className="text-sm text-gray-500">Previous records will appear here when available</p>
+          </div>
+        )}
+      </div>
+
+      <div className="text-base font-semibold text-gray-900 mb-4">Treatment History</div>
+      <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
+        <div className="bg-gray-50 grid grid-cols-5 gap-4 py-3 px-4 font-semibold text-gray-700 text-xs border-b border-gray-200">
+          <div>Date</div>
+          <div>Treatment</div>
+          <div>Remark</div>
+          <div>Administered By</div>
+          <div className="text-center">Action</div>
+        </div>
+
+        {medicalData.treatment_history.length > 0 ? (
+          medicalData.treatment_history.map((treatment) => (
+            <div
+              className="grid grid-cols-5 gap-4 py-3 px-4 border-b border-gray-100 items-center text-sm min-h-[50px]"
+              key={treatment.treatment_id}
+            >
+              <div className="flex items-center">{treatment.treatment_date || "N/A"}</div>
+              <div className="flex items-center">{treatment.treatment_info || "N/A"}</div>
+              <div className="flex items-center">
+                <span className={`inline-block py-1 px-2 rounded text-xs font-medium ${
+                  treatment.treatment_remark?.toLowerCase() === "completed" 
+                    ? "bg-green-100 text-green-800"
+                    : treatment.treatment_remark?.toLowerCase() === "in progress"
+                      ? "bg-blue-100 text-blue-800"
+                      : treatment.treatment_remark?.toLowerCase() === "pending"
+                        ? "bg-yellow-100 text-yellow-800"
+                        : "bg-gray-100 text-gray-600"
+                }`}>
+                  {treatment.treatment_remark || "N/A"}
+                </span>
+              </div>
+              <div className="flex items-center">{treatment.vet_name || "N/A"}</div>
+              <div className="flex items-center justify-center">
+                <button
+                  className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px] w-full max-w-[60px]"
+                  onClick={() => onViewTreatmentHistory(treatment)}
+                >
+                  <Eye size={16} />
+                </button>
+              </div>
+            </div>
+          ))
+        ) : (
+          <div className="flex flex-col items-center justify-center text-center p-8">
+            <Syringe size={48} className="opacity-50 mb-4" />
+            <h3 className="text-lg mb-2 text-gray-700">No treatment history</h3>
+            <p className="text-sm text-gray-500">Treatment records will appear here when available</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+
 function DvmfHorseRecord() {
   const navigate = useNavigate()
-
-  // State for sidebar and modals
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false) // Added state for sidebar open/close
-  const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
-  const [isHorseModalOpen, setIsHorseModalOpen] = useState(false)
-  const [isMedicalRecordModalOpen, setIsMedicalRecordModalOpen] = useState(false)
-  const [isTreatmentHistoryModalOpen, setIsTreatmentHistoryModal] = useState(false)
-  const [loading, setLoading] = useState(false) // ✅ added
-  const [error, setError] = useState(null) // <-- Add this
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+  const [currentView, setCurrentView] = useState('list')
+  const [loading, setLoading] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [error, setError] = useState(null)
   const [notifsOpen, setNotifsOpen] = useState(false)
-
-  // State for filters and search
   const [areaFilter, setAreaFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
-
+  const [currentPage, setCurrentPage] = useState(1)
+  const [itemsPerPage, setItemsPerPage] = useState(10)
   const [notifications, setNotifications] = useState([])
   const [horseRecords, setHorseRecords] = useState([])
-
   const [selectedHorse, setSelectedHorse] = useState(null)
   const [selectedMedicalRecord, setSelectedMedicalRecord] = useState(null)
   const [selectedTreatmentHistory, setSelectedTreatmentHistory] = useState(null)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
-  // Refs for click outside functionality
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
-  const horseModalRef = useRef(null)
-  const medicalRecordModalRef = useRef(null)
-  const treatmentHistoryModalRef = useRef(null)
-  const logoutModalRef = useRef(null)
   const sidebarRef = useRef(null)
 
-  // Helper to format time for notifications
-  const formatTimeAgo = useCallback((timestamp) => {
-    const now = new Date()
-    const diffInMinutes = Math.floor((now.getTime() - timestamp.getTime()) / (1000 * 60))
-    if (diffInMinutes < 1) return "Just now"
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`
-    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`
-    return `${Math.floor(diffInMinutes / 1440)}d ago`
-  }, [])
+  // MARK ALL NOTIFICATIONS AS READ
+  const handleMarkAllAsRead = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to mark all as read");
+      }
+      
+      const data = await res.json();
+      console.log("Mark all as read result:", data);
 
-  // ✅ Fetch notifications from backend
+      // Update frontend state
+      setNotifications(prev =>
+        prev.map(notif => ({ ...notif, read: true }))
+      );
+      
+    } catch (err) {
+      console.error("Error marking all as read:", err);
+    }
+  };
+
+  // HANDLE INDIVIDUAL NOTIFICATION CLICK
+ const handleNotificationClick = async (notification) => {
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev =>
+    prev.map(notif =>
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
+
+  // Mark notification as read in backend
+  try {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
+  }
+
+  // Handle navigation based on notification content
+  const message = notification.message.toLowerCase();
+
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    navigate("/DvmfAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
+    navigate("/DvmfAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+};
+  // Handle notifications update from modal
+  const handleNotificationsUpdate = (updatedNotifications) => {
+    console.log("Notifications updated from modal:", updatedNotifications);
+    console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
+    setNotifications(updatedNotifications);
+  };
+
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
-
-    fetch("http://127.0.0.1:8000/api/dvmf/get_vetnotifications/")
+    fetch(`${API_BASE}/get_vetnotifications/`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -64,109 +1416,143 @@ function DvmfHorseRecord() {
           id: notif.id,
           message: notif.message,
           date: notif.date || new Date().toISOString(),
+          read: notif.read || false,
+          type: notif.type || "general"
         }))
         setNotifications(formatted)
       })
       .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
-  // ✅ Auto-refresh every 30s
-  useEffect(() => {
-    loadNotifications() // load once
+  // Manual refresh function
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      await Promise.all([
+        fetchHorses(),
+        loadNotifications()
+      ])
+    } catch (error) {
+      console.error("Failed to refresh data:", error)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
 
+  const fetchHorses = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/get_horses/")
+      if (!res.ok) throw new Error("Failed to fetch horses")
+      const data = await res.json()
+      setHorseRecords(data)
+    } catch (err) {
+      console.error("Error fetching horses:", err)
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchHorses()
+    loadNotifications()
     const interval = setInterval(() => {
       loadNotifications()
-    }, 30000) // 30 seconds
-
+    }, 30000)
     return () => clearInterval(interval)
   }, [loadNotifications])
 
+  // Filter only approved horses
   const filteredHorseRecords = useCallback(() => {
-    let filtered = horseRecords
+    let filtered = horseRecords.filter(horse => horse.status === "approved")
+    
     if (areaFilter !== "all") {
       filtered = filtered.filter((horse) => horse.location.toLowerCase().includes(areaFilter.toLowerCase()))
     }
     if (statusFilter !== "all") {
-      filtered = filtered.filter((horse) => horse.status === statusFilter)
+      filtered = filtered.filter((horse) => 
+        horse.horse_status?.toLowerCase() === statusFilter.toLowerCase()
+      )
     }
     if (searchTerm) {
       filtered = filtered.filter(
         (horse) =>
-          horse.name.toLowerCase().includes(searchTerm) ||
-          horse.owner.toLowerCase().includes(searchTerm) ||
-          horse.location.toLowerCase().includes(searchTerm),
+          horse.horse_name?.toLowerCase().includes(searchTerm) ||
+          horse.owner_fullname?.toLowerCase().includes(searchTerm) ||
+          horse.location?.toLowerCase().includes(searchTerm) ||
+          horse.horse_color?.toLowerCase().includes(searchTerm),
       )
     }
     return filtered
   }, [horseRecords, areaFilter, statusFilter, searchTerm])
 
-  const viewHorseDetails = (horse) => {
-    setSelectedHorse(horse) // set the whole object
-    setIsHorseModalOpen(true)
+  const paginatedHorseRecords = useCallback(() => {
+    const filtered = filteredHorseRecords()
+    const startIndex = (currentPage - 1) * itemsPerPage
+    const endIndex = startIndex + itemsPerPage
+    return filtered.slice(startIndex, endIndex)
+  }, [filteredHorseRecords, currentPage, itemsPerPage])
+
+  const totalPages = Math.ceil(filteredHorseRecords().length / itemsPerPage)
+
+  const handlePageChange = (page) => {
+    setCurrentPage(page)
   }
 
-  const closeHorseModal = () => {
-    setIsHorseModalOpen(false)
-    setSelectedHorse(null)
+  const handleItemsPerPageChange = (newItemsPerPage) => {
+    setItemsPerPage(newItemsPerPage)
+    setCurrentPage(1)
   }
 
-  // When you click "View Medical Record"
-  const viewMedicalRecord = (horse, record) => {
-    setSelectedHorse(horse) // Horse info for profile
-    setSelectedMedicalRecord(record) // Single medical record
-    setIsMedicalRecordModalOpen(true) // Open modal
-    setIsHorseModalOpen(false) // Close horse list modal
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [areaFilter, statusFilter, searchTerm])
+
+  const viewHorseDetails = async (horse) => {
+    setDetailLoading(true)
+    setSelectedHorse(horse)
+    // Simulate loading delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 500))
+    setCurrentView('horse')
+    setDetailLoading(false)
   }
 
-  const closeMedicalRecord = () => {
-    setIsMedicalRecordModalOpen(false)
+  const viewMedicalRecord = async (horse, record) => {
+    setDetailLoading(true)
+    setSelectedHorse(horse)
+    setSelectedMedicalRecord(record)
+    // Simulate loading delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 500))
+    setCurrentView('medical')
+    setDetailLoading(false)
+  }
+
+  const viewTreatmentHistory = async (record) => {
+    setDetailLoading(true)
+    setSelectedTreatmentHistory(record)
+    // Simulate loading delay for better UX
+    await new Promise(resolve => setTimeout(resolve, 500))
+    setCurrentView('treatment')
+    setDetailLoading(false)
+  }
+
+  const backToList = () => {
+    setCurrentView('list')
     setSelectedHorse(null)
     setSelectedMedicalRecord(null)
-    setTimeout(() => {
-      setIsHorseModalOpen(true) // Reopen horse list after closing modal
-    }, 50)
-  }
-
-  const viewTreatmentHistory = (record) => {
-    setSelectedTreatmentHistory(record)
-    setIsTreatmentHistoryModal(true)
-    closeHorseModal()
-  }
-
-  // FIXED: Back button navigation with proper timing
-  const closeTreatmentHistory = () => {
-    setIsTreatmentHistoryModal(false)
     setSelectedTreatmentHistory(null)
-    // Add a small delay to ensure proper state transition
-    setTimeout(() => {
-      setIsHorseModalOpen(true)
-    }, 50)
   }
 
-  const printRecord = () => {
-    // Add timestamp to the modal body for print footer
-    const modalBody = document.querySelector(".medical-modal-body")
-    if (modalBody) {
-      modalBody.setAttribute("data-print-date", new Date().toLocaleString())
-    }
-
-    // Small delay to ensure styles are applied
-    setTimeout(() => {
-      window.print()
-    }, 100)
+  const backToHorse = () => {
+    setCurrentView('horse')
+    setSelectedMedicalRecord(null)
+    setSelectedTreatmentHistory(null)
   }
 
-  const printTreatmentRecord = () => {
-    // Add timestamp to the modal body for print footer
-    const modalBody = document.querySelector(".medical-modal-body")
-    if (modalBody) {
-      modalBody.setAttribute("data-print-date", new Date().toLocaleString())
-    }
-
-    // Small delay to ensure styles are applied
-    setTimeout(() => {
-      window.print()
-    }, 100)
+  const handleExportPDF = () => {
+    console.log('PDF exported successfully');
   }
 
   const handleSearchInput = (e) => {
@@ -181,43 +1567,8 @@ function DvmfHorseRecord() {
     setStatusFilter(e.target.value)
   }
 
-  // Effects for click outside and resize
-  useEffect(() => {
-    loadNotifications()
-  }, [loadNotifications])
-
   useEffect(() => {
     const handleClickOutside = (event) => {
-      // Close notification dropdown
-      if (
-        notificationBellRef.current &&
-        !notificationBellRef.current.contains(event.target) &&
-        notificationDropdownRef.current &&
-        !notificationDropdownRef.current.contains(event.target)
-      ) {
-        setIsNotificationDropdownOpen(false)
-      }
-
-      // Close horse details modal
-      if (isHorseModalOpen && horseModalRef.current && event.target === horseModalRef.current) {
-        closeHorseModal()
-      }
-
-      // Close medical record detail modal
-      if (isMedicalRecordModalOpen && medicalRecordModalRef.current && event.target === medicalRecordModalRef.current) {
-        closeMedicalRecord()
-      }
-
-      // Close treatment history detail modal
-      if (
-        isTreatmentHistoryModalOpen &&
-        treatmentHistoryModalRef.current &&
-        event.target === treatmentHistoryModalRef.current
-      ) {
-        closeTreatmentHistory()
-      }
-
-      // Close mobile sidebar
       const sidebar = document.getElementById("sidebar")
       const mobileMenuBtn = document.querySelector(".mobile-menu-btn")
       if (
@@ -236,13 +1587,7 @@ function DvmfHorseRecord() {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
     }
-  }, [
-    isNotificationDropdownOpen,
-    isHorseModalOpen,
-    isMedicalRecordModalOpen,
-    isTreatmentHistoryModalOpen,
-    isSidebarOpen,
-  ])
+  }, [isSidebarOpen])
 
   useEffect(() => {
     const handleResize = () => {
@@ -254,2287 +1599,246 @@ function DvmfHorseRecord() {
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-  const currentFilteredHorseRecords = filteredHorseRecords()
-
-  // Define the styles object at the top of your file or before the return
-  const styles = {
-    notificationBtn: {
-      position: "relative",
-      background: "transparent",
-      border: "none",
-      cursor: "pointer",
-      padding: "8px",
-      borderRadius: "50%",
-    },
-    badge: {
-      position: "absolute",
-      top: "2px",
-      right: "2px",
-      backgroundColor: "#ef4444",
-      color: "#fff",
-      borderRadius: "50%",
-      padding: "2px 6px",
-      fontSize: "12px",
-      fontWeight: "bold",
-    },
-  }
-
-  // ✅ Fetch horses from backend
-  useEffect(() => {
-    const fetchHorses = async () => {
-      setLoading(true)
-      setError(null)
-
-      try {
-        const res = await fetch("http://127.0.0.1:8000/api/dvmf/get_horses/")
-        if (!res.ok) throw new Error("Failed to fetch horses")
-        const data = await res.json()
-        setHorseRecords(data)
-      } catch (err) {
-        console.error("Error fetching horses:", err)
-        setError(err.message)
-      } finally {
-        setLoading(false)
-      }
-    }
-
-    fetchHorses()
-  }, [])
-
-  return (
-    <div className="bodyWrapper">
-      <style>{`
-        /* General Styles */
-body {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-.bodyWrapper {
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  background-color: #f5f5f5;
-  display: flex;
-  height: 100vh;
-  overflow-x: hidden;
-  width: 100%;
-}
-
-
-
-
-
-/* Main Content & Header */
-.main-content {
-
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  width: calc(100% - 250px);
-}
-
-.headers {
-  background: white;
-  padding: 18px 24px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.search-container {
-  flex: 1;
-  max-width: 400px;
-  margin-right: 20px;
-  position: relative;
-  min-width: 200px;
-}
-.search-input {
-  width: 100%;
-  padding: 8px 16px 8px 40px;
-  border: 2px solid #fff;
-  border-radius: 8px;
-  font-size: clamp(12px, 2vw, 14px);
-  outline: none;
-  min-height: 50px;
-  background: #fff;
-    margin-bottom: 10px;
-
-}
-
-
-.search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 16px;
-  height: 16px;
-}
-
-.search-icon::before {
-  content: "";
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border: 2px solid #6b7280;
-  border-radius: 50%;
-  top: 0;
-  left: 0;
-}
-
-.search-icon::after {
-  content: "";
-  position: absolute;
-  width: 2px;
-  height: 5px;
-  background: #6b7280;
-  transform: rotate(45deg);
-  bottom: 1px;
-  right: 1px;
-}
-
-/* Notifications */
-.notification-bell {
-  font-size: clamp(18px, 3vw, 20px);
-  color: #666;
-  cursor: pointer;
-  position: relative;
-  margin-right: 20px;
-  padding: 8px;
-  min-height: 44px;
-  min-width: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.notification-count {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  background-color: #0F3D5A;
-  color: white;
-  font-size: 10px;
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  display: none;
-  align-items: center;
-  justify-content: center;
-}
-
-.notification-dropdown {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  width: min(350px, 90vw);
-  background-color: white;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 100;
-  display: none;
-  max-height: 400px;
-  overflow-y: auto;
-}
-
-.notification-dropdown.show {
-  display: block;
-}
-
-.notification-header {
-  padding: 15px 20px;
-  border-bottom: 1px solid #eee;
-  background: #f8f9fa;
-  border-radius: 8px 8px 0 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.notification-header h3 {
-  font-size: 16px;
-  font-weight: 600;
-  color: #333;
-  margin: 0;
-}
-
-.mark-all-read {
-  background: none;
-  border: none;
-  color: #0F3D5A;
-  font-size: 12px;
-  cursor: pointer;
-  text-decoration: underline;
-}
-
-.notification-item {
-  padding: 15px 20px;
-  border-bottom: 1px solid #eee;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  position: relative;
-}
-
-.notification-item:hover {
-  background-color: #f8f9fa;
-}
-
-.notification-item.unread {
-  background-color: #f0f8ff;
-  border-left: 3px solid #0F3D5A;
-}
-
-.notification-item:last-child {
-  border-bottom: none;
-}
-
-.notification-title {
-  font-weight: 600;
-  font-size: 14px;
-  margin-bottom: 5px;
-  color: #333;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.notification-message {
-  font-size: 13px;
-  color: #666;
-  margin-bottom: 5px;
-  line-height: 1.4;
-}
-
-.notification-time {
-  font-size: 11px;
-  color: #999;
-}
-
-.notification-icon {
-  width: 16px;
-  height: 16px;
-  flex-shrink: 0;
-}
-
-.notification-icon.info {
-  color: #3b82f6;
-}
-
-.notification-icon.success {
-  color: #10b981;
-}
-
-.notification-icon.warning {
-  color: #f59e0b;
-}
-
-.notification-icon.error {
-  color: #ef4444;
-}
-
-.notification-actions {
-  position: absolute;
-  top: 10px;
-  right: 15px;
-  display: flex;
-  gap: 5px;
-}
-
-.notification-action {
-  background: none;
-  border: none;
-  color: #999;
-  cursor: pointer;
-  padding: 2px;
-  border-radius: 3px;
-  font-size: 12px;
-}
-
-.notification-action:hover {
-  background: #f0f0f0;
-  color: #666;
-}
-
-/* Content Area & Table */
-.content-areas {
-flex: 1;
-          padding: 24px;
-          background: #f5f5f5;
-          overflow-y: auto;
-}
-
-.page-header {
-  margin-bottom: 24px;
-}
-
-.page-title {
-  font-size: clamp(20px, 4vw, 24px);
-  font-weight: 700;
-  color: #111827;
-  margin-bottom: 20px;
-}
-
-.controls-rows {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.filter-controlss {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
-.filter-select {
-  padding: 8px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  font-size: clamp(12px, 2vw, 14px);
-  background: white;
-  min-width: 140px;
-  min-height: 40px;
-}
-
-.add-record-btn {
-  background-color: #28a745;
-  color: white;
-  padding: 8px 15px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 14px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  transition: background-color 0.2s ease;
-}
-
-.add-record-btn:hover {
-  background-color: #16a34a;
-}
-
-.add-horse-btn {
-  background: #0F3D5A;
-  color: white;
-  border: none;
-  padding: 10px 16px;
-  border-radius: 6px;
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-}
-
-.add-horse-btn:hover {
-  background: #991b1b;
-}
-
-.horse-table {
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-}
-
-.table-header {
-  background: #f8f9fa;
-  display: grid;
-  grid-template-columns:  1fr 1fr 1fr 1fr 90px 80px;
-  padding: 16px 20px;
-  font-weight: 600;
-  color: #374151;
-  font-size: clamp(12px, 2vw, 14px);
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.table-row {
-  display: grid;
-  grid-template-columns:  1fr 1fr 1fr 1fr 100px 80px;
-  padding: 16px 20px;
-  border-bottom: 1px solid #f3f4f6;
-  transition: background-color 0.2s;
-  align-items: center;
-  min-height: 60px;
-}
-
-.table-row:hover {
-  background: #f9fafb;
-}
-
-.table-row:last-child {
-  border-bottom: none;
-}
-
-.action-cell {
-  display: flex;
-  justify-content: flex-end; /* push button to the far right */
-}
-
-
-.status-badge {
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-size: clamp(10px, 1.8vw, 12px);
-  font-weight: 500;
-}
-
-.status-healthy,
-.status-completed,
-.status-successful,
-.status-approved {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.status-sick {
-  background: #fee2e2;
-  color: #dc2626;
-}
-
-.status-quarantine {
-  background: #fef3c7;
-  color: #f59e0b;
-}
-
-.status-ongoing {
-  background: #bfdbfe;
-  color: #2563eb;
-}
-
-/* Updated view button styles */
-.view-btn {
-  display: inline-flex;       /* flex so icon & text align horizontally */
-  align-items: center;        /* vertical center */
-  justify-content: center;    /* horizontal center */
-  gap: 4px;                   /* space between icon and text */
-
-  background: #0F3D5A;
-  color: white;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 4px;
-  font-size: clamp(10px, 1.8vw, 12px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-  min-height: 32px;
-}
-
-.view-btn:hover {
-  background: #991b1b;
-}
-
-
- .empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center; /* centers horizontally */
-  justify-content: center; /* centers vertically (if parent has height) */
-  text-align: center;
-  padding: 2rem;
-}
-
-.icon-wrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 1rem;
-}
-
-.empty-state i {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
-}
-
-.empty-state h3 {
-  font-size: 18px;
-  margin-bottom: 8px;
-  color: #374151;
-}
-
-.empty-state p {
-  font-size: 14px;
-}
-
-/* Mobile Menu Button */
-.mobile-menu-btn {
-  display: none;
-  position: fixed;
-  top: 20px;
-  left: 20px;
-  z-index: 1001;
-  background: #0F3D5A;
-  color: white;
-  border: none;
-  padding: 12px;
-  border-radius: 8px;
-  font-size: 18px;
-  cursor: pointer;
-  min-height: 44px;
-  min-width: 44px;
-}
-
-/* Modals (General) */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.7);
-  display: none;
-  justify-content: center;
-  align-items: center;
-  z-index: 1000;
-  padding: 20px;
-  backdrop-filter: blur(8px);
-}
-
-
-.modal-overlay.active {
-  display: flex;
-}
-
-.modal-content {
-  background: white;
-  border-radius: 8px;
-  width: 95%;
-  max-width: none;
-  max-height: 90vh;
-  overflow-y: auto;
-  position: relative;
-}
-
-.modal-header {
-  padding: 20px;
-  border-bottom: 1px solid #e5e7eb;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.modal-title {
-  font-size: clamp(16px, 3vw, 18px);
-  font-weight: 600;
-  color: #111827;
-}
-
-.modal-close {
-  background: none;
-  border: none;
-  font-size: 24px;
-  color: #6b7280;
-  cursor: pointer;
-  padding: 4px;
-  line-height: 1;
-  min-height: 32px;
-  min-width: 32px;
-}
-
-.modal-close:hover {
-  color: #374151;
-}
-
-.modal-body {
-  padding: 20px;
-}
-
-/* Horse Details Modal */
-.horse-info-section {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 20px;
-  margin-bottom: 20px;
-}
-
-.horse-header {
-  display: flex;
-  align-items: center;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.horse-avatar {
-  width: 60px;
-  height: 60px;
-  border-radius: 50%;
-  background: #d1d5db;
-  margin-right: 20px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 24px;
-  font-weight: 600;
-  color: #6b7280;
-}
-
-.horse-basic-info h3 {
-  font-size: clamp(16px, 3vw, 18px);
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 4px;
-}
-
-.horse-details {
-  font-size: clamp(12px, 2vw, 14px);
-  color: #6b7280;
-}
-
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 20px;
-}
-
-.info-item {
-  display: flex;
-  flex-direction: column;
-}
-
-.info-label {
-  font-size: clamp(10px, 1.8vw, 12px);
-  color: #6b7280;
-  margin-bottom: 4px;
-  font-weight: 500;
-}
-
-.info-value {
-  font-size: clamp(12px, 2vw, 14px);
-  color: #111827;
-  font-weight: 500;
-}
-
-.section-title {
-  font-size: clamp(14px, 2.5vw, 16px);
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 16px;
-  display: flex; /* Added for "Add New" button alignment */
-  justify-content: space-between; /* Added for "Add New" button alignment */
-  align-items: center; /* Added for "Add New" button alignment */
-}
-
-.records-table {
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  overflow: hidden;
-  margin-bottom: 20px;
-}
-
-.records-header {
-  background: #f8f9fa;
-  display: grid;
-  grid-template-columns:280px 1fr 140px 100px 80px;
-  padding: 12px 16px;
-  font-weight: 600;
-  color: #374151;
-  font-size: clamp(10px, 1.8vw, 12px);
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.records-row {
-  display: grid;
-  grid-template-columns: 280px 1fr 140px 100px 80px;
-  padding: 12px 16px;
-  border-bottom: 1px solid #f3f4f6;
-  align-items: center;
-  font-size: clamp(12px, 2vw, 14px);
-  min-height: 50px;
-}
-
-.records-row:last-child {
-  border-bottom: none;
-}
-
-.treatment-header {
-  background: #f8f9fa;
-  display: grid;
-  grid-template-columns: 250px 1fr 350px 290px 170px;
-  padding: 12px 16px;
-  font-weight: 600;
-  color: #374151;
-  font-size: clamp(10px, 1.8vw, 12px);
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.treatment-row {
-  display: grid;
-  grid-template-columns: 250px 1fr 350px 290px 170px;
-  padding: 12px 16px;
-  border-bottom: 1px solid #f3f4f6;
-  align-items: center;
-  font-size: clamp(12px, 2vw, 14px);
-  min-height: 50px;
-}
-
-.download-btn {
-  background: none;
-  border: none;
-  color: #6b7280;
-  cursor: pointer;
-  font-size: 16px;
-  padding: 4px;
-  min-height: 32px;
-  min-width: 32px;
-}
-
-.download-btn:hover {
-  color: #374151;
-}
-
-/* Medical Record Detail Modal Styles */
-.medical-modal-content {
-  width: 95%;
-  max-width: 1400px;
-  height: 95vh;
-  overflow: visible;
-  display: flex;
-  flex-direction: column;
-}
-
-.medical-modal-header {
-  background: #0F3D5A;
-  color: white;
-  padding: 18px 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-radius: 8px 8px 0 0;
-  flex-shrink: 0;
-}
-
-.medical-modal-header h3 {
-  font-size: clamp(16px, 3vw, 18px);
-  font-weight: 600;
-  margin: 0;
-}
-
-.back-btn {
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  padding: 8px 20px;
-  border-radius: 6px;
-  font-size: clamp(11px, 2vw, 13px);
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-height: 40px;
-}
-
-.back-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.5);
-  transform: translateY(-1px);
-}
-
-.back-btn::before,
-.back-btn::after {
-  content: none;
-}
-
-
-.medical-modal-body {
-  flex: 1;
-  padding: 20px 24px;
-  overflow-y: auto;
-  background: white;
-}
-
-.horse-profile {
-  display: flex;
-  align-items: center;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.profile-avatar {
-  width: 50px;
-  height: 50px;
-  border-radius: 50%;
-  background: #d1d5db;
-  margin-right: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  color: #6b7280;
-  flex-shrink: 0;
-}
-
-.profile-info h4 {
-  font-size: clamp(14px, 2.5vw, 16px);
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 4px;
-}
-
-.completed-badge {
-  background: #22c55e;
-  color: white;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: clamp(9px, 1.5vw, 10px);
-  font-weight: 500;
-}
-
-.profile-details {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 20px;
-  margin-bottom: 25px;
-}
-
-.detail-item {
-  display: flex;
-  flex-direction: column;
-}
-
-.detail-label {
-  font-size: clamp(10px, 1.8vw, 12px);
-  color: #6b7280;
-  margin-bottom: 2px;
-}
-
-.detail-value {
-  font-size: clamp(12px, 2vw, 14px);
-  color: #111827;
-  font-weight: 500;
-}
-
-.medical-section {
-  margin-bottom: 25px;
-}
-
-.medical-section h5 {
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 600;
-  color: #0F3D5A;
-  margin-bottom: 12px;
-  border-bottom: 1px solid #e5e7eb;
-  padding-bottom: 4px;
-}
-
-.medical-record-title {
-  font-size: clamp(14px, 2.5vw, 16px);
-  font-weight: 600;
-  color: #0F3D5A;
-  margin-bottom: 16px;
-  border-bottom: 2px solid #e5e7eb;
-  padding-bottom: 6px;
-}
-
-.signalment-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 15px;
-  margin-bottom: 20px;
-}
-
-.vital-sign {
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 12px;
-  text-align: center;
-}
-
-.vital-value {
-  font-size: clamp(16px, 3vw, 18px);
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 4px;
-}
-
-.vital-label {
-  font-size: clamp(9px, 1.5vw, 11px);
-  color: #6b7280;
-}
-
-.assessment-text {
-  font-size: clamp(11px, 2vw, 13px);
-  line-height: 1.5;
-  color: #374151;
-  margin-bottom: 8px;
-}
-
-.medication-section {
-  background: #dbeafe;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 20px;
-}
-
-.medication-title {
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 600;
-  color: #0F3D5A;
-  margin-bottom: 12px;
-}
-
-.medication-details {
-  font-size: clamp(11px, 2vw, 13px);
-  color: #374151;
-  line-height: 1.4;
-}
-
-.medication-details div {
-  margin-bottom: 4px;
-}
-
-.remarks-section {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 20px;
-}
-
-.remarks-title {
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 8px;
-}
-
-.remarks-text {
-  font-size: clamp(11px, 2vw, 13px);
-  color: #374151;
-  line-height: 1.5;
-}
-
-.print-btn {
-  background: #22c55e;
-  color: white;
-  border: none;
-  padding: 12px 24px;
-  border-radius: 6px;
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 500;
-  cursor: pointer;
-  width: 100%;
-  transition: background-color 0.2s;
-  min-height: 44px;
-   display: inline-flex; /* or flex */
-  align-items: center;  /* vertically centers the icon with the text */
-  justify-content: center; /* optional: centers content horizontally */
-  gap: 4px; /* space between icon and text */
-}
-
-.print-btn:hover {
-  background: #16a34a;
-}
-
-/* Treatment History Specific Styles */
-.treatment-title {
-  font-size: clamp(16px, 3vw, 18px);
-  font-weight: 600;
-  color: #0F3D5A;
-  margin-bottom: 20px;
-}
-
-.treatment-info-section {
-  background: #dbeafe;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 20px;
-}
-
-.treatment-info-title {
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 600;
-  color: #0F3D5A;
-  margin-bottom: 12px;
-}
-
-.treatment-info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 20px;
-}
-
-.treatment-info-item {
-  margin-bottom: 8px;
-  font-size: clamp(11px, 2vw, 13px);
-}
-
-.medical-data-section {
-  margin-bottom: 20px;
-}
-
-.medical-data-title {
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 600;
-  color: #0F3D5A;
-  margin-bottom: 12px;
-}
-
-.medical-data-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: 15px;
-  margin-bottom: 20px;
-}
-
-.medical-data-item {
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  padding: 12px;
-  text-align: center;
-}
-
-.pre-vaccination-section {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 20px;
-}
-
-.pre-vaccination-title {
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 600;
-  color: #111827;
-  margin-bottom: 12px;
-}
-
-.pre-vaccination-text {
-  font-size: clamp(11px, 2vw, 13px);
-  color: #374151;
-  line-height: 1.5;
-}
-
-.pre-vaccination-item {
-  margin-bottom: 8px;
-}
-
-.next-vaccination-section {
-  background: #f0f9ff;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 20px;
-}
-
-.next-vaccination-title {
-  font-size: clamp(12px, 2vw, 14px);
-  font-weight: 600;
-  color: #0F3D5A;
-  margin-bottom: 12px;
-}
-
-.next-vaccination-text {
-  font-size: clamp(11px, 2vw, 13px);
-  color: #374151;
-  line-height: 1.5;
-}
-
-.next-vaccination-item {
-  margin-bottom: 8px;
-}
-
-/* Add Record Modals (Forms) */
-.add-record-modal-content {
-  max-width: 900px; /* Wider for forms */
-}
-
-.add-record-form-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
-  margin-bottom: 20px;
-}
-
-.form-groups {
-  display: flex;
-  flex-direction: column;
-  background: white;
-  background-color: white !important;
-}
-
-.form-groups.full-width {
-  grid-column: 1 / -1; /* Spans all columns */
-}
-
-.form-label {
-  font-size: 13px;
-  color: #374151;
-  margin-bottom: 6px;
-  font-weight: 500;
-}
-
-.form-input,
-.form-select {
-  padding: 10px 12px;
-  border: 1px solid #6b7280 !important;
-  border-radius: 6px;
-  font-size: 14px;
-  background-color: white !important; /* Changed to white with !important */
-  color: black !important; /* Changed to black with !important */
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.form-input:focus,
-.form-select:focus {
-  border-color: #0F3D5A;
-}
-
-.form-input::placeholder,
-.form-select::placeholder {
-  color: black;
-}
-
-.form-input::-webkit-input-placeholder,
-.form-select::-webkit-input-placeholder {
-  color: black;
-}
-
-.form-input::-moz-placeholder,
-.form-select::-moz-placeholder {
-  color: black;
-  opacity: 1; /* Firefox adds opacity to placeholders by default */
-}
-
-.form-input:-ms-input-placeholder,
-.form-select:-ms-input-placeholder {
-  color: black;
-}
-
-.form-input:-moz-placeholder,
-.form-select:-moz-placeholder {
-  color: black;
-  opacity: 1;
-}
-
-textarea.form-input {
-  resize: vertical;
-  min-height: 80px;
-}
-
-.form-section-title {
-  grid-column: 1 / -1; /* Spans all columns */
-  font-size: 16px;
-  font-weight: 600;
-  color: #0F3D5A;
-  margin-top: 20px;
-  margin-bottom: 15px;
-  border-bottom: 1px solid #e5e7eb;
-  padding-bottom: 5px;
-}
-
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  padding-top: 20px;
-  border-top: 1px solid #e5e7eb;
-}
-
-.cancel-btn,
-.submit-btn {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.cancel-btn {
-  background: #e0e0e0;
-  color: #333;
-}
-
-.cancel-btn:hover {
-  background: #ccc;
-}
-
-.submit-btn {
-  background: #0F3D5A;
-  color: white;
-}
-
-.submit-btn:hover {
-  background: #0F3D5A;
-}
-
-
-/* Media Queries */
-/* Tablet */
-@media (max-width: 1024px) {
-  .controls-rows {
-    flex-direction: column;
-    gap: 12px;
-    align-items: stretch;
-  }
-
-  .medical-modal-content {
-    width: 98%;
-    max-width: none;
-  }
-
-  .profile-details {
-    grid-template-columns: repeat(2, 1fr);
-  }
-
-  .signalment-grid,
-  .medical-data-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-}
-
-/* Mobile */
-@media (max-width: 768px) {
-  .mobile-menu-btn {
-    display: block;
-  }
-
- 
-
-  .main-content {
-    margin-left: 0;
-    width: 100%;
-  }
-
-  .headers {
-    margin-left: 60px;
-    padding: 12px 16px;
-  }
-
-  .search-containers {
-    margin-right: 10px;
-    min-width: auto;
-  }
-
-  .content-areas {
-    padding: 16px;
-  }
-
-  .table-header,
-  .table-row {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    text-align: left;
-  }
-
-  .table-header > div,
-  .table-row > div {
-    padding: 4px 0;
-    word-wrap: break-word;
-  }
-
-  .table-row {
-    border: 1px solid #e5e7eb;
-    margin-bottom: 12px;
-    border-radius: 8px;
-    padding: 16px;
-  }
-
-  .records-header,
-  .records-row,
-  .treatment-header,
-  .treatment-row {
-    grid-template-columns: 1fr;
-    gap: 8px;
-    text-align: left;
-  }
-
-  .records-row,
-  .treatment-row {
-    border: 1px solid #e5e7eb;
-    margin-bottom: 8px;
-    border-radius: 6px;
-    padding: 12px;
-  }
-
-  .info-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .modal-content {
-    width: 95%;
-    margin: 10px;
-  }
-
-  .medical-modal-content {
-    width: 98%;
-    height: 98vh;
-  }
-
-  .profile-details {
-    grid-template-columns: 1fr;
-  }
-
-  .signalment-grid,
-  .medical-data-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .treatment-info-grid {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Small Mobile */
-@media (max-width: 480px) {
-  .header {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    margin-left: 50px;
-  }
-
-  .search-containers {
-    margin-right: 0;
-    min-width: auto;
-  }
-
-  .notification-bell {
-    align-self: flex-end;
-    margin-right: 0;
-  }
-
-  .mobile-menu-btn {
-    top: 15px;
-    left: 15px;
-    padding: 10px;
-  }
-}
-
-/* Touch devices */
-@media (hover: none) and (pointer: coarse) {
-  .nav-item,
- {
-    min-height: 48px;
-  }
-
-  .view-btn {
-    min-height: 40px;
-    padding: 8px 12px;
-  }
-}
-
-@media print {
-  body, html {
-    color: black;
-    background: white;
-    font-size: 12px;
-    line-height: 1.4;
-  }
-
-  /* Remove unnecessary UI elements */
-  .modal-header,
-  .modal-close,
-  .back-btn,
-  .print-btn {
-    display: none;
-  }
-
-  /* Modal overlay & content */
-  .modal-overlay.active,
-  .modal-content {
-    position: static;
-    display: block;
-    width: 100%;
-    height: auto;
-    margin: 0;
-    padding: 0;
-    box-shadow: none;
-    border: none;
-  }
-
-  /* Main body inside modal */
-  .medical-modal-body {
-    padding: 20px;
-    background: white;
-    color: black;
-  }
-
-  /* Sections */
-  .horse-profile,
-  .medical-section,
-  .medication-section,
-  .remarks-section,
-  .treatment-info-section,
-  .pre-vaccination-section,
-  .next-vaccination-section {
-    page-break-inside: avoid;
-    margin-bottom: 20px;
-    border: 1px solid #ccc;
-    padding: 8px;
-    background: white;
-  }
-
-  .medication-section,
-  .treatment-info-section,
-  .next-vaccination-section {
-    background: #f0f8ff;
-  }
-
-  .remarks-section,
-  .pre-vaccination-section {
-    background: #f8f8f8;
-  }
-
-  /* Grids */
-  .profile-details,
-  .signalment-grid,
-  .medical-data-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    page-break-inside: avoid;
-  }
-
-  /* Titles */
-  .medical-record-title,
-  .treatment-title,
-  h3, h4, h5, h6 {
-    color: #0F3D5A;
-    font-weight: bold;
-  }
-
-  .treatment-title {
-    font-size: 18px;
-    white-space: normal;
-    overflow: visible;
-  }
-}
-
-      
-      /* Enhanced Print Styles for Medical Record and Treatment History */
-      @media print {
-        * {
-          -webkit-print-color-adjust: exact !important;
-          color-adjust: exact !important;
-        }
-        
-        body, html {
-          color: black !important;
-          background: white !important;
-          font-size: 11px !important;
-          line-height: 1.3 !important;
-          margin: 0 !important;
-          padding: 0 !important;
-        }
-
-        /* Hide all non-printable elements */
-        .modal-header,
-        .medical-modal-header,
-        .modal-close,
-        .back-btn,
-        .print-btn,
-        .sidebars,
-        .headers,
-        .page-header,
-        .controls-rows,
-        .search-container,
-        .filter-controlss,
-        .notification-btn,
-        button:not(.print-btn),
-        .modal-overlay:not(.active) {
-          display: none !important;
-        }
-
-        /* Modal and content positioning */
-        .modal-overlay.active {
-          position: static !important;
-          display: block !important;
-          width: 100% !important;
-          height: auto !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          box-shadow: none !important;
-          border: none !important;
-          background: white !important;
-        }
-
-        .modal-content,
-        .medical-modal-content {
-          position: static !important;
-          display: block !important;
-          width: 100% !important;
-          height: auto !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          box-shadow: none !important;
-          border: none !important;
-          background: white !important;
-          max-width: none !important;
-          transform: none !important;
-        }
-
-        /* Main content area */
-        .medical-modal-body {
-          padding: 15px !important;
-          background: white !important;
-          color: black !important;
-          width: 100% !important;
-        }
-
-        /* Header section with clinic info */
-        .medical-modal-body::before {
-          content: "ECHO: CTU VET-MED\\A Medical Record Report\\A \\A ";
-          white-space: pre;
-          display: block;
-          text-align: center;
-          font-size: 16px;
-          font-weight: bold;
-          color: #0F3D5A !important;
-          margin-bottom: 20px;
-          border-bottom: 2px solid #0F3D5A;
-          padding-bottom: 10px;
-        }
-
-        /* Horse profile section */
-        .horse-profile {
-          display: flex !important;
-          align-items: center !important;
-          margin-bottom: 15px !important;
-          padding: 10px !important;
-          border: 1px solid #ccc !important;
-          background: #f8f9fa !important;
-          page-break-inside: avoid !important;
-        }
-
-        .profile-avatar {
-          width: 40px !important;
-          height: 40px !important;
-          border-radius: 50% !important;
-          background: #0F3D5A !important;
-          color: white !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          font-weight: bold !important;
-          margin-right: 10px !important;
-        }
-
-        .profile-info h4 {
-          margin: 0 !important;
-          font-size: 14px !important;
-          font-weight: bold !important;
-          color: #0F3D5A !important;
-        }
-
-        .completed-badge {
-          background: #10b981 !important;
-          color: white !important;
-          padding: 2px 8px !important;
-          border-radius: 12px !important;
-          font-size: 10px !important;
-          margin-left: 10px !important;
-        }
-
-        /* Profile details grid */
-        .profile-details {
-          display: grid !important;
-          grid-template-columns: repeat(3, 1fr) !important;
-          gap: 8px !important;
-          margin-bottom: 15px !important;
-          page-break-inside: avoid !important;
-        }
-
-        .detail-item {
-          border: 1px solid #ddd !important;
-          padding: 8px !important;
-          background: white !important;
-        }
-
-        .detail-label {
-          font-weight: bold !important;
-          color: #374151 !important;
-          font-size: 10px !important;
-          display: block !important;
-          margin-bottom: 3px !important;
-        }
-
-        .detail-value {
-          color: black !important;
-          font-size: 11px !important;
-        }
-
-        /* Medical section */
-        .medical-section {
-          page-break-inside: avoid !important;
-          margin-bottom: 15px !important;
-          border: 1px solid #ccc !important;
-          padding: 10px !important;
-          background: white !important;
-        }
-
-        .medical-record-title {
-          color: #0F3D5A !important;
-          font-weight: bold !important;
-          font-size: 14px !important;
-          margin-bottom: 10px !important;
-          border-bottom: 1px solid #0F3D5A !important;
-          padding-bottom: 5px !important;
-        }
-
-        /* Section titles */
-        .section-title {
-          font-weight: bold !important;
-          color: #374151 !important;
-          font-size: 12px !important;
-          margin: 10px 0 5px 0 !important;
-          border-bottom: 1px solid #ddd !important;
-          padding-bottom: 2px !important;
-        }
-
-        /* Vital signs grid */
-        .signalment-grid {
-          display: grid !important;
-          grid-template-columns: repeat(3, 1fr) !important;
-          gap: 8px !important;
-          margin-bottom: 10px !important;
-          page-break-inside: avoid !important;
-        }
-
-        .vital-sign {
-          text-align: center !important;
-          border: 1px solid #ddd !important;
-          padding: 8px !important;
-          background: #f0f8ff !important;
-        }
-
-        .vital-value {
-          font-size: 14px !important;
-          font-weight: bold !important;
-          color: #0F3D5A !important;
-          margin-bottom: 3px !important;
-        }
-
-        .vital-label {
-          font-size: 9px !important;
-          color: #374151 !important;
-        }
-
-        /* Assessment and remarks sections */
-        .assessment-text,
-        .remarks-text {
-          color: black !important;
-          font-size: 11px !important;
-          line-height: 1.4 !important;
-          margin: 5px 0 10px 0 !important;
-          padding: 5px !important;
-          background: #f8f9fa !important;
-          border-left: 3px solid #0F3D5A !important;
-        }
-
-        .remarks-section {
-          margin-bottom: 10px !important;
-          page-break-inside: avoid !important;
-          border: 1px solid #eee !important;
-          padding: 8px !important;
-          background: #fafafa !important;
-        }
-
-        .remarks-title {
-          font-weight: bold !important;
-          color: #374151 !important;
-          font-size: 11px !important;
-          margin-bottom: 5px !important;
-        }
-
-        /* Treatment History specific styles */
-        .treatment-info-section {
-          page-break-inside: avoid !important;
-          margin-bottom: 15px !important;
-          border: 1px solid #ccc !important;
-          padding: 10px !important;
-          background: #f0f8ff !important;
-        }
-
-        .treatment-title {
-          color: #0F3D5A !important;
-          font-weight: bold !important;
-          font-size: 14px !important;
-          margin-bottom: 10px !important;
-          white-space: normal !important;
-          overflow: visible !important;
-        }
-
-        .medication-section {
-          page-break-inside: avoid !important;
-          margin-bottom: 15px !important;
-          border: 1px solid #ccc !important;
-          padding: 10px !important;
-          background: #f0f8ff !important;
-        }
-
-        .pre-vaccination-section,
-        .next-vaccination-section {
-          page-break-inside: avoid !important;
-          margin-bottom: 15px !important;
-          border: 1px solid #ccc !important;
-          padding: 10px !important;
-          background: #f8f8f8 !important;
-        }
-
-        /* Medical data grid for treatment history */
-        .medical-data-grid {
-          display: grid !important;
-          grid-template-columns: repeat(2, 1fr) !important;
-          gap: 8px !important;
-          margin-bottom: 10px !important;
-          page-break-inside: avoid !important;
-        }
-
-        /* Footer with timestamp */
-        .medical-modal-body::after {
-          content: "\\A \\A Generated on: " attr(data-print-date) "\\A localhost:5173/CharlesRecord";
-          white-space: pre;
-          display: block;
-          text-align: center;
-          font-size: 9px;
-          color: #666 !important;
-          margin-top: 20px;
-          border-top: 1px solid #ddd;
-          padding-top: 10px;
-        }
-
-        /* Page break controls */
-        .page-break-before {
-          page-break-before: always !important;
-        }
-
-        .page-break-after {
-          page-break-after: always !important;
-        }
-
-        .no-page-break {
-          page-break-inside: avoid !important;
-        }
-
-        /* Ensure all text is visible */
-        * {
-          visibility: visible !important;
-        }
-
-        /* Hide scrollbars */
-        ::-webkit-scrollbar {
-          display: none !important;
-        }
-      }
-
-  .dashboard-title {
-          font-size: 22px;
-          font-weight: bold;
-          color: #0F3D5A;
-        }
-
-      `}</style>
-      <div className="sidebars" id="sidebars">
-        <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
-      </div>
-      <div className="main-content">
-        <header className="headers">
-          <div className="dashboard-container">
-            <h2 className="dashboard-title">Horse Records</h2>
-          </div>
-          <button style={styles.notificationBtn} onClick={() => setNotifsOpen(!notifsOpen)}>
-            <Bell size={24} color="#374151" />
-            {notifications.length > 0 && <span style={styles.badge}>{notifications.length}</span>}
-          </button>
-
-          {/* Notification Modal */}
-          <NotificationModal
-            isOpen={notifsOpen}
-            onClose={() => setNotifsOpen(false)}
-            notifications={notifications.map((n) => ({
-              message: n.message,
-              date: n.date,
-            }))}
+  const currentFilteredHorseRecords = paginatedHorseRecords()
+
+  // Calculate unread notifications count
+  const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
+
+  const renderListView = () => (
+    <>
+      <div className="mb-6">
+        <div className="flex-1 max-w-md mr-5 relative min-w-[200px] mb-4">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
+          <input
+            type="text"
+            className="w-full py-2 px-4 pl-10 border-2 border-white rounded-lg text-sm outline-none min-h-[50px] bg-white mb-2.5"
+            placeholder="Search......"
+            onChange={handleSearchInput}
           />
-        </header>
+        </div>
 
-        <div className="content-areas">
-          <div className="page-header">
-            <div className="search-container">
-              <Search className="search-icon" size={20} />
-              <input type="text" className="search-input" placeholder="Search......" onChange={handleSearchInput} />
-            </div>
-            <div className="controls-rows">
-              <div className="filter-controlss">
-                <select className="filter-select" id="areaFilter" value={areaFilter} onChange={handleAreaFilterChange}>
-                  <option value="all">Filter by Area</option>
-                  <option value="cebu">Cebu City</option>
-                  <option value="manila">Manila</option>
-                  <option value="davao">Davao</option>
-                </select>
-                <select
-                  className="filter-select"
-                  id="statusFilter"
-                  value={statusFilter}
-                  onChange={handleStatusFilterChange}
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="healthy">Healthy</option>
-                  <option value="sick">Sick</option>
-                  <option value="quarantine">Quarantine</option>
-                </select>
-              </div>
-              {/* Removed Add Horse button */}
-            </div>
-            <div className="horse-table">
-              <div className="table-header">
+        <div className="flex justify-between items-center mb-5 flex-wrap gap-4">
+          <div className="flex gap-3 items-center flex-wrap">
+            <select
+              className="py-2 px-3 border border-gray-300 rounded-md text-sm bg-white min-w-[140px] min-h-[40px]"
+              id="areaFilter"
+              value={areaFilter}
+              onChange={handleAreaFilterChange}
+            >
+              <option value="all">Filter by Area</option>
+              <option value="cebu">Cebu City</option>
+              <option value="manila">Manila</option>
+              <option value="davao">Davao</option>
+            </select>
+
+            <select
+              className="py-2 px-3 border border-gray-300 rounded-md text-sm bg-white min-w-[140px] min-h-[40px]"
+              id="statusFilter"
+              value={statusFilter}
+              onChange={handleStatusFilterChange}
+            >
+              <option value="all">All Statuses</option>
+              <option value="healthy">Healthy</option>
+              <option value="sick">Sick</option>
+              <option value="unhealthy">Unhealthy</option>
+            </select>
+          </div>
+        </div>
+
+        {loading ? (
+          <TableSkeleton />
+        ) : (
+          <>
+            <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+              <div className="bg-gray-50 grid grid-cols-[1.2fr_1.2fr_1.2fr_1.5fr_1fr_1fr] py-4 px-5 font-semibold text-gray-600 text-sm border-b border-gray-200 ">
                 <div>Horse Name</div>
                 <div>Horse Color</div>
                 <div>Owner</div>
                 <div>Location</div>
                 <div>Status</div>
-                <div>Action</div>
+                <div className="text-center">Action</div>
               </div>
 
               {currentFilteredHorseRecords.length === 0 ? (
-                <div className="empty-state">
-                  <ClipboardList size={48} />
-                  <h3>No horse records</h3>
-                  <p>Horse records will appear here when available</p>
+                <div className="flex flex-col items-center justify-center text-center p-8">
+                  <div className="flex items-center justify-center mb-4">
+                    <ClipboardList size={48} className="opacity-50" />
+                  </div>
+                  <h3 className="text-lg mb-2 text-gray-700">No horse records</h3>
+                  <p className="text-sm text-gray-500">Horse records will appear here when available</p>
                 </div>
               ) : (
-                currentFilteredHorseRecords.map((horse, index) => (
-                  <div className="table-row" key={index}>
-                    {/* Horse Name */}
-                    <div>{horse.horse_name}</div>
-                    {/* Horse Color */}
-                    <div>{horse.horse_color}</div>
+                currentFilteredHorseRecords.map((horse, index) => {
+                  const horseStatus = horse.horse_status || "No Status"
 
-                    {/* Owner Fullname */}
-                    <div>{horse.owner_fullname}</div>
-
-                    {/* Location */}
-                    <div>{horse.location || "N/A"}</div>
-
-                    {/* Status Badge */}
-                    <div>
-                      <span className={`status-badge status-${horse?.status?.toLowerCase() || "unknown"}`}>
-                        {horse?.status || "N/A"}
-                      </span>
+                  return (
+                    <div
+                      className="grid grid-cols-[1.2fr_1.2fr_1.2fr_1.5fr_1fr_1fr] py-4 px-5 border-b border-gray-100 hover:bg-gray-50 transition-colors items-center min-h-[40px]"
+                      key={horse.horse_id || index}
+                    >
+                      <div className="text-sm flex items-center">{horse.horse_name}</div>
+                      <div className="text-sm flex items-center">{horse.horse_color}</div>
+                      <div className="text-sm flex items-center">{horse.owner_fullname}</div>
+                      <div className="text-sm flex items-center">{horse.location || "N/A"}</div>
+                      <div className="flex items-center">
+                        <span className={`inline-block py-1 px-2 rounded-xl text-xs font-medium ${
+                          horseStatus.toLowerCase() === "healthy" 
+                            ? "bg-green-100 text-green-800"
+                            : horseStatus.toLowerCase() === "sick"
+                              ? "bg-red-100 text-red-600"
+                              : horseStatus.toLowerCase() === "unhealthy"
+                                ? "bg-yellow-100 text-yellow-600"
+                                : "bg-gray-100 text-gray-600"
+                        }`}>
+                          {horseStatus}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-center">
+                        <button
+                          className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px] w-full max-w-[80px]"
+                          onClick={() => viewHorseDetails(horse)}
+                        >
+                          <Eye size={16} />
+                          View
+                        </button>
+                      </div>
                     </div>
-
-                    {/* View Button */}
-                    <div>
-                      <button className="view-btn" onClick={() => viewHorseDetails(horse)}>
-                        <Eye size={16} style={{ marginRight: "4px" }} />
-                        View
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  )
+                })
               )}
             </div>
-          </div>
-        </div>
-      </div>
-      <FloatingMessages />
-      {/* Horse Details Modal */}
-      {isHorseModalOpen && selectedHorse && (
-        <div className="modal-overlay active" id="horseModal" ref={horseModalRef}>
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2 className="modal-title">Horse Details</h2>
-              <button className="modal-close" onClick={closeHorseModal}>
-                <X size={20} />
-              </button>
-            </div>
 
-            <div className="modal-body">
-              {/* Horse Basic Information */}
-              <div className="horse-info-section">
-                <div className="horse-header">
-                  <div className="horse-avatar" id="horseAvatar">
-                    {selectedHorse.horse_name ? selectedHorse.horse_name.charAt(0) : "?"}
-                  </div>
-                  <div className="horse-basic-info">
-                    <h3 id="horseName">{selectedHorse.horse_name}</h3>
-                    <div className="horse-details">
-                      <span id="horseAge">Age: {selectedHorse.horse_age}</span> •
-                      <span id="horseBreed">Breed: {selectedHorse.horse_breed}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="info-grid">
-                  <div className="info-item">
-                    <span className="info-label">Owner</span>
-                    <span className="info-value" id="horseOwner">
-                      {selectedHorse.owner_fullname || "N/A"}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <span className="info-label">Location</span>
-                    <span className="info-value" id="horseLocation">
-                      {selectedHorse.location || "N/A"}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <span className="info-label">Sex</span>
-                    <span className="info-value" id="horseSex">
-                      {selectedHorse.horse_sex || "N/A"}
-                    </span>
-                  </div>
-                  <div className="info-item">
-                    <span className="info-label">Color</span>
-                    <span className="info-value">{selectedHorse.horse_color || "N/A"}</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="section-title">Medical Record History</div>
-              <div className="records-table">
-                <div className="records-header">
-                  <div>Date</div>
-                  <div>Diagnosis</div>
-                  <div>Veterinarian</div>
-                  <div>Action</div>
-                </div>
-
-                {selectedHorse.medical_records?.[0]?.medrec_history?.length > 0 ? (
-                  selectedHorse.medical_records[0].medrec_history.map((history) => (
-                    <div className="records-row" key={history.history_id}>
-                      <div>{new Date(history.change_date).toLocaleDateString()}</div>
-                      <div>{history.prev_diagnosis}</div>
-                      <div>{history.vet_name || "N/A"}</div>
-                      <div>
-                        <button
-                          className="view-btn"
-                          onClick={() => viewMedicalRecord(selectedHorse, selectedHorse.medical_records[0])}
-                        >
-                          <Eye size={16} style={{ marginRight: "4px" }} />
-                          View
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="empty-state">
-                    <Stethoscope size={48} />
-                    <h3>No medical record history</h3>
-                    <p>Previous records will appear here when available</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Treatment History Section */}
-              <div className="section-title">Treatment History</div>
-              <div className="records-table">
-                <div className="treatment-header">
-                  <div>Date</div>
-                  <div>Treatment</div>
-                  <div>Administered By</div>
-                  <div>Remark</div>
-                  <div>Action</div>
-                </div>
-
-                {selectedHorse.medical_records?.[0]?.treatment_history?.length > 0 ? (
-                  selectedHorse.medical_records[0].treatment_history.map((treatment) => (
-                    <div className="treatment-row" key={treatment.treatment_id}>
-                      <div>{treatment.treatment_date}</div>
-                      <div>{treatment.treatment_info}</div>
-                      <div>{treatment.vet_name || "N/A"}</div>
-                      <div>{treatment.treatment_remark || "N/A"}</div>
-                      <div>
-                        <button className="view-btn" onClick={() => viewTreatmentHistory(treatment)}>
-                          <Eye size={16} style={{ marginRight: "4px" }} />
-                          View
-                        </button>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="empty-state">
-                    <Syringe size={48} />
-                    <h3>No treatment history</h3>
-                    <p>Treatment records will appear here when available</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {/* Medical Record Detail Modal */}
-      {isMedicalRecordModalOpen && selectedMedicalRecord && (
-        <div className="modal-overlay active" id="medicalRecordModal" ref={medicalRecordModalRef}>
-          <div className="modal-content medical-modal-content">
-            <div className="medical-modal-header">
-              <h3>ECHO: DVMF</h3>
-              <button className="back-btn" onClick={closeMedicalRecord}>
-                <ArrowLeft size={16} style={{ marginRight: "4px" }} />
-                Back to Records
-              </button>
-            </div>
-            <div className="medical-modal-body">
-              {/* Horse Profile */}
-              <div className="horse-profile">
-                <div className="profile-avatar">{selectedHorse?.horse_name?.charAt(0)}</div>
-                <div className="profile-info">
-                  <h4>{selectedHorse?.horse_name || "Horse"}</h4>
-                  <span className="completed-badge">Completed</span>
-                </div>
-              </div>
-
-              {/* Horse Details */}
-              <div className="profile-details">
-                <div className="detail-item">
-                  <span className="detail-label">Breed</span>
-                  <div className="detail-value">{selectedHorse?.horse_breed || "N/A"}</div>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Age</span>
-                  <div className="detail-value">{selectedHorse?.horse_age || "N/A"}</div>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Sex</span>
-                  <div className="detail-value">{selectedHorse?.horse_sex || "N/A"}</div>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Owner</span>
-                  <div className="detail-value">{selectedHorse?.owner_fullname || "N/A"}</div>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Contact</span>
-                  <div className="detail-value">{selectedHorse?.contact || "N/A"}</div>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Location</span>
-                  <div className="detail-value">{selectedHorse?.location || "N/A"}</div>
-                </div>
-              </div>
-
-              {/* Medical Record Section */}
-              <div className="medical-section">
-                <h5 className="medical-record-title">Medical Record Details</h5>
-
-                {/* Vital Signs */}
-                <div className="section-title">Vital Signs</div>
-                <div className="signalment-grid">
-                  <div className="vital-sign">
-                    <div className="vital-value">{selectedMedicalRecord.medrec_bodytemp || "N/A"}</div>
-                    <div className="vital-label">Temperature</div>
-                  </div>
-                  <div className="vital-sign">
-                    <div className="vital-value">{selectedMedicalRecord.medrec_heart_rate || "N/A"}</div>
-                    <div className="vital-label">Heart Rate</div>
-                  </div>
-                  <div className="vital-sign">
-                    <div className="vital-value">{selectedMedicalRecord.medrec_resp_rate || "N/A"}</div>
-                    <div className="vital-label">Respiratory Rate</div>
-                  </div>
-                </div>
-
-                {/* Diagnosis */}
-                <div className="section-title">Diagnosis</div>
-                <p className="assessment-text">{selectedMedicalRecord.medrec_diagnosis || "No diagnosis available"}</p>
-
-                {/* Concern */}
-                <div className="remarks-section">
-                  <div className="remarks-title">Concern</div>
-                  <p className="remarks-text">{selectedMedicalRecord.medrec_concern || "No concern recorded"}</p>
-                </div>
-
-                {/* Clinical Signs */}
-                <div className="remarks-section">
-                  <div className="remarks-title">Clinical Signs</div>
-                  <p className="remarks-text">{selectedMedicalRecord.medrec_clinical_sign || "No signs recorded"}</p>
-                </div>
-
-                {/* Treatment */}
-                <div className="remarks-section">
-                  <div className="remarks-title">Treatment</div>
-                  <p className="remarks-text">{selectedMedicalRecord.medrec_treatment || "No treatment recorded"}</p>
-                </div>
-
-                {/* Remarks */}
-                <div className="remarks-section">
-                  <div className="remarks-title">Remarks</div>
-                  <p className="remarks-text">{selectedMedicalRecord.medrec_remark || "No remarks available"}</p>
-                </div>
-
-                {/* Attending Vet */}
-                <div className="remarks-section">
-                  <div className="remarks-title">Attending Veterinarian</div>
-                  <p className="remarks-text">{selectedMedicalRecord.vet_name || "Unknown"}</p>
-                </div>
-              </div>
-
-              {/* Print Record Button */}
-              <button className="print-btn" onClick={printRecord}>
-                <Printer size={16} style={{ marginRight: "4px" }} />
-                Print Record
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-{/* Treatment History Detail Modal */}
-{isTreatmentHistoryModalOpen && selectedTreatmentHistory && (
-  <div
-    className="modal-overlay active"
-    id="treatmentHistoryModal"
-    ref={treatmentHistoryModalRef}
-  >
-    <div className="modal-content medical-modal-content">
-      <div className="medical-modal-header">
-        <h3>ECHO: DVMF</h3>
-        <button className="back-btn" onClick={closeTreatmentHistory}>
-          <ArrowLeft size={16} style={{ marginRight: "4px" }} />
-          Back to Records
-        </button>
-      </div>
-
-      <div className="medical-modal-body">
-        <div>
-          <h4 className="treatment-title">Treatment History Details</h4>
-
-          {/* Treatment Information */}
-          <div className="treatment-info-section">
-            <div className="treatment-info-title">Treatment Information</div>
-            <div className="treatment-info-grid">
-              <div className="treatment-info-item">
-                <strong>Type:</strong>{" "}
-                {selectedTreatmentHistory.treatment_info || "N/A"}
-              </div>
-              <div className="treatment-info-item">
-                <strong>Date:</strong>{" "}
-                {selectedTreatmentHistory.treatment_date || "N/A"}
-              </div>
-              <div className="treatment-info-item">
-                <strong>Administered By:</strong>{" "}
-                {selectedTreatmentHistory.vet_name || "N/A"}
-              </div>
-              <div className="treatment-info-item">
-                <strong>Remarks:</strong>{" "}
-                {selectedTreatmentHistory.treatment_remark || "N/A"}
-              </div>
-            </div>
-          </div>
-
-          {/* Current Medical Data */}
-          <div className="medical-data-section">
-            <div className="medical-data-title">Medical Data at Time of Treatment</div>
-            <div className="medical-data-grid">
-              <div className="medical-data-item">
-                <div className="vital-value">
-                  {selectedTreatmentHistory.medrec_bodytemp || "N/A"} °C
-                </div>
-                <div className="vital-label">Temperature (Current)</div>
-              </div>
-              <div className="medical-data-item">
-                <div className="vital-value">
-                  {selectedTreatmentHistory.medrec_heart_rate || "N/A"} bpm
-                </div>
-                <div className="vital-label">Heart Rate (Current)</div>
-              </div>
-              <div className="medical-data-item">
-                <div className="vital-value">
-                  {selectedTreatmentHistory.medrec_resp_rate || "N/A"} breaths/min
-                </div>
-                <div className="vital-label">Respiratory Rate (Current)</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Past Records Accordion */}
-          {selectedTreatmentHistory.medrec_history &&
-            selectedTreatmentHistory.medrec_history.length > 0 && (
-              <div className="past-records-section">
-                <div className="past-records-title">Past Records</div>
-                {selectedTreatmentHistory.medrec_history.map((history) => {
-                  const [isOpen, setIsOpen] = useState(false);
-                  return (
-                    <div key={history.history_id} className="past-record-item">
-                      <button
-                        className="accordion-toggle"
-                        onClick={() => setIsOpen(!isOpen)}
-                      >
-                        {new Date(history.change_date).toLocaleDateString()}{" "}
-                        {isOpen ? "▲" : "▼"}
-                      </button>
-                      {isOpen && (
-                        <div className="accordion-content">
-                          <div>
-                            <strong>Temperature:</strong> {history.prev_bodytemp} °C
-                          </div>
-                          <div>
-                            <strong>Heart Rate:</strong> {history.prev_heart_rate} bpm
-                          </div>
-                          <div>
-                            <strong>Respiratory Rate:</strong>{" "}
-                            {history.prev_resp_rate} breaths/min
-                          </div>
-                          <div>
-                            <strong>Concern:</strong> {history.prev_concern}
-                          </div>
-                          <div>
-                            <strong>Clinical Signs:</strong> {history.prev_clinical_sign}
-                          </div>
-                          <div>
-                            <strong>Diagnosis:</strong> {history.prev_diagnosis}
-                          </div>
-                          <div>
-                            <strong>Remarks:</strong> {history.prev_remark}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+            {!loading && filteredHorseRecords().length > 0 && (
+              <Pagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPageChange={handlePageChange}
+                totalItems={filteredHorseRecords().length}
+                itemsPerPage={itemsPerPage}
+                onItemsPerPageChange={handleItemsPerPageChange}
+              />
             )}
+          </>
+        )}
+      </div>
+    </>
+  );
 
-          {/* Current Clinical Signs & Diagnosis */}
-          <div className="pre-vaccination-section">
-            <div className="pre-vaccination-title">Clinical Signs</div>
-            <p className="pre-vaccination-text">
-              {selectedTreatmentHistory.medrec_clinical_sign || "No information available"}
+  const renderCurrentView = () => {
+    if (detailLoading) {
+      switch (currentView) {
+        case 'horse':
+          return <HorseDetailSkeleton />;
+        case 'medical':
+          return <MedicalRecordDetailSkeleton />;
+        case 'treatment':
+          return <TreatmentHistoryDetailSkeleton />;
+        default:
+          return renderListView();
+      }
+    }
+
+    switch (currentView) {
+      case 'list':
+        return renderListView();
+      case 'horse':
+        return (
+          <HorseDetailView
+            horse={selectedHorse}
+            onBack={backToList}
+            onViewMedicalRecord={viewMedicalRecord}
+            onViewTreatmentHistory={viewTreatmentHistory}
+          />
+        );
+      case 'medical':
+        return (
+          <MedicalRecordDetailView
+            horse={selectedHorse}
+            medicalRecord={selectedMedicalRecord}
+            onBack={backToHorse}
+            onExportPDF={handleExportPDF}
+          />
+        );
+      case 'treatment':
+        return (
+          <TreatmentHistoryDetailView
+            treatmentHistory={selectedTreatmentHistory}
+            horse={selectedHorse}
+            onBack={backToHorse}
+            onExportPDF={handleExportPDF}
+          />
+        );
+      default:
+        return renderListView();
+    }
+  };
+
+  return (
+    <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
+      <div className="sidebars" id="sidebars">
+        <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
+      </div>
+
+      <div className="flex-1 flex flex-col w-full md:w-[calc(100%-250px)]">
+        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+          <div className="flex flex-col">
+            <h2 className="text-2xl font-bold text-[#0F3D5A]">
+              {currentView === 'list' && 'Horse Records'}
+              {currentView === 'horse' && 'Horse Details'}
+              {currentView === 'medical' && 'Medical Record Details'}
+              {currentView === 'treatment' && 'Treatment History Details'}
+            </h2>
+            <p className="text-sm text-gray-600 mt-1 font-normal">
+              {currentView === 'list' && 'Manage and view all horse medical records and treatment histories'}
             </p>
           </div>
 
-          <div className="next-vaccination-section">
-            <div className="next-vaccination-title">Diagnosis</div>
-            <p className="next-vaccination-text">
-              {selectedTreatmentHistory.medrec_diagnosis || "No information available"}
-            </p>
+          <div className="flex items-center gap-4">
+            {/* Refresh Button */}
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Refresh Data"
+            >
+              <RefreshCw 
+                size={24} 
+                color="#374151" 
+                className={isRefreshing ? "animate-spin" : ""}
+              />
+            </button>
+
+            {/* Notification Bell */}
+            <button
+              ref={notificationBellRef}
+              className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
+              onClick={() => setNotifsOpen(!notifsOpen)}
+            >
+              <Bell size={24} color="#374151" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold min-w-[20px]">
+                  {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                </span>
+              )}
+            </button>
           </div>
 
-          {/* Print Record Button */}
-          <button className="print-btn" onClick={printTreatmentRecord}>
-            <Printer size={16} style={{ marginRight: "4px" }} />
-            Print Record
-          </button>
+          <NotificationModal
+            isOpen={notifsOpen}
+            onClose={() => setNotifsOpen(false)}
+            notifications={notifications}
+            onNotificationClick={handleNotificationClick}
+            onMarkAllAsRead={handleMarkAllAsRead}
+            onNotificationsUpdate={handleNotificationsUpdate}
+          />
+        </header>
+
+        <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
+          {renderCurrentView()}
         </div>
       </div>
-    </div>
-  </div>
-)}
 
-
-      ;
+      <FloatingMessages />
     </div>
   )
 }
