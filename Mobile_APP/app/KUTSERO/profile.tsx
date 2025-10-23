@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
+import * as ImagePicker from "expo-image-picker"
 
 const { width, height } = Dimensions.get("window")
 
@@ -53,20 +54,20 @@ const getSafeAreaPadding = () => {
   const statusBarHeight = StatusBar.currentHeight || 0
   return {
     top: Math.max(statusBarHeight, 20),
-    bottom: height > 800 ? 34 : 20, // Account for home indicator on newer phones
+    bottom: height > 800 ? 34 : 20,
   }
 }
 
 // Backend API configuration
 const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
 
-// Updated User data interface - Fixed to include kutsero_id at root level
+// Updated User data interface
 interface UserData {
   id: string
   email: string
-  kutsero_id?: string // Added this property
+  kutsero_id?: string
   profile?: {
-    kutsero_id?: string // Changed from string to string | undefined to match the root level
+    kutsero_id?: string
     kutsero_fname?: string
     kutsero_lname?: string
     kutsero_mname?: string
@@ -81,6 +82,7 @@ interface UserData {
     kutsero_dob?: string
     kutsero_sex?: string
     kutsero_fb?: string
+    kutsero_image?: string | null
     [key: string]: any
   }
   access_token: string
@@ -100,6 +102,54 @@ interface TermsPoliciesProps {
   onBack: () => void
 }
 
+// Helper function to extract initials from name
+const getInitials = (firstName?: string, lastName?: string): string => {
+  if (!firstName && !lastName) return "U"
+  const first = firstName?.charAt(0)?.toUpperCase() || ""
+  const last = lastName?.charAt(0)?.toUpperCase() || ""
+  return first + last || "U"
+}
+
+// Helper function to generate consistent avatar color based on name
+const getAvatarColor = (firstName?: string, lastName?: string): string => {
+  const colors = ["#FF6B6B", "#4ECDC4", "#45B7D1", "#FFA07A", "#98D8C8", "#F7DC6F", "#BB8FCE", "#85C1E2"]
+
+  const name = (firstName || "") + (lastName || "")
+  if (!name) return colors[0]
+
+  let hash = 0
+  for (let i = 0; i < name.length; i++) {
+    hash = name.charCodeAt(i) + ((hash << 5) - hash)
+  }
+
+  return colors[Math.abs(hash) % colors.length]
+}
+
+// Helper function for image handling
+const getImageSource = (imageUri: string | null) => {
+  if (!imageUri) {
+    return require("../../assets/images/horse.png")
+  }
+
+  if (imageUri.startsWith("data:image") || imageUri.startsWith("http")) {
+    return { uri: imageUri }
+  }
+
+  return { uri: `${API_BASE_URL}/media/${imageUri}` }
+}
+
+// Debug function for image issues
+const debugImageInfo = (imageUri: string | null, context: string) => {
+  console.log(`${context} Image Info:`, {
+    uri: imageUri,
+    type: typeof imageUri,
+    length: imageUri?.length,
+    isBase64: imageUri?.startsWith("data:image"),
+    isUrl: imageUri?.startsWith("http"),
+    isFilename: imageUri && !imageUri.startsWith("data:image") && !imageUri.startsWith("http"),
+  })
+}
+
 // Help & Support Component
 function HelpSupport({ onBack }: HelpSupportProps) {
   const safeArea = getSafeAreaPadding()
@@ -113,7 +163,6 @@ function HelpSupport({ onBack }: HelpSupportProps) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-      {/* Header */}
       <View style={[styles.profileInfoHeader, { paddingTop: safeArea.top }]}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
           <BackIcon />
@@ -124,7 +173,6 @@ function HelpSupport({ onBack }: HelpSupportProps) {
         <View style={styles.headerRight} />
       </View>
 
-      {/* Content */}
       <ScrollView style={styles.helpContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.helpSection}>
           <Text style={styles.helpSectionTitle}>Frequently Asked Questions</Text>
@@ -203,7 +251,6 @@ function TermsPolicies({ onBack }: TermsPoliciesProps) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-      {/* Header */}
       <View style={[styles.profileInfoHeader, { paddingTop: safeArea.top }]}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
           <BackIcon />
@@ -214,7 +261,6 @@ function TermsPolicies({ onBack }: TermsPoliciesProps) {
         <View style={styles.headerRight} />
       </View>
 
-      {/* Content */}
       <ScrollView style={styles.termsContainer} showsVerticalScrollIndicator={false}>
         <View style={styles.termsSection}>
           <Text style={styles.termsSectionTitle}>Terms of Service</Text>
@@ -276,18 +322,19 @@ function TermsPolicies({ onBack }: TermsPoliciesProps) {
   )
 }
 
-// Profile Information Component with fixed rendering issues
+// Profile Information Component with photo upload functionality
 function ProfileInformation({ onBack }: ProfileInformationProps) {
   const [currentUser, setCurrentUser] = useState("User")
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [profilePictureData, setProfilePictureData] = useState<any>(null)
 
   const safeArea = getSafeAreaPadding()
   const [currentStep, setCurrentStep] = useState(1)
 
   const [formData, setFormData] = useState({
-    // Step 1 - Location Info
     city: "",
     municipality: "",
     barangay: "",
@@ -295,7 +342,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     houseNumber: "",
     route: "",
     to: "",
-    // Step 2 - Personal Info
     firstName: "",
     middleName: "",
     lastName: "",
@@ -303,7 +349,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     sex: "",
     phoneNumber: "",
     province: "",
-    // Step 3 - Account Info
     email: "",
     facebook: "",
     username: "",
@@ -316,9 +361,7 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     confirmPassword: "",
   })
 
-  // Store original form data to track changes
   const [originalFormData, setOriginalFormData] = useState({
-    // Step 1 - Location Info
     city: "",
     municipality: "",
     barangay: "",
@@ -326,7 +369,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     houseNumber: "",
     route: "",
     to: "",
-    // Step 2 - Personal Info
     firstName: "",
     middleName: "",
     lastName: "",
@@ -334,7 +376,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     sex: "",
     phoneNumber: "",
     province: "",
-    // Step 3 - Account Info
     email: "",
     facebook: "",
     username: "",
@@ -345,11 +386,10 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     try {
       setIsLoading(true)
 
-      // Get the stored authentication data from SecureStore
       const storedUserData = await SecureStore.getItemAsync("user_data")
       const storedAccessToken = await SecureStore.getItemAsync("access_token")
 
-      console.log("Stored user data raw:", storedUserData) // Debug log
+      console.log("Stored user data raw:", storedUserData)
 
       if (!storedUserData || !storedAccessToken) {
         Alert.alert("Error", "No user data found. Please log in again.")
@@ -357,12 +397,10 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
       }
 
       const parsedUserData = JSON.parse(storedUserData)
-      console.log("Parsed user data:", parsedUserData) // Debug log
+      console.log("Parsed user data:", parsedUserData)
 
-      // Set userData immediately so it's available for fallback
       setUserData(parsedUserData)
 
-      // Set display name
       let displayName = "User"
       if (parsedUserData.profile) {
         const { kutsero_fname, kutsero_lname, kutsero_username } = parsedUserData.profile
@@ -376,7 +414,22 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
       }
       setCurrentUser(displayName)
 
-      // Try to get kutsero_id from multiple sources
+      if (parsedUserData.profile?.kutsero_image) {
+        const imageUri = parsedUserData.profile.kutsero_image
+        debugImageInfo(imageUri, "Loading profile")
+
+        if (imageUri.startsWith("data:image")) {
+          setSelectedImage(imageUri)
+        } else if (imageUri.startsWith("http")) {
+          setSelectedImage(imageUri)
+        } else {
+          const fullImageUrl = `${API_BASE_URL}/media/${imageUri}`
+          setSelectedImage(fullImageUrl)
+        }
+      } else {
+        setSelectedImage(null)
+      }
+
       let kutserroId: string | null = null
       if (parsedUserData.profile?.kutsero_id) {
         kutserroId = parsedUserData.profile.kutsero_id
@@ -386,10 +439,9 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
         kutserroId = parsedUserData.id
       }
 
-      console.log("Extracted kutsero_id:", kutserroId) // Debug log
+      console.log("Extracted kutsero_id:", kutserroId)
 
       if (kutserroId) {
-        // Try to fetch detailed profile from backend
         try {
           const response = await fetch(`${API_BASE_URL}/profile/${kutserroId}/`, {
             method: "GET",
@@ -400,15 +452,13 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
 
           if (response.ok) {
             const result = await response.json()
-            console.log("Backend API response:", result) // Debug log
+            console.log("Backend API response:", result)
 
             if (result.success && result.data) {
-              // Map backend data to form data
               const profileData = result.data
-              console.log("Profile data from backend:", profileData) // Debug log
+              console.log("Profile data from backend:", profileData)
 
               const newFormData = {
-                // Step 1 - Location Info (mapped from kutsero_profile backend response)
                 city: profileData.city || "",
                 municipality: profileData.municipality || "",
                 barangay: profileData.barangay || "",
@@ -416,7 +466,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
                 houseNumber: profileData.houseNumber || profileData.house_number || profileData.houseNo || "",
                 route: profileData.route || profileData.street || profileData.road || profileData.address_line_1 || "",
                 to: profileData.to || "",
-                // Step 2 - Personal Info (mapped from kutsero_profile backend response)
                 firstName: profileData.firstName || "",
                 middleName: profileData.middleName || "",
                 lastName: profileData.lastName || "",
@@ -424,22 +473,20 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
                 sex: profileData.sex || "",
                 phoneNumber: profileData.phoneNumber || "",
                 province: profileData.province || "",
-                // Step 3 - Account Info (mapped from kutsero_profile backend response)
                 email: profileData.email || "",
                 facebook: profileData.facebook || "",
                 username: profileData.username || "",
               }
 
-              console.log("Mapped form data from API:", newFormData) // Debug log
+              console.log("Mapped form data from API:", newFormData)
               setFormData(newFormData)
               setOriginalFormData(newFormData)
 
               console.log("Profile data loaded successfully from kutsero_profile table")
-              return // Exit early since we have API data
+              return
             }
           }
 
-          // If we get here, the API call failed or returned no data
           try {
             const errorData = await response.json()
             console.log("Failed to fetch kutsero_profile:", errorData.message || "Unknown error")
@@ -451,15 +498,12 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
         }
       }
 
-      // If we get here, either no kutsero_id or API call failed
-      // Use stored profile data directly
       console.log("Using stored profile data directly")
       console.log("parsedUserData.profile:", parsedUserData.profile)
 
       if (parsedUserData.profile) {
         const profile = parsedUserData.profile
         const basicFormData = {
-          // Step 1 - Location Info (using data from stored profile)
           city: profile.kutsero_city || "",
           municipality: profile.kutsero_municipality || "",
           barangay: profile.kutsero_brgy || "",
@@ -467,7 +511,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
           houseNumber: "",
           route: "",
           to: "",
-          // Step 2 - Personal Info (using stored profile data)
           firstName: profile.kutsero_fname || "",
           middleName: profile.kutsero_mname || "",
           lastName: profile.kutsero_lname || "",
@@ -475,18 +518,16 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
           sex: profile.kutsero_sex || "",
           phoneNumber: profile.kutsero_phone_num || "",
           province: profile.kutsero_province || "",
-          // Step 3 - Account Info
           email: profile.kutsero_email || "",
           facebook: profile.kutsero_fb || "",
           username: profile.kutsero_username || "",
         }
 
-        console.log("Basic form data from stored profile:", basicFormData) // Debug log
+        console.log("Basic form data from stored profile:", basicFormData)
         setFormData(basicFormData)
         setOriginalFormData(basicFormData)
       } else {
         console.log("No stored profile data available")
-        // Set empty form
         const emptyFormData = {
           city: "",
           municipality: "",
@@ -517,14 +558,12 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     }
   }
 
-  // Load user data when component mounts
   useEffect(() => {
     loadUserData()
   }, [])
 
-  // Function to check if form data has been modified
   const hasChanges = () => {
-    return JSON.stringify(formData) !== JSON.stringify(originalFormData)
+    return JSON.stringify(formData) !== JSON.stringify(originalFormData) || profilePictureData !== null
   }
 
   const BackIcon = () => (
@@ -545,8 +584,114 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     }
   }
 
+  const handleImagePicker = async () => {
+    Alert.alert("Select Profile Photo", "Choose how you'd like to add your profile picture", [
+      {
+        text: "Camera",
+        onPress: () => openCamera(),
+      },
+      {
+        text: "Photo Library",
+        onPress: () => openImageLibrary(),
+      },
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+    ])
+  }
+
+  const openCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync()
+
+      if (status !== "granted") {
+        Alert.alert("Permission Denied", "Camera permission is required to take photos.")
+        return
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      })
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0]
+        const imageUri = asset.uri
+
+        console.log("Camera image selected:", imageUri)
+        setSelectedImage(imageUri)
+
+        const profilePicture = {
+          uri: imageUri,
+          type: "image/jpeg",
+          name: "profile_camera.jpg",
+        }
+
+        setProfilePictureData(profilePicture)
+      }
+    } catch (error) {
+      console.error("Camera error:", error)
+      Alert.alert("Error", "Failed to open camera. Please try again.")
+    }
+  }
+
+  const openImageLibrary = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+
+      if (status !== "granted") {
+        Alert.alert("Permission Denied", "Photo library permission is required to select photos.")
+        return
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      })
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0]
+        const imageUri = asset.uri
+
+        console.log("Gallery image selected:", imageUri)
+        setSelectedImage(imageUri)
+
+        const profilePicture = {
+          uri: imageUri,
+          type: "image/jpeg",
+          name: "profile_gallery.jpg",
+        }
+
+        setProfilePictureData(profilePicture)
+      }
+    } catch (error) {
+      console.error("Image picker error:", error)
+      Alert.alert("Error", "Failed to open photo library. Please try again.")
+    }
+  }
+
+  const convertImageToBase64 = async (uri: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      fetch(uri)
+        .then((response) => response.blob())
+        .then((blob) => {
+          const reader = new FileReader()
+          reader.onloadend = () => {
+            resolve(reader.result as string)
+          }
+          reader.onerror = reject
+          reader.readAsDataURL(blob)
+        })
+        .catch(reject)
+    })
+  }
+
   const handleEdit = async () => {
-    // Basic validation
     if (!formData.firstName.trim() || !formData.lastName.trim()) {
       Alert.alert("Validation Error", "First name and last name are required.")
       return
@@ -555,19 +700,16 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
       Alert.alert("Validation Error", "Email is required.")
       return
     }
-    // Email validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(formData.email)) {
       Alert.alert("Validation Error", "Please enter a valid email address.")
       return
     }
-    // Phone number validation
     if (!formData.phoneNumber.trim()) {
       Alert.alert("Validation Error", "Phone number is required.")
       return
     }
 
-    // Save the changes
     Alert.alert("Save Changes", "Are you sure you want to save these changes?", [
       { text: "Cancel", style: "cancel" },
       {
@@ -581,13 +723,11 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     try {
       setIsSaving(true)
 
-      // Add null check for userData - Fixed
       if (!userData) {
         Alert.alert("Error", "Unable to save: No user data found.")
         return
       }
 
-      // Get kutsero_id with proper type safety - Fixed
       let kutserroId: string | null = null
       if (userData.profile?.kutsero_id) {
         kutserroId = userData.profile.kutsero_id
@@ -605,13 +745,31 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
       console.log("Saving kutsero_profile for kutsero_id:", kutserroId)
       console.log("Form data to save:", formData)
 
-      // Save to kutsero_profile table
+      let profileImageBase64 = null
+      if (profilePictureData && profilePictureData.uri) {
+        try {
+          console.log("Converting image to base64...")
+          profileImageBase64 = await convertImageToBase64(profilePictureData.uri)
+          console.log("Image converted successfully, length:", profileImageBase64.length)
+        } catch (error) {
+          console.error("Error converting image:", error)
+          Alert.alert("Error", "Failed to process profile picture. Please try again.")
+          setIsSaving(false)
+          return
+        }
+      }
+
+      const dataToSave = {
+        ...formData,
+        profilePicture: profileImageBase64,
+      }
+
       const response = await fetch(`${API_BASE_URL}/profile/${kutserroId}/`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(dataToSave),
       })
 
       console.log("Save response status:", response.status)
@@ -619,10 +777,9 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
       console.log("Save response data:", result)
 
       if (response.ok && result.success) {
-        // Update the original form data to new values
         setOriginalFormData({ ...formData })
+        setProfilePictureData(null)
 
-        // Update stored user data with new profile information - Fixed null check
         if (userData) {
           const updatedUserData = {
             ...userData,
@@ -642,13 +799,13 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
               kutsero_dob: formData.dateOfBirth,
               kutsero_sex: formData.sex,
               kutsero_fb: formData.facebook,
+              kutsero_image: selectedImage,
             },
           }
 
           await SecureStore.setItemAsync("user_data", JSON.stringify(updatedUserData))
           setUserData(updatedUserData)
 
-          // Update display name
           const displayName =
             formData.firstName && formData.lastName
               ? `${formData.firstName} ${formData.lastName}`
@@ -662,7 +819,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
           {
             text: "OK",
             onPress: () => {
-              // Go back to the main profile screen
               onBack()
             },
           },
@@ -673,6 +829,93 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     } catch (error) {
       console.error("Error saving kutsero_profile:", error)
       Alert.alert("Error", "An error occurred while saving your profile. Please try again.")
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  // PASSWORD CHANGE HANDLERS
+  const handlePasswordChange = async () => {
+    if (!passwordData.currentPassword.trim()) {
+      Alert.alert("Validation Error", "Please enter your current password.")
+      return
+    }
+    if (!passwordData.newPassword.trim()) {
+      Alert.alert("Validation Error", "Please enter a new password.")
+      return
+    }
+    if (!passwordData.confirmPassword.trim()) {
+      Alert.alert("Validation Error", "Please confirm your new password.")
+      return
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      Alert.alert("Validation Error", "New password and confirmation do not match.")
+      return
+    }
+
+    if (passwordData.newPassword.length < 8) {
+      Alert.alert("Validation Error", "New password must be at least 8 characters long.")
+      return
+    }
+
+    Alert.alert("Change Password", "Are you sure you want to change your password?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Change",
+        onPress: () => savePasswordChange(),
+      },
+    ])
+  }
+
+  const savePasswordChange = async () => {
+    try {
+      setIsSaving(true)
+
+      if (!userData?.profile?.kutsero_email) {
+        Alert.alert("Error", "Unable to change password: No email found.")
+        setIsSaving(false)
+        return
+      }
+
+      const email = userData.profile.kutsero_email
+
+      const response = await fetch(`${API_BASE_URL}/reset-password/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email,
+          newPassword: passwordData.newPassword,
+          currentPassword: passwordData.currentPassword,
+        }),
+      })
+
+      console.log("Password change response status:", response.status)
+      const result = await response.json()
+      console.log("Password change response:", result)
+
+      if (response.ok && result.success) {
+        Alert.alert("Success", result.message || "Your password has been changed successfully!", [
+          {
+            text: "OK",
+            onPress: () => {
+              setShowChangePassword(false)
+              setPasswordData({
+                currentPassword: "",
+                newPassword: "",
+                confirmPassword: "",
+              })
+            },
+          },
+        ])
+      } else {
+        Alert.alert("Error", result.error || result.message || "Failed to change password. Please try again.")
+      }
+    } catch (error) {
+      console.error("Error changing password:", error)
+      Alert.alert("Error", "An error occurred while changing your password. Please try again.")
     } finally {
       setIsSaving(false)
     }
@@ -701,13 +944,42 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.profilePhotoContainer}>
-        <View style={styles.profilePhotoCircle}>
-          <Image
-            source={require("../../assets/images/horse.png")}
-            style={[styles.profileHorseIcon, { tintColor: "#C17A47" }]}
-            resizeMode="contain"
-          />
-        </View>
+        <TouchableOpacity onPress={handleImagePicker} activeOpacity={0.8}>
+          <View style={styles.profilePhotoWrapper}>
+            <View style={styles.profilePhotoCircle}>
+              {selectedImage ? (
+                <Image
+                  source={getImageSource(selectedImage)}
+                  style={styles.profilePhotoImage}
+                  resizeMode="cover"
+                  onError={(e) => {
+                    console.log("Image load error:", e.nativeEvent.error)
+                    setSelectedImage(null)
+                  }}
+                />
+              ) : (
+                <InitialsAvatar firstName={formData.firstName} lastName={formData.lastName} />
+              )}
+            </View>
+            <View style={styles.cameraIconOverlay}>
+              <Text style={styles.cameraIcon}>📷</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={handleImagePicker} style={styles.changePhotoButton}>
+          <Text style={styles.changePhotoText}>{selectedImage ? "Change Profile Photo" : "Add Profile Photo"}</Text>
+        </TouchableOpacity>
+        {selectedImage && (
+          <TouchableOpacity
+            onPress={() => {
+              setSelectedImage(null)
+              setProfilePictureData(null)
+            }}
+            style={styles.removePhotoButtonSmall}
+          >
+            <Text style={styles.removePhotoTextSmall}>Remove Photo</Text>
+          </TouchableOpacity>
+        )}
         <Text style={styles.stepTitle}>Location Information</Text>
         <Text style={styles.stepSubtitle}>Please provide your address details</Text>
       </View>
@@ -829,8 +1101,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     </ScrollView>
   )
 
-  // After your renderStepOne function ends, add this:
-
   const renderStepTwo = () => (
     <ScrollView
       style={styles.formContainer}
@@ -840,11 +1110,19 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     >
       <View style={styles.profilePhotoContainer}>
         <View style={styles.profilePhotoCircle}>
-          <Image
-            source={require("../../assets/images/horse.png")}
-            style={[styles.profileHorseIcon, { tintColor: "#C17A47" }]}
-            resizeMode="contain"
-          />
+          {selectedImage ? (
+            <Image
+              source={getImageSource(selectedImage)}
+              style={styles.profilePhotoImage}
+              resizeMode="cover"
+              onError={(e) => {
+                console.log("Image load error:", e.nativeEvent.error)
+                setSelectedImage(null)
+              }}
+            />
+          ) : (
+            <InitialsAvatar firstName={formData.firstName} lastName={formData.lastName} />
+          )}
         </View>
         <Text style={styles.stepTitle}>Personal Information</Text>
         <Text style={styles.stepSubtitle}>Please provide your personal details</Text>
@@ -965,11 +1243,19 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     >
       <View style={styles.profilePhotoContainer}>
         <View style={styles.profilePhotoCircle}>
-          <Image
-            source={require("../../assets/images/horse.png")}
-            style={[styles.profileHorseIcon, { tintColor: "#C17A47" }]}
-            resizeMode="contain"
-          />
+          {selectedImage ? (
+            <Image
+              source={getImageSource(selectedImage)}
+              style={styles.profilePhotoImage}
+              resizeMode="cover"
+              onError={(e) => {
+                console.log("Image load error:", e.nativeEvent.error)
+                setSelectedImage(null)
+              }}
+            />
+          ) : (
+            <InitialsAvatar firstName={formData.firstName} lastName={formData.lastName} />
+          )}
         </View>
         <Text style={styles.stepTitle}>Account Information</Text>
         <Text style={styles.stepSubtitle}>Please provide your account details</Text>
@@ -1067,15 +1353,15 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
               <Text style={styles.cancelPasswordText}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.savePasswordButton}
-              onPress={() => {
-                // Handle password change logic here
-                console.log("[v0] Password change requested")
-                setShowChangePassword(false)
-                setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" })
-              }}
+              style={[styles.savePasswordButton, isSaving && styles.disabledButton]}
+              onPress={handlePasswordChange}
+              disabled={isSaving}
             >
-              <Text style={styles.savePasswordText}>Update Password</Text>
+              {isSaving ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Text style={styles.savePasswordText}>Update Password</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
@@ -1102,7 +1388,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     </ScrollView>
   )
 
-  // Show loading screen while data is being loaded
   if (isLoading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
@@ -1116,7 +1401,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-      {/* Header */}
       <View style={[styles.profileInfoHeader, { paddingTop: safeArea.top }]}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
           <BackIcon />
@@ -1127,15 +1411,24 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
         <View style={styles.headerRight} />
       </View>
 
-      {/* Step Indicator */}
       {renderStepIndicator()}
 
-      {/* Content */}
       <View style={styles.profileInfoContent}>
         {currentStep === 1 && renderStepOne()}
         {currentStep === 2 && renderStepTwo()}
         {currentStep === 3 && renderStepThree()}
       </View>
+    </View>
+  )
+}
+
+const InitialsAvatar = ({ firstName, lastName }: { firstName?: string; lastName?: string }) => {
+  const initials = getInitials(firstName, lastName)
+  const backgroundColor = getAvatarColor(firstName, lastName)
+
+  return (
+    <View style={[styles.initialsContainer, { backgroundColor }]}>
+      <Text style={styles.initialsText}>{initials}</Text>
     </View>
   )
 }
@@ -1147,7 +1440,6 @@ export default function ProfileScreen() {
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  // Load user data from SecureStore
   const loadUserData = async () => {
     try {
       setIsLoading(true)
@@ -1156,7 +1448,6 @@ export default function ProfileScreen() {
         const parsedUserData = JSON.parse(storedUserData)
         setUserData(parsedUserData)
 
-        // Set display name
         let displayName = "User"
         if (parsedUserData.profile) {
           const { kutsero_fname, kutsero_lname, kutsero_username } = parsedUserData.profile
@@ -1177,12 +1468,10 @@ export default function ProfileScreen() {
     }
   }
 
-  // Load user data when component mounts
   useEffect(() => {
     loadUserData()
   }, [])
 
-  // Load user data when screen comes into focus
   useFocusEffect(
     React.useCallback(() => {
       loadUserData()
@@ -1193,17 +1482,14 @@ export default function ProfileScreen() {
   const [showProfileInfo, setShowProfileInfo] = useState(false)
   const [showTermsPolicies, setShowTermsPolicies] = useState(false)
 
-  // Show Profile Information page when requested
   if (showProfileInfo) {
     return <ProfileInformation onBack={() => setShowProfileInfo(false)} />
   }
 
-  // Show Help & Support page when requested
   if (showHelpSupport) {
     return <HelpSupport onBack={() => setShowHelpSupport(false)} />
   }
 
-  // Show Terms & Policies page when requested
   if (showTermsPolicies) {
     return <TermsPolicies onBack={() => setShowTermsPolicies(false)} />
   }
@@ -1216,7 +1502,6 @@ export default function ProfileScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            // Clear all user data from SecureStore
             await SecureStore.deleteItemAsync("access_token")
             await SecureStore.deleteItemAsync("refresh_token")
             await SecureStore.deleteItemAsync("user_data")
@@ -1233,7 +1518,6 @@ export default function ProfileScreen() {
     ])
   }
 
-  // Dashboard/Home Icon Component
   const DashboardIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
       <View style={styles.dashboardGrid}>
@@ -1245,7 +1529,6 @@ export default function ProfileScreen() {
     </View>
   )
 
-  // Profile Icon Component
   const ProfileIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
       <View style={styles.profileContainer}>
@@ -1255,7 +1538,6 @@ export default function ProfileScreen() {
     </View>
   )
 
-  // Document Icon Component for Terms & Policies
   const DocumentIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
       <View style={styles.documentContainer}>
@@ -1282,7 +1564,6 @@ export default function ProfileScreen() {
     <TouchableOpacity
       style={styles.tabButton}
       onPress={() => {
-        // Navigate directly without updating local state
         if (tabKey === "home") {
           router.push("./dashboard")
         } else if (tabKey === "horse") {
@@ -1294,7 +1575,7 @@ export default function ProfileScreen() {
         } else if (tabKey === "history") {
           router.push("./history")
         } else if (tabKey === "profile") {
-          // Stay on profile - already here
+          // Stay on profile
         }
       }}
       activeOpacity={0.7}
@@ -1318,7 +1599,6 @@ export default function ProfileScreen() {
     </TouchableOpacity>
   )
 
-  // Show loading screen while data is being loaded
   if (isLoading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
@@ -1332,14 +1612,23 @@ export default function ProfileScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-      {/* Profile Header */}
       <View style={[styles.profileHeader, { paddingTop: safeArea.top }]}>
         <View style={styles.profileImageContainer}>
-          <Image
-            source={require("../../assets/images/horse.png")}
-            style={styles.headerProfilePicture}
-            resizeMode="cover"
-          />
+          {userData?.profile?.kutsero_image ? (
+            <Image
+              source={getImageSource(userData.profile.kutsero_image)}
+              style={styles.headerProfilePicture}
+              resizeMode="cover"
+              onError={(e) => console.log("Header image load error:", e.nativeEvent.error)}
+            />
+          ) : (
+            <View style={styles.headerProfilePicture}>
+              <InitialsAvatar
+                firstName={userData?.profile?.kutsero_fname}
+                lastName={userData?.profile?.kutsero_lname}
+              />
+            </View>
+          )}
         </View>
         <Text style={styles.profileName} numberOfLines={1} adjustsFontSizeToFit>
           {currentUser}
@@ -1350,7 +1639,6 @@ export default function ProfileScreen() {
         {userData?.user_status === "pending" && <Text style={styles.statusText}>Account Status: Pending Approval</Text>}
       </View>
 
-      {/* Menu Options */}
       <View style={styles.menuContainer}>
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -1398,7 +1686,6 @@ export default function ProfileScreen() {
         </ScrollView>
       </View>
 
-      {/* Bottom Tab Navigation - Updated order: History before Profile */}
       <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
         <TabButton iconSource={null} label="Home" tabKey="home" isActive={false} />
         <TabButton
@@ -1455,6 +1742,8 @@ const styles = StyleSheet.create({
     height: scale(64),
     borderRadius: scale(32),
     backgroundColor: "white",
+    justifyContent: "center",
+    alignItems: "center",
   },
   profileName: {
     fontSize: moderateScale(18),
@@ -1559,7 +1848,6 @@ const styles = StyleSheet.create({
     borderColor: "#999",
     transform: [{ rotate: "45deg" }],
   },
-  // Tab Bar Styles
   tabBar: {
     flexDirection: "row",
     backgroundColor: "white",
@@ -1607,7 +1895,6 @@ const styles = StyleSheet.create({
     color: "#C17A47",
     fontWeight: "600",
   },
-  // Icon container for custom icons
   iconContainer: {
     width: scale(16),
     height: scale(16),
@@ -1615,7 +1902,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     position: "relative",
   },
-  // Dashboard/Home Icon Styles
   dashboardGrid: {
     width: scale(16),
     height: scale(16),
@@ -1642,7 +1928,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     right: 0,
   },
-  // Profile Icon Styles
   profileContainer: {
     width: scale(16),
     height: scale(16),
@@ -1664,7 +1949,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     bottom: 0,
   },
-  // Document Icon Styles for Terms & Policies
   documentContainer: {
     width: scale(16),
     height: scale(16),
@@ -1686,7 +1970,6 @@ const styles = StyleSheet.create({
     height: scale(1),
     marginVertical: scale(0.5),
   },
-  // Profile Information Styles
   profileInfoHeader: {
     backgroundColor: "#C17A47",
     flexDirection: "row",
@@ -1727,7 +2010,6 @@ const styles = StyleSheet.create({
   headerRight: {
     width: scale(40),
   },
-  // Step Indicator Styles
   stepIndicatorContainer: {
     flexDirection: "row",
     justifyContent: "center",
@@ -1785,18 +2067,88 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: verticalScale(30),
   },
+  profilePhotoWrapper: {
+    position: "relative",
+    marginBottom: verticalScale(16),
+  },
   profilePhotoCircle: {
     width: scale(80),
     height: scale(80),
-    borderRadius: scale(40),
+    borderRadius: scale(50),
     backgroundColor: "#F0F0F0",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 3,
+    borderColor: "#E0E0E0",
+    overflow: "hidden",
+  },
+  profilePhotoImage: {
+    width: scale(150),
+    height: scale(100),
+    borderRadius: scale(50),
+  },
+  initialsContainer: {
+    width: scale(80),
+    height: scale(80),
+    borderRadius: scale(50),
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  initialsText: {
+    fontSize: moderateScale(36),
+    fontWeight: "700",
+    color: "white",
+  },
+  cameraIconOverlay: {
+    position: "absolute",
+    bottom: scale(-5),
+    right: scale(-5),
+    backgroundColor: "#E4E6EB",
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 3,
+    borderColor: "white",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  cameraIcon: {
+    fontSize: moderateScale(16),
+    color: "#65676B",
+  },
+  changePhotoButton: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(10),
+    borderRadius: scale(8),
+    marginBottom: verticalScale(8),
+  },
+  changePhotoText: {
+    color: "white",
+    fontSize: moderateScale(14),
+    fontWeight: "500",
+    textAlign: "center",
+  },
+  removePhotoButtonSmall: {
+    backgroundColor: "#FF4444",
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(6),
     marginBottom: verticalScale(16),
   },
-  profileHorseIcon: {
-    width: scale(40),
-    height: scale(40),
+  removePhotoTextSmall: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "500",
+    textAlign: "center",
   },
   stepTitle: {
     fontSize: moderateScale(20),
@@ -1830,12 +2182,6 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(6),
     fontWeight: "500",
   },
-  inputHint: {
-    fontSize: moderateScale(12),
-    color: "#666",
-    marginTop: verticalScale(4),
-    fontStyle: "italic",
-  },
   textInput: {
     borderWidth: 1,
     borderColor: "#E0E0E0",
@@ -1847,7 +2193,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#FAFAFA",
     minHeight: verticalScale(48),
   },
-  // Button Styles
   buttonContainer: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1901,7 +2246,6 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.6,
   },
-  // Help & Support Styles
   helpContainer: {
     flex: 1,
     backgroundColor: "white",
@@ -1957,7 +2301,6 @@ const styles = StyleSheet.create({
     color: "#666",
     textAlign: "center",
   },
-  // Terms & Policies Styles
   termsContainer: {
     flex: 1,
     backgroundColor: "white",
@@ -1979,7 +2322,6 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(12),
     textAlign: "justify",
   },
-  // Change Password Styles
   changePasswordButton: {
     backgroundColor: "#f0f0f0",
     padding: 12,

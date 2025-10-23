@@ -33,7 +33,7 @@ import NotificationModal from "./DvmfNotif"
 const initialDirectoryData = []
 const initialNotifications = []
 
-const API_BASE = "http://127.0.0.1:8000/api/dvmf"
+const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf"
 
 function DvmfDirectory() {
   const navigate = useNavigate()
@@ -109,55 +109,64 @@ function DvmfDirectory() {
   }
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
-  const handleNotificationClick = async (notification) => {
-    // Mark notification as read in frontend
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === notification.id ? { ...notif, read: true } : notif
-      )
+    const handleNotificationClick = async (notification) => {
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev =>
+    prev.map(notif =>
+      notif.id === notification.id ? { ...notif, read: true } : notif
     )
+  );
 
-    // Mark notification as read in backend
-    try {
-      const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-        method: "POST",
-        credentials: "include",
-      })
-      const data = await res.json()
-      console.log("Mark notification read result:", data)
-    } catch (err) {
-      console.error("Error marking notification as read:", err)
-    }
-
-    // Handle navigation based on notification content
-    console.log('Notification clicked:', notification)
-    const message = notification.message.toLowerCase()
-
-    if (
-      message.includes("new registration") ||
-      message.includes("approved") ||
-      message.includes("declined")
-    ) {
-      navigate("/CtuAccountApproval", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      })
-    } else if (message.includes("pending medical record access")) {
-      navigate("/CtuAccessRequest", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      })
-    } else if (message.includes("emergency") || message.includes("sos")) {
-      navigate("/CtuSOS")
-    } else {
-      console.warn("No matching navigation route for this notification:", notification)
-    }
+  // Mark notification as read in backend
+  try {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
   }
 
+  // Handle navigation based on notification content
+  const message = notification.message.toLowerCase();
+
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    navigate("/DvmfAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
+    navigate("/DvmfAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+};
   // HANDLE OPENING USER MANAGEMENT FROM NOTIFICATIONS
   const handleOpenUserManagement = async (notification = null) => {
     console.log('Opening User Management from dashboard notification:', notification)
@@ -216,7 +225,7 @@ function DvmfDirectory() {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -340,7 +349,7 @@ function DvmfDirectory() {
   const handleView = async (person) => {
     try {
       // Optional: fetch full data from API if not already complete
-      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -380,7 +389,7 @@ function DvmfDirectory() {
   const loadDirectoryData = async () => {
     try {
       setLoading(true)
-      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -620,7 +629,7 @@ const getInitialsBackgroundColor = (initials) => {
       if (!fbValue || fbValue === "N/A") return null;
       
       // If it already starts with http, return as is
-      if (fbValue.startsWith('http://') || fbValue.startsWith('https://')) {
+      if (fbValue.startsWith('https://') || fbValue.startsWith('https://')) {
         return fbValue;
       }
       
@@ -852,7 +861,7 @@ const getInitialsBackgroundColor = (initials) => {
       <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
 
       <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
-        <header className="bg-white py-[18px] px-6 flex items-center justify-between shadow-sm flex-wrap gap-4">
+        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
            <div className="flex flex-col w-full sm:w-2/3 md:w-1/2 lg:w-1/3">
   <h2 className="text-2xl font-bold text-[#0F3D5A]">Directory</h2>
   <p className="text-sm text-gray-500 mt-1 font-normal">

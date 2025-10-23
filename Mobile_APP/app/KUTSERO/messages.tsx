@@ -16,60 +16,63 @@ import {
   View,
   Alert,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
 
 const { width, height } = Dimensions.get("window")
 
-// Enhanced responsive scaling functions with better mobile optimization
+// Keep all your existing scale functions
 const scale = (size: number) => {
-  const scaleFactor = width / 375 // Base width for iPhone X
+  const scaleFactor = width / 375
   const scaledSize = size * scaleFactor
-  // Tighter bounds for mobile screens
   return Math.max(Math.min(scaledSize, size * 1.2), size * 0.8)
 }
 
 const verticalScale = (size: number) => {
-  const scaleFactor = height / 812 // Base height for iPhone X
+  const scaleFactor = height / 812
   const scaledSize = size * scaleFactor
-  // Tighter bounds for mobile screens
   return Math.max(Math.min(scaledSize, size * 1.15), size * 0.85)
 }
 
 const moderateScale = (size: number, factor = 0.5) => {
   const scaledSize = size + (scale(size) - size) * factor
-  // Ensure text remains readable on all screen sizes
   return Math.max(Math.min(scaledSize, size * 1.1), size * 0.9)
 }
 
-// Mobile-optimized spacing
 const dynamicSpacing = (baseSize: number) => {
-  if (width < 350) return verticalScale(baseSize * 0.7) // Very small screens
-  if (width < 400) return verticalScale(baseSize * 0.85) // Small screens
-  if (width > 450) return verticalScale(baseSize * 1.05) // Large screens
-  return verticalScale(baseSize) // Standard screens
+  if (width < 350) return verticalScale(baseSize * 0.7)
+  if (width < 400) return verticalScale(baseSize * 0.85)
+  if (width > 450) return verticalScale(baseSize * 1.05)
+  return verticalScale(baseSize)
 }
 
-// Safe area calculations
 const getSafeAreaPadding = () => {
   const statusBarHeight = StatusBar.currentHeight || 0
   return {
     top: Math.max(statusBarHeight, 20),
-    bottom: height > 800 ? 34 : 20, // Account for home indicator on newer phones
+    bottom: height > 800 ? 34 : 20,
   }
 }
 
-// Backend API configuration - matching dashboard
 const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
 
 interface Message {
-  id: string
+  id?: string
+  user_id?: number
+  partner_id?: string
   sender: string
   preview: string
+  last_message?: string
   timestamp: string
+  last_message_time?: string
   unread: boolean
+  is_read?: boolean
   avatar?: string
   isAI?: boolean
+  role?: string
+  status?: string
+  unread_count?: number
 }
 
 interface ChatMessage {
@@ -79,7 +82,6 @@ interface ChatMessage {
   timestamp: string
 }
 
-// User data interface - matching dashboard
 interface UserData {
   id: string
   email: string
@@ -98,7 +100,17 @@ interface UserData {
   user_status?: string
 }
 
-// Separate ChatInterface component to prevent recreation
+interface AvailableUser {
+  id: number
+  name: string
+  role: string
+  avatar: string
+  email: string
+  phone?: string
+  status: string
+}
+
+// Chat Interface Component
 const ChatInterface = ({
   isAIChat,
   messages,
@@ -120,7 +132,6 @@ const ChatInterface = ({
 }) => {
   const scrollViewRef = useRef<ScrollView>(null)
 
-  // Auto scroll to bottom when messages change
   useEffect(() => {
     if (scrollViewRef.current) {
       setTimeout(() => {
@@ -137,7 +148,6 @@ const ChatInterface = ({
     >
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
 
-      {/* Chat Header */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
           <Text style={styles.backButtonText}>←</Text>
@@ -157,7 +167,6 @@ const ChatInterface = ({
         </View>
       </View>
 
-      {/* Chat Messages */}
       <ScrollView
         ref={scrollViewRef}
         style={styles.chatContainer}
@@ -182,7 +191,6 @@ const ChatInterface = ({
         ))}
       </ScrollView>
 
-      {/* Chat Input */}
       <View style={[styles.chatInputContainer, { paddingBottom: Math.max(safeArea.bottom, 8) }]}>
         <View style={styles.inputWrapper}>
           <TextInput
@@ -216,15 +224,25 @@ const ChatInterface = ({
 export default function MessagesScreen() {
   const router = useRouter()
   const safeArea = getSafeAreaPadding()
+
+  // Tab state: 'conversations' or 'users'
+  const [activeTab, setActiveTab] = useState<"conversations" | "users">("conversations")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [roleFilter, setRoleFilter] = useState<string>("")
+
   const [showAIChat, setShowAIChat] = useState(false)
   const [showIndividualChat, setShowIndividualChat] = useState(false)
-  const [selectedContact, setSelectedContact] = useState<Message | null>(null)
+  const [selectedContact, setSelectedContact] = useState<Message | AvailableUser | null>(null)
+  const [selectedUserId, setSelectedUserId] = useState<number | string | null>(null)
   const [chatInput, setChatInput] = useState("")
-  
-  // Updated user state management - matching dashboard
-  const [currentUser, setCurrentUser] = useState("User") // Default fallback
+
+  const [currentUser, setCurrentUser] = useState("User")
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const [conversations, setConversations] = useState<Message[]>([])
+  const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([])
 
   const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([
     {
@@ -236,40 +254,15 @@ export default function MessagesScreen() {
   ])
   const [individualChatMessages, setIndividualChatMessages] = useState<ChatMessage[]>([])
 
-  // Validate authentication token - matching dashboard
-  const validateAuthToken = async (token: string): Promise<boolean> => {
-    try {
-      // You can add a backend endpoint to validate token
-      // For now, we'll assume token is valid if it exists
-      return token.length > 0
-    } catch (error) {
-      console.error("Token validation error:", error)
-      return false
-    }
-  }
-
-  // Load user data and authentication - matching dashboard approach
+  // Load user data
   const loadUserData = async () => {
-    setIsLoading(true)
     try {
-      // Get the stored authentication data from SecureStore
       const storedUserData = await SecureStore.getItemAsync("user_data")
       const storedAccessToken = await SecureStore.getItemAsync("access_token")
-
-      console.log("Loading user data...")
-      console.log("Has stored user data:", !!storedUserData)
-      console.log("Has stored access token:", !!storedAccessToken)
 
       if (storedUserData && storedAccessToken) {
         const parsedUserData = JSON.parse(storedUserData)
 
-        // Validate token
-        const isValidToken = await validateAuthToken(storedAccessToken)
-        if (!isValidToken) {
-          throw new Error("Invalid token")
-        }
-
-        // Create a unified user data structure
         const unifiedUserData: UserData = {
           id: parsedUserData.id,
           email: parsedUserData.email,
@@ -280,11 +273,8 @@ export default function MessagesScreen() {
 
         setUserData(unifiedUserData)
 
-        // Set display name based on available data
-        let displayName = "User" // default fallback
-
+        let displayName = "User"
         if (parsedUserData.profile) {
-          // Use profile data if available
           const { kutsero_fname, kutsero_lname, kutsero_username } = parsedUserData.profile
           if (kutsero_fname && kutsero_lname) {
             displayName = `${kutsero_fname} ${kutsero_lname}`
@@ -293,22 +283,10 @@ export default function MessagesScreen() {
           } else if (kutsero_fname) {
             displayName = kutsero_fname
           }
-        } else if (parsedUserData.email) {
-          // Fallback to user email if no profile
-          displayName = parsedUserData.email.split("@")[0]
         }
 
         setCurrentUser(displayName)
-
-        console.log("Successfully loaded user data:", {
-          userId: parsedUserData.id,
-          email: parsedUserData.email,
-          displayName: displayName,
-          status: parsedUserData.user_status,
-        })
       } else {
-        // No stored auth data - redirect to login
-        console.log("No stored authentication data found")
         Alert.alert("Session Expired", "Please log in again to continue.", [
           {
             text: "OK",
@@ -318,247 +296,411 @@ export default function MessagesScreen() {
       }
     } catch (error) {
       console.error("Error loading user data:", error)
-      Alert.alert("Error", "Failed to load user data. Please log in again.", [
-        {
-          text: "OK",
-          onPress: () => router.replace("../../pages/auth/login"),
-        },
-      ])
+      Alert.alert("Error", "Failed to load user data. Please log in again.")
     } finally {
       setIsLoading(false)
     }
   }
 
-  // Load user data on component mount
-  useEffect(() => {
-    loadUserData()
-  }, [])
+  // Load conversations from backend
+  const loadConversations = async () => {
+    if (!userData?.id) return
 
-  // Use useFocusEffect to reload data when screen comes into focus
-  useFocusEffect(
-    useCallback(() => {
-      loadUserData()
-    }, []),
-  )
-
-  // Sample messages data - moved to useMemo to prevent re-creation
-  const messages = useMemo<Message[]>(
-    () => [
-      {
-        id: "1",
-        sender: "Chief Office",
-        preview: "The horse vaccination is confirmed for the...",
-        timestamp: "10:30 AM",
-        unread: true,
-        avatar: "👨‍💼",
-      },
-      {
-        id: "3",
-        sender: "Veterinary Team",
-        preview: "Oscar's health check-up results are ready",
-        timestamp: "2 days ago",
-        unread: false,
-        avatar: "👩‍⚕️",
-      },
-      {
-        id: "4",
-        sender: "Feed Supplier",
-        preview: "Your monthly feed order has been delivered",
-        timestamp: "3 days ago",
-        unread: false,
-        avatar: "🚚",
-      },
-    ],
-    [],
-  )
-
-  // Handle opening individual chat - wrapped in useCallback
-  const openIndividualChat = useCallback((message: Message) => {
-    setSelectedContact(message)
-    setShowIndividualChat(true)
-    setChatInput("")
-
-    // Initialize conversation based on the contact
-    const initialMessages: ChatMessage[] = []
-
-    if (message.id === "1") {
-      // Chief Office
-      initialMessages.push({
-        id: "1",
-        text: "The horse vaccination is confirmed for tomorrow at 2 PM. Please make sure Oscar is ready for the appointment.",
-        isUser: false,
-        timestamp: "10:30 AM",
+    try {
+      const response = await fetch(`${API_BASE_URL}/conversations/?user_id=${userData.id}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
       })
-    } else if (message.id === "3") {
-      // Veterinary Team
-      initialMessages.push({
-        id: "1",
-        text: "Oscar's health check-up results are ready. Overall health is excellent. Blood work shows normal values across all parameters.",
-        isUser: false,
-        timestamp: "2 days ago",
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.conversations) {
+          // Map the backend response to match our frontend structure
+          const mappedConversations = data.conversations.map((conv: any, index: number) => ({
+            id: conv.id || `conv-${index}`,
+            partner_id: conv.partner_id,
+            user_id: conv.partner_id, // For backward compatibility
+            sender: conv.sender || conv.partner_name || conv.name || "Unknown User",
+            preview: conv.preview || conv.last_message || "",
+            last_message: conv.last_message || "",
+            timestamp:
+              conv.timestamp ||
+              (conv.last_message_time
+                ? new Date(conv.last_message_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : ""),
+            last_message_time: conv.last_message_time,
+            unread: conv.unread !== undefined ? conv.unread : !conv.is_read,
+            is_read: conv.is_read,
+            avatar: conv.avatar || conv.partner_avatar || "👤",
+            role: conv.role || conv.partner_role || "",
+            status: conv.status || "",
+            unread_count: conv.unread_count || (conv.is_read ? 0 : 1),
+          }))
+
+          console.log("Loaded conversations:", mappedConversations)
+          setConversations(mappedConversations)
+        }
+      } else {
+        console.error("Failed to load conversations:", response.status)
+      }
+    } catch (error) {
+      console.error("Error loading conversations:", error)
+    }
+  }
+
+  // Load available users from backend
+  const loadAvailableUsers = async () => {
+    if (!userData?.id) return
+
+    try {
+      let url = `${API_BASE_URL}/available_users/?user_id=${userData.id}`
+      if (searchQuery) {
+        url += `&search=${encodeURIComponent(searchQuery)}`
+      }
+      if (roleFilter) {
+        url += `&role=${roleFilter}`
+      }
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
       })
-    } else if (message.id === "4") {
-      // Feed Supplier
-      initialMessages.push({
-        id: "1",
-        text: "Your monthly feed order has been delivered successfully. 5 bags of premium chaff and 3 bags of supplements are now in your storage area.",
-        isUser: false,
-        timestamp: "3 days ago",
-      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.users) {
+          setAvailableUsers(data.users)
+        }
+      } else {
+        console.error("Failed to load available users:", response.status)
+      }
+    } catch (error) {
+      console.error("Error loading available users:", error)
+    }
+  }
+
+  // Load messages for specific conversation
+  const loadChatMessages = async (otherUserId: number | string) => {
+    if (!userData?.id || !otherUserId) {
+      console.error("Missing user IDs:", { currentUserId: userData?.id, otherUserId })
+      return
     }
 
-    setIndividualChatMessages(initialMessages)
-  }, [])
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/get_messages/?user_id=${userData.id}&other_user_id=${otherUserId}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      )
 
-  // Contact response generator - wrapped in useCallback
-  const generateContactResponse = useCallback((userInput: string, contact: Message | null): string => {
-    if (!contact) return "Thank you for your message. I'll get back to you soon."
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.messages) {
+          setIndividualChatMessages(data.messages)
+        }
+      } else {
+        console.error("Failed to load messages:", response.status)
+      }
+    } catch (error) {
+      console.error("Error loading chat messages:", error)
+    }
+  }
 
-    const input = userInput.toLowerCase()
+  // Send message to backend
+  const sendMessageToBackend = async (receiverId: number | string, content: string) => {
+    if (!userData?.id) return null
 
-    if (contact.id === "1") {
-      // Chief Office
-      if (input.includes("time") || input.includes("when")) {
-        return "The vaccination appointment is scheduled for tomorrow at 2:00 PM sharp. Please arrive 15 minutes early for preparation."
-      } else if (input.includes("preparation") || input.includes("ready")) {
-        return "Please ensure Oscar hasn't eaten for 2 hours before the appointment and is clean. We'll handle the rest."
+    try {
+      const response = await fetch(`${API_BASE_URL}/send_message/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sender_id: userData.id,
+          receiver_id: receiverId,
+          content: content,
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        return data.message
       } else {
-        return "Thank you for confirming. If you have any questions about tomorrow's vaccination appointment, please let me know."
+        const errorData = await response.json()
+        Alert.alert("Error", errorData.error || "Failed to send message")
+        return null
       }
-    } else if (contact.id === "3") {
-      // Veterinary Team
-      if (input.includes("results") || input.includes("report")) {
-        return "I can email you the detailed report. All vitals are normal: Heart rate 32 bpm, Temperature 100.2°F, Blood pressure normal."
-      } else if (input.includes("next") || input.includes("follow")) {
-        return "Based on the results, Oscar's next checkup should be in 6 months unless you notice any changes in behavior or appetite."
-      } else {
-        return "I'm glad you're staying on top of Oscar's health. The results show he's in excellent condition. Any specific concerns?"
-      }
-    } else if (contact.id === "4") {
-      // Feed Supplier
-      if (input.includes("quality") || input.includes("fresh")) {
-        return "All feed delivered is fresh with expiration dates well into next year. The chaff is premium grade and supplements are the highest quality."
-      } else if (input.includes("next") || input.includes("order")) {
-        return "Your next monthly delivery is scheduled for the same date next month. Would you like to modify the quantities?"
-      } else {
-        return "Great! The feed has been delivered to your usual storage location. Invoice will be emailed within 24 hours."
-      }
+    } catch (error) {
+      console.error("Error sending message:", error)
+      Alert.alert("Error", "Failed to send message. Check your connection.")
+      return null
+    }
+  }
+
+  // Load AI chat history from backend
+  const loadAIChatHistory = async () => {
+    if (!userData?.access_token) {
+      console.log("[v0] No user data available for loading chat history")
+      return
     }
 
-    return "Thank you for your message. I'll get back to you soon."
-  }, [])
+    console.log("[v0] Loading AI chat history...")
 
+    try {
+      const response = await fetch(`${API_BASE_URL}/get_chat_history/`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userData.access_token}`,
+        },
+      })
+
+      console.log("[v0] Chat history response status:", response.status)
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("[v0] Chat history data:", data)
+
+        if (data.success && data.history && data.history.length > 0) {
+          // Convert backend history to chat messages format
+          const historyMessages: ChatMessage[] = []
+
+          data.history.forEach((item: any) => {
+            // Add user prompt
+            historyMessages.push({
+              id: `${item.id}-prompt`,
+              text: item.prompt,
+              isUser: true,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            })
+
+            // Add AI answer
+            historyMessages.push({
+              id: `${item.id}-answer`,
+              text: item.answer,
+              isUser: false,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            })
+          })
+
+          console.log("[v0] Loaded chat history messages:", historyMessages.length)
+          // Set the loaded history
+          setAiChatMessages(historyMessages)
+        } else {
+          console.log("[v0] No chat history found, showing welcome message")
+          // No history, show welcome message
+          setAiChatMessages([
+            {
+              id: "1",
+              text: "Hello! I'm your AI assistant. How can I help you with horse care today?",
+              isUser: false,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            },
+          ])
+        }
+      } else {
+        console.error("[v0] Failed to load chat history:", response.status)
+      }
+    } catch (error) {
+      console.error("[v0] Error loading AI chat history:", error)
+      // Keep default welcome message on error
+    }
+  }
+
+  // Handle opening chat from conversation or user list
+  const openChat = useCallback(
+    (contact: Message | AvailableUser) => {
+      // Determine the user ID based on the contact type
+      let userId: string | number | undefined
+
+      if ("partner_id" in contact && contact.partner_id) {
+        // From conversations list - has partner_id
+        userId = contact.partner_id
+      } else if ("user_id" in contact && contact.user_id) {
+        // Has user_id field
+        userId = contact.user_id
+      } else if ("id" in contact && contact.id) {
+        // From users list - has id
+        userId = contact.id
+      }
+
+      // Only proceed if we have a valid user ID
+      if (!userId || userId === undefined) {
+        console.error("Invalid user ID:", contact)
+        Alert.alert("Error", "Unable to open chat. Invalid user ID.")
+        return
+      }
+
+      console.log("Opening chat with user ID:", userId)
+      setSelectedContact(contact)
+      setSelectedUserId(userId as any)
+      setShowIndividualChat(true)
+      setChatInput("")
+      setIndividualChatMessages([]) // Clear previous messages
+      loadChatMessages(userId as any)
+    },
+    [userData],
+  )
+
+  // Handle sending message
   const handleSendMessage = useCallback(
     async (isAIChat = true) => {
-      if (!chatInput.trim()) return;
+      if (!chatInput.trim()) return
 
       const userMessage: ChatMessage = {
         id: Date.now().toString(),
         text: chatInput.trim(),
         isUser: true,
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-
-      if (isAIChat) {
-        setAiChatMessages((prev) => [...prev, userMessage]);
-      } else {
-        setIndividualChatMessages((prev) => [...prev, userMessage]);
       }
 
-      setChatInput("");
-
       if (isAIChat) {
+        setAiChatMessages((prev) => [...prev, userMessage])
+        setChatInput("")
+
         try {
-          // Call your existing AI assistant endpoint
           const response = await fetch(`${API_BASE_URL}/ai_assistant/`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "Authorization": userData?.access_token ? `Bearer ${userData.access_token}` : "",
+              Authorization: userData?.access_token ? `Bearer ${userData.access_token}` : "",
             },
             body: JSON.stringify({
-              prompt: userMessage.text, // Changed from "message" to "prompt"
+              prompt: userMessage.text,
             }),
-          });
-
+          })
 
           if (response.ok) {
-            const data = await response.json();
-            console.log("AI Response:", data);
-            
-            // Use "answer" field from your backend response
-            const aiText = data.answer || data.reply || "Sorry, I couldn't understand that.";
+            const data = await response.json()
+            const aiText = data.answer || data.reply || "Sorry, I couldn't understand that."
 
             const responseMessage: ChatMessage = {
               id: (Date.now() + 1).toString(),
               text: aiText,
               isUser: false,
               timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            };
+            }
 
-            setAiChatMessages((prev) => [...prev, responseMessage]);
+            setAiChatMessages((prev) => [...prev, responseMessage])
           } else {
-            console.error("Backend API error:", response.status);
-            const errorText = await response.text();
-            console.error("Error response:", errorText);
-            
             const errorMessage: ChatMessage = {
               id: (Date.now() + 1).toString(),
-              text: "Sorry, I'm having trouble connecting to the server. Please try again later.",
+              text: "Sorry, I'm having trouble connecting. Please try again later.",
               isUser: false,
               timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            };
-            setAiChatMessages((prev) => [...prev, errorMessage]);
+            }
+            setAiChatMessages((prev) => [...prev, errorMessage])
           }
         } catch (error) {
-          console.error("Backend fetch error:", error);
           const errorMessage: ChatMessage = {
             id: (Date.now() + 1).toString(),
-            text: "Sorry, I'm having trouble connecting. Please check your internet connection and try again.",
+            text: "Sorry, I'm having trouble connecting. Please check your internet connection.",
             isUser: false,
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          };
-          setAiChatMessages((prev) => [...prev, errorMessage]);
+          }
+          setAiChatMessages((prev) => [...prev, errorMessage])
         }
       } else {
-        // Keep existing contact responses
-        const response = generateContactResponse(userMessage.text, selectedContact);
-        const responseMessage: ChatMessage = {
-          id: (Date.now() + 1).toString(),
-          text: response,
-          isUser: false,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        };
-        setIndividualChatMessages((prev) => [...prev, responseMessage]);
+        // Individual chat
+        if (!selectedUserId) {
+          Alert.alert("Error", "Cannot send message. Invalid recipient.")
+          return
+        }
+
+        setIndividualChatMessages((prev) => [...prev, userMessage])
+        setChatInput("")
+
+        const sentMessage = await sendMessageToBackend(selectedUserId, userMessage.text)
+
+        if (!sentMessage) {
+          // Remove the message if it failed to send
+          setIndividualChatMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id))
+        }
       }
     },
-    [chatInput, selectedContact, currentUser, userData, generateContactResponse],
-  );
+    [chatInput, selectedUserId, userData],
+  )
 
-  // Text input change handler - wrapped in useCallback
-  const handleChatInputChange = useCallback((text: string) => {
-    setChatInput(text)
+  // Refresh handler
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    await loadConversations()
+    await loadAvailableUsers()
+    setIsRefreshing(false)
+  }
+
+  // Initial load
+  useEffect(() => {
+    loadUserData()
   }, [])
 
-  // Navigation handlers - wrapped in useCallback
+  // Load data when userData is available
+  useEffect(() => {
+    if (userData) {
+      loadConversations()
+      loadAvailableUsers()
+    }
+  }, [userData])
+
+  // Reload when tab changes or search/filter changes
+  useEffect(() => {
+    if (userData) {
+      if (activeTab === "users") {
+        loadAvailableUsers()
+      }
+    }
+  }, [searchQuery, roleFilter, activeTab])
+
+  useFocusEffect(
+    useCallback(() => {
+      if (userData) {
+        loadConversations()
+        loadAvailableUsers()
+      }
+    }, [userData]),
+  )
+
+  // Callbacks
   const handleBackFromAI = useCallback(() => setShowAIChat(false), [])
   const handleBackFromIndividual = useCallback(() => {
     setShowIndividualChat(false)
     setSelectedContact(null)
-  }, [])
-  const handleShowAIChat = useCallback(() => setShowAIChat(true), [])
+    setSelectedUserId(null)
+    setIndividualChatMessages([])
+    loadConversations() // Refresh conversations after closing chat
+  }, [userData])
 
-  // AI send message handler
-  const handleAISendMessage = useCallback(() => {
-    handleSendMessage(true)
-  }, [handleSendMessage])
+  const handleShowAIChat = useCallback(async () => {
+    console.log("[v0] Opening AI chat...")
+    await loadAIChatHistory()
+    setShowAIChat(true)
+  }, [userData])
 
-  // Individual send message handler
-  const handleIndividualSendMessage = useCallback(() => {
-    handleSendMessage(false)
-  }, [handleSendMessage])
+  const handleChatInputChange = useCallback((text: string) => setChatInput(text), [])
+  const handleAISendMessage = useCallback(() => handleSendMessage(true), [handleSendMessage])
+  const handleIndividualSendMessage = useCallback(() => handleSendMessage(false), [handleSendMessage])
 
-  // Show loading screen while data is being loaded - matching dashboard
+  // Filter conversations based on search
+  const filteredConversations = useMemo(() => {
+    if (!searchQuery) return conversations
+
+    return conversations.filter(
+      (conv) =>
+        conv.sender.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        conv.preview.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (conv.role && conv.role.toLowerCase().includes(searchQuery.toLowerCase())),
+    )
+  }, [conversations, searchQuery])
+
   if (isLoading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
@@ -569,7 +711,6 @@ export default function MessagesScreen() {
     )
   }
 
-  // Show AI Chat Interface
   if (showAIChat) {
     return (
       <ChatInterface
@@ -585,13 +726,13 @@ export default function MessagesScreen() {
     )
   }
 
-  // Show Individual Chat Interface
   if (showIndividualChat && selectedContact) {
+    const contactName = "sender" in selectedContact ? selectedContact.sender : selectedContact.name
     return (
       <ChatInterface
         isAIChat={false}
         messages={individualChatMessages}
-        title={selectedContact.sender}
+        title={contactName}
         onBack={handleBackFromIndividual}
         chatInput={chatInput}
         onChatInputChange={handleChatInputChange}
@@ -601,7 +742,6 @@ export default function MessagesScreen() {
     )
   }
 
-  // Dashboard/Home Icon Component
   const DashboardIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
       <View style={styles.dashboardGrid}>
@@ -613,7 +753,6 @@ export default function MessagesScreen() {
     </View>
   )
 
-  // Profile Icon Component
   const ProfileIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
       <View style={styles.profileContainer}>
@@ -642,13 +781,10 @@ export default function MessagesScreen() {
         if (onPress) {
           onPress()
         } else {
-          // Navigate directly without updating local state
           if (tabKey === "home") {
             router.push("./dashboard")
           } else if (tabKey === "horse") {
             router.push("./horsecare")
-          } else if (tabKey === "chat") {
-            // Stay on messages - already here
           } else if (tabKey === "calendar") {
             router.push("./calendar")
           } else if (tabKey === "history") {
@@ -681,46 +817,180 @@ export default function MessagesScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-      {/* Header - Updated to center the Messages title */}
+
+      {/* Header */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
-        <View style={styles.headerLeft}>{/* Empty space for balance */}</View>
+        <View style={styles.headerLeft} />
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Messages</Text>
         </View>
         <View style={styles.headerRight}>
           <Text style={styles.userName}>{currentUser}</Text>
-          {userData?.user_status === "pending" && (
-            <Text style={styles.statusText}>Pending</Text>
+          {userData?.user_status === "pending" && <Text style={styles.statusText}>Pending</Text>}
+        </View>
+      </View>
+
+      {/* Search Bar */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchWrapper}>
+          <TextInput
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={activeTab === "conversations" ? "Search conversations..." : "Search users..."}
+            placeholderTextColor="#999"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearButton}>
+              <Text style={styles.clearButtonText}>✕</Text>
+            </TouchableOpacity>
           )}
         </View>
       </View>
 
-      {/* Messages List */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {messages.map((message) => (
-          <TouchableOpacity
-            key={message.id}
-            style={styles.messageItem}
-            onPress={() => openIndividualChat(message)}
-            activeOpacity={0.7}
-          >
-            <View style={styles.messageLeft}>
-              <View style={styles.avatarContainer}>
-                <Text style={styles.avatarText}>{message.avatar}</Text>
-              </View>
+      {/* Tab Switcher */}
+      <View style={styles.tabSwitcher}>
+        <TouchableOpacity
+          style={[styles.tabSwitcherButton, activeTab === "conversations" && styles.activeTabSwitcher]}
+          onPress={() => setActiveTab("conversations")}
+        >
+          <Text style={[styles.tabSwitcherText, activeTab === "conversations" && styles.activeTabSwitcherText]}>
+            Conversations
+          </Text>
+          {conversations.filter((c) => c.unread).length > 0 && (
+            <View style={styles.tabBadge}>
+              <Text style={styles.tabBadgeText}>{conversations.filter((c) => c.unread).length}</Text>
             </View>
-            <View style={styles.messageContent}>
-              <View style={styles.messageHeader}>
-                <Text style={styles.senderName}>{message.sender}</Text>
-                <Text style={styles.timestamp}>{message.timestamp}</Text>
-              </View>
-              <Text style={styles.messagePreview} numberOfLines={1}>
-                {message.preview}
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabSwitcherButton, activeTab === "users" && styles.activeTabSwitcher]}
+          onPress={() => setActiveTab("users")}
+        >
+          <Text style={[styles.tabSwitcherText, activeTab === "users" && styles.activeTabSwitcherText]}>All Users</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Role Filter for Users Tab */}
+      {activeTab === "users" && (
+        <View style={styles.filterContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "" && styles.activeFilterChipText]}>All</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "vet" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("vet")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "vet" && styles.activeFilterChipText]}>Vets</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "kutsero" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("kutsero")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "kutsero" && styles.activeFilterChipText]}>
+                Kutsero
               </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "horse_operator" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("horse_operator")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "horse_operator" && styles.activeFilterChipText]}>
+                Operators
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Content */}
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={["#C17A47"]} />}
+      >
+        {activeTab === "conversations" ? (
+          // Conversations Tab
+          filteredConversations.length > 0 ? (
+            filteredConversations.map((message) => (
+              <TouchableOpacity
+                key={message.id}
+                style={styles.messageItem}
+                onPress={() => openChat(message)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.messageLeft}>
+                  <View style={styles.avatarContainer}>
+                    <Text style={styles.avatarText}>{message.avatar}</Text>
+                  </View>
+                </View>
+                <View style={styles.messageContent}>
+                  <View style={styles.messageHeader}>
+                    <Text style={styles.senderName}>{message.sender}</Text>
+                    <Text style={styles.timestamp}>
+                      {message.timestamp ||
+                        (message.last_message_time
+                          ? new Date(message.last_message_time).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "")}
+                    </Text>
+                  </View>
+                  <Text style={styles.messagePreview} numberOfLines={1}>
+                    {message.preview || message.last_message || ""}
+                  </Text>
+                  {message.role && <Text style={styles.roleText}>{message.role.replace("_", " ")}</Text>}
+                </View>
+                {(message.unread || !message.is_read) && (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>{message.unread_count || 1}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>No conversations yet</Text>
+              <Text style={styles.emptyStateSubtext}>Start a conversation from the Users tab</Text>
             </View>
-            {message.unread && <View style={styles.unreadDot} />}
-          </TouchableOpacity>
-        ))}
+          )
+        ) : // Users Tab
+        availableUsers.length > 0 ? (
+          availableUsers.map((user) => (
+            <TouchableOpacity key={user.id} style={styles.userItem} onPress={() => openChat(user)} activeOpacity={0.7}>
+              <View style={styles.messageLeft}>
+                <View style={styles.avatarContainer}>
+                  <Text style={styles.avatarText}>{user.avatar}</Text>
+                </View>
+              </View>
+              <View style={styles.messageContent}>
+                <Text style={styles.senderName}>{user.name}</Text>
+                <Text style={styles.userEmail}>{user.email}</Text>
+                <View style={styles.userInfoRow}>
+                  <Text style={styles.roleText}>{user.role.replace("_", " ")}</Text>
+                  {user.status === "approved" && (
+                    <View style={styles.approvedBadge}>
+                      <Text style={styles.approvedBadgeText}>✓ Verified</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+              <View style={styles.chatIconContainer}>
+                <Text style={styles.chatIcon}>Chat</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>No users found</Text>
+            <Text style={styles.emptyStateSubtext}>Try adjusting your search or filter</Text>
+          </View>
+        )}
       </ScrollView>
 
       {/* Floating AI Assistant Circle */}
@@ -734,7 +1004,7 @@ export default function MessagesScreen() {
         </View>
       </TouchableOpacity>
 
-      {/* Bottom Tab Navigation - Updated order: History before Profile */}
+      {/* Bottom Tab Navigation */}
       <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
         <TabButton iconSource={null} label="Home" tabKey="home" isActive={false} />
         <TabButton
@@ -787,7 +1057,7 @@ const styles = StyleSheet.create({
     minHeight: verticalScale(50),
   },
   headerLeft: {
-    width: scale(60), // Same width as headerRight for balance
+    width: scale(60),
   },
   backButton: {
     width: scale(32),
@@ -806,17 +1076,17 @@ const styles = StyleSheet.create({
   headerCenter: {
     flex: 1,
     alignItems: "center",
-    justifyContent: "center", // Added for better centering
+    justifyContent: "center",
   },
   headerTitle: {
     fontSize: moderateScale(16),
     fontWeight: "600",
     color: "white",
-    textAlign: "center", // Ensure text is centered
+    textAlign: "center",
   },
   headerRight: {
     alignItems: "flex-end",
-    width: scale(60), // Fixed width for consistent layout
+    width: scale(60),
     justifyContent: "center",
   },
   userName: {
@@ -845,6 +1115,99 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "500",
   },
+  searchContainer: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(16),
+    paddingBottom: verticalScale(12),
+  },
+  searchWrapper: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    borderRadius: scale(20),
+    paddingHorizontal: scale(12),
+    height: verticalScale(40),
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: moderateScale(14),
+    color: "#333",
+  },
+  clearButton: {
+    padding: scale(4),
+  },
+  clearButtonText: {
+    fontSize: moderateScale(16),
+    color: "#999",
+  },
+  tabSwitcher: {
+    flexDirection: "row",
+    backgroundColor: "white",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
+  tabSwitcherButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: verticalScale(12),
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  activeTabSwitcher: {
+    borderBottomColor: "#C17A47",
+  },
+  tabSwitcherText: {
+    fontSize: moderateScale(14),
+    fontWeight: "500",
+    color: "#666",
+  },
+  activeTabSwitcherText: {
+    color: "#C17A47",
+    fontWeight: "600",
+  },
+  tabBadge: {
+    backgroundColor: "#FF5252",
+    borderRadius: scale(10),
+    paddingHorizontal: scale(6),
+    paddingVertical: scale(2),
+    marginLeft: scale(6),
+    minWidth: scale(20),
+    alignItems: "center",
+  },
+  tabBadgeText: {
+    color: "white",
+    fontSize: moderateScale(10),
+    fontWeight: "bold",
+  },
+  filterContainer: {
+    backgroundColor: "white",
+    paddingVertical: verticalScale(8),
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
+  filterScroll: {
+    paddingHorizontal: scale(16),
+  },
+  filterChip: {
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(20),
+    backgroundColor: "#F0F0F0",
+    marginRight: scale(8),
+  },
+  activeFilterChip: {
+    backgroundColor: "#C17A47",
+  },
+  filterChipText: {
+    fontSize: moderateScale(12),
+    fontWeight: "500",
+    color: "#666",
+  },
+  activeFilterChipText: {
+    color: "white",
+  },
   content: {
     flex: 1,
     backgroundColor: "white",
@@ -853,24 +1216,31 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(10),
+    paddingVertical: verticalScale(12),
     borderBottomWidth: 1,
     borderBottomColor: "#F0F0F0",
-    minHeight: verticalScale(60),
+  },
+  userItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
   },
   messageLeft: {
-    marginRight: scale(10),
+    marginRight: scale(12),
   },
   avatarContainer: {
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(20),
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(24),
     backgroundColor: "#F0F0F0",
     justifyContent: "center",
     alignItems: "center",
   },
   avatarText: {
-    fontSize: moderateScale(16),
+    fontSize: moderateScale(20),
   },
   messageContent: {
     flex: 1,
@@ -879,30 +1249,90 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: verticalScale(2),
+    marginBottom: verticalScale(4),
   },
   senderName: {
-    fontSize: moderateScale(14),
+    fontSize: moderateScale(15),
     fontWeight: "600",
     color: "#333",
   },
   timestamp: {
-    fontSize: moderateScale(10),
-    color: "#666",
+    fontSize: moderateScale(11),
+    color: "#999",
   },
   messagePreview: {
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(13),
     color: "#666",
-    lineHeight: moderateScale(16),
+    lineHeight: moderateScale(18),
   },
-  unreadDot: {
-    width: scale(6),
-    height: scale(6),
-    borderRadius: scale(3),
+  roleText: {
+    fontSize: moderateScale(11),
+    color: "#999",
+    textTransform: "capitalize",
+    marginTop: verticalScale(2),
+  },
+  userEmail: {
+    fontSize: moderateScale(12),
+    color: "#999",
+    marginTop: verticalScale(2),
+  },
+  userInfoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: verticalScale(4),
+  },
+  approvedBadge: {
+    backgroundColor: "#4CAF50",
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(2),
+    borderRadius: scale(10),
+    marginLeft: scale(8),
+  },
+  approvedBadgeText: {
+    color: "white",
+    fontSize: moderateScale(10),
+    fontWeight: "500",
+  },
+  unreadBadge: {
     backgroundColor: "#C17A47",
-    marginLeft: scale(6),
+    borderRadius: scale(12),
+    width: scale(24),
+    height: scale(24),
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: scale(8),
   },
-  // AI Chat Styles
+  unreadBadgeText: {
+    color: "white",
+    fontSize: moderateScale(11),
+    fontWeight: "bold",
+  },
+  chatIconContainer: {
+    marginLeft: scale(8),
+  },
+  chatIcon: {
+    fontSize: moderateScale(12),
+    color: "#C17A47",
+    fontWeight: "500",
+  },
+  emptyState: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: verticalScale(60),
+    paddingHorizontal: scale(40),
+  },
+  emptyStateText: {
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(8),
+    textAlign: "center",
+  },
+  emptyStateSubtext: {
+    fontSize: moderateScale(13),
+    color: "#999",
+    textAlign: "center",
+  },
   chatContainer: {
     flex: 1,
     backgroundColor: "#F8F9FA",
@@ -934,10 +1364,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderBottomLeftRadius: scale(4),
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
@@ -973,10 +1400,7 @@ const styles = StyleSheet.create({
     borderTopColor: "#E0E0E0",
     alignItems: "flex-end",
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: -2,
-    },
+    shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.05,
     shadowRadius: 3,
     elevation: 5,
@@ -1007,10 +1431,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     minHeight: verticalScale(44),
     shadowColor: "#C17A47",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 3,
     elevation: 3,
@@ -1020,34 +1441,29 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     fontWeight: "600",
   },
-  // Floating AI Assistant Styles
   floatingAI: {
     position: "absolute",
     right: scale(16),
     zIndex: 1000,
   },
   aiCircle: {
-    width: scale(50),
-    height: scale(50),
-    borderRadius: scale(25),
+    width: scale(56),
+    height: scale(56),
+    borderRadius: scale(28),
     backgroundColor: "#4A90E2",
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 6,
   },
   aiText: {
     color: "white",
-    fontSize: moderateScale(14),
+    fontSize: moderateScale(16),
     fontWeight: "bold",
   },
-  // Tab Bar Styles
   tabBar: {
     flexDirection: "row",
     backgroundColor: "white",
@@ -1095,7 +1511,6 @@ const styles = StyleSheet.create({
     color: "#C17A47",
     fontWeight: "600",
   },
-  // Icon container for custom icons
   iconContainer: {
     width: scale(14),
     height: scale(14),
@@ -1103,7 +1518,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     position: "relative",
   },
-  // Dashboard/Home Icon Styles
   dashboardGrid: {
     width: scale(14),
     height: scale(14),
@@ -1130,7 +1544,6 @@ const styles = StyleSheet.create({
     bottom: 0,
     right: 0,
   },
-  // Profile Icon Styles
   profileContainer: {
     width: scale(14),
     height: scale(14),

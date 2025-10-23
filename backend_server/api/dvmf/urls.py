@@ -64,12 +64,32 @@ urlpatterns = [
         views.decline_access_request,
         name="decline-access-request",
     ),
-
+    
+    path("mark_notification_read/<str:notif_id>/", views.mark_notification_read, name="mark_notification_read"),
+    path("mark_all_notifications_read/", views.mark_all_notifications_read, name="mark_all_notifications_read"),
      path("edit_post/<uuid:post_id>/", views.edit_post, name="edit_post"),
     path("get_horse_statistics/", views.get_horse_statistics, name="get_horse_statistics"),
     path("add_comment/", views.add_comment, name="add_comment"),  # POST
     path("get_comments/", views.get_comments, name="get_comments"),
     path("add_reply/", views.add_reply, name="add_reply"),  # POST
+    path("edit_reply/<uuid:reply_id>/", views.edit_reply, name="edit_reply"),
+    path("edit_comment/<uuid:comment_id>/", views.edit_comment, name="edit_comment"),
+    path("get_current_user/", views.get_current_user, name="get_current_user"),
+
+
+
+    # -------------------- Messaging --------------------
+     path("dvmf_user_profile/", views.dvmf_user_profile, name="dvmf_user_profile"),
+    path('mark_messages_as_read/<uuid:conversation_id>/', views.mark_messages_as_read, name='mark_messages_as_read'),
+    path("send_message/", views.send_message, name="send_message"),
+    path("get_conversation/<uuid:conversation_id>/", views.get_conversation, name="get_conversation"),
+    path("get_conversations/", views.get_conversations, name="get_conversations"),
+    path("get_all_users/", views.get_all_users, name="get_all_users"),
+    
+    
+
+
+    
 
     
       

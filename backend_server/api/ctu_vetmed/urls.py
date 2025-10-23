@@ -78,6 +78,18 @@ urlpatterns = [
 
     path("mark_notification_read/<str:notif_id>/", views.mark_notification_read, name="mark_notification_read"),
     path("mark_all_notifications_read/", views.mark_all_notifications_read, name="mark_all_notifications_read"),
+      path("edit_reply/<uuid:reply_id>/", views.edit_reply, name="edit_reply"),
+    path("edit_comment/<uuid:comment_id>/", views.edit_comment, name="edit_comment"),
+     path("get_current_user/", views.get_current_user, name="get_current_user"),
+
+     # -------------------- Messaging --------------------
+    path("ctu_vet_profile/", views.ctu_vet_profile, name="ctu_vet_profile"),
+    path('mark_messages_as_read/<uuid:conversation_id>/', views.mark_messages_as_read, name='mark_messages_as_read'),
+    path("send_message/", views.send_message, name="send_message"),
+    path("get_conversation/<uuid:conversation_id>/", views.get_conversation, name="get_conversation"),
+    path("get_conversations/", views.get_conversations, name="get_conversations"),
+    path("get_all_users/", views.get_all_users, name="get_all_users"),
+    
     
 
 

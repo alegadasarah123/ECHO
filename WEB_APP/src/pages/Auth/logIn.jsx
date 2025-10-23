@@ -200,7 +200,7 @@ function LogIn({ onBack }) {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:8000/api/login/", { 
+      const response = await fetch("https://echo-ebl8.onrender.com/api/login/", { 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -220,7 +220,7 @@ function LogIn({ onBack }) {
             if (supabaseError.includes("invalid login credentials")) {
               // Check if email exists by making a separate call
               try {
-                const checkEmailResponse = await fetch(`http://localhost:8000/api/check-email/?email=${encodeURIComponent(email)}`);
+                const checkEmailResponse = await fetch(`https://echo-ebl8.onrender.com/api/check-email/?email=${encodeURIComponent(email)}`);
                 if (checkEmailResponse.ok) {
                   const emailData = await checkEmailResponse.json();
                   if (emailData.exists) {

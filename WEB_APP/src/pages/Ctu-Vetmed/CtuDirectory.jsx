@@ -33,7 +33,7 @@ import NotificationModal from "./CtuNotif"
 const initialDirectoryData = []
 const initialNotifications = []
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
 
 function CtuDirectory() {
   const navigate = useNavigate()
@@ -110,53 +110,63 @@ function CtuDirectory() {
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
   const handleNotificationClick = async (notification) => {
-    // Mark notification as read in frontend
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === notification.id ? { ...notif, read: true } : notif
-      )
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev =>
+    prev.map(notif =>
+      notif.id === notification.id ? { ...notif, read: true } : notif
     )
+  );
 
-    // Mark notification as read in backend
-    try {
-      const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-        method: "POST",
-        credentials: "include",
-      })
-      const data = await res.json()
-      console.log("Mark notification read result:", data)
-    } catch (err) {
-      console.error("Error marking notification as read:", err)
-    }
-
-    // Handle navigation based on notification content
-    console.log('Notification clicked:', notification)
-    const message = notification.message.toLowerCase()
-
-    if (
-      message.includes("new registration") ||
-      message.includes("approved") ||
-      message.includes("declined")
-    ) {
-      navigate("/CtuAccountApproval", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      })
-    } else if (message.includes("pending medical record access")) {
-      navigate("/CtuAccessRequest", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      })
-    } else if (message.includes("emergency") || message.includes("sos")) {
-      navigate("/CtuSOS")
-    } else {
-      console.warn("No matching navigation route for this notification:", notification)
-    }
+  // Mark notification as read in backend
+  try {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
   }
+
+  // Handle navigation based on notification content
+  const message = notification.message.toLowerCase();
+
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    navigate("/CtuAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    navigate("/CtuAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
+    navigate("/CtuAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+};
 
   // HANDLE OPENING USER MANAGEMENT FROM NOTIFICATIONS
   const handleOpenUserManagement = async (notification = null) => {
@@ -216,7 +226,7 @@ function CtuDirectory() {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_vetnotifications/")
+    fetch("https://echo-ebl8.onrender.comm/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -340,7 +350,7 @@ function CtuDirectory() {
   const handleView = async (person) => {
     try {
       // Optional: fetch full data from API if not already complete
-      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -380,7 +390,7 @@ function CtuDirectory() {
   const loadDirectoryData = async () => {
     try {
       setLoading(true)
-      const response = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -514,14 +524,12 @@ function CtuDirectory() {
     )
   }
 
-  // Function to get initials from first and last name
-// Function to get initials from first and last name
+ // Function to get initials from first and last name - FIXED SIZE
 const getInitials = (firstName, lastName) => {
   const firstInitial = firstName ? firstName.charAt(0).toUpperCase() : '';
   const lastInitial = lastName ? lastName.charAt(0).toUpperCase() : '';
   return firstInitial + lastInitial;
 };
-
 // Function to generate consistent background color based on initials
 const getInitialsBackgroundColor = (initials) => {
   const colors = [
@@ -766,16 +774,16 @@ const getInitialsBackgroundColor = (initials) => {
       />
       {/* Fallback to initials with colored background when image fails to load */}
       <div className={`hidden w-full h-full items-center justify-center ${initialsBackgroundColor} rounded-xl`}>
-        <span className="text-sm font-semibold text-white">
+        <span className="text-3xl font-bold text-white">
           {initials}
         </span>
       </div>
     </div>
   ) : (
-    // Show initials with colored background when no profile photo - SAME DESIGN AS WITH PHOTO
+    // Show initials with colored background when no profile photo - EXTRA LARGE SIZE
     <div className="w-24 h-24 md:w-32 md:h-32 rounded-xl flex items-center justify-center overflow-hidden border-2 border-white shadow-md -mt-5">
       <div className={`w-full h-full items-center justify-center ${initialsBackgroundColor} rounded-xl flex`}>
-        <span className="text-sm font-semibold text-white">
+        <span className="text-3xl font-bold text-white">
           {initials}
         </span>
       </div>

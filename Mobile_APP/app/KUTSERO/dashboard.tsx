@@ -1,7 +1,7 @@
-"use client"
+("use client")
 
 import { useFocusEffect, useRouter } from "expo-router"
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useState, useRef } from "react"
 import {
   Alert,
   Dimensions,
@@ -18,10 +18,12 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Platform,
+  FlatList,
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
 import NotificationsPage from "./notifications"
 import SOSEmergencyScreen from "./sos"
+import AsyncStorage from "@react-native-async-storage/async-storage"
 
 const { width, height } = Dimensions.get("window")
 
@@ -67,6 +69,12 @@ interface Comment {
   kutsero_lname?: string
   kutsero_username?: string
   user_email?: string
+  parent_comment_id?: string
+  reply_count?: number
+}
+
+interface Reply extends Comment {
+  parent_comment_id: string
 }
 
 interface Horse {
@@ -113,9 +121,108 @@ interface Announcement {
   comment_count?: number
   user_name?: string
   image_url?: string
+  image_urls?: string[]
+}
+
+interface SearchUserProfile {
+  id: string
+  name?: string
+  email: string
+  role?: string
+  user_type?: string
+  status?: string
+  user_status?: string
+  avatar?: string
+  profile_image?: string
+  phone?: string
+  created_at?: string
+  profile?: {
+    kutsero_id?: string
+    kutsero_fname?: string
+    kutsero_lname?: string
+    kutsero_username?: string
+    kutsero_email?: string
+    operator_id?: string
+    operator_fname?: string
+    operator_lname?: string
+    operator_username?: string
+    operator_email?: string
+  }
 }
 
 const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
+
+// Image Carousel Component
+const ImageCarousel = ({ images }: { images: string[] }) => {
+  const [currentIndex, setCurrentIndex] = useState(0)
+  const flatListRef = useRef<FlatList>(null)
+
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
+
+  const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
+    if (viewableItems.length > 0) {
+      setCurrentIndex(viewableItems[0].index || 0)
+    }
+  }).current
+
+  const viewabilityConfig = useRef({
+    itemVisiblePercentThreshold: 50,
+  }).current
+
+  return (
+    <View style={styles.carouselContainer}>
+      <FlatList
+        ref={flatListRef}
+        data={images}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        keyExtractor={(item, index) => `image-${index}`}
+        onViewableItemsChanged={onViewableItemsChanged}
+        viewabilityConfig={viewabilityConfig}
+        renderItem={({ item }) => (
+          <TouchableOpacity
+            style={styles.carouselImageContainer}
+            onPress={() => setFullScreenImage(item)}
+            activeOpacity={0.9}
+          >
+            <Image source={{ uri: item }} style={styles.carouselImage} resizeMode="cover" />
+          </TouchableOpacity>
+        )}
+      />
+      {images.length > 1 && (
+        <View style={styles.paginationContainer}>
+          {images.map((_, index) => (
+            <View key={index} style={[styles.paginationDot, currentIndex === index && styles.paginationDotActive]} />
+          ))}
+        </View>
+      )}
+      {images.length > 1 && (
+        <View style={styles.imageCounter}>
+          <Text style={styles.imageCounterText}>
+            {currentIndex + 1} / {images.length}
+          </Text>
+        </View>
+      )}
+
+      <Modal
+        visible={fullScreenImage !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setFullScreenImage(null)}
+      >
+        <View style={styles.fullScreenContainer}>
+          <TouchableOpacity style={styles.fullScreenCloseButton} onPress={() => setFullScreenImage(null)}>
+            <Text style={styles.fullScreenCloseText}>✕</Text>
+          </TouchableOpacity>
+          {fullScreenImage && (
+            <Image source={{ uri: fullScreenImage }} style={styles.fullScreenImage} resizeMode="contain" />
+          )}
+        </View>
+      </Modal>
+    </View>
+  )
+}
 
 export default function DashboardScreen() {
   const router = useRouter()
@@ -132,6 +239,24 @@ export default function DashboardScreen() {
   const [isLoadingAnnouncements, setIsLoadingAnnouncements] = useState(false)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [expandedAnnouncements, setExpandedAnnouncements] = useState<Set<string>>(new Set())
+  const [lastViewedAnnouncementTime, setLastViewedAnnouncementTime] = useState<string | null>(null)
+
+  // Reply-related state
+  const [replies, setReplies] = useState<{ [key: string]: Reply[] }>({})
+  const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set())
+  const [replyingTo, setReplyingTo] = useState<string | null>(null)
+  const [replyText, setReplyText] = useState("")
+  const [isLoadingReplies, setIsLoadingReplies] = useState<{ [key: string]: boolean }>({})
+
+  // Search dropdown state
+  const [searchResults, setSearchResults] = useState<SearchUserProfile[]>([])
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false)
+  const [isSearching, setIsSearching] = useState(false)
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Check-in/out state
+  const [isCheckedIn, setIsCheckedIn] = useState(false)
+  const [checkInTime, setCheckInTime] = useState<string | null>(null)
 
   const defaultHorse: Horse = {
     id: "default",
@@ -147,22 +272,21 @@ export default function DashboardScreen() {
   }
 
   const [selectedHorse, setSelectedHorse] = useState<Horse>(defaultHorse)
-  const [isCheckedIn, setIsCheckedIn] = useState(false)
-  const [checkInTime, setCheckInTime] = useState<string | null>(null)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showSOSEmergency, setShowSOSEmergency] = useState(false)
   const safeArea = getSafeAreaPadding()
   const [comments, setComments] = useState<{ [key: string]: Comment[] }>({})
   const [isLoadingComments, setIsLoadingComments] = useState(false)
   const [isPostingComment, setIsPostingComment] = useState(false)
+  const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
 
   useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener('keyboardDidShow', (e) => {
+    const keyboardDidShowListener = Keyboard.addListener("keyboardDidShow", (e) => {
       setKeyboardHeight(e.endCoordinates.height)
       setIsKeyboardVisible(true)
     })
-    
-    const keyboardDidHideListener = Keyboard.addListener('keyboardDidHide', () => {
+
+    const keyboardDidHideListener = Keyboard.addListener("keyboardDidHide", () => {
       setKeyboardHeight(0)
       setIsKeyboardVisible(false)
     })
@@ -175,14 +299,14 @@ export default function DashboardScreen() {
 
   const getModalHeight = () => {
     if (isKeyboardVisible) {
-      return height - keyboardHeight - (Platform.OS === 'ios' ? 50 : 20)
+      return height - keyboardHeight - (Platform.OS === "ios" ? 50 : 20)
     }
     return height * 0.8
   }
 
   const getModalMarginTop = () => {
     if (isKeyboardVisible) {
-      return Platform.OS === 'ios' ? 50 : 20
+      return Platform.OS === "ios" ? 50 : 20
     }
     return height * 0.2
   }
@@ -196,6 +320,137 @@ export default function DashboardScreen() {
     }
   }
 
+  const parseImageUrls = (imageData: any): string[] => {
+    if (!imageData) return []
+
+    try {
+      if (Array.isArray(imageData)) {
+        return imageData.filter((url) => url && typeof url === "string")
+      }
+
+      if (typeof imageData === "string") {
+        if (imageData.startsWith("[")) {
+          const parsed = JSON.parse(imageData)
+          if (Array.isArray(parsed)) {
+            return parsed.filter((url) => url && typeof url === "string")
+          }
+        }
+        return [imageData]
+      }
+
+      return []
+    } catch (error) {
+      console.error("Error parsing image URLs:", error)
+      return []
+    }
+  }
+
+  const getUserDisplayInfo = (user: SearchUserProfile) => {
+    let displayName = "Unknown User"
+    let email = user.email || ""
+    const userType = user.user_type || user.role || "user"
+
+    // Check if API returned flat structure with 'name' field
+    if (user.name) {
+      displayName = user.name
+      email = user.email || ""
+    } else if (user.profile) {
+      // Fallback to nested profile structure
+      if (user.user_type === "kutsero" || user.profile.kutsero_id) {
+        displayName =
+          user.profile.kutsero_fname && user.profile.kutsero_lname
+            ? `${user.profile.kutsero_fname} ${user.profile.kutsero_lname}`
+            : user.profile.kutsero_username || user.email.split("@")[0]
+        email = user.profile.kutsero_email || user.email
+      } else if (user.user_type === "operator" || user.profile.operator_id) {
+        displayName =
+          user.profile.operator_fname && user.profile.operator_lname
+            ? `${user.profile.operator_fname} ${user.profile.operator_lname}`
+            : user.profile.operator_username || user.email.split("@")[0]
+        email = user.profile.operator_email || user.email
+      }
+    } else {
+      displayName = user.email.split("@")[0]
+    }
+
+    return { displayName, email, userType }
+  }
+
+  // Search users function
+  const searchUsers = async (query: string) => {
+    if (!query.trim() || query.trim().length < 2) {
+      setSearchResults([])
+      setShowSearchDropdown(false)
+      return
+    }
+
+    setIsSearching(true)
+    try {
+      const response = await fetch(`${API_BASE_URL}/search_all_users/?query=${encodeURIComponent(query)}&limit=5`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userData?.access_token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("[v0] Search API response:", JSON.stringify(data, null, 2))
+        console.log("[v0] Users array:", data.users)
+        console.log("[v0] Users length:", data.users?.length)
+
+        setSearchResults(data.users || [])
+        setShowSearchDropdown(data.users && data.users.length > 0)
+
+        console.log("[v0] Search results set:", data.users?.length || 0)
+        console.log("[v0] Show dropdown:", data.users && data.users.length > 0)
+      } else if (response.status === 401) {
+        // Token expired, reload user data
+        await loadUserData()
+        setSearchResults([])
+        setShowSearchDropdown(false)
+      } else {
+        console.error("Failed to search users:", response.status)
+        setSearchResults([])
+        setShowSearchDropdown(false)
+      }
+    } catch (error) {
+      console.error("Error searching users:", error)
+      setSearchResults([])
+      setShowSearchDropdown(false)
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  // Debounce search effect
+  useEffect(() => {
+    if (searchTimeout.current) {
+      clearTimeout(searchTimeout.current)
+    }
+
+    if (searchText.trim().length === 0) {
+      setSearchResults([])
+      setShowSearchDropdown(false)
+      return
+    }
+
+    if (searchText.trim().length < 2) {
+      return
+    }
+
+    searchTimeout.current = setTimeout(() => {
+      searchUsers(searchText)
+    }, 300)
+
+    return () => {
+      if (searchTimeout.current) {
+        clearTimeout(searchTimeout.current)
+      }
+    }
+  }, [searchText, userData?.access_token])
+
   const fetchAnnouncements = async () => {
     try {
       setIsLoadingAnnouncements(true)
@@ -208,19 +463,23 @@ export default function DashboardScreen() {
 
       if (response.ok) {
         const data = await response.json()
-        
-        // DEBUG LOGS
-        console.log("=== ANNOUNCEMENT DEBUG ===")
-        console.log("Total announcements:", data.announcements?.length || 0)
-        data.announcements?.forEach((ann: Announcement) => {
-          console.log(`Announcement ${ann.id}:`)
-          console.log("  - Title:", ann.announce_title)
-          console.log("  - Has image_url:", !!ann.image_url)
-          console.log("  - Image URL:", ann.image_url)
-        })
-        console.log("========================")
-        
-        setAnnouncements(data.announcements || [])
+
+        const processedAnnouncements =
+          data.announcements?.map((ann: any) => {
+            const imageUrls = parseImageUrls(ann.image_url)
+
+            return {
+              ...ann,
+              image_urls: imageUrls,
+              image_url: imageUrls.length > 0 ? imageUrls[0] : null,
+            }
+          }) || []
+
+        setAnnouncements(processedAnnouncements)
+        if (lastViewedAnnouncementTime === null) {
+          const lastViewed = await AsyncStorage.getItem("lastViewedAnnouncementTime")
+          setLastViewedAnnouncementTime(lastViewed)
+        }
       } else {
         console.error("Failed to fetch announcements:", response.status)
         setAnnouncements([])
@@ -318,13 +577,11 @@ export default function DashboardScreen() {
 
         let displayName = "User"
         if (parsedUserData.profile) {
-          const { kutsero_fname, kutsero_lname, kutsero_username } = parsedUserData.profile
-          if (kutsero_fname && kutsero_lname) {
-            displayName = `${kutsero_fname} ${kutsero_lname}`
+          const { kutsero_fname, kutsero_username } = parsedUserData.profile
+          if (kutsero_fname) {
+            displayName = kutsero_fname
           } else if (kutsero_username) {
             displayName = kutsero_username
-          } else if (kutsero_fname) {
-            displayName = kutsero_fname
           }
         } else if (parsedUserData.email) {
           displayName = parsedUserData.email.split("@")[0]
@@ -333,6 +590,14 @@ export default function DashboardScreen() {
         setCurrentUser(displayName)
         const kutserroId = parsedUserData.profile?.kutsero_id || parsedUserData.id
         await loadCurrentAssignment(kutserroId)
+
+        // Load check-in status when user data is loaded
+        const checkInData = await SecureStore.getItemAsync("checkInData")
+        if (checkInData) {
+          const data = JSON.parse(checkInData)
+          setIsCheckedIn(true)
+          setCheckInTime(data.checkInTime)
+        }
       } else {
         Alert.alert("Session Expired", "Please log in again to continue.", [
           { text: "OK", onPress: () => router.replace("../../pages/auth/login") },
@@ -371,6 +636,50 @@ export default function DashboardScreen() {
     ])
   }
 
+  const handleSearchSubmit = () => {
+    if (searchText.trim()) {
+      setShowSearchDropdown(false)
+      // Navigate to user search with the query
+      router.push({
+        pathname: "./usersearch",
+        params: {
+          query: searchText.trim(),
+        },
+      })
+    }
+  }
+
+  const navigateToUserProfile = (userId: string, userData?: SearchUserProfile) => {
+    console.log("Navigating to user profile:", userId)
+    // Clear search state
+    setShowSearchDropdown(false)
+    setSearchText("")
+
+    // Pass user data if available
+    if (userData) {
+      router.push({
+        pathname: "./userprofile",
+        params: {
+          userId: userId,
+          userData: JSON.stringify(userData), // Pass the user data
+        },
+      })
+    } else {
+      router.push(`./userprofile?userId=${userId}`)
+    }
+  }
+
+  useEffect(() => {
+    // Close dropdown when clicking outside (handled by Keyboard dismiss)
+    const keyboardHide = Keyboard.addListener("keyboardDidHide", () => {
+      setShowSearchDropdown(false)
+    })
+
+    return () => {
+      keyboardHide.remove()
+    }
+  }, [])
+
   const fetchComments = async (announcementId: string) => {
     setIsLoadingComments(true)
     try {
@@ -385,12 +694,51 @@ export default function DashboardScreen() {
       if (response.ok) {
         const data = await response.json()
         setComments((prev) => ({ ...prev, [announcementId]: data.comments || [] }))
+      } else {
+        console.error("[ERROR] Failed to fetch comments:", response.status)
       }
     } catch (error) {
-      console.error("Error fetching comments:", error)
+      console.error("[ERROR] Error fetching comments:", error)
     } finally {
       setIsLoadingComments(false)
     }
+  }
+
+  const fetchReplies = async (commentId: string) => {
+    setIsLoadingReplies((prev) => ({ ...prev, [commentId]: true }))
+    try {
+      const response = await fetch(`${API_BASE_URL}/comments/${commentId}/replies/`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${userData?.access_token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setReplies((prev) => ({ ...prev, [commentId]: data.replies || [] }))
+      } else {
+        console.error("[ERROR] Failed to fetch replies:", response.status)
+      }
+    } catch (error) {
+      console.error("[ERROR] Error fetching replies:", error)
+    } finally {
+      setIsLoadingReplies((prev) => ({ ...prev, [commentId]: false }))
+    }
+  }
+
+  const toggleReplies = (commentId: string) => {
+    const newExpanded = new Set(expandedReplies)
+    if (newExpanded.has(commentId)) {
+      newExpanded.delete(commentId)
+    } else {
+      newExpanded.add(commentId)
+      if (!replies[commentId]) {
+        fetchReplies(commentId)
+      }
+    }
+    setExpandedReplies(newExpanded)
   }
 
   const handleComment = (announcementId: string) => {
@@ -400,11 +748,13 @@ export default function DashboardScreen() {
     }
     setSelectedAnnouncementId(announcementId)
     setShowCommentModal(true)
+    setReplyingTo(null)
+    setReplyText("")
     fetchComments(announcementId)
   }
 
   const submitComment = async () => {
-    if (!newComment.trim()) {
+    if (!newComment.trim() && !replyText.trim()) {
       Alert.alert("Error", "Please enter a comment before posting.")
       return
     }
@@ -416,33 +766,58 @@ export default function DashboardScreen() {
 
     setIsPostingComment(true)
     try {
+      const commentBody: any = {
+        comment_text: replyingTo ? replyText.trim() : newComment.trim(),
+        kutsero_id: userData.profile.kutsero_id,
+      }
+
+      if (replyingTo) {
+        commentBody.parent_comment_id = replyingTo
+      }
+
       const response = await fetch(`${API_BASE_URL}/announcements/${selectedAnnouncementId}/comments/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${userData.access_token}`,
         },
-        body: JSON.stringify({
-          comment_text: newComment.trim(),
-          kutsero_id: userData.profile.kutsero_id,
-        }),
+        body: JSON.stringify(commentBody),
       })
 
       if (response.ok) {
         const data = await response.json()
-        setComments((prev) => ({
-          ...prev,
-          [selectedAnnouncementId]: [data.comment, ...(prev[selectedAnnouncementId] || [])],
-        }))
-        setNewComment("")
-        setShowCommentModal(false)
-        setSelectedAnnouncementId(null)
-        Alert.alert("Success", "Your comment has been posted!")
+
+        if (replyingTo) {
+          setReplies((prev) => ({
+            ...prev,
+            [replyingTo]: [data.comment, ...(prev[replyingTo] || [])],
+          }))
+          setComments((prev) => ({
+            ...prev,
+            [selectedAnnouncementId]: prev[selectedAnnouncementId].map((comment) =>
+              comment.id === replyingTo ? { ...comment, reply_count: (comment.reply_count || 0) + 1 } : comment,
+            ),
+          }))
+          setReplyText("")
+          setReplyingTo(null)
+          Alert.alert("Success", "Your reply has been posted!")
+        } else {
+          setComments((prev) => ({
+            ...prev,
+            [selectedAnnouncementId]: [data.comment, ...(prev[selectedAnnouncementId] || [])],
+          }))
+          setNewComment("")
+          Alert.alert("Success", "Your comment has been posted!")
+        }
+
         fetchAnnouncements()
       } else {
+        const errorData = await response.text()
+        console.error("[ERROR] Failed to post:", errorData)
         Alert.alert("Error", "Failed to post comment")
       }
     } catch (error) {
+      console.error("[ERROR] Network error:", error)
       Alert.alert("Error", "Network error. Please check your connection.")
     } finally {
       setIsPostingComment(false)
@@ -451,10 +826,14 @@ export default function DashboardScreen() {
 
   const getHealthStatusColor = (status: Horse["healthStatus"]) => {
     switch (status) {
-      case "Healthy": return "#4CAF50"
-      case "Under Care": return "#FF9800"
-      case "Recovering": return "#2196F3"
-      default: return "#666"
+      case "Healthy":
+        return "#4CAF50"
+      case "Under Care":
+        return "#FF9800"
+      case "Recovering":
+        return "#2196F3"
+      default:
+        return "#666"
     }
   }
 
@@ -466,12 +845,15 @@ export default function DashboardScreen() {
 
     try {
       const currentTime = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      await SecureStore.setItemAsync("checkInData", JSON.stringify({
-        horseId: selectedHorse.id,
-        horseName: selectedHorse.name,
-        checkInTime: currentTime,
-        timestamp: Date.now(),
-      }))
+      await SecureStore.setItemAsync(
+        "checkInData",
+        JSON.stringify({
+          horseId: selectedHorse.id,
+          horseName: selectedHorse.name,
+          checkInTime: currentTime,
+          timestamp: Date.now(),
+        }),
+      )
       setIsCheckedIn(true)
       setCheckInTime(currentTime)
       Alert.alert("Success", `Checked in with ${selectedHorse.name} at ${currentTime}`)
@@ -496,13 +878,13 @@ export default function DashboardScreen() {
           text: "Check Out",
           onPress: async () => {
             try {
-              const kutserroId = await SecureStore.getItemAsync("kutseroId")
+              const kutserroId = await SecureStore.getItemAsync("kutseroId") // This might need to be fetched from userData
               const response = await fetch(`${API_BASE_URL}/checkout/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   assignment_id: selectedHorse.currentAssignmentId,
-                  kutsero_id: kutserroId,
+                  kutsero_id: kutserroId, // Ensure kutsero_id is correctly obtained
                 }),
               })
 
@@ -510,12 +892,16 @@ export default function DashboardScreen() {
                 await SecureStore.deleteItemAsync("checkInData")
                 setIsCheckedIn(false)
                 setCheckInTime(null)
-                setSelectedHorse(defaultHorse)
+                // Optionally reset selectedHorse to default or handle as needed
+                // setSelectedHorse(defaultHorse);
                 Alert.alert("Success", `Successfully checked out from ${selectedHorse.name}`)
               } else {
-                Alert.alert("Checkout Failed", "Failed to check out. Please try again.")
+                const errorText = await response.text()
+                console.error("Checkout API error:", errorText)
+                Alert.alert("Checkout Failed", `Failed to check out. Server responded with: ${response.status}`)
               }
             } catch (error) {
+              console.error("Error during checkout:", error)
               Alert.alert("Error", "Failed to check out. Please check your internet connection.")
             }
           },
@@ -530,20 +916,36 @@ export default function DashboardScreen() {
         const checkInData = await SecureStore.getItemAsync("checkInData")
         if (checkInData) {
           const data = JSON.parse(checkInData)
+          // Ensure the check-in data is relevant to the currently selected horse
           if (data.horseId === selectedHorse.id) {
             setIsCheckedIn(true)
             setCheckInTime(data.checkInTime)
+          } else {
+            // If check-in data exists but is for a different horse, clear it
+            await SecureStore.deleteItemAsync("checkInData")
+            setIsCheckedIn(false)
+            setCheckInTime(null)
           }
+        } else {
+          setIsCheckedIn(false)
+          setCheckInTime(null)
         }
       } catch (error) {
         console.log("Error loading check-in status:", error)
+        setIsCheckedIn(false)
+        setCheckInTime(null)
       }
     }
 
+    // Only load status if a horse is selected and not the default
     if (selectedHorse.id !== "default") {
       loadCheckInStatus()
+    } else {
+      // If default horse is selected, ensure check-in state is reset
+      setIsCheckedIn(false)
+      setCheckInTime(null)
     }
-  }, [selectedHorse.id])
+  }, [selectedHorse.id]) // Re-run when selectedHorse changes
 
   const formatDate = (dateString: string) => {
     try {
@@ -634,7 +1036,12 @@ export default function DashboardScreen() {
     </View>
   )
 
-  const unreadNotificationsCount = 2
+  const unreadNotificationsCount = announcements.filter((announcement) => {
+    if (!lastViewedAnnouncementTime) return true // All are new if never viewed
+    const announcementDate = new Date(announcement.announce_date || announcement.created_at || "")
+    const lastViewedDate = new Date(lastViewedAnnouncementTime)
+    return announcementDate > lastViewedDate
+  }).length
 
   if (isLoading) {
     return (
@@ -655,7 +1062,7 @@ export default function DashboardScreen() {
   }
 
   const selectedAnnouncementComments = selectedAnnouncementId ? comments[selectedAnnouncementId] || [] : []
-  const commentCount = selectedAnnouncementComments.length
+  const commentCount = selectedAnnouncementComments.filter((c) => !c.parent_comment_id).length
 
   const toggleAnnouncement = (id: string) => {
     const newExpanded = new Set(expandedAnnouncements)
@@ -681,6 +1088,19 @@ export default function DashboardScreen() {
     }
   }
 
+  // Helper function to get profile picture for announcement
+  const getAnnouncementProfilePicture = (userName: string | undefined) => {
+    if (!userName) return null
+
+    const nameLower = userName.toLowerCase()
+    if (nameLower.includes("ctu") || nameLower.includes("vet")) {
+      return require("../../assets/images/CTU.jpg")
+    } else if (nameLower.includes("dvmf")) {
+      return require("../../assets/images/DVMF.png")
+    }
+    return null
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
@@ -690,13 +1110,20 @@ export default function DashboardScreen() {
           <View style={styles.welcomeSection}>
             <Text style={styles.welcomeText}>Welcome,</Text>
             <Text style={styles.userName}>{currentUser}</Text>
-            {userData?.profile?.kutsero_email && <Text style={styles.userEmail}>{userData.profile.kutsero_email}</Text>}
             {userData?.user_status === "pending" && (
               <Text style={styles.statusText}>Account Status: Pending Approval</Text>
             )}
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.headerButton} onPress={() => setShowNotifications(true)}>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={() => {
+                const now = new Date().toISOString()
+                setLastViewedAnnouncementTime(now)
+                AsyncStorage.setItem("lastViewedAnnouncementTime", now)
+                setShowNotifications(true) // Show notifications modal
+              }}
+            >
               <Image
                 source={require("../../assets/images/notification.png")}
                 style={[styles.headerIconImage, { tintColor: "white" }]}
@@ -717,21 +1144,134 @@ export default function DashboardScreen() {
           </View>
         </View>
 
-        <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            value={searchText}
-            onChangeText={setSearchText}
-            placeholder="Search..."
-            placeholderTextColor="#999"
-          />
-          <TouchableOpacity style={styles.searchButton}>
-            <Image
-              source={require("../../assets/images/search.png")}
-              style={[styles.searchIconImage, { tintColor: "#666" }]}
-              resizeMode="contain"
+        <View style={styles.searchWrapper}>
+          <View style={styles.searchContainer}>
+            <TextInput
+              style={styles.searchInput}
+              value={searchText}
+              onChangeText={setSearchText}
+              placeholder="Search users..."
+              placeholderTextColor="#999"
+              returnKeyType="search"
+              onSubmitEditing={handleSearchSubmit}
+              onFocus={() => {
+                if (searchResults.length > 0) {
+                  setShowSearchDropdown(true)
+                }
+              }}
             />
-          </TouchableOpacity>
+            {isSearching ? (
+              <ActivityIndicator size="small" color="#666" style={styles.searchButton} />
+            ) : searchText.length > 0 ? (
+              <TouchableOpacity
+                style={styles.searchButton}
+                onPress={() => {
+                  setSearchText("")
+                  setSearchResults([])
+                  setShowSearchDropdown(false)
+                }}
+              >
+                <Text style={styles.clearSearchText}>✕</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={styles.searchButton} onPress={handleSearchSubmit}>
+                <Image
+                  source={require("../../assets/images/search.png")}
+                  style={[styles.searchIconImage, { tintColor: "#666" }]}
+                  resizeMode="contain"
+                />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {showSearchDropdown && searchResults.length > 0 && (
+            <View style={styles.searchDropdown}>
+              <ScrollView
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator={false}
+                style={styles.searchDropdownScroll}
+                nestedScrollEnabled={true}
+              >
+                {searchResults.map((user, index) => {
+                  const { displayName, email, userType } = getUserDisplayInfo(user)
+
+                  const userStatus = user.user_status || user.status || "pending"
+                  const statusColor =
+                    userStatus === "active" ? "#4CAF50" : userStatus === "pending" ? "#FF9800" : "#999"
+
+                  return (
+                    <TouchableOpacity
+                      key={user.id}
+                      style={[
+                        styles.searchResultItem,
+                        index === searchResults.length - 1 && styles.searchResultItemLast,
+                      ]}
+                      onPress={() => {
+                        // Dismiss keyboard first
+                        Keyboard.dismiss()
+                        // Then navigate
+                        setTimeout(() => {
+                          navigateToUserProfile(user.id, user)
+                        }, 100)
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      {user.profile_image ? (
+                        <Image source={{ uri: user.profile_image }} style={styles.searchResultAvatar} />
+                      ) : (
+                        <View style={styles.searchResultAvatar}>
+                          <Text style={styles.searchResultAvatarText}>{displayName.charAt(0).toUpperCase()}</Text>
+                        </View>
+                      )}
+                      <View style={styles.searchResultInfo}>
+                        <View style={styles.searchResultNameRow}>
+                          <Text style={styles.searchResultName}>{displayName}</Text>
+                          <View style={styles.userTypeBadge}>
+                            <Text style={styles.userTypeText}>
+                              {userType === "kutsero"
+                                ? "Kutsero"
+                                : userType === "operator"
+                                  ? "Operator"
+                                  : userType === "vet"
+                                    ? "Veterinarian"
+                                    : userType === "ctu_vet"
+                                      ? "CTU Vet"
+                                      : userType === "dvmf_user"
+                                        ? "DVMF"
+                                        : "User"}
+                            </Text>
+                          </View>
+                        </View>
+                        {email && (
+                          <Text style={styles.searchResultEmail} numberOfLines={1}>
+                            {email}
+                          </Text>
+                        )}
+                        <View style={styles.searchResultStatus}>
+                          <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
+                          <Text style={[styles.userStatusText, { color: statusColor }]}>{userStatus}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.searchResultArrow}>
+                        <Text style={styles.searchResultArrowText}>›</Text>
+                      </View>
+                    </TouchableOpacity>
+                  )
+                })}
+                <TouchableOpacity
+                  style={styles.searchResultSeeAll}
+                  onPress={() => {
+                    Keyboard.dismiss()
+                    setTimeout(() => {
+                      handleSearchSubmit()
+                    }, 100)
+                  }}
+                >
+                  <Text style={styles.searchResultSeeAllText}>{`See all results for "${searchText}"`}</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          )}
         </View>
       </View>
 
@@ -748,7 +1288,16 @@ export default function DashboardScreen() {
             </View>
             <View style={styles.horseCard}>
               <View style={styles.horseImageContainer}>
-                <Image source={selectedHorse.image} style={styles.horseImage} resizeMode="cover" />
+                <TouchableOpacity
+                  onPress={() => {
+                    if (selectedHorse.image && typeof selectedHorse.image === "object" && selectedHorse.image.uri) {
+                      setFullScreenImage(selectedHorse.image.uri)
+                    }
+                  }}
+                  activeOpacity={0.9}
+                >
+                  <Image source={selectedHorse.image} style={styles.horseImage} resizeMode="cover" />
+                </TouchableOpacity>
               </View>
               <View style={styles.horseInfo}>
                 <Text style={styles.horseNameText}>
@@ -777,38 +1326,31 @@ export default function DashboardScreen() {
                 <Text style={styles.readyText}>{selectedHorse.status}</Text>
               </View>
             </View>
-            <View style={styles.reminderSection}>
-              {selectedHorse.id !== "default" ? (
-                <>
-                  <Text style={styles.reminderText}>Remember to check-out your horse at the end of the day</Text>
 
-                  <View style={styles.checkInOutContainer}>
-                    {!isCheckedIn ? (
-                      <TouchableOpacity style={styles.checkInButton} onPress={handleCheckIn}>
-                        <Text style={styles.checkInButtonText}>Check In</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <View style={styles.checkedInContainer}>
-                        <View style={styles.checkedInInfo}>
-                          <Text style={styles.checkedInText}>✓ Checked in at {checkInTime}</Text>
-                        </View>
-                        <TouchableOpacity style={styles.checkOutButton} onPress={handleCheckOut}>
-                          <Text style={styles.checkOutButtonText}>Check Out</Text>
-                        </TouchableOpacity>
-                      </View>
-                    )}
+            <TouchableOpacity style={styles.changeHorseButton} onPress={() => router.push("./horseselection")}>
+              <Text style={styles.changeHorseButtonText}>
+                {selectedHorse.id === "default" ? "Select Horse" : "Change Horse"}
+              </Text>
+            </TouchableOpacity>
+
+            {selectedHorse.id !== "default" && (
+              <View style={styles.checkInOutContainer}>
+                {!isCheckedIn ? (
+                  <TouchableOpacity style={styles.checkInButton} onPress={handleCheckIn}>
+                    <Text style={styles.checkInButtonText}>Check In</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.checkedInContainer}>
+                    <View style={styles.checkedInInfo}>
+                      <Text style={styles.checkedInText}>✓ Checked in at {checkInTime}</Text>
+                    </View>
+                    <TouchableOpacity style={styles.checkOutButton} onPress={handleCheckOut}>
+                      <Text style={styles.checkOutButtonText}>Check Out</Text>
+                    </TouchableOpacity>
                   </View>
-                </>
-              ) : (
-                <Text style={styles.reminderText}>Select a horse to start working</Text>
-              )}
-
-              <TouchableOpacity style={styles.changeHorseButton} onPress={() => router.push("./horseselection")}>
-                <Text style={styles.changeHorseButtonText}>
-                  {selectedHorse.id === "default" ? "Select Horse" : "Change Horse"}
-                </Text>
-              </TouchableOpacity>
-            </View>
+                )}
+              </View>
+            )}
           </View>
 
           <View style={styles.activitiesSection}>
@@ -822,89 +1364,86 @@ export default function DashboardScreen() {
                 <Text style={styles.noAnnouncementsText}>No announcements available at this time.</Text>
               </View>
             ) : (
-              announcements.map((announcement, index) => (
-                <View
-                  key={announcement.id}
-                  style={[styles.facebookPostCard, index < announcements.length - 1 && styles.postCardMargin]}
-                >
-                  <View style={styles.postHeader}>
-                    <View style={styles.postIconContainer}>
-                      <View style={styles.announcementIcon}>
-                        <View style={styles.megaphoneBody} />
-                        <View style={styles.megaphoneCone} />
+              announcements.map((announcement, index) => {
+                const profilePicture = getAnnouncementProfilePicture(announcement.user_name)
+
+                return (
+                  <View
+                    key={announcement.id}
+                    style={[styles.facebookPostCard, index < announcements.length - 1 && styles.postCardMargin]}
+                  >
+                    <View style={styles.postHeader}>
+                      <View style={styles.postIconContainer}>
+                        <View style={styles.profileImageContainer}>
+                          {profilePicture ? (
+                            <Image source={profilePicture} style={styles.announcementProfileImage} />
+                          ) : announcement.user_name ? (
+                            <View style={styles.defaultProfileIcon}>
+                              <Text style={styles.defaultProfileText}>
+                                {announcement.user_name.charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                          ) : (
+                            <View style={styles.announcementIcon}>
+                              <View style={styles.megaphoneBody} />
+                              <View style={styles.megaphoneCone} />
+                            </View>
+                          )}
+                        </View>
+                      </View>
+                      <View style={styles.postHeaderContent}>
+                        <Text style={styles.postTitle}>{announcement.user_name || "CTU Announcement"}</Text>
+                        <Text style={styles.postTime}>{formatDate(announcement.announce_date)}</Text>
                       </View>
                     </View>
-                    <View style={styles.postHeaderContent}>
-                      <Text style={styles.postTitle}>{announcement.user_name || "CTU Announcement"}</Text>
-                      <Text style={styles.postTime}>{formatDate(announcement.announce_date)}</Text>
+
+                    {announcement.image_urls && announcement.image_urls.length > 0 && (
+                      <ImageCarousel images={announcement.image_urls} />
+                    )}
+
+                    <View style={styles.postContent}>
+                      {(() => {
+                        const { text, showToggle } = getTruncatedContent(announcement.announce_content, announcement.id)
+                        return (
+                          <>
+                            <Text style={styles.postDescription}>{text}</Text>
+                            {showToggle && (
+                              <TouchableOpacity
+                                onPress={() => toggleAnnouncement(announcement.id)}
+                                style={styles.seeMoreButton}
+                              >
+                                <Text style={styles.seeMoreText}>
+                                  {expandedAnnouncements.has(announcement.id) ? "See less" : "See more"}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                          </>
+                        )
+                      })()}
+                    </View>
+
+                    <View style={styles.postActions}>
+                      <TouchableOpacity
+                        style={styles.commentButton}
+                        onPress={() => {
+                          if (announcement.id) {
+                            handleComment(String(announcement.id))
+                          } else {
+                            Alert.alert("Error", "Unable to load comments. Invalid announcement ID.")
+                          }
+                        }}
+                      >
+                        <Image
+                          source={require("../../assets/images/comment.png")}
+                          style={styles.commentIcon}
+                          resizeMode="contain"
+                        />
+                        <Text style={styles.commentCount}>{announcement.comment_count || 0} comments</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
-
-                  {/* ANNOUNCEMENT IMAGE DISPLAY */}
-                  {announcement.image_url && (
-                    <View style={styles.postImageContainer}>
-                      <Image
-                        source={{ uri: announcement.image_url }}
-                        style={styles.postImage}
-                        resizeMode="cover"
-                        onLoadStart={() => {
-                          console.log("🔄 Loading image for announcement:", announcement.id)
-                          console.log("   URL:", announcement.image_url)
-                        }}
-                        onLoad={() => {
-                          console.log("✅ Image loaded successfully for announcement:", announcement.id)
-                        }}
-                        onError={(error) => {
-                          console.log("❌ Image failed to load for announcement:", announcement.id)
-                          console.log("   URL:", announcement.image_url)
-                          console.log("   Error:", error.nativeEvent.error)
-                        }}
-                      />
-                    </View>
-                  )}
-
-                  <View style={styles.postContent}>
-                    {(() => {
-                      const { text, showToggle } = getTruncatedContent(announcement.announce_content, announcement.id)
-                      return (
-                        <>
-                          <Text style={styles.postDescription}>{text}</Text>
-                          {showToggle && (
-                            <TouchableOpacity
-                              onPress={() => toggleAnnouncement(announcement.id)}
-                              style={styles.seeMoreButton}
-                            >
-                              <Text style={styles.seeMoreText}>
-                                {expandedAnnouncements.has(announcement.id) ? "See less" : "See more"}
-                              </Text>
-                            </TouchableOpacity>
-                          )}
-                        </>
-                      )
-                    })()}
-                  </View>
-
-                  <View style={styles.postActions}>
-                    <TouchableOpacity
-                      style={styles.commentButton}
-                      onPress={() => {
-                        if (announcement.id) {
-                          handleComment(String(announcement.id))
-                        } else {
-                          Alert.alert("Error", "Unable to load comments. Invalid announcement ID.")
-                        }
-                      }}
-                    >
-                      <Image
-                        source={require("../../assets/images/comment.png")}
-                        style={styles.commentIcon}
-                        resizeMode="contain"
-                      />
-                      <Text style={styles.commentCount}>{announcement.comment_count || 0} comments</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ))
+                )
+              })
             )}
           </View>
         </ScrollView>
@@ -941,20 +1480,22 @@ export default function DashboardScreen() {
         onRequestClose={() => {
           setShowCommentModal(false)
           setSelectedAnnouncementId(null)
+          setReplyingTo(null)
+          setReplyText("")
         }}
       >
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
             style={styles.keyboardAvoidingView}
           >
-            <View 
+            <View
               style={[
                 styles.modalContainer,
                 {
                   height: getModalHeight(),
                   marginTop: getModalMarginTop(),
-                }
+                },
               ]}
             >
               <View style={styles.modalHeader}>
@@ -963,13 +1504,15 @@ export default function DashboardScreen() {
                   onPress={() => {
                     setShowCommentModal(false)
                     setSelectedAnnouncementId(null)
+                    setReplyingTo(null)
+                    setReplyText("")
                   }}
                 >
                   <Text style={styles.closeButton}>✕</Text>
                 </TouchableOpacity>
               </View>
 
-              <ScrollView 
+              <ScrollView
                 style={styles.commentsContainer}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={true}
@@ -980,63 +1523,144 @@ export default function DashboardScreen() {
                     <Text style={styles.loadingCommentsText}>Loading comments...</Text>
                   </View>
                 ) : selectedAnnouncementComments.length > 0 ? (
-                  selectedAnnouncementComments.map((comment) => (
-                    <View key={comment.id} style={styles.commentItem}>
-                      <View style={styles.commentHeader}>
-                        <Text style={styles.commentUser}>
-                          {comment.kutsero_fname && comment.kutsero_lname
-                            ? `${comment.kutsero_fname} ${comment.kutsero_lname}`
-                            : comment.kutsero_username || "Anonymous User"}
-                        </Text>
-                        <Text style={styles.commentTime}>{new Date(comment.comment_date).toLocaleString()}</Text>
+                  selectedAnnouncementComments
+                    .filter((comment) => !comment.parent_comment_id)
+                    .map((comment) => (
+                      <View key={comment.id}>
+                        <View style={styles.commentItem}>
+                          <View style={styles.commentHeader}>
+                            <Text style={styles.commentUser}>
+                              {comment.kutsero_fname && comment.kutsero_lname
+                                ? `${comment.kutsero_fname} ${comment.kutsero_lname}`
+                                : comment.kutsero_username || "Anonymous User"}
+                            </Text>
+                            <Text style={styles.commentTime}>{new Date(comment.comment_date).toLocaleString()}</Text>
+                          </View>
+                          <Text style={styles.commentText}>{comment.comment_text}</Text>
+
+                          <View style={styles.commentActions}>
+                            <TouchableOpacity
+                              onPress={() => {
+                                setReplyingTo(comment.id)
+                                setReplyText("")
+                              }}
+                              style={styles.replyButton}
+                            >
+                              <Text style={styles.replyButtonText}>Reply</Text>
+                            </TouchableOpacity>
+
+                            {comment.reply_count && comment.reply_count > 0 && (
+                              <TouchableOpacity
+                                onPress={() => toggleReplies(comment.id)}
+                                style={styles.viewRepliesButton}
+                              >
+                                <Text style={styles.viewRepliesText}>
+                                  {`${expandedReplies.has(comment.id) ? "Hide" : "View"} ${comment.reply_count} ${comment.reply_count === 1 ? "reply" : "replies"}`}
+                                </Text>
+                              </TouchableOpacity>
+                            )}
+                          </View>
+                        </View>
+
+                        {expandedReplies.has(comment.id) && (
+                          <View style={styles.repliesContainer}>
+                            {isLoadingReplies[comment.id] ? (
+                              <View style={styles.loadingCommentsContainer}>
+                                <ActivityIndicator size="small" color="#C17A47" />
+                                <Text style={styles.loadingCommentsText}>Loading replies...</Text>
+                              </View>
+                            ) : replies[comment.id] && replies[comment.id].length > 0 ? (
+                              replies[comment.id].map((reply) => (
+                                <View key={reply.id} style={styles.replyItem}>
+                                  <View style={styles.commentHeader}>
+                                    <Text style={styles.commentUser}>
+                                      {reply.kutsero_fname && reply.kutsero_lname
+                                        ? `${reply.kutsero_fname} ${reply.kutsero_lname}`
+                                        : reply.kutsero_username || "Anonymous User"}
+                                    </Text>
+                                    <Text style={styles.commentTime}>
+                                      {new Date(reply.comment_date).toLocaleString()}
+                                    </Text>
+                                  </View>
+                                  <Text style={styles.commentText}>{reply.comment_text}</Text>
+                                </View>
+                              ))
+                            ) : (
+                              <View style={styles.noCommentsContainer}>
+                                <Text style={styles.noCommentsText}>No replies yet.</Text>
+                              </View>
+                            )}
+                          </View>
+                        )}
                       </View>
-                      <Text style={styles.commentText}>{comment.comment_text}</Text>
-                    </View>
-                  ))
+                    ))
                 ) : (
                   <View style={styles.noCommentsContainer}>
                     <Text style={styles.noCommentsText}>No comments yet. Be the first to comment!</Text>
                   </View>
                 )}
               </ScrollView>
-              
+
               <View style={styles.commentInputContainer}>
-                <View style={styles.commentInputWrapper}>
-                  <TextInput
-                    style={styles.commentInput}
-                    value={newComment}
-                    onChangeText={setNewComment}
-                    placeholder="Write a comment..."
-                    placeholderTextColor="#65676B"
-                    multiline={true}
-                    maxLength={500}
-                    editable={!isPostingComment}
-                    autoCorrect={true}
-                    autoCapitalize="sentences"
-                    returnKeyType="default"
-                    blurOnSubmit={false}
-                    textAlignVertical="center"
-                    selectionColor="#1877F2"
-                  />
+                <View style={{ flex: 1 }}>
+                  {replyingTo && (
+                    <View style={styles.replyingToContainer}>
+                      <Text style={styles.replyingToText}>
+                        {`Replying to ${selectedAnnouncementComments.find((c) => c.id === replyingTo)?.kutsero_fname || "comment"}`}
+                      </Text>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setReplyingTo(null)
+                          setReplyText("")
+                        }}
+                      >
+                        <Text style={styles.cancelReplyText}>✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+                  <View style={styles.commentInputWrapper}>
+                    <TextInput
+                      style={styles.commentInput}
+                      value={replyingTo ? replyText : newComment}
+                      onChangeText={replyingTo ? setReplyText : setNewComment}
+                      placeholder={replyingTo ? "Write a reply..." : "Write a comment..."}
+                      placeholderTextColor="#65676B"
+                      multiline={true}
+                      maxLength={500}
+                      editable={!isPostingComment}
+                      autoCorrect={true}
+                      autoCapitalize="sentences"
+                      returnKeyType="default"
+                      blurOnSubmit={false}
+                      textAlignVertical="center"
+                      selectionColor="#1877F2"
+                    />
+                  </View>
                 </View>
                 <TouchableOpacity
                   style={[
-                    styles.submitButton, 
-                    { 
-                      opacity: newComment.trim() && !isPostingComment ? 1 : 0.5,
-                      backgroundColor: newComment.trim() && !isPostingComment ? "#1877F2" : "#E4E6EA"
-                    }
+                    styles.submitButton,
+                    {
+                      opacity: (replyingTo ? replyText : newComment).trim() && !isPostingComment ? 1 : 0.5,
+                      backgroundColor:
+                        (replyingTo ? replyText : newComment).trim() && !isPostingComment ? "#1877F2" : "#E4E6EA",
+                    },
                   ]}
                   onPress={submitComment}
-                  disabled={!newComment.trim() || isPostingComment}
+                  disabled={!(replyingTo ? replyText : newComment).trim() || isPostingComment}
                 >
                   {isPostingComment ? (
                     <ActivityIndicator size="small" color="white" />
                   ) : (
-                    <Text style={[
-                      styles.submitButtonText,
-                      { color: newComment.trim() && !isPostingComment ? "white" : "#65676B" }
-                    ]}>
+                    <Text
+                      style={[
+                        styles.submitButtonText,
+                        {
+                          color:
+                            (replyingTo ? replyText : newComment).trim() && !isPostingComment ? "white" : "#65676B",
+                        },
+                      ]}
+                    >
                       Post
                     </Text>
                   )}
@@ -1089,11 +1713,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(20),
     fontWeight: "bold",
     color: "white",
-  },
-  userEmail: {
-    fontSize: moderateScale(11),
-    color: "rgba(255,255,255,0.8)",
-    marginTop: verticalScale(2),
   },
   statusText: {
     fontSize: moderateScale(10),
@@ -1149,6 +1768,10 @@ const styles = StyleSheet.create({
     height: scale(18),
     tintColor: "white",
   },
+  searchWrapper: {
+    position: "relative",
+    zIndex: 1000,
+  },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -1170,6 +1793,120 @@ const styles = StyleSheet.create({
   searchIconImage: {
     width: scale(16),
     height: scale(16),
+  },
+  clearSearchText: {
+    fontSize: moderateScale(20),
+    color: "#666",
+    fontWeight: "400",
+  },
+  searchDropdown: {
+    position: "absolute",
+    top: verticalScale(42),
+    left: 0,
+    right: 0,
+    backgroundColor: "white",
+    borderRadius: scale(12),
+    maxHeight: verticalScale(300),
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: scale(4),
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: scale(8),
+    elevation: 8,
+    overflow: "hidden",
+  },
+  searchDropdownScroll: {
+    maxHeight: verticalScale(300),
+  },
+  searchResultItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: scale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+  },
+  searchResultItemLast: {
+    borderBottomWidth: 0,
+  },
+  searchResultAvatar: {
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: scale(12),
+    overflow: "hidden",
+  },
+  searchResultAvatarText: {
+    fontSize: moderateScale(18),
+    fontWeight: "600",
+    color: "white",
+  },
+  searchResultInfo: {
+    flex: 1,
+  },
+  searchResultNameRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: verticalScale(2),
+    gap: scale(8),
+  },
+  searchResultName: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "#333",
+  },
+  userTypeBadge: {
+    backgroundColor: "#E3F2FD",
+    paddingHorizontal: scale(6),
+    paddingVertical: scale(2),
+    borderRadius: scale(8),
+  },
+  userTypeText: {
+    fontSize: moderateScale(10),
+    color: "#1976D2",
+    fontWeight: "600",
+  },
+  searchResultEmail: {
+    fontSize: moderateScale(12),
+    color: "#666",
+    marginBottom: verticalScale(4),
+  },
+  searchResultStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  statusDot: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
+    marginRight: scale(6),
+  },
+  userStatusText: {
+    fontSize: moderateScale(11),
+    fontWeight: "500",
+    textTransform: "capitalize",
+  },
+  searchResultArrow: {
+    marginLeft: scale(8),
+  },
+  searchResultArrowText: {
+    fontSize: moderateScale(24),
+    color: "#C17A47",
+    fontWeight: "300",
+  },
+  searchResultSeeAll: {
+    padding: scale(12),
+    backgroundColor: "#F8F8F8",
+    alignItems: "center",
+  },
+  searchResultSeeAllText: {
+    fontSize: moderateScale(13),
+    color: "#C17A47",
+    fontWeight: "600",
   },
   contentContainer: {
     flex: 1,
@@ -1198,20 +1935,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(16),
     fontWeight: "600",
     color: "#333",
-  },
-  changeHorseButton: {
-    backgroundColor: "#C17A47",
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(10),
-    borderRadius: scale(8),
-    alignItems: "center",
-    marginTop: verticalScale(8),
-    minHeight: 40,
-  },
-  changeHorseButtonText: {
-    color: "white",
-    fontSize: moderateScale(12),
-    fontWeight: "600",
   },
   horseCard: {
     flexDirection: "row",
@@ -1267,20 +1990,69 @@ const styles = StyleSheet.create({
     color: "#4CAF50",
     fontWeight: "500",
   },
+  changeHorseButton: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(10),
+    borderRadius: scale(8),
+    alignItems: "center",
+    marginTop: verticalScale(8),
+    minHeight: 40,
+  },
+  changeHorseButtonText: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+  },
   readyText: {
     fontSize: moderateScale(12),
     color: "#666",
   },
-  reminderSection: {
-    borderTopWidth: 1,
-    borderTopColor: "#F0F0F0",
-    paddingTop: verticalScale(12),
-  },
-  reminderText: {
-    fontSize: moderateScale(11),
-    color: "#666",
-    lineHeight: moderateScale(14),
+  checkInOutContainer: {
+    marginTop: verticalScale(8),
     marginBottom: verticalScale(8),
+  },
+  checkInButton: {
+    backgroundColor: "#4CAF50",
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(20),
+    borderRadius: scale(8),
+    alignItems: "center",
+    minHeight: 40,
+  },
+  checkInButtonText: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+  },
+  checkedInContainer: {
+    gap: verticalScale(6),
+  },
+  checkedInInfo: {
+    backgroundColor: "#E8F5E8",
+    paddingVertical: verticalScale(6),
+    paddingHorizontal: scale(10),
+    borderRadius: scale(6),
+    borderLeftWidth: 3,
+    borderLeftColor: "#4CAF50",
+  },
+  checkedInText: {
+    color: "#2E7D32",
+    fontSize: moderateScale(11),
+    fontWeight: "500",
+  },
+  checkOutButton: {
+    backgroundColor: "#FF6B6B",
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(20),
+    borderRadius: scale(8),
+    alignItems: "center",
+    minHeight: 40,
+  },
+  checkOutButtonText: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "600",
   },
   activitiesSection: {
     backgroundColor: "white",
@@ -1436,7 +2208,7 @@ const styles = StyleSheet.create({
   },
   keyboardAvoidingView: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: "flex-end",
   },
   modalContainer: {
     backgroundColor: "white",
@@ -1519,12 +2291,11 @@ const styles = StyleSheet.create({
     padding: scale(12),
     borderTopWidth: 1,
     borderTopColor: "#E4E6EA",
-    alignItems: "flex-end",
     backgroundColor: "#FFFFFF",
+    alignItems: "flex-end",
     gap: scale(8),
   },
   commentInputWrapper: {
-    flex: 1,
     backgroundColor: "#F0F2F5",
     borderRadius: scale(20),
     minHeight: scale(36),
@@ -1556,52 +2327,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     fontWeight: "600",
   },
-  checkInOutContainer: {
-    marginTop: verticalScale(8),
-    marginBottom: verticalScale(8),
-  },
-  checkInButton: {
-    backgroundColor: "#4CAF50",
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(20),
-    borderRadius: scale(8),
-    alignItems: "center",
-    minHeight: 40,
-  },
-  checkInButtonText: {
-    color: "white",
-    fontSize: moderateScale(12),
-    fontWeight: "600",
-  },
-  checkedInContainer: {
-    gap: verticalScale(6),
-  },
-  checkedInInfo: {
-    backgroundColor: "#E8F5E8",
-    paddingVertical: verticalScale(6),
-    paddingHorizontal: scale(10),
-    borderRadius: scale(6),
-    borderLeftWidth: 3,
-    borderLeftColor: "#4CAF50",
-  },
-  checkedInText: {
-    color: "#2E7D32",
-    fontSize: moderateScale(11),
-    fontWeight: "500",
-  },
-  checkOutButton: {
-    backgroundColor: "#FF6B6B",
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(20),
-    borderRadius: scale(8),
-    alignItems: "center",
-    minHeight: 40,
-  },
-  checkOutButtonText: {
-    color: "white",
-    fontSize: moderateScale(12),
-    fontWeight: "600",
-  },
   facebookPostCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: scale(12),
@@ -1625,13 +2350,36 @@ const styles = StyleSheet.create({
     paddingBottom: scale(12),
   },
   postIconContainer: {
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(20),
+    marginRight: scale(12),
+  },
+  profileImageContainer: {
+    width: scale(50),
+    height: scale(50),
+    borderRadius: scale(25),
     backgroundColor: "#E3F2FD",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: scale(12),
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "#C17A47",
+  },
+  announcementProfileImage: {
+    width: "100%",
+    height: "100%",
+    borderRadius: scale(25),
+  },
+  defaultProfileIcon: {
+    width: "100%",
+    height: "100%",
+    borderRadius: scale(25),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  defaultProfileText: {
+    color: "white",
+    fontSize: moderateScale(20),
+    fontWeight: "bold",
   },
   postHeaderContent: {
     flex: 1,
@@ -1646,20 +2394,58 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(13),
     color: "#8E8E93",
   },
-  // NEW STYLES FOR IMAGE DISPLAY
-  postImageContainer: {
+  carouselContainer: {
     width: "100%",
     height: verticalScale(200),
-    backgroundColor: "#F0F0F0",
-    overflow: "hidden",
+    position: "relative",
   },
-  postImage: {
+  carouselImageContainer: {
+    width: width,
+    height: verticalScale(200),
+  },
+  carouselImage: {
     width: "100%",
     height: "100%",
   },
+  paginationContainer: {
+    position: "absolute",
+    bottom: scale(12),
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: scale(6),
+  },
+  paginationDot: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
+    backgroundColor: "rgba(255,255,255,0.5)",
+  },
+  paginationDotActive: {
+    backgroundColor: "rgba(255,255,255,0.9)",
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
+  },
+  imageCounter: {
+    position: "absolute",
+    top: scale(12),
+    right: scale(12),
+    backgroundColor: "rgba(0,0,0,0.6)",
+    paddingHorizontal: scale(10),
+    paddingVertical: scale(4),
+    borderRadius: scale(12),
+  },
+  imageCounterText: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+  },
   postContent: {
     paddingHorizontal: scale(16),
-    paddingBottom: scale(16),
+    paddingVertical: scale(16),
   },
   postDescription: {
     fontSize: moderateScale(15),
@@ -1689,12 +2475,94 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   seeMoreButton: {
-    marginTop: 8,
+    marginTop: verticalScale(8),
     alignSelf: "flex-start",
   },
   seeMoreText: {
     color: "#1976D2",
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontWeight: "500",
+  },
+  commentActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: verticalScale(8),
+    gap: scale(16),
+  },
+  replyButton: {
+    paddingVertical: verticalScale(4),
+  },
+  replyButtonText: {
+    fontSize: moderateScale(12),
+    color: "#1877F2",
+    fontWeight: "600",
+  },
+  viewRepliesButton: {
+    paddingVertical: verticalScale(4),
+  },
+  viewRepliesText: {
+    fontSize: moderateScale(12),
+    color: "#65676B",
+    fontWeight: "500",
+  },
+  repliesContainer: {
+    marginLeft: scale(32),
+    borderLeftWidth: 2,
+    borderLeftColor: "#E4E6EA",
+    paddingLeft: scale(12),
+    marginTop: verticalScale(8),
+  },
+  replyItem: {
+    paddingVertical: verticalScale(8),
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F2F5",
+  },
+  replyingToContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#E3F2FD",
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(6),
+    borderRadius: scale(8),
+    marginBottom: verticalScale(4),
+  },
+  replyingToText: {
+    fontSize: moderateScale(12),
+    color: "#1976D2",
+    fontWeight: "500",
+  },
+  cancelReplyText: {
+    fontSize: moderateScale(16),
+    color: "#666",
+    fontWeight: "bold",
+    paddingHorizontal: scale(8),
+  },
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.95)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullScreenImage: {
+    width: "100%",
+    height: "100%",
+  },
+  fullScreenCloseButton: {
+    position: "absolute",
+    top: scale(50),
+    right: scale(20),
+    zIndex: 10,
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullScreenCloseText: {
+    color: "white",
+    fontSize: moderateScale(24),
+    fontWeight: "600",
   },
 })

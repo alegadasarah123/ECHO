@@ -483,21 +483,22 @@ export default function HorseCareScreen() {
   }
 
   // Show FeedPage when user clicks Feed or Water buttons
-  if (showFeedPage) {
-    return (
-      <FeedPage
-        onBack={() => {
-          setShowFeedPage(false)
-          // Reload activities after returning from feed page
-          loadCareActivities()
-        }}
-        feedType={feedType}
-        horseName={selectedHorse.name}
-        horseId={selectedHorse.id}
-        userId={userData?.id || ""}
-      />
-    )
-  }
+    if (showFeedPage) {
+      return (
+        <FeedPage
+          onBack={() => {
+            setShowFeedPage(false)
+            // Reload activities after returning from feed page
+            loadCareActivities()
+          }}
+          feedType={feedType}
+          horseName={selectedHorse.name}
+          horseId={selectedHorse.id}
+          userId={userData?.id || ""}
+          userName={currentUser}
+        />
+      )
+    }
 
   // Show Notifications page when requested
   if (showNotifications) {

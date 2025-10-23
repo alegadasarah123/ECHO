@@ -5,8 +5,7 @@ import { useEffect, useState } from "react"
 const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsRead }) => {
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(false)
-
-  const API_BASE = "http://127.0.0.1:8000/api/dvmf"
+const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
 
   // Format date in PH timezone
   const formatDate = (dateStr) => {

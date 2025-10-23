@@ -231,7 +231,24 @@ const fetchWaterLogs = async (kutseronId: string, horseId: string, logDate?: str
     
     if (!response.ok) return [];
     const data = await response.json();
-    return data.success ? (data.data || []) : [];
+    
+    if (!data.success || !Array.isArray(data.data)) return [];
+    
+    // Transform the data
+    const transformedLogs: WaterLog[] = data.data.map((log: any) => ({
+      log_id: log.wlog_id ?? '',
+      log_kutsero_full_name: log.wlog_user_full_name ?? 'Unknown',
+      log_date: log.wlog_date ?? '',
+      log_period: log.wlog_period ?? '',
+      log_time: log.wlog_time ?? '',
+      log_amount: log.wlog_amount ?? '',
+      log_status: log.wlog_status ?? '',
+      log_action: log.wlog_action ?? '',
+      created_at: log.created_at ?? '',
+      horse_name: '',
+    }));
+    
+    return transformedLogs;
   } catch (error) {
     return [];
   }
@@ -457,20 +474,14 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
   };
 
   const handleTimeChange = (field: 'hour' | 'minute' | 'period', value: string): void => {
-    if (field === 'hour') {
-      const hourNum = parseInt(value);
-      if (value === '' || (hourNum >= 1 && hourNum <= 12)) {
-        setFeedingTime(prev => ({ ...prev, [field]: value }));
-      }
-    } else if (field === 'minute') {
-      const minuteNum = parseInt(value);
-      if (value === '' || (minuteNum >= 0 && minuteNum <= 59)) {
-        setFeedingTime(prev => ({ ...prev, [field]: value.padStart(2, '0') }));
-      }
-    } else {
-      setFeedingTime(prev => ({ ...prev, [field]: value.toUpperCase() }));
-    }
-  };
+  if (field === 'hour') {
+    setFeedingTime(prev => ({ ...prev, hour: value }));
+  } else if (field === 'minute') {
+    setFeedingTime(prev => ({ ...prev, minute: value }));
+  } else if (field === 'period') {
+    setFeedingTime(prev => ({ ...prev, period: value.toUpperCase() }));
+  }
+};
 
   const handleAmountChange = (id: string, amount: string): void => {
     setFeedTypes(prev => prev.map(feed => feed.id === id ? { ...feed, amount } : feed));

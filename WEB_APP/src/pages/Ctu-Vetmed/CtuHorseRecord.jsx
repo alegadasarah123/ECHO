@@ -25,7 +25,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "http://127.0.0.1:8000/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
 
 const TableSkeleton = () => {
   return (
@@ -328,6 +328,27 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
     const pdf = new jsPDF();
     const { horse, medicalRecord, treatmentHistory } = data;
 
+    // Helper function to parse lab images for PDF
+    const parseLabImages = (labImgData) => {
+      if (!labImgData) return [];
+      
+      try {
+        if (typeof labImgData === 'string' && labImgData.startsWith('[')) {
+          return JSON.parse(labImgData);
+        }
+        if (Array.isArray(labImgData)) {
+          return labImgData;
+        }
+        if (typeof labImgData === 'string') {
+          return [labImgData];
+        }
+      } catch (error) {
+        console.error('Error parsing lab images:', error);
+      }
+      
+      return [];
+    };
+
     // Colors
     const primaryColor = [220, 53, 69]; // Red headers
     const darkColor = [51, 51, 51]; // Text
@@ -501,14 +522,15 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
         medicalRecord.medrec_diagnostic_protocol || "No protocol recorded"
       );
 
-      // NEW: Add Lab Results and Lab Image information to PDF
+      // Laboratory Results Section in PDF
       addSection("Laboratory Results", "");
       addKeyValue("Lab Results", medicalRecord.medrec_lab_results || "No lab results available");
       
-      if (medicalRecord.medrec_lab_img) {
-        addKeyValue("Lab Image", "Available - See attached records for details");
+      const labImages = parseLabImages(medicalRecord.medrec_lab_img);
+      if (labImages.length > 0) {
+        addKeyValue("Lab Images", `${labImages.length} image(s) available - See system for details`);
       } else {
-        addKeyValue("Lab Image", "No lab image available");
+        addKeyValue("Lab Images", "No lab images available");
       }
     } else {
       // --- Treatment Record ---
@@ -598,6 +620,59 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
 const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) => {
   if (!medicalRecord) return null;
 
+  // State to track image loading errors
+  const [imageErrors, setImageErrors] = useState({});
+
+  // Helper function to parse lab images and detect file types
+  const parseLabImages = (labImgData) => {
+    if (!labImgData) return [];
+    
+    try {
+      let files = [];
+      
+      // If it's a string that looks like JSON array, parse it
+      if (typeof labImgData === 'string' && labImgData.startsWith('[')) {
+        files = JSON.parse(labImgData);
+      }
+      // If it's already an array, use it
+      else if (Array.isArray(labImgData)) {
+        files = labImgData;
+      }
+      // If it's a single string URL, wrap it in array
+      else if (typeof labImgData === 'string' && labImgData.trim() !== '') {
+        files = [labImgData];
+      }
+      
+      // Filter out empty strings and null values
+      files = files.filter(file => file && file.trim() !== '');
+      
+      // Add file type information
+      const filesWithType = files.map(url => {
+        const lowerUrl = url.toLowerCase();
+        if (lowerUrl.match(/\.pdf$/)) {
+          return { url, type: 'pdf' };
+        } else if (lowerUrl.match(/\.(jpg|jpeg|png|gif|bmp|webp|svg)$/)) {
+          return { url, type: 'image' };
+        } else {
+          return { url, type: 'unknown' };
+        }
+      });
+      
+      return filesWithType;
+      
+    } catch (error) {
+      console.error('Error parsing lab images:', error);
+    }
+    
+    return [];
+  };
+
+  const handleImageError = (index) => {
+    setImageErrors(prev => ({ ...prev, [index]: true }));
+  };
+
+  const labFiles = parseLabImages(medicalRecord.medrec_lab_img);
+
   const handleExportPDF = async () => {
     const success = await exportToPDF(
       { horse, medicalRecord }, 
@@ -677,7 +752,7 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
           </div>
         </div>
 
-        {/* NEW: Laboratory Results Section */}
+        {/* Laboratory Results Section */}
         <div className="bg-gray-50 rounded-lg p-4 mb-5">
           <div className="text-sm font-semibold text-gray-900 mb-2">Laboratory Results</div>
           <div className="space-y-4">
@@ -691,40 +766,87 @@ const MedicalRecordDetailView = ({ horse, medicalRecord, onBack, onExportPDF }) 
               </p>
             </div>
             
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <ImageIcon size={16} className="text-green-600" />
-                <span className="text-sm font-medium text-gray-700">Lab Images:</span>
-              </div>
-              <div className="ml-6">
-                {medicalRecord.medrec_lab_img ? (
-                  <div className="flex flex-col space-y-2">
-                    <img 
-                      src={medicalRecord.medrec_lab_img} 
-                      alt="Laboratory test results"
-                      className="max-w-full h-auto max-h-64 rounded-lg border border-gray-200"
-                      onError={(e) => {
-                        e.target.style.display = 'none';
-                        e.target.nextSibling.style.display = 'block';
-                      }}
-                    />
-                    <div className="hidden text-sm text-gray-500 italic">
-                      Lab image failed to load
-                    </div>
-                    <a 
-                      href={medicalRecord.medrec_lab_img} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-sm text-blue-600 hover:text-blue-800 underline"
-                    >
-                      View full size image
-                    </a>
+            {/* Lab Files Section - Only show if there are valid files */}
+            {labFiles.length > 0 ? (
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <ImageIcon size={16} className="text-green-600" />
+                  <span className="text-sm font-medium text-gray-700">Lab Image:</span>
+                </div>
+                <div className="ml-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {labFiles.map((file, index) => (
+                      <div key={index} className="flex flex-col space-y-2">
+                        {file.type === 'image' ? (
+                          // Display image files with error handling
+                          !imageErrors[index] ? (
+                            <>
+                              <img 
+                                src={file.url} 
+                                alt={`Laboratory test result ${index + 1}`}
+                                className="max-w-full h-auto max-h-64 rounded-lg border border-gray-200"
+                                onError={() => handleImageError(index)}
+                              />
+                              <a 
+                                href={file.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-sm text-blue-600 hover:text-blue-800 underline text-center"
+                              >
+                                View full size image
+                              </a>
+                            </>
+                          ) : (
+                            <div className="text-sm text-gray-500 italic text-center p-4 bg-gray-100 rounded-lg border border-gray-200">
+                              Lab image failed to load or is unavailable
+                            </div>
+                          )
+                        ) : file.type === 'pdf' ? (
+                          // Display PDF files
+                          <>
+                            <div className="bg-gray-100 rounded-lg border border-gray-200 p-8 text-center">
+                              <FileText size={48} className="text-red-500 mx-auto mb-2" />
+                              <p className="text-sm text-gray-600 mb-3">PDF Document</p>
+                            </div>
+                            <a 
+                              href={file.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-600 hover:text-blue-800 underline text-center"
+                            >
+                              View PDF document
+                            </a>
+                          </>
+                        ) : (
+                          // Display unknown file types
+                          <>
+                            <div className="bg-gray-100 rounded-lg border border-gray-200 p-8 text-center">
+                              <FileText size={48} className="text-gray-500 mx-auto mb-2" />
+                              <p className="text-sm text-gray-600 mb-3">Document</p>
+                            </div>
+                            <a 
+                              href={file.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-600 hover:text-blue-800 underline text-center"
+                            >
+                              View document
+                            </a>
+                          </>
+                        )}
+                      </div>
+                    ))}
                   </div>
-                ) : (
-                  <p className="text-sm text-gray-500 italic">No lab images available</p>
-                )}
+                </div>
               </div>
-            </div>
+            ) : (
+              // Show message when no lab files are available
+              <div className="ml-6">
+                <div className="text-sm text-gray-500 italic bg-gray-100 rounded-lg border border-gray-200 p-4 text-center">
+                  No lab Image available
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1247,65 +1369,63 @@ function CtuHorseRecord() {
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
   const handleNotificationClick = async (notification) => {
-    // Mark notification as read in frontend immediately for better UX
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === notification.id ? { ...notif, read: true } : notif
-      )
-    );
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev =>
+    prev.map(notif =>
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
 
-    // Mark notification as read in backend
-    try {
-      const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const data = await res.json();
-      console.log("Mark notification read result:", data);
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
-    }
+  // Mark notification as read in backend
+  try {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
+  }
 
-    // Handle navigation based on notification content
-    console.log('Notification clicked:', notification);
-    const message = notification.message.toLowerCase();
+  // Handle navigation based on notification content
+  const message = notification.message.toLowerCase();
 
-    if (
-      message.includes("new registration") ||
-      message.includes("new veterinarian approved") ||
-      message.includes("veterinarian approved") ||
-      message.includes("veterinarian declined") ||
-      message.includes("veterinarian registered")
-    ) {
-      console.log("Navigating to Account Approval page");
-      navigate("/CtuAccountApproval", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    navigate("/CtuAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("pending medical record access") || message.includes("requested access")) {
-      console.log("Navigating to Access Request page");
-      navigate("/CtuAccessRequest", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    navigate("/CtuAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("emergency") || message.includes("sos")) {
-      console.log("Navigating to SOS page");
-      navigate("/CtuSOS");
-      return;
-    }
-
-    console.warn("No matching route for notification:", notification);
-  };
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
+    navigate("/CtuAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+};
 
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -1353,7 +1473,7 @@ function CtuHorseRecord() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("http://127.0.0.1:8000/api/ctu_vetmed/get_horses/")
+      const res = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_horses/")
       if (!res.ok) throw new Error("Failed to fetch horses")
       const data = await res.json()
       setHorseRecords(data)
@@ -1700,9 +1820,6 @@ function CtuHorseRecord() {
             </h2>
             <p className="text-sm text-gray-600 mt-1 font-normal">
               {currentView === 'list' && 'Manage and view all horse medical records and treatment histories'}
-               {/*{currentView === 'horse' && 'View detailed information about the horse and its medical history'}
-              {currentView === 'medical' && 'View comprehensive medical record details and laboratory results'}
-              {currentView === 'treatment' && 'View detailed treatment history and administered medications'}*/}
             </p>
           </div>
 

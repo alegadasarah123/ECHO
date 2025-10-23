@@ -1,17 +1,18 @@
 "use client"
 
 import Sidebar from "@/components/DvmfSidebar"
-import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, MapPin, Phone, RefreshCw, User, XCircle } from "lucide-react"
+import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, Eye, MapPin, Phone, RefreshCw, User, X, XCircle } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from './DvmfMessage'
 import NotificationModal from "./DvmfNotif"
 
 
+const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
 
 
 function DvmfDashboard() {
-  const navigate = useNavigate()
+ const navigate = useNavigate()
 
   const [notifsOpen, setNotifsOpen] = useState(false)
   const [setIsLogoutModalOpen] = useState(false)
@@ -33,6 +34,10 @@ function DvmfDashboard() {
 
   const [time, setTime] = useState(new Date().toLocaleTimeString())
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+
+  // ADDED: State for image modal
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false)
+  const [selectedImage, setSelectedImage] = useState(null)
 
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
@@ -144,18 +149,33 @@ function DvmfDashboard() {
     return `${baseClasses} ${statusVariants[status] || statusVariants.pending}`
   }
 
+  // ADDED: Function to handle image view
+  const handleViewImage = (imageUrl, emergency) => {
+    setSelectedImage({
+      url: imageUrl,
+      emergency: emergency
+    })
+    setIsImageModalOpen(true)
+  }
+
+  // ADDED: Function to close image modal
+  const handleCloseImageModal = () => {
+    setIsImageModalOpen(false)
+    setSelectedImage(null)
+  }
+
   // Data loading functions
   const loadStats = useCallback(() => {
     console.log("Loading statistics...")
     setStatsLoading(true)
 
-    fetch("http://localhost:8000/api/dvmf/get_status_counts/", {
+    fetch("https://echo-ebl8.onrender.com/api/dvmf/get_status_counts/", {
     method: 'GET',
     credentials: 'include',
 })
 
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
+        if (!res.ok) throw new Error(`HTTPS error! Status: ${res.status}`)
         return res.json()
       })
       .then((data) => {
@@ -170,32 +190,53 @@ function DvmfDashboard() {
       })
   }, [])
 
-  const loadRecentActivities = useCallback(() => {
-    console.log("Loading recent activities...")
-    setActivitiesLoading(true)
+const loadRecentActivities = useCallback(() => {
+  setActivitiesLoading(true);
 
-    fetch("http://localhost:8000/api/dvmf/get_recent_activity/", {
-      method: "GET",
-      credentials: "include",
+  fetch("https://echo-ebl8.onrender.com/api/dvmf/get_recent_activity/", {
+    method: "GET",
+    credentials: "include", // Needed for HttpOnly cookie
+  })
+    .then(async (res) => {
+      if (res.status === 401) {
+        console.warn("Unauthorized - redirecting to login");
+        // Optionally, redirect the user:
+        // window.location.href = "/login";
+        return []; // Return empty array so state is safe
+      }
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error("Backend returned error:", errorText);
+        return []; // Return empty array so state is safe
+      }
+
+      return res.json();
     })
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
-        return res.json()
-      })
-      .then((data) => {
-        setRecentActivities(data)
-        setActivitiesLoading(false)
-      })
-      .catch((err) => {
-        console.error("Error fetching activity:", err)
-        setActivitiesLoading(false)
-      })
-  }, [])
+    .then((data) => {
+      // Handle both empty arrays and normal data
+      if (Array.isArray(data)) {
+        setRecentActivities(data);
+      } else if (data.error) {
+        console.error("Backend error:", data.error);
+        setRecentActivities([]);
+      } else {
+        setRecentActivities([]);
+      }
+
+      setActivitiesLoading(false);
+    })
+    .catch((err) => {
+      console.error("Error fetching activity:", err);
+      setRecentActivities([]);
+      setActivitiesLoading(false);
+    });
+}, []);
 
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("http://127.0.0.1:8000/api/dvmf/get_vetnotifications/")
+    fetch("https://echo-ebl8.onrender.com/api/dvmf/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -220,12 +261,12 @@ function DvmfDashboard() {
   console.log("Loading SOS emergencies...")
   setSosLoading(true)
 
-  fetch("http://localhost:8000/api/dvmf/get_sos_requests/", {
+  fetch("https://echo-ebl8.onrender.com/api/dvmf/get_sos_requests/", {
     method: "GET",
     credentials: "include",
   })
     .then((res) => {
-      if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
+      if (!res.ok) throw new Error(`HTTPS error! Status: ${res.status}`)
       return res.json()
     })
     .then((data) => {
@@ -272,6 +313,9 @@ function DvmfDashboard() {
           time: formattedTime, // Now uses the formatted timestamp
           urgent: item.urgent === true || item.status === "pending",
           description: item.description || "No description provided",
+          sos_image_url: item.sos_image_url || null, // ADDED: Include image URL
+          horse_status: item.horse_status || "Unknown",
+          additional_info: item.additional_info || ""
         }
       })
 
@@ -367,65 +411,63 @@ function DvmfDashboard() {
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
   const handleNotificationClick = async (notification) => {
-    // Mark notification as read in frontend immediately for better UX
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif.id === notification.id ? { ...notif, read: true } : notif
-      )
-    );
+  // Mark notification as read in frontend immediately for better UX
+  setNotifications(prev =>
+    prev.map(notif =>
+      notif.id === notification.id ? { ...notif, read: true } : notif
+    )
+  );
 
-    // Mark notification as read in backend
-    try {
-      const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const data = await res.json();
-      console.log("Mark notification read result:", data);
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
-    }
+  // Mark notification as read in backend
+  try {
+    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+      method: "POST",
+      credentials: "include",
+    });
+  } catch (err) {
+    console.error("Error marking notification as read:", err);
+  }
 
-    // Handle navigation based on notification content
-    console.log('Notification clicked:', notification);
-    const message = notification.message.toLowerCase();
+  // Handle navigation based on notification content
+  const message = notification.message.toLowerCase();
 
-    if (
-      message.includes("new registration") ||
-      message.includes("new veterinarian approved") ||
-      message.includes("veterinarian approved") ||
-      message.includes("veterinarian declined") ||
-      message.includes("veterinarian registered")
-    ) {
-      console.log("Navigating to Account Approval page");
-      navigate("/DvmfAccountApproval", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered")
+  ) {
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("pending medical record access") || message.includes("requested access")) {
-      console.log("Navigating to Access Request page");
-      navigate("/DvmfAccessRequest", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  if (message.includes("pending medical record access") || message.includes("requested access")) {
+    navigate("/DvmfAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
 
-    if (message.includes("emergency") || message.includes("sos")) {
-      console.log("Navigating to SOS page");
-      navigate("/DvmfSOS");
-      return;
-    }
-
-    console.warn("No matching route for notification:", notification);
-  };
+  // Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
+    navigate("/DvmfAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+};
 
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -438,14 +480,14 @@ function DvmfDashboard() {
   const handleOpenUserManagement = (notification = null) => {
     console.log('Opening User Management from dashboard notification:', notification)
     if (notification) {
-      navigate('/DvmfDashboard', { 
+      navigate('/CtuDashboard', { 
         state: { 
           highlightedNotification: notification,
           shouldHighlight: true
         } 
       })
     } else {
-      navigate('/DvmfDashboard')
+      navigate('/CtuDashboard')
     }
   }
 
@@ -502,10 +544,12 @@ function DvmfDashboard() {
         </div>
       )}
 
-      <Sidebar isOpen={isSidebarOpen} />
+      {/* ADDED: Conditionally render Sidebar and FloatingMessages based on modal state */}
+      {!isImageModalOpen && <Sidebar isOpen={isSidebarOpen} />}
+      {!isImageModalOpen && <FloatingMessages />}
 
       <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
-        <header className="bg-white px-6 py-2 flex items-center justify-between shadow-sm flex-wrap gap-14">
+        <header className="bg-white px-6 py-2 flex items-center justify-between shadow-md sticky top-0 z-10 flex-wrap gap-14">
           <div className="flex flex-col py-3 px-5 bg-transparent">
             <h2 className="text-2xl font-bold text-[#0F3D5A]">Dashboard</h2>
             <p className="text-sm text-gray-600 mt-1 font-normal">
@@ -551,7 +595,7 @@ function DvmfDashboard() {
           />
         </header>
 
-        <div className="flex-1 p-6 bg-gray-100  overflow-hidden">
+        <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
           {/* Stat Count Section */}
           <div className="grid grid-cols-3 gap-6 mb-6">
             {statsLoading ? (
@@ -728,10 +772,26 @@ function DvmfDashboard() {
                         </div>
                       </div>
 
-                      <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-600 italic flex items-center gap-1.5">
+                      <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-600 italic flex items-center gap-1.5 mb-2">
                         <MapPin size={14} />
                         <span>{emergency.location}</span>
                       </div>
+
+                      {/* ADDED: Image view button */}
+                      {emergency.sos_image_url && (
+                        <div className="flex justify-end mt-2">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleViewImage(emergency.sos_image_url, emergency)
+                            }}
+                            className="flex items-center gap-1 px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors"
+                          >
+                            <Eye size={12} />
+                            View Image
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -741,9 +801,40 @@ function DvmfDashboard() {
         </div>
       </div>
 
-      <FloatingMessages />
+      {/* ADDED: Image Modal */}
+      {isImageModalOpen && selectedImage && (
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000] p-4">
+          <div className="bg-white rounded-lg max-w-4xl max-h-[90vh] w-full overflow-hidden">
+            <div className="flex justify-between items-center p-4 border-b">
+              <h3 className="text-lg font-semibold">
+               
+              </h3>
+              <button
+                onClick={handleCloseImageModal}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X size={24} />
+              </button>
+            </div>
+            
+            <div className="p-4 max-h-[70vh] overflow-auto">
+              
+              
+              <div className="flex justify-center">
+                <img
+                  src={selectedImage.url}
+                  alt="SOS Emergency"
+                  className="max-w-full max-h-[400px] object-contain rounded-lg border"
+                  onError={(e) => {
+                    e.target.src = "https://via.placeholder.com/400x300?text=Image+Not+Found"
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
-
 export default DvmfDashboard

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from "react-router-dom";   
-import { Users, Users2, UserPlus, User, Bell, XCircle, CheckCircle, AlertCircle, Calendar, Clock } from 'lucide-react';
 import Sidebar from '@/components/KutSidebar';
+import { AlertCircle, Bell, Calendar, CheckCircle, Clock, UserPlus, Users, Users2, XCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { useNavigate } from "react-router-dom";
 import FloatingMessages from './KutMessages';
 import NotificationModal from './KutNotif';
 
