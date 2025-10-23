@@ -388,27 +388,27 @@ def get_approved_users(request):
 @api_view(["GET"])
 @login_required
 def get_notifications(request):
-    """ONLY get pending Kutsero and Horse Operator users and create notifications for them."""
+    """GET pending Kutsero and Horse Operator users and INSERT them into notification table."""
     try:
-        # Fetch ONLY pending users with specific roles
+        # STEP 1: GET THE FUCKING PENDING USERS WITH KUTSERO AND HORSE OPERATOR ROLES
         users_result = supabase.table("users").select("*").eq("status", "pending").in_("role", ["Kutsero", "Horse Operator"]).execute()
         pending_users = users_result.data if users_result.data else []
         
         if not pending_users:
             return Response([])
 
-        # Get existing notifications to avoid duplicates
-        result = supabase.table("notification").select("*").execute()
-        existing_notifications = result.data if result.data else []
-        existing_user_ids = {n["id"] for n in existing_notifications}
+        # STEP 2: CHECK WHICH USERS ALREADY HAVE NOTIFICATIONS
+        user_ids = [user["id"] for user in pending_users]
+        existing_notifs_result = supabase.table("notification").select("id").in_("id", user_ids).execute()
+        existing_user_ids = {notif["id"] for notif in (existing_notifs_result.data or [])}
 
         manila_tz = datetime.timezone(datetime.timedelta(hours=8))
+        inserted_notifications = []
         
-        # ONLY process pending users that don't have notifications yet
-        new_notifications = []
+        # STEP 3: INSERT THE FUCKING USERS INTO NOTIFICATION TABLE
         for user in pending_users:
             if user["id"] not in existing_user_ids:
-                # Handle timestamp conversion
+                # Handle the fucking timestamp
                 created_at = user.get("created_at")
                 if created_at:
                     if created_at.endswith('Z'):
@@ -417,44 +417,42 @@ def get_notifications(request):
                 else:
                     dt_ph = datetime.datetime.now(manila_tz)
 
+                # INSERT THE FUCKING NOTIFICATION
                 try:
-                    # Insert new notification
-                    insert_result = supabase.table("notification").insert({
+                    insert_data = {
                         "id": user["id"],
-                        "notif_message": f"New {user['role']} registered: {user.get('name', 'Unknown')}",
+                        "notif_message": f"New {user['role']} registered",
                         "notif_date": dt_ph.date().isoformat(),
                         "notif_time": dt_ph.time().strftime("%H:%M:%S"),
                         "notif_read": False,
                         "notification_type": "user_registration",
                         "related_id": user["id"]
-                    }).execute()
+                    }
                     
-                    # Add to response
+                    insert_result = supabase.table("notification").insert(insert_data).execute()
+                    
                     if insert_result.data:
                         new_notif = insert_result.data[0]
-                        date_iso = f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00"
-                        new_notifications.append({
-                            "id": new_notif["notif_id"],
+                        inserted_notifications.append({
+                            "notif_id": new_notif["notif_id"],
                             "user_id": new_notif["id"],
                             "message": new_notif["notif_message"],
-                            "date": date_iso,
+                            "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
                             "read": new_notif.get("notif_read", False),
-                            "role": user["role"],
-                            "status": user["status"]
+                            "role": user["role"]
                         })
                         
                 except Exception as e:
                     print(f"Failed to insert notification for user {user['id']}: {e}")
                     continue
 
-        # Return ONLY the newly created notifications
-        new_notifications.sort(key=lambda x: x["id"], reverse=True)
-        return Response(new_notifications)
+        # RETURN ONLY THE NEWLY INSERTED NOTIFICATIONS
+        return Response(inserted_notifications)
 
     except Exception as e:
         print(f"Error in get_notifications: {e}")
-        return Response({"error": "Failed to fetch notifications"}, status=500)
-
+        return Response({"error": "Failed to process notifications"}, status=500)
+    
 # -------------------- MARK NOTIFICATION AS READ --------------------
 @api_view(["POST"])
 @login_required
