@@ -423,7 +423,6 @@ def get_notifications(request):
     notifications_filtered = []
     for n in notifications_raw:
         role = user_roles.get(n["id"])
-        # FIX: Only include notifications for Kutsero and Horse Operator roles
         if role in ["Kutsero", "Horse Operator"]:
             notif_date_str = str(n['notif_date'])
             notif_time_str = str(n['notif_time'])
