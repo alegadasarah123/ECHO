@@ -395,47 +395,73 @@ def get_notifications(request):
 
     user_roles = {u["id"]: u["role"] for u in users}
 
+    # Get existing notifications
     result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
     notifications_raw = result.data if result.data else []
 
-    manila_tz = datetime.timezone(datetime.timedelta(hours=8))
+    # Find pending users without notifications
+    existing_user_ids = {n["id"] for n in notifications_raw}
+    pending_users = [
+        u for u in users 
+        if (u["status"] == "pending" and 
+            u["role"] in ["Kutsero", "Horse Operator"] and 
+            u["id"] not in existing_user_ids)
+    ]
 
-    existing_ids = {n["id"] for n in notifications_raw}
-    for u in users:
-        if u["status"] == "pending" and u["role"] in ["Kutsero", "Horse Operator"] and u["id"] not in existing_ids:
-            dt_ph = datetime.datetime.fromisoformat(u["created_at"].replace("Z", "+00:00")).astimezone(manila_tz) \
-                if u.get("created_at") else datetime.datetime.now(manila_tz)
-            try:
-                supabase.table("notification").insert({
-                    "id": u["id"],
-                    "notif_message": f"New {u['role']} registered: {u['name']}",
-                    "notif_date": dt_ph.date().isoformat(),
-                    "notif_time": dt_ph.time().strftime("%H:%M"),
-                    "notif_read": False  # Explicitly set to false for new notifications
-                }).execute()
-            except Exception as e:
-                print(f"Failed to insert notification for user {u['id']}: {e}")
+    # Insert missing notifications
+    for user in pending_users:
+        try:
+            # Parse created_at with timezone handling
+            created_at = user.get("created_at")
+            if created_at:
+                if created_at.endswith('Z'):
+                    created_at = created_at[:-1] + '+00:00'
+                dt_utc = datetime.datetime.fromisoformat(created_at)
+                dt_manila = dt_utc.astimezone(datetime.timezone(datetime.timedelta(hours=8)))
+            else:
+                dt_manila = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
 
-    # Re-fetch notifications
+            # Insert with all required fields
+            supabase.table("notification").insert({
+                "id": user["id"],
+                "notif_message": f"New {user['role']} registered: {user['name']}",
+                "notif_date": dt_manila.date().isoformat(),
+                "notif_time": dt_manila.time().strftime("%H:%M:%S"),
+                "notif_read": False,
+                "notification_type": "user_registration"  # Required field
+            }).execute()
+        except Exception as e:
+            print(f"Failed to insert notification for user {user['id']}: {e}")
+
+    # Re-fetch all notifications after inserts
     result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
     notifications_raw = result.data if result.data else []
 
+    # Filter and format response
     notifications_filtered = []
-    for n in notifications_raw:
-        role = user_roles.get(n["id"])
+    for notification in notifications_raw:
+        role = user_roles.get(notification["id"])
         if role in ["Kutsero", "Horse Operator"]:
-            notif_date_str = str(n['notif_date'])
-            notif_time_str = str(n['notif_time'])
-            date_iso = f"{notif_date_str}T{notif_time_str}+08:00"
+            # Create ISO format datetime string
+            notif_date = str(notification['notif_date'])
+            notif_time = str(notification['notif_time'])
+            
+            # Handle time format (remove microseconds if present)
+            if '.' in notif_time:
+                notif_time = notif_time.split('.')[0]
+                
+            date_iso = f"{notif_date}T{notif_time}+08:00"
+            
             notifications_filtered.append({
-                "id": n["notif_id"],  # Use notif_id as the unique identifier
-                "user_id": n["id"],   # Include user_id for reference
-                "message": n["notif_message"],
+                "id": notification["notif_id"],
+                "user_id": notification["id"],
+                "message": notification["notif_message"],
                 "date": date_iso,
-                "read": n.get("notif_read", False)  # Include read status
+                "read": notification.get("notif_read", False)
             })
 
-    notifications_filtered.sort(key=lambda x: x["id"] or 0, reverse=True)
+    # Sort by notif_id descending
+    notifications_filtered.sort(key=lambda x: x["id"], reverse=True)
     return Response(notifications_filtered)
 
 # -------------------- MARK NOTIFICATION AS READ --------------------
