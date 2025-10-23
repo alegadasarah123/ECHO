@@ -395,100 +395,68 @@ def get_notifications(request):
 
     user_roles = {u["id"]: u["role"] for u in users}
 
+    # Fetch existing notifications
     result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
     notifications_raw = result.data if result.data else []
 
-    manila_tz = datetime.timezone(datetime.timedelta(hours=8))
+    # Define Philippine timezone (UTC+8)
+    ph_tz = datetime.timezone(datetime.timedelta(hours=8))
 
     existing_ids = {n["id"] for n in notifications_raw}
+
     for u in users:
         if u["status"] == "pending" and u["role"] in ["Kutsero", "Horse Operator"] and u["id"] not in existing_ids:
-            dt_ph = datetime.datetime.fromisoformat(u["created_at"].replace("Z", "+00:00")).astimezone(manila_tz) \
-                if u.get("created_at") else datetime.datetime.now(manila_tz)
+            # Use user creation time if available, else current PH time
+            if u.get("created_at"):
+                try:
+                    created_dt = datetime.datetime.fromisoformat(
+                        u["created_at"].replace("Z", "+00:00")
+                    ).astimezone(ph_tz)
+                except Exception:
+                    created_dt = datetime.datetime.now(ph_tz)
+            else:
+                created_dt = datetime.datetime.now(ph_tz)
+
             try:
                 supabase.table("notification").insert({
                     "id": u["id"],
                     "notif_message": f"New {u['role']} registered: {u['name']}",
-                    "notif_date": dt_ph.date().isoformat(),
-                    "notif_time": dt_ph.time().strftime("%H:%M"),
-                    "notif_read": False  # Explicitly set to false for new notifications
+                    "notif_date": created_dt.date().isoformat(),
+                    "notif_time": created_dt.strftime("%H:%M:%S"),
+                    "notif_read": False,
                 }).execute()
             except Exception as e:
                 print(f"Failed to insert notification for user {u['id']}: {e}")
 
-    # Re-fetch notifications
+    # Re-fetch updated notifications
     result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
     notifications_raw = result.data if result.data else []
 
     notifications_filtered = []
     for n in notifications_raw:
         role = user_roles.get(n["id"])
-        # FIX: Only include notifications for Kutsero and Horse Operator roles
         if role in ["Kutsero", "Horse Operator"]:
-            notif_date_str = str(n['notif_date'])
-            notif_time_str = str(n['notif_time'])
-            date_iso = f"{notif_date_str}T{notif_time_str}+08:00"
+            # Combine date + time into ISO 8601 string (with +08:00 timezone)
+            notif_date = str(n["notif_date"])
+            notif_time = str(n["notif_time"])
+            try:
+                notif_dt = datetime.datetime.fromisoformat(f"{notif_date}T{notif_time}")
+                notif_dt = notif_dt.replace(tzinfo=ph_tz)
+                date_iso = notif_dt.isoformat()
+            except Exception:
+                date_iso = f"{notif_date}T{notif_time}+08:00"
+
             notifications_filtered.append({
-                "id": n["notif_id"],  # Use notif_id as the unique identifier
-                "user_id": n["id"],   # Include user_id for reference
+                "id": n["notif_id"],
+                "user_id": n["id"],
                 "message": n["notif_message"],
                 "date": date_iso,
-                "read": n.get("notif_read", False)  # Include read status
+                "read": n.get("notif_read", False)
             })
 
+    # Sort by notif_id (descending)
     notifications_filtered.sort(key=lambda x: x["id"] or 0, reverse=True)
     return Response(notifications_filtered)
-
-# -------------------- MARK NOTIFICATION AS READ --------------------
-@api_view(["POST"])
-@login_required
-def mark_notification_read(request, notif_id):
-    """Mark a specific notification as read."""
-    try:
-        # Check if notification exists
-        result = supabase.table("notification").select("*").eq("notif_id", notif_id).execute()
-        
-        if not result.data:
-            return Response({"error": "Notification not found"}, status=404)
-        
-        # Update the notification to mark as read
-        update_result = supabase.table("notification").update({
-            "notif_read": True
-        }).eq("notif_id", notif_id).execute()
-        
-        if update_result.data:
-            return Response({
-                "success": True, 
-                "message": "Notification marked as read",
-                "notif_id": notif_id
-            })
-        else:
-            return Response({"error": "Failed to update notification"}, status=500)
-            
-    except Exception as e:
-        print(f"Error marking notification as read: {e}")
-        return Response({"error": "Internal server error"}, status=500)
-
-# -------------------- MARK ALL NOTIFICATIONS AS READ --------------------
-@api_view(["POST"])
-@login_required
-def mark_all_notifications_read(request):
-    """Mark all notifications as read."""
-    try:
-        # Update all notifications to mark as read
-        update_result = supabase.table("notification").update({
-            "notif_read": True
-        }).eq("notif_read", False).execute()
-        
-        return Response({
-            "success": True, 
-            "message": f"All notifications marked as read",
-            "updated_count": len(update_result.data) if update_result.data else 0
-        })
-            
-    except Exception as e:
-        print(f"Error marking all notifications as read: {e}")
-        return Response({"error": "Internal server error"}, status=500)
 
 # ------------------------- ACTIVATE / DEACTIVATE USER ------------------------------------
 @api_view(["POST"])
