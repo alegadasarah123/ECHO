@@ -27,7 +27,7 @@ import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
 
-const API_BASE_URL = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
 
 
 const SkeletonLoader = ({ activeTab }) => {
@@ -37,7 +37,7 @@ const SkeletonLoader = ({ activeTab }) => {
         return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
       case "APPROVED":
         return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
-      case "DECLINED":
+      case "NOT APPROVED":
         return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
       default:
         return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
@@ -159,33 +159,44 @@ function DvmfAccessRequest() {
   };
 
   // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
- const handleNotificationClick = async (notification) => {
-  // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev =>
-    prev.map(notif =>
-      notif.id === notification.id ? { ...notif, read: true } : notif
+  const handleNotificationClick = async (notification) => {
+  const notifId = notification?.notif_id || notification?.id; // fallback support
+
+  if (!notifId) {
+    console.warn("Notification ID is missing:", notification);
+  }
+
+  // Mark as read in frontend immediately
+  setNotifications((prev) =>
+    prev.map((notif) =>
+      notif.notif_id === notifId || notif.id === notifId
+        ? { ...notif, read: true }
+        : notif
     )
   );
 
-  // Mark notification as read in backend
-  try {
-    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-      method: "POST",
-      credentials: "include",
-    });
-  } catch (err) {
-    console.error("Error marking notification as read:", err);
+  // Mark as read in backend (only if valid ID)
+  if (notifId) {
+    try {
+      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
   }
 
-  // Handle navigation based on notification content
-  const message = notification.message.toLowerCase();
+  const message = (notification.message || "").toLowerCase();
 
+  // Navigate for account-related notifications
   if (
     message.includes("new registration") ||
     message.includes("new veterinarian approved") ||
     message.includes("veterinarian approved") ||
     message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered")
+    message.includes("veterinarian registered") ||
+    message.includes("veterinarian pending")
   ) {
     navigate("/DvmfAccountApproval", {
       state: {
@@ -196,7 +207,10 @@ function DvmfAccessRequest() {
     return;
   }
 
-  if (message.includes("pending medical record access") || message.includes("requested access")) {
+  if (
+    message.includes("pending medical record access") ||
+    message.includes("requested access")
+  ) {
     navigate("/DvmfAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -206,7 +220,7 @@ function DvmfAccessRequest() {
     return;
   }
 
-  // Only navigate to CtuAnnouncement for comment-related notifications
+// Only navigate to CtuAnnouncement for comment-related notifications
   if (message.includes("comment")) {
     navigate("/DvmfAnnouncement", {
       state: {
@@ -216,7 +230,8 @@ function DvmfAccessRequest() {
     });
     return;
   }
-};
+}
+
 
 
   // ✅ Handle notifications update from modal
@@ -230,7 +245,7 @@ function DvmfAccessRequest() {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("https://echo-eb18.onrender.com/api/dvmf/get_vetnotifications/")
+    fetch("https://echo-ebl8.onrender.com/api/dvmf/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -265,7 +280,7 @@ function DvmfAccessRequest() {
   // Fetch access requests
   const loadAccessRequests = useCallback(() => {
     setIsLoading(true)
-    fetch("https://echo-eb18.onrender.com/api/dvmf/medrec_access_requests/")
+    fetch("https://echo-ebl8.onrender.com/api/dvmf/medrec_access_requests/")
       .then((res) => res.json())
       .then((data) => {
         const formatted = data.map((req) => ({
@@ -314,7 +329,7 @@ function DvmfAccessRequest() {
   const approveRequest = async (requestId) => {
   try {
     const res = await fetch(
-      `https://echo-eb18.onrender.com/api/dvmf/access-requests/${requestId}/approve/`,
+      `https://echo-ebl8.onrender.com/api/dvmf/access-requests/${requestId}/approve/`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -405,13 +420,13 @@ function DvmfAccessRequest() {
   // Confirm decline
   const confirmDeclineModal = async () => {
     if (!declineNote.trim()) {
-      alert("Please provide a reason for declining this request.")
+      alert("Please provide a reason for not approving this request.")
       return
     }
 
     try {
       const response = await fetch(
-        `hhttps://echo-eb18.onrender.com/api/dvmf/access-requests/${currentRequestId}/decline/`,
+        `https://echo-ebl8.onrender.com/api/dvmf/access-requests/${currentRequestId}/decline/`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -423,16 +438,16 @@ function DvmfAccessRequest() {
       console.log("Decline response:", response.status, data)
 
       if (response.ok) {
-        alert("Request declined successfully")
+        alert("Request not approved successfully")
         closeDeclineModal()
         setIsViewModalOpen(false)
         loadAccessRequests()
       } else {
-        alert("Failed to decline request: " + (data.error || "Unknown error"))
+        alert("Failed to not approve request: " + (data.error || "Unknown error"))
       }
     } catch (err) {
-      console.error("Error declining request:", err)
-      alert("Error declining request. Check console for details.")
+      console.error("Error not approving request:", err)
+      alert("Error not approving request. Check console for details.")
     }
   }
 
@@ -443,8 +458,8 @@ function DvmfAccessRequest() {
       if (activeTab === "APPROVED") {
         return request.status === "APPROVED"
       }
-      if (activeTab === "DECLINED") {
-        return request.status === "DECLINED"
+      if (activeTab === "NOT APPROVED") {
+        return request.status === "DECLINED" // Backend still uses "DECLINED"
       }
       return request.status === "PENDING"
     })
@@ -485,7 +500,7 @@ function DvmfAccessRequest() {
     return {
       pending: accessRequests.filter((req) => req.status === "PENDING").length,
       approved: accessRequests.filter((req) => req.status === "APPROVED").length,
-      declined: accessRequests.filter((req) => req.status === "DECLINED").length,
+      notApproved: accessRequests.filter((req) => req.status === "DECLINED").length, // Backend still uses "DECLINED"
     }
   }
 
@@ -571,6 +586,11 @@ function DvmfAccessRequest() {
 
   const gridConfig = getGridConfig()
 
+  // Function to display status text (convert "DECLINED" to "NOT APPROVED" in frontend)
+  const getStatusDisplayText = (status) => {
+    return status === "DECLINED" ? "NOT APPROVED" : status
+  }
+
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
       <div className="sidebars" id="sidebars" ref={sidebarRef}>
@@ -578,13 +598,10 @@ function DvmfAccessRequest() {
       </div>
 
       <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
-        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+       <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
           {/* ADDED HEADER SECTION */}
           <div className="flex flex-col">
-            <h2 className="text-2xl font-bold text-[#0F3D5A]">Access Request</h2>
-            <p className="text-sm text-gray-600 mt-1 font-normal">
-              Overview of medical record access requests and approvals
-            </p>
+            <h2 className="text-2xl font-bold text-gray-800 mb-1">Access Request</h2>
           </div>
 
           <div className="flex items-center gap-4">
@@ -675,18 +692,18 @@ function DvmfAccessRequest() {
               </button>
               <button
                 className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
-                  activeTab === "DECLINED"
+                  activeTab === "NOT APPROVED"
                     ? "font-semibold bg-white text-gray-900 shadow-sm"
                     : "hover:bg-white/70 hover:text-gray-900"
                 }`}
                 onClick={() => {
-                  setActiveTab("DECLINED")
+                  setActiveTab("NOT APPROVED")
                   setCurrentPage(1)
                 }}
               >
-                Declined{" "}
+                Not Approved{" "}
                 <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-red-500">
-                  {filterCounts.declined}
+                  {filterCounts.notApproved}
                 </span>
               </button>
             </div>
@@ -732,7 +749,7 @@ function DvmfAccessRequest() {
                                     : "bg-red-100 text-red-800"
                               }`}
                             >
-                              {request.status}
+                              {getStatusDisplayText(request.status)}
                             </span>
                           </div>
                           <div className="text-gray-600 text-sm">{request.dateRequested.toLocaleDateString()}</div>
@@ -797,7 +814,7 @@ function DvmfAccessRequest() {
                                     key={pageNum}
                                     className={`flex items-center justify-center min-w-[40px] h-10 px-3 border border-gray-300 rounded-md text-sm cursor-pointer transition-all duration-200 ${
                                       currentPage === pageNum
-                                        ? "bg-red-700 text-white border-red-700"
+                                        ? "bg-[#0F3D5A] text-white border-[#0F3D5A]"
                                         : "bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
                                     }`}
                                     onClick={() => goToPage(pageNum)}
@@ -872,7 +889,7 @@ function DvmfAccessRequest() {
                             : "bg-red-100 text-red-800"
                       }`}
                     >
-                      {selectedRequest.status}
+                      {getStatusDisplayText(selectedRequest.status)}
                     </span>
                   </div>
                 </div>

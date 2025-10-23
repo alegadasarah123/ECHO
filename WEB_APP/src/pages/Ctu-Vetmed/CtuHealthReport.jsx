@@ -2,13 +2,13 @@
 
 import Sidebar from "@/components/CtuSidebar"
 import jsPDF from "jspdf"
-import { Bell, Download } from "lucide-react"
+import { Bell, Download, RefreshCw } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
 
 function CtuHealthReport() {
   const navigate = useNavigate()
@@ -27,12 +27,78 @@ function CtuHealthReport() {
   })
   const [monthlyData, setMonthlyData] = useState([])
   const [exportLoading, setExportLoading] = useState(false)
+  
+  // ADDED: Loading and refresh states
+  const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [statsLoading, setStatsLoading] = useState(true)
+  const [chartLoading, setChartLoading] = useState(true)
 
   const notificationBellRef = useRef(null)
   const notificationDropdownRef = useRef(null)
   const logoutModalRef = useRef(null)
   const sidebarRef = useRef(null)
   const chartRef = useRef(null)
+
+  // ADDED: Skeleton Loader Components
+  const StatSkeleton = () => (
+    <div className="bg-white p-5 rounded-lg shadow-sm text-center animate-pulse">
+      <div className="h-10 w-20 bg-gray-300 rounded mx-auto mb-2"></div>
+      <div className="h-4 w-24 bg-gray-300 rounded mx-auto"></div>
+    </div>
+  )
+
+  const ChartSkeleton = () => (
+    <div className="bg-white rounded-lg shadow-sm p-6 animate-pulse">
+      <div className="flex justify-between items-center mb-5">
+        <div className="h-6 w-40 bg-gray-300 rounded"></div>
+        <div className="h-10 w-32 bg-gray-300 rounded"></div>
+      </div>
+      
+      {/* Legend Skeleton */}
+      <div className="flex gap-5 mb-5 justify-center">
+        {[1, 2, 3].map((item) => (
+          <div key={item} className="flex items-center gap-2">
+            <div className="w-3 h-3 bg-gray-300 rounded-sm"></div>
+            <div className="h-3 w-12 bg-gray-300 rounded"></div>
+          </div>
+        ))}
+      </div>
+      
+      {/* Chart Bars Skeleton */}
+      <div className="w-full overflow-x-auto">
+        <div className="min-w-[600px]">
+          <div className="relative h-64 mt-8">
+            {/* Y-axis labels skeleton */}
+            <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between">
+              {[1, 2, 3, 4, 5].map((item) => (
+                <div key={item} className="h-3 w-8 bg-gray-300 rounded ml-auto mr-2"></div>
+              ))}
+            </div>
+            
+            {/* Bars skeleton */}
+            <div className="ml-10 pl-5 h-full flex items-end justify-start gap-6 px-0 border-b border-l border-gray-300">
+              {[1, 2, 3, 4, 5, 6].map((item) => (
+                <div key={item} className="flex flex-col items-center w-12">
+                  <div className="flex items-end justify-center space-x-1 h-48">
+                    {[1, 2, 3].map((bar) => (
+                      <div 
+                        key={bar}
+                        className="w-3 bg-gray-300 rounded-t"
+                        style={{ height: `${Math.random() * 70 + 10}%` }}
+                      ></div>
+                    ))}
+                  </div>
+                  <div className="h-3 w-10 bg-gray-300 rounded mt-2"></div>
+                  <div className="h-3 w-8 bg-gray-300 rounded mt-1"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
 
   const formatTimeAgo = useCallback((timestamp) => {
     const now = new Date()
@@ -74,64 +140,77 @@ function CtuHealthReport() {
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
   const handleNotificationClick = async (notification) => {
-  // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev =>
-    prev.map(notif =>
-      notif.id === notification.id ? { ...notif, read: true } : notif
-    )
-  );
+    const notifId = notification?.notif_id || notification?.id;
 
-  // Mark notification as read in backend
-  try {
-    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-      method: "POST",
-      credentials: "include",
-    });
-  } catch (err) {
-    console.error("Error marking notification as read:", err);
-  }
+    if (!notifId) {
+      console.warn("Notification ID is missing:", notification);
+    }
 
-  // Handle navigation based on notification content
-  const message = notification.message.toLowerCase();
+    // Mark as read in frontend immediately
+    setNotifications((prev) =>
+      prev.map((notif) =>
+        notif.notif_id === notifId || notif.id === notifId
+          ? { ...notif, read: true }
+          : notif
+      )
+    );
 
-  if (
-    message.includes("new registration") ||
-    message.includes("new veterinarian approved") ||
-    message.includes("veterinarian approved") ||
-    message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered")
-  ) {
-    navigate("/CtuAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
+    // Mark as read in backend (only if valid ID)
+    if (notifId) {
+      try {
+        await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+          method: "POST",
+          credentials: "include",
+        });
+      } catch (err) {
+        console.error("Error marking notification as read:", err);
+      }
+    }
 
-  if (message.includes("pending medical record access") || message.includes("requested access")) {
-    navigate("/CtuAccessRequest", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
+    const message = (notification.message || "").toLowerCase();
 
-  // Only navigate to CtuAnnouncement for comment-related notifications
-  if (message.includes("comment")) {
-    navigate("/CtuAnnouncement", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
-};
+    // Navigate for account-related notifications
+    if (
+      message.includes("new registration") ||
+      message.includes("new veterinarian approved") ||
+      message.includes("veterinarian approved") ||
+      message.includes("veterinarian declined") ||
+      message.includes("veterinarian registered") ||
+      message.includes("veterinarian pending")
+    ) {
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
 
+    if (
+      message.includes("pending medical record access") ||
+      message.includes("requested access")
+    ) {
+      navigate("/CtuAccessRequest", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    // Only navigate to CtuAnnouncement for comment-related notifications
+    if (message.includes("comment")) {
+      navigate("/CtuAnnouncement", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+  };
 
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -161,15 +240,10 @@ function CtuHealthReport() {
       .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
-  useEffect(() => {
-    loadNotifications()
-    const interval = setInterval(() => {
-      loadNotifications()
-    }, 30000)
-    return () => clearInterval(interval)
-  }, [loadNotifications])
-
   const loadStatistics = useCallback(() => {
+    setStatsLoading(true);
+    setChartLoading(true);
+    
     // Fetch statistics based on horse_status
     fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_horse_statistics/")
       .then((res) => {
@@ -177,7 +251,7 @@ function CtuHealthReport() {
         return res.json()
       })
       .then((data) => {
-        console.log("Monthly data received:", data); // Debug log
+        console.log("Monthly data received:", data);
         
         // Calculate totals from monthly data
         const totalHorses = data.reduce((sum, month) => sum + month.total, 0)
@@ -194,9 +268,39 @@ function CtuHealthReport() {
         
         // Set monthly data for the chart
         setMonthlyData(data)
+        
+        setStatsLoading(false);
+        setChartLoading(false);
       })
-      .catch((err) => console.error("Failed to fetch statistics:", err))
+      .catch((err) => {
+        console.error("Failed to fetch statistics:", err)
+        setStatsLoading(false);
+        setChartLoading(false);
+      })
   }, [])
+
+  // ADDED: Handle refresh function
+  const handleRefresh = useCallback(() => {
+    console.log("Manual refresh triggered")
+    setIsRefreshing(true)
+    
+    // Reset loading states for visual feedback
+    setStatsLoading(true)
+    setChartLoading(true)
+
+    Promise.all([loadStatistics(), loadNotifications()])
+      .then(() => {
+        setIsRefreshing(false)
+        console.log("Manual refresh completed")
+      })
+      .catch((error) => {
+        console.error("Error during manual refresh:", error)
+        setIsRefreshing(false)
+        // Ensure loading states are reset even on error
+        setStatsLoading(false)
+        setChartLoading(false)
+      })
+  }, [loadStatistics, loadNotifications])
 
   const handleExport = async () => {
     setExportLoading(true);
@@ -280,7 +384,7 @@ function CtuHealthReport() {
         // Draw Y-axis labels (0, 5, 10, etc.)
         pdf.setFontSize(8);
         pdf.setTextColor(0, 0, 0);
-        const ySteps = Math.ceil(maxValue / 5) * 5 || 10; // Round up to nearest 5, minimum 10
+        const ySteps = Math.ceil(maxValue / 5) * 5 || 10;
         for (let i = 0; i <= 4; i++) {
           const value = Math.round((i / 4) * ySteps);
           const y = chartY + chartHeight - (i / 4) * chartHeight;
@@ -297,13 +401,13 @@ function CtuHealthReport() {
           const unhealthyHeight = (monthData.unhealthy / ySteps) * chartHeight;
 
           // Draw bars side by side
-          pdf.setFillColor(40, 167, 69); // Green for healthy
+          pdf.setFillColor(40, 167, 69);
           pdf.rect(groupX, chartY + chartHeight - healthyHeight, barWidth, healthyHeight, 'F');
           
-          pdf.setFillColor(253, 126, 20); // Orange for sick
+          pdf.setFillColor(253, 126, 20);
           pdf.rect(groupX + barWidth, chartY + chartHeight - sickHeight, barWidth, sickHeight, 'F');
           
-          pdf.setFillColor(220, 53, 69); // Red for unhealthy
+          pdf.setFillColor(220, 53, 69);
           pdf.rect(groupX + barWidth * 2, chartY + chartHeight - unhealthyHeight, barWidth, unhealthyHeight, 'F');
 
           // Month labels
@@ -368,16 +472,12 @@ function CtuHealthReport() {
       }
 
       // Add footer
-      // Add footer (right side)
-const pageWidth = pdf.internal.pageSize.getWidth();
-pdf.setFontSize(10);
-pdf.setTextColor(150, 150, 150);
-
-// Align text to the right by subtracting its width
-const footerText = "CTU Veterinary Medicine System";
-const textWidth = pdf.getTextWidth(footerText);
-pdf.text(footerText, pageWidth - textWidth - 20, 290);
-
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      pdf.setFontSize(10);
+      pdf.setTextColor(150, 150, 150);
+      const footerText = "CTU Veterinary Medicine System";
+      const textWidth = pdf.getTextWidth(footerText);
+      pdf.text(footerText, pageWidth - textWidth - 20, 290);
 
       // Generate filename with current date
       const date = new Date().toISOString().split('T')[0];
@@ -415,10 +515,22 @@ pdf.text(footerText, pageWidth - textWidth - 20, 290);
     window.location.reload()
   }
 
+  // ADDED: Load all data on component mount
+  const loadAllData = useCallback(() => {
+    setIsLoading(true);
+    Promise.all([loadStatistics(), loadNotifications()])
+      .then(() => {
+        setIsLoading(false);
+      })
+      .catch((error) => {
+        console.error("Error loading data:", error);
+        setIsLoading(false);
+      });
+  }, [loadStatistics, loadNotifications]);
+
   useEffect(() => {
-    loadNotifications()
-    loadStatistics()
-  }, [loadNotifications, loadStatistics])
+    loadAllData();
+  }, [loadAllData]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -460,32 +572,50 @@ pdf.text(footerText, pageWidth - textWidth - 20, 290);
 
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full m-0 p-0 box-border">
+      {/* ADDED: Full page loading overlay */}
+      {isLoading && (
+        <div className="fixed top-0 left-0 w-full h-full bg-white/90 flex flex-col items-center justify-center z-[9999]">
+          <div className="text-6xl animate-pulse"></div>
+          <div className="mt-4 text-lg font-bold text-black">Loading Health Report...</div>
+        </div>
+      )}
+
       <div className="sidebars" id="sidebars">
         <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
       </div>
 
       <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
-        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
-          <div className="flex flex-col w-full sm:w-2/3 md:w-1/2 lg:w-1/3">
-  <h2 className="text-2xl font-bold text-[#b91c1c]">Health Report</h2>
-  <p className="text-sm text-gray-500 mt-1 font-normal">
-  Track overall horse health and monitor monthly status
-</p>
+        <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
+          <div className="flex flex-col">
+            <h2 className="text-2xl font-bold text-gray-800 mb-1">Health Report</h2>
+          </div>
 
-</div>
+          <div className="flex items-center gap-4">
+            {/* ADDED: Refresh Button */}
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="cursor-pointer p-2 hover:bg-gray-100 rounded-full transition-colors"
+              title="Refresh Health Report"
+            >
+              <RefreshCw 
+                className={`w-5 h-5 text-gray-600 ${isRefreshing ? 'animate-spin' : ''}`} 
+              />
+            </button>
 
-          <button
-            ref={notificationBellRef}
-            className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
-            onClick={() => setNotifsOpen(!notifsOpen)}
-          >
-            <Bell size={24} color="#374151" />
-            {unreadNotificationsCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold min-w-[20px]">
-                {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
-              </span>
-            )}
-          </button>
+            <button
+              ref={notificationBellRef}
+              className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
+              onClick={() => setNotifsOpen(!notifsOpen)}
+            >
+              <Bell size={24} color="#374151" />
+              {unreadNotificationsCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold min-w-[20px]">
+                  {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
+                </span>
+              )}
+            </button>
+          </div>
 
           <NotificationModal
             isOpen={notifsOpen}
@@ -501,181 +631,195 @@ pdf.text(footerText, pageWidth - textWidth - 20, 290);
           <div className="mb-6">
             {/* Stat Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-[30px]">
-              <div
-                className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer"
-                onClick={() => handleStatCardClick("Total Horses", statistics.totalHorses)}
-              >
-                <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
-                  {statistics.totalHorses}
-                </div>
-                <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Total Horses</div>
-              </div>
+              {statsLoading ? (
+                // Show skeleton loaders when loading
+                <>
+                  <StatSkeleton />
+                  <StatSkeleton />
+                  <StatSkeleton />
+                  <StatSkeleton />
+                </>
+              ) : (
+                // Show actual stat cards when data is loaded
+                <>
+                  <div
+                    className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer"
+                    onClick={() => handleStatCardClick("Total Horses", statistics.totalHorses)}
+                  >
+                    <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
+                      {statistics.totalHorses}
+                    </div>
+                    <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Total Horses</div>
+                  </div>
 
-              <div
-                className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer"
-                onClick={() => handleStatCardClick("Healthy", statistics.healthy)}
-              >
-                <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
-                  {statistics.healthy}
-                </div>
-                <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Healthy</div>
-              </div>
+                  <div
+                    className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer"
+                    onClick={() => handleStatCardClick("Healthy", statistics.healthy)}
+                  >
+                    <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
+                      {statistics.healthy}
+                    </div>
+                    <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Healthy</div>
+                  </div>
 
-              <div
-                className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer"
-                onClick={() => handleStatCardClick("Sick", statistics.sick)}
-              >
-                <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
-                  {statistics.sick}
-                </div>
-                <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Sick</div>
-              </div>
+                  <div
+                    className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer"
+                    onClick={() => handleStatCardClick("Sick", statistics.sick)}
+                  >
+                    <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
+                      {statistics.sick}
+                    </div>
+                    <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Sick</div>
+                  </div>
 
-              <div
-                className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer"
-                onClick={() => handleStatCardClick("Unhealthy", statistics.unhealthy)}
-              >
-                <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
-                  {statistics.unhealthy}
-                </div>
-                <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Unhealthy</div>
-              </div>
+                  <div
+                    className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer"
+                    onClick={() => handleStatCardClick("Unhealthy", statistics.unhealthy)}
+                  >
+                    <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
+                      {statistics.unhealthy}
+                    </div>
+                    <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Unhealthy</div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Bar Chart Section */}
-            <div 
-              ref={chartRef}
-              className="bg-white rounded-lg shadow-sm p-4 lg:p-6"
-            >
-              <div className="flex justify-between items-center mb-5 flex-wrap gap-4">
-                <h2 className="text-lg lg:text-[18px] font-semibold text-gray-900">
-                  Monthly Health Status
-                </h2>
-                <button
-                  className="bg-red-700 text-white border-none py-2 px-4 rounded-md text-sm lg:text-[14px] font-medium cursor-pointer transition-colors hover:bg-red-800 min-h-[40px] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  onClick={handleExport}
-                  disabled={exportLoading || statistics.totalHorses === 0}
-                >
-                  {exportLoading ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  ) : (
-                    <Download size={16} />
-                  )}
-                  {exportLoading ? 'Exporting...' : 'Export PDF'}
-                </button>
-              </div>
-
-              {/* Legend */}
-              <div className="flex gap-5 mb-5 justify-center flex-wrap">
-                <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500">
-                  <div className="w-3 h-3 rounded-sm bg-green-500"></div>
-                  <span>Healthy</span>
+            {chartLoading ? (
+              <ChartSkeleton />
+            ) : (
+              <div 
+                ref={chartRef}
+                className="bg-white rounded-lg shadow-sm p-4 lg:p-6"
+              >
+                <div className="flex justify-between items-center mb-5 flex-wrap gap-4">
+                  <h2 className="text-lg lg:text-[18px] font-semibold text-gray-900">
+                    Monthly Health Status
+                  </h2>
+                  <button
+                    className="bg-red-700 text-white border-none py-2 px-4 rounded-md text-sm lg:text-[14px] font-medium cursor-pointer transition-colors hover:bg-red-800 min-h-[40px] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={handleExport}
+                    disabled={exportLoading || statistics.totalHorses === 0}
+                  >
+                    {exportLoading ? (
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    ) : (
+                      <Download size={16} />
+                    )}
+                    {exportLoading ? 'Exporting...' : 'Export PDF'}
+                  </button>
                 </div>
-                <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500">
-                  <div className="w-3 h-3 rounded-sm bg-orange-500"></div>
-                  <span>Sick</span>
-                </div>
-                <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500">
-                  <div className="w-3 h-3 rounded-sm bg-red-500"></div>
-                  <span>Unhealthy</span>
-                </div>
-              </div>
 
-              {/* Bar Chart */}
-              <div className="w-full overflow-x-auto">
-                <div className="min-w-[600px]">
-                  {/* Chart Container */}
-                  <div className="relative h-64 mt-8">
-                    {/* Y-axis labels */}
-                    <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-xs text-gray-500">
-                      {yAxisSteps.map((value, index) => (
-                        <div 
-                          key={value} 
-                          className="text-right pr-2"
-                          style={{ 
-                            position: 'absolute',
-                            right: '0',
-                            top: `${(1 - (value / yAxisMax)) * 100}%`,
-                            transform: 'translateY(-50%)'
-                          }}
-                        >
-                          {value}
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Chart area */}
-                  <div className="ml-10 pl-5 h-full flex items-end justify-start gap-6 px-0 border-b border-l border-gray-300">
-
-
-                      {monthlyData.map((monthData, index) => {
-                        // Calculate bar heights based on Y-axis scale
-                        const healthyHeight = (monthData.healthy / yAxisMax) * 80;
-                        const sickHeight = (monthData.sick / yAxisMax) * 80;
-                        const unhealthyHeight = (monthData.unhealthy / yAxisMax) * 80;
-
-                        return (
-                         <div key={index} className="flex flex-col items-center w-12">
-
-                            {/* Three separate bars side by side */}
-                            <div className="flex items-end justify-center space-x-1 h-48 relative">
-                              {/* Healthy bar */}
-                              <div 
-                                className="w-3 bg-green-500 relative cursor-pointer group transition-all hover:w-4 rounded-t border border-green-600"
-                                style={{ height: `${healthyHeight}%`, minHeight: monthData.healthy > 0 ? '2px' : '0' }}
-                                title={`Healthy: ${monthData.healthy}`}
-                              >
-                                <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap">
-                                  Healthy: {monthData.healthy}
-                                </div>
-                              </div>
-                              
-                              {/* Sick bar */}
-                              <div 
-                                className="w-3 bg-orange-500 relative cursor-pointer group transition-all hover:w-4 rounded-t border border-orange-600"
-                                style={{ height: `${sickHeight}%`, minHeight: monthData.sick > 0 ? '2px' : '0' }}
-                                title={`Sick: ${monthData.sick}`}
-                              >
-                                <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap">
-                                  Sick: {monthData.sick}
-                                </div>
-                              </div>
-                              
-                              {/* Unhealthy bar */}
-                              <div 
-                                className="w-3 bg-red-500 relative cursor-pointer group transition-all hover:w-4 rounded-t border border-red-600"
-                                style={{ height: `${unhealthyHeight}%`, minHeight: monthData.unhealthy > 0 ? '2px' : '0' }}
-                                title={`Unhealthy: ${monthData.unhealthy}`}
-                              >
-                                <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap">
-                                  Unhealthy: {monthData.unhealthy}
-                                </div>
-                              </div>
-                            </div>
-                            
-                            {/* Month label */}
-                            <div className="text-xs text-gray-600 mt-2 font-medium text-center">
-                              {monthData.month}
-                            </div>
-                            
-                            {/* Total count */}
-                            <div className="text-xs text-gray-500 mt-1">
-                              Total: {monthData.total}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                {/* Legend */}
+                <div className="flex gap-5 mb-5 justify-center flex-wrap">
+                  <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500">
+                    <div className="w-3 h-3 rounded-sm bg-green-500"></div>
+                    <span>Healthy</span>
                   </div>
+                  <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500">
+                    <div className="w-3 h-3 rounded-sm bg-orange-500"></div>
+                    <span>Sick</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500">
+                    <div className="w-3 h-3 rounded-sm bg-red-500"></div>
+                    <span>Unhealthy</span>
+                  </div>
+                </div>
 
-                  {monthlyData.length === 0 && (
-                    <div className="text-center text-gray-500 py-8">
-                      No monthly data available
+                {/* Bar Chart */}
+                <div className="w-full overflow-x-auto">
+                  <div className="min-w-[600px]">
+                    {/* Chart Container */}
+                    <div className="relative h-64 mt-8">
+                      {/* Y-axis labels */}
+                      <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-xs text-gray-500">
+                        {yAxisSteps.map((value, index) => (
+                          <div 
+                            key={value} 
+                            className="text-right pr-2"
+                            style={{ 
+                              position: 'absolute',
+                              right: '0',
+                              top: `${(1 - (value / yAxisMax)) * 100}%`,
+                              transform: 'translateY(-50%)'
+                            }}
+                          >
+                            {value}
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Chart area */}
+                      <div className="ml-10 pl-5 h-full flex items-end justify-start gap-6 px-0 border-b border-l border-gray-300">
+                        {monthlyData.map((monthData, index) => {
+                          // Calculate bar heights based on Y-axis scale
+                          const healthyHeight = (monthData.healthy / yAxisMax) * 80;
+                          const sickHeight = (monthData.sick / yAxisMax) * 80;
+                          const unhealthyHeight = (monthData.unhealthy / yAxisMax) * 80;
+
+                          return (
+                            <div key={index} className="flex flex-col items-center w-12">
+                              {/* Three separate bars side by side */}
+                              <div className="flex items-end justify-center space-x-1 h-48 relative">
+                                {/* Healthy bar */}
+                                <div 
+                                  className="w-3 bg-green-500 relative cursor-pointer group transition-all hover:w-4 rounded-t border border-green-600"
+                                  style={{ height: `${healthyHeight}%`, minHeight: monthData.healthy > 0 ? '2px' : '0' }}
+                                  title={`Healthy: ${monthData.healthy}`}
+                                >
+                                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap">
+                                    Healthy: {monthData.healthy}
+                                  </div>
+                                </div>
+                                
+                                {/* Sick bar */}
+                                <div 
+                                  className="w-3 bg-orange-500 relative cursor-pointer group transition-all hover:w-4 rounded-t border border-orange-600"
+                                  style={{ height: `${sickHeight}%`, minHeight: monthData.sick > 0 ? '2px' : '0' }}
+                                  title={`Sick: ${monthData.sick}`}
+                                >
+                                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap">
+                                    Sick: {monthData.sick}
+                                  </div>
+                                </div>
+                                
+                                {/* Unhealthy bar */}
+                                <div 
+                                  className="w-3 bg-red-500 relative cursor-pointer group transition-all hover:w-4 rounded-t border border-red-600"
+                                  style={{ height: `${unhealthyHeight}%`, minHeight: monthData.unhealthy > 0 ? '2px' : '0' }}
+                                  title={`Unhealthy: ${monthData.unhealthy}`}
+                                >
+                                  <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 whitespace-nowrap">
+                                    Unhealthy: {monthData.unhealthy}
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              {/* Month label */}
+                              <div className="text-xs text-gray-600 mt-2 font-medium text-center">
+                                {monthData.month}
+                              </div>
+                              
+                              {/* Total count */}
+                              <div className="text-xs text-gray-500 mt-1">
+                                Total: {monthData.total}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
-                  )}
+
+                    {monthlyData.length === 0 && (
+                      <div className="text-center text-gray-500 py-8">
+                        No monthly data available
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>

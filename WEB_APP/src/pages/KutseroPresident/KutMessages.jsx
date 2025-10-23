@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { MessageCircle, X, User, Maximize2, ArrowLeft, Send, Search, MapPin, Calendar, Phone, Mail, Building } from "lucide-react";
 import supabase from "@/supabaseClient.js";
+import { ArrowLeft, Building, Calendar, MapPin, Maximize2, MessageCircle, Phone, Search, Send, User, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 // Add custom scrollbar styles to the document
 const addScrollbarStyles = () => {
@@ -678,6 +678,7 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
     setLoading(true);
     try {
       const endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/ctu_profile_by_id/${user.id}/`;
+      
       const res = await fetch(endpoint, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
@@ -1572,6 +1573,7 @@ const FloatingMessages = () => {
                     // ✅ CHANGED: Use Kutsero President mark messages as read endpoint
                     await fetch(
                       `https://echo-ebl8.onrender.com/api/kutsero_president/mark_messages_as_read/${currentSelectedConv.id}/`,
+                     
                       { 
                         method: "PUT", 
                         credentials: "include",

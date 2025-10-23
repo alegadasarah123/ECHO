@@ -7,7 +7,7 @@ import FloatingMessages from "./DvmfMessage"
 import { Bell, Edit, Mail, MapPin, MessageCircle, MoreVertical, Phone, Pin, RefreshCw, Reply, Send, Upload } from "lucide-react"
 import NotificationModal from "./DvmfNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf"
+const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
 
 const PostSkeletonLoader = () => (
   <div className="post-skeleton">
@@ -606,33 +606,44 @@ const DvmfAnnouncement = () => {
   }
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
-   const handleNotificationClick = async (notification) => {
-  // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev =>
-    prev.map(notif =>
-      notif.id === notification.id ? { ...notif, read: true } : notif
+ const handleNotificationClick = async (notification) => {
+  const notifId = notification?.notif_id || notification?.id; // fallback support
+
+  if (!notifId) {
+    console.warn("Notification ID is missing:", notification);
+  }
+
+  // Mark as read in frontend immediately
+  setNotifications((prev) =>
+    prev.map((notif) =>
+      notif.notif_id === notifId || notif.id === notifId
+        ? { ...notif, read: true }
+        : notif
     )
   );
 
-  // Mark notification as read in backend
-  try {
-    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-      method: "POST",
-      credentials: "include",
-    });
-  } catch (err) {
-    console.error("Error marking notification as read:", err);
+  // Mark as read in backend (only if valid ID)
+  if (notifId) {
+    try {
+      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
   }
 
-  // Handle navigation based on notification content
-  const message = notification.message.toLowerCase();
+  const message = (notification.message || "").toLowerCase();
 
+  // Navigate for account-related notifications
   if (
     message.includes("new registration") ||
     message.includes("new veterinarian approved") ||
     message.includes("veterinarian approved") ||
     message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered")
+    message.includes("veterinarian registered") ||
+    message.includes("veterinarian pending")
   ) {
     navigate("/DvmfAccountApproval", {
       state: {
@@ -643,7 +654,10 @@ const DvmfAnnouncement = () => {
     return;
   }
 
-  if (message.includes("pending medical record access") || message.includes("requested access")) {
+  if (
+    message.includes("pending medical record access") ||
+    message.includes("requested access")
+  ) {
     navigate("/DvmfAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -653,7 +667,7 @@ const DvmfAnnouncement = () => {
     return;
   }
 
-  // Only navigate to CtuAnnouncement for comment-related notifications
+// Only navigate to CtuAnnouncement for comment-related notifications
   if (message.includes("comment")) {
     navigate("/DvmfAnnouncement", {
       state: {
@@ -663,7 +677,9 @@ const DvmfAnnouncement = () => {
     });
     return;
   }
-};
+}
+
+
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
     console.log("Notifications updated from modal:", updatedNotifications)
@@ -803,7 +819,7 @@ const DvmfAnnouncement = () => {
                     }))
                   }
                 } catch (e) {
-                  if (announcement.announce_img.startsWith("https")) {
+                  if (announcement.announce_img.startsWith("http")) {
                     photos = [
                       {
                         id: `photo-${announcement.announce_id}-0`,
@@ -1048,7 +1064,7 @@ const DvmfAnnouncement = () => {
 
         imageUrls = imageUrls
           .filter(Boolean)
-          .map((url) => (url.startsWith("https") ? url : `${backendBase}/${url.replace(/^\/+/, "")}`))
+          .map((url) => (url.startsWith("http") ? url : `${backendBase}/${url.replace(/^\/+/, "")}`))
       }
 
       const now = new Date()
@@ -2233,7 +2249,7 @@ const DvmfAnnouncement = () => {
         }
 
         .post-btn:hover {
-          background: #991b1b;
+          background: #0F3D5A;
         }
 
         .post-btn:disabled {
@@ -2805,7 +2821,7 @@ const DvmfAnnouncement = () => {
         .image-modal-close {
           position: absolute;
           top: 20px;
-          right: 20px;
+          right: 30px;
           background: rgba(255, 255, 255, 0.2);
           border: none;
           color: white;
@@ -3085,10 +3101,8 @@ const DvmfAnnouncement = () => {
         <header className="headers">
           {/* ADDED HEADER SECTION */}
           <div className="flex flex-col">
-            <h2 className="text-2xl font-bold text-[#0F3D5A]">Announcement</h2>
-            <p className="text-sm text-gray-600 mt-1 font-normal">
-              Share updates, news, and important information with the community
-            </p>
+              <h2 className="text-2xl font-bold text-gray-800 mb-1">Announcement</h2>
+           
           </div>
 
           <div className="header-actions">

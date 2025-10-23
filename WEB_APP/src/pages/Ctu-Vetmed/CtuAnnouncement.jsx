@@ -632,40 +632,47 @@ useEffect(() => {
     }
   }
 
-  // HANDLE INDIVIDUAL NOTIFICATION CLICK
+
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
 const handleNotificationClick = async (notification) => {
-  // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev => 
-    prev.map(notif => 
-      notif.id === notification.id ? { ...notif, read: true } : notif
+  const notifId = notification?.notif_id || notification?.id; // fallback support
+
+  if (!notifId) {
+    console.warn("Notification ID is missing:", notification);
+  }
+
+  // Mark as read in frontend immediately
+  setNotifications((prev) =>
+    prev.map((notif) =>
+      notif.notif_id === notifId || notif.id === notifId
+        ? { ...notif, read: true }
+        : notif
     )
   );
 
-  // Mark notification as read in backend
-  try {
-    const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-      method: "POST",
-      credentials: "include",
-    });
-    const data = await res.json();
-    console.log("Mark notification read result:", data);
-  } catch (err) {
-    console.error("Error marking notification as read:", err);
+  // Mark as read in backend (only if valid ID)
+  if (notifId) {
+    try {
+      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
   }
 
-  // Handle navigation based on notification content
-  console.log('Notification clicked:', notification);
-  const message = notification.message.toLowerCase();
+  const message = (notification.message || "").toLowerCase();
 
+  // Navigate for account-related notifications
   if (
     message.includes("new registration") ||
     message.includes("new veterinarian approved") ||
     message.includes("veterinarian approved") ||
     message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered")
+    message.includes("veterinarian registered") ||
+    message.includes("veterinarian pending")
   ) {
-    console.log("Navigating to Account Approval page");
     navigate("/CtuAccountApproval", {
       state: {
         highlightedNotification: notification,
@@ -675,8 +682,10 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
-  if (message.includes("pending medical record access") || message.includes("requested access")) {
-    console.log("Navigating to Access Request page");
+  if (
+    message.includes("pending medical record access") ||
+    message.includes("requested access")
+  ) {
     navigate("/CtuAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -686,8 +695,8 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
-  if (message.includes("emergency") || message.includes("sos") || message.includes("comment")) {
-    console.log("Navigating to Announcement page");
+// Only navigate to CtuAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
     navigate("/CtuAnnouncement", {
       state: {
         highlightedNotification: notification,
@@ -696,10 +705,7 @@ const handleNotificationClick = async (notification) => {
     });
     return;
   }
-
-  console.warn("No matching route for notification:", notification);
 };
-
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
     console.log("Notifications updated from modal:", updatedNotifications)
@@ -2821,7 +2827,7 @@ const saveEditComment = async (commentId) => {
         .image-modal-close {
           position: absolute;
           top: 20px;
-          right: 20px;
+          right: 25px;
           background: rgba(255, 255, 255, 0.2);
           border: none;
           color: white;
@@ -3101,10 +3107,8 @@ const saveEditComment = async (commentId) => {
         <header className="headers">
           {/* ADDED HEADER SECTION */}
           <div className="flex flex-col">
-            <h2 className="text-2xl font-bold text-[#b91c1c]">Announcement</h2>
-            <p className="text-sm text-gray-600 mt-1 font-normal">
-              Share updates, news, and important information with the community
-            </p>
+            <h2 className="text-2xl font-bold text-gray-800 mb-1">Announcement</h2>
+            
           </div>
 
           <div className="header-actions">
