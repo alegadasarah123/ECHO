@@ -5,8 +5,12 @@ from django.conf import settings
 from functools import wraps
 import requests
 import datetime
-import jwt
 from django.utils import timezone
+import jwt
+import time
+import traceback
+from datetime import datetime, timedelta
+from rest_framework import status
 
 # -------------------- SUPABASE CLIENT --------------------
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
@@ -92,7 +96,6 @@ def fetch_and_merge_users():
                             kp.get("kutsero_province"),
                             kp.get("kutsero_zipcode"),
                         ])),
-                        "facebook": kp.get("kutsero_fb"),
                         # ✅ Directly fetch image column from DB
                         "profilePicture": kp.get("kutsero_image")
                     }
@@ -119,7 +122,6 @@ def fetch_and_merge_users():
                             hp.get("op_province"),
                             hp.get("op_zipcode"),
                         ])),
-                        "facebook": hp.get("op_fb"),
                         # ✅ Use op_image from DB
                         "profilePicture": hp.get("op_image")
                     }
@@ -720,3 +722,511 @@ def change_password(request):
         return Response({"error": f"Unexpected server error: {str(e)}"}, status=500)
 
     
+# -------------------- MESSAGES --------------------
+def safe_execute(query, retries=3, delay=1):
+    for attempt in range(retries):
+        try:
+            return query.execute()
+        except Exception as e:
+            print(f"⚠️ Supabase query failed (attempt {attempt+1}): {e}")
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                raise
+
+def get_current_president_id(request):
+    """Get the current Kutsero President user ID from JWT token"""
+    try:
+        token = request.COOKIES.get("access_token")
+        if not token:
+            return None
+            
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        
+        # Verify this user is actually a Kutsero President
+        user_res = supabase.table("users").select("role").eq("id", user_id).execute()
+        if user_res.data and user_res.data[0].get("role") == "Kutsero President":
+            return user_id
+        return None
+    except Exception as e:
+        print(f"Error getting current president ID: {e}")
+        return None
+
+@api_view(["GET"])
+@login_required
+def get_all_users(request):
+    """Fetch all approved users (Kutsero, Horse Operators, DVMF, CTU) except the current president"""
+    try:
+        president_id = get_current_president_id(request)
+        if not president_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # ✅ ALLOWED ROLES: Kutsero, Horse Operator, Dvmf, Dvmf-Admin, Ctu-Vetmed, Ctu-Admin
+        allowed_roles = ["Kutsero", "Horse Operator", "Dvmf", "Dvmf-Admin", "Ctu-Vetmed", "Ctu-Admin"]
+        
+        # ✅ Step 1: Get all approved users from allowed roles except current president
+        users_res = safe_execute(
+            supabase.table("users")
+            .select("id, role, status")
+            .eq("status", "approved")
+            .neq("id", president_id)
+            .in_("role", allowed_roles)
+        )
+
+        users = users_res.data or []
+        if not users:
+            return Response([], status=status.HTTP_200_OK)
+
+        all_users = []
+        role_groups = {}
+
+        # ✅ Step 2: Group users by role
+        for u in users:
+            role_groups.setdefault(u["role"], []).append(u["id"])
+
+        profiles_map = {}
+
+        # 🚫 VETERINARIAN REMOVED - Kutsero President cannot message veterinarians
+
+        # 🐴 Horse Operator
+        if "Horse Operator" in role_groups:
+            ids = role_groups["Horse Operator"]
+            res = safe_execute(
+                supabase.table("horse_op_profile")
+                .select("op_id, op_fname, op_mname, op_lname, op_image")
+                .in_("op_id", ids)
+            )
+            for p in res.data or []:
+                full_name = " ".join(filter(None, [p.get("op_fname"), p.get("op_mname"), p.get("op_lname")])).strip()
+                profiles_map[p["op_id"]] = {
+                    "name": f"{full_name} (Horse Operator)",
+                    "avatar": p.get("op_image")
+                }
+
+        # 🐴 Kutsero (INCLUDED - President can message Kutsero)
+        if "Kutsero" in role_groups:
+            ids = role_groups["Kutsero"]
+            res = safe_execute(
+                supabase.table("kutsero_profile")
+                .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_image")
+                .in_("kutsero_id", ids)
+            )
+            for p in res.data or []:
+                full_name = " ".join(filter(None, [p.get("kutsero_fname"), p.get("kutsero_mname"), p.get("kutsero_lname")])).strip()
+                profiles_map[p["kutsero_id"]] = {
+                    "name": f"{full_name} (Kutsero)",
+                    "avatar": p.get("kutsero_image")
+                }
+
+        # 🧑 DVMF + DVMF-Admin (no image)
+        for role_key in ["Dvmf", "Dvmf-Admin"]:
+            if role_key in role_groups:
+                ids = role_groups[role_key]
+                res = safe_execute(
+                    supabase.table("dvmf_user_profile")
+                    .select("dvmf_id, dvmf_fname, dvmf_lname")
+                    .in_("dvmf_id", ids)
+                )
+                for p in res.data or []:
+                    full_name = " ".join(filter(None, [p.get("dvmf_fname"), p.get("dvmf_lname")])).strip()
+                    profiles_map[p["dvmf_id"]] = {
+                        "name": f"{full_name} ({role_key})",
+                        "avatar": None
+                    }
+
+        # 🎓 CTU Vetmed + CTU-Admin (no image)
+        for role_key in ["Ctu-Vetmed", "Ctu-Admin"]:
+            if role_key in role_groups:
+                ids = role_groups[role_key]
+                res = safe_execute(
+                    supabase.table("ctu_vet_profile")
+                    .select("ctu_id, ctu_fname, ctu_lname")
+                    .in_("ctu_id", ids)
+                )
+                for p in res.data or []:
+                    full_name = " ".join(filter(None, [p.get("ctu_fname"), p.get("ctu_lname")])).strip()
+                    profiles_map[p["ctu_id"]] = {
+                        "name": f"{full_name} ({role_key})",
+                        "avatar": None
+                    }
+
+        # ✅ Step 4: Merge user info
+        for u in users:
+            uid = u["id"]
+            info = profiles_map.get(uid, {"name": f"Unknown ({u['role']})", "avatar": None})
+            all_users.append({
+                "id": uid,
+                "name": info["name"],
+                "role": u["role"],
+                "avatar": info["avatar"]
+            })
+
+        return Response(all_users, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print("❌ Error fetching users:", str(e))
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(["GET"])
+@login_required
+def get_conversations(request):
+    """
+    Get all conversations for the current president (only users who have exchanged messages)
+    """
+    try:
+        president_id = get_current_president_id(request)
+        if not president_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Get unique conversation partners
+        conversation_partners = set()
+        
+        # Get users who sent messages to current president
+        received_res = safe_execute(
+            supabase.table("message")
+            .select("user_id")
+            .eq("receiver_id", president_id)
+        )
+        if received_res.data:
+            for msg in received_res.data:
+                conversation_partners.add(msg["user_id"])
+                
+        # Get users who received messages from current president
+        sent_res = safe_execute(
+            supabase.table("message")
+            .select("receiver_id")
+            .eq("user_id", president_id)
+        )
+        if sent_res.data:
+            for msg in sent_res.data:
+                conversation_partners.add(msg["receiver_id"])
+
+        if not conversation_partners:
+            return Response([], status=status.HTTP_200_OK)
+
+        # Get user details - ONLY from allowed roles
+        allowed_roles = ["Kutsero", "Horse Operator", "Dvmf", "Dvmf-Admin", "Ctu-Vetmed", "Ctu-Admin"]
+        users_res = safe_execute(
+            supabase.table("users")
+            .select("id, role, status")
+            .in_("id", list(conversation_partners))
+            .in_("role", allowed_roles)
+            .eq("status", "approved")
+        )
+        users = users_res.data or []
+        if not users:
+            return Response([], status=status.HTTP_200_OK)
+
+        conversations = []
+        
+        for user in users:
+            user_id = user["id"]
+            role = user["role"]
+            
+            # Get the latest message
+            messages_res = safe_execute(
+                supabase.table("message")
+                .select("*")
+                .or_(f"and(user_id.eq.{president_id},receiver_id.eq.{user_id}),and(user_id.eq.{user_id},receiver_id.eq.{president_id})")
+                .order("mes_date", desc=True)
+                .limit(1)
+            )
+            
+            latest_message = messages_res.data[0] if messages_res.data else None
+            
+            # Count unread messages
+            unread_res = safe_execute(
+                supabase.table("message")
+                .select("mes_id")
+                .eq("user_id", user_id)
+                .eq("receiver_id", president_id)
+                .eq("is_read", False)
+            )
+            unread_count = len(unread_res.data) if unread_res.data else 0
+            
+            # Get user profile info
+            profile_info = get_user_profile_info(user_id, role)
+            
+            # Format timestamp
+            timestamp = ""
+            if latest_message and latest_message.get("mes_date"):
+                try:
+                    msg_time = datetime.fromisoformat(str(latest_message["mes_date"]))
+                    local_time = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
+                    timestamp = local_time
+                except Exception:
+                    timestamp = str(latest_message["mes_date"])
+
+            # ✅ CRITICAL FIX: Handle last message content with "You:" prefix
+            last_message_content = ""
+            last_message_is_own = False
+            
+            if latest_message:
+                last_message_is_own = latest_message["user_id"] == president_id
+                if last_message_is_own:
+                    last_message_content = f"You: {latest_message['mes_content']}"
+                else:
+                    last_message_content = latest_message['mes_content']
+            else:
+                last_message_content = "No messages yet"
+
+            conversations.append({
+                'id': user_id,
+                'name': profile_info["name"],
+                'role': role,
+                'avatar': profile_info["avatar"],
+                'online': False,
+                'lastMessage': last_message_content,
+                'lastMessageSender': latest_message["user_id"] if latest_message else None,
+                'lastMessageIsOwn': last_message_is_own,
+                'timestamp': timestamp,
+                'unread': unread_count,
+                'has_conversation': True
+            })
+
+        # Sort by latest message timestamp
+        conversations.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+
+        return Response(conversations, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print("❌ Error fetching conversations:", str(e))
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+def get_user_profile_info(user_id, role):
+    """Helper function to get user profile info based on role"""
+    try:
+        # 🐴 Horse Operator
+        if role == "Horse Operator":
+            res = safe_execute(
+                supabase.table("horse_op_profile")
+                .select("op_fname, op_mname, op_lname, op_image")
+                .eq("op_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("op_fname"), p.get("op_mname"), p.get("op_lname")])).strip()
+                return {"name": f"{full_name} (Horse Operator)", "avatar": p.get("op_image")}
+
+        # 🐴 Kutsero (INCLUDED)
+        elif role == "Kutsero":
+            res = safe_execute(
+                supabase.table("kutsero_profile")
+                .select("kutsero_fname, kutsero_mname, kutsero_lname, kutsero_image")
+                .eq("kutsero_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("kutsero_fname"), p.get("kutsero_mname"), p.get("kutsero_lname")])).strip()
+                return {"name": f"{full_name} (Kutsero)", "avatar": p.get("kutsero_image")}
+
+        # 🧑 DVMF
+        elif role == "Dvmf":
+            res = safe_execute(
+                supabase.table("dvmf_user_profile")
+                .select("dvmf_fname, dvmf_lname")
+                .eq("dvmf_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("dvmf_fname"), p.get("dvmf_lname")])).strip()
+                return {"name": f"{full_name} (DVMF)", "avatar": None}
+
+        # 🧑 DVMF Admin
+        elif role == "Dvmf-Admin":
+            res = safe_execute(
+                supabase.table("dvmf_user_profile")
+                .select("dvmf_fname, dvmf_lname")
+                .eq("dvmf_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("dvmf_fname"), p.get("dvmf_lname")])).strip()
+                return {"name": f"{full_name} (DVMF Admin)", "avatar": None}
+
+        # 🎓 CTU Vetmed
+        elif role == "Ctu-Vetmed":
+            res = safe_execute(
+                supabase.table("ctu_vet_profile")
+                .select("ctu_fname, ctu_lname")
+                .eq("ctu_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("ctu_fname"), p.get("ctu_lname")])).strip()
+                return {"name": f"{full_name} (CTU Vetmed)", "avatar": None}
+
+        # 🎓 CTU Admin
+        elif role == "Ctu-Admin":
+            res = safe_execute(
+                supabase.table("ctu_vet_profile")
+                .select("ctu_fname, ctu_lname")
+                .eq("ctu_id", user_id)
+            )
+            if res.data:
+                p = res.data[0]
+                full_name = " ".join(filter(None, [p.get("ctu_fname"), p.get("ctu_lname")])).strip()
+                return {"name": f"{full_name} (CTU Admin)", "avatar": None}
+
+    except Exception as e:
+        print(f"Error getting profile info for {user_id} ({role}): {e}")
+
+    # Fallback
+    return {"name": f"User ({role})", "avatar": None}
+
+LOCAL_OFFSET_HOURS = 8  # Manila is UTC+8
+
+@api_view(["POST"])
+@login_required
+def send_message(request):
+    """Send a message from the current president to another user"""
+    try:
+        president_id = get_current_president_id(request)
+        if not president_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        data = request.data
+        receiver_id = data.get("receiver_id")
+        message_content = data.get("message")
+
+        if not receiver_id or not message_content:
+            return Response({"error": "Missing receiver_id or message"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # ✅ Validate that receiver is from allowed roles
+        allowed_roles = ["Kutsero", "Horse Operator", "Dvmf", "Dvmf-Admin", "Ctu-Vetmed", "Ctu-Admin"]
+        receiver_res = supabase.table("users").select("role").eq("id", receiver_id).in_("role", allowed_roles).execute()
+        if not receiver_res.data:
+            return Response({"error": "Cannot message this user"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Use UTC timestamp; Postgres timestamptz will store correctly
+        payload = {
+            "mes_content": message_content,
+            "is_read": False,
+            "user_id": president_id,
+            "receiver_id": receiver_id
+        }
+
+        res = supabase.table("message").insert(payload).execute()
+
+        if not res.data:
+            return Response({"error": "Failed to send message"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Format the timestamp for frontend
+        msg = res.data[0]
+        msg_time = datetime.fromisoformat(msg["mes_date"])
+        msg["mes_date"] = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
+
+        return Response({"message": "Message sent successfully", "data": msg}, status=status.HTTP_201_CREATED)
+
+    except Exception as e:
+        print("❌ Error sending message:", str(e))
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(["GET"])
+@login_required
+def get_conversation(request, conversation_id):
+    """Fetch all messages between the current president and a specific user safely, showing only local time (AM/PM)"""
+    try:
+        president_id = get_current_president_id(request)
+        if not president_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        receiver_id = conversation_id
+
+        # Fetch messages both ways
+        data1 = (supabase.table("message")
+                 .select("*")
+                 .eq("user_id", president_id)
+                 .eq("receiver_id", receiver_id)
+                 .execute()).data or []
+
+        data2 = (supabase.table("message")
+                 .select("*")
+                 .eq("user_id", receiver_id)
+                 .eq("receiver_id", president_id)
+                 .execute()).data or []
+
+        all_messages = sorted(data1 + data2, key=lambda m: m["mes_date"])
+
+        formatted_messages = []
+        for msg in all_messages:
+            msg_time = datetime.fromisoformat(msg["mes_date"])
+            local_time = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
+            formatted_messages.append({
+                "id": msg["mes_id"],
+                "content": msg["mes_content"],
+                "timestamp": local_time,
+                "isOwn": msg["user_id"] == president_id,
+                "is_read": msg["is_read"],
+                "originalTimestamp": msg["mes_date"],
+            })
+
+        return Response(formatted_messages, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print("❌ Error fetching conversation:", str(e))
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)    
+
+@api_view(["PUT"])
+@login_required
+def mark_messages_as_read(request, conversation_id):
+    """Mark messages as read for a conversation"""
+    try:
+        president_id = get_current_president_id(request)
+        if not president_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        print(f"🔔 Marking messages as read - president_id: {president_id}, conversation_id: {conversation_id}")
+
+        res = (
+            supabase.table("message")
+            .update({"is_read": True})
+            .eq("receiver_id", president_id)
+            .eq("user_id", conversation_id)
+            .eq("is_read", False)
+            .execute()
+        )
+
+        print(f"✅ Marked {len(res.data) if res.data else 0} messages as read")
+
+        return Response({
+            "message": "Messages marked as read",
+            "updated_count": len(res.data) if res.data else 0
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print("❌ Error marking messages as read:", str(e))
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# -------------------- KUTSERO PROFILE ENDPOINTS --------------------
+@api_view(["GET"])
+@login_required
+def kutsero_profile_by_id(request, user_id):
+    """Get Kutsero profile by user ID"""
+    try:
+        res = supabase.table("kutsero_profile").select("*").eq("kutsero_id", user_id).execute()
+        if res.data:
+            return Response(res.data[0])
+        else:
+            return Response({"error": "Kutsero profile not found"}, status=404)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+@api_view(["GET"])
+@login_required
+def horse_operator_profile(request, user_id):
+    """Get Horse Operator profile by user ID"""
+    try:
+        res = supabase.table("horse_op_profile").select("*").eq("op_id", user_id).execute()
+        if res.data:
+            return Response(res.data[0])
+        else:
+            return Response({"error": "Horse Operator profile not found"}, status=404)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)

@@ -49,18 +49,20 @@ def safe_execute(query, retries=3, delay=1):
 @api_view(["GET"])
 @login_required
 def get_all_users(request):
-    """Fetch all approved users (from all profile tables) except the current vet"""
+    """Fetch all approved users (from all profile tables) except the current vet, Kutsero, and Kutsero President"""
     try:
         vet_id = get_current_vet_id(request)
         if not vet_id:
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # ✅ Step 1: Get all approved users except current vet
+        # ✅ Step 1: Get all approved users except current vet, Kutsero, and Kutsero President
         users_res = safe_execute(
             supabase.table("users")
             .select("id, role, status")
             .eq("status", "approved")
             .neq("id", vet_id)
+            .neq("role", "Kutsero")  # 🚫 Exclude Kutsero
+            .neq("role", "Kutsero President")  # 🚫 ADD THIS LINE: Exclude Kutsero President
         )
 
         users = users_res.data or []
@@ -91,21 +93,6 @@ def get_all_users(request):
                     "avatar": p.get("vet_profile_photo")
                 }
 
-        # 🧑 Kutsero
-        if "Kutsero" in role_groups:
-            ids = role_groups["Kutsero"]
-            res = safe_execute(
-                supabase.table("kutsero_profile")
-                .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_image")
-                .in_("kutsero_id", ids)
-            )
-            for p in res.data or []:
-                full_name = " ".join(filter(None, [p.get("kutsero_fname"), p.get("kutsero_mname"), p.get("kutsero_lname")])).strip()
-                profiles_map[p["kutsero_id"]] = {
-                    "name": f"{full_name} (Kutsero)",
-                    "avatar": p.get("kutsero_image")
-                }
-
         # 🐴 Horse Operator
         if "Horse Operator" in role_groups:
             ids = role_groups["Horse Operator"]
@@ -119,21 +106,6 @@ def get_all_users(request):
                 profiles_map[p["op_id"]] = {
                     "name": f"{full_name} (Horse Operator)",
                     "avatar": p.get("op_image")
-                }
-
-        # 🧑 Kutsero President (no image)
-        if "Kutsero President" in role_groups:
-            ids = role_groups["Kutsero President"]
-            res = safe_execute(
-                supabase.table("kutsero_pres_profile")
-                .select("user_id, pres_fname, pres_lname")
-                .in_("user_id", ids)
-            )
-            for p in res.data or []:
-                full_name = " ".join(filter(None, [p.get("pres_fname"), p.get("pres_lname")])).strip()
-                profiles_map[p["user_id"]] = {
-                    "name": f"{full_name} (Kutsero President)",
-                    "avatar": None
                 }
 
         # 🧑 DVMF + DVMF-Admin (no image)
@@ -186,12 +158,12 @@ def get_all_users(request):
         traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
 @api_view(["GET"])
 @login_required
 def get_conversations(request):
     """
     Get all conversations for the current user (only users who have exchanged messages)
+    Excludes Kutsero and Kutsero President users
     """
     try:
         vet_id = get_current_vet_id(request)
@@ -224,12 +196,14 @@ def get_conversations(request):
         if not conversation_partners:
             return Response([], status=status.HTTP_200_OK)
 
-        # Get user details
+        # Get user details - EXCLUDE KUTSERO AND KUTSERO PRESIDENT
         users_res = safe_execute(
             supabase.table("users")
             .select("id, role, status")
             .in_("id", list(conversation_partners))
             .eq("status", "approved")
+            .neq("role", "Kutsero")  # 🚫 Exclude Kutsero
+            .neq("role", "Kutsero President")  # 🚫 Exclude Kutsero President
         )
         users = users_res.data or []
         if not users:
@@ -311,9 +285,9 @@ def get_conversations(request):
         print("❌ Error fetching conversations:", str(e))
         traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+        
 def get_user_profile_info(user_id, role):
-    """Helper function to get user profile info based on role"""
+    """Helper function to get user profile info based on role (Kutsero excluded)"""
     try:
         # 🩺 Veterinarian
         if role == "Veterinarian":
@@ -325,26 +299,8 @@ def get_user_profile_info(user_id, role):
             if res.data:
                 p = res.data[0]
                 full_name = " ".join(filter(None, [p.get("vet_fname"), p.get("vet_mname"), p.get("vet_lname")])).strip()
-                return {
-                    "name": f"{full_name} (Veterinarian)",
-                    "avatar": p.get("vet_profile_photo")
-                }
-                
-        # 🧑 Kutsero
-        elif role == "Kutsero":
-            res = safe_execute(
-                supabase.table("kutsero_profile")
-                .select("kutsero_fname, kutsero_mname, kutsero_lname")
-                .eq("kutsero_id", user_id)
-            )
-            if res.data:
-                p = res.data[0]
-                full_name = " ".join(filter(None, [p.get("kutsero_fname"), p.get("kutsero_mname"), p.get("kutsero_lname")])).strip()
-                return {
-                    "name": f"{full_name} (Kutsero)",
-                    "avatar": None
-                }
-                
+                return {"name": f"{full_name} (Veterinarian)", "avatar": p.get("vet_profile_photo")}
+
         # 🐴 Horse Operator
         elif role == "Horse Operator":
             res = safe_execute(
@@ -355,26 +311,8 @@ def get_user_profile_info(user_id, role):
             if res.data:
                 p = res.data[0]
                 full_name = " ".join(filter(None, [p.get("op_fname"), p.get("op_mname"), p.get("op_lname")])).strip()
-                return {
-                    "name": f"{full_name} (Horse Operator)",
-                    "avatar": p.get("op_image")
-                }
-                
-        # 🧑 Kutsero President
-        elif role == "Kutsero President":
-            res = safe_execute(
-                supabase.table("kutsero_pres_profile")
-                .select("pres_fname, pres_lname")
-                .eq("user_id", user_id)
-            )
-            if res.data:
-                p = res.data[0]
-                full_name = " ".join(filter(None, [p.get("pres_fname"), p.get("pres_lname")])).strip()
-                return {
-                    "name": f"{full_name} (Kutsero President)",
-                    "avatar": None
-                }
-                
+                return {"name": f"{full_name} (Horse Operator)", "avatar": p.get("op_image")}
+
         # 🧑 DVMF
         elif role == "Dvmf":
             res = safe_execute(
@@ -385,12 +323,9 @@ def get_user_profile_info(user_id, role):
             if res.data:
                 p = res.data[0]
                 full_name = " ".join(filter(None, [p.get("dvmf_fname"), p.get("dvmf_lname")])).strip()
-                return {
-                    "name": f"{full_name} (DVMF)",
-                    "avatar": None
-                }
-                
-        # 🧑 DVMF-Admin
+                return {"name": f"{full_name} (DVMF)", "avatar": None}
+
+        # 🧑 DVMF Admin
         elif role == "Dvmf-Admin":
             res = safe_execute(
                 supabase.table("dvmf_user_profile")
@@ -400,11 +335,8 @@ def get_user_profile_info(user_id, role):
             if res.data:
                 p = res.data[0]
                 full_name = " ".join(filter(None, [p.get("dvmf_fname"), p.get("dvmf_lname")])).strip()
-                return {
-                    "name": f"{full_name} (DVMF Admin)",
-                    "avatar": None
-                }
-                
+                return {"name": f"{full_name} (DVMF Admin)", "avatar": None}
+
         # 🎓 CTU Vetmed
         elif role == "Ctu-Vetmed":
             res = safe_execute(
@@ -415,12 +347,9 @@ def get_user_profile_info(user_id, role):
             if res.data:
                 p = res.data[0]
                 full_name = " ".join(filter(None, [p.get("ctu_fname"), p.get("ctu_lname")])).strip()
-                return {
-                    "name": f"{full_name} (CTU Vetmed)",
-                    "avatar": None
-                }
-                
-        # 🎓 CTU-Admin
+                return {"name": f"{full_name} (CTU Vetmed)", "avatar": None}
+
+        # 🎓 CTU Admin
         elif role == "Ctu-Admin":
             res = safe_execute(
                 supabase.table("ctu_vet_profile")
@@ -430,19 +359,13 @@ def get_user_profile_info(user_id, role):
             if res.data:
                 p = res.data[0]
                 full_name = " ".join(filter(None, [p.get("ctu_fname"), p.get("ctu_lname")])).strip()
-                return {
-                    "name": f"{full_name} (CTU Admin)",
-                    "avatar": None
-                }
-                
+                return {"name": f"{full_name} (CTU Admin)", "avatar": None}
+
     except Exception as e:
         print(f"Error getting profile info for {user_id} ({role}): {e}")
-    
-    # Fallback for unknown roles or errors
-    return {
-        "name": f"User ({role})",
-        "avatar": None
-    }
+
+    # Fallback
+    return {"name": f"User ({role})", "avatar": None}
 
 LOCAL_OFFSET_HOURS = 8  # Manila is UTC+8
 
@@ -568,7 +491,177 @@ def mark_messages_as_read(request, conversation_id):
         traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+# -------------------- GET VETERINARIAN PROFILE BY ID --------------------
+@api_view(["GET"])
+@login_required
+def vet_profile_by_id(request, user_id):
+    """Fetch veterinarian profile by user ID for profile modal"""
+    try:
+        current_vet_id = get_current_vet_id(request)
+        if not current_vet_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
+        # Fetch veterinarian profile data
+        res = supabase.table("vet_profile").select("*").eq("vet_id", user_id).execute()
+        
+        if not res.data:
+            return Response({"error": "Veterinarian profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = res.data[0]
+        
+        # Format the response with all necessary fields
+        formatted_profile = {
+            "vet_id": profile.get("vet_id"),
+            "vet_fname": profile.get("vet_fname"),
+            "vet_mname": profile.get("vet_mname"),
+            "vet_lname": profile.get("vet_lname"),
+            "vet_dob": profile.get("vet_dob"),
+            "vet_sex": profile.get("vet_sex"),
+            "vet_phone_num": profile.get("vet_phone_num"),
+            "vet_street": profile.get("vet_street"),
+            "vet_brgy": profile.get("vet_brgy"),
+            "vet_city": profile.get("vet_city"),
+            "vet_province": profile.get("vet_province"),
+            "vet_zipcode": profile.get("vet_zipcode"),
+            "vet_address_is_clinic": profile.get("vet_address_is_clinic"),
+            "vet_clinic_street": profile.get("vet_clinic_street"),
+            "vet_clinic_brgy": profile.get("vet_clinic_brgy"),
+            "vet_clinic_city": profile.get("vet_clinic_city"),
+            "vet_clinic_province": profile.get("vet_clinic_province"),
+            "vet_clinic_zipcode": profile.get("vet_clinic_zipcode"),
+            "vet_email": profile.get("vet_email"),
+            "vet_exp_yr": profile.get("vet_exp_yr"),
+            "vet_specialization": profile.get("vet_specialization"),
+            "vet_org": profile.get("vet_org"),
+            "vet_profile_photo": profile.get("vet_profile_photo"),
+            "created_at": profile.get("created_at"),
+        }
+
+        return Response(formatted_profile, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"❌ Error fetching veterinarian profile: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# -------------------- GET HORSE OPERATOR PROFILE BY ID --------------------
+@api_view(["GET"])
+@login_required
+def horse_operator_profile(request, user_id):
+    """Fetch horse operator profile by user ID for profile modal"""
+    try:
+        current_vet_id = get_current_vet_id(request)
+        if not current_vet_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Fetch horse operator profile data
+        res = supabase.table("horse_op_profile").select("*").eq("op_id", user_id).execute()
+        
+        if not res.data:
+            return Response({"error": "Horse operator profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = res.data[0]
+        
+        # Format the response with all necessary fields
+        formatted_profile = {
+            "op_id": profile.get("op_id"),
+            "op_fname": profile.get("op_fname"),
+            "op_mname": profile.get("op_mname"),
+            "op_lname": profile.get("op_lname"),
+            "op_dob": profile.get("op_dob"),
+            "op_sex": profile.get("op_sex"),
+            "op_phone_num": profile.get("op_phone_num"),
+            "op_province": profile.get("op_province"),
+            "op_city": profile.get("op_city"),
+            "op_municipality": profile.get("op_municipality"),
+            "op_brgy": profile.get("op_brgy"),
+            "op_zipcode": profile.get("op_zipcode"),
+            "op_house_add": profile.get("op_house_add"),
+            "op_email": profile.get("op_email"),
+            "op_image": profile.get("op_image"),
+            "created_at": profile.get("created_at"),
+        }
+
+        return Response(formatted_profile, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"❌ Error fetching horse operator profile: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# -------------------- GET DVMF PROFILE BY ID --------------------
+@api_view(["GET"])
+@login_required
+def dvmf_profile_by_id(request, user_id):
+    """Fetch DVMF admin profile by user ID for profile modal"""
+    try:
+        current_vet_id = get_current_vet_id(request)
+        if not current_vet_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Fetch DVMF profile data
+        res = supabase.table("dvmf_user_profile").select("*").eq("dvmf_id", user_id).execute()
+        
+        if not res.data:
+            return Response({"error": "DVMF profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = res.data[0]
+        
+        # Format the response with all necessary fields
+        formatted_profile = {
+            "dvmf_id": profile.get("dvmf_id"),
+            "dvmf_fname": profile.get("dvmf_fname"),
+            "dvmf_lname": profile.get("dvmf_lname"),
+            "dvmf_email": profile.get("dvmf_email"),
+            "dvmf_phonenum": profile.get("dvmf_phonenum"),
+            "dvmf_role": profile.get("dvmf_role"),
+        }
+
+        return Response(formatted_profile, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"❌ Error fetching DVMF profile: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# -------------------- GET CTU VETMED PROFILE BY ID --------------------
+@api_view(["GET"])
+@login_required
+def ctu_profile_by_id(request, user_id):
+    """Fetch CTU VetMed profile by user ID for profile modal"""
+    try:
+        current_vet_id = get_current_vet_id(request)
+        if not current_vet_id:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Fetch CTU VetMed profile data
+        res = supabase.table("ctu_vet_profile").select("*").eq("ctu_id", user_id).execute()
+        
+        if not res.data:
+            return Response({"error": "CTU VetMed profile not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        profile = res.data[0]
+        
+        # Format the response with all necessary fields
+        formatted_profile = {
+            "ctu_id": profile.get("ctu_id"),
+            "ctu_fname": profile.get("ctu_fname"),
+            "ctu_lname": profile.get("ctu_lname"),
+            "ctu_email": profile.get("ctu_email"),
+            "ctu_phonenum": profile.get("ctu_phonenum"),
+            "ctu_role": profile.get("ctu_role"),
+            "created_at": profile.get("created_at"),
+        }
+
+        return Response(formatted_profile, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        print(f"❌ Error fetching CTU VetMed profile: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
 # --------------- PROFILE -------------------------
 def get_current_vet_id(request):
     """Extract current vet_id from access_token cookie"""
@@ -1379,7 +1472,8 @@ def get_horse_details(request, horse_id):
         print(f"❌ Error fetching horse details: {str(e)}")
         traceback.print_exc()
         return Response({"error": "Internal server error"}, status=500)
-    
+
+# -------------------- GET MEDICAL RECORDS FOR A HORSE --------------------
 @api_view(["GET"])
 @login_required
 def get_horse_medical_records(request, horse_id):
@@ -1722,7 +1816,6 @@ def add_medical_record(request):
         return Response({"error": str(e)}, status=500)
         
 # -------------------- CREATE FOLLOW-UP MEDICAL RECORD --------------------
-# -------------------- CREATE FOLLOW-UP RECORD --------------------
 @api_view(["POST"])
 @login_required
 def create_followup_record(request):
@@ -1956,93 +2049,124 @@ def update_treatment_outcome(request, treatment_id):
         logging.exception(f"Error updating treatment outcome for {treatment_id}")
         return Response({"error": str(e)}, status=500)
     
-# -------------------- UPDATE MEDICAL RECORD (SUPABASE) --------------------
-@api_view(["POST"])
+# --------------------- CHECK FOLLOWUP RECORD---------------
+@api_view(["GET"])
 @login_required
-def update_medical_record(request):
+def check_followup_record(request, parent_medrec_id):
+    """
+    Check if a follow-up record already exists for a given parent medical record ID
+    """
     try:
-        vet_id = get_current_vet_id(request)
-        if not vet_id:
-            return Response({"error": "Unauthorized"}, status=401)
-
-        medrec_id = request.POST.get("medrec_id")
-        if not medrec_id:
-            return Response({"error": "Missing medrec_id"}, status=400)
-
-        # 1️⃣ Prepare update fields
-        update_data = {
-            "medrec_date": request.POST.get("date"),
-            "medrec_heart_rate": request.POST.get("heartRate"),
-            "medrec_resp_rate": request.POST.get("respRate"),
-            "medrec_body_temp": request.POST.get("temperature"),
-            "medrec_clinical_signs": request.POST.get("clinicalSigns"),
-            "medrec_diagnostic_protocol": request.POST.get("diagnosticProtocol"),
-            "medrec_lab_results": request.POST.get("labResult"),
-            "medrec_diagnosis": request.POST.get("diagnosis"),
-            "medrec_prognosis": request.POST.get("prognosis"),
-            "medrec_recommendation": request.POST.get("recommendation"),
-        }
-
-        # remove None values (so we don’t overwrite with nulls)
-        update_data = {k: v for k, v in update_data.items() if v is not None}
-
-        # ✅ update the record
-        medrec_res = (
-            supabase.table("horse_medical_record")
-            .update(update_data)
-            .eq("medrec_id", medrec_id)
+        print(f"🔍 Checking follow-up records for parent_medrec_id: {parent_medrec_id}")
+        
+        
+        res = supabase.table("horse_medical_record")\
+            .select("medrec_id")\
+            .eq("parent_medrec_id", parent_medrec_id)\
             .execute()
-        )
-
-        if not medrec_res.data:
-            return Response({"error": "Failed to update medical record"}, status=500)
-
-        # 2️⃣ Handle treatments (if provided)
-        treatments_raw = request.POST.get("treatments")
-        updated_treatments = []
-        if treatments_raw:
-            try:
-                treatments = json.loads(treatments_raw)
-                for t in treatments:
-                    if "treatment_id" in t:
-                        # update existing treatment
-                        supabase.table("horse_treatment").update({
-                            "treatment_name": t.get("name") or t.get("medication"),
-                            "treatment_dosage": t.get("dosage"),
-                            "treatment_duration": t.get("duration"),
-                            "followup_date": t.get("followUpDate"),
-                            "treatment_outcome": t.get("outcome"),
-                        }).eq("treatment_id", t["treatment_id"]).execute()
-                    else:
-                        # insert new treatment
-                        new_treat = {
-                            "treatment_id": str(uuid.uuid4()),
-                            "medrec_id": medrec_id,
-                            "treatment_name": t.get("name") or t.get("medication"),
-                            "treatment_dosage": t.get("dosage"),
-                            "treatment_duration": t.get("duration"),
-                            "followup_date": t.get("followUpDate"),
-                            "treatment_outcome": t.get("outcome"),
-                        }
-                        supabase.table("horse_treatment").insert(new_treat).execute()
-                        updated_treatments.append(new_treat)
-
-            except Exception as e:
-                return Response({"error": f"Invalid treatments JSON: {str(e)}"}, status=400)
-
-        return Response(
-            {
-                "message": "Medical record updated successfully",
-                "medrec_id": medrec_id,
-                "updated_treatments": updated_treatments,
-            },
-            status=200,
-        )
-
+        
+        followup_exists = len(res.data) > 0 if res.data else False
+        
+        print(f"✅ Follow-up exists: {followup_exists} for parent_medrec_id: {parent_medrec_id}")
+        
+        return Response({
+            "followup_exists": followup_exists,
+            "parent_medrec_id": parent_medrec_id,
+            "count": len(res.data) if res.data else 0
+        }, status=status.HTTP_200_OK)
+        
     except Exception as e:
-        return Response({"error": str(e)}, status=500)
+        print(f"❌ Error checking follow-up record: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": f"Error checking follow-up record: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+# --------------------- GET FOLLOWUP RECORDS ---------------
+@api_view(["GET"])
+@login_required
+def get_followup_records(request, parent_medrec_id):
+    """
+    Get all follow-up records for a given parent medical record ID
+    """
+    try:
+        print(f"🔍 Getting follow-up records for parent_medrec_id: {parent_medrec_id}")
+        
+        res = supabase.table("horse_medical_record")\
+            .select(
+                """
+                *,
+                vet_profile:medrec_vet_id(
+                    vet_fname,
+                    vet_mname,
+                    vet_lname
+                )
+                """
+            )\
+            .eq("parent_medrec_id", parent_medrec_id)\
+            .order("medrec_date", desc=True)\
+            .execute()
+        
+        followup_records = []
+        for record in res.data if res.data else []:
+            # Format the follow-up record similar to parent records
+            vet = record.get("vet_profile") or {}
+            vet_name = " ".join(filter(None, [
+                vet.get("vet_fname"),
+                vet.get("vet_mname"),
+                vet.get("vet_lname")
+            ])).strip() or "Unknown Veterinarian"
+
+            # Process lab images similar to parent records
+            lab_images = record.get("medrec_lab_img") or []
+            processed_lab_images = []
+            
+            if isinstance(lab_images, list):
+                for lab_image_url in lab_images:
+                    if lab_image_url:
+                        if not lab_image_url.startswith(('http://', 'https://')):
+                            filename = lab_image_url.split('/')[-1] if '/' in lab_image_url else lab_image_url
+                            lab_image_url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{filename}"
+                        processed_lab_images.append(lab_image_url)
+            elif lab_images:
+                lab_image_url = lab_images
+                if not lab_image_url.startswith(('http://', 'https://')):
+                    filename = lab_image_url.split('/')[-1] if '/' in lab_image_url else lab_image_url
+                    lab_image_url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{filename}"
+                processed_lab_images.append(lab_image_url)
+
+            formatted_record = {
+                "id": record.get("medrec_id"),
+                "date": record.get("medrec_date"),
+                "followUpDate": record.get("medrec_followup_date"),
+                "parentMedrecId": record.get("parent_medrec_id"),
+                "heartRate": record.get("medrec_heart_rate"),
+                "respRate": record.get("medrec_resp_rate"),
+                "temperature": record.get("medrec_body_temp"),
+                "clinicalSigns": record.get("medrec_clinical_signs"),
+                "diagnosticProtocol": record.get("medrec_diagnostic_protocol"),
+                "labResult": record.get("medrec_lab_results"),
+                "labImages": processed_lab_images,
+                "diagnosis": record.get("medrec_diagnosis"),
+                "prognosis": record.get("medrec_prognosis"),
+                "recommendation": record.get("medrec_recommendation"),
+                "horseStatus": record.get("medrec_horsestatus"),
+                "veterinarian": vet_name,
+            }
+            followup_records.append(formatted_record)
+        
+        print(f"✅ Found {len(followup_records)} follow-up records for parent_medrec_id: {parent_medrec_id}")
+        
+        return Response({
+            "followup_records": followup_records,
+            "parent_medrec_id": parent_medrec_id,
+            "count": len(followup_records)
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        print(f"❌ Error getting follow-up records: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": f"Error getting follow-up records: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
 # -------------------- ADD VET SCHEDULE --------------------
 def convert_to_24h(time_str):
     """
@@ -2451,3 +2575,4 @@ def change_password(request):
 
     except Exception as e:
         return Response({"error": f"Unexpected server error: {str(e)}"}, status=500)
+
