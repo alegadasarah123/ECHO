@@ -409,7 +409,6 @@ def get_notifications(request):
         existing_user_ids = {notif["id"] for notif in (existing_notifs_result.data or [])}
         print(f"Users with existing notifications: {existing_user_ids}")
 
-        manila_tz = datetime.timezone(datetime.timedelta(hours=8))
         inserted_notifications = []
         
         # STEP 3: INSERT NEW NOTIFICATIONS
@@ -417,24 +416,18 @@ def get_notifications(request):
             if user["id"] not in existing_user_ids:
                 print(f"Inserting notification for user: {user['id']}")
                 
-                # Handle timestamp
-                created_at = user.get("created_at")
-                if created_at:
-                    if created_at.endswith('Z'):
-                        created_at = created_at.replace('Z', '+00:00')
-                    dt_ph = datetime.datetime.fromisoformat(created_at).astimezone(manila_tz)
-                else:
-                    dt_ph = datetime.datetime.now(manila_tz)
-
+                # SIMPLE VERSION - Use current time without timezone fuss
+                current_time = datetime.datetime.now()
+                
                 # INSERT THE NOTIFICATION
                 try:
                     insert_data = {
                         "id": user["id"],
                         "notif_message": f"New {user['role']} registered",
-                        "notif_date": dt_ph.date().isoformat(),
-                        "notif_time": dt_ph.time().strftime("%H:%M:%S"),
+                        "notif_date": current_time.date().isoformat(),
+                        "notif_time": current_time.time().strftime("%H:%M:%S"),
                         "notif_read": False,
-                        "notification_type": "user_registration",
+                        "notification_type": "user_registration", 
                         "related_id": user["id"]
                     }
                     
@@ -469,7 +462,7 @@ def get_notifications(request):
         import traceback
         print(f"Traceback: {traceback.format_exc()}")
         return Response({"error": "Failed to process notifications"}, status=500)
-    
+        
 # -------------------- MARK NOTIFICATION AS READ --------------------
 @api_view(["POST"])
 @login_required
