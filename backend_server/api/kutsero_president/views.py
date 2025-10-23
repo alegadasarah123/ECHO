@@ -384,82 +384,44 @@ def get_approved_users(request):
     
     return Response({"users": filtered_users})
 
-# -------------------- NOTIFICATIONS --------------------
 @api_view(["GET"])
 @login_required
 def get_notifications(request):
-    """Fetch notifications for Kutsero and Horse Operator and insert missing for pending users."""
+    """Simplified notification fetcher"""
     try:
-        users = fetch_and_merge_users()
-        if not users:
-            return Response([])
-
-        user_roles = {u["id"]: u["role"] for u in users}
-
-        result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
-        notifications_raw = result.data if result.data else []
-
-        manila_tz = datetime.timezone(datetime.timedelta(hours=8))
-
-        existing_ids = {n["id"] for n in notifications_raw}
-        for u in users:
-            if u["status"] == "pending" and u["role"] in ["Kutsero", "Horse Operator"] and u["id"] not in existing_ids:
-                dt_ph = datetime.datetime.fromisoformat(u["created_at"].replace("Z", "+00:00")).astimezone(manila_tz) \
-                    if u.get("created_at") else datetime.datetime.now(manila_tz)
-                try:
-                    supabase.table("notification").insert({
-                        "id": u["id"],
-                        "notif_message": f"New {u['role']} registered: {u['name']}",
-                        "notif_date": dt_ph.date().isoformat(),
-                        "notif_time": dt_ph.time().strftime("%H:%M"),
-                        "notif_read": False  # Explicitly set to false for new notifications
-                    }).execute()
-                except Exception as e:
-                    print(f"Failed to insert notification for user {u['id']}: {e}")
-
-        # Re-fetch notifications
+        # Just fetch existing notifications without the complex insertion logic
         result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
         notifications_raw = result.data if result.data else []
 
         notifications_filtered = []
         for n in notifications_raw:
-            role = user_roles.get(n["id"])
-            if role in ["Kutsero", "Horse Operator"]:
-                # FIX: Handle PostgreSQL date/time objects properly
-                notif_date = n['notif_date']
-                notif_time = n['notif_time']
-                
-                # Convert to strings safely
-                if hasattr(notif_date, 'isoformat'):
-                    notif_date_str = notif_date.isoformat()
-                else:
-                    notif_date_str = str(notif_date)
-                
-                if hasattr(notif_time, 'strftime'):
-                    notif_time_str = notif_time.strftime("%H:%M")
-                else:
-                    notif_time_str = str(notif_time)
-                    # Remove seconds if present in time string
-                    if ':' in notif_time_str and notif_time_str.count(':') == 2:
-                        notif_time_str = ':'.join(notif_time_str.split(':')[:2])
-                
-                date_iso = f"{notif_date_str}T{notif_time_str}+08:00"
-                notifications_filtered.append({
-                    "id": n["notif_id"],  # Use notif_id as the unique identifier
-                    "user_id": n["id"],   # Include user_id for reference
-                    "message": n["notif_message"],
-                    "date": date_iso,
-                    "read": n.get("notif_read", False)  # Include read status
-                })
+            # Convert PostgreSQL date/time to ISO string
+            date_str = str(n['notif_date'])  # Simple string conversion
+            time_str = str(n['notif_time'])  # Simple string conversion
+            
+            # Remove seconds from time if present
+            if ':' in time_str and time_str.count(':') >= 2:
+                time_parts = time_str.split(':')
+                time_str = f"{time_parts[0]}:{time_parts[1]}"
+            
+            # Create ISO date string
+            date_iso = f"{date_str}T{time_str}+08:00"
+            
+            notifications_filtered.append({
+                "id": n["notif_id"],
+                "user_id": n["id"],
+                "message": n["notif_message"],
+                "date": date_iso,
+                "read": n.get("notif_read", False)
+            })
 
-        notifications_filtered.sort(key=lambda x: x["id"] or 0, reverse=True)
         return Response(notifications_filtered)
         
     except Exception as e:
         print(f"Error in get_notifications: {str(e)}")
         import traceback
         traceback.print_exc()
-        return Response({"error": "Internal server error"}, status=500)
+        return Response({"error": str(e)}, status=500)
     
 # -------------------- MARK NOTIFICATION AS READ --------------------
 @api_view(["POST"])
