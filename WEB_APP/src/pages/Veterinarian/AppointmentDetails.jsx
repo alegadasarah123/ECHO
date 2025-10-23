@@ -5,7 +5,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   Bell, FileText, Heart, Thermometer, Activity, Calendar, User, Phone, Mail, MapPin, 
   Plus, X, Upload, Image, AlertCircle, Lock, Key, Search, Filter, Eye, ClipboardList, 
-  StickyNote, Shield, RefreshCw, CheckCircle, Edit, Minus, Loader
+  StickyNote, Shield, RefreshCw, CheckCircle, Edit, Minus, Loader, Stethoscope
 } from "lucide-react";
 import MedicalRecords from "./MedicalRecord";
 import TreatmentRecords from "./TreatmentRecord";
@@ -299,18 +299,119 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
   );
 };
 
-// Medical Records Table Component - UPDATED WITH FOLLOW-UP RECORDS
+// Medical Records Table Component - FIXED NESTED FOLLOW-UP RECORDS
 const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddRecord, onEditRecord, onViewRecord, hasAccess, onRequestAccess, accessRequested }) => {
   const [filteredRecords, setFilteredRecords] = useState(records || []);
   const [dateFilter, setDateFilter] = useState({ from: "", to: "" });
   const [currentPage, setCurrentPage] = useState(1);
   const [expandedRecords, setExpandedRecords] = useState({});
+  const [loadingFollowUps, setLoadingFollowUps] = useState({});
+  const [followUpRecords, setFollowUpRecords] = useState({});
+  const [followUpCounts, setFollowUpCounts] = useState({}); // Track follow-up counts
+  const [nestedFollowUps, setNestedFollowUps] = useState({}); // Track nested follow-up chains
   const recordsPerPage = 5;
 
   useEffect(() => {
-    setFilteredRecords(records || []);
+    // Only show parent records initially (records without parentMedrecId)
+    const parentRecords = (records || []).filter(record => !record.parentMedrecId);
+    setFilteredRecords(parentRecords);
     setCurrentPage(1);
+    
+    // Auto-check for follow-up records for all parent records
+    if (parentRecords.length > 0) {
+      checkAllFollowUps(parentRecords);
+    }
   }, [records]);
+
+  // Recursive function to get ALL follow-ups in a chain (nested follow-ups)
+  const getAllFollowUpsInChain = async (parentMedrecId) => {
+    let allFollowUps = [];
+    
+    const getNestedFollowUps = async (medrecId, level = 0) => {
+      try {
+        const response = await fetch(
+          `http://localhost:8000/api/veterinarian/get_followup_records/${medrecId}/`,
+          { method: "GET", credentials: "include" }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          const followUps = data.followup_records || [];
+          
+          for (const followUp of followUps) {
+            // Add the follow-up with its nesting level
+            allFollowUps.push({
+              ...followUp,
+              nestingLevel: level,
+              rootParentId: parentMedrecId
+            });
+            
+            // Recursively get follow-ups of this follow-up
+            await getNestedFollowUps(followUp.id, level + 1);
+          }
+        }
+      } catch (error) {
+        console.error(`Error getting nested follow-ups for ${medrecId}:`, error);
+      }
+    };
+    
+    await getNestedFollowUps(parentMedrecId);
+    return allFollowUps;
+  };
+
+  // Auto-check for follow-up records for all parent records
+  const checkAllFollowUps = async (parentRecords) => {
+    const countsMap = {};
+    const nestedMap = {};
+    
+    // Check each parent record for follow-ups
+    for (const record of parentRecords) {
+      try {
+        // Get ALL follow-ups in the chain (including nested ones)
+        const allFollowUps = await getAllFollowUpsInChain(record.id);
+        const count = allFollowUps.length;
+        
+        countsMap[record.id] = count;
+        nestedMap[record.id] = allFollowUps;
+        
+        console.log(`✅ Auto-checked record ${record.id}: ${count} total follow-up(s) in chain`);
+      } catch (error) {
+        console.error(`Error checking follow-ups for record ${record.id}:`, error);
+        countsMap[record.id] = 0;
+        nestedMap[record.id] = [];
+      }
+    }
+    
+    setFollowUpCounts(countsMap);
+    setNestedFollowUps(nestedMap);
+  };
+
+  // Fetch follow-up records for a parent record (including nested ones)
+  const fetchFollowUpRecords = async (parentMedrecId) => {
+    if (followUpRecords[parentMedrecId]) {
+      // Already loaded, just toggle visibility
+      toggleFollowUps(parentMedrecId);
+      return;
+    }
+
+    setLoadingFollowUps(prev => ({ ...prev, [parentMedrecId]: true }));
+    
+    try {
+      // Get ALL follow-ups in the chain
+      const allFollowUps = await getAllFollowUpsInChain(parentMedrecId);
+      
+      console.log("📋 All follow-up records in chain:", allFollowUps);
+      setFollowUpRecords(prev => ({
+        ...prev,
+        [parentMedrecId]: allFollowUps
+      }));
+      toggleFollowUps(parentMedrecId);
+    } catch (error) {
+      console.error("Error fetching follow-up records:", error);
+    } finally {
+      setLoadingFollowUps(prev => ({ ...prev, [parentMedrecId]: false }));
+    }
+  };
 
   // Toggle follow-up records visibility
   const toggleFollowUps = (recordId) => {
@@ -320,9 +421,22 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
     }));
   };
 
-  // Check if record has follow-ups
+  // Check if record has follow-ups (based on parent_medrec_id)
   const hasFollowUps = (record) => {
-    return record.followUpRecords && record.followUpRecords.length > 0;
+    // This record can have follow-ups if it doesn't have a parentMedrecId (it's a parent)
+    return !record.parentMedrecId;
+  };
+
+  // Get follow-up count for a parent record (including nested ones)
+  const getFollowUpCount = (recordId) => {
+    return followUpCounts[recordId] || 0;
+  };
+
+  // ✅ FIXED: Only show follow-up button if there ARE follow-up records for this parent
+  const shouldShowFollowUpButton = (record) => {
+    return record.isParent && 
+           hasFollowUps(record) && 
+           getFollowUpCount(record.id) > 0;
   };
 
   // Flatten records for display (parent + follow-ups when expanded)
@@ -335,23 +449,36 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
         ...record, 
         isParent: true, 
         isFollowUp: false,
-        hasFollowUps: hasFollowUps(record)
+        hasFollowUps: hasFollowUps(record),
+        followUpCount: getFollowUpCount(record.id),
+        nestingLevel: 0
       });
       
-      // Add follow-up records if expanded
-      if (expandedRecords[record.id] && hasFollowUps(record)) {
-        record.followUpRecords.forEach(followUp => {
+      // Add follow-up records if expanded and loaded
+      if (expandedRecords[record.id] && followUpRecords[record.id]) {
+        console.log("🔄 Adding follow-up records for parent:", record.id, followUpRecords[record.id]);
+        
+        // Sort follow-ups by date to maintain chronological order
+        const sortedFollowUps = [...followUpRecords[record.id]].sort((a, b) => 
+          new Date(a.date) - new Date(b.date)
+        );
+        
+        sortedFollowUps.forEach(followUp => {
+          // Use the formatted data from backend directly
           displayRecords.push({ 
             ...followUp, 
             isParent: false, 
             isFollowUp: true,
-            parentRecordId: record.id,
-            hasFollowUps: false
+            parentRecordId: record.id, // Always point to the original parent
+            hasFollowUps: false,
+            followUpCount: 0,
+            nestingLevel: followUp.nestingLevel || 0
           });
         });
       }
     });
     
+    console.log("📊 Display records:", displayRecords);
     return displayRecords;
   };
 
@@ -364,7 +491,7 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
   const totalPages = Math.ceil(filteredRecords.length / recordsPerPage);
 
   const handleDateFilter = () => {
-    const recordsArray = records || [];
+    const recordsArray = (records || []).filter(record => !record.parentMedrecId);
     if (!dateFilter.from && !dateFilter.to) {
       setFilteredRecords(recordsArray);
       return;
@@ -391,7 +518,9 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
 
   const clearFilter = () => {
     setDateFilter({ from: "", to: "" });
-    setFilteredRecords(records || []);
+    // Only show parent records when clearing filter
+    const parentRecords = (records || []).filter(record => !record.parentMedrecId);
+    setFilteredRecords(parentRecords);
     setCurrentPage(1);
   };
 
@@ -404,6 +533,26 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
 
   const handlePageChange = (page) => {
     setCurrentPage(page);
+  };
+
+  // Get indentation style based on nesting level
+  const getNestingStyle = (nestingLevel) => {
+    const basePadding = 6; // px-6 = 1.5rem = 24px
+    const indentPerLevel = 8; // 2rem = 32px per level
+    const totalPadding = basePadding + (nestingLevel * indentPerLevel);
+    return { paddingLeft: `${totalPadding}px` };
+  };
+
+  // Get border color based on nesting level
+  const getNestingBorderColor = (nestingLevel) => {
+    const colors = [
+      'border-l-blue-300',   // Level 0 (first follow-up)
+      'border-l-green-300',  // Level 1 
+      'border-l-purple-300', // Level 2
+      'border-l-orange-300', // Level 3
+      'border-l-red-300',    // Level 4
+    ];
+    return colors[Math.min(nestingLevel, colors.length - 1)];
   };
 
   return (
@@ -532,7 +681,7 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
       ) : (
         <>
           <div className="flex justify-between items-center mb-4">
-            <p className="text-gray-600">Showing {currentParentRecords.length} of {filteredRecords.length} records</p>
+            <p className="text-gray-600">Showing {currentParentRecords.length} of {filteredRecords.length} medical records</p>
 
             <AddRecordButton 
               onClick={onAddRecord}
@@ -558,24 +707,32 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
                   const isCurrentVet = isCurrentVetRecord(record);
                   const isFollowUpRecord = record.isFollowUp;
                   const isParentRecord = record.isParent;
-                  const hasFollowUpsForThisRecord = record.hasFollowUps;
+                  const followUpCount = getFollowUpCount(record.id);
+                  const nestingLevel = record.nestingLevel || 0;
+                  
+                  // ✅ FIXED: Only show button if there ARE follow-up records
+                  const showFollowUpButton = shouldShowFollowUpButton(record);
                   
                   return (
                     <React.Fragment key={record.id || `followup-${index}`}>
                       <tr 
+                        style={getNestingStyle(nestingLevel)}
                         className={`
                           transition-all duration-200 group
                           ${isCurrentVet 
                             ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-l-blue-500' 
                             : 'hover:bg-gray-50'
                           }
-                          ${isFollowUpRecord ? 'bg-gray-50 border-l-4 border-l-gray-300' : ''}
+                          ${isFollowUpRecord ? `bg-gray-50 border-l-4 ${getNestingBorderColor(nestingLevel)}` : ''}
                         `}
                       >
                         <td className="px-6 py-4 whitespace-nowrap text-center">
                           <div className="flex items-center justify-center gap-2">
                             {isFollowUpRecord && (
-                              <div className="w-2 h-2 bg-blue-500 rounded-full" title="Follow-up Record"></div>
+                              <div 
+                                className="w-2 h-2 bg-blue-500 rounded-full" 
+                                title={`Follow-up level ${nestingLevel}`}
+                              ></div>
                             )}
                             <div
                               className={`font-medium ${
@@ -589,12 +746,13 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
                               })}
                               {isFollowUpRecord && (
                                 <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
-                                  Follow-up
+                                  Follow-up {nestingLevel > 0 ? `(${nestingLevel})` : ''}
                                 </span>
                               )}
-                              {isParentRecord && hasFollowUpsForThisRecord && (
+                              {/* ✅ FIXED: Show exact follow-up count */}
+                              {isParentRecord && followUpCount > 0 && (
                                 <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                                  Has {record.followUpRecords?.length || 0} follow-up{record.followUpRecords?.length !== 1 ? 's' : ''}
+                                  Has {followUpCount} follow-up{followUpCount !== 1 ? 's' : ''}
                                 </span>
                               )}
                             </div>
@@ -638,22 +796,26 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
 
                         <td className="px-6 py-4">
                           <div className="flex justify-center gap-2">
-                            {isParentRecord && hasFollowUpsForThisRecord && (
+                            {/* ✅ FIXED: Only w-up button if there ARE follow-up records */}
+                            {showFollowUpButton && (
                               <Button 
-                                onClick={() => toggleFollowUps(record.id)} 
+                                onClick={() => fetchFollowUpRecords(record.id)} 
                                 variant="outline" 
                                 size="sm"
+                                disabled={loadingFollowUps[record.id]}
                                 className="cursor-pointer flex items-center gap-2 px-3 py-1 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700"
                               >
-                                {expandedRecords[record.id] ? (
+                                {loadingFollowUps[record.id] ? (
+                                  <Loader className="w-3 h-3 animate-spin" />
+                                ) : expandedRecords[record.id] ? (
                                   <>
                                     <Minus className="w-3 h-3" />
                                     <span>Hide Follow-ups</span>
                                   </>
                                 ) : (
                                   <>
-                                    <Plus className="w-3 h-3" />
-                                    <span>Show Follow-ups ({record.followUpRecords.length})</span>
+                                    <Stethoscope className="w-3 h-3" />
+                                    <span>Show Follow-ups</span>
                                   </>
                                 )}
                               </Button>

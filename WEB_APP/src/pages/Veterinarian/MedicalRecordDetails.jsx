@@ -49,6 +49,10 @@ const MedicalRecordDetails = ({
   const [zoomLevel, setZoomLevel] = useState(1);
   const [rotation, setRotation] = useState(0);
 
+  // NEW: Track if follow-up exists
+  const [followUpExists, setFollowUpExists] = useState(false);
+  const [checkingFollowUp, setCheckingFollowUp] = useState(false);
+
   if (!record) return null;
 
   // Function to get the latest record (original or follow-up)
@@ -69,7 +73,7 @@ const MedicalRecordDetails = ({
   const displayRecord = getLatestRecord();
   const isLatestRecordFollowUp = displayRecord.id !== record.id;
 
-  // FIXED: Check if today is the follow-up date
+  // FIXED: Check if today is on or after the follow-up date
   const canRecordFollowUp = () => {
     const followUpDate = record.followUpDate || record.medrec_followup_date;
     if (!followUpDate) return false;
@@ -81,9 +85,38 @@ const MedicalRecordDetails = ({
     const todayMidnight = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const followUpMidnight = new Date(followUp.getFullYear(), followUp.getMonth(), followUp.getDate());
     
-    // Return true only if today is exactly the follow-up date
-    return todayMidnight.getTime() === followUpMidnight.getTime();
+    // Return true if today is on or after the follow-up date
+    return todayMidnight.getTime() >= followUpMidnight.getTime();
   };
+
+  // NEW: Check backend if follow-up record exists
+  const checkFollowUpExists = async () => {
+    if (!record.id) return;
+    
+    setCheckingFollowUp(true);
+    try {
+      const response = await fetch(`http://localhost:8000/api/veterinarian/check_followup_record/${record.id}`, {
+        method: 'GET',
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setFollowUpExists(data.followup_exists);
+      } else {
+        console.error('Failed to check follow-up record');
+      }
+    } catch (error) {
+      console.error('Error checking follow-up record:', error);
+    } finally {
+      setCheckingFollowUp(false);
+    }
+  };
+
+  // Check for follow-up records on component mount
+  useEffect(() => {
+    checkFollowUpExists();
+  }, [record.id]);
 
   // ========== FIXED FULL-SCREEN FILE VIEWER - MOVED TO TOP ==========
   const FileViewer = () => {
@@ -501,7 +534,7 @@ const MedicalRecordDetails = ({
           const initialOutcomes = {};
           recordTreatments.forEach(treatment => {
             const treatmentId = treatment.id || treatment.treatment_id;
-            initialOutcomes[treatmentId] = treatment.outcome || treatment.treatment_outcome || 'ongoing';
+            initialOutcomes[treatmentId] = treatment.outcome || treatment.treatment_outcome || 'Ongoing';
           });
           setEditingTreatmentOutcomes(initialOutcomes);
         } else {
@@ -532,20 +565,20 @@ const MedicalRecordDetails = ({
 
   const getOutcomeColor = (outcome) => {
     switch (outcome?.toLowerCase()) {
-      case 'completed': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-      case 'discontinued': return 'bg-amber-100 text-amber-800 border-amber-200';
-      case 'cancelled': return 'bg-red-100 text-red-800 border-red-200';
-      case 'ongoing': 
+      case 'Completed': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
+      case 'Discontinued': return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'Cancelled': return 'bg-red-100 text-red-800 border-red-200';
+      case 'Ongoing': 
       default: return 'bg-blue-100 text-blue-800 border-blue-200';
     }
   };
 
   const getOutcomeIcon = (outcome) => {
     switch (outcome?.toLowerCase()) {
-      case 'completed': return <CheckCircle className="w-4 h-4" />;
-      case 'discontinued': return <X className="w-4 h-4" />;
-      case 'cancelled': return <X className="w-4 h-4" />;
-      case 'ongoing': 
+      case 'Completed': return <CheckCircle className="w-4 h-4" />;
+      case 'Discontinued': return <X className="w-4 h-4" />;
+      case 'Cancelled': return <X className="w-4 h-4" />;
+      case 'Ongoing':
       default: return <Clock className="w-4 h-4" />;
     }
   };
@@ -872,7 +905,7 @@ const MedicalRecordDetails = ({
       medication: "",
       dosage: "",
       duration: "",
-      outcome: "ongoing"
+      outcome: "Ongoing"
     }]);
   };
 
@@ -987,6 +1020,9 @@ const MedicalRecordDetails = ({
       const result = await response.json();
       console.log("✅ Follow-up record created successfully:", result);
 
+      // MARK FOLLOW-UP AS RECORDED
+      setFollowUpExists(true);
+      
       // SUCCESS: Show alert and navigate back
       console.log("🎉 Follow-up process completed successfully!");
       
@@ -1029,7 +1065,7 @@ const MedicalRecordDetails = ({
     setError(null);
   };
 
-  // ========== UPDATED CONFIRMATION MODAL WITH LOADING STATE ==========
+  // ========== UPDATED CONFIRMATION MODAL WITH NEW DESIGN ==========
   const ConfirmationModal = () => (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl max-w-md w-full p-6">
@@ -1059,18 +1095,19 @@ const MedicalRecordDetails = ({
             </div>
           </div>
 
-          <div className="flex gap-3 mt-6">
-            <Button 
-              onClick={() => setShowConfirmation(false)} 
-              variant="outline" 
-              className="cursor-pointer flex-1"
+          {/* UPDATED ACTION BUTTONS WITH NEW DESIGN */}
+          <div className="flex gap-3 pt-4 border-t border-gray-200">
+            <Button
+              onClick={() => setShowConfirmation(false)}
+              variant="outline"
+              className="flex-1 border border-gray-300 text-gray-600 hover:bg-red-50 hover:border-red-400 hover:text-red-600"
               disabled={uploading}
             >
               Cancel
             </Button>
             <Button 
               onClick={handleSaveFollowUp}
-              className="cursor-pointer flex-1 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white"
+              className="flex-1 flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
               disabled={uploading}
             >
               {uploading ? (
@@ -1080,7 +1117,7 @@ const MedicalRecordDetails = ({
                 </>
               ) : (
                 <>
-                  <Save className="w-4 h-4 text-white" />
+                  <FileText className="w-4 h-4 text-white" />
                   <span className="text-white">Save Medical Record</span>
                 </>
               )}
@@ -1697,14 +1734,14 @@ const MedicalRecordDetails = ({
                               </div>
                             </div>
                             <select
-                              value={editingTreatmentOutcomes[treatmentId] || 'ongoing'}
+                              value={editingTreatmentOutcomes[treatmentId] || 'Ongoing'}
                               onChange={(e) => handleTreatmentOutcomeChange(treatmentId, e.target.value)}
                               className="border border-gray-300 rounded-lg px-3 py-2 text-sm"
                             >
-                              <option value="ongoing">Ongoing</option>
-                              <option value="completed">Completed</option>
-                              <option value="discontinued">Discontinued</option>
-                              <option value="cancelled">Cancelled</option>
+                              <option value="Ongoing">Ongoing</option>
+                              <option value="Completed">Completed</option>
+                              <option value="Discontinued">Discontinued</option>
+                              <option value="Cancelled">Cancelled</option>
                             </select>
                           </div>
                         );
@@ -1837,21 +1874,32 @@ const MedicalRecordDetails = ({
                 </div>
               )}
 
-              {/* Action Buttons */}
+              {/* UPDATED ACTION BUTTONS WITH NEW DESIGN */}
               <div className="flex gap-3 pt-4 border-t border-gray-200">
                 <Button
                   onClick={handleCancelFollowUp}
                   variant="outline"
-                  className="cursor-pointer flex-1 border border-gray-300 text-gray-600 hover:bg-red-50 hover:border-red-400 hover:text-red-600 active:scale-95 transition-all duration-200 ease-in-out rounded-lg py-2 font-medium"
+                  className="flex-1 border border-gray-300 text-gray-600 hover:bg-red-50 hover:border-red-400 hover:text-red-600"
+                  disabled={uploading}
                 >
                   Cancel
                 </Button>
                 <Button 
                   onClick={handleSaveConfirmation}
-                  className="cursor-pointer flex-1 flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
+                  className="flex-1 flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
+                  disabled={uploading}
                 >
-                  <Save className="w-4 h-4 text-white" />
-                  <span className="text-white">Save Medical Record</span>
+                  {uploading ? (
+                    <>
+                      <Loader className="w-4 h-4 animate-spin text-white" />
+                      <span className="text-white">Saving...</span>
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="w-4 h-4 text-white" />
+                      <span className="text-white">Save Medical Record</span>
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
@@ -1861,8 +1909,8 @@ const MedicalRecordDetails = ({
     );
   };
 
-  // FIXED: Calculate if we should show the button - only show when today is follow-up date
-  const shouldShowFollowUpButton = canRecordFollowUp();
+  // FIXED: Calculate if we should show the button - only show when today is on or after follow-up date AND no follow-up exists
+  const shouldShowFollowUpButton = canRecordFollowUp() && !followUpExists && !checkingFollowUp;
 
   return (
     <div className="fixed inset-0 bg-gray-50 z-50 overflow-y-auto">
@@ -1987,7 +2035,7 @@ const MedicalRecordDetails = ({
                   <ClipboardList className="w-4 h-4 text-blue-600" />
                 </div>
                 <h3 className="font-semibold text-gray-900">Diagnostic Protocol</h3>
-              </div>
+                </div>
               <div className="text-gray-700">
                 {displayRecord.diagnosticProtocol || displayRecord.medrec_diagnostic_protocol || "No diagnostic protocol recorded"}
               </div>
@@ -2027,7 +2075,7 @@ const MedicalRecordDetails = ({
                 <div className="space-y-4">
                   {treatments.map((treatment, index) => {
                     const treatmentId = treatment.id || treatment.treatment_id;
-                    const outcome = treatment.outcome || treatment.treatment_outcome || 'ongoing';
+                    const outcome = treatment.outcome || treatment.treatment_outcome || 'Ongoing';
                     return (
                       <div key={treatmentId} className="border border-gray-200 rounded-xl p-4 hover:border-purple-200 transition-colors">
                         <div className="flex items-center gap-3 mb-3">
@@ -2129,8 +2177,13 @@ const MedicalRecordDetails = ({
                     </span>
                   </div>
                   
-                  {/* FIXED: Only show button when today is follow-up date */}
-                  {shouldShowFollowUpButton ? (
+                  {/* FIXED: Only show button when today is on or after follow-up date AND no follow-up exists */}
+                  {checkingFollowUp ? (
+                    <div className="text-center py-3 bg-gray-50 rounded-lg border border-gray-200">
+                      <Loader className="w-5 h-5 mx-auto mb-1 text-gray-600 animate-spin" />
+                      <p className="text-sm font-medium text-gray-800">Checking follow-up status...</p>
+                    </div>
+                  ) : shouldShowFollowUpButton ? (
                     <Button 
                       onClick={handleStartFollowUp}
                       className="cursor-pointer w-full flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white"
@@ -2138,6 +2191,14 @@ const MedicalRecordDetails = ({
                       <Plus className="w-4 h-4 text-white" />
                       <span className="text-white">Record Follow-up</span>
                     </Button>
+                  ) : followUpExists ? (
+                    <div className="text-center py-3 bg-emerald-50 rounded-lg border border-emerald-200">
+                      <CheckCircle className="w-5 h-5 mx-auto mb-1 text-emerald-600" />
+                      <p className="text-sm font-medium text-emerald-800">Follow-up Record Saved</p>
+                      <p className="text-xs text-emerald-600 mt-1">
+                        Follow-up has already been recorded for this appointment
+                      </p>
+                    </div>
                   ) : (
                     <div className="text-center py-3 text-amber-600 bg-amber-50 rounded-lg border border-amber-200">
                       <Clock className="w-5 h-5 mx-auto mb-1" />
@@ -2145,7 +2206,7 @@ const MedicalRecordDetails = ({
                         Follow-up scheduled for {new Date(displayRecord.followUpDate || displayRecord.medrec_followup_date).toLocaleDateString()}
                       </p>
                       <p className="text-xs text-amber-500 mt-1">
-                        You can record follow-up only on the appointment date
+                        You can record follow-up only on or after the appointment date
                       </p>
                     </div>
                   )}

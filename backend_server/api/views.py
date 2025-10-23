@@ -230,8 +230,8 @@ def login(request):
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,
-        samesite="Lax",
+        secure=True,
+        samesite="None",
         max_age=86400
     )
 

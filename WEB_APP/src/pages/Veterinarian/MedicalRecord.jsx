@@ -474,14 +474,17 @@ const FileUploadSection = ({
   return (
     <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-gray-900">Lab Files</h3>
-        <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Optional</span>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-gray-900">Lab Files</h3>
+          <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Optional</span>
+        </div>
         {labFiles.length > 0 && (
           <span className="text-sm text-gray-500">
             {labFiles.length}/10 files
           </span>
         )}
       </div>
+
       
       {/* Drag & Drop Area */}
       <div
@@ -1055,8 +1058,10 @@ const RecordForm = ({
 
             {/* Lab Results */}
             <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-              <h3 className="font-semibold text-gray-900 mb-4">Lab Results</h3>
-              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Optional</span>
+              <div className="flex items-center gap-2 mb-4">
+                <h3 className="font-semibold text-gray-900">Lab Results</h3>
+                <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Optional</span>
+              </div>
               <textarea
                 name="labResult"
                 value={formData.labResult}

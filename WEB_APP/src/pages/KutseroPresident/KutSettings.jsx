@@ -381,7 +381,7 @@ const SettingsPage = () => {
       const data = await res.json();
 
       if (res.ok) {
-        setSuccessMessage("Password updated successfully! 🔒");
+        setSuccessMessage("Password updated successfully!");
         setPasswords({ 
           current_password: "", 
           new_password: "", 
