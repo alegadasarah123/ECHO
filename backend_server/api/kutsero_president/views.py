@@ -397,76 +397,63 @@ def get_notifications(request):
         if not pending_users:
             return Response([])
 
-    user_roles = {u["id"]: u["role"] for u in users}
+        # Get existing notifications to avoid duplicates
+        result = supabase.table("notification").select("*").execute()
+        existing_notifications = result.data if result.data else []
+        existing_user_ids = {n["id"] for n in existing_notifications}
 
-    # Get existing notifications
-    result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
-    notifications_raw = result.data if result.data else []
+        manila_tz = datetime.timezone(datetime.timedelta(hours=8))
+        
+        # ONLY process pending users that don't have notifications yet
+        new_notifications = []
+        for user in pending_users:
+            if user["id"] not in existing_user_ids:
+                # Handle timestamp conversion
+                created_at = user.get("created_at")
+                if created_at:
+                    if created_at.endswith('Z'):
+                        created_at = created_at.replace('Z', '+00:00')
+                    dt_ph = datetime.datetime.fromisoformat(created_at).astimezone(manila_tz)
+                else:
+                    dt_ph = datetime.datetime.now(manila_tz)
 
-    # Find pending users without notifications
-    existing_user_ids = {n["id"] for n in notifications_raw}
-    pending_users = [
-        u for u in users 
-        if (u["status"] == "pending" and 
-            u["role"] in ["Kutsero", "Horse Operator"] and 
-            u["id"] not in existing_user_ids)
-    ]
+                try:
+                    # Insert new notification
+                    insert_result = supabase.table("notification").insert({
+                        "id": user["id"],
+                        "notif_message": f"New {user['role']} registered: {user.get('name', 'Unknown')}",
+                        "notif_date": dt_ph.date().isoformat(),
+                        "notif_time": dt_ph.time().strftime("%H:%M:%S"),
+                        "notif_read": False,
+                        "notification_type": "user_registration",
+                        "related_id": user["id"]
+                    }).execute()
+                    
+                    # Add to response
+                    if insert_result.data:
+                        new_notif = insert_result.data[0]
+                        date_iso = f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00"
+                        new_notifications.append({
+                            "id": new_notif["notif_id"],
+                            "user_id": new_notif["id"],
+                            "message": new_notif["notif_message"],
+                            "date": date_iso,
+                            "read": new_notif.get("notif_read", False),
+                            "role": user["role"],
+                            "status": user["status"]
+                        })
+                        
+                except Exception as e:
+                    print(f"Failed to insert notification for user {user['id']}: {e}")
+                    continue
 
-    # Insert missing notifications
-    for user in pending_users:
-        try:
-            # Parse created_at with timezone handling
-            created_at = user.get("created_at")
-            if created_at:
-                if created_at.endswith('Z'):
-                    created_at = created_at[:-1] + '+00:00'
-                dt_utc = datetime.datetime.fromisoformat(created_at)
-                dt_manila = dt_utc.astimezone(datetime.timezone(datetime.timedelta(hours=8)))
-            else:
-                dt_manila = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
+        # Return ONLY the newly created notifications
+        new_notifications.sort(key=lambda x: x["id"], reverse=True)
+        return Response(new_notifications)
 
-            # Insert with all required fields
-            supabase.table("notification").insert({
-                "id": user["id"],
-                "notif_message": f"New {user['role']} registered: {user['name']}",
-                "notif_date": dt_manila.date().isoformat(),
-                "notif_time": dt_manila.time().strftime("%H:%M:%S"),
-                "notif_read": False,
-                "notification_type": "user_registration"  # Required field
-            }).execute()
-        except Exception as e:
-            print(f"Failed to insert notification for user {user['id']}: {e}")
-
-    # Re-fetch all notifications after inserts
-    result = supabase.table("notification").select("*").order("notif_id", desc=True).execute()
-    notifications_raw = result.data if result.data else []
-
-    # Filter and format response
-    notifications_filtered = []
-    for notification in notifications_raw:
-        role = user_roles.get(notification["id"])
-        if role in ["Kutsero", "Horse Operator"]:
-            # Create ISO format datetime string
-            notif_date = str(notification['notif_date'])
-            notif_time = str(notification['notif_time'])
-            
-            # Handle time format (remove microseconds if present)
-            if '.' in notif_time:
-                notif_time = notif_time.split('.')[0]
-                
-            date_iso = f"{notif_date}T{notif_time}+08:00"
-            
-            notifications_filtered.append({
-                "id": notification["notif_id"],
-                "user_id": notification["id"],
-                "message": notification["notif_message"],
-                "date": date_iso,
-                "read": notification.get("notif_read", False)
-            })
-
-    # Sort by notif_id descending
-    notifications_filtered.sort(key=lambda x: x["id"], reverse=True)
-    return Response(notifications_filtered)
+    except Exception as e:
+        print(f"Error in get_notifications: {e}")
+        return Response({"error": "Failed to fetch notifications"}, status=500)
 
 # -------------------- MARK NOTIFICATION AS READ --------------------
 @api_view(["POST"])
