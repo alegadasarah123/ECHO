@@ -677,7 +677,7 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
     
     setLoading(true);
     try {
-      const endpoint = `http://localhost:8000/api/kutsero_president/ctu_profile_by_id/${user.id}/`;
+      const endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/ctu_profile_by_id/${user.id}/`;
       const res = await fetch(endpoint, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
@@ -695,7 +695,7 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
     
     setLoading(true);
     try {
-      const endpoint = `http://localhost:8000/api/kutsero_president/dvmf_profile_by_id/${user.id}/`;
+      const endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/dvmf_profile_by_id/${user.id}/`;
       const res = await fetch(endpoint, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
@@ -716,9 +716,9 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
       let endpoint = '';
       
       if (user.role === 'Kutsero') {
-        endpoint = `http://localhost:8000/api/kutsero_president/kutsero_profile_by_id/${user.id}/`;
+        endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/kutsero_profile_by_id/${user.id}/`;
       } else if (user.role === 'Horse Operator') {
-        endpoint = `http://localhost:8000/api/kutsero_president/horse_operator_profile/${user.id}/`;
+        endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/horse_operator_profile/${user.id}/`;
       }
 
       if (endpoint) {
@@ -1458,7 +1458,7 @@ const FloatingMessages = () => {
 
   const fetchCurrentUserId = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/kutsero_president/get_president_profile/", {
+      const res = await fetch("https://echo-ebl8.onrender.com/api/kutsero_president/get_president_profile/", {
         credentials: "include"
       });
       if (res.ok) {
@@ -1571,7 +1571,7 @@ const FloatingMessages = () => {
                   try {
                     // ✅ CHANGED: Use Kutsero President mark messages as read endpoint
                     await fetch(
-                      `http://localhost:8000/api/kutsero_president/mark_messages_as_read/${currentSelectedConv.id}/`,
+                      `https://echo-ebl8.onrender.com/api/kutsero_president/mark_messages_as_read/${currentSelectedConv.id}/`,
                       { 
                         method: "PUT", 
                         credentials: "include",
@@ -1689,7 +1689,7 @@ const FloatingMessages = () => {
   const fetchConversations = async () => {
     try {
       const res = await fetch(
-        "http://localhost:8000/api/kutsero_president/get_conversations/", 
+        "https://echo-ebl8.onrender.com/api/kutsero_president/get_conversations/", 
         { credentials: "include" }
       );
       if (res.ok) {
@@ -1721,7 +1721,7 @@ const FloatingMessages = () => {
   const fetchAllUsers = async () => {
     try {
       const res = await fetch(
-        "http://localhost:8000/api/kutsero_president/get_all_users/",
+        "https://echo-ebl8.onrender.com/api/kutsero_president/get_all_users/",
         { credentials: "include" }
       );
       if (res.ok) {
@@ -1753,7 +1753,7 @@ const FloatingMessages = () => {
     
     try {
       const res = await fetch(
-        `http://localhost:8000/api/kutsero_president/get_conversation/${conversation.id}/`,
+        `https://echo-ebl8.onrender.com/api/kutsero_president/get_conversation/${conversation.id}/`,
         { credentials: "include" }
       );
       
@@ -1782,7 +1782,7 @@ const FloatingMessages = () => {
 
         try {
           const markReadResponse = await fetch(
-            `http://localhost:8000/api/kutsero_president/mark_messages_as_read/${conversation.id}/`,
+            `https://echo-ebl8.onrender.com/api/kutsero_president/mark_messages_as_read/${conversation.id}/`,
             { 
               method: "PUT", 
               credentials: "include",
@@ -1846,7 +1846,7 @@ const FloatingMessages = () => {
 
     try {
       const res = await fetch(
-        "http://localhost:8000/api/kutsero_president/send_message/",
+        "https://echo-ebl8.onrender.com/api/kutsero_president/send_message/",
         {
           method: "POST",
           headers: { "Content-Type": 'application/json' },

@@ -5,7 +5,7 @@ import Sidebar from '@/components/KutSidebar';
 import FloatingMessages from './KutMessages';
 import NotificationModal from './KutNotif';
 
-const API_BASE = "http://localhost:8000/api/kutsero_president"
+const API_BASE = "https://echo-ebl8.onrender.com/api/kutsero_president"
 
 // Skeleton Loading Component
 const TableSkeleton = ({ rows = 5, columns = 5 }) => {
