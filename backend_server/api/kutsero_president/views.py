@@ -390,25 +390,34 @@ def get_approved_users(request):
 def get_notifications(request):
     """GET pending Kutsero and Horse Operator users and INSERT them into notification table."""
     try:
-        # STEP 1: GET THE FUCKING PENDING USERS WITH KUTSERO AND HORSE OPERATOR ROLES
+        print("=== STARTING NOTIFICATION PROCESS ===")
+        
+        # STEP 1: GET THE FUCKING PENDING USERS
+        print("Fetching pending users...")
         users_result = supabase.table("users").select("*").eq("status", "pending").in_("role", ["Kutsero", "Horse Operator"]).execute()
         pending_users = users_result.data if users_result.data else []
+        print(f"Found {len(pending_users)} pending users: {[u['id'] for u in pending_users]}")
         
         if not pending_users:
+            print("No pending users found, returning empty array")
             return Response([])
 
-        # STEP 2: CHECK WHICH USERS ALREADY HAVE NOTIFICATIONS
+        # STEP 2: CHECK EXISTING NOTIFICATIONS
         user_ids = [user["id"] for user in pending_users]
+        print(f"Checking existing notifications for user IDs: {user_ids}")
         existing_notifs_result = supabase.table("notification").select("id").in_("id", user_ids).execute()
         existing_user_ids = {notif["id"] for notif in (existing_notifs_result.data or [])}
+        print(f"Users with existing notifications: {existing_user_ids}")
 
         manila_tz = datetime.timezone(datetime.timedelta(hours=8))
         inserted_notifications = []
         
-        # STEP 3: INSERT THE FUCKING USERS INTO NOTIFICATION TABLE
+        # STEP 3: INSERT NEW NOTIFICATIONS
         for user in pending_users:
             if user["id"] not in existing_user_ids:
-                # Handle the fucking timestamp
+                print(f"Inserting notification for user: {user['id']}")
+                
+                # Handle timestamp
                 created_at = user.get("created_at")
                 if created_at:
                     if created_at.endswith('Z'):
@@ -417,7 +426,7 @@ def get_notifications(request):
                 else:
                     dt_ph = datetime.datetime.now(manila_tz)
 
-                # INSERT THE FUCKING NOTIFICATION
+                # INSERT THE NOTIFICATION
                 try:
                     insert_data = {
                         "id": user["id"],
@@ -429,10 +438,12 @@ def get_notifications(request):
                         "related_id": user["id"]
                     }
                     
+                    print(f"Inserting data: {insert_data}")
                     insert_result = supabase.table("notification").insert(insert_data).execute()
                     
                     if insert_result.data:
                         new_notif = insert_result.data[0]
+                        print(f"Successfully inserted notification: {new_notif}")
                         inserted_notifications.append({
                             "notif_id": new_notif["notif_id"],
                             "user_id": new_notif["id"],
@@ -441,16 +452,22 @@ def get_notifications(request):
                             "read": new_notif.get("notif_read", False),
                             "role": user["role"]
                         })
+                    else:
+                        print(f"Insert failed - no data returned for user {user['id']}")
                         
                 except Exception as e:
-                    print(f"Failed to insert notification for user {user['id']}: {e}")
+                    print(f"FAILED to insert notification for user {user['id']}: {str(e)}")
                     continue
+            else:
+                print(f"User {user['id']} already has notification, skipping")
 
-        # RETURN ONLY THE NEWLY INSERTED NOTIFICATIONS
+        print(f"Final inserted notifications: {len(inserted_notifications)}")
         return Response(inserted_notifications)
 
     except Exception as e:
-        print(f"Error in get_notifications: {e}")
+        print(f"ERROR in get_notifications: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
         return Response({"error": "Failed to process notifications"}, status=500)
     
 # -------------------- MARK NOTIFICATION AS READ --------------------
