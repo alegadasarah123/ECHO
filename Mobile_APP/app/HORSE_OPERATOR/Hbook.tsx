@@ -1,42 +1,29 @@
+// Fixed Hbook.tsx - Resolved infinite loading/loop issue
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  TextInput,
   StyleSheet,
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
+  Image,
   Alert,
   ActivityIndicator,
+  TextInput,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 
-interface Appointment {
-  id: string;
-  app_id: string;
-  contactId: string;
-  contactName: string;
-  horseName: string;
-  service: string;
-  date: string;
-  time: string;
-  notes?: string;
-  status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
-  schedId?: string;
-  created_at?: string;
-}
-
 interface Horse {
   horse_id: string;
   horse_name: string;
-  horse_age: number;
   horse_breed: string;
-  horse_color: string;
+  horse_age: number;
 }
 
 interface ScheduleSlot {
@@ -49,17 +36,11 @@ interface ScheduleSlot {
   is_available: boolean;
 }
 
-interface RescheduleEligibility {
-  can_reschedule: boolean;
-  reason: string;
-  remaining_minutes: number;
-  hours_since_creation: number;
-}
-
 // const API_BASE_URL = "http://10.160.169.148:8000/api/horse_operator";
+// const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
 const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator"
 
-// Available services with icons (same as booking page)
+// Available services with icons
 const services = [
   { name: 'General Consultation', icon: 'stethoscope' },
   { name: 'Vaccination', icon: 'syringe' },
@@ -71,8 +52,42 @@ const services = [
   { name: 'Reproductive Services', icon: 'baby' }
 ];
 
-// Utility functions from booking page
+// Utility function to convert 24-hour time to 12-hour format
+const formatTimeTo12Hour = (time24: string): string => {
+  try {
+    if (!time24) return time24;
+    
+    const timeParts = time24.split(':');
+    if (timeParts.length < 2) return time24;
+    
+    let hours = parseInt(timeParts[0]);
+    const minutes = timeParts[1];
+    
+    if (isNaN(hours)) return time24;
+    
+    const period = hours >= 12 ? 'PM' : 'AM';
+    
+    if (hours === 0) {
+      hours = 12;
+    } else if (hours > 12) {
+      hours = hours - 12;
+    }
+    
+    return `${hours}:${minutes} ${period}`;
+  } catch (error) {
+    console.error('Error formatting time:', error);
+    return time24;
+  }
+};
 
+// Utility function to create time range display
+const formatTimeRange = (startTime: string, endTime: string): string => {
+  const formattedStart = formatTimeTo12Hour(startTime);
+  const formattedEnd = formatTimeTo12Hour(endTime);
+  return `${formattedStart} - ${formattedEnd}`;
+};
+
+// Utility function to check if a schedule slot is in the past
 const isScheduleSlotInPast = (scheduleDate: string, startTime: string): boolean => {
   try {
     const now = new Date();
@@ -95,52 +110,64 @@ const isScheduleSlotInPast = (scheduleDate: string, startTime: string): boolean 
   }
 };
 
+// Utility function to check if two dates are the same day
 const isSameDay = (date1: Date, date2: Date): boolean => {
   return date1.toISOString().split('T')[0] === date2.toISOString().split('T')[0];
 };
 
-const RescheduleScreen = () => {
-  const router = useRouter();
-  const params = useLocalSearchParams();
-  
-  // Parse original appointment data
-  const originalAppointment: Appointment | null = params.appointment
-    ? JSON.parse(params.appointment as string)
-    : null;
-
-  // Loading and eligibility states
-  const [loading, setLoading] = useState(true);
-  const [isRescheduling, setIsRescheduling] = useState(false);
-  const [rescheduleEligibility, setRescheduleEligibility] = useState<RescheduleEligibility | null>(null);
-
-  // Data states
+const Hbook = () => {
   const [availableHorses, setAvailableHorses] = useState<Horse[]>([]);
   const [vetSchedule, setVetSchedule] = useState<ScheduleSlot[]>([]);
   const [availableDateObjects, setAvailableDateObjects] = useState<Date[]>([]);
   const [availableTimesForDate, setAvailableTimesForDate] = useState<ScheduleSlot[]>([]);
-
+  const [loading, setLoading] = useState(true);
+  const [isBookingAppointment, setIsBookingAppointment] = useState(false);
+  
   // Form states
-  const [selectedHorse, setSelectedHorse] = useState('');
+  const [selectedHorse, setSelectedHorse] = useState('Select a horse');
+  const [showHorseDropdown, setShowHorseDropdown] = useState(false);
   const [selectedService, setSelectedService] = useState('General Consultation');
+  const [showServiceDropdown, setShowServiceDropdown] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<ScheduleSlot | null>(null);
   const [appointmentNotes, setAppointmentNotes] = useState('');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  // UI states
-  const [showHorseDropdown, setShowHorseDropdown] = useState(false);
-  const [showServiceDropdown, setShowServiceDropdown] = useState(false);
+  const router = useRouter();
+  const params = useLocalSearchParams();
+  
+  // Get parameters passed from Hvetprofile
+  const vetId = params.vetId as string;
+  const vetName = params.vetName as string;
+  const vetAvatar = params.vetAvatar as string;
+  const vetSpecialization = params.vetSpecialization as string;
+  const vetExperience = params.vetExperience as string;
 
-  // Initialize form with original appointment data
-  useEffect(() => {
-    if (originalAppointment) {
-      setSelectedHorse(originalAppointment.horseName);
-      setSelectedService(originalAppointment.service);
-      setSelectedDate(new Date(originalAppointment.date));
-      setAppointmentNotes(originalAppointment.notes || '');
-    }
-  }, [originalAppointment]);
+  // FIXED: Update available times when date changes - Stable function with no dependencies that change
+  const updateAvailableTimesForDate = useCallback((dateString: string, scheduleData?: ScheduleSlot[]) => {
+    // Use the provided scheduleData or fall back to current vetSchedule
+    const dataToUse = scheduleData || vetSchedule;
+    const timesForDate = dataToUse.filter((item: ScheduleSlot) => 
+      item.sched_date === dateString && 
+      item.is_available === true &&
+      !isScheduleSlotInPast(item.sched_date, item.start_time)
+    );
+    
+    console.log(`Available times for ${dateString}:`, timesForDate);
+    setAvailableTimesForDate(timesForDate);
+    
+    // Clear selected time slot if it's no longer available
+    setSelectedTimeSlot(prevSelected => {
+      if (prevSelected && !timesForDate.some(item => item.sched_id === prevSelected.sched_id)) {
+        return null;
+      }
+      return prevSelected;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // FIXED: Empty dependency array since we're using the callback parameter
 
-  // Get current user ID
+  // FIXED: Get current user ID - Stable function that doesn't cause re-renders
   const getCurrentUserId = useCallback(async (): Promise<string | null> => {
     try {
       const storedUser = await SecureStore.getItemAsync("user_data");
@@ -155,84 +182,13 @@ const RescheduleScreen = () => {
       throw new Error('User not authenticated');
     } catch (error) {
       console.error("Error getting user ID:", error);
-      Alert.alert('Authentication Error', 'Please log in again to reschedule appointments.');
+      Alert.alert('Authentication Error', 'Please log in again to book appointments.');
       router.back();
       return null;
     }
   }, [router]);
 
-  // Updated checkRescheduleEligibility function with better error handling
-  const checkRescheduleEligibility = useCallback(async (appId: string) => {
-    try {
-      console.log(`Checking reschedule eligibility for app_id: ${appId}`);
-      
-      const response = await fetch(`${API_BASE_URL}/check_reschedule_eligibility/?app_id=${encodeURIComponent(appId)}`);
-      
-      console.log(`Response status: ${response.status}`);
-      console.log(`Response ok: ${response.ok}`);
-      
-      if (!response.ok) {
-        // More detailed error handling
-        let errorMessage = `HTTP ${response.status}`;
-        
-        try {
-          const errorText = await response.text();
-          console.log(`Error response body: ${errorText}`);
-          
-          // Try to parse as JSON for structured error
-          try {
-            const errorJson = JSON.parse(errorText);
-            errorMessage = errorJson.error || errorJson.message || errorMessage;
-          } catch {
-            // Not JSON, use the text as is
-            errorMessage = errorText || errorMessage;
-          }
-        } catch {
-          console.log('Could not read error response body');
-        }
-        
-        throw new Error(`Failed to check eligibility: ${errorMessage}`);
-      }
-      
-      const eligibilityData = await response.json();
-      console.log("Reschedule eligibility:", eligibilityData);
-      
-      setRescheduleEligibility(eligibilityData);
-      
-      if (!eligibilityData.can_reschedule) {
-        Alert.alert(
-          'Cannot Reschedule',
-          eligibilityData.reason,
-          [{ text: 'OK', onPress: () => router.back() }]
-        );
-        return false;
-      }
-      
-      return true;
-    } catch (error) {
-      console.error("Error checking reschedule eligibility:", error);
-      
-      // More specific error messages
-      let userMessage = 'Failed to check reschedule eligibility';
-      if (error instanceof Error) {
-        if (error.message.includes('404')) {
-          userMessage = 'Reschedule feature is not available. Please contact support.';
-        } else if (error.message.includes('Network')) {
-          userMessage = 'Network error. Please check your connection and try again.';
-        } else {
-          userMessage = error.message;
-        }
-      }
-      
-      Alert.alert('Error', userMessage, [
-        { text: 'Go Back', onPress: () => router.back() },
-        { text: 'Try Again', onPress: () => checkRescheduleEligibility(appId) }
-      ]);
-      return false;
-    }
-  }, [router]);
-
-  // Fetch user's horses
+  // FIXED: Stable function for fetching horses
   const fetchHorses = useCallback(async (userId: string) => {
     try {
       console.log("Fetching horses for user_id:", userId);
@@ -251,31 +207,10 @@ const RescheduleScreen = () => {
       console.error("Error loading horses:", error);
       Alert.alert("Error", error.message || "Unable to load horses");
     }
-  }, []);
+  }, []); // FIXED: Empty dependency array
 
-  // Update available times when date changes
-  const updateAvailableTimesForDate = useCallback((dateString: string, scheduleData?: ScheduleSlot[]) => {
-    const dataToUse = scheduleData || vetSchedule;
-    const timesForDate = dataToUse.filter((item: ScheduleSlot) => 
-      item.sched_date === dateString && 
-      item.is_available === true &&
-      !isScheduleSlotInPast(item.sched_date, item.start_time)
-    );
-    
-    console.log(`Available times for ${dateString}:`, timesForDate);
-    setAvailableTimesForDate(timesForDate);
-    
-    // Clear selected time slot if it's no longer available
-    setSelectedTimeSlot(prevSelected => {
-      if (prevSelected && !timesForDate.some(item => item.sched_id === prevSelected.sched_id)) {
-        return null;
-      }
-      return prevSelected;
-    });
-  }, [vetSchedule]);
-
-  // Fetch vet schedule for rescheduling
-  const fetchVetSchedule = useCallback(async (vetId: string) => {
+  // FIXED: Stable function for fetching schedule
+  const fetchVetSchedule = useCallback(async () => {
     if (!vetId) return;
     
     try {
@@ -293,15 +228,23 @@ const RescheduleScreen = () => {
       
       // Transform and filter the data
       const transformedSchedule = scheduleData
-        .map((item: any) => ({
-          sched_id: item.sched_id,
-          vet_id: item.vet_id,
-          sched_date: item.sched_date,
-          start_time: item.start_time,
-          end_time: item.end_time,
-          time_display: item.time_display,
-          is_available: item.is_available
-        }))
+        .map((item: any) => {
+          const formattedStartTime = formatTimeTo12Hour(item.start_time);
+          const formattedEndTime = formatTimeTo12Hour(item.end_time);
+          const timeDisplay = formatTimeRange(item.start_time, item.end_time);
+          
+          return {
+            sched_id: item.sched_id,
+            vet_id: item.vet_id,
+            sched_date: item.sched_date,
+            start_time: item.start_time,
+            end_time: item.end_time,
+            start_time_formatted: formattedStartTime,
+            end_time_formatted: formattedEndTime,
+            time_display: timeDisplay,
+            is_available: item.is_available
+          };
+        })
         .filter((item: ScheduleSlot) => {
           return item.is_available && !isScheduleSlotInPast(item.sched_date, item.start_time);
         });
@@ -311,20 +254,19 @@ const RescheduleScreen = () => {
       
       const uniqueDates = [...new Set(transformedSchedule.map((item: ScheduleSlot) => item.sched_date))];
       
-      // Convert date strings to Date objects
+      // Convert date strings to Date objects for DateTimePicker
       const dateObjects = (uniqueDates as string[]).map((dateString: string) => new Date(dateString));
       setAvailableDateObjects(dateObjects);
       
       if (uniqueDates.length > 0) {
         const firstDate = new Date(uniqueDates[0] as string);
-        if (!selectedDate) {
-          setSelectedDate(firstDate);
-        }
-        updateAvailableTimesForDate(selectedDate?.toISOString().split('T')[0] || uniqueDates[0] as string, transformedSchedule);
-      } else {
+        setSelectedDate(firstDate);
+        // Call updateAvailableTimesForDate with the new schedule data directly
+        updateAvailableTimesForDate(uniqueDates[0] as string, transformedSchedule);
+      } else if (uniqueDates.length === 0) {
         Alert.alert(
           'No Available Appointments', 
-          'This veterinarian has no available appointment slots at the moment for rescheduling.',
+          'This veterinarian has no available appointment slots at the moment. Please try again later or select a different veterinarian.',
           [{ text: 'OK', onPress: () => router.back() }]
         );
       }
@@ -333,77 +275,54 @@ const RescheduleScreen = () => {
       console.error("Error fetching vet schedule:", error);
       Alert.alert("Error", "Unable to load veterinarian schedule");
     }
-  }, [selectedDate, updateAvailableTimesForDate, router]);
+  }, [vetId, updateAvailableTimesForDate, router]);
 
-  // Updated main data loading effect with retry logic
+  // FIXED: Main useEffect with proper dependency management to prevent infinite loops
   useEffect(() => {
     let isMounted = true;
-    let retryCount = 0;
-    const maxRetries = 2;
+    let hasLoaded = false; // CRITICAL: Prevent multiple simultaneous loads
 
     const loadData = async () => {
-      if (!originalAppointment) {
-        Alert.alert('Error', 'No appointment data provided');
-        router.back();
-        return;
-      }
-
-      console.log('Starting reschedule data load...');
+      if (hasLoaded || !isMounted) return; // CRITICAL: Exit if already loading/loaded
+      hasLoaded = true;
+      
+      console.log('Starting data load...');
       setLoading(true);
       
-      const attemptLoad = async (): Promise<boolean> => {
-        try {
-          // Check if appointment can be rescheduled
-          const canReschedule = await checkRescheduleEligibility(originalAppointment.app_id);
-          if (!canReschedule || !isMounted) return false;
-
-          // Get user ID
-          const userId = await getCurrentUserId();
-          if (!isMounted || !userId) return false;
-          
-          // Fetch horses and schedule in parallel
-          await Promise.all([
-            fetchHorses(userId),
-            fetchVetSchedule(originalAppointment.contactId)
-          ]);
-          
-          return true;
-        } catch (error) {
-          console.error('Error loading reschedule data:', error);
-          return false;
-        }
-      };
-
-      const loadWithRetry = async () => {
-        while (retryCount < maxRetries && isMounted) {
-          const success = await attemptLoad();
-          if (success) {
-            break;
-          }
-          
-          retryCount++;
-          if (retryCount < maxRetries && isMounted) {
-            console.log(`Retry attempt ${retryCount}/${maxRetries}`);
-            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount)); // Exponential backoff
-          }
-        }
+      try {
+        // Get user ID first
+        const userId = await getCurrentUserId();
         
+        if (!isMounted || !userId) return;
+
+        // Set the user ID in state
+        setCurrentUserId(userId);
+        
+        // Fetch horses and schedule in parallel
+        await Promise.all([
+          fetchHorses(userId),
+          fetchVetSchedule()
+        ]);
+      } catch (error) {
+        console.error('Error loading data:', error);
+      } finally {
         if (isMounted) {
           setLoading(false);
+          console.log('Data load complete, setting loading to false');
         }
-      };
-
-      loadWithRetry();
-
-      return () => {
-        isMounted = false;
-      };
+      }
     };
 
     loadData();
-  }, [originalAppointment, checkRescheduleEligibility, getCurrentUserId, fetchHorses, fetchVetSchedule, router]);
 
-  // Update times when date changes
+    // Cleanup function to prevent state updates if component unmounts
+    return () => {
+      isMounted = false;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vetId]); // FIXED: Only vetId as dependency since it comes from params and is stable
+
+  // Separate useEffect for updating times when vetSchedule changes
   useEffect(() => {
     if (selectedDate && vetSchedule.length > 0) {
       updateAvailableTimesForDate(selectedDate.toISOString().split('T')[0], vetSchedule);
@@ -411,152 +330,14 @@ const RescheduleScreen = () => {
   }, [vetSchedule, selectedDate, updateAvailableTimesForDate]);
 
   // Format date for display
-  const formatDate = useCallback((date: Date) => {
+  const formatDate = (date: Date) => {
     return date.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     });
-  }, []);
-
-  // Handle time selection
-  const handleTimeSelection = (timeSlot: ScheduleSlot) => {
-    if (!selectedDate) return;
-    
-    const dateString = selectedDate.toISOString().split('T')[0];
-    
-    const isValidSlot = vetSchedule.find((item: ScheduleSlot) => 
-      item.sched_id === timeSlot.sched_id &&
-      item.sched_date === dateString && 
-      item.is_available === true &&
-      !isScheduleSlotInPast(item.sched_date, item.start_time)
-    );
-    
-    if (isValidSlot) {
-      setSelectedTimeSlot(timeSlot);
-      console.log("Selected time slot:", timeSlot);
-    } else {
-      Alert.alert('Error', 'This time slot is no longer available or has passed.');
-      fetchVetSchedule(originalAppointment?.contactId || '');
-    }
   };
-
-  // Confirm reschedule
-  const confirmReschedule = useCallback(async () => {
-    if (!originalAppointment || !selectedTimeSlot || !selectedDate) {
-      Alert.alert('Error', 'Missing required information for rescheduling.');
-      return;
-    }
-
-    if (availableHorses.length === 0) {
-      Alert.alert(
-        'No Horses Available',
-        'Please add a horse first before rescheduling an appointment.',
-        [
-          {
-            text: 'Add Horse',
-            onPress: () => {
-              router.push('/HORSE_OPERATOR/addhorse');
-            },
-          },
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
-        ]
-      );
-      return;
-    }
-
-    // Check if selected time slot is not in the past
-    if (isScheduleSlotInPast(selectedTimeSlot.sched_date, selectedTimeSlot.start_time)) {
-      Alert.alert('Error', 'The selected time slot has passed. Please select a current or future time slot.');
-      fetchVetSchedule(originalAppointment.contactId);
-      return;
-    }
-
-    setIsRescheduling(true);
-    
-    try {
-      const rescheduleData = {
-        app_id: originalAppointment.app_id,
-        new_sched_id: selectedTimeSlot.sched_id,
-        new_date: selectedDate.toISOString().split('T')[0],
-        new_time: selectedTimeSlot.time_display,
-        // Optionally update other details
-        horse_name: selectedHorse,
-        service: selectedService,
-        notes: appointmentNotes
-      };
-
-      console.log('Rescheduling appointment with data:', rescheduleData);
-      
-      const url = `${API_BASE_URL}/reschedule_appointment/`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(rescheduleData),
-      });
-
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        const responseText = await response.text();
-        console.log('Server returned non-JSON response:', responseText.substring(0, 500));
-        throw new Error(`Server returned ${contentType || 'unknown content type'} instead of JSON`);
-      }
-
-      const result = await response.json();
-
-      if (response.ok) {
-        Alert.alert(
-          'Reschedule Confirmed',
-          `Your appointment has been rescheduled successfully!\n\nVeterinarian: ${originalAppointment.contactName}\nHorse: ${selectedHorse}\nDate: ${formatDate(selectedDate)}\nTime: ${selectedTimeSlot.time_display}\nService: ${selectedService}${appointmentNotes ? `\nNotes: ${appointmentNotes}` : ''}`,
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                router.push('/HORSE_OPERATOR/Hcalendar');
-              }
-            }
-          ]
-        );
-      } else {
-        throw new Error(result.error || result.message || 'Failed to reschedule appointment');
-      }
-    } catch (error) {
-      console.error('Error rescheduling appointment:', error);
-      let errorMessage = 'Failed to reschedule appointment. Please try again.';
-      
-      if (error instanceof Error) {
-        if (error.message.includes('not allowed')) {
-          errorMessage = 'Reschedule not allowed. ' + error.message;
-        } else if (error.message.includes('not available')) {
-          errorMessage = 'This time slot is no longer available. Please select a different time.';
-          fetchVetSchedule(originalAppointment.contactId);
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
-      Alert.alert('Reschedule Error', errorMessage);
-    } finally {
-      setIsRescheduling(false);
-    }
-  }, [
-    originalAppointment,
-    availableHorses,
-    selectedDate,
-    selectedTimeSlot,
-    selectedHorse,
-    selectedService,
-    appointmentNotes,
-    fetchVetSchedule,
-    formatDate,
-    router,
-  ]);
 
   // Custom date picker for Android with only available dates
   const renderCustomDatePicker = () => {
@@ -579,7 +360,7 @@ const RescheduleScreen = () => {
                     setSelectedDate(dateObj);
                     updateAvailableTimesForDate(dateObj.toISOString().split('T')[0], vetSchedule);
                   }}
-                  disabled={isRescheduling}
+                  disabled={isBookingAppointment}
                 >
                   <Text style={[
                     styles.dateOptionDay,
@@ -609,7 +390,133 @@ const RescheduleScreen = () => {
     return null;
   };
 
-  // Enhanced time slots rendering
+  // Handle time selection
+  const handleTimeSelection = (timeSlot: ScheduleSlot) => {
+    if (!selectedDate) return;
+    
+    const dateString = selectedDate.toISOString().split('T')[0];
+    
+    const isValidSlot = vetSchedule.find((item: ScheduleSlot) => 
+      item.sched_id === timeSlot.sched_id &&
+      item.sched_date === dateString && 
+      item.is_available === true &&
+      !isScheduleSlotInPast(item.sched_date, item.start_time)
+    );
+    
+    if (isValidSlot) {
+      setSelectedTimeSlot(timeSlot);
+      console.log("Selected time slot:", timeSlot);
+    } else {
+      Alert.alert('Error', 'This time slot is no longer available or has passed.');
+      fetchVetSchedule();
+    }
+  };
+
+  // Confirm appointment booking
+  const confirmAppointment = async () => {
+    if (selectedHorse === 'Select a horse') {
+      Alert.alert('Validation Error', 'Please select a horse for the appointment.');
+      return;
+    }
+    if (!selectedTimeSlot) {
+      Alert.alert('Validation Error', 'Please select an available time slot.');
+      return;
+    }
+    if (!selectedDate) {
+      Alert.alert('Validation Error', 'Please select a date.');
+      return;
+    }
+
+    if (isScheduleSlotInPast(selectedTimeSlot.sched_date, selectedTimeSlot.start_time)) {
+      Alert.alert('Error', 'The selected time slot has passed. Please select a current or future time slot.');
+      fetchVetSchedule();
+      return;
+    }
+
+    const userId = currentUserId || await getCurrentUserId();
+    if (!userId) {
+      Alert.alert('Authentication Error', 'Unable to identify user. Please try logging in again.');
+      return;
+    }
+
+    setIsBookingAppointment(true);
+    
+    try {
+      const selectedHorseData = availableHorses.find(horse => horse.horse_name === selectedHorse);
+      if (!selectedHorseData) {
+        throw new Error('Selected horse not found');
+      }
+
+      const bookingData = {
+        user_id: userId,
+        vet_id: vetId,
+        horse_id: selectedHorseData.horse_id,
+        date: selectedDate.toISOString().split('T')[0],
+        time: selectedTimeSlot.time_display,
+        service: selectedService,
+        notes: appointmentNotes,
+        sched_id: selectedTimeSlot.sched_id
+      };
+
+      console.log('Booking appointment with data:', bookingData);
+      
+      const url = `${API_BASE_URL}/book_appointment/`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(bookingData),
+      });
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const responseText = await response.text();
+        console.log('Server returned non-JSON response:', responseText.substring(0, 500));
+        throw new Error(`Server returned ${contentType || 'unknown content type'} instead of JSON`);
+      }
+
+      const result = await response.json();
+
+      if (response.ok) {
+        Alert.alert(
+          'Booking Confirmed',
+          `Your appointment has been scheduled successfully!\n\nVeterinarian: ${vetName}\nHorse: ${selectedHorse}\nDate: ${formatDate(selectedDate)}\nTime: ${selectedTimeSlot.time_display}\nService: ${selectedService}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Navigate to Calendar page instead of going back
+                router.push('/HORSE_OPERATOR/Hcalendar');
+                // Alternative: If you want to replace the current page entirely, use:
+                // router.replace('/HORSE_OPERATOR/Hcalendar');
+              }
+            }
+          ]
+        );
+      } else {
+        throw new Error(result.error || result.message || 'Failed to book appointment');
+      }
+    } catch (error) {
+      console.error('Error booking appointment:', error);
+      let errorMessage = 'Failed to book appointment. Please try again.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('This time slot has been booked by another user')) {
+          errorMessage = 'This time slot was just booked by another user. Please select a different time.';
+          fetchVetSchedule();
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      Alert.alert('Booking Error', errorMessage);
+    } finally {
+      setIsBookingAppointment(false);
+    }
+  };
+
+  // Enhanced time slots rendering with better design
   const renderTimeSlots = () => {
     if (availableTimesForDate.length === 0) {
       return (
@@ -628,7 +535,7 @@ const RescheduleScreen = () => {
       );
     }
 
-    // Group time slots by time period
+    // Group time slots by time period (Morning, Afternoon, Evening)
     const groupedTimes = availableTimesForDate.reduce((groups: any, slot) => {
       const hour = parseInt(slot.start_time.split(':')[0]);
       let period = 'Morning';
@@ -668,7 +575,7 @@ const RescheduleScreen = () => {
                     selectedTimeSlot?.sched_id === scheduleItem.sched_id && styles.timeSlotSelected
                   ]}
                   onPress={() => handleTimeSelection(scheduleItem)}
-                  disabled={isRescheduling}
+                  disabled={isBookingAppointment}
                   activeOpacity={0.8}
                 >
                   <View style={styles.timeSlotContent}>
@@ -703,14 +610,14 @@ const RescheduleScreen = () => {
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
             <FontAwesome5 name="arrow-left" size={20} color="#fff" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Reschedule Appointment</Text>
+          <Text style={styles.headerTitle}>Book Appointment</Text>
           <View style={styles.headerSpacer} />
         </View>
         <View style={styles.loadingContainer}>
           <View style={styles.loadingSpinner}>
             <ActivityIndicator size="large" color="#CD853F" />
           </View>
-          <Text style={styles.loadingText}>Loading reschedule options...</Text>
+          <Text style={styles.loadingText}>Loading booking information...</Text>
         </View>
       </SafeAreaView>
     );
@@ -727,66 +634,43 @@ const RescheduleScreen = () => {
           <TouchableOpacity 
             style={styles.backButton} 
             onPress={() => router.back()}
-            disabled={isRescheduling}
+            disabled={isBookingAppointment}
           >
             <FontAwesome5 name="arrow-left" size={20} color="#fff" />
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Reschedule Appointment</Text>
-            <Text style={styles.headerSubtitle}>
-              {originalAppointment ? `with ${originalAppointment.contactName}` : 'Update your booking'}
-            </Text>
+            <Text style={styles.headerTitle}>Book Appointment</Text>
+            <Text style={styles.headerSubtitle}>Schedule with {vetName}</Text>
           </View>
           <View style={styles.headerSpacer} />
         </View>
 
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-          {/* Reschedule Status Info */}
-          {rescheduleEligibility && (
-            <View style={styles.rescheduleInfoCard}>
-              <View style={styles.rescheduleInfoHeader}>
-                <FontAwesome5 name="clock" size={16} color="#CD853F" />
-                <Text style={styles.rescheduleInfoTitle}>Reschedule Window</Text>
+          {/* Enhanced Veterinarian Info */}
+          <View style={styles.vetInfoCard}>
+            <View style={styles.vetInfo}>
+              <View style={styles.vetImageContainer}>
+                <Image
+                  source={{ uri: vetAvatar }}
+                  style={styles.vetImage}
+                />
+                <View style={styles.vetStatusBadge}>
+                  <FontAwesome5 name="check" size={8} color="#fff" />
+                </View>
               </View>
-              <Text style={styles.rescheduleInfoText}>
-                {rescheduleEligibility.reason}
-              </Text>
-              {rescheduleEligibility.remaining_minutes > 0 && (
-                <Text style={styles.remainingTimeText}>
-                  {Math.floor(rescheduleEligibility.remaining_minutes)} minutes remaining
-                </Text>
-              )}
-            </View>
-          )}
-
-          {/* Original Appointment Info */}
-          {originalAppointment && (
-            <View style={styles.originalAppointmentCard}>
-              <View style={styles.originalAppointmentHeader}>
-                <FontAwesome5 name="calendar-alt" size={16} color="#666" />
-                <Text style={styles.originalAppointmentTitle}>Current Appointment</Text>
-              </View>
-              <View style={styles.originalAppointmentDetails}>
-                <Text style={styles.originalAppointmentText}>
-                  Date: {new Date(originalAppointment.date).toLocaleDateString('en-US', {
-                    weekday: 'long',
-                    year: 'numeric',
-                    month: 'long',
-                    day: 'numeric'
-                  })}
-                </Text>
-                <Text style={styles.originalAppointmentText}>
-                  Time: {originalAppointment.time}
-                </Text>
-                <Text style={styles.originalAppointmentText}>
-                  Horse: {originalAppointment.horseName}
-                </Text>
-                <Text style={styles.originalAppointmentText}>
-                  Service: {originalAppointment.service}
-                </Text>
+              <View style={styles.vetDetails}>
+                <Text style={styles.vetName}>{vetName}</Text>
+                <View style={styles.vetSpecializationContainer}>
+                  <FontAwesome5 name="user-md" size={12} color="#CD853F" />
+                  <Text style={styles.vetSpecialization}>{vetSpecialization}</Text>
+                </View>
+                <View style={styles.vetExperienceContainer}>
+                  <FontAwesome5 name="award" size={12} color="#666" />
+                  <Text style={styles.vetExperience}>{vetExperience} years of experience</Text>
+                </View>
               </View>
             </View>
-          )}
+          </View>
 
           {/* Enhanced Form Container */}
           <View style={styles.formContainer}>
@@ -800,13 +684,13 @@ const RescheduleScreen = () => {
                 <TouchableOpacity
                   style={[styles.dropdown, showHorseDropdown && styles.dropdownActive]}
                   onPress={() => setShowHorseDropdown(!showHorseDropdown)}
-                  disabled={isRescheduling}
+                  disabled={isBookingAppointment}
                 >
                   <Text style={[
                     styles.dropdownText,
                     selectedHorse === 'Select a horse' && styles.dropdownPlaceholder
                   ]}>
-                    {selectedHorse || 'Select a horse'}
+                    {selectedHorse}
                   </Text>
                   <FontAwesome5 
                     name={showHorseDropdown ? "chevron-up" : "chevron-down"} 
@@ -821,7 +705,7 @@ const RescheduleScreen = () => {
                   <TouchableOpacity
                     style={styles.addHorseButton}
                     onPress={() => router.push('/HORSE_OPERATOR/addhorse')}
-                    disabled={isRescheduling}
+                    disabled={isBookingAppointment}
                   >
                     <FontAwesome5 name="plus" size={14} color="#fff" />
                     <Text style={styles.addHorseButtonText}>Add Horse</Text>
@@ -845,7 +729,7 @@ const RescheduleScreen = () => {
                           setSelectedHorse(horse.horse_name);
                           setShowHorseDropdown(false);
                         }}
-                        disabled={isRescheduling}
+                        disabled={isBookingAppointment}
                       >
                         <View style={styles.dropdownOptionContent}>
                           <FontAwesome5 name="horse" size={16} color="#CD853F" />
@@ -872,7 +756,7 @@ const RescheduleScreen = () => {
               <TouchableOpacity
                 style={[styles.dropdown, showServiceDropdown && styles.dropdownActive]}
                 onPress={() => setShowServiceDropdown(!showServiceDropdown)}
-                disabled={isRescheduling}
+                disabled={isBookingAppointment}
               >
                 <View style={styles.dropdownContentWithIcon}>
                   <FontAwesome5 
@@ -905,7 +789,7 @@ const RescheduleScreen = () => {
                           setSelectedService(serviceItem.name);
                           setShowServiceDropdown(false);
                         }}
-                        disabled={isRescheduling}
+                        disabled={isBookingAppointment}
                       >
                         <View style={styles.dropdownOptionContent}>
                           <FontAwesome5 name={serviceItem.icon} size={16} color="#CD853F" />
@@ -922,7 +806,7 @@ const RescheduleScreen = () => {
             <View style={styles.formGroup}>
               <View style={styles.formLabelContainer}>
                 <FontAwesome5 name="calendar-alt" size={16} color="#CD853F" />
-                <Text style={styles.formLabel}>Choose New Date</Text>
+                <Text style={styles.formLabel}>Choose Available Date</Text>
                 {availableDateObjects.length > 0 && (
                   <View style={styles.availabilityBadge}>
                     <Text style={styles.availabilityBadgeText}>
@@ -932,17 +816,47 @@ const RescheduleScreen = () => {
                 )}
               </View>
 
-              {/* Show different UI based on available dates */}
+              {/* Show different UI based on platform and available dates */}
               {availableDateObjects.length === 0 ? (
                 <View style={styles.noAvailableDatesContainer}>
                   <FontAwesome5 name="calendar-times" size={40} color="#CD853F" style={{ opacity: 0.5 }} />
                   <Text style={styles.noAvailableDatesTitle}>No Available Dates</Text>
                   <Text style={styles.noAvailableDatesText}>
-                    This veterinarian currently has no available appointment dates for rescheduling.
+                    This veterinarian currently has no available appointment dates.
                   </Text>
                 </View>
-              ) : (
+              ) : Platform.OS === 'android' ? (
+                // Android: Show custom date picker with only available dates
                 renderCustomDatePicker()
+              ) : (
+                // iOS: Show button + modal with restricted DateTimePicker
+                <>
+                  <TouchableOpacity
+                    style={styles.datePickerButton}
+                    onPress={() => setShowDatePicker(true)}
+                    disabled={isBookingAppointment}
+                  >
+                    <View style={styles.datePickerContent}>
+                      <FontAwesome5 name="calendar-alt" size={18} color="#CD853F" />
+                      <Text style={[
+                        styles.datePickerText,
+                        !selectedDate && styles.datePickerPlaceholder
+                      ]}>
+                        {selectedDate ? formatDate(selectedDate) : 'Select an available date'}
+                      </Text>
+                    </View>
+                    <FontAwesome5 name="chevron-down" size={16} color="#666" />
+                  </TouchableOpacity>
+                  
+                  {/* Show available dates preview for iOS */}
+                  <View style={styles.availableDatesPreview}>
+                    <Text style={styles.availableDatesPreviewText}>
+                      Available: {availableDateObjects.map(date => 
+                        date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                      ).join(', ')}
+                    </Text>
+                  </View>
+                </>
               )}
             </View>
 
@@ -950,7 +864,7 @@ const RescheduleScreen = () => {
             <View style={styles.formGroup}>
               <View style={styles.formLabelContainer}>
                 <FontAwesome5 name="clock" size={16} color="#CD853F" />
-                <Text style={styles.formLabel}>Choose New Time</Text>
+                <Text style={styles.formLabel}>Choose Available Time</Text>
                 {selectedTimeSlot && (
                   <View style={styles.selectedTimeBadge}>
                     <FontAwesome5 name="check" size={10} color="#fff" />
@@ -964,7 +878,7 @@ const RescheduleScreen = () => {
             <View style={styles.formGroup}>
               <View style={styles.formLabelContainer}>
                 <FontAwesome5 name="sticky-note" size={16} color="#CD853F" />
-                <Text style={styles.formLabel}>Update Notes (Optional)</Text>
+                <Text style={styles.formLabel}>Chief Complain</Text>
               </View>
               <View style={styles.notesInputContainer}>
                 <TextInput
@@ -975,7 +889,7 @@ const RescheduleScreen = () => {
                   multiline
                   numberOfLines={4}
                   placeholderTextColor="#999"
-                  editable={!isRescheduling}
+                  editable={!isBookingAppointment}
                 />
               </View>
             </View>
@@ -984,23 +898,22 @@ const RescheduleScreen = () => {
             <TouchableOpacity
               style={[
                 styles.confirmButton,
-                (isRescheduling || availableDateObjects.length === 0 || !selectedTimeSlot) && styles.confirmButtonDisabled
+                (isBookingAppointment || availableDateObjects.length === 0) && styles.confirmButtonDisabled
               ]}
-              onPress={confirmReschedule}
-              disabled={isRescheduling || availableDateObjects.length === 0 || !selectedTimeSlot}
+              onPress={confirmAppointment}
+              disabled={isBookingAppointment || availableDateObjects.length === 0}
             >
               <View style={styles.confirmButtonContent}>
-                {isRescheduling ? (
+                {isBookingAppointment ? (
                   <>
                     <ActivityIndicator size="small" color="#fff" />
-                    <Text style={styles.confirmButtonText}>Rescheduling...</Text>
+                    <Text style={styles.confirmButtonText}>Booking...</Text>
                   </>
                 ) : (
                   <>
                     <FontAwesome5 name="calendar-check" size={16} color="#fff" />
                     <Text style={styles.confirmButtonText}>
-                      {availableDateObjects.length === 0 ? 'No Available Dates' : 
-                       !selectedTimeSlot ? 'Select Time Slot' : 'Confirm Reschedule'}
+                      {availableDateObjects.length === 0 ? 'No Available Dates' : 'Confirm Appointment'}
                     </Text>
                   </>
                 )}
@@ -1008,12 +921,93 @@ const RescheduleScreen = () => {
             </TouchableOpacity>
           </View>
         </ScrollView>
+
+        {/* Enhanced iOS Date Picker Modal */}
+        {Platform.OS === 'ios' && showDatePicker && availableDateObjects.length > 0 && (
+          <View style={styles.datePickerModal}>
+            <View style={styles.datePickerContainer}>
+              <View style={styles.datePickerHeader}>
+                <TouchableOpacity
+                  style={styles.datePickerCancelButton}
+                  onPress={() => setShowDatePicker(false)}
+                >
+                  <Text style={styles.datePickerButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <View style={styles.datePickerTitleContainer}>
+                  <FontAwesome5 name="calendar-alt" size={16} color="#CD853F" />
+                  <Text style={styles.datePickerTitle}>Select Available Date</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.datePickerDoneButton}
+                  onPress={() => setShowDatePicker(false)}
+                >
+                  <Text style={[styles.datePickerButtonText, styles.datePickerDoneText]}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              
+              {/* Show available dates info */}
+              <View style={styles.availableDatesInfo}>
+                <Text style={styles.availableDatesText}>
+                  {availableDateObjects.length} available date{availableDateObjects.length !== 1 ? 's' : ''}
+                </Text>
+                <Text style={styles.availableDatesSubText}>
+                  Only dates with appointments can be selected
+                </Text>
+              </View>
+              
+              {/* Custom date selector for iOS */}
+              <ScrollView style={styles.iosDateSelector}>
+                {availableDateObjects.sort((a, b) => a.getTime() - b.getTime()).map((dateObj, index) => {
+                  const isSelected = selectedDate && isSameDay(dateObj, selectedDate);
+                  
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={[
+                        styles.iosDateOption,
+                        isSelected && styles.iosDateOptionSelected
+                      ]}
+                      onPress={() => {
+                        setSelectedDate(dateObj);
+                        updateAvailableTimesForDate(dateObj.toISOString().split('T')[0], vetSchedule);
+                      }}
+                    >
+                      <View style={styles.iosDateOptionContent}>
+                        <View style={styles.iosDateOptionLeft}>
+                          <Text style={[
+                            styles.iosDateOptionDay,
+                            isSelected && styles.iosDateOptionDaySelected
+                          ]}>
+                            {dateObj.toLocaleDateString('en-US', { weekday: 'long' })}
+                          </Text>
+                          <Text style={[
+                            styles.iosDateOptionDate,
+                            isSelected && styles.iosDateOptionDateSelected
+                          ]}>
+                            {dateObj.toLocaleDateString('en-US', { 
+                              month: 'long', 
+                              day: 'numeric',
+                              year: 'numeric'
+                            })}
+                          </Text>
+                        </View>
+                        {isSelected && (
+                          <FontAwesome5 name="check-circle" size={20} color="#CD853F" />
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </View>
+        )}
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
 };
 
-// Enhanced styles with new components
+// Enhanced styles with new date picker components
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1082,65 +1076,72 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
   },
-  // New reschedule info card
-  rescheduleInfoCard: {
+  vetInfoCard: {
     margin: 20,
-    backgroundColor: '#fff3cd',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#ffeaa7',
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
   },
-  rescheduleInfoHeader: {
+  vetInfo: {
     flexDirection: 'row',
+    padding: 20,
+  },
+  vetImageContainer: {
+    position: 'relative',
+    marginRight: 15,
+  },
+  vetImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#f0f0f0',
+  },
+  vetStatusBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#4CAF50',
+    justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  vetDetails: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  vetName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
     marginBottom: 8,
   },
-  rescheduleInfoTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#856404',
-    marginLeft: 8,
-  },
-  rescheduleInfoText: {
-    fontSize: 14,
-    color: '#856404',
-    lineHeight: 20,
-  },
-  remainingTimeText: {
-    fontSize: 12,
-    color: '#d63031',
-    fontWeight: '600',
-    marginTop: 4,
-  },
-  // Original appointment info card
-  originalAppointmentCard: {
-    marginHorizontal: 20,
-    marginBottom: 20,
-    backgroundColor: '#e8f4f8',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#b2dfdb',
-  },
-  originalAppointmentHeader: {
+  vetSpecializationContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 4,
   },
-  originalAppointmentTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#00695c',
-    marginLeft: 8,
-  },
-  originalAppointmentDetails: {
-    gap: 6,
-  },
-  originalAppointmentText: {
+  vetSpecialization: {
     fontSize: 14,
-    color: '#004d40',
-    lineHeight: 20,
+    color: '#CD853F',
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  vetExperienceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  vetExperience: {
+    fontSize: 13,
+    color: '#666',
+    marginLeft: 6,
   },
   formContainer: {
     paddingHorizontal: 20,
@@ -1308,7 +1309,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  // Custom Date Picker Styles
+  // Custom Date Picker Styles (Android)
   customDatePickerContainer: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -1369,6 +1370,151 @@ const styles = StyleSheet.create({
   },
   dateOptionWeekdaySelected: {
     color: 'rgba(255,255,255,0.8)',
+  },
+  // iOS Date Picker Styles
+  datePickerButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderWidth: 2,
+    borderColor: '#e0e0e0',
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  datePickerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  datePickerText: {
+    fontSize: 16,
+    color: '#333',
+    fontWeight: '500',
+    marginLeft: 12,
+  },
+  datePickerPlaceholder: {
+    color: '#999',
+    fontWeight: 'normal',
+  },
+  availableDatesPreview: {
+    marginTop: 8,
+    padding: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+  },
+  availableDatesPreviewText: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+  },
+  datePickerModal: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  datePickerContainer: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '70%',
+  },
+  datePickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  datePickerCancelButton: {
+    padding: 4,
+  },
+  datePickerDoneButton: {
+    padding: 4,
+  },
+  datePickerTitleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  datePickerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginLeft: 8,
+  },
+  datePickerButtonText: {
+    fontSize: 16,
+    color: '#CD853F',
+  },
+  datePickerDoneText: {
+    fontWeight: '600',
+  },
+  availableDatesInfo: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+    backgroundColor: '#f8f9fa',
+  },
+  availableDatesText: {
+    fontSize: 16,
+    color: '#333',
+    textAlign: 'center',
+    fontWeight: '600',
+  },
+  availableDatesSubText: {
+    fontSize: 13,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  iosDateSelector: {
+    maxHeight: 300,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 0,
+  },
+  iosDateOption: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  iosDateOptionSelected: {
+    backgroundColor: '#f8f9fa',
+  },
+  iosDateOptionContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  iosDateOptionLeft: {
+    flex: 1,
+  },
+  iosDateOptionDay: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  iosDateOptionDaySelected: {
+    color: '#CD853F',
+  },
+  iosDateOptionDate: {
+    fontSize: 14,
+    color: '#666',
+  },
+  iosDateOptionDateSelected: {
+    color: '#CD853F',
   },
   timeSlotsContainer: {
     backgroundColor: '#fff',
@@ -1511,4 +1657,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default RescheduleScreen;
+export default Hbook;

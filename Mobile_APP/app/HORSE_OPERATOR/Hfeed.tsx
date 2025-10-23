@@ -8,30 +8,28 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  RefreshControl,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 
 type Meal = {
-  fd_id: string;
+  id: string;
   fd_food_type: string;
   fd_qty: string;
   fd_time: string;
   fd_meal_type: string;
   completed?: boolean;
   completed_at?: string;
-  user_id: string;
-  horse_id: string;
+  fd_id?: string;
+  fed_by?: string;      // NEW: Who fed the horse
+  fed_by_id?: string;   // NEW: User ID who fed
+  user_type?: string;   // NEW: 'op' or 'kutsero'
 };
 
-type FeedType = {
-  id: string;
-  name: string;
-  amount: string;
-};
-
-const API_BASE_URL = "http://172.20.10.2:8000/api/horse_operator";
+// const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator";
+const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator"
 
 const FeedScreen = () => {
   const router = useRouter();
@@ -43,6 +41,9 @@ const FeedScreen = () => {
   const [feedingSchedule, setFeedingSchedule] = useState<Meal[]>([]);
   const [showEditView, setShowEditView] = useState(false);
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
     
   const [feedingTime, setFeedingTime] = useState({
     hour: '6',
@@ -50,34 +51,25 @@ const FeedScreen = () => {
     period: 'AM',
   });
 
-  const [feedTypes, setFeedTypes] = useState<FeedType[]>([
+  const [feedTypes, setFeedTypes] = useState([
     { id: '1', name: 'Chaff', amount: '' },
     { id: '2', name: 'Resolve', amount: '' },
     { id: '3', name: 'Dynavy', amount: '' },
     { id: '4', name: 'Magnesium', amount: '' },
   ]);
 
-  // Helper function to generate UUID
-  const generateUUID = (): string => {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
+  const generateLocalId = (): string => {
+    return Date.now().toString() + Math.random().toString(36).substr(2, 9);
   };
 
-  // Consistent meal name determination - matches backend logic EXACTLY
   const getMealName = (time: string): string => {
     try {
-      // Split time and period
       const timeParts = time.split(' ');
       const timeComponent = timeParts[0];
       const period = timeParts[1] || 'AM';
       
-      // Parse hour
       const hour = parseInt(timeComponent.split(':')[0]);
       
-      // Convert to 24-hour format - EXACT MATCH with backend
       let hour24: number;
       if (period.toUpperCase() === 'PM' && hour !== 12) {
         hour24 = hour + 12;
@@ -87,21 +79,19 @@ const FeedScreen = () => {
         hour24 = hour;
       }
       
-      // Classify meal based on 24-hour time - EXACT MATCH with backend
       if (hour24 < 10) {
-        return 'Breakfast';  // 12:00 AM - 9:59 AM
+        return 'Breakfast';
       } else if (hour24 < 16) {
-        return 'Lunch';      // 10:00 AM - 3:59 PM
+        return 'Lunch';
       } else {
-        return 'Dinner';     // 4:00 PM - 11:59 PM
+        return 'Dinner';
       }
     } catch (error) {
       console.error('Error parsing time:', error);
-      return 'Meal'; // Default fallback
+      return 'Meal';
     }
   };
 
-  // Helper function to get meal order for sorting
   const getMealOrder = (mealType: string): number => {
     switch (mealType) {
       case 'Breakfast': return 1;
@@ -111,8 +101,9 @@ const FeedScreen = () => {
     }
   };
 
-  // Load user ID from SecureStore
-  const getCurrentUser = async (): Promise<string | null> => {
+  const getCurrentUser = useCallback(async (): Promise<string | null> => {
+    if (currentUser) return currentUser;
+    
     try {
       const storedUser = await SecureStore.getItemAsync("user_data");
       if (storedUser) {
@@ -128,158 +119,182 @@ const FeedScreen = () => {
       console.error('Error getting current user:', error);
     }
     return null;
-  };
+  }, [currentUser]);
 
-  // Save feeding schedule to backend - FIXED to match backend expectations
-  const saveFeedingSchedule = useCallback(async (schedule: Meal[], userId?: string): Promise<void> => {
-    try {
-      const userIdToUse = userId || currentUser;
-      if (!userIdToUse || !horseId) {
-        console.error("Missing user_id or horse_id");
-        return;
-      }
-
-      // Transform frontend format to EXACTLY match backend expectations
-      const backendSchedule = schedule.map(meal => ({
-        fd_id: meal.fd_id,
-        food: meal.fd_food_type,           // Backend expects "food"
-        amount: meal.fd_qty,               // Backend expects "amount"
-        time: meal.fd_time,                // Backend expects "time"
-        completed: meal.completed || false,
-        completed_at: meal.completed_at
-      }));
-
-      const payload = {
-        user_id: userIdToUse,
-        horse_id: horseId,
-        schedule: backendSchedule
-      };
-
-      console.log("Sending payload to backend:", JSON.stringify(payload, null, 2));
-
-      const response = await fetch(`${API_BASE_URL}/save_feeding_schedule/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Backend error:", errorData);
-        throw new Error(errorData.error || 'Failed to save feeding schedule');
-      }
-
-      const result = await response.json();
-      console.log("Backend response:", result);
-      console.log("Feeding schedule saved successfully");
-    } catch (error) {
-      console.error('Error saving feeding schedule:', error);
-      Alert.alert('Error', 'Failed to save feeding schedule: ' + (error instanceof Error ? error.message : String(error)));    }
-  }, [currentUser, horseId]);
-
-  // Create default schedule - FIXED to include required fields
-  const createDefaultSchedule = useCallback(async (userId: string) => {
+  const createDefaultLocalSchedule = useCallback((): Meal[] => {
+    console.log("Creating default local feeding schedule");
+    
     const defaultSchedule: Meal[] = [
       {
-        fd_id: generateUUID(),
+        id: generateLocalId(),
         fd_food_type: 'Chaff',
         fd_qty: '3 scoops',
         fd_time: '6:45 AM',
         fd_meal_type: 'Breakfast',
         completed: false,
-        user_id: userId,
-        horse_id: horseId,
       },
       {
-        fd_id: generateUUID(),
+        id: generateLocalId(),
         fd_food_type: 'Chaff',
         fd_qty: '3 scoops',
         fd_time: '12:00 PM',
         fd_meal_type: 'Lunch',
         completed: false,
-        user_id: userId,
-        horse_id: horseId,
       },
       {
-        fd_id: generateUUID(),
+        id: generateLocalId(),
         fd_food_type: 'Chaff',
         fd_qty: '3 scoops',
         fd_time: '7:15 PM',
         fd_meal_type: 'Dinner',
         completed: false,
-        user_id: userId,
-        horse_id: horseId,
       },
     ];
-    setFeedingSchedule(defaultSchedule);
-    await saveFeedingSchedule(defaultSchedule, userId);
-  }, [horseId, saveFeedingSchedule]);
+    
+    return defaultSchedule;
+  }, []);
 
-  // Load feeding schedule from backend - FIXED to handle backend response format
-  const loadFeedingSchedule = useCallback(async (userId: string): Promise<void> => {
-    if (!userId || !horseId) return;
-
+  const loadTodaysFeedRecords = useCallback(async (userId: string): Promise<Meal[]> => {
     try {
       const url = `${API_BASE_URL}/get_feeding_schedule/?user_id=${encodeURIComponent(userId)}&horse_id=${encodeURIComponent(horseId)}`;
-      console.log("Fetching feeding schedule:", url);
+      console.log("Loading today's feed records:", url);
 
       const response = await fetch(url);
       if (response.ok) {
         const data = await response.json();
-        console.log("Raw backend data:", JSON.stringify(data, null, 2));
         
         if (data && data.length > 0) {
-          // Transform backend format to frontend format - FIXED field mapping
-          const transformedData: Meal[] = data.map((item: any) => ({
-            fd_id: item.fd_id,
+          return data.map((item: any) => ({
+            id: item.fd_id,
             fd_food_type: item.fd_food_type,
             fd_qty: item.fd_qty,
             fd_time: item.fd_time,
             fd_meal_type: item.fd_meal_type,
             completed: item.completed || false,
             completed_at: item.completed_at,
-            user_id: item.user_id,
-            horse_id: item.horse_id
+            fd_id: item.fd_id,
+            fed_by: item.fed_by,           // NEW
+            fed_by_id: item.fed_by_id,     // NEW
+            user_type: item.user_type,     // NEW
           }));
-          
-          // Sort meals by proper order (Breakfast, Lunch, Dinner)
-          const sortedData = transformedData.sort((a, b) => 
-            getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type)
-          );
-          
-          console.log("Transformed and sorted data:", JSON.stringify(sortedData, null, 2));
-          setFeedingSchedule(sortedData);
-        } else {
-          console.log("No existing schedule, creating default");
-          await createDefaultSchedule(userId);
         }
-      } else {
-        console.log("No existing feeding schedule found, creating default");
-        await createDefaultSchedule(userId);
       }
-    } catch (error: unknown) {
-      console.error('Error loading feeding schedule:', error);
-      await createDefaultSchedule(userId);
+    } catch (error) {
+      console.error('Error loading feed records:', error);
     }
-  }, [horseId, createDefaultSchedule]);
+    
+    return [];
+  }, [horseId]);
 
-  // Load data on component mount
-  useEffect(() => {
-    const initializeData = async () => {
+  const initializeFeedScreen = useCallback(async (): Promise<void> => {
+    if (isInitialized || !horseId) return;
+
+    console.log("Initializing feed screen...");
+    setIsLoading(true);
+    
+    try {
       const userId = await getCurrentUser();
-      if (userId && horseId) {
-        await loadFeedingSchedule(userId);
+      if (!userId) {
+        console.error("No user ID found");
+        return;
+      }
+
+      const todaysRecords = await loadTodaysFeedRecords(userId);
+      const defaultSchedule = createDefaultLocalSchedule();
+      
+      const mergedSchedule = defaultSchedule.map(defaultItem => {
+        const dbRecord = todaysRecords.find(record => 
+          record.fd_meal_type === defaultItem.fd_meal_type
+        );
+        
+        if (dbRecord && dbRecord.completed) {
+          return dbRecord;
+        }
+        
+        return defaultItem;
+      }).sort((a, b) => getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type));
+      
+      setFeedingSchedule(mergedSchedule);
+      console.log(`Initialized with ${mergedSchedule.length} feeding schedule items`);
+      
+      setIsInitialized(true);
+      
+    } catch (error: unknown) {
+      console.error('Error initializing feed screen:', error);
+      const defaultSchedule = createDefaultLocalSchedule();
+      setFeedingSchedule(defaultSchedule);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isInitialized, horseId, getCurrentUser, createDefaultLocalSchedule, loadTodaysFeedRecords]);
+
+  useEffect(() => {
+    let mounted = true;
+    
+    const init = async () => {
+      if (mounted && !isInitialized) {
+        await initializeFeedScreen();
       }
     };
-    initializeData();
-  }, [horseId, loadFeedingSchedule]);
+    
+    init();
+    
+    return () => {
+      mounted = false;
+    };
+  }, [initializeFeedScreen, isInitialized]);
 
-  // Mark meal as fed - FIXED to match backend API expectations
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    
+    try {
+      if (currentUser && horseId) {
+        const todaysRecords = await loadTodaysFeedRecords(currentUser);
+        const defaultSchedule = createDefaultLocalSchedule();
+        
+        const mergedSchedule = defaultSchedule.map(defaultItem => {
+          const dbRecord = todaysRecords.find(record => 
+            record.fd_meal_type === defaultItem.fd_meal_type
+          );
+          
+          if (dbRecord && dbRecord.completed) {
+            return dbRecord;
+          }
+          
+          return defaultItem;
+        }).sort((a, b) => getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type));
+        
+        setFeedingSchedule(mergedSchedule);
+      }
+    } catch (error) {
+      console.error('Error refreshing:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [currentUser, horseId, loadTodaysFeedRecords, createDefaultLocalSchedule]);
+
+  // Refresh when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      if (currentUser && isInitialized) {
+        onRefresh();
+      }
+    }, [currentUser, isInitialized, onRefresh])
+  );
+
   const handleMarkAsFed = async (meal: Meal): Promise<void> => {
     if (!currentUser) {
       Alert.alert('Error', 'User not found');
+      return;
+    }
+
+    // Check if already fed
+    if (meal.completed && meal.fed_by) {
+      Alert.alert(
+        'Already Fed',
+        `This meal has already been fed by ${meal.fed_by}.`,
+        [{ text: 'OK' }]
+      );
       return;
     }
 
@@ -287,14 +302,6 @@ const FeedScreen = () => {
       const now = new Date();
       const completedAt = now.toISOString();
 
-      console.log("Marking meal as fed:", {
-        user_id: currentUser,
-        horse_id: horseId,
-        fd_id: meal.fd_id,
-        completed_at: completedAt,
-      });
-
-      // Call backend API to mark meal as fed (this also handles logging)
       const response = await fetch(`${API_BASE_URL}/mark_meal_fed/`, {
         method: 'POST',
         headers: {
@@ -303,37 +310,64 @@ const FeedScreen = () => {
         body: JSON.stringify({
           user_id: currentUser,
           horse_id: horseId,
-          fd_id: meal.fd_id,
+          fd_time: meal.fd_time,
+          fd_meal_type: meal.fd_meal_type,
+          fd_food_type: meal.fd_food_type,
+          fd_qty: meal.fd_qty,
           completed_at: completedAt,
         }),
       });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error("Mark as fed error:", errorData);
-        throw new Error(errorData.error || 'Failed to mark meal as fed');
-      }
-          
       const result = await response.json();
-      console.log("Mark as fed response:", result);
+      
+      if (!response.ok) {
+        // Check if it's because someone else already fed it
+        if (result.already_fed) {
+          Alert.alert(
+            'Already Fed',
+            result.error || `This meal has already been fed by ${result.fed_by}.`,
+            [
+              {
+                text: 'Refresh',
+                onPress: () => onRefresh()
+              },
+              { text: 'OK' }
+            ]
+          );
+          // Refresh to show the updated state
+          await onRefresh();
+          return;
+        }
+        
+        console.error("Mark as fed error:", result);
+        throw new Error(result.error || 'Failed to mark meal as fed');
+      }
 
-      // Update local state and maintain sort order
+      console.log("Meal fed and saved to database:", result);
+
+      // Update local state
       const updatedSchedule = feedingSchedule.map(m =>
-        m.fd_id === meal.fd_id 
-          ? { ...m, completed: true, completed_at: completedAt }
+        m.id === meal.id 
+          ? { 
+              ...m, 
+              completed: true, 
+              completed_at: completedAt,
+              fd_id: result.fd_id,
+              fed_by: result.fed_by,
+              user_type: result.user_type
+            }
           : m
       ).sort((a, b) => getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type));
-          
+        
       setFeedingSchedule(updatedSchedule);
-          
-      Alert.alert('Success', `Meal marked as fed for ${horseName}!`);
+        
+      Alert.alert('Success', `Meal fed to ${horseName} and recorded in database!`);
     } catch (error: any) {
       console.error('Error marking meal as fed:', error);
-      Alert.alert('Error', error.message || 'Failed to mark meal as fed');
+      Alert.alert('Error', error.message || 'Failed to record feeding');
     }
   };
 
-  // Reset daily completion status - FIXED to match backend API
   const resetDailyFeeds = async (): Promise<void> => {
     if (!currentUser) {
       Alert.alert('Error', 'User not found');
@@ -342,7 +376,7 @@ const FeedScreen = () => {
 
     Alert.alert(
       'Reset Daily Feeds',
-      'Are you sure you want to reset all feeding statuses for today?',
+      'This will reset all feeding records for today. Are you sure?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -366,15 +400,10 @@ const FeedScreen = () => {
                 throw new Error(errorData.error || 'Failed to reset daily feeds');
               }
 
-              // Update local state and maintain sort order
-              const resetSchedule = feedingSchedule.map(meal => ({
-                ...meal,
-                completed: false,
-                completed_at: undefined,
-              })).sort((a, b) => getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type));
-                  
+              const resetSchedule = createDefaultLocalSchedule();
               setFeedingSchedule(resetSchedule);
-              Alert.alert('Success', 'Daily feeds reset successfully');
+              
+              Alert.alert('Success', 'Daily feeding records reset successfully');
             } catch (error: any) {
               console.error('Error resetting daily feeds:', error);
               Alert.alert('Error', error.message || 'Failed to reset daily feeds');
@@ -386,8 +415,17 @@ const FeedScreen = () => {
   };
 
   const handleEdit = (meal: Meal): void => {
+    // Don't allow editing if already fed by someone
+    if (meal.completed && meal.fed_by) {
+      Alert.alert(
+        'Cannot Edit',
+        `This meal was already fed by ${meal.fed_by}. You cannot edit completed meals.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setEditingMeal(meal);
-    // Parse the time from the meal
     const timeParts = meal.fd_time.split(' ');
     const time = timeParts[0].split(':');
     setFeedingTime({
@@ -396,7 +434,6 @@ const FeedScreen = () => {
       period: timeParts[1] || 'AM',
     });
           
-    // Reset feed types for editing
     setFeedTypes([
       { id: '1', name: 'Chaff', amount: meal.fd_food_type === 'Chaff' ? meal.fd_qty : '' },
       { id: '2', name: 'Resolve', amount: meal.fd_food_type === 'Resolve' ? meal.fd_qty : '' },
@@ -434,7 +471,7 @@ const FeedScreen = () => {
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Add',
-          onPress: (text) => {
+          onPress: (text?: string) => {
             if (text && text.trim()) {
               const newId = (feedTypes.length + 1).toString();
               setFeedTypes(prev => [
@@ -459,31 +496,25 @@ const FeedScreen = () => {
     if (!editingMeal || !currentUser) return;
 
     try {
-      // Update the feeding schedule
       const updatedTime = `${feedingTime.hour}:${feedingTime.minute} ${feedingTime.period}`;
       const mealType = getMealName(updatedTime);
 
       const updatedSchedule = feedingSchedule.map(meal =>
-        meal.fd_id === editingMeal.fd_id
+        meal.id === editingMeal.id
           ? {
               ...meal,
               fd_time: updatedTime,
               fd_food_type: activeFeed.name,
               fd_qty: activeFeed.amount,
               fd_meal_type: mealType,
-              completed: false, // Reset completion status when edited
-              completed_at: undefined,
             }
           : meal
       ).sort((a, b) => getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type));
           
       setFeedingSchedule(updatedSchedule);
-      
-      // Save to backend
-      await saveFeedingSchedule(updatedSchedule);
-
       setShowEditView(false);
-      Alert.alert('Success', `Feeding schedule updated successfully for ${horseName}!`);
+      
+      Alert.alert('Success', `Feeding schedule updated for ${horseName}!`);
     } catch (error) {
       console.error('Error saving changes:', error);
       Alert.alert('Error', 'Failed to save changes');
@@ -494,22 +525,29 @@ const FeedScreen = () => {
     setShowEditView(false);
   };
 
-  // Edit View
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+          <Text>Loading feeding schedule...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (showEditView) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        {/* Edit Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => setShowEditView(false)} style={styles.backButton}>
             <FontAwesome5 name="arrow-left" size={20} color="white" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Edit Meal</Text>
+          <Text style={styles.headerTitle}>Edit {editingMeal?.fd_meal_type}</Text>
           <View style={styles.placeholder} />
         </View>
 
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
-            {/* Feeding Time Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Feeding Time</Text>
               <View style={styles.timeInputContainer}>
@@ -540,7 +578,6 @@ const FeedScreen = () => {
               </View>
             </View>
 
-            {/* Feed Types & Amounts Section */}
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Feed Types & Amounts</Text>
               <View style={styles.feedTypesGrid}>
@@ -557,15 +594,20 @@ const FeedScreen = () => {
                 ))}
               </View>
 
-              {/* Add Feed Type Button */}
               <TouchableOpacity style={styles.addFeedButton} onPress={handleAddFeedType}>
                 <Text style={styles.addFeedButtonText}>Add Feed Type</Text>
               </TouchableOpacity>
             </View>
+
+            <View style={styles.infoBox}>
+              <FontAwesome5 name="info-circle" size={16} color="#CD853F" />
+              <Text style={styles.infoText}>
+                Schedule changes are saved locally. Database entries are only created when you mark the meal as fed.
+              </Text>
+            </View>
           </View>
         </ScrollView>
 
-        {/* Bottom Buttons */}
         <View style={styles.bottomButtons}>
           <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
             <Text style={styles.cancelButtonText}>Cancel</Text>
@@ -578,10 +620,8 @@ const FeedScreen = () => {
     );
   }
 
-  // Main Feed List View
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.push('/HORSE_OPERATOR/horse')} style={styles.backButton}>
           <FontAwesome5 name="arrow-left" size={20} color="#fff" />
@@ -596,22 +636,44 @@ const FeedScreen = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.container} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#CD853F']}
+            tintColor="#CD853F"
+          />
+        }
+      >
         <View style={styles.content}>
           {feedingSchedule.map((meal) => (
-            <View key={meal.fd_id} style={styles.mealCard}>
-              {/* Card Header */}
+            <View key={meal.id} style={styles.mealCard}>
               <View style={styles.cardHeader}>
                 <View style={styles.mealInfo}>
-                  <Text style={styles.mealTitle}>{meal.fd_meal_type}</Text>
+                  <View style={styles.mealTitleRow}>
+                    <Text style={styles.mealTitle}>{meal.fd_meal_type}</Text>
+                  </View>
                   <Text style={styles.mealTime}>{meal.fd_time}</Text>
                 </View>
-                <TouchableOpacity style={styles.editButton} onPress={() => handleEdit(meal)}>
-                  <FontAwesome5 name="edit" size={14} color="#3B82F6" />
+                <TouchableOpacity 
+                  style={[
+                    styles.editButton,
+                    meal.completed && styles.editButtonDisabled
+                  ]} 
+                  onPress={() => handleEdit(meal)}
+                  disabled={meal.completed}
+                >
+                  <FontAwesome5 
+                    name="edit" 
+                    size={14} 
+                    color={meal.completed ? "#9CA3AF" : "#3B82F6"} 
+                  />
                 </TouchableOpacity>
               </View>
 
-              {/* Card Content */}
               <View style={styles.cardContent}>
                 <View style={styles.feedInfo}>
                   <View style={styles.feedTypeRow}>
@@ -626,11 +688,19 @@ const FeedScreen = () => {
                 </View>
 
                 {meal.completed ? (
-                  <View style={styles.completedBadge}>
-                    <View style={styles.completedIconContainer}>
-                      <FontAwesome5 name="check" size={14} color="#fff" />
+                  <View style={styles.completedSection}>
+                    <View style={styles.completedBadge}>
+                      <View style={styles.completedIconContainer}>
+                        <FontAwesome5 name="check" size={14} color="#fff" />
+                      </View>
+                      <Text style={styles.completedText}>Fed</Text>
                     </View>
-                    <Text style={styles.completedText}>Completed</Text>
+                    {meal.fed_by && (
+                      <View style={styles.fedByContainer}>
+                        <FontAwesome5 name="user" size={12} color="#6B7280" />
+                        <Text style={styles.fedByText}>Fed by: {meal.fed_by}</Text>
+                      </View>
+                    )}
                   </View>
                 ) : (
                   <TouchableOpacity
@@ -644,12 +714,11 @@ const FeedScreen = () => {
             </View>
           ))}
 
-          {/* Reset Button */}
           <TouchableOpacity style={styles.resetButton} onPress={resetDailyFeeds}>
             <View style={styles.resetIconContainer}>
               <FontAwesome5 name="redo" size={14} color="#fff" />
             </View>
-            <Text style={styles.resetButtonText}>Reset Daily Feeds</Text>
+            <Text style={styles.resetButtonText}>Reset Daily Records</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -682,7 +751,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
-    backdropFilter: 'blur(10px)',
   },
   headerCenter: {
     flexDirection: 'row',
@@ -704,7 +772,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 22,
-    backdropFilter: 'blur(10px)',
   },
   feedLogText: {
     color: '#fff',
@@ -721,6 +788,49 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
+  },
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FEF3C7',
+    padding: 12,
+    borderRadius: 12,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  infoText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
+  },
+  mealTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  savedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginLeft: 8,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  savedBadgeText: {
+    fontSize: 10,
+    color: '#065F46',
+    fontWeight: '600',
+    marginLeft: 3,
+  },
+  editButtonDisabled: {
+    backgroundColor: '#F3F4F6',
+    borderColor: '#E5E7EB',
   },
   mealCard: {
     backgroundColor: '#FFFFFF',
@@ -748,7 +858,6 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: '#1E293B',
-    marginBottom: 6,
   },
   mealTime: {
     fontSize: 15,
@@ -796,6 +905,9 @@ const styles = StyleSheet.create({
     color: '#64748B',
     fontWeight: '500',
   },
+  completedSection: {
+    gap: 8,
+  },
   completedBadge: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -818,6 +930,21 @@ const styles = StyleSheet.create({
     color: '#059669',
     fontSize: 16,
     fontWeight: '600',
+  },
+  fedByContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  fedByText: {
+    fontSize: 13,
+    color: '#6B7280',
+    fontWeight: '500',
+    marginLeft: 8,
   },
   markFedButton: {
     backgroundColor: '#10B981',
@@ -863,7 +990,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  // Edit View Styles
   section: {
     marginBottom: 24,
     backgroundColor: '#FFFFFF',

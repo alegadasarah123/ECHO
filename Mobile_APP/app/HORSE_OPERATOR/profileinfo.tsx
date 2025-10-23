@@ -9,39 +9,49 @@ import {
   Image,
   TextInput,
   Alert,
-  Platform, // Re-added Platform for DateTimePicker
+  Platform,
+  ActivityIndicator,
+  Modal,
+  FlatList,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { FontAwesome, FontAwesome5 } from '@expo/vector-icons'; // Added FontAwesome
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Picker } from '@react-native-picker/picker';
+import { useRouter } from 'expo-router';
+import { FontAwesome, FontAwesome5 } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
-import DateTimePicker from '@react-native-community/datetimepicker'; // Added DateTimePicker
+import DateTimePicker from '@react-native-community/datetimepicker';
 
-// Define proper types for the location data
-type LocationData = {
-  [province: string]: {
-    cities: {
-      [city: string]: {
-        municipalities: string[];
-        barangays: {
-          [municipality: string]: string[];
-        };
-      };
-    };
-  };
+// Philippines provinces and their cities/municipalities
+const philippinesData: Record<string, { cities: string[]; municipalities: string[] }> = {
+  Cebu: {
+    cities: ["Cebu City", "Danao City", "Lapu-Lapu City", "Mandaue City", "Talisay City", "Toledo City", "Carcar City"],
+    municipalities: [
+      "Alcantara", "Alcoy", "Alegria", "Aloguinsan", "Argao", "Asturias", "Badian", "Balamban",
+      "Bantayan", "Barili", "Bogo", "Boljoon", "Borbon", "Carmen", "Catmon", "Compostela",
+      "Consolacion", "Cordova", "Daanbantayan", "Dalaguete", "Dumanjug", "Ginatilan", "Liloan",
+      "Madridejos", "Malabuyoc", "Medellin", "Minglanilla", "Moalboal", "Oslob", "Pilar",
+      "Pinamungajan", "Poro", "Ronda", "Samboan", "San Fernando", "San Francisco", "San Remigio",
+      "Santa Fe", "Santander", "Sibonga", "Sogod", "Tabogon", "Tabuelan", "Tuburan", "Tudela",
+    ],
+  },
 };
 
-// Define types for route data
-type RouteData = {
-  [route: string]: string[];
+const barangayData: { [province: string]: { [cityMunicipality: string]: string[] } } = {
+  Cebu: {
+    "Cebu City": ["Apas", "Lahug", "Capitol Site", "Guadalupe", "Mabolo", "Banilad", "Talamban", "Kasambagan", "Busay", "Tisa"],
+    "Mandaue City": ["Alang-alang", "Bakilid", "Banilad", "Basak", "Cabancalan", "Canduman", "Casili", "Casuntingan", "Centro", "Cambaro"],
+    "Lapu-Lapu City": ["Agus", "Babag", "Bankal", "Basak", "Buaya", "Calawisan", "Canjulao", "Caubian", "Cawhagan", "Gun-ob"],
+  },
 };
+
+const sexOptions = ["Male", "Female", "Other", "Prefer not to say"];
+const routeOptions = ["Route 1 - North Cebu", "Route 2 - South Cebu", "Route 3 - Metro Cebu", "Route 4 - Cebu City Center", "Route 5 - Mactan Island"];
+const toOptions = ["SM City Cebu", "Ayala Center Cebu", "Robinson's Galleria Cebu", "SM Seaside City Cebu", "IT Park", "Lahug", "Capitol Site", "Colon Street"];
 
 interface UserProfileData {
   firstName?: string;
   middleName?: string;
   lastName?: string;
-  dob?: string; // Changed from dateOfBirth to dob
+  dob?: string;
   sex?: string;
   phoneNumber?: string;
   province?: string;
@@ -49,205 +59,339 @@ interface UserProfileData {
   municipality?: string;
   barangay?: string;
   zipCode?: string;
-  houseAddress?: string; // Changed from houseNumber to houseAddress
+  houseAddress?: string;
   route?: string;
-  routeTo?: string; // Changed from to to routeTo
+  routeTo?: string;
   email?: string;
   facebook?: string;
-  username?: string;
-  password?: string;
   profileImage?: string;
+  user_id?: string;
+  role?: string;
 }
 
-const locationData: LocationData = {
-  cebu: {
-    cities: {
-      'Cebu City': {
-        municipalities: ['Talamban', 'Lahug'],
-        barangays: {
-          Talamban: ['Barangay 1', 'Barangay 2'],
-          Lahug: ['Barangay 3', 'Barangay 4'],
-        },
-      },
-      'Mandaue City': {
-        municipalities: ['Tipolo', 'Centro'],
-        barangays: {
-          Tipolo: ['Barangay 5', 'Barangay 6'],
-          Centro: ['Barangay 7', 'Barangay 8'],
-        },
-      },
-    },
-  },
-  bohol: {
-    cities: {
-      Tagbilaran: {
-        municipalities: ['Bool', 'Cogon'],
-        barangays: {
-          Bool: ['Barangay 9', 'Barangay 10'],
-          Cogon: ['Barangay 11', 'Barangay 12'],
-        },
-      },
-    },
-  },
-};
+interface DropdownFieldProps {
+  label: string;
+  value: string;
+  placeholder: string;
+  options: string[];
+  onSelect: (value: string) => void;
+  disabled?: boolean;
+  isEditing: boolean;
+}
 
-const routeData: RouteData = {
-  Ayala: ['Colon', 'SM City', 'IT Park'],
-  'SM City': ['Ayala', 'Colon', 'IT Park'],
-  Colon: ['Ayala', 'SM City', 'IT Park'],
-  'IT Park': ['Ayala', 'SM City', 'Colon'],
-};
+const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
 
 const ProfileInfoScreen = () => {
   const router = useRouter();
-  const params = useLocalSearchParams();
   const [userData, setUserData] = useState<UserProfileData>({});
   const [editableUserData, setEditableUserData] = useState<UserProfileData>({});
   const [isEditing, setIsEditing] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
-  const [showDatePicker, setShowDatePicker] = useState(false); // State for date picker visibility
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [userId, setUserId] = useState<string | undefined>(undefined);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [dropdownVisible, setDropdownVisible] = useState<string | null>(null);
 
-  // Helper functions to safely access nested data for pickers
-  const getProvinces = () => Object.keys(locationData);
-  const getCities = (province: string | undefined) => {
-    if (!province || !locationData[province]) return [];
-    return Object.keys(locationData[province].cities);
-  };
-  const getMunicipalities = (province: string | undefined, city: string | undefined) => {
-    if (!province || !city || !locationData[province]?.cities[city]) return [];
-    return locationData[province].cities[city].municipalities;
-  };
-  const getBarangays = (province: string | undefined, city: string | undefined, municipality: string | undefined) => {
-    if (!province || !city || !municipality || !locationData[province]?.cities[city]?.barangays[municipality]) return [];
-    return locationData[province].cities[city].barangays[municipality];
-  };
-  const getRouteToOptions = (route: string | undefined) => {
-    if (!route || !routeData[route]) return [];
-    return routeData[route];
+  const loadUserId = async (): Promise<string | undefined> => {
+    try {
+      const storedUser = await SecureStore.getItemAsync("user_data");
+      if (storedUser) {
+        const parsed = JSON.parse(storedUser);
+        const id = parsed.user_id || parsed.id;
+        if (id) {
+          console.log("🔑 Loaded user_id from storage:", id);
+          setUserId(id);
+          return id;
+        }
+      }
+    } catch (error) {
+      console.error("❌ Error loading user data:", error);
+    }
+    return undefined;
   };
 
-  // Load profile data from params or AsyncStorage
+  const fetchProfileData = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      let uid = userId;
+      
+      if (!uid) {
+        const loadedUserId = await loadUserId();
+        if (!loadedUserId) {
+          console.error("No user_id found, cannot fetch profile.");
+          return;
+        }
+        uid = loadedUserId;
+      }
+
+      console.log("Fetching profile for user_id:", uid);
+      
+      const url = `${API_BASE_URL}/get_horse_operator_profile/?user_id=${encodeURIComponent(uid)}`;
+      console.log("Request URL:", url);
+
+      const response = await fetch(url);
+      console.log("Response status:", response.status);
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        console.log("Error response:", errData);
+        throw new Error(errData.error || `Failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("Profile data received:", data);
+
+      const transformedData: UserProfileData = {
+        user_id: uid,
+        firstName: data.op_fname || '',
+        middleName: data.op_mname || '',
+        lastName: data.op_lname || '',
+        dob: data.op_dob || '',
+        sex: data.op_sex || '',
+        phoneNumber: data.op_phone_num || '',
+        province: data.op_province || 'Cebu',
+        city: data.op_city || '',
+        municipality: data.op_municipality || '',
+        barangay: data.op_brgy || '',
+        zipCode: data.op_zipcode || '',
+        houseAddress: data.op_house_add || '',
+        route: data.op_routefrom || '',
+        routeTo: data.op_routeto || '',
+        email: data.op_email || '',
+        facebook: data.op_fb || '',
+        profileImage: data.op_image || '',
+      };
+
+      setUserData(transformedData);
+      setEditableUserData(transformedData);
+    } catch (error: any) {
+      console.error("Error loading profile:", error);
+      Alert.alert("Error", error.message || "Unable to load profile data");
+    } finally {
+      setIsLoading(false);
+    }
+  }, [userId]);
+
+  const saveProfileData = async (dataToSave: UserProfileData) => {
+    try {
+      if (!userId) {
+        throw new Error("User ID not found");
+      }
+
+      setIsSaving(true);
+      console.log("Saving profile data...");
+
+      const url = `${API_BASE_URL}/update_horse_operator_profile/`;
+      const payload = {
+        op_id: userId,
+        op_fname: dataToSave.firstName,
+        op_mname: dataToSave.middleName,
+        op_lname: dataToSave.lastName,
+        op_dob: dataToSave.dob,
+        op_sex: dataToSave.sex,
+        op_phone_num: dataToSave.phoneNumber,
+        op_province: dataToSave.province,
+        op_city: dataToSave.city,
+        op_municipality: dataToSave.municipality,
+        op_brgy: dataToSave.barangay,
+        op_zipcode: dataToSave.zipCode,
+        op_house_add: dataToSave.houseAddress,
+        op_routefrom: dataToSave.route,
+        op_routeto: dataToSave.routeTo,
+        op_email: dataToSave.email,
+        op_fb: dataToSave.facebook,
+        op_image: dataToSave.profileImage,
+      };
+
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      console.log("Save response status:", response.status);
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        console.log("Save error response:", errData);
+        throw new Error(errData.error || `Failed to save with status ${response.status}`);
+      }
+
+      const result = await response.json();
+      console.log("Profile saved successfully:", result);
+      
+      Alert.alert(
+        'Success', 
+        result.image_uploaded 
+          ? 'Profile and image updated successfully!' 
+          : 'Profile updated successfully!'
+      );
+      
+      await fetchProfileData();
+      
+      return true;
+    } catch (error: any) {
+      console.error("Error saving profile:", error);
+      Alert.alert('Error', error.message || 'Failed to save profile information.');
+      return false;
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   useEffect(() => {
-    const loadProfileData = async () => {
-      let dataToUse: UserProfileData = {};
-      if (params.userData) {
-        try {
-          dataToUse = JSON.parse(params.userData as string);
-          console.log('Loaded data from params:', dataToUse);
-        } catch (e) {
-          console.error('Error parsing user data from params:', e);
-        }
-      }
-      if (Object.keys(dataToUse).length === 0) {
-        try {
-          const storedUserData = await AsyncStorage.getItem('current_user_data');
-          if (storedUserData) {
-            dataToUse = JSON.parse(storedUserData);
-            console.log('Loaded data from AsyncStorage:', dataToUse);
-          }
-        } catch (error) {
-          console.error('Error loading profile data from AsyncStorage:', error);
-        }
-      }
-      if (Object.keys(dataToUse).length === 0) {
-        // Default placeholder data if no data is found
-        dataToUse = {
-          firstName: 'Martin',
-          middleName: 'Aqua',
-          lastName: 'Diaz',
-          dob: '1990-01-25T00:00:00.000Z', // Example ISO string
-          sex: 'Male',
-          phoneNumber: '09391323173',
-          province: 'cebu', // Use lowercase for consistency with locationData keys
-          city: 'Cebu City',
-          municipality: 'Talamban',
-          barangay: 'Barangay 1',
-          zipCode: '6000',
-          houseAddress: '123 Paseo de Roxas St.',
-          route: 'Ayala',
-          routeTo: 'Colon',
-          email: 'martindiaz@gmail.com',
-          facebook: 'Martin Diaz',
-          username: 'martindiaz',
-          password: 'password123',
-          profileImage: '/diverse-group-profile.png',
-        };
-        await AsyncStorage.setItem('current_user_data', JSON.stringify(dataToUse));
-        console.log('Using default placeholder data.');
-      }
-      setUserData(dataToUse);
-      setEditableUserData(dataToUse);
-    };
-    loadProfileData();
-  }, [params.userData]);
+    fetchProfileData();
+  }, [fetchProfileData]);
 
   const handleGoBack = () => {
-    router.back();
+    if (isEditing) {
+      Alert.alert(
+        'Discard Changes?',
+        'You have unsaved changes. Are you sure you want to go back?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: 'Discard', 
+            style: 'destructive',
+            onPress: () => router.back()
+          }
+        ]
+      );
+    } else {
+      router.back();
+    }
   };
 
   const handleChooseProfileImage = async () => {
     if (!isEditing) return;
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission Required', 'Media library permission is required to upload a photo!');
-      return;
+
+    Alert.alert('Select Profile Photo', 'Choose how you\'d like to add your profile picture', [
+      {
+        text: 'Camera',
+        onPress: () => openCamera(),
+      },
+      {
+        text: 'Photo Library',
+        onPress: () => openImageLibrary(),
+      },
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+    ]);
+  };
+
+  const openCamera = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Camera permission is required to take photos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets?.length > 0) {
+        const asset = result.assets[0];
+        const base64Image = `data:image/jpeg;base64,${asset.base64}`;
+        
+        setEditableUserData((prevData) => ({
+          ...prevData,
+          profileImage: base64Image,
+        }));
+        
+        console.log('Profile image selected from camera');
+      }
+    } catch (error) {
+      console.error('Camera error:', error);
+      Alert.alert('Error', 'Failed to open camera. Please try again.');
     }
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 1,
-    });
-    if (!result.canceled && result.assets?.length > 0) {
-      setEditableUserData((prevData) => ({
-        ...prevData,
-        profileImage: result.assets[0].uri,
-      }));
+  };
+
+  const openImageLibrary = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Photo library permission is required to select photos.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets?.length > 0) {
+        const asset = result.assets[0];
+        const base64Image = `data:image/jpeg;base64,${asset.base64}`;
+        
+        setEditableUserData((prevData) => ({
+          ...prevData,
+          profileImage: base64Image,
+        }));
+        
+        console.log('Profile image selected from gallery');
+      }
+    } catch (error) {
+      console.error('Image picker error:', error);
+      Alert.alert('Error', 'Failed to open photo library. Please try again.');
     }
+  };
+
+  const handleDeleteProfileImage = async () => {
+    if (!isEditing) return;
+    
+    Alert.alert(
+      'Delete Profile Image',
+      'Are you sure you want to remove your profile image?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            setEditableUserData((prevData) => ({
+              ...prevData,
+              profileImage: '',
+            }));
+          },
+        },
+      ]
+    );
   };
 
   const handleEditSave = async () => {
     if (isEditing) {
-      const currentPassword = editableUserData.password;
-      const originalPassword = userData.password;
+      const dataToSave = {
+        ...editableUserData,
+        dob: editableUserData.dob ? new Date(editableUserData.dob).toISOString().split('T')[0] : undefined,
+      };
 
-      // Only validate password if it's being changed
-      if (currentPassword !== originalPassword) {
-        if (confirmPasswordInput === '') {
-          Alert.alert('Error', 'Please confirm your new password.');
-          return;
-        }
-        if (currentPassword !== confirmPasswordInput) {
-          Alert.alert('Error', 'New password and confirm password do not match.');
-          return;
-        }
-      }
-
-      try {
-        const finalPassword =
-          currentPassword === '********' ? originalPassword : currentPassword; // Keep original if not changed
-        
-        const dataToSave = {
-          ...editableUserData,
-          password: finalPassword,
-          // Ensure dob is stored as ISO string
-          dob: editableUserData.dob ? new Date(editableUserData.dob).toISOString() : undefined,
-        };
-
-        await AsyncStorage.setItem('current_user_data', JSON.stringify(dataToSave));
+      const success = await saveProfileData(dataToSave);
+      if (success) {
         setUserData(dataToSave);
-        Alert.alert('Success', 'Profile information updated successfully!');
-      } catch (error) {
-        console.error('Error saving profile data:', error);
-        Alert.alert('Error', 'Failed to save profile information.');
+        setIsEditing(false);
       }
     } else {
       setEditableUserData(userData);
-      setConfirmPasswordInput('');
+      setIsEditing(true);
     }
-    setIsEditing(!isEditing);
   };
 
   const onDateChange = (event: any, selectedDate?: Date) => {
@@ -255,7 +399,7 @@ const ProfileInfoScreen = () => {
     if (selectedDate) {
       setEditableUserData((prevData) => ({
         ...prevData,
-        dob: selectedDate.toISOString(),
+        dob: selectedDate.toISOString().split('T')[0],
       }));
     }
   };
@@ -264,63 +408,41 @@ const ProfileInfoScreen = () => {
     label: string,
     key: keyof UserProfileData,
     placeholder: string = '',
-    isPassword?: boolean,
-    isConfirmPassword?: boolean
+    icon?: string
   ) => {
     const isDateField = key === 'dob';
-    const inputValue = isConfirmPassword ? confirmPasswordInput : (editableUserData[key] as string || '');
+    const inputValue = editableUserData[key] as string || '';
     const displayValue = isDateField && inputValue
       ? new Date(inputValue).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
-      : (isPassword && !isEditing ? '********' : inputValue);
+      : inputValue;
 
     return (
       <View style={styles.inputGroup}>
         <Text style={styles.inputLabel}>{label}</Text>
         {isDateField && isEditing ? (
-          <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.inputWithIcon}>
-            <Text style={styles.input}>{displayValue}</Text>
-            <FontAwesome name="calendar" size={20} color="#888" style={styles.inputIcon} />
+          <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.inputContainer}>
+            {icon && <FontAwesome5 name={icon} size={16} color="#8B7355" style={styles.inputIconLeft} />}
+            <Text style={[styles.inputText, !displayValue && styles.placeholderText]}>
+              {displayValue || placeholder}
+            </Text>
+            <FontAwesome name="calendar" size={18} color="#8B7355" />
           </TouchableOpacity>
         ) : (
-          <View style={styles.inputWithIcon}>
+          <View style={styles.inputContainer}>
+            {icon && isEditing && <FontAwesome5 name={icon} size={16} color="#8B7355" style={styles.inputIconLeft} />}
             <TextInput
-              style={styles.input}
+              style={[styles.inputText, { flex: 1 }]}
               value={displayValue}
               placeholder={placeholder}
-              editable={isEditing && !isDateField} // Date field is handled by TouchableOpacity
-              secureTextEntry={
-                isPassword && (isConfirmPassword ? !showConfirmPassword : !showPassword) && isEditing
-              }
+              placeholderTextColor="#999"
+              editable={isEditing && !isDateField}
               onChangeText={(text) => {
-                if (isConfirmPassword) {
-                  setConfirmPasswordInput(text);
-                } else {
-                  setEditableUserData((prevData) => ({
-                    ...prevData,
-                    [key]: text,
-                  }));
-                }
+                setEditableUserData((prevData) => ({
+                  ...prevData,
+                  [key]: text,
+                }));
               }}
             />
-            {isPassword && isEditing && (
-              <TouchableOpacity
-                onPress={() =>
-                  isConfirmPassword ? setShowConfirmPassword(!showConfirmPassword) : setShowPassword(!showPassword)
-                }
-                style={styles.passwordToggle}
-              >
-                <FontAwesome5
-                  name={
-                    (isConfirmPassword ? showConfirmPassword : showPassword) ? 'eye' : 'eye-slash'
-                  }
-                  size={20}
-                  color="#888"
-                />
-              </TouchableOpacity>
-            )}
-            {isDateField && !isEditing && ( // Show calendar icon only when not editing and it's a date field
-              <FontAwesome name="calendar" size={20} color="#888" style={styles.inputIcon} />
-            )}
           </View>
         )}
         {showDatePicker && isDateField && (
@@ -334,112 +456,302 @@ const ProfileInfoScreen = () => {
         )}
       </View>
     );
-  }, [isEditing, editableUserData, showPassword, showConfirmPassword, confirmPasswordInput, showDatePicker]);
+  }, [isEditing, editableUserData, showDatePicker]);
 
-  const renderPickerField = useCallback((
-    label: string,
-    key: keyof UserProfileData,
-    options: string[] | ((data: UserProfileData) => string[])
-  ) => {
-    const currentOptions = typeof options === 'function' ? options(editableUserData) : options;
+  const DropdownField = ({ label, value, placeholder, options, onSelect, disabled = false, isEditing }: DropdownFieldProps) => {
+    const dropdownKey = label.toLowerCase().replace(/\s+/g, '');
+
     return (
       <View style={styles.inputGroup}>
         <Text style={styles.inputLabel}>{label}</Text>
         {isEditing ? (
-          <View style={styles.pickerContainer}>
-            <Picker
-              selectedValue={editableUserData[key] as string}
-              onValueChange={(itemValue) => {
-                setEditableUserData((prevData) => {
-                  const newData = { ...prevData, [key]: itemValue };
-                  // Reset dependent pickers when a parent picker changes
-                  if (key === 'province') {
-                    newData.city = '';
-                    newData.municipality = '';
-                    newData.barangay = '';
-                  } else if (key === 'city') {
-                    newData.municipality = '';
-                    newData.barangay = '';
-                  } else if (key === 'municipality') {
-                    newData.barangay = '';
-                  } else if (key === 'route') {
-                    newData.routeTo = '';
-                  }
-                  return newData;
-                });
-              }}
-              style={styles.picker}
-              itemStyle={styles.pickerItem}
+          <>
+            <TouchableOpacity
+              style={[styles.dropdownContainer, disabled && styles.disabledDropdown]}
+              onPress={() => !disabled && setDropdownVisible(dropdownKey)}
+              disabled={disabled}
             >
-              <Picker.Item label="Please Select" value="" />
-              {currentOptions.map((option) => (
-                <Picker.Item key={option} label={option} value={option} />
-              ))}
-            </Picker>
-            <FontAwesome5 name="chevron-down" size={16} color="#888" style={styles.pickerIcon} />
-          </View>
+              <Text style={[styles.dropdownText, !value && styles.placeholderText]}>
+                {value || placeholder}
+              </Text>
+              <FontAwesome name="chevron-down" size={14} color="#8B7355" />
+            </TouchableOpacity>
+
+            <Modal
+              visible={dropdownVisible === dropdownKey}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setDropdownVisible(null)}
+            >
+              <TouchableOpacity
+                style={styles.modalOverlay}
+                activeOpacity={1}
+                onPress={() => setDropdownVisible(null)}
+              >
+                <View style={styles.modalContent}>
+                  <View style={styles.modalHeader}>
+                    <Text style={styles.modalTitle}>Select {label}</Text>
+                    <TouchableOpacity onPress={() => setDropdownVisible(null)}>
+                      <FontAwesome name="times" size={20} color="#666" />
+                    </TouchableOpacity>
+                  </View>
+                  <FlatList
+                    data={options}
+                    keyExtractor={(item) => item}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={[
+                          styles.optionItem,
+                          value === item && styles.selectedOption
+                        ]}
+                        onPress={() => {
+                          onSelect(item);
+                          setDropdownVisible(null);
+                        }}
+                      >
+                        <Text style={[
+                          styles.optionText,
+                          value === item && styles.selectedOptionText
+                        ]}>{item}</Text>
+                        {value === item && (
+                          <FontAwesome name="check" size={16} color="#CD853F" />
+                        )}
+                      </TouchableOpacity>
+                    )}
+                    style={styles.optionsList}
+                  />
+                </View>
+              </TouchableOpacity>
+            </Modal>
+          </>
         ) : (
-          <TextInput
-            style={styles.input}
-            value={editableUserData[key] as string || ''}
-            editable={false}
-          />
+          <View style={styles.inputContainer}>
+            <Text style={styles.inputText}>{value || placeholder}</Text>
+          </View>
         )}
       </View>
     );
-  }, [isEditing, editableUserData]);
+  };
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#CD853F" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const selectedProvinceData = editableUserData.province ? philippinesData[editableUserData.province] : null;
+  const availableCities = selectedProvinceData
+    ? [...selectedProvinceData.cities, ...selectedProvinceData.municipalities].sort()
+    : [];
+
+  const availableBarangays =
+    editableUserData.province &&
+    editableUserData.city &&
+    barangayData[editableUserData.province] &&
+    barangayData[editableUserData.province][editableUserData.city]
+      ? barangayData[editableUserData.province][editableUserData.city]
+      : [];
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
         <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
-          <FontAwesome5 name="arrow-left" size={24} color="#fff" />
+          <FontAwesome5 name="arrow-left" size={20} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile Information</Text>
-      </View>
-      <ScrollView style={styles.scrollViewContent} showsVerticalScrollIndicator={false}>
-        <TouchableOpacity onPress={handleChooseProfileImage} style={styles.profileImageContainer}>
-          <Image
-            source={{ uri: editableUserData.profileImage || '/diverse-group-profile.png' }}
-            style={styles.profileImage}
-          />
-          {isEditing && (
-            <View style={styles.cameraIconOverlay}>
-              <FontAwesome5 name="camera" size={24} color="#fff" />
-            </View>
+        <TouchableOpacity 
+          onPress={handleEditSave} 
+          style={styles.editButton}
+          disabled={isSaving}
+        >
+          {isSaving ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.editButtonText}>{isEditing ? 'Save' : 'Edit'}</Text>
           )}
         </TouchableOpacity>
-        <View style={styles.formContainer}>
-          {/* Your Name */}
-          <Text style={styles.sectionTitle}>Your Name</Text>
-          {renderTextInputField('First Name', 'firstName')}
-          {renderTextInputField('Middle Name', 'middleName')}
-          {renderTextInputField('Last Name', 'lastName')}
-          {/* Date of Birth */}
-          {renderTextInputField('Date of Birth', 'dob')}
-          {/* Sex */}
-          {renderPickerField('Sex', 'sex', ['Male', 'Female', 'Other'])}
-          {/* Phone Number */}
-          {renderTextInputField('Phone Number', 'phoneNumber')}
-          {/* Address in the Philippines */}
-          <Text style={styles.sectionTitle}>ADDRESS IN THE PHILIPPINES</Text>
-          {renderPickerField('Province', 'province', getProvinces)}
-          {renderPickerField('City', 'city', (data) => getCities(data.province))}
-          {renderPickerField('Municipality', 'municipality', (data) => getMunicipalities(data.province, data.city))}
-          {renderPickerField('Barangay', 'barangay', (data) => getBarangays(data.province, data.city, data.municipality))}
-          {renderTextInputField('Zip Code', 'zipCode')}
-          {renderTextInputField('House Number or Street Address', 'houseAddress')}
-          {renderPickerField('Route', 'route', Object.keys(routeData))}
-          {renderPickerField('To', 'routeTo', (data) => getRouteToOptions(data.route))}
-          {/* Contact and Account Info */}
-          {renderTextInputField('Email (if any)', 'email')}
-          {renderTextInputField('Facebook', 'facebook')}
-          {renderTextInputField('Username', 'username')}
-          {renderTextInputField('Password', 'password', '', true)}
-          {isEditing && renderTextInputField('Confirm Password', 'password', '', true, true)}
-          <TouchableOpacity style={styles.button} onPress={handleEditSave}>
-            <Text style={styles.buttonText}>{isEditing ? 'Update' : 'Edit'}</Text>
+      </View>
+
+      <ScrollView 
+        style={styles.scrollView} 
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.profileSection}>
+          <TouchableOpacity 
+            onPress={handleChooseProfileImage} 
+            style={styles.profileImageContainer}
+            disabled={!isEditing}
+          >
+            <View style={styles.profileImageWrapper}>
+              <Image
+                source={{ 
+                  uri: editableUserData.profileImage || 'https://via.placeholder.com/140x140/f0f0f0/999999?text=Profile' 
+                }}
+                style={styles.profileImage}
+              />
+              {isEditing && (
+                <View style={styles.cameraIconOverlay}>
+                  <FontAwesome5 name="camera" size={20} color="#fff" />
+                </View>
+              )}
+            </View>
+            {editableUserData.profileImage && isEditing && (
+              <TouchableOpacity 
+                onPress={handleDeleteProfileImage}
+                style={styles.deleteImageButton}
+              >
+                <FontAwesome5 name="trash-alt" size={14} color="#fff" />
+                <Text style={styles.deleteImageText}>Remove Photo</Text>
+              </TouchableOpacity>
+            )}
           </TouchableOpacity>
+          
+          <View style={styles.profileNameContainer}>
+            <Text style={styles.profileName}>
+              {userData.firstName || userData.middleName || userData.lastName
+                ? `${userData.firstName || ''} ${userData.middleName || ''} ${userData.lastName || ''}`.trim()
+                : 'Complete your profile'}
+            </Text>
+            <Text style={styles.profileSubtext}>Horse Operator</Text>
+          </View>
+        </View>
+
+        <View style={styles.formContainer}>
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <FontAwesome5 name="user" size={16} color="#CD853F" />
+              <Text style={styles.sectionTitle}>Personal Information</Text>
+            </View>
+            {renderTextInputField('First Name', 'firstName', 'Enter first name', 'user')}
+            {renderTextInputField('Middle Name', 'middleName', 'Enter middle name (optional)')}
+            {renderTextInputField('Last Name', 'lastName', 'Enter last name', 'user')}
+            {renderTextInputField('Date of Birth', 'dob', 'Select date of birth')}
+            <DropdownField
+              label="Sex"
+              value={editableUserData.sex || ''}
+              placeholder="Select sex"
+              options={sexOptions}
+              onSelect={(value) => setEditableUserData((prev) => ({ ...prev, sex: value }))}
+              isEditing={isEditing}
+            />
+          </View>
+
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <FontAwesome5 name="phone" size={16} color="#CD853F" />
+              <Text style={styles.sectionTitle}>Contact Information</Text>
+            </View>
+            {renderTextInputField('Phone Number', 'phoneNumber', '+63 XXX XXX XXXX', 'mobile-alt')}
+            {renderTextInputField('Email', 'email', 'your.email@example.com', 'envelope')}
+            {renderTextInputField('Facebook', 'facebook', 'Facebook profile URL', 'facebook')}
+          </View>
+
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <FontAwesome5 name="map-marker-alt" size={16} color="#CD853F" />
+              <Text style={styles.sectionTitle}>Address</Text>
+            </View>
+            <DropdownField
+              label="Province"
+              value={editableUserData.province || ''}
+              placeholder="Select province"
+              options={Object.keys(philippinesData).sort()}
+              onSelect={(value) => {
+                setEditableUserData((prev) => ({
+                  ...prev,
+                  province: value,
+                  city: '',
+                  municipality: '',
+                  barangay: '',
+                }));
+              }}
+              isEditing={isEditing}
+            />
+            <DropdownField
+              label="City/Municipality"
+              value={editableUserData.city || ''}
+              placeholder="Select city or municipality"
+              options={availableCities}
+              onSelect={(value) => {
+                setEditableUserData((prev) => ({
+                  ...prev,
+                  city: value,
+                  municipality: '',
+                  barangay: '',
+                }));
+              }}
+              disabled={!editableUserData.province}
+              isEditing={isEditing}
+            />
+
+            {availableBarangays.length > 0 && (
+              <DropdownField
+                label="Barangay"
+                value={editableUserData.barangay || ''}
+                placeholder="Select barangay"
+                options={availableBarangays}
+                onSelect={(value) => setEditableUserData((prev) => ({ ...prev, barangay: value }))}
+                disabled={!editableUserData.city}
+                isEditing={isEditing}
+              />
+            )}
+
+            {editableUserData.city && availableBarangays.length === 0 && (
+              renderTextInputField('Barangay', 'barangay', 'Enter barangay')
+            )}
+
+            {renderTextInputField('Zip Code', 'zipCode', 'e.g. 6000')}
+            {renderTextInputField('House Number / Street', 'houseAddress', 'Enter complete address')}
+          </View>
+
+          <View style={styles.sectionCard}>
+            <View style={styles.sectionHeader}>
+              <FontAwesome5 name="route" size={16} color="#CD853F" />
+              <Text style={styles.sectionTitle}>Route Information</Text>
+            </View>
+            <DropdownField
+              label="Route From"
+              value={editableUserData.route || ''}
+              placeholder="Select your route"
+              options={routeOptions}
+              onSelect={(value) => setEditableUserData((prev) => ({ ...prev, route: value }))}
+              isEditing={isEditing}
+            />
+            <DropdownField
+              label="Route To"
+              value={editableUserData.routeTo || ''}
+              placeholder="Select destination"
+              options={toOptions}
+              onSelect={(value) => setEditableUserData((prev) => ({ ...prev, routeTo: value }))}
+              isEditing={isEditing}
+            />
+          </View>
+
+          {isEditing && (
+            <TouchableOpacity 
+              style={[styles.saveButton, isSaving && styles.saveButtonDisabled]} 
+              onPress={handleEditSave}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={[styles.saveButtonText, { marginLeft: 10 }]}>Updating...</Text>
+                </>
+              ) : (
+                <>
+                  <FontAwesome5 name="check" size={18} color="#fff" />
+                  <Text style={styles.saveButtonText}>Update Profile</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -454,126 +766,286 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingVertical: 16,
     backgroundColor: '#CD853F',
-    paddingTop: 50,
+    paddingTop: Platform.OS === 'ios' ? 50 : 16,
   },
   backButton: {
-    marginRight: 15,
+    padding: 8,
   },
   headerTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '700',
     color: '#fff',
+    flex: 1,
+    marginLeft: 12,
+  },
+  editButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  editButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  scrollView: {
+    flex: 1,
+    backgroundColor: '#F8F9FA',
   },
   scrollViewContent: {
+    paddingBottom: 40,
+  },
+  loadingContainer: {
     flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
+  },
+  profileSection: {
     backgroundColor: '#fff',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30,
-    marginTop: -20,
-    paddingTop: 20,
+    paddingVertical: 30,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
   },
   profileImageContainer: {
     alignItems: 'center',
-    marginTop: 20,
-    marginBottom: 30,
+    marginBottom: 16,
+  },
+  profileImageWrapper: {
     position: 'relative',
   },
   profileImage: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#e0e0e0',
-    borderWidth: 4,
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: '#E5E7EB',
+    borderWidth: 5,
     borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
   },
   cameraIconOverlay: {
     position: 'absolute',
-    bottom: 0,
-    right: '35%',
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    bottom: 5,
+    right: 5,
+    backgroundColor: '#CD853F',
+    borderRadius: 25,
+    padding: 12,
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  deleteImageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#EF4444',
     borderRadius: 20,
-    padding: 8,
+    gap: 6,
+  },
+  deleteImageText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  profileNameContainer: {
+    alignItems: 'center',
+  },
+  profileName: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  profileSubtext: {
+    fontSize: 15,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   formContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 50,
+    paddingHorizontal: 16,
+    paddingTop: 20,
+  },
+  sectionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: '#F3F4F6',
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#CD853F',
-    marginTop: 20,
-    marginBottom: 10,
-    textTransform: 'uppercase',
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginLeft: 10,
   },
   inputGroup: {
-    marginBottom: 15,
+    marginBottom: 16,
   },
   inputLabel: {
     fontSize: 14,
-    color: '#333',
-    marginBottom: 5,
-    fontWeight: '500',
+    color: '#374151',
+    marginBottom: 8,
+    fontWeight: '600',
   },
-  inputWithIcon: {
+  inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    backgroundColor: '#F9FAFB',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-  input: {
-    flex: 1,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#333',
+  inputIconLeft: {
+    marginRight: 12,
   },
-  inputIcon: {
-    paddingRight: 15,
+  inputText: {
+    fontSize: 15,
+    color: '#1F2937',
+    fontWeight: '500',
   },
-  passwordToggle: {
-    padding: 10,
+  placeholderText: {
+    color: '#9CA3AF',
+    fontWeight: '400',
   },
-  pickerContainer: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    overflow: 'hidden',
-    backgroundColor: '#fff',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  picker: {
-    height: 50,
-    width: '100%',
-  },
-  pickerItem: {
-    fontSize: 16,
-    color: '#333',
-  },
-  pickerIcon: {
-    position: 'absolute',
-    right: 15,
-    top: '50%',
-    marginTop: -8,
-  },
-  button: {
-    backgroundColor: '#CD853F',
-    borderRadius: 10,
-    paddingVertical: 15,
+  dropdownContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 30,
-    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#F9FAFB',
   },
-  buttonText: {
-    color: '#fff',
+  disabledDropdown: {
+    backgroundColor: '#E5E7EB',
+    opacity: 0.7,
+  },
+  dropdownText: {
+    fontSize: 15,
+    color: '#1F2937',
+    fontWeight: '500',
+    flex: 1,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '70%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  modalTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  optionsList: {
+    maxHeight: 400,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  selectedOption: {
+    backgroundColor: '#FEF3E2',
+  },
+  optionText: {
+    fontSize: 16,
+    color: '#374151',
+    fontWeight: '500',
+  },
+  selectedOptionText: {
+    color: '#CD853F',
+    fontWeight: '700',
+  },
+  saveButton: {
+    flexDirection: 'row',
+    backgroundColor: '#CD853F',
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 24,
+    shadowColor: '#CD853F',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+    gap: 10,
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#D3A876',
+    opacity: 0.7,
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 17,
+    fontWeight: '700',
   },
 });
 

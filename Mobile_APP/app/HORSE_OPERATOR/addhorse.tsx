@@ -11,6 +11,7 @@ import {
   Image,
   Platform,
   KeyboardAvoidingView,
+  ActivityIndicator,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
@@ -33,7 +34,7 @@ interface Horse {
   image: string | null;
 }
 
-const API_URL = "http://192.168.101.4:8000/api/horse_operator";
+const API_URL = "http://192.168.101.2:8000/api/horse_operator";
 
 const AddHorseScreen = () => {
   const router = useRouter();
@@ -54,6 +55,7 @@ const AddHorseScreen = () => {
     sex: false,
     breed: false,
   });
+  const [isUploading, setIsUploading] = useState(false);
 
   const sexOptions = ['Stallion', 'Gelding', 'Mare'];
   const breedOptions = [
@@ -132,7 +134,7 @@ const AddHorseScreen = () => {
         color: newHorse.color,
         height: newHorse.height,
         weight: newHorse.weight,
-        image: newHorse.image,
+        hasImage: !!newHorse.image,
       });
 
       const response = await fetch(`${API_URL}/add_horse/`, {
@@ -172,6 +174,8 @@ const AddHorseScreen = () => {
       return;
     }
 
+    setIsUploading(true);
+
     try {
       const currentUser = await getCurrentUser();
       if (!currentUser) {
@@ -189,6 +193,37 @@ const AddHorseScreen = () => {
 
       console.log("👤 Using user_id:", userId);
 
+      // Convert image to base64 if exists
+      let imageBase64 = null;
+      if (imageUri) {
+        try {
+          console.log("📸 Converting image to base64...");
+          const response = await fetch(imageUri);
+          const blob = await response.blob();
+          
+          // Convert blob to base64
+          imageBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          });
+          
+          console.log("✅ Image converted to base64 (length:", imageBase64.length, ")");
+        } catch (imageError) {
+          console.error("⚠️ Error converting image:", imageError);
+          // Show alert but allow user to continue
+          Alert.alert(
+            "Warning", 
+            "Could not process image. Horse will be saved without image. Continue?",
+            [
+              { text: "Cancel", style: "cancel", onPress: () => { setIsUploading(false); return; } },
+              { text: "Continue", style: "default" }
+            ]
+          );
+        }
+      }
+
       const newHorse: Horse = {
         id: Date.now().toString(),
         name: formData.name,
@@ -199,7 +234,7 @@ const AddHorseScreen = () => {
         color: formData.color,
         height: formData.height,
         weight: formData.weight,
-        image: imageUri || null,
+        image: imageBase64, // Send base64 string instead of URI
       };
 
       const backendRes = await saveHorseToBackend(newHorse, userId);
@@ -212,6 +247,8 @@ const AddHorseScreen = () => {
     } catch (error: any) {
       console.error("❌ Error in handleAddHorse:", error);
       Alert.alert("Error", error.message || "Failed to save horse. Please try again.");
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -254,9 +291,9 @@ const AddHorseScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Clean Header */}
+      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} disabled={isUploading}>
           <FontAwesome5 name="arrow-left" size={20} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.title}>Add New Horse</Text>
@@ -276,7 +313,11 @@ const AddHorseScreen = () => {
         >
           {/* Photo Section */}
           <View style={styles.photoSection}>
-            <TouchableOpacity style={styles.photoContainer} onPress={handleImagePicker}>
+            <TouchableOpacity 
+              style={styles.photoContainer} 
+              onPress={handleImagePicker}
+              disabled={isUploading}
+            >
               {imageUri ? (
                 <Image source={{ uri: imageUri }} style={styles.photo} />
               ) : (
@@ -300,6 +341,7 @@ const AddHorseScreen = () => {
                 placeholder="Enter horse name"
                 placeholderTextColor="#999"
                 returnKeyType="next"
+                editable={!isUploading}
               />
             </View>
 
@@ -315,6 +357,7 @@ const AddHorseScreen = () => {
                   placeholder="Years"
                   placeholderTextColor="#999"
                   returnKeyType="next"
+                  editable={!isUploading}
                 />
               </View>
               
@@ -323,6 +366,7 @@ const AddHorseScreen = () => {
                 <TouchableOpacity
                   style={styles.dateInput}
                   onPress={() => setShowDatePicker(true)}
+                  disabled={isUploading}
                 >
                   <Text style={[styles.dateText, !formData.dateOfBirth && styles.placeholder]}>
                     {formData.dateOfBirth || "YYYY-MM-DD"}
@@ -356,6 +400,7 @@ const AddHorseScreen = () => {
                 placeholder="e.g., Bay, Black, Chestnut"
                 placeholderTextColor="#999"
                 returnKeyType="next"
+                editable={!isUploading}
               />
             </View>
 
@@ -370,6 +415,7 @@ const AddHorseScreen = () => {
                   placeholder="e.g., 15.2 hands"
                   placeholderTextColor="#999"
                   returnKeyType="next"
+                  editable={!isUploading}
                 />
               </View>
               
@@ -383,13 +429,25 @@ const AddHorseScreen = () => {
                   placeholderTextColor="#999"
                   keyboardType="numeric"
                   returnKeyType="done"
+                  editable={!isUploading}
                 />
               </View>
             </View>
 
             {/* Submit Button */}
-            <TouchableOpacity style={styles.submitBtn} onPress={handleAddHorse}>
-              <Text style={styles.submitText}>Add Horse</Text>
+            <TouchableOpacity 
+              style={[styles.submitBtn, isUploading && styles.submitBtnDisabled]} 
+              onPress={handleAddHorse}
+              disabled={isUploading}
+            >
+              {isUploading ? (
+                <View style={styles.uploadingContainer}>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={[styles.submitText, { marginLeft: 10 }]}>Uploading...</Text>
+                </View>
+              ) : (
+                <Text style={styles.submitText}>Add Horse</Text>
+              )}
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -401,7 +459,7 @@ const AddHorseScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff', // Changed to white to match form
+    backgroundColor: '#fff',
   },
   header: {
     backgroundColor: '#CD853F',
@@ -467,9 +525,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     paddingHorizontal: 20,
     paddingTop: 24,
-    paddingBottom: 24, // Reduced padding
-    flex: 1, // Makes form fill remaining space
-    minHeight: '100%', // Ensures form covers full height
+    paddingBottom: 24,
+    flex: 1,
+    minHeight: '100%',
   },
   inputGroup: {
     marginBottom: 20,
@@ -574,7 +632,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f8f8',
   },
   dropdownItemText: {
-    fontSize: 16,
+    fontSize: 16, 
     color: '#333',
   },
   selectedText: {
@@ -588,10 +646,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 24,
   },
+  submitBtnDisabled: {
+    backgroundColor: '#D3A864',
+    opacity: 0.7,
+  },
   submitText: {
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  uploadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

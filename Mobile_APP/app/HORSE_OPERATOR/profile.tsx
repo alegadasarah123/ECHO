@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,19 +8,20 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 
-// Define a more comprehensive UserData type for profile.tsx
+// User data interface matching your database schema
 interface UserData {
+  user_id?: string;
   firstName?: string;
   middleName?: string;
   lastName?: string;
-  profileImage?: string;
-  // Add other fields that might be stored in 'current_user_data'
-  dateOfBirth?: string;
+  dob?: string;
   sex?: string;
   phoneNumber?: string;
   province?: string;
@@ -28,42 +29,135 @@ interface UserData {
   municipality?: string;
   barangay?: string;
   zipCode?: string;
-  houseNumber?: string;
+  houseAddress?: string;
   route?: string;
-  to?: string;
+  routeTo?: string;
   email?: string;
   facebook?: string;
-  username?: string;
-  password?: string;
+  profileImage?: string;
+  role?: string;
 }
+
+const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
 
 const Profile = () => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('profile');
-  // Initialize userData with a more complete structure
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | undefined>(undefined);
+  
+  // Initialize userData state
   const [userData, setUserData] = useState<UserData>({
     firstName: 'User',
-    profileImage: '/placeholder.svg?height=100&width=100',
+    profileImage: 'https://via.placeholder.com/100x100/f0f0f0/999999?text=Profile',
   });
 
-  useEffect(() => {
-    const loadUserData = async () => {
-      try {
-        const currentUserData = await AsyncStorage.getItem('current_user_data');
-        if (currentUserData) {
-          const user: UserData = JSON.parse(currentUserData);
-          setUserData({
-            ...user, // Spread all user properties
-            firstName: `${user.firstName || ''}`.trim() || 'User',
-            profileImage: user.profileImage || '/placeholder.svg?height=100&width=100',
-          });
+  // Load user ID from secure storage
+  const loadUserId = async (): Promise<string | undefined> => {
+    try {
+      const storedUser = await SecureStore.getItemAsync("user_data");
+      if (storedUser) {
+        const parsed = JSON.parse(storedUser);
+        const id = parsed.user_id || parsed.id;
+        if (id) {
+          console.log("🔑 Loaded user_id from storage:", id);
+          setUserId(id);
+          return id;
         }
-      } catch (error) {
-        console.error('Error loading user data:', error);
       }
-    };
-    loadUserData();
-  }, []);
+    } catch (error) {
+      console.error("❌ Error loading user data:", error);
+    }
+    return undefined;
+  };
+
+  // Fetch user profile
+  const fetchUserProfile = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Get user ID
+      let uid = userId;
+      if (!uid) {
+        const loadedUserId = await loadUserId();
+        if (!loadedUserId) {
+          console.error("No user_id found, cannot fetch profile.");
+          setError("No user ID found. Please log in again.");
+          setLoading(false);
+          return;
+        }
+        uid = loadedUserId;
+      }
+
+      console.log("Fetching profile for user_id:", uid);
+      
+      const url = `${API_BASE_URL}/get_horse_operator_profile/?user_id=${encodeURIComponent(uid)}`;
+      console.log("Request URL:", url);
+
+      const response = await fetch(url);
+      console.log("Response status:", response.status);
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        console.log("Error response:", errData);
+        throw new Error(errData.error || `Failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("Profile data received:", data);
+
+      // Transform data to match frontend interface
+      const transformedData: UserData = {
+        user_id: uid,
+        firstName: data.op_fname || '',
+        middleName: data.op_mname || '',
+        lastName: data.op_lname || '',
+        dob: data.op_dob || '',
+        sex: data.op_sex || '',
+        phoneNumber: data.op_phone_num || '',
+        province: data.op_province || 'Cebu',
+        city: data.op_city || '',
+        municipality: data.op_municipality || '',
+        barangay: data.op_brgy || '',
+        zipCode: data.op_zipcode || '',
+        houseAddress: data.op_house_add || '',
+        route: data.op_routefrom || '',
+        routeTo: data.op_routeto || '',
+        email: data.op_email || '',
+        facebook: data.op_fb || '',
+        profileImage: data.op_image || 'https://via.placeholder.com/100x100/f0f0f0/999999?text=Profile',
+        role: 'horse_operator'
+      };
+
+      setUserData(transformedData);
+      setLoading(false);
+    } catch (error: any) {
+      console.error("Error loading profile:", error);
+      setError(error.message || "Unable to load profile data");
+      setLoading(false);
+      
+      Alert.alert(
+        'Error',
+        'Failed to load profile data. Please try again.',
+        [
+          {
+            text: 'Retry',
+            onPress: () => fetchUserProfile(),
+          },
+          {
+            text: 'Cancel',
+            style: 'cancel',
+          },
+        ]
+      );
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    fetchUserProfile();
+  }, [fetchUserProfile]);
 
   const menuItems = [
     {
@@ -94,21 +188,24 @@ const Profile = () => {
 
   const handleProfileInfo = () => {
     console.log('Opening Profile Information');
-    // Pass the entire userData object to the profileinfo screen
     router.push({
-      pathname: '/profileinfo',
-      params: { userData: JSON.stringify(userData) }, // Stringify to pass complex objects
+      pathname: '../HORSE_OPERATOR/profileinfo',
+      params: { 
+        user_id: userId || userData.user_id,
+      },
     });
   };
 
   const handleTermsAndPolicies = () => {
     console.log('Opening Terms & Policies');
-    router.push('/terms');
+    router.push('../HORSE_OPERATOR/terms');
   };
+
   const handleHelpAndSupport = () => {
     console.log('Opening Help & Support');
-    router.push('/helpsupp');
+    router.push('../HORSE_OPERATOR/helpsupp');
   };
+
   const handleLogOut = () => {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
@@ -116,19 +213,49 @@ const Profile = () => {
         text: 'Log Out',
         style: 'destructive',
         onPress: async () => {
+          console.log('User logged out');
+          
+          // Clear secure storage
           try {
-            await AsyncStorage.removeItem('user_logged_in');
-            await AsyncStorage.removeItem('current_user');
-            await AsyncStorage.removeItem('current_user_data');
-            console.log('User logged out');
-            router.replace('/Login');
+            await SecureStore.deleteItemAsync("user_data");
+            await SecureStore.deleteItemAsync("user_token");
           } catch (error) {
-            console.error('Logout error:', error);
+            console.error("Error clearing storage:", error);
           }
+          
+          // Clear user state
+          setUserData({
+            firstName: 'User',
+            profileImage: 'https://via.placeholder.com/100x100/f0f0f0/999999?text=Profile',
+          });
+          
+          // Navigate to login screen
+          router.replace('/auth/login');
         },
       },
     ]);
   };
+
+  // Get display name
+  const getDisplayName = () => {
+    const firstName = userData.firstName || 'User';
+    const middleName = userData.middleName ? `${userData.middleName[0]}.` : '';
+    const lastName = userData.lastName || '';
+    
+    return `${firstName} ${middleName} ${lastName}`.trim();
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#CD853F" />
+          <Text style={styles.loadingText}>Loading profile...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -139,8 +266,20 @@ const Profile = () => {
             source={{ uri: userData.profileImage }}
             style={styles.profileImage}
           />
-          <Text style={styles.userName}>{userData.firstName}</Text>
+          <Text style={styles.userName}>{getDisplayName()}</Text>
         </View>
+
+        {/* Error Message */}
+        {error && (
+          <View style={styles.errorContainer}>
+            <FontAwesome5 name="exclamation-circle" size={20} color="#ff3b30" />
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity onPress={fetchUserProfile} style={styles.retryButton}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* Menu Items */}
         <View style={styles.menuContainer}>
           {menuItems.map((item) => (
@@ -148,28 +287,37 @@ const Profile = () => {
               key={item.id}
               style={styles.menuItem}
               onPress={item.onPress}
+              activeOpacity={0.7}
             >
               <View style={styles.menuItemContent}>
-                <FontAwesome5
-                  name={item.icon}
-                  size={20}
-                  color="#333"
-                  style={styles.menuIcon}
-                />
+                <View style={styles.iconCircle}>
+                  <FontAwesome5
+                    name={item.icon}
+                    size={20}
+                    color="#CD853F"
+                    style={styles.menuIcon}
+                  />
+                </View>
                 <Text style={styles.menuText}>{item.title}</Text>
               </View>
               <FontAwesome5 name="chevron-right" size={16} color="#ccc" />
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* App Version */}
+        <View style={styles.versionContainer}>
+          <Text style={styles.versionText}>Version 1.0.0</Text>
+        </View>
       </ScrollView>
+
       {/* Bottom Navigation */}
       <View style={styles.bottomNav}>
         <TouchableOpacity
           style={[styles.navItem, activeTab === 'home' && styles.activeNavItem]}
           onPress={() => {
             setActiveTab('home');
-            router.push('/home');
+            router.push('../HORSE_OPERATOR/home');
           }}
         >
           <FontAwesome5
@@ -182,7 +330,7 @@ const Profile = () => {
           style={[styles.navItem, activeTab === 'horse' && styles.activeNavItem]}
           onPress={() => {
             setActiveTab('horse');
-            router.push('/horse');
+            router.push('../HORSE_OPERATOR/horse');
           }}
         >
           <FontAwesome5
@@ -195,7 +343,7 @@ const Profile = () => {
           style={[styles.navItem, activeTab === 'message' && styles.activeNavItem]}
           onPress={() => {
             setActiveTab('message');
-            router.push('/message');
+            router.push('../HORSE_OPERATOR/Hmessage');
           }}
         >
           <FontAwesome5
@@ -208,7 +356,7 @@ const Profile = () => {
           style={[styles.navItem, activeTab === 'calendar' && styles.activeNavItem]}
           onPress={() => {
             setActiveTab('calendar');
-            router.push('/calendar');
+            router.push('../HORSE_OPERATOR/Hcalendar');
           }}
         >
           <FontAwesome5
@@ -221,7 +369,6 @@ const Profile = () => {
           style={[styles.navItem, activeTab === 'profile' && styles.activeNavItem]}
           onPress={() => {
             setActiveTab('profile');
-            router.push('/profile');
           }}
         >
           <FontAwesome5
@@ -238,32 +385,110 @@ const Profile = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F8F9FA',
   },
   container: {
     flex: 1,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
   },
   profileHeader: {
     backgroundColor: '#CD853F',
     alignItems: 'center',
     paddingVertical: 40,
     paddingHorizontal: 20,
+    paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
   profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: '#e0e0e0',
     marginBottom: 15,
+    borderWidth: 4,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 5,
   },
   userName: {
-    fontSize: 24,
+    fontSize: 26,
     fontWeight: 'bold',
     color: '#fff',
+    marginBottom: 5,
+  },
+  userEmail: {
+    fontSize: 14,
+    color: '#fff',
+    opacity: 0.9,
+    marginBottom: 10,
+  },
+  roleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    marginTop: 5,
+  },
+  roleText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  errorContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffe5e5',
+    padding: 15,
+    margin: 15,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  errorText: {
+    flex: 1,
+    marginLeft: 10,
+    color: '#ff3b30',
+    fontSize: 14,
+  },
+  retryButton: {
+    backgroundColor: '#ff3b30',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
   menuContainer: {
     backgroundColor: '#fff',
-    marginTop: 0,
+    marginTop: 15,
+    marginHorizontal: 15,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
     paddingBottom: 100,
   },
   menuItem: {
@@ -280,8 +505,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  menuIcon: {
+  iconCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FEF3E2',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginRight: 15,
+  },
+  menuIcon: {
     width: 20,
   },
   menuText: {
@@ -289,21 +522,35 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '500',
   },
+  versionContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+    marginBottom: 20,
+  },
+  versionText: {
+    fontSize: 12,
+    color: '#999',
+  },
   bottomNav: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     paddingVertical: 10,
     backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: '#ccc',
+    borderTopColor: '#E5E7EB',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
   },
   navItem: {
     alignItems: 'center',
     padding: 10,
+    borderRadius: 20,
   },
   activeNavItem: {
-    backgroundColor: '#f0e6dc',
-    borderRadius: 20,
+    backgroundColor: '#FEF3E2',
   },
 });
 
