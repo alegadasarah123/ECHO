@@ -25,7 +25,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
 
 const TableSkeleton = () => {
   return (
@@ -1368,33 +1368,44 @@ function CtuHorseRecord() {
   };
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
-  const handleNotificationClick = async (notification) => {
-  // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev =>
-    prev.map(notif =>
-      notif.id === notification.id ? { ...notif, read: true } : notif
+   const handleNotificationClick = async (notification) => {
+  const notifId = notification?.notif_id || notification?.id; // fallback support
+
+  if (!notifId) {
+    console.warn("Notification ID is missing:", notification);
+  }
+
+  // Mark as read in frontend immediately
+  setNotifications((prev) =>
+    prev.map((notif) =>
+      notif.notif_id === notifId || notif.id === notifId
+        ? { ...notif, read: true }
+        : notif
     )
   );
 
-  // Mark notification as read in backend
-  try {
-    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-      method: "POST",
-      credentials: "include",
-    });
-  } catch (err) {
-    console.error("Error marking notification as read:", err);
+  // Mark as read in backend (only if valid ID)
+  if (notifId) {
+    try {
+      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
   }
 
-  // Handle navigation based on notification content
-  const message = notification.message.toLowerCase();
+  const message = (notification.message || "").toLowerCase();
 
+  // Navigate for account-related notifications
   if (
     message.includes("new registration") ||
     message.includes("new veterinarian approved") ||
     message.includes("veterinarian approved") ||
     message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered")
+    message.includes("veterinarian registered") ||
+    message.includes("veterinarian pending")
   ) {
     navigate("/CtuAccountApproval", {
       state: {
@@ -1405,7 +1416,10 @@ function CtuHorseRecord() {
     return;
   }
 
-  if (message.includes("pending medical record access") || message.includes("requested access")) {
+  if (
+    message.includes("pending medical record access") ||
+    message.includes("requested access")
+  ) {
     navigate("/CtuAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -1415,7 +1429,7 @@ function CtuHorseRecord() {
     return;
   }
 
-  // Only navigate to CtuAnnouncement for comment-related notifications
+// Only navigate to CtuAnnouncement for comment-related notifications
   if (message.includes("comment")) {
     navigate("/CtuAnnouncement", {
       state: {
@@ -1425,7 +1439,8 @@ function CtuHorseRecord() {
     });
     return;
   }
-};
+}
+
 
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -1809,18 +1824,16 @@ function CtuHorseRecord() {
         <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
       </div>
 
-      <div className="flex-1 flex flex-col w-full md:w-[calc(100%-250px)]">
-        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+      <div className="flex-1 flex flex-col">
+        <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
           <div className="flex flex-col">
-            <h2 className="text-2xl font-bold text-[#b91c1c]">
+            <h2 className="text-2xl font-bold text-gray-800 mb-1">
               {currentView === 'list' && 'Horse Records'}
               {currentView === 'horse' && 'Horse Details'}
               {currentView === 'medical' && 'Medical Record Details'}
               {currentView === 'treatment' && 'Treatment History Details'}
             </h2>
-            <p className="text-sm text-gray-600 mt-1 font-normal">
-              {currentView === 'list' && 'Manage and view all horse medical records and treatment histories'}
-            </p>
+            
           </div>
 
           <div className="flex items-center gap-4">

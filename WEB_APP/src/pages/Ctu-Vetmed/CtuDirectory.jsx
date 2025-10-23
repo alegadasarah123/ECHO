@@ -12,18 +12,15 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  Facebook,
   Folder,
-  Globe,
   Info,
-  Mail,
   MapPin,
   Phone,
   RefreshCw,
   Search,
   User,
   X,
-  XCircle,
+  XCircle
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -33,7 +30,7 @@ import NotificationModal from "./CtuNotif"
 const initialDirectoryData = []
 const initialNotifications = []
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
 
 function CtuDirectory() {
   const navigate = useNavigate()
@@ -108,34 +105,44 @@ function CtuDirectory() {
     }
   }
 
-  // HANDLE INDIVIDUAL NOTIFICATION CLICK
   const handleNotificationClick = async (notification) => {
-  // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev =>
-    prev.map(notif =>
-      notif.id === notification.id ? { ...notif, read: true } : notif
+  const notifId = notification?.notif_id || notification?.id; // fallback support
+
+  if (!notifId) {
+    console.warn("Notification ID is missing:", notification);
+  }
+
+  // Mark as read in frontend immediately
+  setNotifications((prev) =>
+    prev.map((notif) =>
+      notif.notif_id === notifId || notif.id === notifId
+        ? { ...notif, read: true }
+        : notif
     )
   );
 
-  // Mark notification as read in backend
-  try {
-    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-      method: "POST",
-      credentials: "include",
-    });
-  } catch (err) {
-    console.error("Error marking notification as read:", err);
+  // Mark as read in backend (only if valid ID)
+  if (notifId) {
+    try {
+      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
   }
 
-  // Handle navigation based on notification content
-  const message = notification.message.toLowerCase();
+  const message = (notification.message || "").toLowerCase();
 
+  // Navigate for account-related notifications
   if (
     message.includes("new registration") ||
     message.includes("new veterinarian approved") ||
     message.includes("veterinarian approved") ||
     message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered")
+    message.includes("veterinarian registered") ||
+    message.includes("veterinarian pending")
   ) {
     navigate("/CtuAccountApproval", {
       state: {
@@ -146,7 +153,10 @@ function CtuDirectory() {
     return;
   }
 
-  if (message.includes("pending medical record access") || message.includes("requested access")) {
+  if (
+    message.includes("pending medical record access") ||
+    message.includes("requested access")
+  ) {
     navigate("/CtuAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -156,7 +166,7 @@ function CtuDirectory() {
     return;
   }
 
-  // Only navigate to CtuAnnouncement for comment-related notifications
+// Only navigate to CtuAnnouncement for comment-related notifications
   if (message.includes("comment")) {
     navigate("/CtuAnnouncement", {
       state: {
@@ -166,67 +176,15 @@ function CtuDirectory() {
     });
     return;
   }
-};
+}
 
-  // HANDLE OPENING USER MANAGEMENT FROM NOTIFICATIONS
-  const handleOpenUserManagement = async (notification = null) => {
-    console.log('Opening User Management from dashboard notification:', notification)
-
-    if (notification) {
-      // Mark notification as read in frontend
-      setNotifications(prev =>
-        prev.map(notif =>
-          notif.id === notification.id ? { ...notif, read: true } : notif
-        )
-      )
-
-      // Mark notification as read in backend
-      try {
-        const res = await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-          method: "POST",
-          credentials: "include",
-        })
-        const data = await res.json()
-        console.log("Mark notification read result:", data)
-      } catch (err) {
-        console.error("Error marking notification as read:", err)
-      }
-
-      const message = notification.message.toLowerCase()
-
-      if (
-        message.includes("new registration") ||
-        message.includes("approved") ||
-        message.includes("declined")
-      ) {
-        navigate("/CtuAccountApproval", {
-          state: {
-            highlightedNotification: notification,
-            shouldHighlight: true,
-          },
-        })
-      } else if (message.includes("pending medical record access")) {
-        navigate("/CtuAccessRequest", {
-          state: {
-            highlightedNotification: notification,
-            shouldHighlight: true,
-          },
-        })
-      } else if (message.includes("emergency") || message.includes("sos")) {
-        navigate("/CtuSOS")
-      } else {
-        console.warn("No matching navigation route for this notification:", notification)
-      }
-    } else {
-      console.warn("No notification provided — no navigation performed")
-    }
-  }
+ 
 
   // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("https://echo-ebl8.onrender.comm/api/ctu_vetmed/get_vetnotifications/")
+    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -416,6 +374,17 @@ function CtuDirectory() {
           zip_code: vet.vet_zipcode || "N/A",
           middle_name: vet.vet_mname || "N/A",
           license: vet.vet_license_num || "N/A",
+          // Add clinic address fields
+          vet_address_is_clinic: vet.vet_address_is_clinic || false,
+          vet_clinic_street: vet.vet_clinic_street || "N/A",
+          vet_clinic_brgy: vet.vet_clinic_brgy || "N/A",
+          vet_clinic_city: vet.vet_clinic_city || "N/A",
+          vet_clinic_province: vet.vet_clinic_province || "N/A",
+          vet_clinic_zipcode: vet.vet_clinic_zipcode || "N/A",
+          // Add address field for display in table - use clinic address if available
+          address: vet.vet_address_is_clinic 
+            ? `${vet.vet_clinic_brgy || ''}, ${vet.vet_clinic_city || ''}, ${vet.vet_clinic_province || ''}`.replace(/^,\s*|,\s*$/g, '').trim() || "N/A"
+            : `${vet.vet_brgy || ''}, ${vet.vet_city || ''}, ${vet.vet_province || ''}`.replace(/^,\s*|,\s*$/g, '').trim() || "N/A"
         })),
         ...data.kutseros.map((k) => ({
           name: `${k.kutsero_fname} ${k.kutsero_lname}`,
@@ -430,6 +399,8 @@ function CtuDirectory() {
           barangay: k.kutsero_brgy || "N/A",
           zip_code: k.kutsero_zipcode || "N/A",
           middle_name: k.kutsero_mname || "N/A",
+          // Add address field for display in table
+          address: `${k.kutsero_brgy || ''}, ${k.kutsero_city || ''}, ${k.kutsero_province || ''}`.replace(/^,\s*|,\s*$/g, '').trim() || "N/A"
         })),
         ...data.horse_operators.map((h) => ({
           name: `${h.op_fname} ${h.op_mname || ""} ${h.op_lname}`.trim(),
@@ -444,6 +415,8 @@ function CtuDirectory() {
           barangay: h.op_brgy || "N/A",
           zip_code: h.op_zipcode || "N/A",
           middle_name: h.op_mname || "N/A",
+          // Add address field for display in table
+          address: `${h.op_brgy || ''}, ${h.op_city || ''}, ${h.op_province || ''}`.replace(/^,\s*|,\s*$/g, '').trim() || "N/A"
         })),
       ]
 
@@ -488,7 +461,10 @@ function CtuDirectory() {
                 Role
               </th>
               <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
-                Email
+                Gender
+              </th>
+              <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                Address
               </th>
               <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
                 Status
@@ -511,6 +487,9 @@ function CtuDirectory() {
                   <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
                 </td>
                 <td className="px-4 py-4">
+                  <div className="h-4 bg-gray-200 rounded animate-pulse"></div>
+                </td>
+                <td className="px-4 py-4">
                   <div className="h-6 w-16 bg-gray-200 rounded animate-pulse"></div>
                 </td>
                 <td className="px-4 py-4">
@@ -524,34 +503,38 @@ function CtuDirectory() {
     )
   }
 
- // Function to get initials from first and last name - FIXED SIZE
-const getInitials = (firstName, lastName) => {
-  const firstInitial = firstName ? firstName.charAt(0).toUpperCase() : '';
-  const lastInitial = lastName ? lastName.charAt(0).toUpperCase() : '';
-  return firstInitial + lastInitial;
-};
-// Function to generate consistent background color based on initials
-const getInitialsBackgroundColor = (initials) => {
-  const colors = [
-    'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 
-    'bg-indigo-500', 'bg-teal-500', 'bg-orange-500', 'bg-cyan-500',
-    'bg-red-500', 'bg-amber-500', 'bg-lime-500', 'bg-emerald-500'
-  ];
-  
-  // Simple hash function to get consistent color for same initials
-  let hash = 0;
-  for (let i = 0; i < initials.length; i++) {
-    hash = initials.charCodeAt(i) + ((hash << 5) - hash);
-  }
-  
-  const colorIndex = Math.abs(hash) % colors.length;
-  return colors[colorIndex];
-};
+  // Function to get initials from first and last name - FIXED SIZE
+  const getInitials = (firstName, lastName) => {
+    const firstInitial = firstName ? firstName.charAt(0).toUpperCase() : '';
+    const lastInitial = lastName ? lastName.charAt(0).toUpperCase() : '';
+    return firstInitial + lastInitial;
+  };
+
+  // Function to generate consistent background color based on initials
+  const getInitialsBackgroundColor = (initials) => {
+    const colors = [
+      'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500', 
+      'bg-indigo-500', 'bg-teal-500', 'bg-orange-500', 'bg-cyan-500',
+      'bg-red-500', 'bg-amber-500', 'bg-lime-500', 'bg-emerald-500'
+    ];
+    
+    // Simple hash function to get consistent color for same initials
+    let hash = 0;
+    for (let i = 0; i < initials.length; i++) {
+      hash = initials.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    const colorIndex = Math.abs(hash) % colors.length;
+    return colors[colorIndex];
+  };
 
   const ProfileModal = ({ person, onClose }) => {
     if (!person) return null
 
-    console.log("Person data received:", person) // Debug log
+    console.log("Person data received:", person)
+
+    // Add state for full-size image modal
+    const [showEnlargedPhoto, setShowEnlargedPhoto] = useState(false)
 
     // Map person to a normalized structure
     const normalizedPerson = (() => {
@@ -576,6 +559,13 @@ const getInitialsBackgroundColor = (initials) => {
           organization: person.vet_org,
           status: person.users?.status || "N/A",
           profile_photo: person.vet_profile_photo || null,
+          // Clinic address fields
+          vet_address_is_clinic: person.vet_address_is_clinic || false,
+          vet_clinic_street: person.vet_clinic_street || "N/A",
+          vet_clinic_brgy: person.vet_clinic_brgy || "N/A",
+          vet_clinic_city: person.vet_clinic_city || "N/A",
+          vet_clinic_province: person.vet_clinic_province || "N/A",
+          vet_clinic_zipcode: person.vet_clinic_zipcode || "N/A",
         }
       }
 
@@ -627,13 +617,10 @@ const getInitialsBackgroundColor = (initials) => {
     const getFacebookUrl = (fbValue) => {
       if (!fbValue || fbValue === "N/A") return null;
       
-      // If it already starts with http, return as is
       if (fbValue.startsWith('http://') || fbValue.startsWith('https://')) {
         return fbValue;
       }
       
-      // If it's a username, construct Facebook URL
-      // Remove any @ symbol and construct profile URL
       const username = fbValue.replace('@', '').trim();
       return `https://facebook.com/${username}`;
     };
@@ -680,37 +667,6 @@ const getInitialsBackgroundColor = (initials) => {
       </div>
     )
 
-    const renderSocialMediaInfo = () => {
-      const facebookUrl = getFacebookUrl(normalizedPerson.fb);
-
-      return (
-        <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
-          <h4 className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
-            <Globe size={16} /> Social Media
-          </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <InfoItem icon={Mail} label="Email" value={normalizedPerson.email} />
-            <div className="flex items-center gap-2 py-2 text-gray-600 text-sm">
-              <Facebook size={14} className="text-gray-500 flex-shrink-0" />
-              <span>Facebook: </span>
-              {facebookUrl && facebookUrl !== "N/A" ? (
-                <a 
-                  href={facebookUrl} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-blue-600 hover:text-blue-800 hover:underline transition-colors duration-200"
-                >
-                  {normalizedPerson.fb}
-                </a>
-              ) : (
-                <span>N/A</span>
-              )}
-            </div>
-          </div>
-        </div>
-      )
-    }
-
     const renderAddressInfo = () => (
       <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
         <h4 className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
@@ -725,8 +681,27 @@ const getInitialsBackgroundColor = (initials) => {
       </div>
     )
 
+    const renderClinicInfo = () => {
+      if (normalizedPerson.type !== "veterinarian" || !normalizedPerson.vet_address_is_clinic) return null
+
+      return (
+        <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
+          <h4 className="flex items-center gap-2 text-base font-semibold text-gray-800 mb-4">
+            <Building size={16} /> Clinic Address
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <InfoItem icon={MapPin} label="Clinic Street" value={normalizedPerson.vet_clinic_street} />
+            <InfoItem icon={MapPin} label="Clinic Barangay" value={normalizedPerson.vet_clinic_brgy} />
+            <InfoItem icon={MapPin} label="Clinic City" value={normalizedPerson.vet_clinic_city} />
+            <InfoItem icon={MapPin} label="Clinic Province" value={normalizedPerson.vet_clinic_province} />
+            <InfoItem icon={MapPin} label="Clinic ZIP Code" value={normalizedPerson.vet_clinic_zipcode} />
+          </div>
+        </div>
+      )
+    }
+
     const renderProfessionalInfo = () => {
-      if (normalizedPerson.type !== "Veterinarian") return null
+      if (normalizedPerson.type !== "veterinarian") return null
 
       return (
         <div className="bg-white rounded-2xl p-6 mb-6 shadow-sm border border-gray-200">
@@ -746,92 +721,145 @@ const getInitialsBackgroundColor = (initials) => {
     const initials = getInitials(normalizedPerson.firstName, normalizedPerson.lastName);
     const initialsBackgroundColor = getInitialsBackgroundColor(initials);
 
-    return (
-      <div
-        className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay"
-        onClick={onClose}
-      >
-        <div
-          className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-bottom-10 duration-400"
-          onClick={(e) => e.stopPropagation()}
+    // Full Size Image Modal Component - MATCHING THEIR PATTERN
+    const FullSizeImageModal = () => {
+      if (!showEnlargedPhoto) return null;
+
+      return (
+        <div 
+          className="fixed inset-0 z-1002 flex items-center justify-center bg-black bg-opacity-90 p-4"
+          onClick={() => setShowEnlargedPhoto(false)}
         >
-          {/* Clean White Header with Profile Picture - Background kept white */}
-          <div className="bg-white p-15 border-b border-gray-200 relative overflow-hidden">
-            <div className="flex items-center gap-6">
-  {/* Profile Picture - Square with border radius */}
- 
-<div className="flex-shrink-0">
-  {normalizedPerson.profile_photo ? (
-    <div className="w-24 h-24 md:w-32 md:h-32 rounded-xl bg-gray-300 flex items-center justify-center overflow-hidden border-2 border-white shadow-md -mt-5">
-      <img 
-        src={normalizedPerson.profile_photo} 
-        alt="Profile" 
-        className="w-full h-full object-cover rounded-xl"
-        onError={(e) => {
-          e.target.style.display = 'none';
-          e.target.nextSibling.style.display = 'flex';
-        }}
-      />
-      {/* Fallback to initials with colored background when image fails to load */}
-      <div className={`hidden w-full h-full items-center justify-center ${initialsBackgroundColor} rounded-xl`}>
-        <span className="text-3xl font-bold text-white">
-          {initials}
-        </span>
-      </div>
-    </div>
-  ) : (
-    // Show initials with colored background when no profile photo - EXTRA LARGE SIZE
-    <div className="w-24 h-24 md:w-32 md:h-32 rounded-xl flex items-center justify-center overflow-hidden border-2 border-white shadow-md -mt-5">
-      <div className={`w-full h-full items-center justify-center ${initialsBackgroundColor} rounded-xl flex`}>
-        <span className="text-3xl font-bold text-white">
-          {initials}
-        </span>
-      </div>
-    </div>
-  )}
-</div>
-
-  {/* Name and Role - Background kept white */}
-  <div className="flex-1 bg-white">
-    <h3 className="text-2xl font-semibold text-gray-900 mb-2">{normalizedPerson.name}</h3>
-    <span
-      className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
-        normalizedPerson.type === "veterinarian"
-          ? "bg-green-100 text-green-800 border border-green-200"
-          : normalizedPerson.type === "kutsero"
-            ? "bg-yellow-100 text-yellow-800 border border-yellow-200"
-            : normalizedPerson.type === "horse operator"
-              ? "bg-orange-100 text-orange-800 border border-orange-200"
-              : "bg-gray-100 text-gray-800 border border-gray-200"
-      }`}
-    >
-      {normalizedPerson.type === "veterinarian" 
-        ? "Veterinarian" 
-        : normalizedPerson.type === "kutsero" 
-          ? "Kutsero" 
-          : normalizedPerson.type === "horse operator" 
-            ? "Horse Operator" 
-            : normalizedPerson.type?.replace("_", " ")}
-    </span>
-  </div>
-</div>
-            
+          <div className="relative max-w-2xl w-full max-h-full">
             <button
-              className="absolute top-6 right-6 w-10 h-10 bg-gray-100 border border-gray-300 rounded-xl flex items-center justify-center text-gray-600 hover:bg-gray-200 hover:border-gray-400 hover:scale-105 transition-all duration-300"
-              onClick={onClose}
+              onClick={() => setShowEnlargedPhoto(false)}
+              className="absolute -top-12 right-0 w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-all shadow-lg z-10"
             >
-              <X size={20} />
+              <X className="w-5 h-5 text-gray-600" />
             </button>
-          </div>
-
-          <div className="p-8 bg-gray-50 overflow-y-auto">
-            {renderPersonalInfo()}
-            {renderSocialMediaInfo()}
-            {renderAddressInfo()}
-            {renderProfessionalInfo()}
+            
+            <div className="bg-white rounded-lg overflow-hidden max-w-sm w-full mx-auto">
+              {normalizedPerson.profile_photo ? (
+                <img 
+                  src={normalizedPerson.profile_photo} 
+                  alt={normalizedPerson.name}
+                  className="w-full h-96 object-contain bg-gray-100"
+                />
+              ) : (
+                <div className="w-full h-96 bg-gradient-to-br from-[#b91c1c] to-[#7f1d1d] flex items-center justify-center">
+                  <span className="text-white text-6xl font-bold">
+                    {initials}
+                  </span>
+                </div>
+              )}
+            </div>
+            
+            
           </div>
         </div>
-      </div>
+      );
+    };
+
+    return (
+      <>
+        <div
+          className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-1001 modal-overlay"
+          onClick={onClose}
+        >
+          <div
+            className="bg-white rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-hidden shadow-2xl flex flex-col animate-in slide-in-from-bottom-10 duration-400"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Clean White Header with Profile Picture */}
+            <div className="bg-white p-15 border-b border-gray-200 relative overflow-hidden">
+              <div className="flex items-center gap-6">
+                {/* Profile Picture - MADE CLICKABLE LIKE THEIR PATTERN */}
+                <div className="flex-shrink-0">
+                  {normalizedPerson.profile_photo ? (
+                    <div 
+                      className="w-24 h-24 md:w-32 md:h-32 rounded-xl bg-gray-300 flex items-center justify-center overflow-hidden border-2 border-white shadow-md -mt-5 cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-300"
+                      onClick={() => setShowEnlargedPhoto(true)}
+                      title="Click to view full size"
+                    >
+                      <img 
+                        src={normalizedPerson.profile_photo} 
+                        alt="Profile" 
+                        className="w-full h-full object-cover rounded-xl"
+                        onError={(e) => {
+                          e.target.style.display = 'none';
+                          e.target.nextSibling.style.display = 'flex';
+                        }}
+                      />
+                      {/* Fallback to initials with colored background when image fails to load */}
+                      <div className={`hidden w-full h-full items-center justify-center ${initialsBackgroundColor} rounded-xl`}>
+                        <span className="text-3xl font-bold text-white">
+                          {initials}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    // Show initials with colored background when no profile photo
+                    <div 
+                      className="w-24 h-24 md:w-32 md:h-32 rounded-xl flex items-center justify-center overflow-hidden border-2 border-white shadow-md -mt-5 cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-300"
+                      onClick={() => setShowEnlargedPhoto(true)}
+                      title="Click to view full size"
+                    >
+                      <div className={`w-full h-full items-center justify-center ${initialsBackgroundColor} rounded-xl flex`}>
+                        <span className="text-3xl font-bold text-white">
+                          {initials}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Name and Role */}
+                <div className="flex-1 bg-white">
+                  <h3 className="text-2xl font-semibold text-gray-900 mb-2">{normalizedPerson.name}</h3>
+                  <span
+                    className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
+                      normalizedPerson.type === "veterinarian"
+                        ? "bg-green-100 text-green-800 border border-green-200"
+                        : normalizedPerson.type === "kutsero"
+                          ? "bg-yellow-100 text-yellow-800 border border-yellow-200"
+                          : normalizedPerson.type === "horse operator"
+                            ? "bg-orange-100 text-orange-800 border border-orange-200"
+                            : "bg-gray-100 text-gray-800 border border-gray-200"
+                    }`}
+                  >
+                    {normalizedPerson.type === "veterinarian" 
+                      ? "Veterinarian" 
+                      : normalizedPerson.type === "kutsero" 
+                        ? "Kutsero" 
+                        : normalizedPerson.type === "horse operator" 
+                          ? "Horse Operator" 
+                          : normalizedPerson.type?.replace("_", " ")}
+                  </span>
+                  
+                  
+                </div>
+              </div>
+              
+              <button
+                className="absolute top-6 right-6 w-10 h-10 bg-gray-100 border border-gray-300 rounded-xl flex items-center justify-center text-gray-600 hover:bg-gray-200 hover:border-gray-400 hover:scale-105 transition-all duration-300"
+                onClick={onClose}
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-8 bg-gray-50 overflow-y-auto">
+              {renderPersonalInfo()}
+              {renderAddressInfo()}
+              {renderClinicInfo()}
+              {renderProfessionalInfo()}
+            </div>
+          </div>
+        </div>
+
+        {/* Full Size Image Modal - USING THEIR PATTERN */}
+        <FullSizeImageModal />
+      </>
     )
   }
 
@@ -859,13 +887,11 @@ const getInitialsBackgroundColor = (initials) => {
     <div className="flex h-screen overflow-hidden">
       <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
 
-      <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
-        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
-           <div className="flex flex-col w-full sm:w-2/3 md:w-1/2 lg:w-1/3">
-              <h2 className="text-2xl font-bold text-[#b91c1c]">Director</h2>
-              <p className="text-sm text-gray-500 mt-1 font-normal">
-              View approved registered users and their assigned roles.
-            </p>
+      <div className="flex-1 flex flex-col">
+        <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
+           <div className="flex flex-col">
+              <h2 className="text-2xl font-bold text-gray-800 mb-1">Directory</h2>
+              
 
 </div>
           
@@ -899,7 +925,7 @@ const getInitialsBackgroundColor = (initials) => {
             notifications={notifications}
             onNotificationClick={handleNotificationClick}
             onMarkAllAsRead={handleMarkAllAsRead}
-            onOpenUserManagement={handleOpenUserManagement}
+           
           />
         </header>
 
@@ -938,7 +964,10 @@ const getInitialsBackgroundColor = (initials) => {
                           Role
                         </th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
-                          Email
+                          Gender
+                        </th>
+                        <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
+                          Address
                         </th>
                         <th className="px-4 py-3 text-left font-semibold text-gray-700 text-sm border-b border-gray-200">
                           Status
@@ -971,7 +1000,10 @@ const getInitialsBackgroundColor = (initials) => {
                               {person.type && person.type.charAt(0).toUpperCase() + person.type.slice(1)}
                             </span>
                           </td>
-                          <td className="px-4 py-4 text-sm text-gray-900 break-words">{person.email}</td>
+                          <td className="px-4 py-4 text-sm text-gray-900">{person.gender}</td>
+                          <td className="px-4 py-4 text-sm text-gray-900 break-words">
+                            {person.address}
+                          </td>
                           <td className="px-4 py-4">
                             <span
                               className={`inline-block px-2 py-1 rounded-xl text-xs font-medium whitespace-nowrap ${

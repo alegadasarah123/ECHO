@@ -52,7 +52,7 @@ function ForgotPass({ onBack }) {
     }
 
     try {
-      const response = await fetch("https://echo-ebl8.onrender.com/api/forgot-password/", {
+      const response = await fetch("http://localhost:8000/api/forgot-password/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -101,7 +101,7 @@ function ForgotPass({ onBack }) {
     }
 
     try {
-      const response = await fetch("https://echo-ebl8.onrender.com/api/reset-password/", {
+      const response = await fetch("http://localhost:8000/api/reset-password/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, newPassword }),

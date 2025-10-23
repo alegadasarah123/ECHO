@@ -2,14 +2,19 @@ import {
   AlertCircle,
   ArrowLeft,
   Check,
-  Eye, EyeOff,
+  Eye,
+  EyeOff,
   FileText,
   Lock,
   MapPin,
-  Stethoscope, Upload,
+  Stethoscope,
+  Upload,
   User,
-  X, ZoomIn
+  X,
+  ZoomIn
 } from "lucide-react";
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 // Use your Django backend as proxy
 const BACKEND_BASE_URL = 'http://127.0.0.1:8000';
@@ -231,6 +236,7 @@ function SignUp() {
   const [submitError, setSubmitError] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
 
   // State for dynamic location data
   const [cities, setCities] = useState([]);
@@ -621,7 +627,7 @@ function SignUp() {
 
       console.log("DEBUG: Sending form data with files");
 
-      const response = await fetch("http://echo-eb18.onrender.com/api/signup_vet/", {
+      const response = await fetch("http://localhost:8000/api/signup_vet/", {
         method: "POST",
         body: formData
       });
@@ -742,8 +748,6 @@ function SignUp() {
   );
 
   // Success Alert Component
-  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
-
   const SuccessAlert = () => {
     if (!showSuccessAlert) return null;
 
