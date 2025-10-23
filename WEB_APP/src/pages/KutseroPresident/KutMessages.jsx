@@ -677,7 +677,11 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
     
     setLoading(true);
     try {
+<<<<<<< Updated upstream
       const endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/ctu_profile_by_id/${user.id}/`;
+=======
+      const endpoint = `http://localhost:8000/api/kutsero_president/ctu_profile_by_id/${user.id}/`;
+>>>>>>> Stashed changes
       const res = await fetch(endpoint, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
@@ -695,7 +699,11 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
     
     setLoading(true);
     try {
+<<<<<<< Updated upstream
       const endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/dvmf_profile_by_id/${user.id}/`;
+=======
+      const endpoint = `http://localhost:8000/api/kutsero_president/dvmf_profile_by_id/${user.id}/`;
+>>>>>>> Stashed changes
       const res = await fetch(endpoint, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
@@ -716,9 +724,15 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
       let endpoint = '';
       
       if (user.role === 'Kutsero') {
+<<<<<<< Updated upstream
         endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/kutsero_profile_by_id/${user.id}/`;
       } else if (user.role === 'Horse Operator') {
         endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/horse_operator_profile/${user.id}/`;
+=======
+        endpoint = `http://localhost:8000/api/kutsero_president/kutsero_profile_by_id/${user.id}/`;
+      } else if (user.role === 'Horse Operator') {
+        endpoint = `http://localhost:8000/api/kutsero_president/horse_operator_profile/${user.id}/`;
+>>>>>>> Stashed changes
       }
 
       if (endpoint) {
@@ -1458,7 +1472,11 @@ const FloatingMessages = () => {
 
   const fetchCurrentUserId = async () => {
     try {
+<<<<<<< Updated upstream
       const res = await fetch("https://echo-ebl8.onrender.com/api/kutsero_president/get_president_profile/", {
+=======
+      const res = await fetch("http://localhost:8000/api/kutsero_president/get_president_profile/", {
+>>>>>>> Stashed changes
         credentials: "include"
       });
       if (res.ok) {
@@ -1571,7 +1589,11 @@ const FloatingMessages = () => {
                   try {
                     // ✅ CHANGED: Use Kutsero President mark messages as read endpoint
                     await fetch(
+<<<<<<< Updated upstream
                       `https://echo-ebl8.onrender.com/api/kutsero_president/mark_messages_as_read/${currentSelectedConv.id}/`,
+=======
+                      `http://localhost:8000/api/kutsero_president/mark_messages_as_read/${currentSelectedConv.id}/`,
+>>>>>>> Stashed changes
                       { 
                         method: "PUT", 
                         credentials: "include",
@@ -1689,7 +1711,11 @@ const FloatingMessages = () => {
   const fetchConversations = async () => {
     try {
       const res = await fetch(
+<<<<<<< Updated upstream
         "https://echo-ebl8.onrender.com/api/kutsero_president/get_conversations/", 
+=======
+        "http://localhost:8000/api/kutsero_president/get_conversations/", 
+>>>>>>> Stashed changes
         { credentials: "include" }
       );
       if (res.ok) {
@@ -1721,7 +1747,11 @@ const FloatingMessages = () => {
   const fetchAllUsers = async () => {
     try {
       const res = await fetch(
+<<<<<<< Updated upstream
         "https://echo-ebl8.onrender.com/api/kutsero_president/get_all_users/",
+=======
+        "http://localhost:8000/api/kutsero_president/get_all_users/",
+>>>>>>> Stashed changes
         { credentials: "include" }
       );
       if (res.ok) {
@@ -1753,7 +1783,11 @@ const FloatingMessages = () => {
     
     try {
       const res = await fetch(
+<<<<<<< Updated upstream
         `https://echo-ebl8.onrender.com/api/kutsero_president/get_conversation/${conversation.id}/`,
+=======
+        `http://localhost:8000/api/kutsero_president/get_conversation/${conversation.id}/`,
+>>>>>>> Stashed changes
         { credentials: "include" }
       );
       
@@ -1782,7 +1816,11 @@ const FloatingMessages = () => {
 
         try {
           const markReadResponse = await fetch(
+<<<<<<< Updated upstream
             `https://echo-ebl8.onrender.com/api/kutsero_president/mark_messages_as_read/${conversation.id}/`,
+=======
+            `http://localhost:8000/api/kutsero_president/mark_messages_as_read/${conversation.id}/`,
+>>>>>>> Stashed changes
             { 
               method: "PUT", 
               credentials: "include",
@@ -1846,7 +1884,11 @@ const FloatingMessages = () => {
 
     try {
       const res = await fetch(
+<<<<<<< Updated upstream
         "https://echo-ebl8.onrender.com/api/kutsero_president/send_message/",
+=======
+        "http://localhost:8000/api/kutsero_president/send_message/",
+>>>>>>> Stashed changes
         {
           method: "POST",
           headers: { "Content-Type": 'application/json' },

@@ -10,7 +10,210 @@ import {
   User,
   X, ZoomIn
 } from "lucide-react";
-import { provinces, getCities, getBarangays } from "./philippinesData";
+
+// Use your Django backend as proxy
+const BACKEND_BASE_URL = 'http://127.0.0.1:8000';
+
+// Helper function to fetch data through your Django proxy
+const fetchPSGCData = async (endpoint) => {
+  try {
+    const response = await fetch(`${BACKEND_BASE_URL}/api/psgc/?endpoint=${encodeURIComponent(endpoint)}`);
+    if (!response.ok) throw new Error(`Failed to fetch ${endpoint}`);
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching PSGC data through proxy:', error);
+    
+    // Try fallback endpoint
+    try {
+      const fallbackResponse = await fetch(`${BACKEND_BASE_URL}/api/psgc-fallback/?endpoint=${encodeURIComponent(endpoint)}`);
+      if (!fallbackResponse.ok) throw new Error('Fallback also failed');
+      return await fallbackResponse.json();
+    } catch (fallbackError) {
+      console.error('Error fetching fallback data:', fallbackError);
+      throw new Error('Both proxy and fallback failed');
+    }
+  }
+};
+
+// Custom hook for Philippines location data - PROVINCES ONLY
+const usePhilippinesLocations = () => {
+  const [provinces, setProvinces] = useState([]);
+  const [citiesCache, setCitiesCache] = useState({});
+  const [barangaysCache, setBarangaysCache] = useState({});
+  const [apiAvailable, setApiAvailable] = useState(true);
+
+  // Load all PROVINCES on component mount
+  useEffect(() => {
+    const loadProvinces = async () => {
+      try {
+        const provincesData = await fetchPSGCData('/provinces');
+        setProvinces(provincesData.map(province => province.name));
+        setApiAvailable(true);
+      } catch (error) {
+        console.error('Error loading provinces:', error);
+        // Use fallback provinces directly
+        setProvinces([
+          "Abra", "Agusan del Norte", "Agusan del Sur", "Aklan", "Albay",
+          "Antique", "Apayao", "Aurora", "Basilan", "Bataan", 
+          "Batanes", "Batangas", "Benguet", "Biliran", "Bohol",
+          "Bukidnon", "Bulacan", "Cagayan", "Camarines Norte", "Camarines Sur",
+          "Camiguin", "Capiz", "Catanduanes", "Cavite", "Cebu",
+          "Cotabato", "Davao de Oro", "Davao del Norte", "Davao del Sur", "Davao Occidental",
+          "Davao Oriental", "Dinagat Islands", "Eastern Samar", "Guimaras", "Ifugao",
+          "Ilocos Norte", "Ilocos Sur", "Iloilo", "Isabela", "Kalinga",
+          "La Union", "Laguna", "Lanao del Norte", "Lanao del Sur", "Leyte",
+          "Maguindanao del Norte", "Maguindanao del Sur", "Marinduque", "Masbate", "Metro Manila",
+          "Misamis Occidental", "Misamis Oriental", "Mountain Province", "Negros Occidental", "Negros Oriental",
+          "Northern Samar", "Nueva Ecija", "Nueva Vizcaya", "Occidental Mindoro", "Oriental Mindoro",
+          "Palawan", "Pampanga", "Pangasinan", "Quezon", "Quirino",
+          "Rizal", "Romblon", "Samar", "Sarangani", "Siquijor",
+          "Sorsogon", "South Cotabato", "Southern Leyte", "Sultan Kudarat", "Sulu",
+          "Surigao del Norte", "Surigao del Sur", "Tarlac", "Tawi-Tawi", "Zambales",
+          "Zamboanga del Norte", "Zamboanga del Sur", "Zamboanga Sibugay"
+        ]);
+        setApiAvailable(false);
+      }
+    };
+    loadProvinces();
+  }, []);
+
+  const getCities = async (provinceName) => {
+    if (!provinceName) return [];
+    
+    // Return from cache if available
+    if (citiesCache[provinceName]) {
+      return citiesCache[provinceName];
+    }
+
+    try {
+      // Get all provinces to find the code
+      const provincesData = await fetchPSGCData('/provinces');
+      const province = provincesData.find(p => p.name === provinceName);
+      
+      if (!province) return [];
+
+      // Get cities directly for this province
+      const cities = await fetchPSGCData(`/provinces/${province.code}/cities-municipalities`);
+      const cityNames = cities.map(city => city.name);
+
+      // Update cache
+      setCitiesCache(prev => ({
+        ...prev,
+        [provinceName]: cityNames
+      }));
+
+      return cityNames;
+    } catch (error) {
+      console.error('Error fetching cities:', error);
+      
+      // Return fallback cities for major provinces
+      const fallbackCities = {
+        "Metro Manila": [
+          "Caloocan City", "Las Piñas City", "Makati City", "Malabon City", "Mandaluyong City", 
+          "Manila City", "Marikina City", "Muntinlupa City", "Navotas City", "Parañaque City", 
+          "Pasay City", "Pasig City", "Pateros", "Quezon City", "San Juan City", 
+          "Taguig City", "Valenzuela City"
+        ],
+        "Cavite": [
+          "Dasmarinas City", "Bacoor City", "Imus City", "General Trias City", "Trece Martires City",
+          "Tagaytay City", "Cavite City", "Silang", "Kawit", "Naic"
+        ],
+        "Cebu": [
+          "Cebu City", "Lapu-Lapu City", "Mandaue City", "Talisay City", "Danao City",
+          "Toledo City", "Naga City", "Bogo City", "Carcar City", "Balamban"
+        ],
+        "Bulacan": [
+          "Malolos City", "Meycauayan City", "San Jose del Monte City", "Santa Maria", "Marilao",
+          "Bocaue", "Balagtas", "Guiguinto", "Plaridel", "Pulilan"
+        ],
+        "Laguna": [
+          "Calamba City", "Santa Rosa City", "San Pedro City", "Biñan City", "Cabuyao City",
+          "San Pablo City", "Los Baños", "Bay", "Victoria", "Nagcarlan"
+        ],
+        "Rizal": [
+          "Antipolo City", "Taytay", "Cainta", "Binangonan", "Angono",
+          "Rodriguez", "San Mateo", "Baras", "Tanay", "Morong"
+        ]
+      };
+      
+      return fallbackCities[provinceName] || [];
+    }
+  };
+
+  const getBarangays = async (provinceName, cityName) => {
+    if (!provinceName || !cityName) return [];
+    
+    const cacheKey = `${provinceName}-${cityName}`;
+    
+    // Return from cache if available
+    if (barangaysCache[cacheKey]) {
+      return barangaysCache[cacheKey];
+    }
+
+    try {
+      // Get all provinces to find the code
+      const provincesData = await fetchPSGCData('/provinces');
+      const province = provincesData.find(p => p.name === provinceName);
+      
+      if (!province) return [];
+
+      // Get cities for this province
+      const cities = await fetchPSGCData(`/provinces/${province.code}/cities-municipalities`);
+      const foundCity = cities.find(c => c.name === cityName);
+      
+      if (foundCity) {
+        // Get barangays directly for this city
+        const barangays = await fetchPSGCData(`/cities-municipalities/${foundCity.code}/barangays`);
+        const barangayNames = barangays.map(barangay => barangay.name);
+        
+        // Update cache
+        setBarangaysCache(prev => ({
+          ...prev,
+          [cacheKey]: barangayNames
+        }));
+
+        return barangayNames;
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Error fetching barangays:', error);
+      
+      // Return fallback barangays for major cities
+      const fallbackBarangays = {
+        "Quezon City": [
+          "Alicia", "Amihan", "Apolonio Samson", "Aurora", "Baesa",
+          "Bagbag", "Bagong Lipunan ng Crame", "Bagong Pag-asa", "Bagong Silangan", "Bagumbayan"
+        ],
+        "Manila City": [
+          "Binondo", "Ermita", "Intramuros", "Malate", "Paco",
+          "Pandacan", "Port Area", "Quiapo", "Sampaloc", "San Andres"
+        ],
+        "Antipolo City": [
+          "Bagong Nayon", "Beverly Hills", "Calawis", "Cupang", "Dela Paz",
+          "Dulong Bayan", "Inarawan", "Mambugan", "Mayamot", "Muntingdilaw"
+        ],
+        "Dasmarinas City": [
+          "Burol", "Burol I", "Burol II", "Burol III", "Emmanuel Bergado I",
+          "Emmanuel Bergado II", "Fatima I", "Fatima II", "Fatima III", "Langkaan I"
+        ],
+        "Cebu City": [
+          "Adlaon", "Agsungot", "Apas", "Babag", "Bacayan",
+          "Banilad", "Binaliw", "Budlaan", "Busay", "Cambinocot"
+        ]
+      };
+      
+      return fallbackBarangays[cityName] || [];
+    }
+  };
+
+  return {
+    provinces,
+    getCities,
+    getBarangays,
+    apiAvailable
+  };
+};
 
 function SignUp() {
   const navigate = useNavigate();
