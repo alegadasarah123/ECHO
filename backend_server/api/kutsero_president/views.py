@@ -4,7 +4,6 @@ from supabase import create_client, Client
 from django.conf import settings
 from functools import wraps
 import requests
-import datetime
 from django.utils import timezone
 import jwt
 import time
@@ -416,8 +415,8 @@ def get_notifications(request):
             if user["id"] not in existing_user_ids:
                 print(f"Inserting notification for user: {user['id']}")
                 
-                # SIMPLE VERSION - Use current time without timezone fuss
-                current_time = datetime.datetime.now()
+                # Use current time
+                current_time = datetime.now()
                 
                 # INSERT THE NOTIFICATION
                 try:
@@ -445,6 +444,7 @@ def get_notifications(request):
                             "read": new_notif.get("notif_read", False),
                             "role": user["role"]
                         })
+                        print(f"SUCCESS: Notification created for user {user['id']}")
                     else:
                         print(f"Insert failed - no data returned for user {user['id']}")
                         
@@ -459,8 +459,7 @@ def get_notifications(request):
 
     except Exception as e:
         print(f"ERROR in get_notifications: {str(e)}")
-        import traceback
-        print(f"Traceback: {traceback.format_exc()}")
+        traceback.print_exc()
         return Response({"error": "Failed to process notifications"}, status=500)
         
 # -------------------- MARK NOTIFICATION AS READ --------------------
