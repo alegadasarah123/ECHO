@@ -391,12 +391,18 @@ def get_notifications(request):
     try:
         print("=== STARTING NOTIFICATION PROCESS ===")
         
-        # STEP 1: GET THE FUCKING PENDING USERS
+        # STEP 1: GET THE PENDING USERS
         print("Fetching pending users...")
-        users_result = supabase.table("users").select("*").eq("status", "pending").in_("role", ["Kutsero", "Horse Operator"]).execute()
+        users_result = (
+            supabase.table("users")
+            .select("*")
+            .eq("status", "pending")
+            .in_("role", ["Kutsero", "Horse Operator"])
+            .execute()
+        )
         pending_users = users_result.data if users_result.data else []
         print(f"Found {len(pending_users)} pending users: {[u['id'] for u in pending_users]}")
-        
+
         if not pending_users:
             print("No pending users found, returning empty array")
             return Response([])
@@ -404,35 +410,44 @@ def get_notifications(request):
         # STEP 2: CHECK EXISTING NOTIFICATIONS
         user_ids = [user["id"] for user in pending_users]
         print(f"Checking existing notifications for user IDs: {user_ids}")
-        existing_notifs_result = supabase.table("notification").select("id").in_("id", user_ids).execute()
+        existing_notifs_result = (
+            supabase.table("notification")
+            .select("id")
+            .in_("id", user_ids)
+            .execute()
+        )
         existing_user_ids = {notif["id"] for notif in (existing_notifs_result.data or [])}
         print(f"Users with existing notifications: {existing_user_ids}")
 
         inserted_notifications = []
-        
+
         # STEP 3: INSERT NEW NOTIFICATIONS
         for user in pending_users:
             if user["id"] not in existing_user_ids:
                 print(f"Inserting notification for user: {user['id']}")
                 
-                # Use current time
                 current_time = datetime.now()
-                
-                # INSERT THE NOTIFICATION
+
+                insert_data = {
+                    "id": user["id"],
+                    "notif_message": f"New {user['role']} registered",
+                    "notif_date": current_time.date().isoformat(),
+                    "notif_time": current_time.time().strftime("%H:%M:%S"),
+                    "notif_read": False,
+                    "notification_type": "user_registration",
+                    "related_id": user["id"],
+                }
+
+                print(f"Inserting data: {insert_data}")
                 try:
-                    insert_data = {
-                        "id": user["id"],
-                        "notif_message": f"New {user['role']} registered",
-                        "notif_date": current_time.date().isoformat(),
-                        "notif_time": current_time.time().strftime("%H:%M:%S"),
-                        "notif_read": False,
-                        "notification_type": "user_registration", 
-                        "related_id": user["id"]
-                    }
-                    
-                    print(f"Inserting data: {insert_data}")
-                    insert_result = supabase.table("notification").insert(insert_data).execute()
-                    
+                    # ✅ FIX: Add .select("*") to return the inserted row
+                    insert_result = (
+                        supabase.table("notification")
+                        .insert(insert_data)
+                        .select("*")
+                        .execute()
+                    )
+
                     if insert_result.data:
                         new_notif = insert_result.data[0]
                         print(f"Successfully inserted notification: {new_notif}")
@@ -442,12 +457,12 @@ def get_notifications(request):
                             "message": new_notif["notif_message"],
                             "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
                             "read": new_notif.get("notif_read", False),
-                            "role": user["role"]
+                            "role": user["role"],
                         })
                         print(f"SUCCESS: Notification created for user {user['id']}")
                     else:
                         print(f"Insert failed - no data returned for user {user['id']}")
-                        
+
                 except Exception as e:
                     print(f"FAILED to insert notification for user {user['id']}: {str(e)}")
                     continue
@@ -461,7 +476,7 @@ def get_notifications(request):
         print(f"ERROR in get_notifications: {str(e)}")
         traceback.print_exc()
         return Response({"error": "Failed to process notifications"}, status=500)
-        
+    
 # -------------------- MARK NOTIFICATION AS READ --------------------
 @api_view(["POST"])
 @login_required
