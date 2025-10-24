@@ -618,7 +618,6 @@ def get_users(request):
     
 
 # -------------------- NOTIFICATIONS --------------------
-
 from datetime import datetime, timedelta, timezone as dt_timezone
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -645,7 +644,9 @@ def get_vetnotifications(request):
         # Fetch existing notifications to avoid duplicates
         try:
             existing_res = sr_client.table("notification").select("*").execute()
-            existing_keys = set(row.get("related_id") for row in (existing_res.data or []) if row.get("related_id"))
+            existing_keys = set(
+                row.get("related_id") for row in (existing_res.data or []) if row.get("related_id")
+            )
         except:
             existing_keys = set()
 
@@ -672,14 +673,19 @@ def get_vetnotifications(request):
                 .execute()
             for vet in (vets_res.data or []):
                 users = vet.get("users") or {}
-                if users.get("role","").lower() != "veterinarian":
+                if users.get("role", "").lower() != "veterinarian":
                     continue
                 user_id = users.get("id")
-                status = users.get("status","").lower()
-                vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
-                if status in ["pending","approved","declined"]:
-                    add_notification(user_id, f"Veterinarian {status}: Dr. {vet_name}.", status,
-                                     f"vet_{vet['vet_id']}_{status}", vet.get("created_at"))
+                status = users.get("status", "").lower()
+                vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
+                if status in ["pending", "approved", "declined"]:
+                    add_notification(
+                        user_id,
+                        f"Veterinarian {status}: Dr. {vet_name}.",
+                        status,
+                        f"vet_{vet['vet_id']}_{status}",
+                        vet.get("created_at")
+                    )
         except:
             pass
 
@@ -689,17 +695,22 @@ def get_vetnotifications(request):
                 .select("request_id, vet_profile(vet_fname, vet_lname, users(id)), horse_profile(horse_name), requested_at, request_status") \
                 .execute()
             for req in (medreq_res.data or []):
-                if req.get("request_status","").lower() != "pending":
+                if req.get("request_status", "").lower() != "pending":
                     continue
                 vet = req.get("vet_profile") or {}
                 users = vet.get("users") or {}
                 user_id = users.get("id")
                 if not user_id:
                     continue
-                vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
-                horse_name = (req.get("horse_profile") or {}).get("horse_name","Unknown Horse")
-                add_notification(user_id, f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
-                                 "medrec_request", f"medreq_{req['request_id']}", req.get("requested_at"))
+                vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
+                horse_name = (req.get("horse_profile") or {}).get("horse_name", "Unknown Horse")
+                add_notification(
+                    user_id,
+                    f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
+                    "medrec_request",
+                    f"medreq_{req['request_id']}",
+                    req.get("requested_at")
+                )
         except:
             pass
 
@@ -727,19 +738,24 @@ def get_vetnotifications(request):
                 # Get commenter name (Kutsero or Horse Operator)
                 commenter_name = None
                 kutsero_res = sr_client.table("kutsero_profile").select("kutsero_fname,kutsero_lname") \
-                                .eq("kutsero_id", commenter_id).maybe_single().execute()
+                    .eq("kutsero_id", commenter_id).maybe_single().execute()
                 if kutsero_res.data:
-                    commenter_name = f"{kutsero_res.data.get('kutsero_fname','')} {kutsero_res.data.get('kutsero_lname','')}".strip()
+                    commenter_name = f"{kutsero_res.data.get('kutsero_fname', '')} {kutsero_res.data.get('kutsero_lname', '')}".strip()
                 else:
                     op_res = sr_client.table("horse_op_profile").select("op_fname,op_lname") \
-                                .eq("op_id", commenter_id).maybe_single().execute()
+                        .eq("op_id", commenter_id).maybe_single().execute()
                     if op_res.data:
-                        commenter_name = f"{op_res.data.get('op_fname','')} {op_res.data.get('op_lname','')}".strip()
+                        commenter_name = f"{op_res.data.get('op_fname', '')} {op_res.data.get('op_lname', '')}".strip()
                 if not commenter_name:
                     continue
 
-                add_notification(post_owner_id, f"{commenter_name} commented: '{comment.get('comment_text','')[:50]}...'",
-                                 "comment", related_id, comment.get("comment_date"))
+                add_notification(
+                    post_owner_id,
+                    f"{commenter_name} commented: '{comment.get('comment_text', '')[:50]}...'",
+                    "comment",
+                    related_id,
+                    comment.get("comment_date")
+                )
         except:
             pass
 
@@ -750,22 +766,30 @@ def get_vetnotifications(request):
             except:
                 pass
 
-        # ---------------- FETCH ALL NOTIFICATIONS ----------------
-        all_notifs_res = sr_client.table("notification").select("*") \
-                            .order("notif_date", desc=True).order("notif_time", desc=True).execute()
+        # ---------------- FETCH ALL NOTIFICATIONS (FILTERED) ----------------
+        valid_types = ["medrec_request", "approved", "declined", "pending", "comment"]
+
+        all_notifs_res = (
+            sr_client.table("notification")
+            .select("*")
+            .in_("notification_type", valid_types)  # ✅ FILTER HERE
+            .order("notif_date", desc=True)
+            .order("notif_time", desc=True)
+            .execute()
+        )
+
         notifications = [{
             "id": row.get("id"),
             "message": row.get("notif_message"),
             "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
             "read": row.get("notif_read", False),
-            "type": row.get("notification_type","general")
+            "type": row.get("notification_type", "general")
         } for row in (all_notifs_res.data or [])]
 
         return Response(notifications, status=200)
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
-
 
 
 
