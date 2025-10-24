@@ -89,8 +89,15 @@ urlpatterns = [
     path("get_conversation/<uuid:conversation_id>/", views.get_conversation, name="get_conversation"),
     path("get_conversations/", views.get_conversations, name="get_conversations"),
     path("get_all_users/", views.get_all_users, name="get_all_users"),
-    
-    
+
+     # Veterinarian, horse operator, and kutsero profiles by UUID
+     # -------------------- Profile by UUID --------------------
+    path('vet_profile_by_id/<uuid:user_id>/', views.vet_profile_by_id, name='vet_profile_by_id'),
+     path('horse_operator_profile_by_id/<uuid:user_id>/', views.horse_operator_profile_by_id, name='horse_operator_profile_by_id'),
+
+     path('kutsero_profile_by_id/<uuid:user_id>/', views.kutsero_profile_by_id, name='kutsero_profile_by_id'),
+    path('ctu_vet_profile_by_id/<uuid:user_id>/', views.ctu_vet_profile_by_id, name='ctu_vet_profile_by_id'),
+    path('dvmf_user_profile_by_id/<uuid:user_id>/', views.dvmf_user_profile_by_id, name='dvmf_user_profile_by_id'),
 
 
     

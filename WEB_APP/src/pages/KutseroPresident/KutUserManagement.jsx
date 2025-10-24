@@ -5,7 +5,7 @@ import Sidebar from '@/components/KutSidebar';
 import FloatingMessages from './KutMessages';
 import NotificationModal from './KutNotif';
 
-const API_BASE = "http://localhost:8000/api/kutsero_president"
+const API_BASE = "https://echo-ebl8.onrender.com/api/kutsero_president"
 
 // Skeleton Loading Component
 const TableSkeleton = ({ rows = 5, columns = 5 }) => {
@@ -214,7 +214,6 @@ const UserManagement = () => {
           sex: u.sex,
           phoneNumber: u.phoneNumber,
           address: u.address,
-          facebook: u.facebook,
           declineReason: u.declineReason || "No reason provided", 
         }))
         setApprovalUsers(formatted)
@@ -249,7 +248,6 @@ const UserManagement = () => {
           dob: u.dateOfBirth ? formatDate(u.dateOfBirth) : "N/A",
           gender: u.sex || "N/A",
           address: u.address || "N/A",
-          facebook: u.facebook || "N/A",
         }))
         setAccountUsers(formatted)
       } catch (err) {
@@ -875,7 +873,7 @@ const UserManagement = () => {
                   
                   {/* Pagination Controls - Attached directly to table */}
                   {getFilteredApprovalUsers().length > 0 && !loading.approval && (
-                    <div className="flex flex-col sm:flex-row items-center justify-between px=6 py-4 bg-gray-50 border-t border-gray-200">
+                    <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
                       <div className="text-sm text-gray-600 mb-4 sm:mb-0">
                         Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to{" "}
                         <span className="font-medium">
@@ -886,9 +884,9 @@ const UserManagement = () => {
                         <span className="font-medium">{getFilteredApprovalUsers().length}</span> results
                       </div>
                       
-                      <div className="flex items-center space-x-2">
+                      <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
                         {/* Items per page selector */}
-                        <div className="flex items-center mr-4">
+                        <div className="flex items-center">
                           <span className="text-sm text-gray-600 mr-2">Show:</span>
                           <select
                             value={itemsPerPage}
@@ -896,7 +894,7 @@ const UserManagement = () => {
                               setItemsPerPage(Number(e.target.value));
                               setCurrentPage(1);
                             }}
-                            className="border border-gray-300 rounded-md px-2 py-1 text-sm"
+                            className="border border-gray-300 rounded-md px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-[#D2691E] focus:border-[#D2691E]"
                           >
                             <option value="5">5</option>
                             <option value="10">10</option>
@@ -905,48 +903,50 @@ const UserManagement = () => {
                           </select>
                         </div>
 
-                        {/* Previous button */}
-                        <button
-                          onClick={prevPage}
-                          disabled={currentPage === 1}
-                          className={`p-2 rounded-md border ${
-                            currentPage === 1
-                              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                              : "bg-white text-gray-700 hover:bg-gray-50"
-                          }`}
-                        >
-                          <ChevronLeft className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          {/* Previous button */}
+                          <button
+                            onClick={prevPage}
+                            disabled={currentPage === 1}
+                            className={`p-2 rounded-md border transition-colors duration-200 ${
+                              currentPage === 1
+                                ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300"
+                                : "bg-white text-gray-700 hover:bg-gray-50 border-gray-300 hover:border-gray-400"
+                            }`}
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
 
-                        {/* Page numbers */}
-                        <div className="flex space-x-1">
-                          {getPageNumbers(totalPagesApproval).map((number) => (
-                            <button
-                              key={number}
-                              onClick={() => paginate(number)}
-                              className={`w-8 h-8 flex items-center justify-center rounded-md border text-sm ${
-                                currentPage === number
-                                  ? "bg-[#D2691E] text-white border-[#D2691E]"
-                                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                              }`}
-                            >
-                              {number}
-                            </button>
-                          ))}
+                          {/* Page numbers */}
+                          <div className="flex space-x-1">
+                            {getPageNumbers(totalPagesApproval).map((number) => (
+                              <button
+                                key={number}
+                                onClick={() => paginate(number)}
+                                className={`w-8 h-8 flex items-center justify-center rounded-md border text-sm transition-colors duration-200 ${
+                                  currentPage === number
+                                    ? "bg-[#D2691E] text-white border-[#D2691E]"
+                                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                                }`}
+                              >
+                                {number}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Next button */}
+                          <button
+                            onClick={nextPage}
+                            disabled={currentPage === totalPagesApproval}
+                            className={`p-2 rounded-md border transition-colors duration-200 ${
+                              currentPage === totalPagesApproval
+                                ? "bg-gray-100 text-gray-400 cursor-not-allowed border-gray-300"
+                                : "bg-white text-gray-700 hover:bg-gray-50 border-gray-300 hover:border-gray-400"
+                            }`}
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
                         </div>
-
-                        {/* Next button */}
-                        <button
-                          onClick={nextPage}
-                          disabled={currentPage === totalPagesApproval}
-                          className={`p-2 rounded-md border ${
-                            currentPage === totalPagesApproval
-                              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                              : "bg-white text-gray-700 hover:bg-gray-50"
-                          }`}
-                        >
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
                       </div>
                     </div>
                   )}
@@ -1111,7 +1111,7 @@ const UserManagement = () => {
                   
                   {/* Pagination Controls - Attached directly to table */}
                   {getFilteredAccountUsers().length > 0 && !loading.accounts && (
-                    <div className="flex flex-col sm:flex-row items-center justify-between px=6 py-4 bg-gray-50 border-t border-gray-200">
+                    <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
                       <div className="text-sm text-gray-600 mb-4 sm:mb-0">
                         Showing <span className="font-medium">{indexOfFirstItem + 1}</span> to{" "}
                         <span className="font-medium">
@@ -1122,9 +1122,9 @@ const UserManagement = () => {
                         <span className="font-medium">{getFilteredAccountUsers().length}</span> results
                       </div>
                       
-                      <div className="flex items-center space-x-2">
+                      <div className="flex flex-col sm:flex-row items-center gap-4">
                         {/* Items per page selector */}
-                        <div className="flex items-center mr-4">
+                        <div className="flex items-center">
                           <span className="text-sm text-gray-600 mr-2">Show:</span>
                           <select
                             value={itemsPerPage}
@@ -1141,48 +1141,50 @@ const UserManagement = () => {
                           </select>
                         </div>
 
-                        {/* Previous button */}
-                        <button
-                          onClick={prevPage}
-                          disabled={currentPage === 1}
-                          className={`p-2 rounded-md border ${
-                            currentPage === 1
-                              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                              : "bg-white text-gray-700 hover:bg-gray-50"
-                          }`}
-                        >
-                          <ChevronLeft className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          {/* Previous button */}
+                          <button
+                            onClick={prevPage}
+                            disabled={currentPage === 1}
+                            className={`p-2 rounded-md border ${
+                              currentPage === 1
+                                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                : "bg-white text-gray-700 hover:bg-gray-50"
+                            }`}
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
 
-                        {/* Page numbers */}
-                        <div className="flex space-x-1">
-                          {getPageNumbers(totalPagesAccount).map((number) => (
-                            <button
-                              key={number}
-                              onClick={() => paginate(number)}
-                              className={`w-8 h-8 flex items-center justify-center rounded-md border text-sm ${
-                                currentPage === number
-                                  ? "bg-[#D2691E] text-white border-[#D2691E]"
-                                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                              }`}
-                            >
-                              {number}
-                            </button>
-                          ))}
+                          {/* Page numbers */}
+                          <div className="flex space-x-1">
+                            {getPageNumbers(totalPagesAccount).map((number) => (
+                              <button
+                                key={number}
+                                onClick={() => paginate(number)}
+                                className={`w-8 h-8 flex items-center justify-center rounded-md border text-sm ${
+                                  currentPage === number
+                                    ? "bg-[#D2691E] text-white border-[#D2691E]"
+                                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                                }`}
+                              >
+                                {number}
+                              </button>
+                            ))}
+                          </div>
+
+                          {/* Next button */}
+                          <button
+                            onClick={nextPage}
+                            disabled={currentPage === totalPagesAccount}
+                            className={`p-2 rounded-md border ${
+                              currentPage === totalPagesAccount
+                                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                : "bg-white text-gray-700 hover:bg-gray-50"
+                            }`}
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
                         </div>
-
-                        {/* Next button */}
-                        <button
-                          onClick={nextPage}
-                          disabled={currentPage === totalPagesAccount}
-                          className={`p-2 rounded-md border ${
-                            currentPage === totalPagesAccount
-                              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                              : "bg-white text-gray-700 hover:bg-gray-50"
-                          }`}
-                        >
-                          <ChevronRight className="w-4 h-4" />
-                        </button>
                       </div>
                     </div>
                   )}
@@ -1282,17 +1284,6 @@ const UserManagement = () => {
                           <div className="flex gap-3.5">
                             <span className="min-w-[140px] text-sm font-medium text-gray-500">Home Address:</span>
                             <span className="text-sm text-gray-700 flex-1">{selectedUser.address}</span>
-                          </div>
-                          <div className="flex gap-3.5">
-                            <span className="min-w-[140px] text-sm font-medium text-gray-500">Facebook Profile:</span>
-                            <a
-                              href={`https://${selectedUser.facebook}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-[#D2691E] no-underline transition-colors duration-200 hover:underline hover:text-[#B35917]"
-                            >
-                              {selectedUser.facebook}
-                            </a>
                           </div>
                         </div>
                       </div>
@@ -1507,6 +1498,9 @@ const UserManagement = () => {
           </div>
         )}
       </div>
+
+      {/* ADDED: Floating Messages Component */}
+      <FloatingMessages />
 
       {/* Add custom CSS for highlight animation */}
       <style jsx>{`

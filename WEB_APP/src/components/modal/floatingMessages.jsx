@@ -1,13 +1,42 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import {
-  MessageCircle,
-  X,
-  Maximize2,
-  ArrowLeft,
-  Send,
-  Search,
-} from "lucide-react";
+import {MessageCircle,X,User,Maximize2,ArrowLeft,Send,Search, MapPin, Calendar, Phone, Mail, Building} from "lucide-react";
 import supabase from "@/supabaseClient.js";
+
+// Add custom scrollbar styles to the document
+const addScrollbarStyles = () => {
+  if (document.getElementById('custom-scrollbar-styles')) return;
+  
+  const styleElement = document.createElement('style');
+  styleElement.id = 'custom-scrollbar-styles';
+  styleElement.textContent = `
+    .custom-scrollbar {
+      scrollbar-width: thin;
+      scrollbar-color: #cbd5e0 #f7fafc;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f7fafc;
+      border-radius: 3px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e0;
+      border-radius: 3px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #a0aec0;
+    }
+    .hide-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .hide-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+  `;
+  document.head.appendChild(styleElement);
+};
 
 // Helper function to get initials from name
 const getInitials = (name) => {
@@ -17,6 +46,20 @@ const getInitials = (name) => {
   if (nameParts.length === 0) return "?";
   if (nameParts.length === 1) return nameParts[0].charAt(0).toUpperCase();
   return (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase();
+};
+
+// Helper function to get predefined avatar for CTU and DVMF admins
+const getPredefinedAvatar = (role, user) => {
+  // Check for CTU roles
+  if (role === 'Ctu-Admin' || role === 'Ctu-Vetmed') {
+    return '/Images/logo1.png'; // CTU logo
+  }
+  // Check for DVMF roles
+  if (role === 'Dvmf-Admin' || role === 'Dvmf') {
+    return '/Images/dvmf.png'; // DVMF logo
+  }
+  // For other users, return their custom avatar if available
+  return user?.avatar || null;
 };
 
 // Helper function to format date header
@@ -53,7 +96,6 @@ const formatMessageTime = (timestamp) => {
   if (!timestamp) return '';
   
   try {
-    // If it's already a formatted time string (like "02:30 PM"), return it directly
     if (typeof timestamp === 'string' && (timestamp.includes('AM') || timestamp.includes('PM'))) {
       return timestamp;
     }
@@ -69,29 +111,810 @@ const formatMessageTime = (timestamp) => {
   }
 };
 
-// ------------------ AVATAR COMPONENT ------------------
-const Avatar = ({ user, size = "md" }) => {
-  const sizeClasses = {
-    sm: "w-8 h-8 text-xs",
-    md: "w-10 h-10 text-sm",
-    lg: "w-12 h-12 text-base"
+// Helper function to calculate age from date of birth
+const calculateAge = (dob) => {
+  if (!dob) return null;
+  const birthDate = new Date(dob);
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const monthDiff = today.getMonth() - birthDate.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+};
+
+// Helper function to format address
+const formatAddress = (data, isVet = false) => {
+  if (isVet) {
+    const address = data.vet_address_is_clinic ? {
+      street: data.vet_clinic_street,
+      brgy: data.vet_clinic_brgy,
+      city: data.vet_clinic_city,
+      province: data.vet_clinic_province,
+      zipcode: data.vet_clinic_zipcode
+    } : {
+      street: data.vet_street,
+      brgy: data.vet_brgy,
+      city: data.vet_city,
+      province: data.vet_province,
+      zipcode: data.vet_zipcode
+    };
+    
+    const parts = [address.street, address.brgy, address.city, address.province].filter(Boolean);
+    return parts.length > 0 ? `${parts.join(', ')} ${address.zipcode}` : 'Address not available';
+  } else {
+    // Horse operator address
+    const parts = [data.op_house_add, data.op_brgy, data.op_municipality || data.op_city, data.op_province].filter(Boolean);
+    return parts.length > 0 ? `${parts.join(', ')} ${data.op_zipcode}` : 'Address not available';
+  }
+};
+
+// ------------------ ROLE BADGE COMPONENT ------------------
+const RoleBadge = ({ role, size = "default" }) => {
+  if (!role) return null;
+
+  // Define role colors and styles based on your requirements
+  const roleStyles = {
+    "Veterinarian": "bg-green-100 text-green-800 border border-green-200",
+    "Kutsero": "bg-amber-100 text-amber-800 border border-amber-200",
+    "Horse Operator": "bg-amber-100 text-amber-800 border border-amber-200",
+    "Dvmf": "bg-blue-100 text-blue-800 border border-blue-200",
+    "Dvmf-Admin": "bg-blue-100 text-blue-800 border border-blue-200",
+    "Ctu-Vetmed": "bg-red-100 text-red-800 border border-red-200",
+    "Ctu-Admin": "bg-red-100 text-red-800 border border-red-200",
   };
 
-  if (user?.avatar) {
+  const sizeClasses = {
+    default: "px-2 py-0.5 text-xs",
+    small: "px-1.5 py-0.5 text-xs"
+  };
+
+  const defaultStyle = "bg-gray-100 text-gray-800 border border-gray-200";
+
+  return (
+    <span className={`inline-flex items-center rounded-full font-medium ${roleStyles[role] || defaultStyle} ${sizeClasses[size]}`}>
+      {role}
+    </span>
+  );
+};
+
+// ------------------ DVMF ADMIN PROFILE MODAL ------------------
+const DvmfAdminProfileModal = ({ user, profileData, isOpen, onClose }) => {
+  if (!isOpen || !user) return null;
+
+  const cleanName = user.name ? user.name.replace(/\s*\([^)]*\)\s*$/, '').trim() : 'DVMF Admin';
+  const fullName = profileData ? `${profileData.dvmf_fname} ${profileData.dvmf_lname}`.trim() : cleanName;
+
+  return (
+    <div className="fixed inset-0 z-1001 flex items-center justify-center backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col">
+        <div className="relative bg-gradient-to-r from-blue-500 to-blue-600 pt-16 pb-6 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-all z-10 shadow-lg"
+          >
+            <X className="w-4 h-4 text-gray-600" />
+          </button>
+          
+          <div className="flex justify-center">
+            <div className="w-28 h-28 bg-transparent rounded-full flex items-center justify-center">
+              <img 
+                src="/Images/dvmf.png" 
+                alt="DVMF Logo"
+                className="w-45 h-45 object-cover"
+              />
+            </div>
+          </div>
+
+          {/* Name and Role */}
+          <div className="text-center mt-4">
+            <h2 className="text-xl font-bold text-white mb-2">{fullName}</h2>
+            <div className="flex justify-center">
+              <RoleBadge role={user.role} />
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {/* Online Status */}
+          <div className="flex items-center justify-center gap-2 py-4 bg-white border-b border-gray-100 flex-shrink-0">
+            <div className={`w-3 h-3 rounded-full ${user.online ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+            <span className="text-sm text-gray-600">
+              {user.online ? "Active now" : "Offline"}
+            </span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+            <div className="space-y-4">
+              {/* Full Name */}
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <User className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-500 mb-1">Full Name</p>
+                  <p className="text-sm text-gray-900 break-words">{fullName}</p>
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <Phone className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-500 mb-1">Phone</p>
+                  <p className="text-sm text-gray-900 break-words">
+                    {profileData?.dvmf_phonenum || 'Not provided'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Organization */}
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <Building className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-500 mb-1">Organization</p>
+                  <p className="text-sm text-gray-900 break-words">Department of Veterinary Medicine and Fisheries</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ------------------ CTU VETMED PROFILE MODAL ------------------
+const CtuVetmedProfileModal = ({ user, profileData, isOpen, onClose }) => {
+  if (!isOpen || !user) return null;
+
+  const cleanName = user.name ? user.name.replace(/\s*\([^)]*\)\s*$/, '').trim() : 'CTU VetMed';
+  const fullName = profileData ? `${profileData.ctu_fname} ${profileData.ctu_lname}`.trim() : cleanName;
+
+  return (
+    <div className="fixed inset-0 z-1001 flex items-center justify-center backdrop-blur-sm p-4">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col">
+        <div className="relative bg-gradient-to-r from-red-500 to-red-600 pt-15 pb-4 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="absolute top-4 right-4 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-all z-10 shadow-lg"
+          >
+            <X className="w-4 h-4 text-gray-600" />
+          </button>
+          
+          <div className="flex flex-col items-center justify-center">
+            <div className="w-28 h-28 bg-transparent rounded-full flex items-center justify-center  mb-0">
+              <img 
+                src="/Images/logo1.png" 
+                alt="CTU Logo"
+                className="w-45 h-45 object-cover"
+              />
+            </div>
+            
+            <div className="text-center mt-2">
+              <h2 className="text-xl font-bold text-white leading-tight">{fullName}</h2>
+              <div className="flex justify-center mt-1">
+                <RoleBadge role={user.role} />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-hidden flex flex-col">
+          {/* Online Status */}
+          <div className="flex items-center justify-center gap-2 py-4 bg-white border-b border-gray-100 flex-shrink-0">
+            <div className={`w-3 h-3 rounded-full ${user.online ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+            <span className="text-sm text-gray-600">
+              {user.online ? "Active now" : "Offline"}
+            </span>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+            <div className="space-y-4">
+              {/* Full Name */}
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <User className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-500 mb-1">Full Name</p>
+                  <p className="text-sm text-gray-900 break-words">{fullName}</p>
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <Phone className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-500 mb-1">Phone</p>
+                  <p className="text-sm text-gray-900 break-words">
+                    {profileData?.ctu_phonenum || 'Not provided'}
+                  </p>
+                </div>
+              </div>
+
+              {/* Organization */}
+              <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                <Building className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-500 mb-1">Organization</p>
+                  <p className="text-sm text-gray-900 break-words">Cebu Technological University - Veterinary Medicine</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ------------------ VETERINARIAN PROFILE MODAL ------------------
+const VeterinarianProfileModal = ({ user, profileData, isOpen, onClose }) => {
+  if (!isOpen || !user || !profileData) return null;
+
+  const cleanName = user.name ? user.name.replace(/\s*\([^)]*\)\s*$/, '').trim() : 'Unknown User';
+  const age = calculateAge(profileData.vet_dob);
+  const fullName = `${profileData.vet_fname} ${profileData.vet_mname || ''} ${profileData.vet_lname}`.trim();
+  const address = formatAddress(profileData, true);
+
+  // State for enlarged profile photo
+  const [showEnlargedPhoto, setShowEnlargedPhoto] = useState(false);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-1001 flex items-center justify-center backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col">
+          <div className="relative bg-gradient-to-r from-green-500 to-green-600 pt-16 pb-6 flex-shrink-0">
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-all z-10 shadow-lg"
+            >
+              <X className="w-4 h-4 text-gray-600" />
+            </button>
+            
+            <div className="flex justify-center">
+              <div 
+                onClick={() => setShowEnlargedPhoto(true)}
+                className="w-24 h-24 bg-gradient-to-br from-green-500 to-green-600 rounded-full border-4 border-white flex items-center justify-center text-white text-2xl font-bold shadow-lg cursor-pointer hover:scale-105 transition-transform duration-200 overflow-hidden"
+              >
+                {profileData.vet_profile_photo ? (
+                  <img 
+                    src={profileData.vet_profile_photo} 
+                    alt={cleanName}
+                    className="w-full h-full object-cover object-center"
+                    style={{ objectFit: 'cover' }}
+                  />
+                ) : (
+                  getInitials(cleanName)
+                )}
+              </div>
+            </div>
+
+            {/* Name and Role */}
+            <div className="text-center mt-4">
+              <h2 className="text-xl font-bold text-white mb-2">{cleanName}</h2>
+              <div className="flex justify-center">
+                <RoleBadge role={user.role} />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {/* Online Status */}
+            <div className="flex items-center justify-center gap-2 py-4 bg-white border-b border-gray-100 flex-shrink-0">
+              <div className={`w-3 h-3 rounded-full ${user.online ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+              <span className="text-sm text-gray-600">
+                {user.online ? "Active now" : "Offline"}
+            </span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+              <div className="space-y-4">
+                {/* Full Name */}
+                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <User className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Full Name</p>
+                    <p className="text-sm text-gray-900 break-words">{fullName}</p>
+                  </div>
+                </div>
+
+                {/* Phone */}
+                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <Phone className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Phone</p>
+                    <p className="text-sm text-gray-900 break-words">{profileData.vet_phone_num || 'Not provided'}</p>
+                  </div>
+                </div>
+
+                {/* Age and Gender */}
+                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <Calendar className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Age & Gender</p>
+                    <p className="text-sm text-gray-900">
+                      {age ? `${age} years old` : 'Age not specified'}, {profileData.vet_sex || 'Not specified'}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Address */}
+                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <MapPin className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-500 mb-1">
+                      {profileData.vet_address_is_clinic ? 'Clinic Address' : 'Home Address'}
+                    </p>
+                    <p className="text-sm text-gray-900 break-words">{address}</p>
+                  </div>
+                </div>
+
+                {/* Member Since */}
+                {profileData.created_at && (
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Calendar className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Member since</p>
+                      <p className="text-sm text-gray-900">
+                        {new Date(profileData.created_at).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Specialization */}
+                {profileData.vet_specialization && (
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                    <User className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Specialization</p>
+                      <p className="text-sm text-gray-900 break-words">{profileData.vet_specialization}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Organization */}
+                {profileData.vet_org && (
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Building className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Organization</p>
+                      <p className="text-sm text-gray-900 break-words">{profileData.vet_org}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showEnlargedPhoto && (
+        <div 
+          className="fixed inset-0 z-1002 flex items-center justify-center bg-black bg-opacity-90 p-4"
+          onClick={() => setShowEnlargedPhoto(false)}
+        >
+          <div className="relative max-w-2xl w-full max-h-full">
+            <button
+              onClick={() => setShowEnlargedPhoto(false)}
+              className="absolute -top-12 right-0 w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-all shadow-lg z-10"
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </button>
+            
+            <div className="bg-white rounded-lg overflow-hidden max-w-sm w-full mx-auto">
+              {profileData.vet_profile_photo ? (
+                <img 
+                  src={profileData.vet_profile_photo} 
+                  alt={cleanName}
+                  className="w-full h-96 object-cover bg-gray-100"
+                  style={{ objectFit: 'cover' }}
+                />
+              ) : (
+                <div className="w-full h-96 bg-gradient-to-br from-green-500 to-green-600 flex items-center justify-center">
+                  <span className="text-white text-6xl font-bold">
+                    {getInitials(cleanName)}
+                  </span>
+                </div>
+              )}
+            </div>
+            
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+// ------------------ HORSE OPERATOR PROFILE MODAL ------------------
+const HorseOperatorProfileModal = ({ user, profileData, isOpen, onClose }) => {
+  if (!isOpen || !user || !profileData) return null;
+
+  const cleanName = user.name ? user.name.replace(/\s*\([^)]*\)\s*$/, '').trim() : 'Unknown User';
+  const age = calculateAge(profileData.op_dob);
+  const fullName = `${profileData.op_fname} ${profileData.op_mname || ''} ${profileData.op_lname}`.trim();
+  const address = formatAddress(profileData, false);
+
+  // State for enlarged profile photo
+  const [showEnlargedPhoto, setShowEnlargedPhoto] = useState(false);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-1001 flex items-center justify-center backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col">
+          <div className="relative bg-gradient-to-r from-amber-500 to-amber-600 pt-16 pb-6 flex-shrink-0">
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-all z-10 shadow-lg"
+            >
+              <X className="w-4 h-4 text-gray-600" />
+            </button>
+            
+            <div className="flex justify-center">
+              <div 
+                onClick={() => setShowEnlargedPhoto(true)}
+                className="w-24 h-24 bg-gradient-to-br from-amber-500 to-amber-600 rounded-full border-4 border-white flex items-center justify-center text-white text-2xl font-bold shadow-lg cursor-pointer hover:scale-105 transition-transform duration-200 overflow-hidden"
+              >
+                {profileData.op_image ? (
+                  <img 
+                    src={profileData.op_image} 
+                    alt={cleanName}
+                    className="w-full h-full object-cover object-center"
+                    style={{ objectFit: 'cover' }}
+                  />
+                ) : (
+                  getInitials(cleanName)
+                )}
+              </div>
+            </div>
+
+            {/* Name and Role */}
+            <div className="text-center mt-4">
+              <h2 className="text-xl font-bold text-white mb-2">{cleanName}</h2>
+              <div className="flex justify-center">
+                <RoleBadge role={user.role} />
+              </div>
+            </div>
+          </div>
+
+          {/* Content - PROPER SCROLLABLE AREA */}
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {/* Online Status */}
+            <div className="flex items-center justify-center gap-2 py-4 bg-white border-b border-gray-100 flex-shrink-0">
+              <div className={`w-3 h-3 rounded-full ${user.online ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+              <span className="text-sm text-gray-600">
+                {user.online ? "Active now" : "Offline"}
+              </span>
+            </div>
+
+            {/* Profile Details - SCROLLABLE CONTENT */}
+            <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+              <div className="space-y-4">
+                {/* Full Name */}
+                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <User className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Full Name</p>
+                    <p className="text-sm text-gray-900 break-words">{fullName}</p>
+                  </div>
+                </div>
+                
+                {/* Phone */}
+                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <Phone className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Phone</p>
+                    <p className="text-sm text-gray-900 break-words">{profileData.op_phone_num || 'Not provided'}</p>
+                  </div>
+                </div>
+
+                {/* Age and Gender */}
+                {profileData.op_dob && (
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Calendar className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Age & Gender</p>
+                      <p className="text-sm text-gray-900">
+                        {age ? `${age} years old` : 'Age not specified'}, {profileData.op_sex || 'Not specified'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Address */}
+                <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                  <MapPin className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-500 mb-1">Address</p>
+                    <p className="text-sm text-gray-900 break-words">{address}</p>
+                  </div>
+                </div>
+
+                {/* Member Since */}
+                {profileData.created_at && (
+                  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                    <Calendar className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Member since</p>
+                      <p className="text-sm text-gray-900">
+                        {new Date(profileData.created_at).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric'
+                        })}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {showEnlargedPhoto && (
+        <div 
+          className="fixed inset-0 z-1002 flex items-center justify-center bg-black bg-opacity-90 p-4"
+          onClick={() => setShowEnlargedPhoto(false)}
+        >
+          <div className="relative max-w-2xl w-full max-h-full">
+            <button
+              onClick={() => setShowEnlargedPhoto(false)}
+              className="absolute -top-12 right-0 w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center hover:bg-gray-200 transition-all shadow-lg z-10"
+            >
+              <X className="w-5 h-5 text-gray-600" />
+            </button>
+            
+            <div className="bg-white rounded-lg overflow-hidden max-w-sm w-full mx-auto">
+              {profileData.op_image ? (
+                <img 
+                  src={profileData.op_image} 
+                  alt={cleanName}
+                  className="w-full h-96 object-cover bg-gray-100"
+                  style={{ objectFit: 'cover' }}
+                />
+              ) : (
+                <div className="w-full h-96 bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center">
+                  <span className="text-white text-6xl font-bold">
+                    {getInitials(cleanName)}
+                  </span>
+                </div>
+              )}
+            </div>          
+          </div>
+        </div>
+      )}
+    </>
+  );
+};
+
+// ------------------ PROFILE MODAL HANDLER ------------------
+const ProfileModalHandler = ({ user, isOpen, onClose }) => {
+  const [profileData, setProfileData] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (isOpen && user) {
+      // For CTU and DVMF admins, fetch their profile data
+      if (user.role === 'Ctu-Admin' || user.role === 'Ctu-Vetmed') {
+        fetchCTUProfileData();
+      } else if (user.role === 'Dvmf-Admin' || user.role === 'Dvmf') {
+        fetchDVMFProfileData();
+      } else {
+        // For other users, fetch their respective profile data
+        fetchProfileData();
+      }
+    }
+  }, [isOpen, user]);
+
+  const fetchCTUProfileData = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      const endpoint = `http://localhost:8000/api/veterinarian/ctu_profile_by_id/${user.id}/`;
+      const res = await fetch(endpoint, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setProfileData(data);
+      }
+    } catch (error) {
+      console.error("Error fetching CTU profile data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchDVMFProfileData = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      const endpoint = `http://localhost:8000/api/veterinarian/dvmf_profile_by_id/${user.id}/`;
+      const res = await fetch(endpoint, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setProfileData(data);
+      }
+    } catch (error) {
+      console.error("Error fetching DVMF profile data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchProfileData = async () => {
+    if (!user) return;
+    
+    setLoading(true);
+    try {
+      let endpoint = '';
+      
+      if (user.role === 'Veterinarian') {
+        endpoint = `http://localhost:8000/api/veterinarian/vet_profile_by_id/${user.id}/`;
+      } else if (user.role === 'Horse Operator' || user.role === 'Kutsero') {
+        endpoint = `http://localhost:8000/api/veterinarian/horse_operator_profile/${user.id}/`;
+      }
+
+      if (endpoint) {
+        const res = await fetch(endpoint, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          setProfileData(data);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching profile data:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!isOpen || !user) return null;
+
+  if (loading) {
     return (
-      <img 
-        src={user.avatar} 
-        alt={user?.name || 'User'}
-        className={`${sizeClasses[size]} rounded-full object-cover`}
+      <div className="fixed inset-0 z-1001 flex items-center justify-center backdrop-blur-sm p-4">
+        <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Handle CTU admin profiles
+  if (user.role === 'Ctu-Admin' || user.role === 'Ctu-Vetmed') {
+    return (
+      <CtuVetmedProfileModal
+        user={user}
+        profileData={profileData}
+        isOpen={isOpen}
+        onClose={onClose}
       />
     );
   }
 
+  // Handle DVMF admin profiles
+  if (user.role === 'Dvmf-Admin' || user.role === 'Dvmf') {
+    return (
+      <DvmfAdminProfileModal
+        user={user}
+        profileData={profileData}
+        isOpen={isOpen}
+        onClose={onClose}
+      />
+    );
+  }
+
+  // Handle Veterinarian and Horse Operator profiles
+  if (user.role === 'Veterinarian') {
+    return (
+      <VeterinarianProfileModal
+        user={user}
+        profileData={profileData}
+        isOpen={isOpen}
+        onClose={onClose}
+      />
+    );
+  } else if (user.role === 'Horse Operator' || user.role === 'Kutsero') {
+    return (
+      <HorseOperatorProfileModal
+        user={user}
+        profileData={profileData}
+        isOpen={isOpen}
+        onClose={onClose}
+      />
+    );
+  }
+
+  return null;
+};
+
+// ------------------ NAME WITH ROLE COMPONENT ------------------
+const NameWithRole = ({ name, role, showRole = true, onClick, clickable = true, inChatView = false, isFullscreen = false }) => {
+  // Extract clean name without role in parentheses
+  const cleanName = name ? name.replace(/\s*\([^)]*\)\s*$/, '').trim() : '';
+  
+  // ALL names are clickable in chat view now
+  const shouldBeClickable = clickable && inChatView;
+  
   return (
-    <div className={`${sizeClasses[size]} bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold`}>
+    <div className={`flex ${isFullscreen ? 'items-center gap-2' : 'flex-col'}`}>
+      <span 
+        onClick={shouldBeClickable ? onClick : undefined}
+        className={`font-semibold text-gray-900 ${shouldBeClickable ? 'hover:text-blue-600 cursor-pointer transition-colors' : ''}`}
+      >
+        {cleanName}
+      </span>
+      {showRole && role && inChatView && (
+        <div className={isFullscreen ? '' : 'mt-1'}>
+          <RoleBadge role={role} size="small" />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ------------------ AVATAR COMPONENT ------------------
+const Avatar = ({ user, size = "md", onClick, clickable = true, inChatView = false }) => {
+  const sizeClasses = {
+    sm: "w-8 h-8 text-xs",
+    md: "w-10 h-10 text-sm",
+    lg: "w-12 h-12 text-base",
+    xl: "w-24 h-24 text-2xl"
+  };
+
+  const shouldBeClickable = clickable && inChatView;
+  const predefinedAvatar = getPredefinedAvatar(user?.role, user);
+
+  // 🎯 Special case: make CTU and DVMF avatars larger
+  const isCtuOrDvmf =
+    user?.role?.toLowerCase().includes("ctu") ||
+    user?.role?.toLowerCase().includes("dvmf");
+
+  // Apply larger size for CTU/DVMF in conversation list and chat view
+  const customSize = isCtuOrDvmf ? "lg" : size; // Use 'lg' size for CTU/DVMF
+  const customScale = isCtuOrDvmf ? "scale-125" : "scale-110";
+
+  const avatarContent = predefinedAvatar ? (
+    <div
+      className={`${sizeClasses[customSize]} rounded-full flex items-center justify-center overflow-hidden ${
+        shouldBeClickable ? "cursor-pointer hover:opacity-80 transition-opacity" : ""
+      } ${isCtuOrDvmf ? "bg-transparent" : "bg-white"}`}
+      onClick={shouldBeClickable ? onClick : undefined}
+    >
+      <img
+        src={predefinedAvatar}
+        alt={user?.name || "User"}
+        className={`w-full h-full object-cover rounded-full ${customScale}`}
+        style={{ objectFit: "cover" }}
+      />
+    </div>
+  ) : user?.avatar ? (
+    <img
+      src={user.avatar}
+      alt={user?.name || "User"}
+      className={`${sizeClasses[size]} rounded-full object-cover ${
+        shouldBeClickable ? "cursor-pointer hover:opacity-80 transition-opacity" : ""
+      }`}
+      onClick={shouldBeClickable ? onClick : undefined}
+    />
+  ) : (
+    <div
+      className={`${sizeClasses[size]} bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold ${
+        shouldBeClickable ? "cursor-pointer hover:opacity-80 transition-opacity" : ""
+      }`}
+      onClick={shouldBeClickable ? onClick : undefined}
+    >
       {getInitials(user?.name)}
     </div>
   );
+
+  return avatarContent;
 };
 
 // ------------------ TYPING INDICATOR COMPONENT ------------------
@@ -103,25 +926,26 @@ const TypingIndicator = () => {
         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
         <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
       </div>
-      <span className="text-xs text-gray-500">typing...</span>
     </div>
   );
 };
 
 // ------------------ MESSAGES WITH DATE HEADERS COMPONENT ------------------
-const MessagesWithDateHeaders = ({ messages, isTyping, isNewConversation }) => {
-  // Show "Start conversation" message when it's a new conversation with no messages
-  if (isNewConversation && (!messages || messages.length === 0)) {
+const MessagesWithDateHeaders = ({ messages, isTyping, isNewConversation, isEmptyConversation }) => {
+  if ((isNewConversation || isEmptyConversation) && (!messages || messages.length === 0)) {
     return (
       <div className="flex justify-center my-8">
         <div className="text-center">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 max-w-md">
             <MessageCircle className="w-12 h-12 text-blue-400 mx-auto mb-3" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Start a conversation
+              {isNewConversation ? "Start a conversation" : "No messages yet"}
             </h3>
             <p className="text-gray-600 text-sm">
-              Send a message to start chatting and build your connection
+              {isNewConversation 
+                ? "Send a message to start chatting and build your connection" 
+                : "Be the first to send a message in this conversation"
+              }
             </p>
           </div>
         </div>
@@ -129,6 +953,7 @@ const MessagesWithDateHeaders = ({ messages, isTyping, isNewConversation }) => {
     );
   }
 
+  // If there are messages, show them normally
   if (!messages || messages.length === 0) {
     return null;
   }
@@ -170,14 +995,12 @@ const MessagesWithDateHeaders = ({ messages, isTyping, isNewConversation }) => {
     <>
       {groupedMessages.map((group, groupIndex) => (
         <div key={groupIndex}>
-          {/* Date Header */}
           <div className="flex justify-center my-4">
             <div className="bg-gray-200 text-gray-600 text-xs px-3 py-1 rounded-full">
               {group.date}
             </div>
           </div>
           
-          {/* Messages for this date */}
           {group.messages.map((message, messageIndex) => (
             <div
               key={message.id || messageIndex}
@@ -207,7 +1030,6 @@ const MessagesWithDateHeaders = ({ messages, isTyping, isNewConversation }) => {
                   {formatMessageTime(message.timestamp)}
                 </div>
                 
-                {/* ✅ FIXED: ONLY show "Seen" for the last message sent by current user AND is_read is EXPLICITLY TRUE */}
                 {message.isOwn && 
                  messageIndex === group.messages.length - 1 && 
                  groupIndex === groupedMessages.length - 1 && 
@@ -236,6 +1058,133 @@ const MessagesWithDateHeaders = ({ messages, isTyping, isNewConversation }) => {
   );
 };
 
+// ------------------ CONVERSATION LIST ITEM COMPONENT ------------------
+const ConversationListItem = ({ 
+  conversation, 
+  isSelected, 
+  onSelect,
+  onProfileClick 
+}) => {
+  // Check if there are unread messages
+  const hasUnread = conversation.unread > 0;
+  
+  // Names are NOT clickable in conversation lists
+  const isProfileClickable = false;
+
+  return (
+    <div
+      onClick={() => onSelect(conversation)}
+      className={`flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition-colors ${
+        isSelected ? 'bg-blue-50 border-blue-200' : ''
+      }`}
+    >
+      <div className="relative">
+        <Avatar 
+          user={conversation} 
+          size="lg" 
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isProfileClickable) {
+              onProfileClick(conversation);
+            }
+          }}
+          clickable={isProfileClickable}
+          inChatView={false}
+        />
+        {conversation.online && (
+          <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
+        )}
+      </div>
+      
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-gray-900 text-sm">
+              {conversation.name ? conversation.name.replace(/\s*\([^)]*\)\s*$/, '').trim() : ''}
+            </span>
+            {hasUnread && (
+              <div className="w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-medium">
+                {conversation.unread > 9 ? '9+' : conversation.unread}
+              </div>
+            )}
+          </div>
+        </div>
+        
+        <div className="flex items-center justify-between">
+          <p className={`text-sm truncate flex-1 mr-2 ${
+            hasUnread 
+              ? "font-semibold text-gray-900" 
+              : "text-gray-600"
+          }`}>
+            {conversation.lastMessage || "Tap to chat"}
+          </p>
+          <span className={`text-xs whitespace-nowrap ${
+            hasUnread ? "font-semibold text-gray-900" : "text-gray-500"
+          }`}>
+            {conversation.timestamp || ""}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ------------------ CHAT HEADER COMPONENT ------------------
+const ChatHeader = ({ 
+  conversation, 
+  onBack, 
+  isTyping, 
+  showBackButton = true,
+  onProfileClick,
+  isFullscreen = false 
+}) => {
+  // ALL names and avatars are clickable in chat view now
+  const isProfileClickable = true;
+
+  return (
+    <div className="flex items-center gap-3 p-4 border-b border-gray-200 bg-white">
+      {showBackButton && (
+        <button
+          onClick={onBack}
+          className="p-1 hover:bg-gray-100 rounded transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5 text-gray-600" />
+        </button>
+      )}
+      <div className="relative">
+        <Avatar 
+          user={conversation} 
+          size="md" 
+          onClick={() => isProfileClickable && onProfileClick(conversation)}
+          clickable={isProfileClickable}
+          inChatView={true}
+        />
+      </div>
+      <div className="flex flex-col">
+        <NameWithRole 
+          name={conversation.name} 
+          role={conversation.role}
+          showRole={true}
+          onClick={() => isProfileClickable && onProfileClick(conversation)}
+          clickable={isProfileClickable}
+          inChatView={true}
+          isFullscreen={isFullscreen}
+        />
+        <div className="flex items-center gap-2 mt-0.5">
+          <div className={`w-2 h-2 rounded-full ${conversation.online ? 'bg-green-500' : 'bg-gray-400'}`}></div>
+          <span className="text-xs text-gray-500">
+            {isTyping ? (
+              <span className="text-green-500">typing...</span>
+            ) : (
+              conversation.online ? "Active now" : "Offline"
+            )}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ------------------ CHAT VIEW COMPONENT ------------------
 const ChatView = ({
   conversation,
@@ -249,6 +1198,9 @@ const ChatView = ({
   handleTypingStop,
   showBackButton = true,
   isNewConversation = false,
+  isEmptyConversation = false,
+  onProfileClick,
+  isFullscreen = false,
 }) => {
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
@@ -306,59 +1258,28 @@ const ChatView = ({
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
-        <div className="flex items-center gap-3">
-          {showBackButton && (
-            <button
-              onClick={() => setSelectedConversation(null)}
-              className="p-1 hover:bg-gray-100 rounded transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5 text-gray-600" />
-            </button>
-          )}
-          <div className="relative">
-            <Avatar user={conversation} size="md" />
-            {conversation.online && (
-              <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
-            )}
-          </div>
-          <div>
-            <h3 className="font-semibold text-gray-900">{conversation.name}</h3>
-            <p className="text-xs text-gray-500">
-              {isTyping ? (
-                <span className="text-green-500">typing...</span>
-              ) : (
-                conversation.online ? "Active now" : "Offline"
-              )}
-            </p>
-          </div>
-        </div>
-      </div>
+      <ChatHeader
+        conversation={conversation}
+        onBack={() => setSelectedConversation(null)}
+        isTyping={isTyping}
+        showBackButton={showBackButton}
+        onProfileClick={onProfileClick}
+        isFullscreen={isFullscreen}
+      />
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
-        {/* ✅ FIXED: Show "Start conversation" when conversation is empty */}
-        {(!conversation.messages || conversation.messages.length === 0) && (
-          <div className="flex justify-center my-8">
-            <div className="text-center">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 max-w-md">
-                <MessageCircle className="w-12 h-12 text-blue-400 mx-auto mb-3" />
-                <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                  Start a conversation
-                </h3>
-                <p className="text-gray-600 text-sm">
-                  Send a message to start chatting and build your connection
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-        
+      <div 
+        className="flex-1 overflow-y-auto p-4 bg-gray-50 custom-scrollbar"
+        style={{
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#cbd5e0 #f7fafc',
+        }}
+      >
         <MessagesWithDateHeaders 
           messages={conversation.messages || []} 
           isTyping={isTyping}
           isNewConversation={isNewConversation}
+          isEmptyConversation={isEmptyConversation}
         />
         
         <div ref={messagesEndRef} />
@@ -407,6 +1328,7 @@ const ConversationList = ({
   allUsers,
   currentUserId,
   selectedConversation,
+  onProfileClick,
 }) => {
   const displayConversations = isSearching ? allUsers : filteredConversations;
 
@@ -431,7 +1353,13 @@ const ConversationList = ({
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        <div className="max-h-full overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
+        <div 
+          className="max-h-full overflow-y-auto custom-scrollbar"
+          style={{
+            scrollbarWidth: 'thin',
+            scrollbarColor: '#cbd5e0 #f7fafc',
+          }}
+        >
           {!displayConversations || displayConversations.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-gray-500">
               <p className="text-sm">
@@ -440,40 +1368,13 @@ const ConversationList = ({
             </div>
           ) : (
             displayConversations.map((conversation) => (
-              <div
+              <ConversationListItem
                 key={conversation.id}
-                onClick={() => handleSelectConversation(conversation)}
-                className={`flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition-colors ${
-                  selectedConversation?.id === conversation.id ? 'bg-blue-50' : ''
-                }`}
-              >
-                <div className="relative">
-                  <Avatar user={conversation} size="lg" />
-                  {conversation.online && (
-                    <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-white rounded-full"></div>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <h4 className="font-semibold text-gray-900 truncate">
-                      {conversation.name}
-                    </h4>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-gray-600 truncate flex-1 mr-2">
-                      {conversation.lastMessage || "Tap to chat"}
-                    </p>
-                    <span className="text-xs text-gray-500 whitespace-nowrap">
-                      {conversation.timestamp || ""}
-                    </span>
-                  </div>
-                </div>
-                {conversation.unread > 0 && (
-                  <div className="w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-medium">
-                    {conversation.unread}
-                  </div>
-                )}
-              </div>
+                conversation={conversation}
+                isSelected={selectedConversation?.id === conversation.id}
+                onSelect={handleSelectConversation}
+                onProfileClick={onProfileClick}
+              />
             ))
           )}
         </div>
@@ -494,6 +1395,9 @@ const FloatingMessages = () => {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [isTyping, setIsTyping] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState(new Set());
+  const [conversationMessages, setConversationMessages] = useState({}); 
+  const [profileModal, setProfileModal] = useState({ isOpen: false, user: null });
+  
   const messagesSubscriptionRef = useRef(null);
   const typingChannelRef = useRef(null);
   const onlineChannelRef = useRef(null);
@@ -501,6 +1405,11 @@ const FloatingMessages = () => {
 
   const selectedConversationRef = useRef(null);
   const currentUserIdRef = useRef(null);
+
+  // Add scrollbar styles when component mounts
+  useEffect(() => {
+    addScrollbarStyles();
+  }, []);
 
   useEffect(() => {
     selectedConversationRef.current = selectedConversation;
@@ -676,14 +1585,13 @@ const FloatingMessages = () => {
                 newMessageData.receiver_id === currentSelectedConv.id;
               
               if (isForCurrentConversation) {
-                // Store both the formatted time and original timestamp
                 const formattedMessage = {
                   id: newMessageData.mes_id,
                   content: newMessageData.mes_content,
                   timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                   originalTimestamp: newMessageData.mes_date,
                   isOwn: newMessageData.user_id === currentUserId,
-                  is_read: newMessageData.is_read, // Use the actual database value
+                  is_read: newMessageData.is_read, 
                 };
                 
                 setSelectedConversation(prev => {
@@ -697,7 +1605,6 @@ const FloatingMessages = () => {
                   };
                 });
 
-                // ✅ FIXED: Only mark as read if conversation is open (but don't override the actual database value)
                 if (newMessageData.receiver_id === currentUserId && currentSelectedConv) {
                   try {
                     await fetch(
@@ -711,7 +1618,6 @@ const FloatingMessages = () => {
                       }
                     );
                     
-                    // Update conversations list only
                     setConversations(prev => {
                       if (!prev) return [];
                       return prev.map(conv => 
@@ -810,18 +1716,12 @@ const FloatingMessages = () => {
   // Check if it's a new conversation (user selected from search, not from existing conversations)
   const isNewConversation = selectedConversation && 
     isSearching && 
-    conversations?.some(conv => conv.id === selectedConversation.id);
+    !conversations?.some(conv => conv.id === selectedConversation.id);
 
-  // Add online status to conversations and users - FIXED: Add null checks
-  const conversationsWithOnlineStatus = (conversations || []).map(conv => ({
-    ...conv,
-    online: onlineUsers.has(conv.id?.toString())
-  }));
-
-  const allUsersWithOnlineStatus = (allUsers || []).map(user => ({
-    ...user,
-    online: onlineUsers.has(user.id?.toString())
-  }));
+  // Only show empty message for conversations we've confirmed have no messages
+  const isEmptyConversation = selectedConversation && 
+    !isNewConversation && 
+    conversationMessages[selectedConversation.id] === true; 
 
   const fetchConversations = async () => {
     try {
@@ -831,7 +1731,21 @@ const FloatingMessages = () => {
       );
       if (res.ok) {
         const data = await res.json();
-        setConversations(data || []);
+        
+        // Sort conversations in descending order based on timestamp (newest first)
+        const sortedConversations = (data || []).sort((a, b) => {
+          // Handle conversations with timestamps
+          if (a.timestamp && b.timestamp) {
+            return new Date(b.timestamp) - new Date(a.timestamp);
+          }
+          // If one conversation has timestamp and other doesn't, prioritize the one with timestamp
+          if (a.timestamp && !b.timestamp) return -1;
+          if (!a.timestamp && b.timestamp) return 1;
+          // If neither has timestamp, maintain original order
+          return 0;
+        });
+        
+        setConversations(sortedConversations);
       } else {
         setConversations([]);
       }
@@ -883,12 +1797,17 @@ const FloatingMessages = () => {
       if (res.ok) {
         const data = await res.json();
         
-        // Transform the messages - USE THE ACTUAL DATABASE is_read VALUES
+        const hasNoMessages = !data || data.length === 0;
+        setConversationMessages(prev => ({
+          ...prev,
+          [conversation.id]: hasNoMessages
+        }));
+        
         const transformedMessages = (data || []).map(msg => ({
           ...msg,
           timestamp: msg.timestamp,
           originalTimestamp: msg.originalTimestamp || new Date().toISOString(),
-          is_read: msg.is_read // Use the actual database value, don't override
+          is_read: msg.is_read 
         }));
 
         const updatedConversation = {
@@ -911,7 +1830,6 @@ const FloatingMessages = () => {
           );
           
           if (markReadResponse.ok) {
-            console.log("✅ Messages marked as read in database");
             
             setConversations(prev => {
               if (!prev) return [];
@@ -945,7 +1863,7 @@ const FloatingMessages = () => {
       timestamp: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       originalTimestamp: now.toISOString(),
       isOwn: true,
-      is_read: false, // Start as false
+      is_read: false, 
     };
 
     setIsTyping(false);
@@ -968,7 +1886,7 @@ const FloatingMessages = () => {
         "http://localhost:8000/api/veterinarian/send_message/",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": 'application/json' },
           credentials: "include",
           body: JSON.stringify(payload),
         }
@@ -991,9 +1909,39 @@ const FloatingMessages = () => {
     }
   }, [newMessage, selectedConversation, currentUserId]);
 
-  const filteredConversations = (conversationsWithOnlineStatus || []).filter((c) =>
-    c.name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Profile modal handlers - ALL profiles are clickable now
+  const handleProfileClick = (user) => {
+    // Allow ALL user types to have clickable profiles
+    setProfileModal({ isOpen: true, user });
+  };
+
+  const handleCloseProfileModal = () => {
+    setProfileModal({ isOpen: false, user: null });
+  };
+
+  // Add online status to conversations and users
+  const conversationsWithOnlineStatus = (conversations || []).map(conv => ({
+    ...conv,
+    online: onlineUsers.has(conv.id?.toString())
+  }));
+
+  const allUsersWithOnlineStatus = (allUsers || []).map(user => ({
+    ...user,
+    online: onlineUsers.has(user.id?.toString())
+  }));
+
+  // Filter and maintain descending order for conversations
+  const filteredConversations = (conversationsWithOnlineStatus || [])
+    .filter((c) => c.name?.toLowerCase().includes(searchTerm.toLowerCase()))
+    .sort((a, b) => {
+      // Maintain descending order even after filtering
+      if (a.timestamp && b.timestamp) {
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      }
+      if (a.timestamp && !b.timestamp) return -1;
+      if (!a.timestamp && b.timestamp) return 1;
+      return 0;
+    });
 
   const filteredAllUsers = (allUsersWithOnlineStatus || []).filter((user) =>
     user.name?.toLowerCase().includes(searchTerm.toLowerCase())
@@ -1001,114 +1949,80 @@ const FloatingMessages = () => {
 
   if (viewState === "closed") {
     return (
-      <div className="fixed bottom-6 right-6 z-50">
-        <button
-          onClick={() => setViewState("small")}
-          className="relative w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-full shadow-xl hover:shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 hover:-translate-y-1"
-        >
-          <MessageCircle className="w-6 h-6" />
-          {totalUnread > 0 && (
-            <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs w-6 h-6 rounded-full flex items-center justify-center font-medium">
-              {totalUnread}
-            </span>
-          )}
-        </button>
-      </div>
+      <>
+        <div className="fixed bottom-6 right-6 z-50">
+          <button
+            onClick={() => setViewState("small")}
+            className="relative w-16 h-16 bg-gradient-to-br from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-full shadow-xl hover:shadow-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 hover:-translate-y-1"
+          >
+            <MessageCircle className="w-6 h-6" />
+            {totalUnread > 0 && (
+              <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs min-w-6 h-6 rounded-full flex items-center justify-center font-medium px-1">
+                {totalUnread > 9 ? '9+' : totalUnread}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Profile Modal */}
+        <ProfileModalHandler
+          user={profileModal.user}
+          isOpen={profileModal.isOpen}
+          onClose={handleCloseProfileModal}
+        />
+      </>
     );
   }
 
   if (viewState === "small") {
     return (
-      <div className="fixed bottom-6 right-6 z-1000 w-80 h-[500px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
-        {!selectedConversation && (
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-green-500 to-green-600 text-white">
-            <div className="flex items-center gap-2">
-              <MessageCircle className="w-5 h-5" />
-              <div>
-                <h3 className="font-semibold">Messages</h3>
-                <p className="text-xs opacity-90">{(conversations || []).length} conversations</p>
+      <>
+        <div className="fixed bottom-6 right-6 z-1000 w-80 h-[500px] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden">
+          {!selectedConversation && (
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-green-500 to-green-600 text-white">
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-5 h-5" />
+                <div>
+                  <h3 className="font-semibold">Messages</h3>
+                  <p className="text-xs opacity-90">{(conversations || []).length} conversations</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setViewState("fullscreen")}
+                  className="p-1.5 hover:bg-white/20 rounded transition-colors"
+                  title="Expand"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setViewState("closed")}
+                  className="p-1.5 hover:bg-white/20 rounded transition-colors"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setViewState("fullscreen")}
-                className="p-1.5 hover:bg-white/20 rounded transition-colors"
-                title="Expand"
-              >
-                <Maximize2 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setViewState("closed")}
-                className="p-1.5 hover:bg-white/20 rounded transition-colors"
-                title="Close"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        )}
+          )}
 
-        {selectedConversation ? (
-          <ChatView
-            conversation={selectedConversation}
-            newMessage={newMessage}
-            setNewMessage={setNewMessage}
-            handleSendMessage={handleSendMessage}
-            setSelectedConversation={setSelectedConversation}
-            currentUserId={currentUserId}
-            isTyping={isTyping}
-            handleTypingStart={handleTypingStart}
-            handleTypingStop={handleTypingStop}
-            isNewConversation={isNewConversation}
-          />
-        ) : (
-          <ConversationList
-            searchTerm={searchTerm}
-            setSearchTerm={handleSearchChange}
-            filteredConversations={isSearching ? filteredAllUsers : filteredConversations}
-            handleSelectConversation={handleSelectConversation}
-            isSearching={isSearching}
-            allUsers={filteredAllUsers}
-            currentUserId={currentUserId}
-            selectedConversation={selectedConversation}
-          />
-        )}
-      </div>
-    );
-  }
-
-  if (viewState === "fullscreen") {
-    return (
-      <div className="fixed inset-0 z-1000 bg-white flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-green-500 to-green-600 text-white">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setViewState("small")}
-              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </button>
-            <div className="flex items-center gap-2">
-              <MessageCircle className="w-6 h-6" />
-              <div>
-                <h3 className="text-lg font-semibold">Messages</h3>
-                <p className="text-sm opacity-90">{(conversations || []).length} conversations</p>
-              </div>
-            </div>
-          </div>
-          <button
-            onClick={() => setViewState("closed")}
-            className="p-2 hover:bg-white/20 rounded-lg transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Main Content Area - Always show conversation list on the left */}
-        <div className="flex-1 flex min-h-0">
-          {/* Conversation List - Always visible in fullscreen mode */}
-          <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
+          {selectedConversation ? (
+            <ChatView
+              conversation={selectedConversation}
+              newMessage={newMessage}
+              setNewMessage={setNewMessage}
+              handleSendMessage={handleSendMessage}
+              setSelectedConversation={setSelectedConversation}
+              currentUserId={currentUserId}
+              isTyping={isTyping}
+              handleTypingStart={handleTypingStart}
+              handleTypingStop={handleTypingStop}
+              isNewConversation={isNewConversation}
+              isEmptyConversation={isEmptyConversation}
+              onProfileClick={handleProfileClick}
+              isFullscreen={false}
+            />
+          ) : (
             <ConversationList
               searchTerm={searchTerm}
               setSearchTerm={handleSearchChange}
@@ -1118,43 +2032,108 @@ const FloatingMessages = () => {
               allUsers={filteredAllUsers}
               currentUserId={currentUserId}
               selectedConversation={selectedConversation}
+              onProfileClick={handleProfileClick}
             />
-          </div>
+          )}
+        </div>
 
-          {/* Chat View or Empty State */}
-          <div className="flex-1 bg-gray-50 flex flex-col min-h-0">
-            {selectedConversation ? (
-              <ChatView
-                conversation={selectedConversation}
-                newMessage={newMessage}
-                setNewMessage={setNewMessage}
-                handleSendMessage={handleSendMessage}
-                setSelectedConversation={setSelectedConversation}
-                currentUserId={currentUserId}
-                isTyping={isTyping}
-                handleTypingStart={handleTypingStart}
-                handleTypingStop={handleTypingStop}
-                showBackButton={false}
-                isNewConversation={isNewConversation}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full text-gray-500">
-                <div className="text-center">
-                  <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
-                  <h3 className="text-lg font-medium mb-2">
-                    {isSearching ? "Select a user to start chatting" : "Select a conversation"}
-                  </h3>
-                  <p className="text-sm">
-                    {isSearching 
-                      ? "Choose a user to start a new conversation" 
-                      : "Choose a conversation from the list to start messaging"}
-                  </p>
+        {/* Profile Modal */}
+        <ProfileModalHandler
+          user={profileModal.user}
+          isOpen={profileModal.isOpen}
+          onClose={handleCloseProfileModal}
+        />
+      </>
+    );
+  }
+
+  if (viewState === "fullscreen") {
+    return (
+      <>
+        <div className="fixed inset-0 z-1000 bg-white flex flex-col">
+          <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-gradient-to-r from-green-500 to-green-600 text-white">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setViewState("small")}
+                className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+              >
+                <ArrowLeft className="w-5 h-5" />
+              </button>
+              <div className="flex items-center gap-2">
+                <MessageCircle className="w-6 h-6" />
+                <div>
+                  <h3 className="text-lg font-semibold">Messages</h3>
+                  <p className="text-sm opacity-90">{(conversations || []).length} conversations</p>
                 </div>
               </div>
-            )}
+            </div>
+            <button
+              onClick={() => setViewState("closed")}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          <div className="flex-1 flex min-h-0">
+            <div className="w-80 border-r border-gray-200 bg-white flex flex-col">
+              <ConversationList
+                searchTerm={searchTerm}
+                setSearchTerm={handleSearchChange}
+                filteredConversations={isSearching ? filteredAllUsers : filteredConversations}
+                handleSelectConversation={handleSelectConversation}
+                isSearching={isSearching}
+                allUsers={filteredAllUsers}
+                currentUserId={currentUserId}
+                selectedConversation={selectedConversation}
+                onProfileClick={handleProfileClick}
+              />
+            </div>
+
+            <div className="flex-1 bg-gray-50 flex flex-col min-h-0">
+              {selectedConversation ? (
+                <ChatView
+                  conversation={selectedConversation}
+                  newMessage={newMessage}
+                  setNewMessage={setNewMessage}
+                  handleSendMessage={handleSendMessage}
+                  setSelectedConversation={setSelectedConversation}
+                  currentUserId={currentUserId}
+                  isTyping={isTyping}
+                  handleTypingStart={handleTypingStart}
+                  handleTypingStop={handleTypingStop}
+                  showBackButton={false}
+                  isNewConversation={isNewConversation}
+                  isEmptyConversation={isEmptyConversation}
+                  onProfileClick={handleProfileClick}
+                  isFullscreen={true}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full text-gray-500">
+                  <div className="text-center">
+                    <MessageCircle className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                    <h3 className="text-lg font-medium mb-2">
+                      {isSearching ? "Select a user to start chatting" : "Select a conversation"}
+                    </h3>
+                    <p className="text-sm">
+                      {isSearching 
+                        ? "Choose a user to start a new conversation" 
+                        : "Choose a conversation from the list to start messaging"}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+
+        {/* Profile Modal */}
+        <ProfileModalHandler
+          user={profileModal.user}
+          isOpen={profileModal.isOpen}
+          onClose={handleCloseProfileModal}
+        />
+      </>
     );
   }
 

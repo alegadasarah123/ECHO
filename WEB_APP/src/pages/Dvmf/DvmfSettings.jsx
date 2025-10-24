@@ -1,14 +1,14 @@
 "use client"
 
 import Sidebar from "@/components/DvmfSidebar"
-import { Bell, CheckCircle, Edit2, Eye, EyeOff, Plus, RefreshCw, Users, XCircle } from "lucide-react"
+import { Bell, CheckCircle, Edit2, Eye, EyeOff, Plus, RefreshCcw, Users, XCircle } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
 import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf"
+const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
 
 const DvmfSettings = () => {
   const [activeTab, setActiveTab] = useState("profile")
@@ -81,7 +81,7 @@ const DvmfSettings = () => {
   // MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -104,32 +104,43 @@ const DvmfSettings = () => {
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
  const handleNotificationClick = async (notification) => {
-  // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev =>
-    prev.map(notif =>
-      notif.id === notification.id ? { ...notif, read: true } : notif
+  const notifId = notification?.notif_id || notification?.id; // fallback support
+
+  if (!notifId) {
+    console.warn("Notification ID is missing:", notification);
+  }
+
+  // Mark as read in frontend immediately
+  setNotifications((prev) =>
+    prev.map((notif) =>
+      notif.notif_id === notifId || notif.id === notifId
+        ? { ...notif, read: true }
+        : notif
     )
   );
 
-  // Mark notification as read in backend
-  try {
-    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-      method: "POST",
-      credentials: "include",
-    });
-  } catch (err) {
-    console.error("Error marking notification as read:", err);
+  // Mark as read in backend (only if valid ID)
+  if (notifId) {
+    try {
+      await fetch(`https://echo-ebl8.onrender.com/api/dvmf/mark_notification_read/${notifId}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
   }
 
-  // Handle navigation based on notification content
-  const message = notification.message.toLowerCase();
+  const message = (notification.message || "").toLowerCase();
 
+  // Navigate for account-related notifications
   if (
     message.includes("new registration") ||
     message.includes("new veterinarian approved") ||
     message.includes("veterinarian approved") ||
     message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered")
+    message.includes("veterinarian registered") ||
+    message.includes("veterinarian pending")
   ) {
     navigate("/DvmfAccountApproval", {
       state: {
@@ -140,7 +151,10 @@ const DvmfSettings = () => {
     return;
   }
 
-  if (message.includes("pending medical record access") || message.includes("requested access")) {
+  if (
+    message.includes("pending medical record access") ||
+    message.includes("requested access")
+  ) {
     navigate("/DvmfAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -150,7 +164,7 @@ const DvmfSettings = () => {
     return;
   }
 
-  // Only navigate to CtuAnnouncement for comment-related notifications
+// Only navigate to CtuAnnouncement for comment-related notifications
   if (message.includes("comment")) {
     navigate("/DvmfAnnouncement", {
       state: {
@@ -160,7 +174,7 @@ const DvmfSettings = () => {
     });
     return;
   }
-};
+}
 
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -168,7 +182,7 @@ const DvmfSettings = () => {
   };
 
   const loadNotifications = useCallback(() => {
-    fetch(`${API_BASE}/get_vetnotifications/`)
+    fetch(`https://echo-ebl8.onrender.com/api/dvmf/get_vetnotifications/`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -192,7 +206,7 @@ const DvmfSettings = () => {
     setErrors({})
 
     try {
-      const res = await fetch(`${API_BASE}/save_dvmf_user_profile/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/save_dvmf_user_profile/`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -207,16 +221,16 @@ const DvmfSettings = () => {
       const data = await res.json()
 
       if (res.ok) {
-        showAlert("Profile saved successfully!")
+       
         setEditing(false)
         setProfileExists(true)
       } else if (data.errors) {
         setErrors(data.errors)
       } else {
-        showAlert(data.error || "Failed to save profile", "error")
+        
       }
     } catch (error) {
-      showAlert("Something went wrong. Please try again.", "error")
+      
     }
   }
 
@@ -241,7 +255,7 @@ const DvmfSettings = () => {
       const data = await res.json()
 
       if (res.ok) {
-        showAlert("Profile updated successfully!")
+       
         setEditing(false)
       } else if (data.errors) {
         setErrors(data.errors)
@@ -402,7 +416,7 @@ const DvmfSettings = () => {
   // DEACTIVATE USER
   const deactivateUser = async (id) => {
     try {
-      const res = await fetch(`${API_BASE}/users/deactivate/${id}/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/users/deactivate/${id}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -419,7 +433,7 @@ const DvmfSettings = () => {
   // REACTIVATE USER
   const reactivateUser = async (id) => {
     try {
-      const res = await fetch(`${API_BASE}/users/reactivate/${id}/`, {
+      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/users/reactivate/${id}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -539,7 +553,7 @@ const DvmfSettings = () => {
               className="bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors duration-200"
               title="Refresh Settings"
             >
-              <RefreshCw 
+              <RefreshCcw 
                 size={24} 
                 className={`text-gray-700 ${isRefreshing ? 'animate-spin' : ''}`}
               />
@@ -589,9 +603,25 @@ const DvmfSettings = () => {
             <div className="bg-white rounded-xl p-5 mb-5 shadow-sm ml-5 mr-10">
               <div className="flex gap-20 items-start">
                 <div className="flex flex-col items-center min-w-[200px] flex-none mr-24">
-                  <div className="w-36 h-36 rounded-full bg-gray-200 text-gray-500 flex items-center justify-center text-3xl font-semibold border-2 border-gray-100 mt-12 ml-24">
-                    {profile.dvmf_fname?.charAt(0)?.toUpperCase() || "J"}
-                    {profile.dvmf_lname?.charAt(0)?.toUpperCase() || "S"}
+                  {/* Logo Image instead of initials */}
+                  <div className="w-35 h-35 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden border-2 border-gray-100 mt-12 ml-24">
+                    <img 
+                      src="/Images/dvmf.png"
+                      alt="Profile Logo" 
+                      className="w-56 h-56 object-cover "
+                      onError={(e) => {
+                        // Fallback to initials if image fails to load
+                        e.target.style.display = 'none'
+                        e.target.nextSibling.style.display = 'flex'
+                      }}
+                    />
+                    <div 
+                      className="w-full h-full hidden items-center justify-center text-3xl font-semibold text-gray-500"
+                      style={{ display: 'none' }}
+                    >
+                      {profile.dvmf_fname?.charAt(0)?.toUpperCase() || "J"}
+                      {profile.dvmf_lname?.charAt(0)?.toUpperCase() || "S"}
+                    </div>
                   </div>
                   <div className="text-center ml-24 mt-4">
                     <h3 className="text-xl font-semibold m-0 text-gray-800">

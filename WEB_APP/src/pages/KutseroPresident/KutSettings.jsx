@@ -3,7 +3,7 @@ import Sidebar from "@/components/KutSidebar";
 import { Bell, Edit2, Shield, User, HelpCircle, CheckCircle, Eye, EyeOff, Check, X, Lock, Key, AlertTriangle, RefreshCw } from "lucide-react";
 import FloatingMessages from './KutMessages';
 
-const API_BASE = "http://localhost:8000/api/kutsero_president";
+const API_BASE = "https://echo-ebl8.onrender.com/api/kutsero_president";
 
 const SettingsPage = () => {
   const [activeTab, setActiveTab] = useState("profile");
@@ -381,7 +381,7 @@ const SettingsPage = () => {
       const data = await res.json();
 
       if (res.ok) {
-        setSuccessMessage("Password updated successfully! 🔒");
+        setSuccessMessage("Password updated successfully!");
         setPasswords({ 
           current_password: "", 
           new_password: "", 

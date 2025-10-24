@@ -178,23 +178,7 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
               </div>
             ))
           ) : (
-            <div style={{ textAlign: "center", padding: "20px" }}>
-              <p style={{ color: "#6b7280", marginBottom: "10px" }}>NO NOTIF</p>
-              <button
-                style={{
-                  background: "#b91c1c",
-                  color: "white",
-                  border: "none",
-                  padding: "8px 16px",
-                  borderRadius: "6px",
-                  fontSize: "12px",
-                  cursor: "pointer",
-                }}
-                onClick={() => setNotifications([])}
-              >
-                CLEAR
-              </button>
-            </div>
+            <p style={{ textAlign: "center", color: "#6b7280" }}>No notifications</p>
           )}
         </div>
 

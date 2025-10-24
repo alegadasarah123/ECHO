@@ -19,4 +19,11 @@ urlpatterns = [
     path("test_cookie/", views.test_cookie, name="test_cookie"),
     path("update_president_profile/", views.update_president_profile, name="update_president_profile"),
     path("change_password/", views.change_password, name="change_password"),
+    path("send_message/", views.send_message, name="send_message"),
+    path("get_conversations/", views.get_conversations, name="get_conversations"),
+    path("get_conversation/<str:conversation_id>/", views.get_conversation, name="get_conversation"),
+    path("mark_messages_as_read/<str:conversation_id>/", views.mark_messages_as_read, name="mark_messages_as_read"),
+    path("get_all_users/", views.get_all_users, name="get_all_users"),
+    path("kutsero_profile_by_id/<str:user_id>/", views.kutsero_profile_by_id, name="kutsero_profile_by_id"),
+    path("horse_operator_profile/<str:user_id>/", views.horse_operator_profile, name="horse_operator_profile"),
 ]

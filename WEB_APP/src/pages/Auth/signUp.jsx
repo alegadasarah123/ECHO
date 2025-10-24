@@ -2,20 +2,228 @@ import {
   AlertCircle,
   ArrowLeft,
   Check,
-  Eye, EyeOff,
+  Eye,
+  EyeOff,
   FileText,
   Lock,
   MapPin,
-  Stethoscope, Upload,
+  Stethoscope,
+  Upload,
   User,
-  X, ZoomIn
+  X,
+  ZoomIn
 } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { getBarangays, getCities, provinces } from "./philippinesData";
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+
+// Use your Django backend as proxy
+const BACKEND_BASE_URL = 'http://127.0.0.1:8000';
+
+// Helper function to fetch data through your Django proxy
+const fetchPSGCData = async (endpoint) => {
+  try {
+    const response = await fetch(`${BACKEND_BASE_URL}/api/psgc/?endpoint=${encodeURIComponent(endpoint)}`);
+    if (!response.ok) throw new Error(`Failed to fetch ${endpoint}`);
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching PSGC data through proxy:', error);
+    
+    // Try fallback endpoint
+    try {
+      const fallbackResponse = await fetch(`${BACKEND_BASE_URL}/api/psgc-fallback/?endpoint=${encodeURIComponent(endpoint)}`);
+      if (!fallbackResponse.ok) throw new Error('Fallback also failed');
+      return await fallbackResponse.json();
+    } catch (fallbackError) {
+      console.error('Error fetching fallback data:', fallbackError);
+      throw new Error('Both proxy and fallback failed');
+    }
+  }
+};
+
+// Custom hook for Philippines location data - PROVINCES ONLY
+const usePhilippinesLocations = () => {
+  const [provinces, setProvinces] = useState([]);
+  const [citiesCache, setCitiesCache] = useState({});
+  const [barangaysCache, setBarangaysCache] = useState({});
+  const [apiAvailable, setApiAvailable] = useState(true);
+
+  // Load all PROVINCES on component mount
+  useEffect(() => {
+    const loadProvinces = async () => {
+      try {
+        const provincesData = await fetchPSGCData('/provinces');
+        setProvinces(provincesData.map(province => province.name));
+        setApiAvailable(true);
+      } catch (error) {
+        console.error('Error loading provinces:', error);
+        // Use fallback provinces directly
+        setProvinces([
+          "Abra", "Agusan del Norte", "Agusan del Sur", "Aklan", "Albay",
+          "Antique", "Apayao", "Aurora", "Basilan", "Bataan", 
+          "Batanes", "Batangas", "Benguet", "Biliran", "Bohol",
+          "Bukidnon", "Bulacan", "Cagayan", "Camarines Norte", "Camarines Sur",
+          "Camiguin", "Capiz", "Catanduanes", "Cavite", "Cebu",
+          "Cotabato", "Davao de Oro", "Davao del Norte", "Davao del Sur", "Davao Occidental",
+          "Davao Oriental", "Dinagat Islands", "Eastern Samar", "Guimaras", "Ifugao",
+          "Ilocos Norte", "Ilocos Sur", "Iloilo", "Isabela", "Kalinga",
+          "La Union", "Laguna", "Lanao del Norte", "Lanao del Sur", "Leyte",
+          "Maguindanao del Norte", "Maguindanao del Sur", "Marinduque", "Masbate", "Metro Manila",
+          "Misamis Occidental", "Misamis Oriental", "Mountain Province", "Negros Occidental", "Negros Oriental",
+          "Northern Samar", "Nueva Ecija", "Nueva Vizcaya", "Occidental Mindoro", "Oriental Mindoro",
+          "Palawan", "Pampanga", "Pangasinan", "Quezon", "Quirino",
+          "Rizal", "Romblon", "Samar", "Sarangani", "Siquijor",
+          "Sorsogon", "South Cotabato", "Southern Leyte", "Sultan Kudarat", "Sulu",
+          "Surigao del Norte", "Surigao del Sur", "Tarlac", "Tawi-Tawi", "Zambales",
+          "Zamboanga del Norte", "Zamboanga del Sur", "Zamboanga Sibugay"
+        ]);
+        setApiAvailable(false);
+      }
+    };
+    loadProvinces();
+  }, []);
+
+  const getCities = async (provinceName) => {
+    if (!provinceName) return [];
+    
+    // Return from cache if available
+    if (citiesCache[provinceName]) {
+      return citiesCache[provinceName];
+    }
+
+    try {
+      // Get all provinces to find the code
+      const provincesData = await fetchPSGCData('/provinces');
+      const province = provincesData.find(p => p.name === provinceName);
+      
+      if (!province) return [];
+
+      // Get cities directly for this province
+      const cities = await fetchPSGCData(`/provinces/${province.code}/cities-municipalities`);
+      const cityNames = cities.map(city => city.name);
+
+      // Update cache
+      setCitiesCache(prev => ({
+        ...prev,
+        [provinceName]: cityNames
+      }));
+
+      return cityNames;
+    } catch (error) {
+      console.error('Error fetching cities:', error);
+      
+      // Return fallback cities for major provinces
+      const fallbackCities = {
+        "Metro Manila": [
+          "Caloocan City", "Las Piñas City", "Makati City", "Malabon City", "Mandaluyong City", 
+          "Manila City", "Marikina City", "Muntinlupa City", "Navotas City", "Parañaque City", 
+          "Pasay City", "Pasig City", "Pateros", "Quezon City", "San Juan City", 
+          "Taguig City", "Valenzuela City"
+        ],
+        "Cavite": [
+          "Dasmarinas City", "Bacoor City", "Imus City", "General Trias City", "Trece Martires City",
+          "Tagaytay City", "Cavite City", "Silang", "Kawit", "Naic"
+        ],
+        "Cebu": [
+          "Cebu City", "Lapu-Lapu City", "Mandaue City", "Talisay City", "Danao City",
+          "Toledo City", "Naga City", "Bogo City", "Carcar City", "Balamban"
+        ],
+        "Bulacan": [
+          "Malolos City", "Meycauayan City", "San Jose del Monte City", "Santa Maria", "Marilao",
+          "Bocaue", "Balagtas", "Guiguinto", "Plaridel", "Pulilan"
+        ],
+        "Laguna": [
+          "Calamba City", "Santa Rosa City", "San Pedro City", "Biñan City", "Cabuyao City",
+          "San Pablo City", "Los Baños", "Bay", "Victoria", "Nagcarlan"
+        ],
+        "Rizal": [
+          "Antipolo City", "Taytay", "Cainta", "Binangonan", "Angono",
+          "Rodriguez", "San Mateo", "Baras", "Tanay", "Morong"
+        ]
+      };
+      
+      return fallbackCities[provinceName] || [];
+    }
+  };
+
+  const getBarangays = async (provinceName, cityName) => {
+    if (!provinceName || !cityName) return [];
+    
+    const cacheKey = `${provinceName}-${cityName}`;
+    
+    // Return from cache if available
+    if (barangaysCache[cacheKey]) {
+      return barangaysCache[cacheKey];
+    }
+
+    try {
+      // Get all provinces to find the code
+      const provincesData = await fetchPSGCData('/provinces');
+      const province = provincesData.find(p => p.name === provinceName);
+      
+      if (!province) return [];
+
+      // Get cities for this province
+      const cities = await fetchPSGCData(`/provinces/${province.code}/cities-municipalities`);
+      const foundCity = cities.find(c => c.name === cityName);
+      
+      if (foundCity) {
+        // Get barangays directly for this city
+        const barangays = await fetchPSGCData(`/cities-municipalities/${foundCity.code}/barangays`);
+        const barangayNames = barangays.map(barangay => barangay.name);
+        
+        // Update cache
+        setBarangaysCache(prev => ({
+          ...prev,
+          [cacheKey]: barangayNames
+        }));
+
+        return barangayNames;
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('Error fetching barangays:', error);
+      
+      // Return fallback barangays for major cities
+      const fallbackBarangays = {
+        "Quezon City": [
+          "Alicia", "Amihan", "Apolonio Samson", "Aurora", "Baesa",
+          "Bagbag", "Bagong Lipunan ng Crame", "Bagong Pag-asa", "Bagong Silangan", "Bagumbayan"
+        ],
+        "Manila City": [
+          "Binondo", "Ermita", "Intramuros", "Malate", "Paco",
+          "Pandacan", "Port Area", "Quiapo", "Sampaloc", "San Andres"
+        ],
+        "Antipolo City": [
+          "Bagong Nayon", "Beverly Hills", "Calawis", "Cupang", "Dela Paz",
+          "Dulong Bayan", "Inarawan", "Mambugan", "Mayamot", "Muntingdilaw"
+        ],
+        "Dasmarinas City": [
+          "Burol", "Burol I", "Burol II", "Burol III", "Emmanuel Bergado I",
+          "Emmanuel Bergado II", "Fatima I", "Fatima II", "Fatima III", "Langkaan I"
+        ],
+        "Cebu City": [
+          "Adlaon", "Agsungot", "Apas", "Babag", "Bacayan",
+          "Banilad", "Binaliw", "Budlaan", "Busay", "Cambinocot"
+        ]
+      };
+      
+      return fallbackBarangays[cityName] || [];
+    }
+  };
+
+  return {
+    provinces,
+    getCities,
+    getBarangays,
+    apiAvailable
+  };
+};
 
 function SignUp() {
   const navigate = useNavigate();
+  const { provinces, getCities, getBarangays, apiAvailable } = usePhilippinesLocations();
+  
   const [currentStep, setCurrentStep] = useState(1);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -28,6 +236,17 @@ function SignUp() {
   const [submitError, setSubmitError] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
+
+  // State for dynamic location data
+  const [cities, setCities] = useState([]);
+  const [barangays, setBarangays] = useState([]);
+  const [clinicCities, setClinicCities] = useState([]);
+  const [clinicBarangays, setClinicBarangays] = useState([]);
+  const [loadingCities, setLoadingCities] = useState(false);
+  const [loadingBarangays, setLoadingBarangays] = useState(false);
+  const [loadingClinicCities, setLoadingClinicCities] = useState(false);
+  const [loadingClinicBarangays, setLoadingClinicBarangays] = useState(false);
 
   // Step 1 - Personal Info
   const [firstName, setFirstName] = useState("");
@@ -59,7 +278,6 @@ function SignUp() {
   const [affiliatedOrganization, setAffiliatedOrganization] = useState("");
   const [document, setDocument] = useState(null);
   const [documentPreview, setDocumentPreview] = useState(null);
-  const [zoomLevel, setZoomLevel] = useState(1);
 
   // Step 4 - Profile Photo
   const [profilePhoto, setProfilePhoto] = useState(null);
@@ -72,11 +290,65 @@ function SignUp() {
 
   const totalSteps = 5;
 
-  // Get cities and barangays based on selections
-  const cities = getCities(province);
-  const barangays = getBarangays(province, city);
-  const clinicCities = getCities(clinicProvince);
-  const clinicBarangays = getBarangays(clinicProvince, clinicCity);
+  // Load cities when province changes
+  useEffect(() => {
+    const loadCities = async () => {
+      if (province) {
+        setLoadingCities(true);
+        const citiesData = await getCities(province);
+        setCities(citiesData);
+        setLoadingCities(false);
+      } else {
+        setCities([]);
+      }
+    };
+    loadCities();
+  }, [province]);
+
+  // Load barangays when city changes
+  useEffect(() => {
+    const loadBarangays = async () => {
+      if (province && city) {
+        setLoadingBarangays(true);
+        const barangaysData = await getBarangays(province, city);
+        setBarangays(barangaysData);
+        setLoadingBarangays(false);
+      } else {
+        setBarangays([]);
+      }
+    };
+    loadBarangays();
+  }, [province, city]);
+
+  // Load clinic cities when clinic province changes
+  useEffect(() => {
+    const loadClinicCities = async () => {
+      if (clinicProvince) {
+        setLoadingClinicCities(true);
+        const citiesData = await getCities(clinicProvince);
+        setClinicCities(citiesData);
+        setLoadingClinicCities(false);
+      } else {
+        setClinicCities([]);
+      }
+    };
+    loadClinicCities();
+  }, [clinicProvince]);
+
+  // Load clinic barangays when clinic city changes
+  useEffect(() => {
+    const loadClinicBarangays = async () => {
+      if (clinicProvince && clinicCity) {
+        setLoadingClinicBarangays(true);
+        const barangaysData = await getBarangays(clinicProvince, clinicCity);
+        setClinicBarangays(barangaysData);
+        setLoadingClinicBarangays(false);
+      } else {
+        setClinicBarangays([]);
+      }
+    };
+    loadClinicBarangays();
+  }, [clinicProvince, clinicCity]);
 
   // Reset dependent fields when province changes
   useEffect(() => {
@@ -213,7 +485,6 @@ function SignUp() {
   const openDocumentPreview = (file) => {
     const fileURL = URL.createObjectURL(file);
     setDocumentPreview(fileURL);
-    setZoomLevel(1);
   };
 
   const closeDocumentPreview = () => {
@@ -307,7 +578,7 @@ function SignUp() {
       allErrors.terms = "You must accept the Terms and Conditions to proceed.";
     }
     
-    // Check if there are any errors - FIXED VERSION
+    // Check if there are any errors
     if (Object.keys(allErrors).length > 0) {
       setErrors(allErrors);
       setIsSubmitting(false);
@@ -356,7 +627,7 @@ function SignUp() {
 
       console.log("DEBUG: Sending form data with files");
 
-      const response = await fetch("http://echo-eb18.onrender.com/api/signup_vet/", {
+      const response = await fetch("http://localhost:8000/api/signup_vet/", {
         method: "POST",
         body: formData
       });
@@ -396,7 +667,7 @@ function SignUp() {
     }
   };
 
-  // Field styles with static sizing
+  // Field styles
   const fieldStyle = { 
     padding: "0.75rem", 
     borderRadius: "0.5rem", 
@@ -407,18 +678,23 @@ function SignUp() {
     boxSizing: "border-box",
     backgroundColor: "#fff",
     height: "44px",
-    transition: "border-color 0.2s ease, box-shadow 0.2s ease"
+    transition: "all 0.2s ease"
   };
 
   const getFieldStyle = (fieldName, hasError = false) => {
     const isFocused = focusedField === fieldName;
-    const errorStyle = hasError ? { borderColor: "#ef4444" } : {};
-    const focusStyle = isFocused ? { 
-      borderColor: "#B8763E",
-      boxShadow: "0 0 0 3px rgba(184, 118, 62, 0.1)"
-    } : {};
+    const baseStyle = { ...fieldStyle };
     
-    return { ...fieldStyle, ...errorStyle, ...focusStyle };
+    if (hasError) {
+      baseStyle.border = "1px solid #ef4444";
+    }
+    
+    if (isFocused) {
+      baseStyle.border = "1px solid #B8763E";
+      baseStyle.boxShadow = "0 0 0 3px rgba(184, 118, 62, 0.1)";
+    }
+    
+    return baseStyle;
   };
 
   const handleFieldFocus = (fieldName) => {
@@ -472,8 +748,6 @@ function SignUp() {
   );
 
   // Success Alert Component
-  const [showSuccessAlert, setShowSuccessAlert] = useState(false);
-
   const SuccessAlert = () => {
     if (!showSuccessAlert) return null;
 
@@ -624,227 +898,228 @@ function SignUp() {
     );
   };
 
-// Terms and Conditions Modal - Clean Version
-const TermsModal = () => {
-  const [showButtons, setShowButtons] = useState(false);
-  const contentRef = useRef(null);
-
-  const handleScroll = () => {
-    const element = contentRef.current;
-    if (element) {
-      const isAtBottom = element.scrollHeight - element.scrollTop <= element.clientHeight + 5;
-      setShowButtons(isAtBottom);
-    }
-  };
-
-  useEffect(() => {
-    const element = contentRef.current;
-    if (element) {
-      // Check initial scroll position
-      handleScroll();
-    }
-  }, []);
-
-  if (!showTermsModal) return null;
-
-  return (
+  // API Status Indicator
+  const ApiStatusIndicator = () => (
     <div style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: "rgba(0, 0, 0, 0.5)",
+      backgroundColor: apiAvailable ? "#dcfce7" : "#fef3c7",
+      border: `1px solid ${apiAvailable ? "#bbf7d0" : "#fde68a"}`,
+      borderRadius: "0.375rem",
+      padding: "0.5rem 0.75rem",
+      marginBottom: "1rem",
+      fontSize: "0.875rem",
+      color: apiAvailable ? "#166534" : "#92400e",
       display: "flex",
       alignItems: "center",
-      justifyContent: "center",
-      zIndex: 1000,
-      padding: "1rem"
+      gap: "0.5rem"
     }}>
       <div style={{
-        backgroundColor: "white",
-        borderRadius: "1rem",
-        padding: "0",
-        maxWidth: "700px",
-        width: "100%",
-        maxHeight: "80vh",
+        width: "8px",
+        height: "8px",
+        borderRadius: "50%",
+        backgroundColor: apiAvailable ? "#22c55e" : "#f59e0b"
+      }}></div>
+      {apiAvailable ? "Using live location data" : "Using offline location data"}
+    </div>
+  );
+
+  // Terms and Conditions Modal
+  const TermsModal = () => {
+    if (!showTermsModal) return null;
+
+    return (
+      <div style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(0, 0, 0, 0.5)",
         display: "flex",
-        flexDirection: "column",
-        boxShadow: "0 20px 40px rgba(0, 0, 0, 0.1)"
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+        padding: "1rem"
       }}>
-        {/* Header - Fixed at top */}
         <div style={{
+          backgroundColor: "white",
+          borderRadius: "1rem",
+          padding: "0",
+          maxWidth: "700px",
+          width: "100%",
+          maxHeight: "80vh",
           display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "1.5rem 2rem 1rem 2rem",
-          borderBottom: "1px solid #e5e7eb",
-          flexShrink: 0
+          flexDirection: "column",
+          boxShadow: "0 20px 40px rgba(0, 0, 0, 0.1)"
         }}>
-          <h2 style={{
-            fontSize: "1.5rem",
-            fontWeight: "600",
-            color: "#1f2937",
+          {/* Header - Fixed at top */}
+          <div style={{
             display: "flex",
             alignItems: "center",
-            gap: "0.5rem"
+            justifyContent: "space-between",
+            padding: "1.5rem 2rem 1rem 2rem",
+            borderBottom: "1px solid #e5e7eb",
+            flexShrink: 0
           }}>
-            <FileText size={24} color="#B8763E" />
-            Terms and Conditions
-          </h2>
-          <button
-            onClick={() => setShowTermsModal(false)}
-            style={{
-              background: "none",
-              border: "none",
-              color: "#6b7280",
-              cursor: "pointer",
-              padding: "0.5rem",
-              borderRadius: "0.25rem"
-            }}
-          >
-            <X size={20} />
-          </button>
-        </div>
+            <h2 style={{
+              fontSize: "1.5rem",
+              fontWeight: "600",
+              color: "#1f2937",
+              display: "flex",
+              alignItems: "center",
+              gap: "0.5rem"
+            }}>
+              <FileText size={24} color="#B8763E" />
+              Terms and Conditions
+            </h2>
+            <button
+              onClick={() => setShowTermsModal(false)}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#6b7280",
+                cursor: "pointer",
+                padding: "0.5rem",
+                borderRadius: "0.25rem"
+              }}
+            >
+              <X size={20} />
+            </button>
+          </div>
 
-        {/* Scrollable Content Area */}
-        <div 
-          ref={contentRef}
-          onScroll={handleScroll}
-          style={{
+          {/* Scrollable Content Area */}
+          <div style={{
             flex: 1,
             overflowY: "auto",
-            padding: "0 2rem 2rem 2rem" // Increased bottom padding for buttons
-          }}
-        >
-          <div style={{
-            fontSize: "0.95rem",
-            lineHeight: "1.6",
-            color: "#374151"
+            padding: "0 2rem 2rem 2rem"
           }}>
-            <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
-              1. Account Registration and Verification
-            </h3>
-            <p style={{ marginBottom: "1rem" }}>
-              By registering as a veterinarian on Echo Portal, you agree to provide accurate and complete information about your professional credentials, including your license number, specialization, and years of experience. All information submitted will be verified by our administrative team.
-            </p>
-
-            <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
-              2. Professional Conduct
-            </h3>
-            <p style={{ marginBottom: "1rem" }}>
-              You agree to maintain professional standards of conduct while using the platform. This includes providing accurate medical advice, maintaining client confidentiality, and adhering to veterinary ethics and regulations in the Philippines.
-            </p>
-
-            <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
-              3. Data Privacy and Confidentiality
-            </h3>
-            <p style={{ marginBottom: "1rem" }}>
-              We are committed to protecting your personal and professional information. Your data will be stored securely and used only for platform functionality, verification purposes, and communication related to your account.
-            </p>
-
-            <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
-              4. Platform Usage
-            </h3>
-            <p style={{ marginBottom: "1rem" }}>
-              The Echo Portal is designed for professional veterinary use. You agree not to misuse the platform for unauthorized purposes, including but not limited to spam, fraudulent activities, or distribution of harmful content.
-            </p>
-
-            <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
-              5. Account Approval and Suspension
-            </h3>
-            <p style={{ marginBottom: "1rem" }}>
-              Account approval is subject to verification of your credentials. Echo Portal reserves the right to suspend or terminate accounts that violate these terms or provide false information. You will be notified of any account status changes.
-            </p>
-
-            <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
-              6. Intellectual Property
-            </h3>
-            <p style={{ marginBottom: "1rem" }}>
-              All content and materials on the Echo Portal are protected by intellectual property laws. You may not reproduce, distribute, or create derivative works without explicit permission.
-            </p>
-
-            <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
-              7. Limitation of Liability
-            </h3>
-            <p style={{ marginBottom: "1rem" }}>
-              Echo Portal provides the platform as a service and is not liable for any direct or indirect damages arising from the use of the platform. Veterinary professionals are responsible for their own professional decisions and advice.
-            </p>
-
-            <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
-              8. Amendments to Terms
-            </h3>
-            <p style={{ marginBottom: "1rem" }}>
-              We reserve the right to modify these terms and conditions at any time. Continued use of the platform after changes constitutes acceptance of the modified terms.
-            </p>
-
             <div style={{
-              backgroundColor: "#f3f4f6",
-              padding: "1rem",
-              borderRadius: "0.5rem",
-              marginTop: "1.5rem",
-              borderLeft: "4px solid #B8763E"
+              fontSize: "0.95rem",
+              lineHeight: "1.6",
+              color: "#374151"
             }}>
-              <p style={{ margin: 0, fontSize: "0.9rem", color: "#6b7280" }}>
-                <strong>Note:</strong> By accepting these terms, you acknowledge that you have read, understood, and agree to be bound by all the conditions outlined above.
+              <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
+                1. Account Registration and Verification
+              </h3>
+              <p style={{ marginBottom: "1rem" }}>
+                By registering as a veterinarian on Echo Portal, you agree to provide accurate and complete information about your professional credentials, including your license number, specialization, and years of experience. All information submitted will be verified by our administrative team.
               </p>
-            </div>
 
-            {/* BUTTONS - ALWAYS VISIBLE AT BOTTOM OF CONTENT */}
-            <div style={{
-              padding: "2rem 0 0 0",
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: "1rem",
-              marginTop: "2rem",
-              borderTop: "1px solid #e5e7eb"
-            }}>
-              <button
-                onClick={() => setShowTermsModal(false)}
-                style={{
-                  padding: "0.75rem 1.5rem",
-                  backgroundColor: "#f3f4f6",
-                  color: "#374151",
-                  border: "none",
-                  borderRadius: "0.5rem",
-                  cursor: "pointer",
-                  fontWeight: "500",
-                  transition: "all 0.2s ease"
-                }}
-                onMouseOver={(e) => e.target.style.backgroundColor = "#e5e7eb"}
-                onMouseOut={(e) => e.target.style.backgroundColor = "#f3f4f6"}
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  setAcceptedTerms(true);
-                  setShowTermsModal(false);
-                }}
-                style={{
-                  padding: "0.75rem 1.5rem",
-                  backgroundColor: "#B8763E",
-                  color: "white",
-                  border: "none",
-                  borderRadius: "0.5rem",
-                  cursor: "pointer",
-                  fontWeight: "500",
-                  transition: "all 0.2s ease"
-                }}
-                onMouseOver={(e) => e.target.style.backgroundColor = "#a36936"}
-                onMouseOut={(e) => e.target.style.backgroundColor = "#B8763E"}
-              >
-                Accept Terms
-              </button>
+              <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
+                2. Professional Conduct
+              </h3>
+              <p style={{ marginBottom: "1rem" }}>
+                You agree to maintain professional standards of conduct while using the platform. This includes providing accurate medical advice, maintaining client confidentiality, and adhering to veterinary ethics and regulations in the Philippines.
+              </p>
+
+              <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
+                3. Data Privacy and Confidentiality
+              </h3>
+              <p style={{ marginBottom: "1rem" }}>
+                We are committed to protecting your personal and professional information. Your data will be stored securely and used only for platform functionality, verification purposes, and communication related to your account.
+              </p>
+
+              <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
+                4. Platform Usage
+              </h3>
+              <p style={{ marginBottom: "1rem" }}>
+                The Echo Portal is designed for professional veterinary use. You agree not to misuse the platform for unauthorized purposes, including but not limited to spam, fraudulent activities, or distribution of harmful content.
+              </p>
+
+              <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
+                5. Account Approval and Suspension
+              </h3>
+              <p style={{ marginBottom: "1rem" }}>
+                Account approval is subject to verification of your credentials. Echo Portal reserves the right to suspend or terminate accounts that violate these terms or provide false information. You will be notified of any account status changes.
+              </p>
+
+              <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
+                6. Intellectual Property
+              </h3>
+              <p style={{ marginBottom: "1rem" }}>
+                All content and materials on the Echo Portal are protected by intellectual property laws. You may not reproduce, distribute, or create derivative works without explicit permission.
+              </p>
+
+              <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
+                7. Limitation of Liability
+              </h3>
+              <p style={{ marginBottom: "1rem" }}>
+                Echo Portal provides the platform as a service and is not liable for any direct or indirect damages arising from the use of the platform. Veterinary professionals are responsible for their own professional decisions and advice.
+              </p>
+
+              <h3 style={{ color: "#B8763E", marginBottom: "1rem", fontSize: "1.1rem" }}>
+                8. Amendments to Terms
+              </h3>
+              <p style={{ marginBottom: "1rem" }}>
+                We reserve the right to modify these terms and conditions at any time. Continued use of the platform after changes constitutes acceptance of the modified terms.
+              </p>
+
+              <div style={{
+                backgroundColor: "#f3f4f6",
+                padding: "1rem",
+                borderRadius: "0.5rem",
+                marginTop: "1.5rem",
+                borderLeft: "4px solid #B8763E"
+              }}>
+                <p style={{ margin: 0, fontSize: "0.9rem", color: "#6b7280" }}>
+                  <strong>Note:</strong> By accepting these terms, you acknowledge that you have read, understood, and agree to be bound by all the conditions outlined above.
+                </p>
+              </div>
+
+              {/* BUTTONS - ALWAYS VISIBLE AT BOTTOM OF CONTENT */}
+              <div style={{
+                padding: "2rem 0 0 0",
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: "1rem",
+                marginTop: "2rem",
+                borderTop: "1px solid #e5e7eb"
+              }}>
+                <button
+                  onClick={() => setShowTermsModal(false)}
+                  style={{
+                    padding: "0.75rem 1.5rem",
+                    backgroundColor: "#f3f4f6",
+                    color: "#374151",
+                    border: "none",
+                    borderRadius: "0.5rem",
+                    cursor: "pointer",
+                    fontWeight: "500",
+                    transition: "all 0.2s ease"
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = "#e5e7eb"}
+                  onMouseOut={(e) => e.target.style.backgroundColor = "#f3f4f6"}
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    setAcceptedTerms(true);
+                    setShowTermsModal(false);
+                  }}
+                  style={{
+                    padding: "0.75rem 1.5rem",
+                    backgroundColor: "#B8763E",
+                    color: "white",
+                    border: "none",
+                    borderRadius: "0.5rem",
+                    cursor: "pointer",
+                    fontWeight: "500",
+                    transition: "all 0.2s ease"
+                  }}
+                  onMouseOver={(e) => e.target.style.backgroundColor = "#a36936"}
+                  onMouseOut={(e) => e.target.style.backgroundColor = "#B8763E"}
+                >
+                  Accept Terms
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
-const renderStepContent = () => {
+  const renderStepContent = () => {
     switch (currentStep) {
       case 1:
         return (
@@ -946,6 +1221,8 @@ const renderStepContent = () => {
               <MapPin size={20} /> Address Information
             </h3>
             
+            <ApiStatusIndicator />
+            
             {/* Permanent Address Section */}
             <div style={{ padding: "1.5rem", backgroundColor: "#f8fafc", borderRadius: "0.75rem", border: "1px solid #e2e8f0" }}>
               <h4 style={{ color: "#1e293b", fontWeight: 600, marginBottom: "1rem", fontSize: "1.1rem" }}>
@@ -974,11 +1251,11 @@ const renderStepContent = () => {
                       style={getFieldStyle("city", errors.city)} 
                       value={city} 
                       onChange={e => { setCity(e.target.value); setErrors(prev => ({ ...prev, city: "" })); }} 
-                      disabled={!province}
+                      disabled={!province || loadingCities}
                       onFocus={() => handleFieldFocus("city")}
                       onBlur={() => handleFieldBlur("city")}
                     >
-                      <option value="">Select City</option>
+                      <option value="">{loadingCities ? "Loading cities..." : "Select City"}</option>
                       {cities.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                     {errors.city && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.city}</p>}
@@ -993,17 +1270,17 @@ const renderStepContent = () => {
                       style={getFieldStyle("barangay", errors.barangay)} 
                       value={barangay} 
                       onChange={e => { setBarangay(e.target.value); setErrors(prev => ({ ...prev, barangay: "" })); }} 
-                      disabled={!city}
+                      disabled={!city || loadingBarangays}
                       onFocus={() => handleFieldFocus("barangay")}
                       onBlur={() => handleFieldBlur("barangay")}
                     >
-                      <option value="">Select Barangay</option>
+                      <option value="">{loadingBarangays ? "Loading barangays..." : "Select Barangay"}</option>
                       {barangays.map(b => <option key={b} value={b}>{b}</option>)}
                     </select>
                     {errors.barangay && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.barangay}</p>}
                   </div>
                   <div>
-                    <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Street <span style={{ fontWeight: 400, color: "#6b7280" }}></span></label>
+                    <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Street</label>
                     <input 
                       style={getFieldStyle("street")} 
                       type="text" 
@@ -1086,11 +1363,11 @@ const renderStepContent = () => {
                         style={getFieldStyle("clinicCity", errors.clinicCity)} 
                         value={clinicCity} 
                         onChange={e => { setClinicCity(e.target.value); setErrors(prev => ({ ...prev, clinicCity: "" })); }} 
-                        disabled={!clinicProvince}
+                        disabled={!clinicProvince || loadingClinicCities}
                         onFocus={() => handleFieldFocus("clinicCity")}
                         onBlur={() => handleFieldBlur("clinicCity")}
                       >
-                        <option value="">Select City</option>
+                        <option value="">{loadingClinicCities ? "Loading cities..." : "Select City"}</option>
                         {clinicCities.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                       {errors.clinicCity && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.clinicCity}</p>}
@@ -1105,17 +1382,17 @@ const renderStepContent = () => {
                         style={getFieldStyle("clinicBarangay", errors.clinicBarangay)} 
                         value={clinicBarangay} 
                         onChange={e => { setClinicBarangay(e.target.value); setErrors(prev => ({ ...prev, clinicBarangay: "" })); }} 
-                        disabled={!clinicCity}
+                        disabled={!clinicCity || loadingClinicBarangays}
                         onFocus={() => handleFieldFocus("clinicBarangay")}
                         onBlur={() => handleFieldBlur("clinicBarangay")}
                       >
-                        <option value="">Select Barangay</option>
+                        <option value="">{loadingClinicBarangays ? "Loading barangays..." : "Select Barangay"}</option>
                         {clinicBarangays.map(b => <option key={b} value={b}>{b}</option>)}
                       </select>
                       {errors.clinicBarangay && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.clinicBarangay}</p>}
                     </div>
                     <div>
-                      <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Street <span style={{ fontWeight: 400, color: "#6b7280" }}></span></label>
+                      <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Street</label>
                       <input 
                         style={getFieldStyle("clinicStreet")} 
                         type="text" 
@@ -1216,7 +1493,7 @@ const renderStepContent = () => {
               />
             </div>
             <div>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Affiliated Organization <span style={{ fontWeight: 400, color: "##6b7280" }}>(Optional)</span></label>
+              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Affiliated Organization <span style={{ fontWeight: 400, color: "#6b7280" }}>(Optional)</span></label>
               <input 
                 style={getFieldStyle("affiliatedOrganization")} 
                 type="text" 
@@ -1405,7 +1682,7 @@ const renderStepContent = () => {
                   onMouseOver={(e) => e.target.style.borderColor = "#B8763E"}
                   onMouseOut={(e) => e.target.style.borderColor = "#d1d5db"}
                 >
-                  <Upload size={32} style={{ margin: "0 auto 0.5rem", color: "##9ca3af" }} />
+                  <Upload size={32} style={{ margin: "0 auto 0.5rem", color: "#9ca3af" }} />
                   <p style={{ color: "#6b7280", margin: 0 }}>Click to upload a profile photo</p>
                   <p style={{ color: "#9ca3af", fontSize: "0.875rem", margin: "0.25rem 0 0" }}>JPG, PNG files only</p>
                   <input 
@@ -1570,98 +1847,98 @@ const renderStepContent = () => {
     }
   };
 
-const styles = {
-  container: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f8f4f0 0%, #fdfbf8 50%, #f8f4f0 100%)", padding: "1rem", position: "relative", fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
-  backgroundPattern: { position: "absolute", inset: 0, backgroundImage: "radial-gradient(circle at 2px 2px, rgba(184, 118, 62, 0.15) 1.5px, transparent 0)", backgroundSize: "24px 24px", opacity: 0.4 },
-  backLink: { position: "absolute", top: "1.5rem", left: "2rem", display: "flex", alignItems: "center", gap: "0.5rem", color: "#6b7280", cursor: "pointer", fontSize: "0.95rem", transition: "all 0.2s ease", zIndex: 2, fontWeight: 500 },
-  card: { backgroundColor: "white", borderRadius: "1rem", padding: "2.5rem", width: "100%", maxWidth: "650px", position: "relative", zIndex: 1, boxShadow: "0 20px 40px rgba(184, 118, 62, 0.12), 0 0 0 1px rgba(184, 118, 62, 0.05)" },
-  button: { padding: "0.875rem", borderRadius: "0.5rem", cursor: "pointer", border: "none", transition: "all 0.2s ease", fontWeight: 500, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: "0.5rem" },
-  buttonPrev: { background: "#f3f4f6", color: "#374151" },
-  buttonNext: { background: "#B8763E", color: "#fff" },
-  progressContainer: { width: "100%", background: "#f3f4f6", borderRadius: "9999px", height: "0.5rem", marginBottom: "2rem", overflow: "hidden" },
-  progressBar: { height: "100%", background: "linear-gradient(90deg, #B8763E 0%, #d89d6c 100%)", transition: "width 0.3s ease", borderRadius: "9999px" },
-  stepIndicator: { display: "flex", justifyContent: "space-between", marginBottom: "1.5rem", position: "relative" },
-  step: { display: "flex", flexDirection: "column", alignItems: "center", zIndex: 2, flex: 1 },
-  stepNumber: { width: "2rem", height: "2rem", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.5rem" },
-  stepLine: { position: "absolute", top: "1rem", left: "0", right: "0", height: "2px", backgroundColor: "#e5e7eb", zIndex: 1 }
-};
+  const styles = {
+    container: { minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #f8f4f0 0%, #fdfbf8 50%, #f8f4f0 100%)", padding: "1rem", position: "relative", fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" },
+    backgroundPattern: { position: "absolute", inset: 0, backgroundImage: "radial-gradient(circle at 2px 2px, rgba(184, 118, 62, 0.15) 1.5px, transparent 0)", backgroundSize: "24px 24px", opacity: 0.4 },
+    backLink: { position: "absolute", top: "1.5rem", left: "2rem", display: "flex", alignItems: "center", gap: "0.5rem", color: "#6b7280", cursor: "pointer", fontSize: "0.95rem", transition: "all 0.2s ease", zIndex: 2, fontWeight: 500 },
+    card: { backgroundColor: "white", borderRadius: "1rem", padding: "2.5rem", width: "100%", maxWidth: "650px", position: "relative", zIndex: 1, boxShadow: "0 20px 40px rgba(184, 118, 62, 0.12), 0 0 0 1px rgba(184, 118, 62, 0.05)" },
+    button: { padding: "0.875rem", borderRadius: "0.5rem", cursor: "pointer", border: "none", transition: "all 0.2s ease", fontWeight: 500, fontSize: "0.95rem", display: "flex", alignItems: "center", gap: "0.5rem" },
+    buttonPrev: { background: "#f3f4f6", color: "#374151" },
+    buttonNext: { background: "#B8763E", color: "#fff" },
+    progressContainer: { width: "100%", background: "#f3f4f6", borderRadius: "9999px", height: "0.5rem", marginBottom: "2rem", overflow: "hidden" },
+    progressBar: { height: "100%", background: "linear-gradient(90deg, #B8763E 0%, #d89d6c 100%)", transition: "width 0.3s ease", borderRadius: "9999px" },
+    stepIndicator: { display: "flex", justifyContent: "space-between", marginBottom: "1.5rem", position: "relative" },
+    step: { display: "flex", flexDirection: "column", alignItems: "center", zIndex: 2, flex: 1 },
+    stepNumber: { width: "2rem", height: "2rem", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 600, fontSize: "0.875rem", marginBottom: "0.5rem" },
+    stepLine: { position: "absolute", top: "1rem", left: "0", right: "0", height: "2px", backgroundColor: "#e5e7eb", zIndex: 1 }
+  };
 
-const DocumentPreviewModal = () => {
-  if (!documentPreview) return null;
+  const DocumentPreviewModal = () => {
+    if (!documentPreview) return null;
 
-  return (
-    <div style={{
-      position: "fixed",
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      backgroundColor: "rgba(0, 0, 0, 0.8)",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 50,
-      padding: "2rem"
-    }}>
+    return (
       <div style={{
-        backgroundColor: "white",
-        borderRadius: "0.5rem",
-        padding: "1.5rem",
-        width: "90%",
-        height: "90%",
-        maxWidth: "1200px",
-        maxHeight: "800px",
-        position: "relative"
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(0, 0, 0, 0.8)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 50,
+        padding: "2rem"
       }}>
-        <button 
-          onClick={closeDocumentPreview}
-          style={{
-            position: "absolute",
-            top: "-0.75rem",
-            right: "-0.75rem",
-            background: "#ef4444",
-            color: "white", 
-            border: "none",
-            borderRadius: "50%",
-            width: "2rem",
-            height: "2rem",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            cursor: "pointer",
-            zIndex: 10
-          }}
-        >
-          <X size={16} />
-        </button>
-        
         <div style={{
-          flex: 1,
-          height: "100%",
-          overflow: "auto",
-          border: "1px solid #e5e7eb",
-          borderRadius: "0.375rem",
-          padding: "1rem",
-          backgroundColor: "#f9fafb"
+          backgroundColor: "white",
+          borderRadius: "0.5rem",
+          padding: "1.5rem",
+          width: "90%",
+          height: "90%",
+          maxWidth: "1200px",
+          maxHeight: "800px",
+          position: "relative"
         }}>
-          <iframe 
-            src={documentPreview} 
-            style={{ 
-              width: "100%", 
-              height: "100%", 
-              minHeight: "400px",
+          <button 
+            onClick={closeDocumentPreview}
+            style={{
+              position: "absolute",
+              top: "-0.75rem",
+              right: "-0.75rem",
+              background: "#ef4444",
+              color: "white", 
               border: "none",
-              display: "block"
-            }} 
-            title="Document preview"
-          />
+              borderRadius: "50%",
+              width: "2rem",
+              height: "2rem",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              zIndex: 10
+            }}
+          >
+            <X size={16} />
+          </button>
+          
+          <div style={{
+            flex: 1,
+            height: "100%",
+            overflow: "auto",
+            border: "1px solid #e5e7eb",
+            borderRadius: "0.375rem",
+            padding: "1rem",
+            backgroundColor: "#f9fafb"
+          }}>
+            <iframe 
+              src={documentPreview} 
+              style={{ 
+                width: "100%", 
+                height: "100%", 
+                minHeight: "400px",
+                border: "none",
+                display: "block"
+              }} 
+              title="Document preview"
+            />
+          </div>
         </div>
       </div>
-    </div>
-  );
-};  
+    );
+  };  
 
-return (
+  return (
     <div style={styles.container}>
       <div style={styles.backgroundPattern}></div>
       <div style={styles.backLink} onClick={() => navigate("/login")}>

@@ -26,7 +26,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE_URL = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
+const API_BASE_URL = "`https://echo-ebl8.onrender.com/api/ctu_vetmed"
 
 const SkeletonLoader = ({ activeTab }) => {
   const getGridConfig = () => {
@@ -35,7 +35,7 @@ const SkeletonLoader = ({ activeTab }) => {
         return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
       case "APPROVED":
         return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
-      case "DECLINED":
+      case "NOT APPROVED":
         return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
       default:
         return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
@@ -156,33 +156,45 @@ function CtuAccessRequest() {
   };
 
   // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
- const handleNotificationClick = async (notification) => {
-  // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev =>
-    prev.map(notif =>
-      notif.id === notification.id ? { ...notif, read: true } : notif
+ // HANDLE INDIVIDUAL NOTIFICATION CLICK
+const handleNotificationClick = async (notification) => {
+  const notifId = notification?.notif_id || notification?.id; // fallback support
+
+  if (!notifId) {
+    console.warn("Notification ID is missing:", notification);
+  }
+
+  // Mark as read in frontend immediately
+  setNotifications((prev) =>
+    prev.map((notif) =>
+      notif.notif_id === notifId || notif.id === notifId
+        ? { ...notif, read: true }
+        : notif
     )
   );
 
-  // Mark notification as read in backend
-  try {
-    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-      method: "POST",
-      credentials: "include",
-    });
-  } catch (err) {
-    console.error("Error marking notification as read:", err);
+  // Mark as read in backend (only if valid ID)
+  if (notifId) {
+    try {
+      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
   }
 
-  // Handle navigation based on notification content
-  const message = notification.message.toLowerCase();
+  const message = (notification.message || "").toLowerCase();
 
+  // Navigate for account-related notifications
   if (
     message.includes("new registration") ||
     message.includes("new veterinarian approved") ||
     message.includes("veterinarian approved") ||
     message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered")
+    message.includes("veterinarian registered") ||
+    message.includes("veterinarian pending")
   ) {
     navigate("/CtuAccountApproval", {
       state: {
@@ -193,7 +205,10 @@ function CtuAccessRequest() {
     return;
   }
 
-  if (message.includes("pending medical record access") || message.includes("requested access")) {
+  if (
+    message.includes("pending medical record access") ||
+    message.includes("requested access")
+  ) {
     navigate("/CtuAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -367,7 +382,7 @@ function CtuAccessRequest() {
     } else if (actionDetails.action === "decline" && currentRequestId) {
       console.log(`Declining request: ${currentRequestId} with reason: ${declineReason}`)
       setAccessRequests((prev) =>
-        prev.map((req) => (req.id === currentRequestId ? { ...req, status: "DECLINED", note: declineReason } : req)),
+        prev.map((req) => (req.id === currentRequestId ? { ...req, status: "NOT APPROVED", note: declineReason } : req)),
       )
     }
     closeActionModal()
@@ -402,7 +417,7 @@ function CtuAccessRequest() {
   // Confirm decline
   const confirmDeclineModal = async () => {
     if (!declineNote.trim()) {
-      alert("Please provide a reason for declining this request.")
+      alert("Please provide a reason for not approving this request.")
       return
     }
 
@@ -420,16 +435,16 @@ function CtuAccessRequest() {
       console.log("Decline response:", response.status, data)
 
       if (response.ok) {
-        alert("Request declined successfully")
+        alert("Request not approved successfully")
         closeDeclineModal()
         setIsViewModalOpen(false)
         loadAccessRequests()
       } else {
-        alert("Failed to decline request: " + (data.error || "Unknown error"))
+        alert("Failed to not approve request: " + (data.error || "Unknown error"))
       }
     } catch (err) {
-      console.error("Error declining request:", err)
-      alert("Error declining request. Check console for details.")
+      console.error("Error not approving request:", err)
+      alert("Error not approving request. Check console for details.")
     }
   }
 
@@ -440,8 +455,8 @@ function CtuAccessRequest() {
       if (activeTab === "APPROVED") {
         return request.status === "APPROVED"
       }
-      if (activeTab === "DECLINED") {
-        return request.status === "DECLINED"
+      if (activeTab === "NOT APPROVED") {
+        return request.status === "DECLINED" // Backend still uses "DECLINED"
       }
       return request.status === "PENDING"
     })
@@ -482,7 +497,7 @@ function CtuAccessRequest() {
     return {
       pending: accessRequests.filter((req) => req.status === "PENDING").length,
       approved: accessRequests.filter((req) => req.status === "APPROVED").length,
-      declined: accessRequests.filter((req) => req.status === "DECLINED").length,
+      notApproved: accessRequests.filter((req) => req.status === "DECLINED").length, // Backend still uses "DECLINED"
     }
   }
 
@@ -568,20 +583,22 @@ function CtuAccessRequest() {
 
   const gridConfig = getGridConfig()
 
+  // Function to display status text (convert "DECLINED" to "NOT APPROVED" in frontend)
+  const getStatusDisplayText = (status) => {
+    return status === "DECLINED" ? "NOT APPROVED" : status
+  }
+
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
       <div className="sidebars" id="sidebars" ref={sidebarRef}>
         <Sidebar isOpen={isSidebarsOpen} />
       </div>
 
-      <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
-        <header className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
+      <div className="flex-1 flex flex-col">
+        <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
           {/* ADDED HEADER SECTION */}
           <div className="flex flex-col">
-            <h2 className="text-2xl font-bold text-[#b91c1c]">Access Request</h2>
-            <p className="text-sm text-gray-600 mt-1 font-normal">
-              Overview of medical record access requests and approvals
-            </p>
+            <h2 className="text-2xl font-bold text-gray-800 mb-1">Access Request</h2>
           </div>
 
           <div className="flex items-center gap-4">
@@ -672,18 +689,18 @@ function CtuAccessRequest() {
               </button>
               <button
                 className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
-                  activeTab === "DECLINED"
+                  activeTab === "NOT APPROVED"
                     ? "font-semibold bg-white text-gray-900 shadow-sm"
                     : "hover:bg-white/70 hover:text-gray-900"
                 }`}
                 onClick={() => {
-                  setActiveTab("DECLINED")
+                  setActiveTab("NOT APPROVED")
                   setCurrentPage(1)
                 }}
               >
-                Declined{" "}
+                Not Approved{" "}
                 <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-red-500">
-                  {filterCounts.declined}
+                  {filterCounts.notApproved}
                 </span>
               </button>
             </div>
@@ -729,7 +746,7 @@ function CtuAccessRequest() {
                                     : "bg-red-100 text-red-800"
                               }`}
                             >
-                              {request.status}
+                              {getStatusDisplayText(request.status)}
                             </span>
                           </div>
                           <div className="text-gray-600 text-sm">{request.dateRequested.toLocaleDateString()}</div>
@@ -869,7 +886,7 @@ function CtuAccessRequest() {
                             : "bg-red-100 text-red-800"
                       }`}
                     >
-                      {selectedRequest.status}
+                      {getStatusDisplayText(selectedRequest.status)}
                     </span>
                   </div>
                 </div>

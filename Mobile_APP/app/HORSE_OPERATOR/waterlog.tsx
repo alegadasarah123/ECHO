@@ -1,76 +1,67 @@
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  StyleSheet, 
+  StyleSheet,
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
-  Platform,
   Alert,
   RefreshControl,
   Modal,
-} from "react-native"
-import { FontAwesome5 } from "@expo/vector-icons"
-import DateTimePicker from "@react-native-community/datetimepicker"
-import * as SecureStore from 'expo-secure-store'
+  Platform,
+} from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useRouter } from 'expo-router';
+import { FontAwesome5 } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 
-// Matching WaterLog types structure
-type FeedLogEntry = {
+type WaterLogEntry = {
   log_id: string;
   date: string;
   horse: string;
   horse_id: string;
   timestamp: string;
   user_full_name: string;
-  meal: string;
+  period: string;
   time: string;
-  food: string;
   amount: string;
   status: string;
   action: string;
-}
+};
 
 type Horse = {
   horse_id: string;
   horse_name: string;
-}
+};
 
-// const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
+// const API_BASE_URL = "http://10.160.169.148:8000/api/horse_operator";
 const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator"
 
-const FeedLogScreen = () => {
+const WaterLogScreen = () => {
   const router = useRouter();
-  const [feedLogs, setFeedLogs] = useState<FeedLogEntry[]>([])
-  const [filteredLogs, setFilteredLogs] = useState<FeedLogEntry[]>([])
-  const [currentUser, setCurrentUser] = useState<string>('')
-  const [horses, setHorses] = useState<Horse[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
+  const [waterLogs, setWaterLogs] = useState<WaterLogEntry[]>([]);
+  const [filteredLogs, setFilteredLogs] = useState<WaterLogEntry[]>([]);
+  const [currentUser, setCurrentUser] = useState<string>('');
+  const [horses, setHorses] = useState<Horse[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   
-  // Filter states matching WaterLog
-  const [showFilters, setShowFilters] = useState(false)
-  const [selectedHorse, setSelectedHorse] = useState<string>('all')
-  const [selectedDateFrom, setSelectedDateFrom] = useState<Date | null>(null)
-  const [selectedDateTo, setSelectedDateTo] = useState<Date | null>(null)
-  const [selectedMeal, setSelectedMeal] = useState<string>('all')
-  
-  // Temp states for modal
-  const [tempHorse, setTempHorse] = useState<string>('all')
-  const [tempDateFrom, setTempDateFrom] = useState<Date | null>(null)
-  const [tempDateTo, setTempDateTo] = useState<Date | null>(null)
-  const [tempMeal, setTempMeal] = useState<string>('all')
+  // Filter states
+  const [showFilters, setShowFilters] = useState(false);
+  const [selectedHorse, setSelectedHorse] = useState<string>('all');
+  const [selectedDateFrom, setSelectedDateFrom] = useState<Date | null>(null);
+  const [selectedDateTo, setSelectedDateTo] = useState<Date | null>(null);
+  const [tempHorse, setTempHorse] = useState<string>('all');
+  const [tempDateFrom, setTempDateFrom] = useState<Date | null>(null);
+  const [tempDateTo, setTempDateTo] = useState<Date | null>(null);
   
   // Date picker states
-  const [showFromDatePicker, setShowFromDatePicker] = useState(false)
-  const [showToDatePicker, setShowToDatePicker] = useState(false)
+  const [showFromDatePicker, setShowFromDatePicker] = useState(false);
+  const [showToDatePicker, setShowToDatePicker] = useState(false);
   
-  // Dropdown states
-  const [showHorseDropdown, setShowHorseDropdown] = useState(false)
-  const [showMealDropdown, setShowMealDropdown] = useState(false)
-
-  const mealOptions = ['all', 'Breakfast', 'Lunch', 'Dinner']
+  // Horse dropdown state
+  const [showHorseDropdown, setShowHorseDropdown] = useState(false);
 
   // Load user ID from SecureStore
   const getCurrentUser = async (): Promise<string | null> => {
@@ -92,7 +83,7 @@ const FeedLogScreen = () => {
   };
 
   // Load horses owned by user
-  const loadHorses = React.useCallback(async (userId: string): Promise<void> => {
+  const loadHorses = useCallback(async (userId: string): Promise<void> => {
     try {
       console.log("Fetching horses for user:", userId);
       const response = await fetch(`${API_BASE_URL}/get_horses/?user_id=${userId}`);
@@ -109,177 +100,84 @@ const FeedLogScreen = () => {
     }
   }, []);
 
-  // Load feed logs from backend
-  const loadFeedLogs = React.useCallback(async (userId: string): Promise<void> => {
+  // Load water logs from backend
+  const loadWaterLogs = useCallback(async (userId: string): Promise<void> => {
     try {
-      console.log("Fetching feed logs for user:", userId);
-      const response = await fetch(`${API_BASE_URL}/get_feed_logs/?user_id=${userId}`);
+      console.log("Fetching water logs for user:", userId);
+      const response = await fetch(`${API_BASE_URL}/get_water_logs/?user_id=${userId}`);
       
       if (response.ok) {
         const data = await response.json();
-        console.log("Feed logs loaded:", data.length);
-        setFeedLogs(data);
+        console.log("Water logs loaded:", data.length);
+        setWaterLogs(data);
         setFilteredLogs(data);
       } else {
         const errorData = await response.json();
-        console.error("Failed to load feed logs:", errorData);
-        Alert.alert('Error', 'Failed to load feed logs');
+        console.error("Failed to load water logs:", errorData);
+        Alert.alert('Error', 'Failed to load water logs');
       }
     } catch (error) {
-      console.error('Error loading feed logs:', error);
-      Alert.alert('Error', 'Failed to load feed logs');
+      console.error('Error loading water logs:', error);
+      Alert.alert('Error', 'Failed to load water logs');
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Refresh callback
-  const onRefresh = React.useCallback(async () => {
+  // Apply filters to water logs
+  const applyFilters = useCallback(() => {
+    let filtered = [...waterLogs];
+
+    if (selectedHorse !== 'all') {
+      filtered = filtered.filter(log => log.horse_id === selectedHorse);
+    }
+
+    if (selectedDateFrom) {
+      const fromDate = new Date(selectedDateFrom);
+      fromDate.setHours(0, 0, 0, 0);
+      filtered = filtered.filter(log => {
+        const logDate = new Date(log.date);
+        logDate.setHours(0, 0, 0, 0);
+        return logDate >= fromDate;
+      });
+    }
+
+    if (selectedDateTo) {
+      const toDate = new Date(selectedDateTo);
+      toDate.setHours(23, 59, 59, 999);
+      filtered = filtered.filter(log => {
+        const logDate = new Date(log.date);
+        return logDate <= toDate;
+      });
+    }
+
+    setFilteredLogs(filtered);
+  }, [waterLogs, selectedHorse, selectedDateFrom, selectedDateTo]);
+
+  useEffect(() => {
+    applyFilters();
+  }, [applyFilters]);
+
+  const onRefresh = useCallback(async () => {
     if (!currentUser) return;
     
     setRefreshing(true);
     try {
-      await loadFeedLogs(currentUser);
+      await loadWaterLogs(currentUser);
     } finally {
       setRefreshing(false);
     }
-  }, [currentUser, loadFeedLogs]);
-
-  // Initialize data on mount
-  useEffect(() => {
-    const initializeData = async () => {
-      const userId = await getCurrentUser();
-      if (userId) {
-        await Promise.all([
-          loadHorses(userId),
-          loadFeedLogs(userId)
-        ]);
-      }
-    };
-    
-    initializeData();
-  }, [loadHorses, loadFeedLogs]);
-
-  // Apply filters
-  const applyFilters = React.useCallback(() => {
-    let filtered = [...feedLogs]
-
-    if (selectedHorse !== 'all') {
-      filtered = filtered.filter(log => log.horse_id === selectedHorse)
-    }
-
-    if (selectedMeal !== 'all') {
-      filtered = filtered.filter(log => log.meal === selectedMeal)
-    }
-
-    if (selectedDateFrom) {
-      const fromDate = new Date(selectedDateFrom)
-      fromDate.setHours(0, 0, 0, 0)
-      filtered = filtered.filter(log => {
-        const logDate = new Date(log.date)
-        logDate.setHours(0, 0, 0, 0)
-        return logDate >= fromDate
-      })
-    }
-
-    if (selectedDateTo) {
-      const toDate = new Date(selectedDateTo)
-      toDate.setHours(23, 59, 59, 999)
-      filtered = filtered.filter(log => {
-        const logDate = new Date(log.date)
-        return logDate <= toDate
-      })
-    }
-
-    setFilteredLogs(filtered)
-  }, [feedLogs, selectedHorse, selectedMeal, selectedDateFrom, selectedDateTo])
-
-  useEffect(() => {
-    applyFilters()
-  }, [applyFilters])
-
-  const handleApplyFilters = () => {
-    setSelectedHorse(tempHorse)
-    setSelectedMeal(tempMeal)
-    setSelectedDateFrom(tempDateFrom)
-    setSelectedDateTo(tempDateTo)
-    setShowFilters(false)
-  }
-
-  const handleResetFilters = () => {
-    setTempHorse('all')
-    setTempMeal('all')
-    setTempDateFrom(null)
-    setTempDateTo(null)
-    setSelectedHorse('all')
-    setSelectedMeal('all')
-    setSelectedDateFrom(null)
-    setSelectedDateTo(null)
-    setShowFilters(false)
-  }
-
-  const getActiveFilterCount = () => {
-    let count = 0
-    if (selectedHorse !== 'all') count++
-    if (selectedMeal !== 'all') count++
-    if (selectedDateFrom) count++
-    if (selectedDateTo) count++
-    return count
-  }
-
-  const formatDate = (dateInput: string | Date): string => {
-    try {
-      const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-      })
-    } catch {
-      return typeof dateInput === 'string' ? dateInput : 'Invalid Date'
-    }
-  }
-
-  const formatTimestamp = (timestampString: string): string => {
-    try {
-      const date = new Date(timestampString)
-      return date.toLocaleTimeString('en-US', {
-        hour: 'numeric',
-        minute: '2-digit',
-        hour12: true
-      })
-    } catch {
-      return timestampString
-    }
-  }
-
-  const getMealIcon = (meal: string): string => {
-    switch (meal) {
-      case 'Breakfast': return 'sun'
-      case 'Lunch': return 'cloud-sun'
-      case 'Dinner': return 'moon'
-      default: return 'utensils'
-    }
-  }
-
-  const getMealColor = (meal: string): string => {
-    switch (meal) {
-      case 'Breakfast': return '#F59E0B'
-      case 'Lunch': return '#10B981'
-      case 'Dinner': return '#8B5CF6'
-      default: return '#6B7280'
-    }
-  }
+  }, [currentUser, loadWaterLogs]);
 
   const handleClearLogs = async (): Promise<void> => {
     if (!currentUser) {
-      Alert.alert('Error', 'User not found')
-      return
+      Alert.alert('Error', 'User not found');
+      return;
     }
 
     Alert.alert(
       'Clear All Logs',
-      'Are you sure you want to clear all feed logs? This action cannot be undone.',
+      'Are you sure you want to clear all water logs? This action cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -287,61 +185,146 @@ const FeedLogScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await fetch(`${API_BASE_URL}/clear_feed_logs/`, {
+              const response = await fetch(`${API_BASE_URL}/clear_water_logs/`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user_id: currentUser }),
-              })
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  user_id: currentUser,
+                }),
+              });
 
               if (response.ok) {
-                setFeedLogs([])
-                setFilteredLogs([])
-                Alert.alert('Success', 'All feed logs cleared successfully')
+                setWaterLogs([]);
+                setFilteredLogs([]);
+                Alert.alert('Success', 'All water logs cleared successfully');
               } else {
-                const errorData = await response.json()
-                Alert.alert('Error', errorData.error || 'Failed to clear logs')
+                const errorData = await response.json();
+                Alert.alert('Error', errorData.error || 'Failed to clear logs');
               }
             } catch (error) {
-              console.error('Error clearing logs:', error)
-              Alert.alert('Error', 'Failed to clear logs')
+              console.error('Error clearing logs:', error);
+              Alert.alert('Error', 'Failed to clear logs');
             }
           }
         }
       ]
-    )
-  }
+    );
+  };
+
+  const handleApplyFilters = () => {
+    setSelectedHorse(tempHorse);
+    setSelectedDateFrom(tempDateFrom);
+    setSelectedDateTo(tempDateTo);
+    setShowFilters(false);
+  };
+
+  const handleResetFilters = () => {
+    setTempHorse('all');
+    setTempDateFrom(null);
+    setTempDateTo(null);
+    setSelectedHorse('all');
+    setSelectedDateFrom(null);
+    setSelectedDateTo(null);
+    setShowFilters(false);
+  };
+
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (selectedHorse !== 'all') count++;
+    if (selectedDateFrom) count++;
+    if (selectedDateTo) count++;
+    return count;
+  };
+
+  useEffect(() => {
+    const initializeData = async () => {
+      const userId = await getCurrentUser();
+      if (userId) {
+        await Promise.all([
+          loadHorses(userId),
+          loadWaterLogs(userId)
+        ]);
+      }
+    };
+    
+    initializeData();
+  }, [loadHorses, loadWaterLogs]);
+
+  const formatDate = (dateInput: string | Date): string => {
+    try {
+      const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    } catch {
+      return typeof dateInput === 'string' ? dateInput : 'Invalid Date';
+    }
+  };
+
+  const formatTimestamp = (timestampString: string): string => {
+    try {
+      const date = new Date(timestampString);
+      return date.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch {
+      return timestampString;
+    }
+  };
+
+  const getPeriodIcon = (period: string): string => {
+    switch (period) {
+      case 'Morning': return 'sun';
+      case 'Afternoon': return 'cloud-sun';
+      case 'Evening': return 'moon';
+      default: return 'tint';
+    }
+  };
+
+  const getPeriodColor = (period: string): string => {
+    switch (period) {
+      case 'Morning': return '#F59E0B';
+      case 'Afternoon': return '#10B981';
+      case 'Evening': return '#8B5CF6';
+      default: return '#6B7280';
+    }
+  };
 
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
           <FontAwesome5 name="spinner" size={24} color="#3B82F6" />
-          <Text style={styles.loadingText}>Loading feed logs...</Text>
+          <Text style={styles.loadingText}>Loading water logs...</Text>
         </View>
       </SafeAreaView>
-    )
+    );
   }
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header matching WaterLog */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <FontAwesome5 name="arrow-left" size={20} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <FontAwesome5 name="clipboard-list" size={20} color="#fff" />
-          <Text style={styles.headerTitle}>Feed Logs</Text>
+          <Text style={styles.headerTitle}>Water Logs</Text>
         </View>
         <View style={styles.headerActions}>
           <TouchableOpacity 
             style={[styles.filterButton, getActiveFilterCount() > 0 && styles.filterButtonActive]} 
             onPress={() => {
-              setTempHorse(selectedHorse)
-              setTempMeal(selectedMeal)
-              setTempDateFrom(selectedDateFrom)
-              setTempDateTo(selectedDateTo)
-              setShowFilters(true)
+              setTempHorse(selectedHorse);
+              setTempDateFrom(selectedDateFrom);
+              setTempDateTo(selectedDateTo);
+              setShowFilters(true);
             }}
           >
             <FontAwesome5 name="filter" size={14} color="#fff" />
@@ -354,7 +337,7 @@ const FeedLogScreen = () => {
           <TouchableOpacity 
             style={styles.clearButton} 
             onPress={handleClearLogs}
-            disabled={feedLogs.length === 0}
+            disabled={waterLogs.length === 0}
           >
             <FontAwesome5 name="trash" size={14} color="#fff" />
           </TouchableOpacity>
@@ -374,7 +357,6 @@ const FeedLogScreen = () => {
         }
       >
         <View style={styles.content}>
-          {/* Stats Container matching WaterLog */}
           <View style={styles.statsContainer}>
             <View style={styles.statCard}>
               <Text style={styles.statNumber}>{filteredLogs.length}</Text>
@@ -384,9 +366,9 @@ const FeedLogScreen = () => {
             </View>
             <View style={styles.statCard}>
               <Text style={styles.statNumber}>
-                {filteredLogs.filter(log => log.status === 'Fed').length}
+                {filteredLogs.filter(log => log.status === 'Given').length}
               </Text>
-              <Text style={styles.statLabel}>Feedings Given</Text>
+              <Text style={styles.statLabel}>Waters Given</Text>
             </View>
             <View style={styles.statCard}>
               <Text style={styles.statNumber}>
@@ -396,7 +378,6 @@ const FeedLogScreen = () => {
             </View>
           </View>
 
-          {/* Active Filters Display */}
           {getActiveFilterCount() > 0 && (
             <View style={styles.activeFiltersContainer}>
               <Text style={styles.activeFiltersTitle}>Active Filters:</Text>
@@ -408,36 +389,34 @@ const FeedLogScreen = () => {
                     </Text>
                   </View>
                 )}
-                {selectedMeal !== 'all' && (
-                  <View style={styles.activeFilterTag}>
-                    <Text style={styles.activeFilterText}>Meal: {selectedMeal}</Text>
-                  </View>
-                )}
                 {selectedDateFrom && (
                   <View style={styles.activeFilterTag}>
-                    <Text style={styles.activeFilterText}>From: {formatDate(selectedDateFrom)}</Text>
+                    <Text style={styles.activeFilterText}>
+                      From: {formatDate(selectedDateFrom)}
+                    </Text>
                   </View>
                 )}
                 {selectedDateTo && (
                   <View style={styles.activeFilterTag}>
-                    <Text style={styles.activeFilterText}>To: {formatDate(selectedDateTo)}</Text>
+                    <Text style={styles.activeFilterText}>
+                      To: {formatDate(selectedDateTo)}
+                    </Text>
                   </View>
                 )}
               </View>
             </View>
           )}
 
-          {/* Empty State or Logs */}
           {filteredLogs.length === 0 ? (
             <View style={styles.emptyState}>
-              <FontAwesome5 name="utensils" size={64} color="#E5E7EB" />
+              <FontAwesome5 name="tint" size={64} color="#E5E7EB" />
               <Text style={styles.emptyStateTitle}>
-                {getActiveFilterCount() > 0 ? 'No Matching Logs' : 'No Feed Logs'}
+                {getActiveFilterCount() > 0 ? 'No Matching Logs' : 'No Water Logs'}
               </Text>
               <Text style={styles.emptyStateSubtitle}>
                 {getActiveFilterCount() > 0 
                   ? 'Try adjusting your filters to see more results.'
-                  : 'Feed logs will appear here when horses are fed.'
+                  : 'Water logs will appear here when horses are given water.'
                 }
               </Text>
               {getActiveFilterCount() > 0 && (
@@ -455,8 +434,12 @@ const FeedLogScreen = () => {
                 <View key={log.log_id} style={styles.logCard}>
                   <View style={styles.logHeader}>
                     <View style={styles.logHeaderLeft}>
-                      <View style={[styles.mealIndicator, { backgroundColor: getMealColor(log.meal) }]}>
-                        <FontAwesome5 name={getMealIcon(log.meal)} size={16} color="#fff" />
+                      <View style={[styles.periodIndicator, { backgroundColor: getPeriodColor(log.period) }]}>
+                        <FontAwesome5 
+                          name={getPeriodIcon(log.period)} 
+                          size={16} 
+                          color="#fff" 
+                        />
                       </View>
                       <View style={styles.logHeaderInfo}>
                         <Text style={styles.horseName}>{log.horse}</Text>
@@ -475,14 +458,12 @@ const FeedLogScreen = () => {
                     <View style={styles.logDetails}>
                       <View style={styles.logDetailRow}>
                         <FontAwesome5 name="clock" size={14} color="#6B7280" />
-                        <Text style={styles.logDetailText}>{log.meal} - {log.time}</Text>
+                        <Text style={styles.logDetailText}>
+                          {log.period} - {log.time}
+                        </Text>
                       </View>
                       <View style={styles.logDetailRow}>
-                        <FontAwesome5 name="seedling" size={14} color="#10B981" />
-                        <Text style={styles.logDetailText}>{log.food}</Text>
-                      </View>
-                      <View style={styles.logDetailRow}>
-                        <FontAwesome5 name="weight" size={14} color="#3B82F6" />
+                        <FontAwesome5 name="tint" size={14} color="#3B82F6" />
                         <Text style={styles.logDetailText}>{log.amount}</Text>
                       </View>
                       <View style={styles.logDetailRow}>
@@ -498,7 +479,6 @@ const FeedLogScreen = () => {
         </View>
       </ScrollView>
 
-      {/* Filter Modal matching WaterLog */}
       <Modal
         visible={showFilters}
         animationType="slide"
@@ -510,7 +490,7 @@ const FeedLogScreen = () => {
             <View style={styles.modalHeader}>
               <View style={styles.modalHeaderLeft}>
                 <FontAwesome5 name="filter" size={20} color="#3B82F6" />
-                <Text style={styles.modalTitle}>Filter Feed Logs</Text>
+                <Text style={styles.modalTitle}>Filter Water Logs</Text>
               </View>
               <TouchableOpacity 
                 style={styles.modalCloseButton}
@@ -520,9 +500,12 @@ const FeedLogScreen = () => {
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
-              {/* Horse Filter - Updated to match WaterLog */}
-              <View style={[styles.filterSection, { zIndex: 1000 }]}>
+            <ScrollView 
+              style={styles.modalContent} 
+              showsVerticalScrollIndicator={false}
+            //   scrollEnabled={!showHorseDropdown}
+            >
+              <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
                   <FontAwesome5 name="horse-head" size={16} color="#3B82F6" />
                   <Text style={styles.filterLabel}>Filter by Horse</Text>
@@ -632,92 +615,6 @@ const FeedLogScreen = () => {
                 </View>
               </View>
 
-              {/* Meal Filter */}
-              <View style={[styles.filterSection, { zIndex: 100 }]}>
-                <View style={styles.filterSectionHeader}>
-                  <FontAwesome5 name="utensils" size={16} color="#3B82F6" />
-                  <Text style={styles.filterLabel}>Filter by Meal</Text>
-                </View>
-                
-                <View style={styles.horseDropdownContainer}>
-                  {showMealDropdown && (
-                    <TouchableOpacity
-                      style={styles.dropdownOverlay}
-                      activeOpacity={1}
-                      onPress={() => setShowMealDropdown(false)}
-                    />
-                  )}
-                  
-                  <TouchableOpacity
-                    style={[styles.horseDropdownButton, tempMeal !== 'all' && styles.horseDropdownButtonSelected]}
-                    onPress={() => setShowMealDropdown(!showMealDropdown)}
-                  >
-                    <View style={styles.horseDropdownButtonContent}>
-                      <FontAwesome5 
-                        name={tempMeal === 'all' ? 'globe' : getMealIcon(tempMeal)} 
-                        size={16} 
-                        color={tempMeal !== 'all' ? getMealColor(tempMeal) : '#6B7280'} 
-                      />
-                      <Text style={[
-                        styles.horseDropdownText, 
-                        tempMeal !== 'all' && styles.horseDropdownTextSelected
-                      ]}>
-                        {tempMeal === 'all' ? 'All Meals' : tempMeal}
-                      </Text>
-                    </View>
-                    <FontAwesome5 
-                      name={showMealDropdown ? 'chevron-up' : 'chevron-down'} 
-                      size={14} 
-                      color="#6B7280" 
-                    />
-                  </TouchableOpacity>
-
-                  {showMealDropdown && (
-                    <View style={styles.horseDropdownList}>
-                      <ScrollView
-                        showsVerticalScrollIndicator={true}
-                        nestedScrollEnabled={true}
-                        bounces={true}
-                        style={styles.horseDropdownScrollView}
-                        contentContainerStyle={styles.horseDropdownScrollContent}
-                      >
-                        {mealOptions.map((meal, index) => (
-                          <TouchableOpacity
-                            key={meal}
-                            style={[
-                              styles.horseDropdownOption,
-                              index === 0 && styles.horseDropdownOptionFirst,
-                              index === mealOptions.length - 1 && styles.horseDropdownOptionLast,
-                              tempMeal === meal && styles.horseDropdownOptionSelected
-                            ]}
-                            onPress={() => {
-                              setTempMeal(meal);
-                              setShowMealDropdown(false);
-                            }}
-                          >
-                            <FontAwesome5 
-                              name={meal === 'all' ? 'globe' : getMealIcon(meal)} 
-                              size={14} 
-                              color={meal === 'all' ? '#6B7280' : getMealColor(meal)} 
-                            />
-                            <Text style={[
-                              styles.horseDropdownOptionText,
-                              tempMeal === meal && styles.horseDropdownOptionTextSelected
-                            ]}>
-                              {meal === 'all' ? 'All Meals' : meal}
-                            </Text>
-                            {tempMeal === meal && (
-                              <FontAwesome5 name="check" size={14} color="#3B82F6" />
-                            )}
-                          </TouchableOpacity>
-                        ))}
-                      </ScrollView>
-                    </View>
-                  )}
-                </View>
-              </View>
-
-              {/* Date Range Filter - matching WaterLog exactly */}
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
                   <FontAwesome5 name="calendar-alt" size={16} color="#3B82F6" />
@@ -796,13 +693,12 @@ const FeedLogScreen = () => {
                 </View>
               </View>
 
-              {/* Filter Preview Section */}
               <View style={styles.filterPreviewSection}>
                 <Text style={styles.filterPreviewTitle}>Filter Preview:</Text>
                 <View style={styles.filterPreviewContainer}>
                   {tempHorse !== 'all' ? (
                     <View style={styles.filterPreviewTag}>
-                      <FontAwesome5 name="horse" size={12} color="#ffffff" />
+                      <FontAwesome5 name="horse" size={12} color="#ffffffff" />
                       <Text style={styles.filterPreviewText}>
                         {horses.find(h => h.horse_id === tempHorse)?.horse_name || 'Unknown Horse'}
                       </Text>
@@ -813,22 +709,9 @@ const FeedLogScreen = () => {
                     </View>
                   )}
 
-                  {tempMeal !== 'all' ? (
-                    <View style={styles.filterPreviewTag}>
-                      <FontAwesome5 name="utensils" size={12} color="#ffffff" />
-                      <Text style={styles.filterPreviewText}>
-                        {tempMeal}
-                      </Text>
-                    </View>
-                  ) : (
-                    <View style={styles.filterPreviewTagInactive}>
-                      <Text style={styles.filterPreviewTextInactive}>All Meals</Text>
-                    </View>
-                  )}
-
                   {tempDateFrom ? (
                     <View style={styles.filterPreviewTag}>
-                      <FontAwesome5 name="calendar-plus" size={12} color="#ffffff" />
+                      <FontAwesome5 name="calendar-plus" size={12} color="#ffffffff" />
                       <Text style={styles.filterPreviewText}>From: {formatDate(tempDateFrom)}</Text>
                     </View>
                   ) : (
@@ -839,7 +722,7 @@ const FeedLogScreen = () => {
 
                   {tempDateTo ? (
                     <View style={styles.filterPreviewTag}>
-                      <FontAwesome5 name="calendar-minus" size={12} color="#ffffff" />
+                      <FontAwesome5 name="calendar-minus" size={12} color="#ffffffff" />
                       <Text style={styles.filterPreviewText}>To: {formatDate(tempDateTo)}</Text>
                     </View>
                   ) : (
@@ -856,7 +739,6 @@ const FeedLogScreen = () => {
                 style={styles.resetButton}
                 onPress={() => {
                   setTempHorse('all');
-                  setTempMeal('all');
                   setTempDateFrom(null);
                   setTempDateTo(null);
                 }}
@@ -877,15 +759,16 @@ const FeedLogScreen = () => {
         </View>
       </Modal>
 
-      {/* Date Pickers */}
       {showFromDatePicker && (
         <DateTimePicker
           value={tempDateFrom || new Date()}
           mode="date"
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={(event, selectedDate) => {
-            setShowFromDatePicker(false)
-            if (selectedDate) setTempDateFrom(selectedDate)
+            setShowFromDatePicker(false);
+            if (selectedDate) {
+              setTempDateFrom(selectedDate);
+            }
           }}
           maximumDate={new Date()}
         />
@@ -897,22 +780,23 @@ const FeedLogScreen = () => {
           mode="date"
           display={Platform.OS === 'ios' ? 'spinner' : 'default'}
           onChange={(event, selectedDate) => {
-            setShowToDatePicker(false)
-            if (selectedDate) setTempDateTo(selectedDate)
+            setShowToDatePicker(false);
+            if (selectedDate) {
+              setTempDateTo(selectedDate);
+            }
           }}
           maximumDate={new Date()}
           minimumDate={tempDateFrom || undefined}
         />
       )}
     </SafeAreaView>
-  )
-}
+  );
+};
 
-// Styles matching WaterLog exactly
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#CD853F',
+    backgroundColor: '#3B82F6',
   },
   header: {
     flexDirection: 'row',
@@ -920,7 +804,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 18,
-    backgroundColor: '#CD853F',
+    backgroundColor: '#3B82F6',
     elevation: 4,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -1112,7 +996,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flex: 1,
   },
-  mealIndicator: {
+  periodIndicator: {
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -1224,7 +1108,6 @@ const styles = StyleSheet.create({
   },
   filterSection: {
     marginBottom: 24,
-    zIndex: 1,
   },
   filterSectionHeader: {
     flexDirection: 'row',
@@ -1313,7 +1196,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
-    gap: 12,
   },
   horseDropdownOptionFirst: {
     borderTopLeftRadius: 10,
@@ -1332,6 +1214,7 @@ const styles = StyleSheet.create({
     color: '#4B5563',
     fontWeight: '500',
     flex: 1,
+    marginLeft: 12,
   },
   horseDropdownOptionTextSelected: {
     color: '#3B82F6',
@@ -1513,6 +1396,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-})
+});
 
-export default FeedLogScreen;
+export default WaterLogScreen;

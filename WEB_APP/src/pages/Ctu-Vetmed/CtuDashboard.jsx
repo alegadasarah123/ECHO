@@ -199,7 +199,7 @@ const loadStats = useCallback(() => {
 const loadRecentActivities = useCallback(() => {
   setActivitiesLoading(true);
 
-  fetch("https://echo-eb18.onrender.com/api/ctu_vetmed/get_recent_activity/", {
+  fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_recent_activity/", {
     method: "GET",
     credentials: "include", // Needed for HttpOnly cookie
   })
@@ -255,7 +255,8 @@ const loadSosEmergencies = useCallback(() => {
 
   fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_sos_requests/", {
     method: "GET",
-    credentials: "include",
+    credentials: "include", 
+   
   })
     .then((res) => {
       if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
@@ -394,33 +395,45 @@ const loadSosEmergencies = useCallback(() => {
   };
 
 // HANDLE INDIVIDUAL NOTIFICATION CLICK
+// HANDLE INDIVIDUAL NOTIFICATION CLICK
 const handleNotificationClick = async (notification) => {
-  // Mark notification as read in frontend immediately for better UX
-  setNotifications(prev =>
-    prev.map(notif =>
-      notif.id === notification.id ? { ...notif, read: true } : notif
+  const notifId = notification?.notif_id || notification?.id; // fallback support
+
+  if (!notifId) {
+    console.warn("Notification ID is missing:", notification);
+  }
+
+  // Mark as read in frontend immediately
+  setNotifications((prev) =>
+    prev.map((notif) =>
+      notif.notif_id === notifId || notif.id === notifId
+        ? { ...notif, read: true }
+        : notif
     )
   );
 
-  // Mark notification as read in backend
-  try {
-    await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
-      method: "POST",
-      credentials: "include",
-    });
-  } catch (err) {
-    console.error("Error marking notification as read:", err);
+  // Mark as read in backend (only if valid ID)
+  if (notifId) {
+    try {
+      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
   }
 
-  // Handle navigation based on notification content
-  const message = notification.message.toLowerCase();
+  const message = (notification.message || "").toLowerCase();
 
+  // Navigate for account-related notifications
   if (
     message.includes("new registration") ||
     message.includes("new veterinarian approved") ||
     message.includes("veterinarian approved") ||
     message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered")
+    message.includes("veterinarian registered") ||
+    message.includes("veterinarian pending")
   ) {
     navigate("/CtuAccountApproval", {
       state: {
@@ -431,7 +444,10 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
-  if (message.includes("pending medical record access") || message.includes("requested access")) {
+  if (
+    message.includes("pending medical record access") ||
+    message.includes("requested access")
+  ) {
     navigate("/CtuAccessRequest", {
       state: {
         highlightedNotification: notification,
@@ -441,7 +457,7 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
-  // Only navigate to CtuAnnouncement for comment-related notifications
+// Only navigate to CtuAnnouncement for comment-related notifications
   if (message.includes("comment")) {
     navigate("/CtuAnnouncement", {
       state: {
@@ -452,7 +468,6 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 };
-
 
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -533,13 +548,11 @@ const handleNotificationClick = async (notification) => {
       {!isImageModalOpen && <Sidebar isOpen={isSidebarOpen} />}
       {!isImageModalOpen && <FloatingMessages />}
 
-      <div className="flex-1 flex flex-col w-[calc(100%-250px)] transition-all duration-300">
-        <header className="bg-white px-6 py-2 flex items-center justify-between shadow-md sticky top-0 z-10 flex-wrap gap-14">
-          <div className="flex flex-col py-3 px-5 bg-transparent">
-            <h2 className="text-2xl font-bold text-[#b91c1c]">Dashboard</h2>
-            <p className="text-sm text-gray-600 mt-1 font-normal">
-              Overview of requests, approvals, declines, and recent activity
-            </p>
+      <div className="flex-1 flex flex-col">
+        <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
+          <div className="flex flex-col">
+            <h2 className="text-2xl font-bold text-gray-800 mb-1">Dashboard</h2>
+
           </div>
 
           
@@ -613,7 +626,7 @@ const handleNotificationClick = async (notification) => {
 
                 <div className="bg-white p-6 rounded-lg shadow-sm transition-transform duration-200 cursor-pointer hover:-translate-y-0.5 flex flex-col items-center text-center">
                   <div className="flex items-center gap-2 mb-3">
-                    <div className="text-gray-600 text-sm font-medium">Total Declined</div>
+                    <div className="text-gray-600 text-sm font-medium">Total Not Approved</div>
                     <div className="mr-2.5 p-3 rounded-full flex items-center justify-center bg-red-100 text-red-600">
                       <XCircle size={24} />
                     </div>
@@ -649,60 +662,65 @@ const handleNotificationClick = async (notification) => {
                   <p className="text-sm">Activity will appear here when available</p>
                 </div>
               ) : (
-                <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
-                  {recentActivities
-                    .filter((activity) => {
-                      const activityDate = new Date(activity.date)
-                      const now = new Date()
-                      const diffTime = now - activityDate
-                      const diffDays = diffTime / (1000 * 60 * 60 * 24)
-                      return diffDays <= 2
-                    })
-                    .map((activity, index) => {
-                      const initials = activity.title
-                        .split(" ")
-                        .map((word) => word[0])
-                        .join("")
-                        .toUpperCase()
+               <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+  {recentActivities
+    .filter((activity) => {
+      const activityDate = new Date(activity.date)
+      const now = new Date()
+      const diffTime = now - activityDate
+      const diffDays = diffTime / (1000 * 60 * 60 * 24)
+      return diffDays <= 2
+    })
+    .map((activity, index) => {
+      const initials = activity.title
+        .split(" ")
+        .map((word) => word[0])
+        .join("")
+        .toUpperCase()
 
-                      const colorIndex = getColorIndex(activity, index)
+      const colorIndex = getColorIndex(activity, index)
 
-                      return (
-                        <div key={activity.id} className={getActivityCardClasses(colorIndex)}>
-                          <div className={getActivityAvatarClasses(colorIndex)}>{initials}</div>
-                          <div className="flex-1 grid grid-cols-2 gap-1 gap-x-2.5">
-                            <div className="font-semibold text-sm text-gray-800 col-span-2">{activity.title}</div>
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Email</span>
-                              <span className="text-xs text-gray-700">{activity.email}</span>
-                            </div>
-                            <div className="flex flex-col gap-0.5">
-                              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                                Description
-                              </span>
-                              <span className="text-xs text-gray-700">
-                                {activity.description || "System activity update"}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-end gap-1">
-                            <span className={getRoleClasses(activity.status)}>{activity.status}</span>
-                            <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
-                              {new Date(activity.date).toLocaleDateString("en-US", {
-                                month: "long",
-                                day: "numeric",
-                                year: "numeric",
-                              }) + ' ' + new Date(activity.date).toLocaleTimeString("en-US", {
-                                hour: "numeric",
-                                minute: "numeric",
-                                hour12: true
-                              })}
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                </div>
+      return (
+        <div key={activity.id} className={getActivityCardClasses(colorIndex)}>
+          <div className={getActivityAvatarClasses(colorIndex)}>{initials}</div>
+          <div className="flex-1 grid grid-cols-2 gap-1 gap-x-2.5">
+            <div className="font-semibold text-sm text-gray-800 col-span-2">{activity.title}</div>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Email</span>
+              <span className="text-xs text-gray-700">{activity.email}</span>
+            </div>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Description
+              </span>
+              <span className="text-xs text-gray-700">
+                {activity.description ? 
+                  activity.description.replace('declined', 'Not Approved').replace('Declined', 'Not Approved') 
+                  : "System activity update"
+                }
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-col items-end gap-1">
+            <span className={getRoleClasses(activity.status)}>
+              {activity.status === 'declined' ? 'Not Approved' : activity.status}
+            </span>
+            <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
+              {new Date(activity.date).toLocaleDateString("en-US", {
+                month: "long",
+                day: "numeric",
+                year: "numeric",
+              }) + ' ' + new Date(activity.date).toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "numeric",
+                hour12: true
+              })}
+            </span>
+          </div>
+        </div>
+      )
+    })}
+</div>
               )}
             </div>
 

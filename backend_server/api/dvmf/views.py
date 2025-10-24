@@ -290,7 +290,7 @@ def update_vet_status(request, vet_profile_id):
             """
         else:  # declined
             subject = "Your Veterinarian Account Has Been Declined"
-            plain_message = f"Hello {vet_name},\n\nWe’re sorry to inform you that your veterinarian account request has been declined by the admin. The reason: {reason_text}. Please contact support if needed.\n\nBest regards,\nECHOSys Team"
+            plain_message = f"Hello {vet_name},\n\nWe’re sorry to inform you that your veterinarian account request has been NOT APPROVED by the admin. The reason: {reason_text}. Please contact support if needed.\n\nBest regards,\nECHOSys Team"
             html_message = f"""
             <html>
               <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
@@ -300,7 +300,7 @@ def update_vet_status(request, vet_profile_id):
                   </div>
                   <div style="padding:30px; color:#333; font-size:16px; line-height:1.5;">
                     <p>Hello {vet_name},</p>
-                    <p>We’re sorry to inform you that your veterinarian account request has been declined by the admin. The reason: <strong>{reason_text}</strong>.</p>
+                    <p>We’re sorry to inform you that your veterinarian account request has been NOT APPROVED by the admin. The reason: <strong>{reason_text}</strong>.</p>
                     
                     <p>Best regards,<br>ECHOSys Team</p>
                   </div>
@@ -339,22 +339,18 @@ def update_vet_status(request, vet_profile_id):
 
 
     
-# -------------------- DASHBOARD RECENTLY ACTIVITIES --------------------
-# -------------------- DASHBOARD RECENTLY ACTIVITIES --------------------
+# -------------------- GET RECENT ACTIVITY --------------------
 @api_view(["GET"])
 @login_required
 def get_recent_activity(request):
     try:
-        response = (
-            sr_client.table("vet_profile")
-            .select(
-                "vet_id, vet_fname, vet_lname, vet_email, created_at, "
-                "users!vet_profile_vet_id_fkey(status)"
-            )
-            .order("created_at", desc=True)
-            .limit(10)
-            .execute()
-        )
+        # ✅ Create a Supabase client using the service role key
+        sr_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+
+        # ✅ Query recent vet profiles
+        response = sr_client.table("vet_profile").select(
+            "vet_id, vet_fname, vet_lname, vet_email, created_at, users(status)"
+        ).order("created_at", desc=True).limit(10).execute()
 
         if not response.data:
             return Response([], status=200)
@@ -367,7 +363,6 @@ def get_recent_activity(request):
             first_name = row.get("vet_fname", "")
             last_name = row.get("vet_lname", "")
             full_name = f"{first_name} {last_name}".strip()
-
             initials = "".join([w[0] for w in full_name.split() if w]).upper()
 
             activities.append({
@@ -383,27 +378,30 @@ def get_recent_activity(request):
         return Response(activities, status=200)
 
     except Exception as e:
+        print(f"[ERROR] get_recent_activity: {e}")
         return Response({"error": str(e)}, status=500)
 
 
 
-
-# -------------------- DASHBOARD TOTAL COUNT --------------------
+# -------------------- GET STATUS COUNTS --------------------
+# -------------------- GET STATUS COUNTS --------------------
 @api_view(["GET"])
-@login_required   # ✅ Require login before accessing this view
+@login_required
 def get_status_counts(request):
     try:
-        # Query vet_profile and join with users (status)
-        response = (
-            sr_client.table("vet_profile")
-            .select("vet_id, users(status)")
-            .execute()
-        )
+        # ✅ Create Supabase client
+        sr_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
+
+        # ✅ Fetch vet profiles with related user status
+        response = sr_client.table("vet_profile").select("vet_id, users(status)").execute()
 
         if not response.data:
             return Response({"pending": 0, "approved": 0, "declined": 0}, status=200)
 
+        # ✅ Initialize counts
         counts = {"pending": 0, "approved": 0, "declined": 0}
+
+        # ✅ Count based on status
         for row in response.data:
             user_status = row.get("users", {}).get("status", "").lower()
             if user_status in counts:
@@ -412,9 +410,10 @@ def get_status_counts(request):
         return Response(counts, status=200)
 
     except Exception as e:
+        import traceback
+        print("[ERROR] get_status_counts:", e)
+        print(traceback.format_exc())
         return Response({"error": str(e)}, status=500)
-
-
 
 
 # -------------------- GET PROFILES IN SETTINGS --------------------
@@ -619,166 +618,183 @@ def get_users(request):
     
 
 # -------------------- NOTIFICATIONS --------------------
-
+# -------------------- NOTIFICATIONS --------------------
 from datetime import datetime, timedelta, timezone as dt_timezone
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from rest_framework import status
 
+# -------------------- UTILITY --------------------
+manila_tz = dt_timezone(timedelta(hours=8))
+
+def to_manila_time(iso_str):
+    if not iso_str:
+        return datetime.now(manila_tz)
+    try:
+        return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone(manila_tz)
+    except:
+        return datetime.now(manila_tz)
+
+
+# -------------------- GET VET NOTIFICATIONS --------------------
 @api_view(["GET"])
 def get_vetnotifications(request):
     try:
-        manila_tz = dt_timezone(timedelta(hours=8))
+        existing_keys = set()
+        notifications_to_insert = []
 
-        def to_manila_time(iso_str):
-            try:
-                if iso_str:
-                    return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone(manila_tz)
-            except Exception:
-                pass
-            return datetime.now(manila_tz)
-
-        # ---------------- FETCH EXISTING KEYS ----------------
+        # Fetch existing notifications to avoid duplicates
         try:
-            existing_res = sr_client.table("notification").select("related_id").execute()
+            existing_res = sr_client.table("notification").select("*").execute()
             existing_keys = set(row.get("related_id") for row in (existing_res.data or []) if row.get("related_id"))
-        except Exception:
+        except:
             existing_keys = set()
 
-        notifications_to_insert = []
+        # Helper to add notifications
+        def add_notification(user_id, message, notif_type, related_id, created_at=None):
+            if not user_id or related_id in existing_keys:
+                return
+            dt_ph = to_manila_time(created_at) if created_at else datetime.now(manila_tz)
+            notifications_to_insert.append({
+                "id": user_id,
+                "notif_message": message,
+                "notif_date": dt_ph.strftime("%Y-%m-%d"),
+                "notif_time": dt_ph.strftime("%H:%M:%S"),
+                "notif_read": False,
+                "notification_type": notif_type,
+                "related_id": related_id
+            })
+            existing_keys.add(related_id)
 
         # ---------------- VET REGISTRATION/APPROVAL/DECLINE ----------------
         try:
-            vets_res = sr_client.table("vet_profile").select("vet_id, vet_fname, vet_lname, created_at, users(id, status, role)").execute()
+            vets_res = sr_client.table("vet_profile") \
+                .select("vet_id, vet_fname, vet_lname, created_at, users(id, status, role)") \
+                .execute()
             for vet in (vets_res.data or []):
                 users = vet.get("users") or {}
-                role = (users.get("role") or "").lower()
-                status = (users.get("status") or "").lower()
+                if users.get("role", "").lower() != "veterinarian":
+                    continue
                 user_id = users.get("id")
-                if not user_id or role != "veterinarian":
-                    continue
-                vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
-                created_at = vet.get("created_at")
-                related_id = f"vet_{vet['vet_id']}_{status}"
-                if related_id in existing_keys:
-                    continue
-
-                dt_ph = to_manila_time(created_at)
-                notifications_to_insert.append({
-                    "id": user_id,
-                    "notif_message": f"{('New registration:' if status=='pending' else 'Veterinarian ' + status + ':')} {vet_name}.",
-                    "notif_date": dt_ph.strftime("%Y-%m-%d"),
-                    "notif_time": dt_ph.strftime("%H:%M:%S"),
-                    "notif_read": False,
-                    "notification_type": status,
-                    "related_id": related_id
-                })
-                existing_keys.add(related_id)
-        except Exception:
+                status = users.get("status", "").lower()
+                vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
+                if status in ["pending", "approved", "declined"]:
+                    add_notification(
+                        user_id,
+                        f"Veterinarian {status}: Dr. {vet_name}.",
+                        status,
+                        f"vet_{vet['vet_id']}_{status}",
+                        vet.get("created_at")
+                    )
+        except:
             pass
 
         # ---------------- MEDICAL RECORD ACCESS REQUESTS ----------------
         try:
             medreq_res = sr_client.table("medrec_access_request") \
-                .select("request_id, vet_id, horse_id, request_status, requested_at, vet_profile(vet_fname, vet_lname, users(id)), horse_profile(horse_name)") \
+                .select("request_id, vet_profile(vet_fname, vet_lname, users(id)), horse_profile(horse_name), requested_at, request_status") \
                 .execute()
-
             for req in (medreq_res.data or []):
+                if req.get("request_status", "").lower() != "pending":
+                    continue
                 vet = req.get("vet_profile") or {}
                 users = vet.get("users") or {}
                 user_id = users.get("id")
                 if not user_id:
                     continue
-                vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
+                vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
                 horse_name = (req.get("horse_profile") or {}).get("horse_name", "Unknown Horse")
-                requested_at = req.get("requested_at")
-                related_id = f"medreq_{req['request_id']}"
-                if related_id in existing_keys:
-                    continue
-
-                dt_ph = to_manila_time(requested_at)
-                notifications_to_insert.append({
-                    "id": user_id,
-                    "notif_message": f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
-                    "notif_date": dt_ph.strftime("%Y-%m-%d"),
-                    "notif_time": dt_ph.strftime("%H:%M:%S"),
-                    "notif_read": False,
-                    "notification_type": "medrec_request",
-                    "related_id": related_id
-                })
-                existing_keys.add(related_id)
-        except Exception:
+                add_notification(
+                    user_id,
+                    f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
+                    "medrec_request",
+                    f"medreq_{req['request_id']}",
+                    req.get("requested_at")
+                )
+        except:
             pass
 
-        # ---------------- COMMENTS (KUTSERO OR HORSE OP) ----------------
+        # ---------------- COMMENT NOTIFICATIONS ----------------
         try:
-            comments_res = sr_client.table("comment").select("id, comment_text, comment_date, user_id").execute()
+            comments_res = sr_client.table("comment") \
+                .select("id, comment_text, comment_date, user_id, announcement_id") \
+                .execute()
             for comment in (comments_res.data or []):
-                user_id = comment.get("user_id")
-                if not user_id:
+                commenter_id = comment.get("user_id")
+                ann_id = comment.get("announcement_id")
+                if not commenter_id or not ann_id:
                     continue
-                comment_text = (comment.get("comment_text") or "").strip()
-                created_at = comment.get("comment_date")
-
-                # Determine author name
-                author_name = None
-                kutsero_res = sr_client.table("kutsero_profile").select("kutsero_fname, kutsero_lname").eq("kutsero_id", user_id).execute()
-                if kutsero_res.data:
-                    prof = kutsero_res.data[0]
-                    author_name = f"{prof.get('kutsero_fname','')} {prof.get('kutsero_lname','')}".strip()
-                else:
-                    op_res = sr_client.table("horse_op_profile").select("op_fname, op_lname").eq("op_id", user_id).execute()
-                    if op_res.data:
-                        prof = op_res.data[0]
-                        author_name = f"{prof.get('op_fname','')} {prof.get('op_lname','')}".strip()
-                if not author_name:
-                    continue
-
                 related_id = f"comment_{comment['id']}"
                 if related_id in existing_keys:
                     continue
 
-                dt_ph = to_manila_time(created_at)
-                notifications_to_insert.append({
-                    "id": user_id,
-                    "notif_message": f"{author_name} commented: \"{comment_text}\"",
-                    "notif_date": dt_ph.strftime("%Y-%m-%d"),
-                    "notif_time": dt_ph.strftime("%H:%M:%S"),
-                    "notif_read": False,
-                    "notification_type": "comment",
-                    "related_id": related_id
-                })
-                existing_keys.add(related_id)
-        except Exception:
+                # Fetch announcement owner
+                announcement_res = sr_client.table("announcement").select("user_id") \
+                    .eq("id", ann_id).maybe_single().execute()
+                post_owner_id = announcement_res.data.get("user_id") if announcement_res.data else None
+                if not post_owner_id or post_owner_id == commenter_id:
+                    continue
+
+                # Get commenter name (Kutsero or Horse Operator)
+                commenter_name = None
+                kutsero_res = sr_client.table("kutsero_profile").select("kutsero_fname,kutsero_lname") \
+                    .eq("kutsero_id", commenter_id).maybe_single().execute()
+                if kutsero_res.data:
+                    commenter_name = f"{kutsero_res.data.get('kutsero_fname', '')} {kutsero_res.data.get('kutsero_lname', '')}".strip()
+                else:
+                    op_res = sr_client.table("horse_op_profile").select("op_fname,op_lname") \
+                        .eq("op_id", commenter_id).maybe_single().execute()
+                    if op_res.data:
+                        commenter_name = f"{op_res.data.get('op_fname', '')} {op_res.data.get('op_lname', '')}".strip()
+                if not commenter_name:
+                    continue
+
+                add_notification(
+                    post_owner_id,
+                    f"{commenter_name} commented: '{comment.get('comment_text', '')[:50]}...'",
+                    "comment",
+                    related_id,
+                    comment.get("comment_date")
+                )
+        except:
             pass
 
         # ---------------- BULK INSERT ----------------
         if notifications_to_insert:
             try:
                 sr_client.table("notification").insert(notifications_to_insert).execute()
-            except Exception:
+            except:
                 pass
 
-        # ---------------- FETCH ALL ----------------
-        try:
-            all_notifs_res = sr_client.table("notification").select("*").order("notif_date", desc=True).order("notif_time", desc=True).execute()
-            notifications = [
-                {
-                    "id": row.get("id"),
-                    "message": row.get("notif_message"),
-                    "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
-                    "read": row.get("notif_read", False),
-                    "type": row.get("notification_type","general"),
-                }
-                for row in (all_notifs_res.data or [])
-                if row.get("notif_message")
-            ]
-        except Exception:
-            notifications = []
+        # ---------------- FETCH ALLOWED NOTIFICATIONS ----------------
+        valid_types = ["medrec_request", "approved", "declined", "pending", "comment"]
+
+        all_notifs_res = (
+            sr_client.table("notification")
+            .select("*")
+            .in_("notification_type", valid_types)  # ✅ only allowed types
+            .order("notif_date", desc=True)
+            .order("notif_time", desc=True)
+            .execute()
+        )
+
+        notifications = [
+            {
+                "id": row.get("id"),
+                "message": row.get("notif_message"),
+                "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
+                "read": row.get("notif_read", False),
+                "type": row.get("notification_type", "general"),
+            }
+            for row in (all_notifs_res.data or [])
+        ]
 
         return Response(notifications, status=200)
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
+
 
 
 
@@ -1648,19 +1664,17 @@ def get_sos_requests(request):
     Fetch all SOS requests with image URL and details.
     """
     try:
-        # Use retry_query to safely execute the Supabase request
-        response = retry_query(lambda: sr_client.table("sos_requests").select("*"))
-        data = getattr(response, "data", None)
+        # ✅ Create a Supabase client using the service role key
+        sr_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
 
-        if not data:
-            return Response(
-                {"error": "Supabase returned no data or an unexpected response."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        # ✅ Query all SOS requests
+        response = sr_client.table("sos_requests").select("*").execute()
+
+        if not response.data:
+            return Response([], status=200)
 
         formatted_data = []
-
-        for item in data:
+        for item in response.data:
             image_path = item.get("sos_image")
 
             # Clean the sos_image URL
@@ -1687,15 +1701,11 @@ def get_sos_requests(request):
                 "sos_image_url": sos_image_url,
             })
 
-        return Response({"sos_requests": formatted_data}, status=status.HTTP_200_OK)
+        return Response(formatted_data, status=200)
 
     except Exception as e:
-        logging.exception("Error fetching SOS requests")
-        traceback.print_exc()
-        return Response(
-            {"error": f"An unexpected error occurred: {str(e)}"},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        print(f"[ERROR] get_sos_requests: {e}")
+        return Response({"error": str(e)}, status=500)
 
 
 
@@ -2040,7 +2050,7 @@ def get_comments(request):
         )
 
         comments_data = result.data or []
-        print("✅ Comments fetched:", len(comments_data))
+        print(" Comments fetched:", len(comments_data))
 
         # Collect all user IDs
         user_ids = {c["user_id"] for c in comments_data if c.get("user_id")}
@@ -2532,7 +2542,7 @@ def mark_messages_as_read(request, conversation_id):
         if not dvmf_id:
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        print(f"🔔 Marking messages as read - dvmf_id: {dvmf_id}, conversation_id: {conversation_id}")
+        print(f" Marking messages as read - dvmf_id: {dvmf_id}, conversation_id: {conversation_id}")
 
         res = (
             sr_client.table("message")
@@ -2544,7 +2554,7 @@ def mark_messages_as_read(request, conversation_id):
         )
 
         updated_count = len(res.data) if res.data else 0
-        print(f"✅ Marked {updated_count} messages as read")
+        print(f" Marked {updated_count} messages as read")
 
         return Response(
             {"message": "Messages marked as read", "updated_count": updated_count},
@@ -2784,7 +2794,7 @@ def get_all_users(request):
         if not dvmf_id:
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        print(f"🔍 Debug: Current dvmf_id from token: {dvmf_id}")
+        print(f" Debug: Current dvmf_id from token: {dvmf_id}")
 
         # ✅ Step 2: Fetch all approved users except the current DVMF user
         users_res = safe_execute(
@@ -2795,7 +2805,7 @@ def get_all_users(request):
         )
 
         users = users_res.data or []
-        print(f"🔍 Debug: Found {len(users)} approved users (excluding current user)")
+        print(f" Debug: Found {len(users)} approved users (excluding current user)")
 
         if not users:
             return Response([], status=status.HTTP_200_OK)
@@ -2807,7 +2817,7 @@ def get_all_users(request):
         for u in users:
             role_groups.setdefault(u["role"], []).append(u["id"])
 
-        print(f"🔍 Debug: Role groups: {role_groups}")
+        print(f" Debug: Role groups: {role_groups}")
 
         profiles_map = {}
 
@@ -2819,7 +2829,7 @@ def get_all_users(request):
                 .select("vet_id, vet_fname, vet_mname, vet_lname, vet_profile_photo")
                 .in_("vet_id", ids)
             )
-            print(f"🔍 Debug: Found {len(res.data or [])} Veterinarian profiles")
+            print(f" Debug: Found {len(res.data or [])} Veterinarian profiles")
             for p in res.data or []:
                 full_name = " ".join(filter(None, [p.get("vet_fname"), p.get("vet_mname"), p.get("vet_lname")])).strip()
                 profiles_map[p["vet_id"]] = {
@@ -2835,7 +2845,7 @@ def get_all_users(request):
                 .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_image")
                 .in_("kutsero_id", ids)
             )
-            print(f"🔍 Debug: Found {len(res.data or [])} Kutsero profiles")
+            print(f" Debug: Found {len(res.data or [])} Kutsero profiles")
             for p in res.data or []:
                 full_name = " ".join(filter(None, [p.get("kutsero_fname"), p.get("kutsero_mname"), p.get("kutsero_lname")])).strip()
                 profiles_map[p["kutsero_id"]] = {
@@ -2851,7 +2861,7 @@ def get_all_users(request):
                 .select("op_id, op_fname, op_mname, op_lname, op_image")
                 .in_("op_id", ids)
             )
-            print(f"🔍 Debug: Found {len(res.data or [])} Horse Operator profiles")
+            print(f" Debug: Found {len(res.data or [])} Horse Operator profiles")
             for p in res.data or []:
                 full_name = " ".join(filter(None, [p.get("op_fname"), p.get("op_mname"), p.get("op_lname")])).strip()
                 profiles_map[p["op_id"]] = {
@@ -2867,7 +2877,7 @@ def get_all_users(request):
                 .select("user_id, pres_fname, pres_lname")
                 .in_("user_id", ids)
             )
-            print(f"🔍 Debug: Found {len(res.data or [])} Kutsero President profiles")
+            print(f"Debug: Found {len(res.data or [])} Kutsero President profiles")
             for p in res.data or []:
                 full_name = " ".join(filter(None, [p.get("pres_fname"), p.get("pres_lname")])).strip()
                 profiles_map[p["user_id"]] = {
@@ -2884,7 +2894,7 @@ def get_all_users(request):
                     .select("dvmf_id, dvmf_fname, dvmf_lname")
                     .in_("dvmf_id", ids)
                 )
-                print(f"🔍 Debug: Found {len(res.data or [])} {role_key} profiles")
+                print(f"Debug: Found {len(res.data or [])} {role_key} profiles")
                 for p in res.data or []:
                     full_name = " ".join(filter(None, [p.get("dvmf_fname"), p.get("dvmf_lname")])).strip()
                     profiles_map[p["dvmf_id"]] = {
@@ -2901,7 +2911,7 @@ def get_all_users(request):
                     .select("ctu_id, ctu_fname, ctu_lname")
                     .in_("ctu_id", ids)
                 )
-                print(f"🔍 Debug: Found {len(res.data or [])} {role_key} profiles")
+                print(f"Debug: Found {len(res.data or [])} {role_key} profiles")
                 for p in res.data or []:
                     full_name = " ".join(filter(None, [p.get("ctu_fname"), p.get("ctu_lname")])).strip()
                     profiles_map[p["ctu_id"]] = {
@@ -2924,7 +2934,7 @@ def get_all_users(request):
                 "unread": 0
             })
 
-        print(f"🔍 Debug: Final user list: {len(all_users)} users")
+        print(f"Debug: Final user list: {len(all_users)} users")
         return Response(all_users, status=status.HTTP_200_OK)
 
     except Exception as e:
@@ -3063,3 +3073,220 @@ def get_user_profile_info(user_id, role):
         "name": f"User ({role})",
         "avatar": None
     }
+
+
+# -------------------- GET VETERINARIAN PROFILE BY ID --------------------
+@api_view(["GET"])
+@login_required
+def vet_profile_by_id(request, user_id):
+    """Fetch veterinarian profile by user ID for profile modal (DVMF auth version)"""
+    try:
+        current_dvmf_id = get_current_dvmf_id(request)
+        if not current_dvmf_id:
+            return Response({"error": "Unauthorized"}, status=401)
+
+        print(f"[DEBUG] Fetching Vet profile for user_id: {user_id} (DVMF ID: {current_dvmf_id})")
+        res = sr_client.table("vet_profile").select("*").eq("vet_id", user_id).execute()
+        print(f"[DEBUG] Supabase response: {res.data}")
+
+        if not res.data:
+            return Response({"error": "Veterinarian profile not found"}, status=404)
+
+        profile = res.data[0]
+        formatted_profile = {
+            "vet_id": profile.get("vet_id"),
+            "vet_fname": profile.get("vet_fname"),
+            "vet_mname": profile.get("vet_mname"),
+            "vet_lname": profile.get("vet_lname"),
+            "vet_dob": profile.get("vet_dob"),
+            "vet_sex": profile.get("vet_sex"),
+            "vet_phone_num": profile.get("vet_phone_num"),
+            "vet_street": profile.get("vet_street"),
+            "vet_brgy": profile.get("vet_brgy"),
+            "vet_city": profile.get("vet_city"),
+            "vet_province": profile.get("vet_province"),
+            "vet_zipcode": profile.get("vet_zipcode"),
+            "vet_address_is_clinic": profile.get("vet_address_is_clinic"),
+            "vet_clinic_street": profile.get("vet_clinic_street"),
+            "vet_clinic_brgy": profile.get("vet_clinic_brgy"),
+            "vet_clinic_city": profile.get("vet_clinic_city"),
+            "vet_clinic_province": profile.get("vet_clinic_province"),
+            "vet_clinic_zipcode": profile.get("vet_clinic_zipcode"),
+            "vet_email": profile.get("vet_email"),
+            "vet_exp_yr": profile.get("vet_exp_yr"),
+            "vet_specialization": profile.get("vet_specialization"),
+            "vet_org": profile.get("vet_org"),
+            "vet_profile_photo": profile.get("vet_profile_photo"),
+            "created_at": profile.get("created_at"),
+        }
+
+        return Response(formatted_profile, status=200)
+
+    except Exception as e:
+        print(f"❌ Error fetching veterinarian profile: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=500)
+
+
+# -------------------- GET HORSE OPERATOR PROFILE BY ID --------------------
+@api_view(["GET"])
+@login_required
+def horse_operator_profile_by_id(request, user_id):
+    """Fetch horse operator profile by user ID for profile modal (DVMF auth version)"""
+    try:
+        current_dvmf_id = get_current_dvmf_id(request)
+        if not current_dvmf_id:
+            return Response({"error": "Unauthorized"}, status=401)
+
+        print(f"[DEBUG] Fetching Horse Operator profile for user_id: {user_id} (DVMF ID: {current_dvmf_id})")
+        res = sr_client.table("horse_op_profile").select("*").eq("op_id", user_id).execute()
+        print(f"[DEBUG] Supabase response: {res.data}")
+
+        if not res.data:
+            return Response({"error": "Horse operator profile not found"}, status=404)
+
+        profile = res.data[0]
+        formatted_profile = {
+            "op_id": profile.get("op_id"),
+            "op_fname": profile.get("op_fname"),
+            "op_mname": profile.get("op_mname"),
+            "op_lname": profile.get("op_lname"),
+            "op_dob": profile.get("op_dob"),
+            "op_sex": profile.get("op_sex"),
+            "op_phone_num": profile.get("op_phone_num"),
+            "op_province": profile.get("op_province"),
+            "op_city": profile.get("op_city"),
+            "op_municipality": profile.get("op_municipality"),
+            "op_brgy": profile.get("op_brgy"),
+            "op_zipcode": profile.get("op_zipcode"),
+            "op_house_add": profile.get("op_house_add"),
+            "op_email": profile.get("op_email"),
+            "op_image": profile.get("op_image"),
+            "created_at": profile.get("created_at"),
+        }
+
+        return Response(formatted_profile, status=200)
+
+    except Exception as e:
+        print(f"❌ Error fetching horse operator profile: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=500)
+
+
+# -------------------- GET KUTSERO PROFILE BY ID --------------------
+@api_view(["GET"])
+@login_required
+def kutsero_profile_by_id(request, user_id):
+    """Fetch kutsero profile by user ID for profile modal (DVMF auth version)"""
+    try:
+        current_dvmf_id = get_current_dvmf_id(request)
+        if not current_dvmf_id:
+            return Response({"error": "Unauthorized"}, status=401)
+
+        print(f"[DEBUG] Fetching Kutsero profile for user_id: {user_id} (DVMF ID: {current_dvmf_id})")
+        res = sr_client.table("kutsero_profile").select("*").eq("kutsero_id", user_id).execute()
+        print(f"[DEBUG] Supabase response: {res.data}")
+
+        if not res.data:
+            return Response({"error": "Kutsero profile not found"}, status=404)
+
+        profile = res.data[0]
+        formatted_profile = {
+            "kutsero_id": profile.get("kutsero_id"),
+            "kutsero_fname": profile.get("kutsero_fname"),
+            "kutsero_mname": profile.get("kutsero_mname"),
+            "kutsero_lname": profile.get("kutsero_lname"),
+            "kutsero_dob": profile.get("kutsero_dob"),
+            "kutsero_sex": profile.get("kutsero_sex"),
+            "kutsero_phone_num": profile.get("kutsero_phone_num"),
+            "kutsero_province": profile.get("kutsero_province"),
+            "kutsero_city": profile.get("kutsero_city"),
+            "kutsero_municipality": profile.get("kutsero_municipality"),
+            "kutsero_brgy": profile.get("kutsero_brgy"),
+            "kutsero_zipcode": profile.get("kutsero_zipcode"),
+            "kutsero_email": profile.get("kutsero_email"),
+            "kutsero_fb": profile.get("kutsero_fb"),
+            "kutsero_username": profile.get("kutsero_username"),
+            "kutsero_image": profile.get("kutsero_image"),
+            "created_at": profile.get("created_at"),
+        }
+
+        return Response(formatted_profile, status=200)
+
+    except Exception as e:
+        print(f"❌ Error fetching kutsero profile: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=500)
+
+
+# -------------------- GET CTU VETERINARIAN PROFILE --------------------
+@api_view(["GET"])
+@login_required
+def ctu_vet_profile_by_id(request, user_id):
+    """Fetch CTU veterinarian profile by user ID for profile modal (DVMF auth version)"""
+    try:
+        current_dvmf_id = get_current_dvmf_id(request)
+        if not current_dvmf_id:
+            return Response({"error": "Unauthorized"}, status=401)
+
+        print(f"[DEBUG] Fetching CTU Vet profile for user_id: {user_id} (DVMF ID: {current_dvmf_id})")
+        query_id = str(user_id) if isinstance(user_id, UUID) else user_id
+
+        res = sr_client.table("ctu_vet_profile").select("*").eq("ctu_id", query_id).execute()
+        print(f"[DEBUG] Supabase response: {res.data}")
+
+        if not res.data:
+            return Response({"error": "CTU Vet profile not found"}, status=404)
+
+        profile = res.data[0]
+        formatted_profile = {
+            "ctu_id": profile.get("ctu_id"),
+            "ctu_email": profile.get("ctu_email"),
+            "ctu_fname": profile.get("ctu_fname"),
+            "ctu_lname": profile.get("ctu_lname"),
+            "ctu_role": profile.get("ctu_role"),
+            "ctu_phonenum": profile.get("ctu_phonenum"),
+            "created_at": profile.get("created_at"),
+        }
+
+        return Response(formatted_profile, status=200)
+
+    except Exception as e:
+        print(f"❌ Error fetching CTU Vet profile: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=500)
+
+
+# -------------------- GET DVMF USER PROFILE --------------------
+@api_view(["GET"])
+@login_required
+def dvmf_user_profile_by_id(request, user_id):
+    """Fetch DVMF user profile by user ID for profile modal"""
+    try:
+        current_dvmf_id = get_current_dvmf_id(request)
+        if not current_dvmf_id:
+            return Response({"error": "Unauthorized"}, status=401)
+
+        print(f"[DEBUG] Fetching DVMF profile for user_id: {user_id} (DVMF ID: {current_dvmf_id})")
+        res = sr_client.table("dvmf_user_profile").select("*").eq("dvmf_id", user_id).execute()
+
+        if not res.data:
+            return Response({"error": "DVMF profile not found"}, status=404)
+
+        profile = res.data[0]
+        formatted_profile = {
+            "dvmf_id": profile.get("dvmf_id"),
+            "dvmf_fname": profile.get("dvmf_fname"),
+            "dvmf_lname": profile.get("dvmf_lname"),
+            "dvmf_email": profile.get("dvmf_email"),
+            "dvmf_phonenum": profile.get("dvmf_phonenum"),
+            "dvmf_role": profile.get("dvmf_role"),
+            "created_at": profile.get("created_at"),
+        }
+
+        return Response(formatted_profile, status=200)
+
+    except Exception as e:
+        print(f"❌ Error fetching DVMF profile: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=500)
