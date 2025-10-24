@@ -779,19 +779,23 @@ def to_manila_time(iso_str):
     except:
         return datetime.now(manila_tz)
 
+
 # -------------------- GET VET NOTIFICATIONS --------------------
 @api_view(["GET"])
 def get_vetnotifications(request):
     try:
+        # ✅ Get current logged-in user ID
+        current_user_id = getattr(request.user, "id", None)
+        if not current_user_id:
+            return Response({"error": "User not authenticated"}, status=401)
+
         existing_keys = set()
         notifications_to_insert = []
 
         # Fetch existing notifications to avoid duplicates
         try:
             existing_res = sr_client.table("notification").select("*").execute()
-            existing_keys = set(
-                row.get("related_id") for row in (existing_res.data or []) if row.get("related_id")
-            )
+            existing_keys = set(row.get("related_id") for row in (existing_res.data or []) if row.get("related_id"))
         except:
             existing_keys = set()
 
@@ -880,7 +884,7 @@ def get_vetnotifications(request):
                 if not post_owner_id or post_owner_id == commenter_id:
                     continue
 
-                # Get commenter name (Kutsero or Horse Operator)
+                # Get commenter name
                 commenter_name = None
                 kutsero_res = sr_client.table("kutsero_profile").select("kutsero_fname,kutsero_lname") \
                     .eq("kutsero_id", commenter_id).maybe_single().execute()
@@ -891,6 +895,7 @@ def get_vetnotifications(request):
                         .eq("op_id", commenter_id).maybe_single().execute()
                     if op_res.data:
                         commenter_name = f"{op_res.data.get('op_fname', '')} {op_res.data.get('op_lname', '')}".strip()
+
                 if not commenter_name:
                     continue
 
@@ -911,25 +916,33 @@ def get_vetnotifications(request):
             except:
                 pass
 
-        # ---------------- FETCH ALL NOTIFICATIONS (FILTERED) ----------------
+        # ---------------- FETCH FILTERED NOTIFICATIONS ----------------
         valid_types = ["medrec_request", "approved", "declined", "pending", "comment"]
+
+        today_date = datetime.now(manila_tz).strftime("%Y-%m-%d")
 
         all_notifs_res = (
             sr_client.table("notification")
             .select("*")
-            .in_("notification_type", valid_types)  # ✅ FILTER HERE
+            .eq("id", current_user_id)  # ✅ Only current user
+            .in_("notification_type", valid_types)  # ✅ Only allowed types
+            .eq("notif_date", today_date)  # ✅ Only today’s notifications
             .order("notif_date", desc=True)
             .order("notif_time", desc=True)
             .execute()
         )
 
-        notifications = [{
-            "id": row.get("id"),
-            "message": row.get("notif_message"),
-            "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
-            "read": row.get("notif_read", False),
-            "type": row.get("notification_type", "general")
-        } for row in (all_notifs_res.data or [])]
+        notifications = [
+            {
+                "id": row.get("id"),
+                "message": row.get("notif_message"),
+                "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
+                "read": row.get("notif_read", False),
+                "type": row.get("notification_type", "general")
+            }
+            for row in (all_notifs_res.data or [])
+            if row.get("notification_type") != "user_registration"  # 🚫 Exclude registration type
+        ]
 
         return Response(notifications, status=200)
 
