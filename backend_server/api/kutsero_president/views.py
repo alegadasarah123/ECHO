@@ -426,12 +426,18 @@ def get_notifications(request):
             if user["id"] not in existing_user_ids:
                 print(f"Inserting notification for user: {user['id']}")
 
-                current_time = datetime.now()
+                # ✅ FIX: Use Philippine timezone (UTC+8)
+                ph_time = datetime.now(timezone.utc) + timedelta(hours=8)
+
+                # ✅ Include user name in message
+                user_name = user.get("name", "Unknown User")
+                message = f"New {user['role']} registered: {user_name}"
+
                 insert_data = {
                     "id": user["id"],
-                    "notif_message": f"New {user['role']} registered",
-                    "notif_date": current_time.date().isoformat(),
-                    "notif_time": current_time.time().strftime("%H:%M:%S"),
+                    "notif_message": message,
+                    "notif_date": ph_time.date().isoformat(),
+                    "notif_time": ph_time.time().strftime("%H:%M:%S"),
                     "notif_read": False,
                     "notification_type": "user_registration",
                     "related_id": user["id"],
@@ -447,34 +453,29 @@ def get_notifications(request):
                         fetch_result = supabase.table("notification").select("*").eq("id", user["id"]).execute()
                         
                         if fetch_result.data:
-                            # Get the most recent notification for this user
                             notifications = fetch_result.data
-                            # Sort by notif_id to get the latest one
                             notifications.sort(key=lambda x: x.get("notif_id", 0), reverse=True)
                             new_notif = notifications[0] if notifications else None
                             
                             if new_notif:
                                 print(f"Successfully fetched inserted notification: {new_notif}")
-                                # ✅ FIXED: Match frontend expected format exactly
                                 inserted_notifications.append({
-                                    "id": user["id"],  # Use 'id' instead of 'user_id'
+                                    "id": user["id"],
                                     "message": new_notif["notif_message"],
                                     "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
-                                    "read": new_notif.get("notif_read", False),  # Map 'notif_read' to 'read'
+                                    "read": new_notif.get("notif_read", False),
                                 })
                             else:
                                 print(f"Failed to fetch notification for user {user['id']}")
                         else:
                             print(f"No notifications found for user {user['id']}")
                     else:
-                        # In case insert_result.data actually returns something
                         new_notif = insert_result.data[0]
-                        # ✅ FIXED: Match frontend expected format exactly
                         inserted_notifications.append({
-                            "id": user["id"],  # Use 'id' instead of 'user_id'
+                            "id": user["id"],
                             "message": new_notif["notif_message"],
                             "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
-                            "read": new_notif.get("notif_read", False),  # Map 'notif_read' to 'read'
+                            "read": new_notif.get("notif_read", False),
                         })
 
                 except Exception as e:
@@ -486,13 +487,11 @@ def get_notifications(request):
         print(f"Final inserted notifications: {len(inserted_notifications)}")
         
         # ✅ ALSO RETURN EXISTING NOTIFICATIONS FOR PENDING USERS
-        # Fetch all notifications for pending users to ensure frontend gets everything
         if inserted_notifications:
             print("Returning newly inserted notifications")
             return Response(inserted_notifications)
         else:
             print("No new notifications inserted, fetching existing ones for display")
-            # Fetch existing notifications for pending users
             existing_notifs_full_result = (
                 supabase.table("notification")
                 .select("*")
@@ -503,7 +502,6 @@ def get_notifications(request):
             existing_notifs_for_display = []
             if existing_notifs_full_result.data:
                 for notif in existing_notifs_full_result.data:
-                    # ✅ FIXED: Match frontend expected format exactly
                     existing_notifs_for_display.append({
                         "id": notif["id"],
                         "message": notif["notif_message"],
@@ -520,7 +518,7 @@ def get_notifications(request):
         print(f"ERROR in get_notifications: {str(e)}")
         traceback.print_exc()
         return Response({"error": "Failed to process notifications"}, status=500)
-    
+        
 # -------------------- MARK NOTIFICATION AS READ --------------------
 @api_view(["POST"])
 @login_required
