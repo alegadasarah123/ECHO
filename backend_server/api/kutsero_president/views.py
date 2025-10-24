@@ -444,7 +444,6 @@ def get_notifications(request):
 
                     if not insert_result.data:
                         # ✅ Manually fetch the newly inserted notification
-                        # FIX: Create a new query builder instance instead of chaining
                         fetch_result = supabase.table("notification").select("*").eq("id", user["id"]).execute()
                         
                         if fetch_result.data:
@@ -456,13 +455,12 @@ def get_notifications(request):
                             
                             if new_notif:
                                 print(f"Successfully fetched inserted notification: {new_notif}")
+                                # ✅ FIXED: Match frontend expected format exactly
                                 inserted_notifications.append({
-                                    "notif_id": new_notif["notif_id"],
-                                    "user_id": new_notif["id"],
+                                    "id": user["id"],  # Use 'id' instead of 'user_id'
                                     "message": new_notif["notif_message"],
                                     "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
-                                    "read": new_notif.get("notif_read", False),
-                                    "role": user["role"],
+                                    "read": new_notif.get("notif_read", False),  # Map 'notif_read' to 'read'
                                 })
                             else:
                                 print(f"Failed to fetch notification for user {user['id']}")
@@ -471,13 +469,12 @@ def get_notifications(request):
                     else:
                         # In case insert_result.data actually returns something
                         new_notif = insert_result.data[0]
+                        # ✅ FIXED: Match frontend expected format exactly
                         inserted_notifications.append({
-                            "notif_id": new_notif["notif_id"],
-                            "user_id": new_notif["id"],
+                            "id": user["id"],  # Use 'id' instead of 'user_id'
                             "message": new_notif["notif_message"],
                             "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
-                            "read": new_notif.get("notif_read", False),
-                            "role": user["role"],
+                            "read": new_notif.get("notif_read", False),  # Map 'notif_read' to 'read'
                         })
 
                 except Exception as e:
@@ -487,7 +484,37 @@ def get_notifications(request):
                 print(f"User {user['id']} already has notification, skipping")
 
         print(f"Final inserted notifications: {len(inserted_notifications)}")
-        return Response(inserted_notifications)
+        
+        # ✅ ALSO RETURN EXISTING NOTIFICATIONS FOR PENDING USERS
+        # Fetch all notifications for pending users to ensure frontend gets everything
+        if inserted_notifications:
+            print("Returning newly inserted notifications")
+            return Response(inserted_notifications)
+        else:
+            print("No new notifications inserted, fetching existing ones for display")
+            # Fetch existing notifications for pending users
+            existing_notifs_full_result = (
+                supabase.table("notification")
+                .select("*")
+                .in_("id", user_ids)
+                .execute()
+            )
+            
+            existing_notifs_for_display = []
+            if existing_notifs_full_result.data:
+                for notif in existing_notifs_full_result.data:
+                    # ✅ FIXED: Match frontend expected format exactly
+                    existing_notifs_for_display.append({
+                        "id": notif["id"],
+                        "message": notif["notif_message"],
+                        "date": f"{notif['notif_date']}T{notif['notif_time']}+08:00",
+                        "read": notif.get("notif_read", False),
+                    })
+                print(f"Returning {len(existing_notifs_for_display)} existing notifications")
+            else:
+                print("No existing notifications found either")
+                
+            return Response(existing_notifs_for_display)
 
     except Exception as e:
         print(f"ERROR in get_notifications: {str(e)}")
