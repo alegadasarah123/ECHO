@@ -618,6 +618,7 @@ def get_users(request):
     
 
 # -------------------- NOTIFICATIONS --------------------
+# -------------------- NOTIFICATIONS --------------------
 from datetime import datetime, timedelta, timezone as dt_timezone
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
@@ -634,6 +635,7 @@ def to_manila_time(iso_str):
     except:
         return datetime.now(manila_tz)
 
+
 # -------------------- GET VET NOTIFICATIONS --------------------
 @api_view(["GET"])
 def get_vetnotifications(request):
@@ -644,9 +646,7 @@ def get_vetnotifications(request):
         # Fetch existing notifications to avoid duplicates
         try:
             existing_res = sr_client.table("notification").select("*").execute()
-            existing_keys = set(
-                row.get("related_id") for row in (existing_res.data or []) if row.get("related_id")
-            )
+            existing_keys = set(row.get("related_id") for row in (existing_res.data or []) if row.get("related_id"))
         except:
             existing_keys = set()
 
@@ -766,30 +766,34 @@ def get_vetnotifications(request):
             except:
                 pass
 
-        # ---------------- FETCH ALL NOTIFICATIONS (FILTERED) ----------------
+        # ---------------- FETCH ALLOWED NOTIFICATIONS ----------------
         valid_types = ["medrec_request", "approved", "declined", "pending", "comment"]
 
         all_notifs_res = (
             sr_client.table("notification")
             .select("*")
-            .in_("notification_type", valid_types)  # ✅ FILTER HERE
+            .in_("notification_type", valid_types)  # ✅ only allowed types
             .order("notif_date", desc=True)
             .order("notif_time", desc=True)
             .execute()
         )
 
-        notifications = [{
-            "id": row.get("id"),
-            "message": row.get("notif_message"),
-            "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
-            "read": row.get("notif_read", False),
-            "type": row.get("notification_type", "general")
-        } for row in (all_notifs_res.data or [])]
+        notifications = [
+            {
+                "id": row.get("id"),
+                "message": row.get("notif_message"),
+                "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
+                "read": row.get("notif_read", False),
+                "type": row.get("notification_type", "general"),
+            }
+            for row in (all_notifs_res.data or [])
+        ]
 
         return Response(notifications, status=200)
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
 
 
 
