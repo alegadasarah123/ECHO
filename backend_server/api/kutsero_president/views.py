@@ -426,9 +426,8 @@ def get_notifications(request):
             if user["id"] not in existing_user_ids:
                 print(f"Inserting notification for user: {user['id']}")
 
-                # ✅ FIX: Use Philippine timezone (UTC+8)
-                ph_time = datetime.now(timezone.utc) + timedelta(hours=8)
-
+                ph_time = timezone.now() + timedelta(hours=8)
+                
                 # ✅ Include user name in message
                 user_name = user.get("name", "Unknown User")
                 message = f"New {user['role']} registered: {user_name}"
