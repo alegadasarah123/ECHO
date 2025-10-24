@@ -30,6 +30,8 @@ import traceback
 import threading
 from rest_framework.permissions import AllowAny
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
+from datetime import datetime, timedelta
 
 
 
@@ -112,62 +114,17 @@ def get_chat_history(request):
     return Response({"success": True, "history": history}, status=status.HTTP_200_OK)
 
 # ------------------------------------------------ Messages ------------------------------------------------
+# Philippine timezone
+PHILIPPINE_TZ = ZoneInfo('Asia/Manila')
+
 def format_timestamp(ts):
-    """Helper to format ISO timestamp to readable string."""
+    """Helper to format ISO timestamp to readable string in Philippine time."""
     if not ts:
         return ""
     dt = datetime.fromisoformat(ts.replace('Z', '+00:00'))
-    return dt.strftime('%Y-%m-%d %I:%M %p')
-
-
-@api_view(['GET'])
-def get_conversations(request):
-    """
-    Get all conversations for a user (latest message per partner).
-    """
-    try:
-        user_id = request.GET.get("user_id")
-        if not user_id:
-            return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
-
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
-        # Fetch all messages where user is sender or receiver
-        messages_response = service_client.table("message").select(
-            "mes_id, user_id, receiver_id, mes_content, mes_date, is_read"
-        ).or_(f"user_id.eq.{user_id},receiver_id.eq.{user_id}").order(
-            "mes_date", desc=True
-        ).execute()
-
-        messages = messages_response.data or []
-
-        # Build conversation per partner
-        conversations_dict = {}
-        for msg in messages:
-            partner_id = msg['receiver_id'] if msg['user_id'] == user_id else msg['user_id']
-            if partner_id not in conversations_dict:
-                conversations_dict[partner_id] = {
-                    'partner_id': partner_id,
-                    'last_message': msg.get('mes_content'),
-                    'last_message_time': msg.get('mes_date'),
-                    'is_read': msg.get('is_read', False)
-                }
-
-        # Convert to list and sort by last_message_time
-        conversations_list = sorted(
-            conversations_dict.values(),
-            key=lambda x: x['last_message_time'],
-            reverse=True
-        )
-
-        return Response({
-            'conversations': conversations_list,
-            'total_count': len(conversations_list)
-        }, status=status.HTTP_200_OK)
-
-    except Exception as e:
-        print(f"Error fetching conversations: {e}")
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    # Convert to Philippine timezone
+    dt_local = dt.astimezone(PHILIPPINE_TZ)
+    return dt_local.strftime('%Y-%m-%d %I:%M %p')
 
 
 @api_view(['GET'])
@@ -193,13 +150,16 @@ def get_messages(request):
 
         messages = []
         for msg in messages_response.data or []:
+            # Parse the timestamp and convert to Philippine time
             created_at = datetime.fromisoformat(msg['mes_date'].replace('Z', '+00:00'))
+            created_at_ph = created_at.astimezone(PHILIPPINE_TZ)
+            
             messages.append({
                 'id': str(msg['mes_id']),
                 'text': msg['mes_content'],
                 'isUser': str(msg['user_id']) == str(user_id),
-                'timestamp': created_at.strftime('%I:%M %p'),
-                'created_at': msg['mes_date']
+                'timestamp': created_at_ph.strftime('%I:%M %p'),  # Philippine time
+                'created_at': msg['mes_date']  # Keep original UTC timestamp
             })
 
         # Mark unread messages as read
@@ -244,7 +204,9 @@ def send_message(request):
             return Response({"error": "Failed to send message"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         msg = message_response.data[0]
+        # Parse the timestamp and convert to Philippine time
         created_at = datetime.fromisoformat(msg['mes_date'].replace('Z', '+00:00'))
+        created_at_ph = created_at.astimezone(PHILIPPINE_TZ)
 
         return Response({
             'success': True,
@@ -252,20 +214,21 @@ def send_message(request):
                 'id': str(msg['mes_id']),
                 'text': msg['mes_content'],
                 'isUser': True,
-                'timestamp': created_at.strftime('%I:%M %p'),
-                'created_at': msg['mes_date']
+                'timestamp': created_at_ph.strftime('%I:%M %p'),  # Philippine time
+                'created_at': msg['mes_date']  # Keep original UTC timestamp
             }
         }, status=status.HTTP_201_CREATED)
 
     except Exception as e:
         print(f"Error sending message: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-     
+
+
 @api_view(['GET'])
 def available_users(request):
     """
-    Get all users that can be messaged (vets, kutseros, horse operators,
-    CTU vets, DVMF users)
+    Get all users that can be messaged (kutseros, horse operators,
+    CTU vets, DVMF users) - VETS REMOVED
     """
     try:
         user_id = request.GET.get("user_id")
@@ -278,115 +241,167 @@ def available_users(request):
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         users = []
 
-        # Kutséros
+        # Kutseros
         if role_filter in [None, "kutsero"]:
-            kutsero_profiles = service_client.table("kutsero_profile").select(
-                "kutsero_id, kutsero_fname, kutsero_lname, kutsero_username, kutsero_phone_num, kutsero_email"
-            ).neq("kutsero_id", user_id).execute()
-            
-            for p in kutsero_profiles.data or []:
-                display_name = p.get('kutsero_fname') or p.get('kutsero_username') or 'Unknown'
-                if p.get('kutsero_lname'):
-                    display_name += f" {p['kutsero_lname']}"
-                if search_query and search_query not in display_name.lower() and search_query not in (p.get('kutsero_email') or '').lower():
-                    continue
-                users.append({
-                    'id': p['kutsero_id'],
-                    'name': display_name,
-                    'role': 'kutsero',
-                    'avatar': '🐴',
-                    'email': p.get('kutsero_email'),
-                    'phone': p.get('kutsero_phone_num'),
-                    'status': 'active'
-                })
+            try:
+                kutsero_profiles = service_client.table("kutsero_profile").select(
+                    "kutsero_id, kutsero_fname, kutsero_lname, kutsero_username, kutsero_phone_num, kutsero_email, kutsero_image, users!inner(status)"
+                ).neq("kutsero_id", user_id).execute()
+                
+                for p in kutsero_profiles.data or []:
+                    # Filter out declined and pending users
+                    user_status = p.get('users', {}).get('status', 'active')
+                    if user_status in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = p.get('kutsero_fname') or p.get('kutsero_username') or 'Unknown'
+                    if p.get('kutsero_lname'):
+                        display_name += f" {p['kutsero_lname']}"
+                    if search_query and search_query not in display_name.lower():
+                        continue
+                    users.append({
+                        'id': p['kutsero_id'],
+                        'name': display_name,
+                        'role': 'kutsero',
+                        'avatar': '🐴',
+                        'phone': p.get('kutsero_phone_num'),
+                        'status': user_status,
+                        'profile_image': p.get('kutsero_image')
+                    })
+            except Exception as e:
+                print(f"Error fetching kutseros: {e}")
 
-        # Vets
-        if role_filter in [None, "vet"]:
-            vet_profiles = service_client.table("vet_profile").select(
-                "vet_id, vet_fname, vet_lname, vet_phone_num, vet_email"
-            ).neq("vet_id", user_id).execute()
-            
-            for p in vet_profiles.data or []:
-                display_name = f"Dr. {p.get('vet_fname', '')}"
-                if p.get('vet_lname'):
-                    display_name += f" {p['vet_lname']}"
-                if search_query and search_query not in display_name.lower() and search_query not in (p.get('vet_email') or '').lower():
-                    continue
-                users.append({
-                    'id': p['vet_id'],
-                    'name': display_name,
-                    'role': 'vet',
-                    'avatar': '👩‍⚕️',
-                    'email': p.get('vet_email'),
-                    'phone': p.get('vet_phone_num'),
-                    'status': 'active'
-                })
+        # Kutsero Presidents
+        if role_filter in [None, "Kutsero President"]:
+            try:
+                pres_profiles = service_client.table("kutsero_pres_profile").select(
+                    "pres_id, pres_fname, pres_lname, pres_email, pres_phonenum, users!inner(status)"
+                ).neq("pres_id", user_id).execute()
+                
+                for p in pres_profiles.data or []:
+                    # Filter out declined and pending users
+                    user_status = p.get('users', {}).get('status', 'active')
+                    if user_status in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = p.get('pres_fname', 'Unknown')
+                    if p.get('pres_lname'):
+                        display_name += f" {p['pres_lname']}"
+                    if search_query and search_query not in display_name.lower():
+                        continue
+                    users.append({
+                        'id': p['pres_id'],
+                        'name': display_name,
+                        'role': 'Kutsero President',
+                        'avatar': '👑',
+                        'phone': p.get('pres_phonenum'),
+                        'status': user_status,
+                        'profile_image': None
+                    })
+            except Exception as e:
+                print(f"Error fetching kutsero presidents: {e}")
 
-        # Horse Operators
+        # Horse Operators - FIXED: using correct column names
         if role_filter in [None, "horse_operator"]:
-            op_profiles = service_client.table("horse_op_profile").select(
-                "op_id, op_fname, op_lname, op_phone_num, op_email"
-            ).neq("op_id", user_id).execute()
-            
-            for p in op_profiles.data or []:
-                display_name = p.get('op_fname', 'Unknown')
-                if p.get('op_lname'):
-                    display_name += f" {p['op_lname']}"
-                if search_query and search_query not in display_name.lower() and search_query not in (p.get('op_email') or '').lower():
-                    continue
-                users.append({
-                    'id': p['op_id'],
-                    'name': display_name,
-                    'role': 'horse_operator',
-                    'avatar': '👨‍💼',
-                    'email': p.get('op_email'),
-                    'phone': p.get('op_phone_num'),
-                    'status': 'active'
-                })
+            try:
+                op_profiles = service_client.table("horse_op_profile").select(
+                    "op_id, op_fname, op_lname, op_phone_num, op_email, op_image, users!inner(status)"
+                ).neq("op_id", user_id).execute()
+                
+                for p in op_profiles.data or []:
+                    # Filter out declined and pending users
+                    user_status = p.get('users', {}).get('status', 'active')
+                    if user_status in ['declined', 'pending']:
+                        continue
+                        
+                    display_name = p.get('op_fname', 'Unknown')
+                    if p.get('op_lname'):
+                        display_name += f" {p['op_lname']}"
+                    if search_query and search_query not in display_name.lower():
+                        continue
+                    users.append({
+                        'id': p['op_id'],
+                        'name': display_name,
+                        'role': 'horse_operator',
+                        'avatar': '👨‍💼',
+                        'phone': p.get('op_phone_num'),
+                        'status': user_status,
+                        'profile_image': p.get('op_image')
+                    })
+            except Exception as e:
+                print(f"Error fetching horse operators: {e}")
 
-        # CTU Vets
-        if role_filter in [None, "ctu_vet"]:
-            ctu_profiles = service_client.table("ctu_vet_profile").select(
-                "ctu_id, ctu_fname, ctu_lname, ctu_email, ctu_phonenum"
-            ).neq("ctu_id", user_id).execute()
-            
-            for p in ctu_profiles.data or []:
-                display_name = f"Dr. {p.get('ctu_fname', '')}"
-                if p.get('ctu_lname'):
-                    display_name += f" {p['ctu_lname']}"
-                if search_query and search_query not in display_name.lower() and search_query not in (p.get('ctu_email') or '').lower():
-                    continue
-                users.append({
-                    'id': p['ctu_id'],
-                    'name': display_name,
-                    'role': 'ctu_vet',
-                    'avatar': '🧑‍⚕️',
-                    'email': p.get('ctu_email'),
-                    'phone': p.get('ctu_phonenum'),
-                    'status': 'active'
-                })
+        # CTU Vets - Query separately and check status in users table
+        if role_filter in [None, "ctu_vet", "Ctu-Vetmed"]:
+            try:
+                ctu_profiles = service_client.table("ctu_vet_profile").select(
+                    "ctu_id, ctu_fname, ctu_lname, ctu_email, ctu_phonenum"
+                ).neq("ctu_id", user_id).execute()
+                
+                for p in ctu_profiles.data or []:
+                    # Check status in users table separately
+                    try:
+                        user_status_data = service_client.table("users").select("status").eq("id", p['ctu_id']).execute()
+                        if user_status_data.data:
+                            status_value = user_status_data.data[0].get('status', 'active')
+                            if status_value in ['declined', 'pending']:
+                                continue
+                        else:
+                            status_value = 'active'
+                    except:
+                        status_value = 'active'
+                        
+                    display_name = f"Dr. {p.get('ctu_fname', '')}"
+                    if p.get('ctu_lname'):
+                        display_name += f" {p['ctu_lname']}"
+                    if search_query and search_query not in display_name.lower():
+                        continue
+                    users.append({
+                        'id': p['ctu_id'],
+                        'name': display_name,
+                        'role': 'Ctu-Vetmed',
+                        'avatar': '🧑‍⚕️',
+                        'phone': p.get('ctu_phonenum'),
+                        'status': status_value
+                    })
+            except Exception as e:
+                print(f"Error fetching CTU vets: {e}")
 
-        # DVMF Users
-        if role_filter in [None, "dvmf_user"]:
-            dvmf_profiles = service_client.table("dvmf_user_profile").select(
-                "dvmf_id, dvmf_fname, dvmf_lname, dvmf_email, dvmf_phonenum"
-            ).neq("dvmf_id", user_id).execute()
-            
-            for p in dvmf_profiles.data or []:
-                display_name = p.get('dvmf_fname', 'Unknown')
-                if p.get('dvmf_lname'):
-                    display_name += f" {p['dvmf_lname']}"
-                if search_query and search_query not in display_name.lower() and search_query not in (p.get('dvmf_email') or '').lower():
-                    continue
-                users.append({
-                    'id': p['dvmf_id'],
-                    'name': display_name,
-                    'role': 'dvmf_user',
-                    'avatar': '🧑‍💼',
-                    'email': p.get('dvmf_email'),
-                    'phone': p.get('dvmf_phonenum'),
-                    'status': 'active'
-                })
+        # DVMF Users - Query separately and check status in users table
+        if role_filter in [None, "dvmf_user", "Dvmf"]:
+            try:
+                dvmf_profiles = service_client.table("dvmf_user_profile").select(
+                    "dvmf_id, dvmf_fname, dvmf_lname, dvmf_email, dvmf_phonenum"
+                ).neq("dvmf_id", user_id).execute()
+                
+                for p in dvmf_profiles.data or []:
+                    # Check status in users table separately
+                    try:
+                        user_status_data = service_client.table("users").select("status").eq("id", p['dvmf_id']).execute()
+                        if user_status_data.data:
+                            status_value = user_status_data.data[0].get('status', 'active')
+                            if status_value in ['declined', 'pending', 'unverified']:
+                                continue
+                        else:
+                            status_value = 'active'
+                    except:
+                        status_value = 'active'
+                        
+                    display_name = p.get('dvmf_fname', 'Unknown')
+                    if p.get('dvmf_lname'):
+                        display_name += f" {p['dvmf_lname']}"
+                    if search_query and search_query not in display_name.lower():
+                        continue
+                    users.append({
+                        'id': p['dvmf_id'],
+                        'name': display_name,
+                        'role': 'Dvmf',
+                        'avatar': '🧑‍💼',
+                        'phone': p.get('dvmf_phonenum'),
+                        'status': status_value
+                    })
+            except Exception as e:
+                print(f"Error fetching DVMF users: {e}")
 
         # Sort users by name
         users.sort(key=lambda x: x['name'])
@@ -400,10 +415,12 @@ def available_users(request):
         print(f"Error fetching available users: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 @api_view(['GET'])
 def conversations(request):
     """
     Fetch all conversations for a given user, grouped by conversation partner.
+    Only show unread count for messages sent TO the current user.
     """
     print("=" * 80)
     print("CONVERSATIONS ENDPOINT CALLED")
@@ -433,43 +450,51 @@ def conversations(request):
             other_user_id = str(msg['receiver_id']) if str(msg['user_id']) == str(user_id) else str(msg['user_id'])
 
             if other_user_id not in conversations_dict:
+                # Check if this message is unread
+                # Only count as unread if: message was sent TO current user AND is_read is False
+                is_unread = (str(msg['receiver_id']) == str(user_id) and not msg.get('is_read', False))
+                
                 conversations_dict[other_user_id] = {
                     'other_user_id': other_user_id,
                     'last_message': msg.get('mes_content'),
                     'last_message_time': msg.get('mes_date'),
-                    'is_read': msg.get('is_read', False)
+                    'is_read': msg.get('is_read', False),
+                    'unread_count': 1 if is_unread else 0
                 }
 
         print(f"Grouped into {len(conversations_dict)} conversations")
         print(f"Other user IDs: {list(conversations_dict.keys())}")
+
+        # Now count all unread messages for each conversation
+        for other_user_id in conversations_dict.keys():
+            # Count unread messages: where sender is other_user_id, receiver is current user, and is_read is False
+            unread_response = service_client.table("message").select(
+                "mes_id", count="exact"
+            ).eq("user_id", other_user_id).eq("receiver_id", user_id).eq("is_read", False).execute()
+            
+            unread_count = unread_response.count if unread_response.count else 0
+            conversations_dict[other_user_id]['unread_count'] = unread_count
+            conversations_dict[other_user_id]['is_read'] = (unread_count == 0)
+            
+            print(f"User {other_user_id}: {unread_count} unread messages")
 
         # Fetch partner information for each conversation
         conversations_list = []
         for other_user_id, conv_data in conversations_dict.items():
             print(f"\n{'='*60}")
             print(f"Looking up user: {other_user_id}")
-            print(f"User ID type: {type(other_user_id)}")
-            print(f"User ID length: {len(other_user_id)}")
             user_info = None
             
             # Check kutsero_profile table
             try:
-                print(f"\nQuerying kutsero_profile WHERE kutsero_id = '{other_user_id}'")
-                
                 kutsero_response = service_client.table("kutsero_profile").select("*").eq("kutsero_id", other_user_id).execute()
-                
-                print(f"Response data: {kutsero_response.data}")
-                print(f"Number of results: {len(kutsero_response.data) if kutsero_response.data else 0}")
                 
                 if kutsero_response.data and len(kutsero_response.data) > 0:
                     user = kutsero_response.data[0]
-                    print(f"Found user data: {user}")
                     
                     fname = str(user.get('kutsero_fname', '')).strip()
                     lname = str(user.get('kutsero_lname', '')).strip()
                     username = str(user.get('kutsero_username', '')).strip()
-                    
-                    print(f"fname: '{fname}', lname: '{lname}', username: '{username}'")
                     
                     # Build name with fallbacks
                     if fname and lname:
@@ -488,29 +513,23 @@ def conversations(request):
                         'email': user.get('kutsero_email', ''),
                         'role': 'kutsero',
                         'avatar': '🐴',
-                        'status': user.get('kutsero_status', 'pending')
+                        'status': user.get('kutsero_status', 'pending'),
+                        'profile_image': user.get('kutsero_image')
                     }
                     print(f"✓ SUCCESS - Found in kutsero_profile: {name}")
-                else:
-                    print(f"✗ No results from kutsero_profile")
             except Exception as e:
                 print(f"✗ ERROR checking kutsero_profile: {e}")
-                import traceback
-                traceback.print_exc()
             
-            # Check vet_profile table
+            # Check kutsero_pres_profile table
             if not user_info:
                 try:
-                    print(f"\nQuerying vet_profile WHERE vet_id = '{other_user_id}'")
-                    vet_response = service_client.table("vet_profile").select("*").eq("vet_id", other_user_id).execute()
-                    print(f"Number of results: {len(vet_response.data) if vet_response.data else 0}")
+                    pres_response = service_client.table("kutsero_pres_profile").select("*").eq("pres_id", other_user_id).execute()
                     
-                    if vet_response.data and len(vet_response.data) > 0:
-                        user = vet_response.data[0]
+                    if pres_response.data and len(pres_response.data) > 0:
+                        user = pres_response.data[0]
                         
-                        fname = str(user.get('vet_fname', '')).strip()
-                        lname = str(user.get('vet_lname', '')).strip()
-                        username = str(user.get('vet_username', '')).strip()
+                        fname = str(user.get('pres_fname', '')).strip()
+                        lname = str(user.get('pres_lname', '')).strip()
                         
                         if fname and lname:
                             name = f"{fname} {lname}"
@@ -518,37 +537,33 @@ def conversations(request):
                             name = fname
                         elif lname:
                             name = lname
-                        elif username:
-                            name = username
                         else:
-                            name = 'Vet User'
+                            name = 'Kutsero President'
                         
                         user_info = {
                             'name': name,
-                            'email': user.get('vet_email', ''),
-                            'role': 'vet',
-                            'avatar': '👩‍⚕️',
-                            'status': user.get('vet_status', 'pending')
+                            'email': user.get('pres_email', ''),
+                            'role': 'Kutsero President',
+                            'avatar': '👑',
+                            'status': 'active',
+                            'profile_image': None
                         }
-                        print(f"✓ SUCCESS - Found in vet_profile: {name}")
+                        print(f"✓ SUCCESS - Found in kutsero_pres_profile: {name}")
                 except Exception as e:
-                    print(f"✗ ERROR checking vet_profile: {e}")
-                    import traceback
-                    traceback.print_exc()
+                    print(f"✗ ERROR checking kutsero_pres_profile: {e}")
             
-            # Check horse_op_profile table
+            # REMOVED vet_profile check - vets should not be in conversations
+            
+            # Check horse_op_profile table - FIXED: using correct column names
             if not user_info:
                 try:
-                    print(f"\nQuerying horse_op_profile WHERE operator_id = '{other_user_id}'")
-                    operator_response = service_client.table("horse_op_profile").select("*").eq("operator_id", other_user_id).execute()
-                    print(f"Number of results: {len(operator_response.data) if operator_response.data else 0}")
+                    operator_response = service_client.table("horse_op_profile").select("*").eq("op_id", other_user_id).execute()
                     
                     if operator_response.data and len(operator_response.data) > 0:
                         user = operator_response.data[0]
                         
-                        fname = str(user.get('operator_fname', '')).strip()
-                        lname = str(user.get('operator_lname', '')).strip()
-                        username = str(user.get('operator_username', '')).strip()
+                        fname = str(user.get('op_fname', '')).strip()
+                        lname = str(user.get('op_lname', '')).strip()
                         
                         if fname and lname:
                             name = f"{fname} {lname}"
@@ -556,23 +571,80 @@ def conversations(request):
                             name = fname
                         elif lname:
                             name = lname
-                        elif username:
-                            name = username
                         else:
                             name = 'Operator User'
                         
                         user_info = {
                             'name': name,
-                            'email': user.get('operator_email', ''),
+                            'email': user.get('op_email', ''),
                             'role': 'horse_operator',
                             'avatar': '👨‍💼',
-                            'status': user.get('operator_status', 'pending')
+                            'status': user.get('op_status', 'pending'),
+                            'profile_image': user.get('op_image')
                         }
                         print(f"✓ SUCCESS - Found in horse_op_profile: {name}")
                 except Exception as e:
                     print(f"✗ ERROR checking horse_op_profile: {e}")
-                    import traceback
-                    traceback.print_exc()
+            
+            # Check CTU vet profile
+            if not user_info:
+                try:
+                    ctu_response = service_client.table("ctu_vet_profile").select("*").eq("ctu_id", other_user_id).execute()
+                    
+                    if ctu_response.data and len(ctu_response.data) > 0:
+                        user = ctu_response.data[0]
+                        
+                        fname = str(user.get('ctu_fname', '')).strip()
+                        lname = str(user.get('ctu_lname', '')).strip()
+                        
+                        if fname and lname:
+                            name = f"Dr. {fname} {lname}"
+                        elif fname:
+                            name = f"Dr. {fname}"
+                        else:
+                            name = 'CTU Vet'
+                        
+                        user_info = {
+                            'name': name,
+                            'email': user.get('ctu_email', ''),
+                            'role': 'Ctu-Vetmed',
+                            'avatar': '🧑‍⚕️',
+                            'status': 'active',
+                            'profile_image': None  # CTU vets use hardcoded image in frontend
+                        }
+                        print(f"✓ SUCCESS - Found in ctu_vet_profile: {name}")
+                except Exception as e:
+                    print(f"✗ ERROR checking ctu_vet_profile: {e}")
+            
+            # Check DVMF user profile
+            if not user_info:
+                try:
+                    dvmf_response = service_client.table("dvmf_user_profile").select("*").eq("dvmf_id", other_user_id).execute()
+                    
+                    if dvmf_response.data and len(dvmf_response.data) > 0:
+                        user = dvmf_response.data[0]
+                        
+                        fname = str(user.get('dvmf_fname', '')).strip()
+                        lname = str(user.get('dvmf_lname', '')).strip()
+                        
+                        if fname and lname:
+                            name = f"{fname} {lname}"
+                        elif fname:
+                            name = fname
+                        else:
+                            name = 'DVMF User'
+                        
+                        user_info = {
+                            'name': name,
+                            'email': user.get('dvmf_email', ''),
+                            'role': 'Dvmf',
+                            'avatar': '🧑‍💼',
+                            'status': 'active',
+                            'profile_image': None  # DVMF users use hardcoded image in frontend
+                        }
+                        print(f"✓ SUCCESS - Found in dvmf_user_profile: {name}")
+                except Exception as e:
+                    print(f"✗ ERROR checking dvmf_user_profile: {e}")
             
             # If user not found in any table
             if not user_info:
@@ -582,11 +654,23 @@ def conversations(request):
                     'email': '',
                     'role': 'unknown',
                     'avatar': '👤',
-                    'status': 'unknown'
+                    'status': 'unknown',
+                    'profile_image': None
                 }
             
+            # Format timestamp to Philippine time
+            timestamp_ph = ""
+            if conv_data['last_message_time']:
+                try:
+                    dt = datetime.fromisoformat(conv_data['last_message_time'].replace('Z', '+00:00'))
+                    dt_ph = dt.astimezone(PHILIPPINE_TZ)
+                    timestamp_ph = dt_ph.strftime('%I:%M %p')
+                except Exception as e:
+                    print(f"Error formatting timestamp: {e}")
+            
             # Combine conversation data with user info
-            conversations_list.append({
+            unread_count = conv_data['unread_count']
+            conversation_data = {
                 'id': f"{user_id}_{other_user_id}",
                 'partner_id': other_user_id,
                 'sender': user_info['name'],
@@ -595,14 +679,17 @@ def conversations(request):
                 'role': user_info['role'],
                 'avatar': user_info['avatar'],
                 'status': user_info['status'],
+                'profile_image': user_info.get('profile_image'),
                 'last_message': conv_data['last_message'],
                 'preview': conv_data['last_message'],
                 'last_message_time': conv_data['last_message_time'],
-                'timestamp': conv_data['last_message_time'],
+                'timestamp': timestamp_ph,
                 'is_read': conv_data['is_read'],
-                'unread': not conv_data['is_read'],
-                'unread_count': 0 if conv_data['is_read'] else 1
-            })
+                'unread': unread_count > 0,
+                'unread_count': unread_count
+            }
+            print(f"Adding conversation - Name: {user_info['name']}, Role: {user_info['role']}, Profile Image: {user_info.get('profile_image')}")
+            conversations_list.append(conversation_data)
 
         # Sort by last message time
         conversations_list = sorted(
@@ -613,7 +700,10 @@ def conversations(request):
 
         print(f"\n{'='*60}")
         print(f"Returning {len(conversations_list)} conversations")
-        print(f"Conversations: {[c['sender'] for c in conversations_list]}")
+        
+        for c in conversations_list:
+            print(f"  - {c['sender']}: {c['unread_count']} unread | Time: {c['timestamp']}")
+        
         print("=" * 80)
 
         return Response({
@@ -626,7 +716,7 @@ def conversations(request):
         import traceback
         traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+    
 @api_view(['GET'])
 def debug_user_lookup(request):
     """
@@ -676,23 +766,24 @@ def debug_user_lookup(request):
     
     
 # ------------------------------------------------ HORSE ASSIGNMENT API ------------------------------------------------
+BUCKET_NAME = "horse_image"
 
 @api_view(['GET'])
 def available_horses(request):
     """
-    Get all horses with their op info for horse selection
+    Get all horses with their op info, health status, and image URL from Supabase Storage
     """
     op_id = request.GET.get("op_id")
     
     try:
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         today = str(date.today())
-        
-        # Get all horses
+
+        # Get all horses including horse_status
         horses_response = service_client.table("horse_profile").select(
-            "horse_id, horse_name, horse_breed, horse_age, horse_color, horse_image, op_id"
+            "horse_id, horse_name, horse_breed, horse_age, horse_color, horse_image, horse_status, op_id"
         ).execute()
-        
+
         if not horses_response.data:
             return Response({
                 'horses': [],
@@ -700,31 +791,37 @@ def available_horses(request):
                 'available_count': 0,
                 'assigned_count': 0
             }, status=status.HTTP_200_OK)
-        
-        # Get all ops from horse_op_profile table
+
+        # Get all ops
         ops_response = service_client.table("horse_op_profile").select(
             "op_id, op_fname, op_lname"
         ).execute()
-        
-        # Get all active assignments (where date_end is null - meaning kutsero hasn't checked out yet)
+
+        # Get all active assignments (where date_end is null)
         active_assignments_response = service_client.table("horse_assignment").select(
             "assign_id, horse_id, kutsero_id, date_start, date_end"
-        ).is_("date_end", "null").execute()  # Only get assignments without check-out date
-        
+        ).is_("date_end", "null").execute()
+
         # Create lookup dictionaries
-        ops_dict = {}
-        if ops_response.data:
-            ops_dict = {op['op_id']: op for op in ops_response.data}
-        
-        assignments_dict = {}
-        if active_assignments_response.data:
-            assignments_dict = {assign['horse_id']: assign for assign in active_assignments_response.data}
-        
-        # Transform data
+        ops_dict = {op['op_id']: op for op in ops_response.data} if ops_response.data else {}
+        assignments_dict = {assign['horse_id']: assign for assign in active_assignments_response.data} if active_assignments_response.data else {}
+
         horses = []
         for horse in horses_response.data:
+            # Generate image URL from Supabase storage
+            image_path = horse.get("horse_image")
+            if image_path:
+                try:
+                    image_url = service_client.storage.from_(BUCKET_NAME).get_public_url(image_path).get("publicUrl")
+                    if not image_url:
+                        image_url = "https://via.placeholder.com/150?text=No+Image"
+                except Exception:
+                    image_url = "https://via.placeholder.com/150?text=No+Image"
+            else:
+                image_url = "https://via.placeholder.com/150?text=No+Image"
+
             # Get op info
-            op_name = "Unknown Op"
+            op_name = "No Op Assigned"
             if horse.get('op_id'):
                 op = ops_dict.get(horse['op_id'])
                 if op:
@@ -738,61 +835,67 @@ def available_horses(request):
                         op_name = "Unnamed Op"
                 else:
                     op_name = "Op Not Found"
-            else:
-                op_name = "No Op Assigned"
+
+            # Get health status from database
+            # Map database values to expected frontend format
+            db_health_status = horse.get('horse_status', '').strip().lower()
             
+            if db_health_status == 'healthy':
+                health_status = 'Healthy'
+            elif db_health_status == 'unhealthy':
+                health_status = 'Unhealthy'
+            elif db_health_status == 'sick':
+                health_status = 'Sick'
+            else:
+                # Default to Healthy if status is missing or unrecognized
+                health_status = 'Healthy'
+
             # Check assignment status
             assignment = assignments_dict.get(horse['horse_id'])
             if assignment:
                 assignment_status = 'assigned'
-                health_status = 'Under Care'
                 status_text = 'Currently assigned'
                 current_assignment_id = assignment['assign_id']
-                assignment_start = assignment['date_start']  # This is check-in date
-                assignment_end = assignment['date_end']      # This will be null until check-out
+                assignment_start = assignment['date_start']
+                assignment_end = assignment['date_end']
             else:
                 assignment_status = 'available'
-                health_status = 'Healthy'
                 status_text = 'Ready for work'
                 current_assignment_id = None
                 assignment_start = None
                 assignment_end = None
-            
+
             horses.append({
                 'id': horse['horse_id'],
-                'name': horse['horse_name'] or 'Unnamed Horse',
-                'breed': horse['horse_breed'] or 'Mixed Breed',
-                'age': horse['horse_age'] or 5,
-                'color': horse['horse_color'] or 'Brown',
-                'image': horse['horse_image'],
-                'healthStatus': health_status,
+                'name': horse.get('horse_name', 'Unnamed Horse'),
+                'breed': horse.get('horse_breed', 'Mixed Breed'),
+                'age': horse.get('horse_age', 5),
+                'color': horse.get('horse_color', 'Brown'),
+                'image': image_url,
+                'healthStatus': health_status,  # Now using actual database value
                 'status': status_text,
                 'opName': op_name,
                 'assignmentStatus': assignment_status,
                 'currentAssignmentId': current_assignment_id,
-                'checkedInAt': assignment_start,      # Changed naming for clarity
-                'checkedOutAt': assignment_end,       # Changed naming for clarity
-                'lastCheckup': f"{((datetime.now() - datetime(2024, 5, 25)).days)} days ago",
-                'nextCheckup': "June 15, 2025"
+                'checkedInAt': assignment_start,
+                'checkedOutAt': assignment_end
             })
-        
+
         # Calculate statistics
         total_count = len(horses)
         available_count = len([h for h in horses if h['assignmentStatus'] == 'available'])
         assigned_count = len([h for h in horses if h['assignmentStatus'] == 'assigned'])
-        
+
         return Response({
             'horses': horses,
             'total_count': total_count,
             'available_count': available_count,
             'assigned_count': assigned_count
         }, status=status.HTTP_200_OK)
-        
+
     except Exception as e:
         print(f"Error fetching horses for assignment: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
 
 @api_view(['POST'])
 def checkout(request):
@@ -2190,102 +2293,143 @@ def get_water_logs(request):
 # ------------------------------------------------ PROFILE ------------------------------------------------
 
 @api_view(['GET'])
-def get_kutsero_profile(request, kutsero_id):
+def available_horses(request):
     """
-    Get kutsero profile by kutsero_id - formatted for frontend with image from Supabase storage
+    Get all horses with their op info for horse selection, including image from Supabase storage
     """
+    op_id = request.GET.get("op_id")
+    
     try:
-        # Query by kutsero_id field, not primary key id
-        response = supabase.table('kutsero_profile').select('*').eq('kutsero_id', kutsero_id).execute()
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        today = str(date.today())
         
-        if not response.data:
+        # Get all horses
+        horses_response = service_client.table("horse_profile").select(
+            "horse_id, horse_name, horse_breed, horse_age, horse_color, horse_image, op_id"
+        ).execute()
+        
+        if not horses_response.data:
             return Response({
-                'success': False,
-                'message': 'Kutsero profile not found',
-                'data': None
-            }, status=status.HTTP_404_NOT_FOUND)
+                'horses': [],
+                'total_count': 0,
+                'available_count': 0,
+                'assigned_count': 0
+            }, status=status.HTTP_200_OK)
         
-        profile = response.data[0]
+        # Get all ops from horse_op_profile table
+        ops_response = service_client.table("horse_op_profile").select(
+            "op_id, op_fname, op_lname"
+        ).execute()
         
-        # Handle profile image URL from Supabase storage
-        kutsero_image_url = None
-        kutsero_image = profile.get('kutsero_image')
+        # Get all active assignments (where date_end is null)
+        active_assignments_response = service_client.table("horse_assignment").select(
+            "assign_id, horse_id, kutsero_id, date_start, date_end"
+        ).is_("date_end", "null").execute()
         
-        if kutsero_image:
-            try:
-                # Supabase storage configuration
-                BUCKET_NAME = "kutsero_op_profile"
-                
-                # Check if it's already a full URL
-                if isinstance(kutsero_image, str) and kutsero_image.startswith('http'):
-                    kutsero_image_url = kutsero_image
-                    logger.info(f"Kutsero image is already a full URL: {kutsero_image_url}")
-                # Check if it's a base64 string (starts with data:image)
-                elif isinstance(kutsero_image, str) and kutsero_image.startswith('data:image'):
-                    kutsero_image_url = kutsero_image
-                    logger.info(f"Kutsero image is base64 data")
-                # Otherwise, it's a filename - construct the Supabase storage URL
-                elif isinstance(kutsero_image, str) and kutsero_image.strip():
-                    filename = kutsero_image.strip()
-                    kutsero_image_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{filename}"
-                    logger.info(f"Constructed kutsero image URL: {kutsero_image_url}")
-                else:
-                    logger.warning(f"Could not parse kutsero image for kutsero_id {kutsero_id}")
+        # Lookup dictionaries
+        ops_dict = {op['op_id']: op for op in ops_response.data} if ops_response.data else {}
+        assignments_dict = {assign['horse_id']: assign for assign in active_assignments_response.data} if active_assignments_response.data else {}
+        
+        horses = []
+        for horse in horses_response.data:
+            # 🖼 Handle horse image
+            horse_image_url = None
+            horse_image = horse.get('horse_image')
+            
+            if horse_image:
+                try:
+                    # If already a full URL
+                    if isinstance(horse_image, str) and horse_image.startswith('http'):
+                        horse_image_url = horse_image
+                        logger.info(f"Horse image is already a full URL: {horse_image_url}")
                     
-            except Exception as img_error:
-                logger.warning(f"Error parsing kutsero image for kutsero_id {kutsero_id}: {img_error}")
-                kutsero_image_url = None
-        else:
-            logger.info(f"No kutsero image for kutsero_id {kutsero_id}")
+                    # If it's base64 data
+                    elif isinstance(horse_image, str) and horse_image.startswith('data:image'):
+                        horse_image_url = horse_image
+                        logger.info("Horse image is base64 data")
+                    
+                    # Otherwise, construct full Supabase storage URL
+                    elif isinstance(horse_image, str) and horse_image.strip():
+                        filename = horse_image.strip()
+                        horse_image_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{filename}"
+                        logger.info(f"Constructed horse image URL: {horse_image_url}")
+                    
+                    else:
+                        logger.warning(f"Could not parse horse image for horse_id {horse['horse_id']}")
+                        horse_image_url = "https://via.placeholder.com/150?text=No+Image"
+                        
+                except Exception as img_error:
+                    logger.warning(f"Error parsing horse image for horse_id {horse['horse_id']}: {img_error}")
+                    horse_image_url = "https://via.placeholder.com/150?text=No+Image"
+            else:
+                logger.info(f"No horse image for horse_id {horse['horse_id']}")
+                horse_image_url = "https://via.placeholder.com/150?text=No+Image"
+            
+            # 🧍 Operator info
+            op = ops_dict.get(horse['op_id']) if horse.get('op_id') else None
+            if op:
+                if op.get('op_fname') and op.get('op_lname'):
+                    op_name = f"{op['op_fname']} {op['op_lname']}"
+                elif op.get('op_fname'):
+                    op_name = op['op_fname']
+                elif op.get('op_lname'):
+                    op_name = op['op_lname']
+                else:
+                    op_name = "Unnamed Op"
+            else:
+                op_name = "No Op Assigned"
+            
+            # 🐎 Assignment status
+            assignment = assignments_dict.get(horse['horse_id'])
+            if assignment:
+                assignment_status = 'assigned'
+                health_status = 'Under Care'
+                status_text = 'Currently assigned'
+                current_assignment_id = assignment['assign_id']
+                assignment_start = assignment['date_start']
+                assignment_end = assignment['date_end']
+            else:
+                assignment_status = 'available'
+                health_status = 'Healthy'
+                status_text = 'Ready for work'
+                current_assignment_id = None
+                assignment_start = None
+                assignment_end = None
+            
+            # ✅ Append formatted horse info
+            horses.append({
+                'id': horse['horse_id'],
+                'name': horse['horse_name'] or 'Unnamed Horse',
+                'breed': horse['horse_breed'] or 'Mixed Breed',
+                'age': horse['horse_age'] or 5,
+                'color': horse['horse_color'] or 'Brown',
+                'image': horse_image_url,
+                'healthStatus': health_status,
+                'status': status_text,
+                'opName': op_name,
+                'assignmentStatus': assignment_status,
+                'currentAssignmentId': current_assignment_id,
+                'checkedInAt': assignment_start,
+                'checkedOutAt': assignment_end,
+                'lastCheckup': f"{((datetime.now() - datetime(2024, 5, 25)).days)} days ago",
+                'nextCheckup': "June 15, 2025"
+            })
         
-        # Format data to match your frontend formData structure
-        formatted_profile = {
-            # Step 1 - Location Info
-            'city': profile.get('kutsero_city', ''),
-            'municipality': profile.get('kutsero_municipality', ''),
-            'barangay': profile.get('kutsero_brgy', ''),
-            'zipCode': profile.get('kutsero_zipcode', ''),
-            'houseNumber': '',
-            'route': '',
-            'to': '',
-            
-            # Step 2 - Personal Info
-            'firstName': profile.get('kutsero_fname', ''),
-            'middleName': profile.get('kutsero_mname', ''),
-            'lastName': profile.get('kutsero_lname', ''),
-            'dateOfBirth': profile.get('kutsero_dob', ''),
-            'sex': profile.get('kutsero_sex', ''),
-            'phoneNumber': profile.get('kutsero_phone_num', ''),
-            'province': profile.get('kutsero_province', ''),
-            
-            # Step 3 - Account Info
-            'email': profile.get('kutsero_email', ''),
-            'facebook': profile.get('kutsero_fb', ''),
-            'username': profile.get('kutsero_username', ''),
-            'password': '••••••••••',
-            
-            # Profile Picture - Full Supabase storage URL or base64
-            'profilePicture': kutsero_image_url,
-            
-            # Additional info
-            'kutsero_id': profile.get('kutsero_id'),
-            'id': profile.get('id'),
-            'created_at': profile.get('created_at')
-        }
+        # Calculate stats
+        total_count = len(horses)
+        available_count = len([h for h in horses if h['assignmentStatus'] == 'available'])
+        assigned_count = len([h for h in horses if h['assignmentStatus'] == 'assigned'])
         
         return Response({
-            'success': True,
-            'message': 'Profile fetched successfully',
-            'data': formatted_profile
+            'horses': horses,
+            'total_count': total_count,
+            'available_count': available_count,
+            'assigned_count': assigned_count
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
-        logger.error(f"Error in get_kutsero_profile: {e}")
-        return Response({
-            'success': False,
-            'message': 'Internal server error',
-            'error': str(e)
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        logger.error(f"Error fetching horses for assignment: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['PUT'])
@@ -4856,3 +5000,224 @@ def reset_password(request):
         {"success": True, "message": "Password reset successful."}, 
         status=status.HTTP_200_OK
     )
+
+# ------------------------------------------------ REMINDER NOTIF ------------------------------------------------
+def get_kutsero_by_input(kutsero_input):
+    """
+    Returns a list of kutsero dicts with 'kutsero_id' from input.
+    Accepts either UUID or first name (kutsero_fname)
+    """
+    try:
+        # Try to parse as UUID
+        val = uuid.UUID(kutsero_input, version=4)
+        kutsero_response = supabase.table('kutsero_profile')\
+            .select('kutsero_id, kutsero_fname, kutsero_lname')\
+            .eq('kutsero_id', str(val))\
+            .execute()
+    except ValueError:
+        # Treat as first name
+        kutsero_response = supabase.table('kutsero_profile')\
+            .select('kutsero_id, kutsero_fname, kutsero_lname')\
+            .eq('kutsero_fname', kutsero_input)\
+            .execute()
+
+    return kutsero_response.data if kutsero_response.data else []
+
+
+@api_view(['GET'])
+def feed_water_notifications(request):
+    """
+    Fetch all feed and water schedule notifications for a specific kutsero.
+    Always returns notifications even if horse is checked out.
+    Accepts either UUID or first name.
+    """
+    try:
+        kutsero_input = request.GET.get('kutsero_id')
+        horse_id = request.GET.get('horse_id')
+
+        if not kutsero_input:
+            return Response({
+                'success': False,
+                'message': 'kutsero_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        now = datetime.now()
+        current_time = now.strftime('%I:%M %p')
+        notifications = []
+
+        kutseros = get_kutsero_by_input(kutsero_input)
+        if not kutseros:
+            return Response({
+                'success': True,
+                'data': [],
+                'count': 0,
+                'current_time': current_time,
+                'message': 'Kutsero not found'
+            })
+
+        kutsero_uuid = kutseros[0]['kutsero_id']
+
+        # Map horse IDs to names
+        horses_response = supabase.table('horse_profile')\
+            .select('horse_id, horse_name')\
+            .execute()
+        horse_map = {h['horse_id']: h['horse_name'] for h in (horses_response.data or [])}
+
+        # Fetch feed schedules (ignore horse status)
+        feeds = (supabase.table('feed_detail')
+                 .select('*')
+                 .eq('kutsero_id', kutsero_uuid)
+                 .execute().data or [])
+        if horse_id:
+            feeds = [f for f in feeds if f.get('horse_id') == horse_id]
+
+        for feed in feeds:
+            horse_name = horse_map.get(feed.get('horse_id'), 'Unknown Horse')
+            notifications.append({
+                'id': f'feed_{feed.get("fd_id")}',
+                'type': 'feed',
+                'title': f'🍽️ {feed.get("fd_meal_type")} Time',
+                'message': f'Time to feed {horse_name}: {feed.get("fd_food_type")} ({feed.get("fd_qty")})',
+                'scheduled_time': feed.get('fd_time'),
+                'horse_id': feed.get('horse_id'),
+                'horse_name': horse_name,
+                'details': {
+                    'meal_type': feed.get('fd_meal_type'),
+                    'food_type': feed.get('fd_food_type'),
+                    'quantity': feed.get('fd_qty'),
+                },
+                'timestamp': now.isoformat(),
+            })
+
+        # Fetch water schedules (ignore horse status)
+        waters = (supabase.table('water_detail')
+                  .select('*')
+                  .eq('kutsero_id', kutsero_uuid)
+                  .execute().data or [])
+        if horse_id:
+            waters = [w for w in waters if w.get('horse_id') == horse_id]
+
+        for water in waters:
+            horse_name = horse_map.get(water.get('horse_id'), 'Unknown Horse')
+            notifications.append({
+                'id': f'water_{water.get("water_id")}',
+                'type': 'water',
+                'title': f'💧 {water.get("water_period")} Watering Time',
+                'message': f'Time to give {horse_name} water: {water.get("water_amount")}',
+                'scheduled_time': water.get('water_time'),
+                'horse_id': water.get('horse_id'),
+                'horse_name': horse_name,
+                'details': {
+                    'period': water.get('water_period'),
+                    'amount': water.get('water_amount'),
+                },
+                'timestamp': now.isoformat(),
+            })
+
+        return Response({
+            'success': True,
+            'data': notifications,
+            'count': len(notifications),
+            'current_time': current_time,
+        })
+
+    except Exception as e:
+        print(f"Error in feed_water_notifications: {str(e)}")
+        return Response({
+            'success': False,
+            'message': f'Error fetching notifications: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def check_current_schedules(request):
+    """
+    Check if any feed/water schedules are due right now.
+    Always returns due notifications even if horse is checked out.
+    Accepts either UUID or first name.
+    """
+    try:
+        kutsero_input = request.GET.get('kutsero_id')
+        if not kutsero_input:
+            return Response({
+                'success': False,
+                'message': 'kutsero_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        now = datetime.now()
+        current_time = now.strftime('%I:%M %p')
+        prev_minute = (now - timedelta(minutes=1)).strftime('%I:%M %p')
+        due_notifications = []
+
+        kutseros = get_kutsero_by_input(kutsero_input)
+        if not kutseros:
+            return Response({
+                'success': True,
+                'data': [],
+                'count': 0,
+                'current_time': current_time,
+                'has_due_schedules': False,
+            })
+
+        kutsero_uuid = kutseros[0]['kutsero_id']
+
+        # Map horse IDs to names
+        horses_response = supabase.table('horse_profile')\
+            .select('horse_id, horse_name')\
+            .execute()
+        horse_map = {h['horse_id']: h['horse_name'] for h in (horses_response.data or [])}
+
+        # Check feed schedules (ignore horse status)
+        feeds = (supabase.table('feed_detail')
+                 .select('*')
+                 .eq('kutsero_id', kutsero_uuid)
+                 .execute().data or [])
+        for feed in feeds:
+            if feed.get('fd_time') in [current_time, prev_minute]:
+                horse_name = horse_map.get(feed.get('horse_id'), 'Unknown Horse')
+                due_notifications.append({
+                    'id': f'feed_{feed.get("fd_id")}',
+                    'type': 'feed',
+                    'title': f'🍽️ {feed.get("fd_meal_type")} Time!',
+                    'message': f'Time to feed {horse_name}: {feed.get("fd_food_type")} ({feed.get("fd_qty")})',
+                    'scheduled_time': feed.get('fd_time'),
+                    'horse_id': feed.get('horse_id'),
+                    'horse_name': horse_name,
+                    'priority': 'high',
+                    'timestamp': now.isoformat(),
+                })
+
+        # Check water schedules (ignore horse status)
+        waters = (supabase.table('water_detail')
+                  .select('*')
+                  .eq('kutsero_id', kutsero_uuid)
+                  .execute().data or [])
+        for water in waters:
+            if water.get('water_time') in [current_time, prev_minute]:
+                horse_name = horse_map.get(water.get('horse_id'), 'Unknown Horse')
+                due_notifications.append({
+                    'id': f'water_{water.get("water_id")}',
+                    'type': 'water',
+                    'title': f'💧 {water.get("water_period")} Watering Time!',
+                    'message': f'Time to give {horse_name} water: {water.get("water_amount")}',
+                    'scheduled_time': water.get('water_time'),
+                    'horse_id': water.get('horse_id'),
+                    'horse_name': horse_name,
+                    'priority': 'high',
+                    'timestamp': now.isoformat(),
+                })
+
+        return Response({
+            'success': True,
+            'data': due_notifications,
+            'count': len(due_notifications),
+            'current_time': current_time,
+            'has_due_schedules': len(due_notifications) > 0,
+        })
+
+    except Exception as e:
+        print(f"Error in check_current_schedules: {str(e)}")
+        return Response({
+            'success': False,
+            'message': f'Error checking schedules: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -1,4 +1,4 @@
-("use client")
+"use client"
 
 import { useFocusEffect, useRouter } from "expo-router"
 import { useCallback, useEffect, useState, useRef } from "react"
@@ -71,6 +71,7 @@ interface Comment {
   user_email?: string
   parent_comment_id?: string
   reply_count?: number
+  kutsero_profile_image?: string
 }
 
 interface Reply extends Comment {
@@ -82,7 +83,7 @@ interface Horse {
   name: string
   healthStatus: "Healthy" | "Under Care" | "Recovering"
   status: string
-  image: any
+  image: string  // Changed to string for URL
   breed?: string
   age?: number
   color?: string
@@ -122,6 +123,11 @@ interface Announcement {
   user_name?: string
   image_url?: string
   image_urls?: string[]
+  user_info?: {
+    role?: string
+    user_type?: string
+    [key: string]: any
+  }
 }
 
 interface SearchUserProfile {
@@ -150,7 +156,7 @@ interface SearchUserProfile {
   }
 }
 
-const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
 
 // Image Carousel Component
 const ImageCarousel = ({ images }: { images: string[] }) => {
@@ -233,6 +239,7 @@ export default function DashboardScreen() {
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
   const [currentUser, setCurrentUser] = useState("User")
+  const [currentUserProfileImage, setCurrentUserProfileImage] = useState<string | null>(null)
   const [userData, setUserData] = useState<UserData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingHorse, setIsLoadingHorse] = useState(false)
@@ -254,16 +261,12 @@ export default function DashboardScreen() {
   const [isSearching, setIsSearching] = useState(false)
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Check-in/out state
-  const [isCheckedIn, setIsCheckedIn] = useState(false)
-  const [checkInTime, setCheckInTime] = useState<string | null>(null)
-
   const defaultHorse: Horse = {
     id: "default",
     name: "No Horse Assigned",
     healthStatus: "Healthy",
     status: "Please select a horse",
-    image: require("../../assets/images/horse.png"),
+    image: "https://via.placeholder.com/150?text=No+Horse+Assigned",
     breed: "N/A",
     age: 0,
     operatorName: "N/A",
@@ -272,6 +275,8 @@ export default function DashboardScreen() {
   }
 
   const [selectedHorse, setSelectedHorse] = useState<Horse>(defaultHorse)
+  const [isCheckedIn, setIsCheckedIn] = useState(false)
+  const [checkInTime, setCheckInTime] = useState<string | null>(null)
   const [showNotifications, setShowNotifications] = useState(false)
   const [showSOSEmergency, setShowSOSEmergency] = useState(false)
   const safeArea = getSafeAreaPadding()
@@ -350,12 +355,10 @@ export default function DashboardScreen() {
     let email = user.email || ""
     const userType = user.user_type || user.role || "user"
 
-    // Check if API returned flat structure with 'name' field
     if (user.name) {
       displayName = user.name
       email = user.email || ""
     } else if (user.profile) {
-      // Fallback to nested profile structure
       if (user.user_type === "kutsero" || user.profile.kutsero_id) {
         displayName =
           user.profile.kutsero_fname && user.profile.kutsero_lname
@@ -376,7 +379,19 @@ export default function DashboardScreen() {
     return { displayName, email, userType }
   }
 
-  // Search users function
+  const getAnnouncementProfilePicture = (announcement: Announcement) => {
+    const title = announcement.announce_title
+    if (!title) return null
+
+    const titleLower = title.toLowerCase()
+    if (titleLower.includes("ctu") || titleLower.includes("vet")) {
+      return require("../../assets/images/CTU.jpg")
+    } else if (titleLower.includes("dvmf")) {
+      return require("../../assets/images/DVMF.png")
+    }
+    return null
+  }
+
   const searchUsers = async (query: string) => {
     if (!query.trim() || query.trim().length < 2) {
       setSearchResults([])
@@ -406,7 +421,6 @@ export default function DashboardScreen() {
         console.log("[v0] Search results set:", data.users?.length || 0)
         console.log("[v0] Show dropdown:", data.users && data.users.length > 0)
       } else if (response.status === 401) {
-        // Token expired, reload user data
         await loadUserData()
         setSearchResults([])
         setShowSearchDropdown(false)
@@ -424,7 +438,6 @@ export default function DashboardScreen() {
     }
   }
 
-  // Debounce search effect
   useEffect(() => {
     if (searchTimeout.current) {
       clearTimeout(searchTimeout.current)
@@ -495,10 +508,14 @@ export default function DashboardScreen() {
   const loadCurrentAssignment = async (kutserroId: string) => {
     try {
       setIsLoadingHorse(true)
+      console.log("Loading assignment for kutsero:", kutserroId)
+      
       const storedHorseData = await SecureStore.getItemAsync("selectedHorseData")
       if (storedHorseData) {
         try {
           const parsedHorseData = JSON.parse(storedHorseData)
+          console.log("Loaded stored horse data:", parsedHorseData.name, "Image:", parsedHorseData.image)
+          
           setSelectedHorse(parsedHorseData)
         } catch (parseError) {
           console.error("Error parsing stored horse data:", parseError)
@@ -512,13 +529,18 @@ export default function DashboardScreen() {
 
       if (response.ok) {
         const data = await response.json()
+        console.log("Assignment API response:", data)
+        
         if (data.assignment && data.assignment.horse) {
+          const imageUrl = data.assignment.horse.image || "https://via.placeholder.com/150?text=Horse"
+          console.log("Horse image URL from API:", imageUrl)
+          
           const horse: Horse = {
             id: data.assignment.horse.id,
             name: data.assignment.horse.name,
             healthStatus: data.assignment.horse.healthStatus as Horse["healthStatus"],
             status: data.assignment.horse.status,
-            image: require("../../assets/images/horse.png"),
+            image: imageUrl,
             breed: data.assignment.horse.breed,
             age: data.assignment.horse.age,
             color: data.assignment.horse.color,
@@ -528,13 +550,22 @@ export default function DashboardScreen() {
             lastCheckup: data.assignment.horse.lastCheckup,
             nextCheckup: data.assignment.horse.nextCheckup,
           }
+          
+          console.log("Setting horse with image URL:", horse.image)
           setSelectedHorse(horse)
+          
           await SecureStore.setItemAsync("selectedHorseData", JSON.stringify(horse))
-        } else if (!storedHorseData) {
+        } else {
+          console.log("No assignment found, using default horse")
           setSelectedHorse(defaultHorse)
+          await SecureStore.deleteItemAsync("selectedHorseData")
         }
-      } else if (!storedHorseData) {
-        setSelectedHorse(defaultHorse)
+      } else {
+        console.log("Assignment API failed:", response.status)
+        if (!storedHorseData) {
+          setSelectedHorse(defaultHorse)
+          await SecureStore.deleteItemAsync("selectedHorseData")
+        }
       }
     } catch (error) {
       console.error("Error loading current assignment:", error)
@@ -577,11 +608,15 @@ export default function DashboardScreen() {
 
         let displayName = "User"
         if (parsedUserData.profile) {
-          const { kutsero_fname, kutsero_username } = parsedUserData.profile
+          const { kutsero_fname, kutsero_username, kutsero_profile_image } = parsedUserData.profile
           if (kutsero_fname) {
             displayName = kutsero_fname
           } else if (kutsero_username) {
             displayName = kutsero_username
+          }
+          // Set profile image
+          if (kutsero_profile_image) {
+            setCurrentUserProfileImage(kutsero_profile_image)
           }
         } else if (parsedUserData.email) {
           displayName = parsedUserData.email.split("@")[0]
@@ -590,14 +625,6 @@ export default function DashboardScreen() {
         setCurrentUser(displayName)
         const kutserroId = parsedUserData.profile?.kutsero_id || parsedUserData.id
         await loadCurrentAssignment(kutserroId)
-
-        // Load check-in status when user data is loaded
-        const checkInData = await SecureStore.getItemAsync("checkInData")
-        if (checkInData) {
-          const data = JSON.parse(checkInData)
-          setIsCheckedIn(true)
-          setCheckInTime(data.checkInTime)
-        }
       } else {
         Alert.alert("Session Expired", "Please log in again to continue.", [
           { text: "OK", onPress: () => router.replace("../../pages/auth/login") },
@@ -639,29 +666,21 @@ export default function DashboardScreen() {
   const handleSearchSubmit = () => {
     if (searchText.trim()) {
       setShowSearchDropdown(false)
-      // Navigate to user search with the query
-      router.push({
-        pathname: "./usersearch",
-        params: {
-          query: searchText.trim(),
-        },
-      })
+      router.push(`./usersearch?query=${encodeURIComponent(searchText)}`)
     }
   }
 
   const navigateToUserProfile = (userId: string, userData?: SearchUserProfile) => {
     console.log("Navigating to user profile:", userId)
-    // Clear search state
     setShowSearchDropdown(false)
     setSearchText("")
 
-    // Pass user data if available
     if (userData) {
       router.push({
         pathname: "./userprofile",
         params: {
           userId: userId,
-          userData: JSON.stringify(userData), // Pass the user data
+          userData: JSON.stringify(userData),
         },
       })
     } else {
@@ -670,7 +689,6 @@ export default function DashboardScreen() {
   }
 
   useEffect(() => {
-    // Close dropdown when clicking outside (handled by Keyboard dismiss)
     const keyboardHide = Keyboard.addListener("keyboardDidHide", () => {
       setShowSearchDropdown(false)
     })
@@ -878,13 +896,13 @@ export default function DashboardScreen() {
           text: "Check Out",
           onPress: async () => {
             try {
-              const kutserroId = await SecureStore.getItemAsync("kutseroId") // This might need to be fetched from userData
+              const kutserroId = await SecureStore.getItemAsync("kutseroId")
               const response = await fetch(`${API_BASE_URL}/checkout/`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                   assignment_id: selectedHorse.currentAssignmentId,
-                  kutsero_id: kutserroId, // Ensure kutsero_id is correctly obtained
+                  kutsero_id: kutserroId,
                 }),
               })
 
@@ -892,16 +910,12 @@ export default function DashboardScreen() {
                 await SecureStore.deleteItemAsync("checkInData")
                 setIsCheckedIn(false)
                 setCheckInTime(null)
-                // Optionally reset selectedHorse to default or handle as needed
-                // setSelectedHorse(defaultHorse);
+                setSelectedHorse(defaultHorse)
                 Alert.alert("Success", `Successfully checked out from ${selectedHorse.name}`)
               } else {
-                const errorText = await response.text()
-                console.error("Checkout API error:", errorText)
-                Alert.alert("Checkout Failed", `Failed to check out. Server responded with: ${response.status}`)
+                Alert.alert("Checkout Failed", "Failed to check out. Please try again.")
               }
             } catch (error) {
-              console.error("Error during checkout:", error)
               Alert.alert("Error", "Failed to check out. Please check your internet connection.")
             }
           },
@@ -916,36 +930,20 @@ export default function DashboardScreen() {
         const checkInData = await SecureStore.getItemAsync("checkInData")
         if (checkInData) {
           const data = JSON.parse(checkInData)
-          // Ensure the check-in data is relevant to the currently selected horse
           if (data.horseId === selectedHorse.id) {
             setIsCheckedIn(true)
             setCheckInTime(data.checkInTime)
-          } else {
-            // If check-in data exists but is for a different horse, clear it
-            await SecureStore.deleteItemAsync("checkInData")
-            setIsCheckedIn(false)
-            setCheckInTime(null)
           }
-        } else {
-          setIsCheckedIn(false)
-          setCheckInTime(null)
         }
       } catch (error) {
         console.log("Error loading check-in status:", error)
-        setIsCheckedIn(false)
-        setCheckInTime(null)
       }
     }
 
-    // Only load status if a horse is selected and not the default
     if (selectedHorse.id !== "default") {
       loadCheckInStatus()
-    } else {
-      // If default horse is selected, ensure check-in state is reset
-      setIsCheckedIn(false)
-      setCheckInTime(null)
     }
-  }, [selectedHorse.id]) // Re-run when selectedHorse changes
+  }, [selectedHorse.id])
 
   const formatDate = (dateString: string) => {
     try {
@@ -1037,7 +1035,7 @@ export default function DashboardScreen() {
   )
 
   const unreadNotificationsCount = announcements.filter((announcement) => {
-    if (!lastViewedAnnouncementTime) return true // All are new if never viewed
+    if (!lastViewedAnnouncementTime) return true
     const announcementDate = new Date(announcement.announce_date || announcement.created_at || "")
     const lastViewedDate = new Date(lastViewedAnnouncementTime)
     return announcementDate > lastViewedDate
@@ -1088,19 +1086,6 @@ export default function DashboardScreen() {
     }
   }
 
-  // Helper function to get profile picture for announcement
-  const getAnnouncementProfilePicture = (userName: string | undefined) => {
-    if (!userName) return null
-
-    const nameLower = userName.toLowerCase()
-    if (nameLower.includes("ctu") || nameLower.includes("vet")) {
-      return require("../../assets/images/CTU.jpg")
-    } else if (nameLower.includes("dvmf")) {
-      return require("../../assets/images/DVMF.png")
-    }
-    return null
-  }
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
@@ -1121,7 +1106,7 @@ export default function DashboardScreen() {
                 const now = new Date().toISOString()
                 setLastViewedAnnouncementTime(now)
                 AsyncStorage.setItem("lastViewedAnnouncementTime", now)
-                setShowNotifications(true) // Show notifications modal
+                setShowNotifications(true)
               }}
             >
               <Image
@@ -1207,11 +1192,9 @@ export default function DashboardScreen() {
                         index === searchResults.length - 1 && styles.searchResultItemLast,
                       ]}
                       onPress={() => {
-                        // Dismiss keyboard first
                         Keyboard.dismiss()
-                        // Then navigate
                         setTimeout(() => {
-                          navigateToUserProfile(user.id, user)
+                          navigateToUserProfile(user.id)
                         }, 100)
                       }}
                       activeOpacity={0.7}
@@ -1290,13 +1273,13 @@ export default function DashboardScreen() {
               <View style={styles.horseImageContainer}>
                 <TouchableOpacity
                   onPress={() => {
-                    if (selectedHorse.image && typeof selectedHorse.image === "object" && selectedHorse.image.uri) {
-                      setFullScreenImage(selectedHorse.image.uri)
+                    if (selectedHorse.image && typeof selectedHorse.image === "string") {
+                      setFullScreenImage(selectedHorse.image)
                     }
                   }}
                   activeOpacity={0.9}
                 >
-                  <Image source={selectedHorse.image} style={styles.horseImage} resizeMode="cover" />
+                  <Image source={{ uri: selectedHorse.image }} style={styles.horseImage} resizeMode="cover" />
                 </TouchableOpacity>
               </View>
               <View style={styles.horseInfo}>
@@ -1326,31 +1309,38 @@ export default function DashboardScreen() {
                 <Text style={styles.readyText}>{selectedHorse.status}</Text>
               </View>
             </View>
+            <View style={styles.reminderSection}>
+              {selectedHorse.id !== "default" ? (
+                <>
+                  <Text style={styles.reminderText}>Remember to check-out your horse at the end of the day</Text>
 
-            <TouchableOpacity style={styles.changeHorseButton} onPress={() => router.push("./horseselection")}>
-              <Text style={styles.changeHorseButtonText}>
-                {selectedHorse.id === "default" ? "Select Horse" : "Change Horse"}
-              </Text>
-            </TouchableOpacity>
-
-            {selectedHorse.id !== "default" && (
-              <View style={styles.checkInOutContainer}>
-                {!isCheckedIn ? (
-                  <TouchableOpacity style={styles.checkInButton} onPress={handleCheckIn}>
-                    <Text style={styles.checkInButtonText}>Check In</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <View style={styles.checkedInContainer}>
-                    <View style={styles.checkedInInfo}>
-                      <Text style={styles.checkedInText}>✓ Checked in at {checkInTime}</Text>
-                    </View>
-                    <TouchableOpacity style={styles.checkOutButton} onPress={handleCheckOut}>
-                      <Text style={styles.checkOutButtonText}>Check Out</Text>
-                    </TouchableOpacity>
+                  <View style={styles.checkInOutContainer}>
+                    {!isCheckedIn ? (
+                      <TouchableOpacity style={styles.checkInButton} onPress={handleCheckIn}>
+                        <Text style={styles.checkInButtonText}>Check In</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.checkedInContainer}>
+                        <View style={styles.checkedInInfo}>
+                          <Text style={styles.checkedInText}>✓ Checked in at {checkInTime}</Text>
+                        </View>
+                        <TouchableOpacity style={styles.checkOutButton} onPress={handleCheckOut}>
+                          <Text style={styles.checkOutButtonText}>Check Out</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
-                )}
-              </View>
-            )}
+                </>
+              ) : (
+                <Text style={styles.reminderText}>Select a horse to start working</Text>
+              )}
+
+              <TouchableOpacity style={styles.changeHorseButton} onPress={() => router.push("./horseselection")}>
+                <Text style={styles.changeHorseButtonText}>
+                  {selectedHorse.id === "default" ? "Select Horse" : "Change Horse"}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={styles.activitiesSection}>
@@ -1365,7 +1355,7 @@ export default function DashboardScreen() {
               </View>
             ) : (
               announcements.map((announcement, index) => {
-                const profilePicture = getAnnouncementProfilePicture(announcement.user_name)
+                const profilePicture = getAnnouncementProfilePicture(announcement)
 
                 return (
                   <View
@@ -1377,12 +1367,6 @@ export default function DashboardScreen() {
                         <View style={styles.profileImageContainer}>
                           {profilePicture ? (
                             <Image source={profilePicture} style={styles.announcementProfileImage} />
-                          ) : announcement.user_name ? (
-                            <View style={styles.defaultProfileIcon}>
-                              <Text style={styles.defaultProfileText}>
-                                {announcement.user_name.charAt(0).toUpperCase()}
-                              </Text>
-                            </View>
                           ) : (
                             <View style={styles.announcementIcon}>
                               <View style={styles.megaphoneBody} />
@@ -1392,7 +1376,7 @@ export default function DashboardScreen() {
                         </View>
                       </View>
                       <View style={styles.postHeaderContent}>
-                        <Text style={styles.postTitle}>{announcement.user_name || "CTU Announcement"}</Text>
+                        <Text style={styles.postTitle}>{announcement.announce_title || "Announcement"}</Text>
                         <Text style={styles.postTime}>{formatDate(announcement.announce_date)}</Text>
                       </View>
                     </View>
@@ -1528,37 +1512,52 @@ export default function DashboardScreen() {
                     .map((comment) => (
                       <View key={comment.id}>
                         <View style={styles.commentItem}>
-                          <View style={styles.commentHeader}>
-                            <Text style={styles.commentUser}>
-                              {comment.kutsero_fname && comment.kutsero_lname
-                                ? `${comment.kutsero_fname} ${comment.kutsero_lname}`
-                                : comment.kutsero_username || "Anonymous User"}
-                            </Text>
-                            <Text style={styles.commentTime}>{new Date(comment.comment_date).toLocaleString()}</Text>
-                          </View>
-                          <Text style={styles.commentText}>{comment.comment_text}</Text>
-
-                          <View style={styles.commentActions}>
-                            <TouchableOpacity
-                              onPress={() => {
-                                setReplyingTo(comment.id)
-                                setReplyText("")
-                              }}
-                              style={styles.replyButton}
-                            >
-                              <Text style={styles.replyButtonText}>Reply</Text>
-                            </TouchableOpacity>
-
-                            {comment.reply_count && comment.reply_count > 0 && (
-                              <TouchableOpacity
-                                onPress={() => toggleReplies(comment.id)}
-                                style={styles.viewRepliesButton}
-                              >
-                                <Text style={styles.viewRepliesText}>
-                                  {`${expandedReplies.has(comment.id) ? "Hide" : "View"} ${comment.reply_count} ${comment.reply_count === 1 ? "reply" : "replies"}`}
+                          <View style={styles.commentAvatarContainer}>
+                            {comment.kutsero_profile_image ? (
+                              <Image
+                                source={{ uri: comment.kutsero_profile_image }}
+                                style={styles.commentAvatar}
+                              />
+                            ) : (
+                              <View style={styles.commentAvatar}>
+                                <Text style={styles.commentAvatarText}>
+                                  {(comment.kutsero_fname || comment.kutsero_username || "A").charAt(0).toUpperCase()}
                                 </Text>
-                              </TouchableOpacity>
+                              </View>
                             )}
+                          </View>
+                          <View style={styles.commentContentContainer}>
+                            <View style={styles.commentBubble}>
+                              <Text style={styles.commentUser}>
+                                {comment.kutsero_fname && comment.kutsero_lname
+                                  ? `${comment.kutsero_fname} ${comment.kutsero_lname}`
+                                  : comment.kutsero_username || "Anonymous User"}
+                              </Text>
+                              <Text style={styles.commentText}>{comment.comment_text}</Text>
+                            </View>
+                            <View style={styles.commentMetaRow}>
+                              <Text style={styles.commentTime}>{new Date(comment.comment_date).toLocaleString()}</Text>
+                              <TouchableOpacity
+                                onPress={() => {
+                                  setReplyingTo(comment.id)
+                                  setReplyText("")
+                                }}
+                                style={styles.replyButton}
+                              >
+                                <Text style={styles.replyButtonText}>Reply</Text>
+                              </TouchableOpacity>
+                              {comment.reply_count && comment.reply_count > 0 && (
+                                <TouchableOpacity
+                                  onPress={() => toggleReplies(comment.id)}
+                                  style={styles.viewRepliesButton}
+                                >
+                                  <Text style={styles.viewRepliesText}>
+                                    {expandedReplies.has(comment.id) ? "Hide" : "View"} {comment.reply_count}{" "}
+                                    {comment.reply_count === 1 ? "reply" : "replies"}
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
+                            </View>
                           </View>
                         </View>
 
@@ -1572,17 +1571,35 @@ export default function DashboardScreen() {
                             ) : replies[comment.id] && replies[comment.id].length > 0 ? (
                               replies[comment.id].map((reply) => (
                                 <View key={reply.id} style={styles.replyItem}>
-                                  <View style={styles.commentHeader}>
-                                    <Text style={styles.commentUser}>
-                                      {reply.kutsero_fname && reply.kutsero_lname
-                                        ? `${reply.kutsero_fname} ${reply.kutsero_lname}`
-                                        : reply.kutsero_username || "Anonymous User"}
-                                    </Text>
-                                    <Text style={styles.commentTime}>
-                                      {new Date(reply.comment_date).toLocaleString()}
-                                    </Text>
+                                  <View style={styles.commentAvatarContainer}>
+                                    {reply.kutsero_profile_image ? (
+                                      <Image
+                                        source={{ uri: reply.kutsero_profile_image }}
+                                        style={styles.replyAvatar}
+                                      />
+                                    ) : (
+                                      <View style={styles.replyAvatar}>
+                                        <Text style={styles.commentAvatarText}>
+                                          {(reply.kutsero_fname || reply.kutsero_username || "A").charAt(0).toUpperCase()}
+                                        </Text>
+                                      </View>
+                                    )}
                                   </View>
-                                  <Text style={styles.commentText}>{reply.comment_text}</Text>
+                                  <View style={styles.commentContentContainer}>
+                                    <View style={styles.commentBubble}>
+                                      <Text style={styles.commentUser}>
+                                        {reply.kutsero_fname && reply.kutsero_lname
+                                          ? `${reply.kutsero_fname} ${reply.kutsero_lname}`
+                                          : reply.kutsero_username || "Anonymous User"}
+                                      </Text>
+                                      <Text style={styles.commentText}>{reply.comment_text}</Text>
+                                    </View>
+                                    <View style={styles.commentMetaRow}>
+                                      <Text style={styles.commentTime}>
+                                        {new Date(reply.comment_date).toLocaleString()}
+                                      </Text>
+                                    </View>
+                                  </View>
                                 </View>
                               ))
                             ) : (
@@ -1602,20 +1619,54 @@ export default function DashboardScreen() {
               </ScrollView>
 
               <View style={styles.commentInputContainer}>
-                <View style={{ flex: 1 }}>
-                  {replyingTo && (
-                    <View style={styles.replyingToContainer}>
-                      <Text style={styles.replyingToText}>
-                        {`Replying to ${selectedAnnouncementComments.find((c) => c.id === replyingTo)?.kutsero_fname || "comment"}`}
-                      </Text>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setReplyingTo(null)
-                          setReplyText("")
-                        }}
-                      >
-                        <Text style={styles.cancelReplyText}>✕</Text>
-                      </TouchableOpacity>
+                {replyingTo && (
+                  <View style={styles.replyingToContainerFull}>
+                    <View style={styles.replyingToLeftSection}>
+                      {(() => {
+                        const replyingToComment = selectedAnnouncementComments.find((c) => c.id === replyingTo)
+                        const replyingToProfileImage = replyingToComment?.kutsero_profile_image
+                        const replyingToInitial = (
+                          replyingToComment?.kutsero_fname ||
+                          replyingToComment?.kutsero_username ||
+                          "A"
+                        )
+                          .charAt(0)
+                          .toUpperCase()
+
+                        return replyingToProfileImage ? (
+                          <Image source={{ uri: replyingToProfileImage }} style={styles.replyingToAvatar} />
+                        ) : (
+                          <View style={styles.replyingToAvatar}>
+                            <Text style={styles.replyingToAvatarText}>{replyingToInitial}</Text>
+                          </View>
+                        )
+                      })()}
+                      <View style={styles.replyingToTextContainer}>
+                        <Text style={styles.replyingToLabel}>Replying to </Text>
+                        <Text style={styles.replyingToName}>
+                          {selectedAnnouncementComments.find((c) => c.id === replyingTo)?.kutsero_fname ||
+                            selectedAnnouncementComments.find((c) => c.id === replyingTo)?.kutsero_username ||
+                            "comment"}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setReplyingTo(null)
+                        setReplyText("")
+                      }}
+                      style={styles.cancelReplyButton}
+                    >
+                      <Text style={styles.cancelReplyText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <View style={styles.inputRow}>
+                  {currentUserProfileImage ? (
+                    <Image source={{ uri: currentUserProfileImage }} style={styles.currentUserAvatar} />
+                  ) : (
+                    <View style={styles.currentUserAvatar}>
+                      <Text style={styles.currentUserAvatarText}>{currentUser.charAt(0).toUpperCase()}</Text>
                     </View>
                   )}
                   <View style={styles.commentInputWrapper}>
@@ -1636,38 +1687,55 @@ export default function DashboardScreen() {
                       selectionColor="#1877F2"
                     />
                   </View>
+                  <TouchableOpacity
+                    style={[
+                      styles.submitButton,
+                      {
+                        opacity: (replyingTo ? replyText : newComment).trim() && !isPostingComment ? 1 : 0.5,
+                        backgroundColor:
+                          (replyingTo ? replyText : newComment).trim() && !isPostingComment ? "#1877F2" : "#E4E6EA",
+                      },
+                    ]}
+                    onPress={submitComment}
+                    disabled={!(replyingTo ? replyText : newComment).trim() || isPostingComment}
+                  >
+                    {isPostingComment ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.submitButtonText,
+                          {
+                            color:
+                              (replyingTo ? replyText : newComment).trim() && !isPostingComment ? "white" : "#65676B",
+                          },
+                        ]}
+                      >
+                        Post
+                      </Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity
-                  style={[
-                    styles.submitButton,
-                    {
-                      opacity: (replyingTo ? replyText : newComment).trim() && !isPostingComment ? 1 : 0.5,
-                      backgroundColor:
-                        (replyingTo ? replyText : newComment).trim() && !isPostingComment ? "#1877F2" : "#E4E6EA",
-                    },
-                  ]}
-                  onPress={submitComment}
-                  disabled={!(replyingTo ? replyText : newComment).trim() || isPostingComment}
-                >
-                  {isPostingComment ? (
-                    <ActivityIndicator size="small" color="white" />
-                  ) : (
-                    <Text
-                      style={[
-                        styles.submitButtonText,
-                        {
-                          color:
-                            (replyingTo ? replyText : newComment).trim() && !isPostingComment ? "white" : "#65676B",
-                        },
-                      ]}
-                    >
-                      Post
-                    </Text>
-                  )}
-                </TouchableOpacity>
               </View>
             </View>
           </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* Full Screen Image Modal for Horse */}
+      <Modal
+        visible={fullScreenImage !== null}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setFullScreenImage(null)}
+      >
+        <View style={styles.fullScreenContainer}>
+          <TouchableOpacity style={styles.fullScreenCloseButton} onPress={() => setFullScreenImage(null)}>
+            <Text style={styles.fullScreenCloseText}>✕</Text>
+          </TouchableOpacity>
+          {fullScreenImage && (
+            <Image source={{ uri: fullScreenImage }} style={styles.fullScreenImage} resizeMode="contain" />
+          )}
         </View>
       </Modal>
     </View>
@@ -1936,6 +2004,20 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#333",
   },
+  changeHorseButton: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(10),
+    borderRadius: scale(8),
+    alignItems: "center",
+    marginTop: verticalScale(8),
+    minHeight: 40,
+  },
+  changeHorseButtonText: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+  },
   horseCard: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1990,69 +2072,20 @@ const styles = StyleSheet.create({
     color: "#4CAF50",
     fontWeight: "500",
   },
-  changeHorseButton: {
-    backgroundColor: "#C17A47",
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(10),
-    borderRadius: scale(8),
-    alignItems: "center",
-    marginTop: verticalScale(8),
-    minHeight: 40,
-  },
-  changeHorseButtonText: {
-    color: "white",
-    fontSize: moderateScale(12),
-    fontWeight: "600",
-  },
   readyText: {
     fontSize: moderateScale(12),
     color: "#666",
   },
-  checkInOutContainer: {
-    marginTop: verticalScale(8),
-    marginBottom: verticalScale(8),
+  reminderSection: {
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
+    paddingTop: verticalScale(12),
   },
-  checkInButton: {
-    backgroundColor: "#4CAF50",
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(20),
-    borderRadius: scale(8),
-    alignItems: "center",
-    minHeight: 40,
-  },
-  checkInButtonText: {
-    color: "white",
-    fontSize: moderateScale(12),
-    fontWeight: "600",
-  },
-  checkedInContainer: {
-    gap: verticalScale(6),
-  },
-  checkedInInfo: {
-    backgroundColor: "#E8F5E8",
-    paddingVertical: verticalScale(6),
-    paddingHorizontal: scale(10),
-    borderRadius: scale(6),
-    borderLeftWidth: 3,
-    borderLeftColor: "#4CAF50",
-  },
-  checkedInText: {
-    color: "#2E7D32",
+  reminderText: {
     fontSize: moderateScale(11),
-    fontWeight: "500",
-  },
-  checkOutButton: {
-    backgroundColor: "#FF6B6B",
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(20),
-    borderRadius: scale(8),
-    alignItems: "center",
-    minHeight: 40,
-  },
-  checkOutButtonText: {
-    color: "white",
-    fontSize: moderateScale(12),
-    fontWeight: "600",
+    color: "#666",
+    lineHeight: moderateScale(14),
+    marginBottom: verticalScale(8),
   },
   activitiesSection: {
     backgroundColor: "white",
@@ -2239,32 +2272,70 @@ const styles = StyleSheet.create({
   commentsContainer: {
     flex: 1,
     paddingHorizontal: scale(20),
+    paddingTop: verticalScale(12),
     maxHeight: height * 0.5,
   },
   commentItem: {
-    paddingVertical: verticalScale(10),
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
-  },
-  commentHeader: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    paddingVertical: verticalScale(12),
+    alignItems: "flex-start",
+  },
+  commentAvatarContainer: {
+    marginRight: scale(8),
+  },
+  commentAvatar: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
     alignItems: "center",
-    marginBottom: verticalScale(4),
+    overflow: "hidden",
+  },
+  replyAvatar: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  commentAvatarText: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "white",
+  },
+  commentContentContainer: {
+    flex: 1,
+  },
+  commentBubble: {
+    backgroundColor: "#F0F2F5",
+    borderRadius: scale(18),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
   },
   commentUser: {
     fontSize: moderateScale(13),
     fontWeight: "600",
-    color: "#333",
+    color: "#050505",
+    marginBottom: verticalScale(2),
+  },
+  commentText: {
+    fontSize: moderateScale(13),
+    color: "#050505",
+    lineHeight: moderateScale(18),
+  },
+  commentMetaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: verticalScale(4),
+    paddingLeft: scale(12),
+    gap: scale(12),
   },
   commentTime: {
     fontSize: moderateScale(11),
-    color: "#999",
-  },
-  commentText: {
-    fontSize: moderateScale(12),
-    color: "#666",
-    lineHeight: moderateScale(16),
+    color: "#65676B",
   },
   loadingCommentsContainer: {
     padding: scale(20),
@@ -2287,15 +2358,82 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   commentInputContainer: {
-    flexDirection: "row",
-    padding: scale(12),
     borderTopWidth: 1,
     borderTopColor: "#E4E6EA",
     backgroundColor: "#FFFFFF",
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(12),
+  },
+  replyingToContainerFull: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#E3F2FD",
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(8),
+    marginBottom: verticalScale(8),
+  },
+  replyingToLeftSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  replyingToAvatar: {
+    width: scale(24),
+    height: scale(24),
+    borderRadius: scale(12),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: scale(8),
+    overflow: "hidden",
+  },
+  replyingToAvatarText: {
+    fontSize: moderateScale(11),
+    fontWeight: "600",
+    color: "white",
+  },
+  replyingToTextContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  replyingToLabel: {
+    fontSize: moderateScale(12),
+    color: "#1976D2",
+    fontWeight: "400",
+  },
+  replyingToName: {
+    fontSize: moderateScale(12),
+    color: "#1976D2",
+    fontWeight: "600",
+  },
+  cancelReplyButton: {
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+  },
+  inputRow: {
+    flexDirection: "row",
     alignItems: "flex-end",
     gap: scale(8),
   },
+  currentUserAvatar: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  currentUserAvatarText: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "white",
+  },
   commentInputWrapper: {
+    flex: 1,
     backgroundColor: "#F0F2F5",
     borderRadius: scale(20),
     minHeight: scale(36),
@@ -2325,6 +2463,52 @@ const styles = StyleSheet.create({
   },
   submitButtonText: {
     fontSize: moderateScale(14),
+    fontWeight: "600",
+  },
+  checkInOutContainer: {
+    marginTop: verticalScale(8),
+    marginBottom: verticalScale(8),
+  },
+  checkInButton: {
+    backgroundColor: "#4CAF50",
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(20),
+    borderRadius: scale(8),
+    alignItems: "center",
+    minHeight: 40,
+  },
+  checkInButtonText: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+  },
+  checkedInContainer: {
+    gap: verticalScale(6),
+  },
+  checkedInInfo: {
+    backgroundColor: "#E8F5E8",
+    paddingVertical: verticalScale(6),
+    paddingHorizontal: scale(10),
+    borderRadius: scale(6),
+    borderLeftWidth: 3,
+    borderLeftColor: "#4CAF50",
+  },
+  checkedInText: {
+    color: "#2E7D32",
+    fontSize: moderateScale(11),
+    fontWeight: "500",
+  },
+  checkOutButton: {
+    backgroundColor: "#FF6B6B",
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(20),
+    borderRadius: scale(8),
+    alignItems: "center",
+    minHeight: 40,
+  },
+  checkOutButtonText: {
+    color: "white",
+    fontSize: moderateScale(12),
     fontWeight: "600",
   },
   facebookPostCard: {
@@ -2367,19 +2551,6 @@ const styles = StyleSheet.create({
     width: "100%",
     height: "100%",
     borderRadius: scale(25),
-  },
-  defaultProfileIcon: {
-    width: "100%",
-    height: "100%",
-    borderRadius: scale(25),
-    backgroundColor: "#C17A47",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  defaultProfileText: {
-    color: "white",
-    fontSize: moderateScale(20),
-    fontWeight: "bold",
   },
   postHeaderContent: {
     flex: 1,
@@ -2490,32 +2661,29 @@ const styles = StyleSheet.create({
     gap: scale(16),
   },
   replyButton: {
-    paddingVertical: verticalScale(4),
+    paddingVertical: verticalScale(2),
   },
   replyButtonText: {
     fontSize: moderateScale(12),
-    color: "#1877F2",
+    color: "#65676B",
     fontWeight: "600",
   },
   viewRepliesButton: {
-    paddingVertical: verticalScale(4),
+    paddingVertical: verticalScale(2),
   },
   viewRepliesText: {
     fontSize: moderateScale(12),
     color: "#65676B",
-    fontWeight: "500",
+    fontWeight: "600",
   },
   repliesContainer: {
-    marginLeft: scale(32),
-    borderLeftWidth: 2,
-    borderLeftColor: "#E4E6EA",
-    paddingLeft: scale(12),
-    marginTop: verticalScale(8),
+    marginLeft: scale(44),
+    marginTop: verticalScale(4),
   },
   replyItem: {
+    flexDirection: "row",
     paddingVertical: verticalScale(8),
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F2F5",
+    alignItems: "flex-start",
   },
   replyingToContainer: {
     flexDirection: "row",
@@ -2531,12 +2699,12 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(12),
     color: "#1976D2",
     fontWeight: "500",
+    flex: 1,
   },
   cancelReplyText: {
-    fontSize: moderateScale(16),
+    fontSize: moderateScale(18),
     color: "#666",
     fontWeight: "bold",
-    paddingHorizontal: scale(8),
   },
   fullScreenContainer: {
     flex: 1,

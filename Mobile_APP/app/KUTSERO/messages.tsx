@@ -22,7 +22,6 @@ import * as SecureStore from "expo-secure-store"
 
 const { width, height } = Dimensions.get("window")
 
-// Keep all your existing scale functions
 const scale = (size: number) => {
   const scaleFactor = width / 375
   const scaledSize = size * scaleFactor
@@ -55,7 +54,7 @@ const getSafeAreaPadding = () => {
   }
 }
 
-const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
 
 interface Message {
   id?: string
@@ -73,6 +72,9 @@ interface Message {
   role?: string
   status?: string
   unread_count?: number
+  profile_image?: string
+  partner_name?: string
+  email?: string
 }
 
 interface ChatMessage {
@@ -80,6 +82,7 @@ interface ChatMessage {
   text: string
   isUser: boolean
   timestamp: string
+  date?: string
 }
 
 interface UserData {
@@ -108,9 +111,11 @@ interface AvailableUser {
   email: string
   phone?: string
   status: string
+  profile_image?: string
+  first_name?: string
+  last_name?: string
 }
 
-// Chat Interface Component
 const ChatInterface = ({
   isAIChat,
   messages,
@@ -139,6 +144,36 @@ const ChatInterface = ({
       }, 100)
     }
   }, [messages])
+
+  const getDateLabel = (dateString: string) => {
+    const messageDate = new Date(dateString)
+    const today = new Date()
+    const yesterday = new Date(today)
+    yesterday.setDate(yesterday.getDate() - 1)
+
+    // Normalize dates to start of day for comparison
+    const messageDateOnly = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate())
+    const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+    const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate())
+
+    if (messageDateOnly.getTime() === todayOnly.getTime()) return "Today"
+    if (messageDateOnly.getTime() === yesterdayOnly.getTime()) return "Yesterday"
+    
+    return messageDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+  }
+
+  const shouldShowDateLabel = (currentMessage: ChatMessage, previousMessage: ChatMessage | undefined) => {
+    if (!previousMessage) return true
+    
+    const currentDate = new Date(currentMessage.date || new Date().toISOString())
+    const previousDate = new Date(previousMessage.date || new Date().toISOString())
+    
+    // Normalize to start of day for comparison
+    const currentDateOnly = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate())
+    const previousDateOnly = new Date(previousDate.getFullYear(), previousDate.getMonth(), previousDate.getDate())
+    
+    return currentDateOnly.getTime() !== previousDateOnly.getTime()
+  }
 
   return (
     <KeyboardAvoidingView
@@ -174,21 +209,34 @@ const ChatInterface = ({
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {messages.map((message) => (
-          <View
-            key={message.id}
-            style={[styles.messageContainer, message.isUser ? styles.userMessageContainer : styles.aiMessageContainer]}
-          >
-            <View style={[styles.messageBubble, message.isUser ? styles.userMessageBubble : styles.aiMessageBubble]}>
-              <Text style={[styles.messageText, message.isUser ? styles.userMessageText : styles.aiMessageText]}>
-                {message.text}
-              </Text>
-              <Text style={[styles.messageTime, message.isUser ? styles.userMessageTime : styles.aiMessageTime]}>
-                {message.timestamp}
-              </Text>
+        {messages.map((message, index) => {
+          const previousMessage = index > 0 ? messages[index - 1] : undefined
+          const showDateLabel = shouldShowDateLabel(message, previousMessage)
+          
+          return (
+            <View key={message.id}>
+              {showDateLabel && (
+                <View style={styles.dateLabelContainer}>
+                  <Text style={styles.dateLabel}>
+                    {getDateLabel(message.date || new Date().toISOString())}
+                  </Text>
+                </View>
+              )}
+              <View
+                style={[styles.messageContainer, message.isUser ? styles.userMessageContainer : styles.aiMessageContainer]}
+              >
+                <View style={[styles.messageBubble, message.isUser ? styles.userMessageBubble : styles.aiMessageBubble]}>
+                  <Text style={[styles.messageText, message.isUser ? styles.userMessageText : styles.aiMessageText]}>
+                    {message.text}
+                  </Text>
+                </View>
+                <Text style={[styles.messageTime, message.isUser ? styles.userMessageTime : styles.aiMessageTime]}>
+                  {message.timestamp}
+                </Text>
+              </View>
             </View>
-          </View>
-        ))}
+          )
+        })}
       </ScrollView>
 
       <View style={[styles.chatInputContainer, { paddingBottom: Math.max(safeArea.bottom, 8) }]}>
@@ -225,7 +273,6 @@ export default function MessagesScreen() {
   const router = useRouter()
   const safeArea = getSafeAreaPadding()
 
-  // Tab state: 'conversations' or 'users'
   const [activeTab, setActiveTab] = useState<"conversations" | "users">("conversations")
   const [searchQuery, setSearchQuery] = useState("")
   const [roleFilter, setRoleFilter] = useState<string>("")
@@ -250,11 +297,78 @@ export default function MessagesScreen() {
       text: "Hello! I'm your AI assistant. How can I help you with horse care today?",
       isUser: false,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      date: new Date().toISOString(),
     },
   ])
   const [individualChatMessages, setIndividualChatMessages] = useState<ChatMessage[]>([])
 
-  // Load user data
+  const getInitials = (name: string) => {
+    if (!name) return "?"
+    const nameParts = name.trim().split(" ")
+    if (nameParts.length === 1) {
+      return nameParts[0].charAt(0).toUpperCase()
+    }
+    return (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase()
+  }
+
+  const getProfileImageSource = (email?: string, profileImage?: string, role?: string, name?: string) => {
+  console.log('getProfileImageSource called:', { email, profileImage, role, name })
+  
+  const normalizedRole = role?.toLowerCase() || ''
+  
+  if (normalizedRole.includes('ctu')) {
+    console.log('Returning CTU.jpg for role:', role)
+    return require("../../assets/images/CTU.jpg")
+  }
+  
+  if (normalizedRole.includes('dvmf')) {
+    console.log('Returning DVMF.png for role:', role)
+    return require("../../assets/images/DVMF.png")
+  }
+  
+  if (email?.toLowerCase().includes('ctu')) {
+    console.log('Returning CTU.jpg for email:', email)
+    return require("../../assets/images/CTU.jpg")
+  }
+  if (email?.toLowerCase().includes('dvmf')) {
+    console.log('Returning DVMF.png for email:', email)
+    return require("../../assets/images/DVMF.png")
+  }
+  
+  if (profileImage) {
+    console.log('Returning profile image:', profileImage)
+    return { uri: profileImage }
+  }
+  
+  console.log('Returning null, will show initials')
+  return null
+}
+
+  const renderAvatar = (item: Message | AvailableUser) => {
+    const name = "sender" in item ? item.sender : item.name
+    const email = item.email
+    const profileImage = item.profile_image
+    const role = item.role
+    
+    const imageSource = getProfileImageSource(email, profileImage, role, name)
+    
+    if (imageSource) {
+      return (
+        <Image
+          source={imageSource}
+          style={styles.avatarImage}
+          resizeMode="cover"
+        />
+      )
+    }
+    
+    return (
+      <View style={styles.initialsContainer}>
+        <Text style={styles.initialsText}>{getInitials(name)}</Text>
+      </View>
+    )
+  }
+
   const loadUserData = async () => {
     try {
       const storedUserData = await SecureStore.getItemAsync("user_data")
@@ -302,7 +416,6 @@ export default function MessagesScreen() {
     }
   }
 
-  // Load conversations from backend
   const loadConversations = async () => {
     if (!userData?.id) return
 
@@ -317,11 +430,10 @@ export default function MessagesScreen() {
       if (response.ok) {
         const data = await response.json()
         if (data.conversations) {
-          // Map the backend response to match our frontend structure
           const mappedConversations = data.conversations.map((conv: any, index: number) => ({
             id: conv.id || `conv-${index}`,
             partner_id: conv.partner_id,
-            user_id: conv.partner_id, // For backward compatibility
+            user_id: conv.partner_id,
             sender: conv.sender || conv.partner_name || conv.name || "Unknown User",
             preview: conv.preview || conv.last_message || "",
             last_message: conv.last_message || "",
@@ -337,20 +449,18 @@ export default function MessagesScreen() {
             role: conv.role || conv.partner_role || "",
             status: conv.status || "",
             unread_count: conv.unread_count || (conv.is_read ? 0 : 1),
+            profile_image: conv.profile_image || conv.partner_profile_image || null,
+            email: conv.email || conv.partner_email || "",
           }))
 
-          console.log("Loaded conversations:", mappedConversations)
           setConversations(mappedConversations)
         }
-      } else {
-        console.error("Failed to load conversations:", response.status)
       }
     } catch (error) {
       console.error("Error loading conversations:", error)
     }
   }
 
-  // Load available users from backend
   const loadAvailableUsers = async () => {
     if (!userData?.id) return
 
@@ -375,20 +485,14 @@ export default function MessagesScreen() {
         if (data.users) {
           setAvailableUsers(data.users)
         }
-      } else {
-        console.error("Failed to load available users:", response.status)
       }
     } catch (error) {
       console.error("Error loading available users:", error)
     }
   }
 
-  // Load messages for specific conversation
   const loadChatMessages = async (otherUserId: number | string) => {
-    if (!userData?.id || !otherUserId) {
-      console.error("Missing user IDs:", { currentUserId: userData?.id, otherUserId })
-      return
-    }
+    if (!userData?.id || !otherUserId) return
 
     try {
       const response = await fetch(
@@ -404,17 +508,19 @@ export default function MessagesScreen() {
       if (response.ok) {
         const data = await response.json()
         if (data.success && data.messages) {
-          setIndividualChatMessages(data.messages)
+          // Map messages to include the date field from created_at
+          const mappedMessages = data.messages.map((msg: any) => ({
+            ...msg,
+            date: msg.created_at || new Date().toISOString()
+          }))
+          setIndividualChatMessages(mappedMessages)
         }
-      } else {
-        console.error("Failed to load messages:", response.status)
       }
     } catch (error) {
       console.error("Error loading chat messages:", error)
     }
   }
 
-  // Send message to backend
   const sendMessageToBackend = async (receiverId: number | string, content: string) => {
     if (!userData?.id) return null
 
@@ -433,7 +539,11 @@ export default function MessagesScreen() {
 
       if (response.ok) {
         const data = await response.json()
-        return data.message
+        // Return message with date field
+        return {
+          ...data.message,
+          date: data.message.created_at || new Date().toISOString()
+        }
       } else {
         const errorData = await response.json()
         Alert.alert("Error", errorData.error || "Failed to send message")
@@ -446,14 +556,8 @@ export default function MessagesScreen() {
     }
   }
 
-  // Load AI chat history from backend
   const loadAIChatHistory = async () => {
-    if (!userData?.access_token) {
-      console.log("[v0] No user data available for loading chat history")
-      return
-    }
-
-    console.log("[v0] Loading AI chat history...")
+    if (!userData?.access_token) return
 
     try {
       const response = await fetch(`${API_BASE_URL}/get_chat_history/`, {
@@ -464,103 +568,87 @@ export default function MessagesScreen() {
         },
       })
 
-      console.log("[v0] Chat history response status:", response.status)
-
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] Chat history data:", data)
 
         if (data.success && data.history && data.history.length > 0) {
-          // Convert backend history to chat messages format
           const historyMessages: ChatMessage[] = []
 
           data.history.forEach((item: any) => {
-            // Add user prompt
+            const messageDate = new Date()
             historyMessages.push({
               id: `${item.id}-prompt`,
               text: item.prompt,
               isUser: true,
-              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              timestamp: messageDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              date: messageDate.toISOString(),
             })
 
-            // Add AI answer
             historyMessages.push({
               id: `${item.id}-answer`,
               text: item.answer,
               isUser: false,
-              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              timestamp: messageDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              date: messageDate.toISOString(),
             })
           })
 
-          console.log("[v0] Loaded chat history messages:", historyMessages.length)
-          // Set the loaded history
           setAiChatMessages(historyMessages)
         } else {
-          console.log("[v0] No chat history found, showing welcome message")
-          // No history, show welcome message
           setAiChatMessages([
             {
               id: "1",
               text: "Hello! I'm your AI assistant. How can I help you with horse care today?",
               isUser: false,
               timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              date: new Date().toISOString(),
             },
           ])
         }
-      } else {
-        console.error("[v0] Failed to load chat history:", response.status)
       }
     } catch (error) {
-      console.error("[v0] Error loading AI chat history:", error)
-      // Keep default welcome message on error
+      console.error("Error loading AI chat history:", error)
     }
   }
 
-  // Handle opening chat from conversation or user list
   const openChat = useCallback(
     (contact: Message | AvailableUser) => {
-      // Determine the user ID based on the contact type
       let userId: string | number | undefined
 
       if ("partner_id" in contact && contact.partner_id) {
-        // From conversations list - has partner_id
         userId = contact.partner_id
       } else if ("user_id" in contact && contact.user_id) {
-        // Has user_id field
         userId = contact.user_id
       } else if ("id" in contact && contact.id) {
-        // From users list - has id
         userId = contact.id
       }
 
-      // Only proceed if we have a valid user ID
       if (!userId || userId === undefined) {
-        console.error("Invalid user ID:", contact)
         Alert.alert("Error", "Unable to open chat. Invalid user ID.")
         return
       }
 
-      console.log("Opening chat with user ID:", userId)
       setSelectedContact(contact)
       setSelectedUserId(userId as any)
       setShowIndividualChat(true)
       setChatInput("")
-      setIndividualChatMessages([]) // Clear previous messages
+      setIndividualChatMessages([])
       loadChatMessages(userId as any)
     },
     [userData],
   )
 
-  // Handle sending message
   const handleSendMessage = useCallback(
     async (isAIChat = true) => {
       if (!chatInput.trim()) return
 
+      const currentDate = new Date()
       const userMessage: ChatMessage = {
         id: Date.now().toString(),
         text: chatInput.trim(),
         isUser: true,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        timestamp: currentDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        date: currentDate.toISOString(),
       }
 
       if (isAIChat) {
@@ -583,34 +671,39 @@ export default function MessagesScreen() {
             const data = await response.json()
             const aiText = data.answer || data.reply || "Sorry, I couldn't understand that."
 
+            const responseDate = new Date()
             const responseMessage: ChatMessage = {
               id: (Date.now() + 1).toString(),
               text: aiText,
               isUser: false,
-              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              timestamp: responseDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              date: responseDate.toISOString(),
             }
 
             setAiChatMessages((prev) => [...prev, responseMessage])
           } else {
+            const errorDate = new Date()
             const errorMessage: ChatMessage = {
               id: (Date.now() + 1).toString(),
               text: "Sorry, I'm having trouble connecting. Please try again later.",
               isUser: false,
-              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              timestamp: errorDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              date: errorDate.toISOString(),
             }
             setAiChatMessages((prev) => [...prev, errorMessage])
           }
         } catch (error) {
+          const errorDate = new Date()
           const errorMessage: ChatMessage = {
             id: (Date.now() + 1).toString(),
             text: "Sorry, I'm having trouble connecting. Please check your internet connection.",
             isUser: false,
-            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            timestamp: errorDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            date: errorDate.toISOString(),
           }
           setAiChatMessages((prev) => [...prev, errorMessage])
         }
       } else {
-        // Individual chat
         if (!selectedUserId) {
           Alert.alert("Error", "Cannot send message. Invalid recipient.")
           return
@@ -622,15 +715,18 @@ export default function MessagesScreen() {
         const sentMessage = await sendMessageToBackend(selectedUserId, userMessage.text)
 
         if (!sentMessage) {
-          // Remove the message if it failed to send
           setIndividualChatMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id))
+        } else {
+          // Update the message with the server response data
+          setIndividualChatMessages((prev) => 
+            prev.map((msg) => msg.id === userMessage.id ? { ...msg, ...sentMessage } : msg)
+          )
         }
       }
     },
     [chatInput, selectedUserId, userData],
   )
 
-  // Refresh handler
   const handleRefresh = async () => {
     setIsRefreshing(true)
     await loadConversations()
@@ -638,12 +734,10 @@ export default function MessagesScreen() {
     setIsRefreshing(false)
   }
 
-  // Initial load
   useEffect(() => {
     loadUserData()
   }, [])
 
-  // Load data when userData is available
   useEffect(() => {
     if (userData) {
       loadConversations()
@@ -651,7 +745,6 @@ export default function MessagesScreen() {
     }
   }, [userData])
 
-  // Reload when tab changes or search/filter changes
   useEffect(() => {
     if (userData) {
       if (activeTab === "users") {
@@ -669,18 +762,16 @@ export default function MessagesScreen() {
     }, [userData]),
   )
 
-  // Callbacks
   const handleBackFromAI = useCallback(() => setShowAIChat(false), [])
   const handleBackFromIndividual = useCallback(() => {
     setShowIndividualChat(false)
     setSelectedContact(null)
     setSelectedUserId(null)
     setIndividualChatMessages([])
-    loadConversations() // Refresh conversations after closing chat
+    loadConversations()
   }, [userData])
 
   const handleShowAIChat = useCallback(async () => {
-    console.log("[v0] Opening AI chat...")
     await loadAIChatHistory()
     setShowAIChat(true)
   }, [userData])
@@ -689,7 +780,6 @@ export default function MessagesScreen() {
   const handleAISendMessage = useCallback(() => handleSendMessage(true), [handleSendMessage])
   const handleIndividualSendMessage = useCallback(() => handleSendMessage(false), [handleSendMessage])
 
-  // Filter conversations based on search
   const filteredConversations = useMemo(() => {
     if (!searchQuery) return conversations
 
@@ -818,7 +908,6 @@ export default function MessagesScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
 
-      {/* Header */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
         <View style={styles.headerLeft} />
         <View style={styles.headerCenter}>
@@ -830,7 +919,6 @@ export default function MessagesScreen() {
         </View>
       </View>
 
-      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <View style={styles.searchWrapper}>
           <TextInput
@@ -848,7 +936,6 @@ export default function MessagesScreen() {
         </View>
       </View>
 
-      {/* Tab Switcher */}
       <View style={styles.tabSwitcher}>
         <TouchableOpacity
           style={[styles.tabSwitcherButton, activeTab === "conversations" && styles.activeTabSwitcher]}
@@ -871,7 +958,6 @@ export default function MessagesScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Role Filter for Users Tab */}
       {activeTab === "users" && (
         <View style={styles.filterContainer}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
@@ -907,14 +993,12 @@ export default function MessagesScreen() {
         </View>
       )}
 
-      {/* Content */}
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={["#C17A47"]} />}
       >
         {activeTab === "conversations" ? (
-          // Conversations Tab
           filteredConversations.length > 0 ? (
             filteredConversations.map((message) => (
               <TouchableOpacity
@@ -925,7 +1009,7 @@ export default function MessagesScreen() {
               >
                 <View style={styles.messageLeft}>
                   <View style={styles.avatarContainer}>
-                    <Text style={styles.avatarText}>{message.avatar}</Text>
+                    {renderAvatar(message)}
                   </View>
                 </View>
                 <View style={styles.messageContent}>
@@ -959,29 +1043,23 @@ export default function MessagesScreen() {
               <Text style={styles.emptyStateSubtext}>Start a conversation from the Users tab</Text>
             </View>
           )
-        ) : // Users Tab
-        availableUsers.length > 0 ? (
+        ) : availableUsers.length > 0 ? (
           availableUsers.map((user) => (
             <TouchableOpacity key={user.id} style={styles.userItem} onPress={() => openChat(user)} activeOpacity={0.7}>
               <View style={styles.messageLeft}>
                 <View style={styles.avatarContainer}>
-                  <Text style={styles.avatarText}>{user.avatar}</Text>
+                  {renderAvatar(user)}
                 </View>
               </View>
               <View style={styles.messageContent}>
                 <Text style={styles.senderName}>{user.name}</Text>
-                <Text style={styles.userEmail}>{user.email}</Text>
+                {user.phone && <Text style={styles.userEmail}>{user.phone}</Text>}
                 <View style={styles.userInfoRow}>
                   <Text style={styles.roleText}>{user.role.replace("_", " ")}</Text>
-                  {user.status === "approved" && (
-                    <View style={styles.approvedBadge}>
-                      <Text style={styles.approvedBadgeText}>✓ Verified</Text>
-                    </View>
-                  )}
                 </View>
               </View>
               <View style={styles.chatIconContainer}>
-                <Text style={styles.chatIcon}>Chat</Text>
+                <Text style={styles.chatIcon}>💬</Text>
               </View>
             </TouchableOpacity>
           ))
@@ -993,7 +1071,6 @@ export default function MessagesScreen() {
         )}
       </ScrollView>
 
-      {/* Floating AI Assistant Circle */}
       <TouchableOpacity
         style={[styles.floatingAI, { bottom: dynamicSpacing(80) + safeArea.bottom }]}
         onPress={handleShowAIChat}
@@ -1004,7 +1081,6 @@ export default function MessagesScreen() {
         </View>
       </TouchableOpacity>
 
-      {/* Bottom Tab Navigation */}
       <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
         <TabButton iconSource={null} label="Home" tabKey="home" isActive={false} />
         <TabButton
@@ -1238,6 +1314,25 @@ const styles = StyleSheet.create({
     backgroundColor: "#F0F0F0",
     justifyContent: "center",
     alignItems: "center",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(24),
+  },
+  initialsContainer: {
+    width: scale(48),
+    height: scale(48),
+    borderRadius: scale(24),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  initialsText: {
+    fontSize: moderateScale(18),
+    fontWeight: "600",
+    color: "white",
   },
   avatarText: {
     fontSize: moderateScale(20),
@@ -1311,9 +1406,7 @@ const styles = StyleSheet.create({
     marginLeft: scale(8),
   },
   chatIcon: {
-    fontSize: moderateScale(12),
-    color: "#C17A47",
-    fontWeight: "500",
+    fontSize: moderateScale(20),
   },
   emptyState: {
     alignItems: "center",
@@ -1342,7 +1435,8 @@ const styles = StyleSheet.create({
     paddingBottom: scale(20),
   },
   messageContainer: {
-    marginBottom: verticalScale(12),
+    marginBottom: verticalScale(4),
+    flexDirection: "column",
   },
   userMessageContainer: {
     alignItems: "flex-end",
@@ -1355,6 +1449,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(12),
     paddingVertical: verticalScale(8),
     borderRadius: scale(16),
+    marginBottom: verticalScale(2),
   },
   userMessageBubble: {
     backgroundColor: "#C17A47",
@@ -1372,7 +1467,6 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: moderateScale(14),
     lineHeight: moderateScale(18),
-    marginBottom: verticalScale(4),
   },
   userMessageText: {
     color: "white",
@@ -1382,13 +1476,28 @@ const styles = StyleSheet.create({
   },
   messageTime: {
     fontSize: moderateScale(10),
+    marginHorizontal: scale(8),
+    marginBottom: verticalScale(8),
+    textAlign: "center",
   },
   userMessageTime: {
-    color: "rgba(255,255,255,0.8)",
-    textAlign: "right",
+    color: "#999",
   },
   aiMessageTime: {
     color: "#999",
+  },
+  dateLabelContainer: {
+    alignItems: "center",
+    marginVertical: verticalScale(16),
+  },
+  dateLabel: {
+    fontSize: moderateScale(12),
+    color: "#999",
+    fontWeight: "500",
+    backgroundColor: "#E8E8E8",
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(4),
+    borderRadius: scale(12),
   },
   chatInputContainer: {
     flexDirection: "row",

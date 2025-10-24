@@ -58,7 +58,7 @@ export default function LoginScreen() {
 
       console.log("Attempting login for:", email.trim().toLowerCase())
 
-      const response = await fetch("http://192.168.1.8:8000/api/login_mobile/", {
+      const response = await fetch("http://192.168.1.9:8000/api/login_mobile/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

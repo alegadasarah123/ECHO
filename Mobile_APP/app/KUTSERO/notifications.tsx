@@ -15,30 +15,8 @@ import {
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
-
-// Optional: Try to import Notifications (will be undefined if not installed)
-let Notifications: any;
-let Device: any;
-try {
-  Notifications = require('expo-notifications');
-  Device = require('expo-device');
-} catch (e) {
-  console.log('expo-notifications not installed, notification features will be limited');
-}
 
 const { width, height } = Dimensions.get("window")
-
-// Configure notification handler
-if (Notifications) {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-    }),
-  });
-}
 
 // Scaling functions
 const scale = (size: number) => {
@@ -94,61 +72,14 @@ interface Notification {
   userId?: string | null
   scheduledTime?: string
   horseName?: string
+  timestamp?: string
+  isNew?: boolean
 }
 
 interface NotificationsPageProps {
   onBack: () => void
   userName: string
 }
-
-// =============================================================================
-// NOTIFICATION PERMISSION & SETUP
-// =============================================================================
-
-async function setupNotifications(): Promise<boolean> {
-  if (!Notifications || !Device) {
-    console.log('Notifications not available');
-    return false;
-  }
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('feed-water', {
-      name: 'Feed & Water Reminders',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#C17A47',
-      sound: 'default',
-    });
-  }
-
-  if (Device.isDevice) {
-    const { status: existingStatus } = await Notifications.getPermissionsAsync();
-    let finalStatus = existingStatus;
-    
-    if (existingStatus !== 'granted') {
-      const { status } = await Notifications.requestPermissionsAsync();
-      finalStatus = status;
-    }
-    
-    if (finalStatus !== 'granted') {
-      Alert.alert(
-        'Permission Required', 
-        'Please enable notifications to receive feed and water reminders.',
-        [{ text: 'OK' }]
-      );
-      return false;
-    }
-    
-    return true;
-  } else {
-    console.log('Physical device required for notifications');
-    return false;
-  }
-}
-
-// =============================================================================
-// NOTIFICATION TRACKING
-// =============================================================================
 
 async function trackNotificationViewed(type: 'feed' | 'water' | 'announcement'): Promise<void> {
   try {
@@ -184,150 +115,101 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
   const [lastViewedAnnouncementTime, setLastViewedAnnouncementTime] = useState<string | null>(null)
   const [lastViewedFeedTime, setLastViewedFeedTime] = useState<string | null>(null)
   const [lastViewedWaterTime, setLastViewedWaterTime] = useState<string | null>(null)
+  const [newFeedWaterCount, setNewFeedWaterCount] = useState(0)
 
-  const notificationListener = useRef<any>(null);
-  const responseListener = useRef<any>(null);
+  const checkIntervalRef = useRef<any>(null);
 
-  // Helper function to parse time strings like "7:00 AM" to hour/minute
-  const parseTimeString = (timeStr: string): { hour: number; minute: number } | null => {
+  const checkScheduledTimes = async () => {
     try {
-      const match = timeStr.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/i);
-      if (!match) return null;
-
-      let hour = parseInt(match[1]);
-      const minute = parseInt(match[2]);
-      const period = match[3].toUpperCase();
-
-      if (period === 'PM' && hour !== 12) {
-        hour += 12;
-      } else if (period === 'AM' && hour === 12) {
-        hour = 0;
-      }
-
-      return { hour, minute };
-    } catch (error) {
-      console.error('[Notification] Error parsing time:', error);
-      return null;
-    }
-  };
-
-  // Function to schedule feed/water notifications
-  const scheduleFeedWaterNotifications = async () => {
-    if (!Notifications) {
-      console.log('[Notification] Expo Notifications not available');
-      return;
-    }
-
-    try {
-      // Cancel all existing feed/water notifications
-      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-      for (const notif of scheduled) {
-        const data = notif.content.data as any;
-        if (data.type === 'feed' || data.type === 'water') {
-          await Notifications.cancelScheduledNotificationAsync(notif.identifier);
-        }
-      }
-
-      // Fetch user's horses
       const encodedUser = encodeURIComponent(userName);
-      const horsesResponse = await fetch(`http://192.168.1.8:8000/api/kutsero/horses/?kutsero_id=${encodedUser}`);
       
-      if (!horsesResponse.ok) {
-        console.error('[Notification] Failed to fetch horses');
+      const response = await fetch(
+        `http://192.168.1.9:8000/api/kutsero/check-current-schedules/?kutsero_id=${encodedUser}`
+      );
+      
+      if (!response.ok) {
+        console.error('[Notification] Failed to check current schedules');
         return;
       }
-
-      const horsesData = await horsesResponse.json();
-      const horses = horsesData.data || [];
-
-      for (const horse of horses) {
-        const horseId = horse.horse_id;
-        const horseName = horse.horse_name;
-
-        // Fetch feed schedule
-        const feedResponse = await fetch(
-          `http://192.168.1.8:8000/api/kutsero/feed/schedule/?kutsero_id=${encodedUser}&horse_id=${horseId}`
-        );
+      
+      const data = await response.json();
+      console.log('[Notification] Check schedules response:', data);
+      
+      if (!data.success || !data.data || data.data.length === 0) {
+        console.log('[Notification] No schedules due at this time');
+        return;
+      }
+      
+      const now = new Date();
+      const displayTime = now.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }) + " at " + now.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      
+      let newNotificationsAdded = false;
+      
+      for (const schedule of data.data) {
+        const notifId = schedule.id;
+        const triggeredKey = `triggered_${notifId}`;
         
-        if (feedResponse.ok) {
-          const feedData = await feedResponse.json();
-          const feeds = feedData.data || [];
-
-          for (const feed of feeds) {
-            if (feed.fd_time) {
-              const scheduledTime = parseTimeString(feed.fd_time);
-              if (scheduledTime) {
-                await Notifications.scheduleNotificationAsync({
-                  content: {
-                    title: `🍽️ ${feed.fd_meal_type} Time!`,
-                    body: `Time to feed ${horseName} - ${feed.fd_food_type} (${feed.fd_qty})`,
-                    data: { 
-                      type: 'feed', 
-                      horseName,
-                      horseId,
-                      mealType: feed.fd_meal_type,
-                      fdId: feed.fd_id
-                    },
-                    sound: 'default',
-                  },
-                  trigger: {
-                    hour: scheduledTime.hour,
-                    minute: scheduledTime.minute,
-                    repeats: true,
-                  },
-                });
-                console.log(`[Notification] Scheduled feed for ${horseName} at ${feed.fd_time}`);
-              }
-            }
-          }
+        const alreadyTriggered = await AsyncStorage.getItem(triggeredKey);
+        
+        if (!alreadyTriggered) {
+          const triggeredNotif = {
+            id: notifId,
+            title: schedule.title,
+            message: schedule.message,
+            time: displayTime,
+            horseName: schedule.horse_name,
+            scheduledTime: schedule.scheduled_time,
+            timestamp: now.toISOString(),
+            isNew: true,
+          };
+          
+          await AsyncStorage.setItem(triggeredKey, JSON.stringify(triggeredNotif));
+          console.log('[Notification] Triggered notification:', notifId);
+          newNotificationsAdded = true;
+          
+          const countKey = 'new_feed_water_count';
+          const currentCount = await AsyncStorage.getItem(countKey);
+          const newCount = currentCount ? parseInt(currentCount) + 1 : 1;
+          await AsyncStorage.setItem(countKey, newCount.toString());
+          setNewFeedWaterCount(newCount);
         }
-
-        // Fetch water schedule
-        const waterResponse = await fetch(
-          `http://192.168.1.8:8000/api/kutsero/water/schedule/?kutsero_id=${encodedUser}&horse_id=${horseId}`
-        );
-        
-        if (waterResponse.ok) {
-          const waterData = await waterResponse.json();
-          const waters = waterData.data || [];
-
-          for (const water of waters) {
-            if (water.water_time) {
-              const scheduledTime = parseTimeString(water.water_time);
-              if (scheduledTime) {
-                await Notifications.scheduleNotificationAsync({
-                  content: {
-                    title: `💧 ${water.water_period} Watering Time!`,
-                    body: `Time to give ${horseName} water - ${water.water_amount}`,
-                    data: { 
-                      type: 'water', 
-                      horseName,
-                      horseId,
-                      period: water.water_period,
-                      waterId: water.water_id
-                    },
-                    sound: 'default',
-                  },
-                  trigger: {
-                    hour: scheduledTime.hour,
-                    minute: scheduledTime.minute,
-                    repeats: true,
-                  },
-                });
-                console.log(`[Notification] Scheduled water for ${horseName} at ${water.water_time}`);
-              }
+      }
+      
+      if (newNotificationsAdded) {
+        await fetchNotifications();
+      }
+      
+      const allKeys = await AsyncStorage.getAllKeys();
+      const triggeredKeys = allKeys.filter(key => key.startsWith('triggered_'));
+      
+      for (const key of triggeredKeys) {
+        const data = await AsyncStorage.getItem(key);
+        if (data) {
+          try {
+            const parsed = JSON.parse(data);
+            const notifTime = new Date(parsed.time);
+            const diffHours = (now.getTime() - notifTime.getTime()) / 1000 / 60 / 60;
+            if (diffHours > 24) {
+              await AsyncStorage.removeItem(key);
+              console.log('[Notification] Cleaned up old notification:', key);
             }
+          } catch (e) {
+            console.error('[Notification] Error cleaning up:', e);
           }
         }
       }
-
-      console.log('[Notification] All feed/water notifications scheduled successfully');
     } catch (error) {
-      console.error('[Notification] Error scheduling notifications:', error);
+      console.error('[Notification] Error checking scheduled times:', error);
     }
   };
 
-  // Helper function to map announcement type
   const mapAnnouncementType = (title: string, content: string): Notification["type"] => {
     const lowerTitle = title.toLowerCase()
     const lowerContent = content.toLowerCase()
@@ -370,7 +252,6 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
     return "system"
   }
 
-  // Helper function to map priority
   const mapPriority = (title: string, content: string): Notification["priority"] => {
     const lowerTitle = title.toLowerCase()
     const lowerContent = content.toLowerCase()
@@ -413,7 +294,6 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
     return "medium"
   }
 
-  // Load read status from SecureStore
   const loadReadStatus = async () => {
     try {
       const readStatusString = await SecureStore.getItemAsync("notification_read_status")
@@ -426,7 +306,6 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
     return {}
   }
 
-  // Save read status to SecureStore
   const saveReadStatus = async (readStatus: { [key: string]: boolean }) => {
     try {
       await SecureStore.setItemAsync("notification_read_status", JSON.stringify(readStatus))
@@ -435,47 +314,78 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
     }
   }
 
-  // Fetch scheduled notifications from Expo
-  const fetchScheduledNotifications = async () => {
-    if (!Notifications) {
-      return [];
-    }
-
+  const fetchTriggeredNotifications = async () => {
     try {
-      const scheduledNotifs = await Notifications.getAllScheduledNotificationsAsync();
-      const savedReadStatus = await loadReadStatus();
+      const encodedUser = encodeURIComponent(userName);
+      const response = await fetch(
+        `http://192.168.1.9:8000/api/kutsero/feed-water-notifications/?kutsero_id=${encodedUser}`
+      );
       
-      const scheduledNotifications: Notification[] = scheduledNotifs.map((notif: any) => {
-        const data = notif.content.data as any;
-        const notifId = notif.identifier;
-        const trigger = notif.trigger as any;
-        
-        return {
-          id: notifId,
-          title: notif.content.title || 'Reminder',
-          message: notif.content.body || '',
-          time: trigger.date ? new Date(trigger.date).toLocaleString() : 'Scheduled',
-          type: 'reminder' as const,
-          priority: 'medium' as const,
-          read: Boolean(savedReadStatus[notifId] || false),
-          scheduledTime: trigger.date ? new Date(trigger.date).toISOString() : undefined,
-          horseName: data.horseName,
-        };
-      });
-
-      console.log('[Notification] Fetched scheduled notifications:', scheduledNotifications.length);
-      return scheduledNotifications;
+      if (!response.ok) {
+        console.error('[Notification] Failed to fetch feed/water notifications');
+        return [];
+      }
+      
+      const data = await response.json();
+      console.log('[Notification] Fetched feed/water notifications:', data);
+      
+      if (!data.success || !data.data) {
+        return [];
+      }
+      
+      const savedReadStatus = await loadReadStatus();
+      const triggeredNotifications: Notification[] = [];
+      
+      const allKeys = await AsyncStorage.getAllKeys();
+      const triggeredKeys = allKeys.filter(key => key.startsWith('triggered_'));
+      const triggeredIds = new Set(triggeredKeys.map(key => key.replace('triggered_', '')));
+      
+      for (const notif of data.data) {
+        if (triggeredIds.has(notif.id)) {
+          const triggerData = await AsyncStorage.getItem(`triggered_${notif.id}`);
+          let displayTime = notif.timestamp;
+          let timestamp = notif.timestamp;
+          let isNew = false;
+          
+          if (triggerData) {
+            try {
+              const parsed = JSON.parse(triggerData);
+              displayTime = parsed.time || notif.timestamp;
+              timestamp = parsed.timestamp || notif.timestamp;
+              isNew = parsed.isNew || false;
+            } catch (e) {
+              console.error('[Notification] Error parsing trigger data:', e);
+            }
+          }
+          
+          triggeredNotifications.push({
+            id: notif.id,
+            title: notif.title,
+            message: notif.message,
+            time: displayTime,
+            type: 'reminder' as const,
+            priority: 'medium' as const,
+            read: Boolean(savedReadStatus[notif.id] || false),
+            horseName: notif.horse_name,
+            scheduledTime: notif.scheduled_time,
+            timestamp: timestamp,
+            isNew: isNew,
+          });
+        }
+      }
+      
+      console.log('[Notification] Processed triggered notifications:', triggeredNotifications.length);
+      return triggeredNotifications;
     } catch (error) {
-      console.error('[Notification] Error fetching scheduled notifications:', error);
+      console.error('[Notification] Error fetching triggered notifications:', error);
       return [];
     }
   };
 
-  // Fetch announcements from API
   const fetchAnnouncements = async () => {
     try {
       const encodedUser = encodeURIComponent(userName)
-      const apiUrl = `http://192.168.1.8:8000/api/kutsero/announcements/?user=${encodedUser}`
+      const apiUrl = `http://192.168.1.9:8000/api/kutsero/announcements/?user=${encodedUser}`
 
       console.log("[v0] Fetching announcements from:", apiUrl)
 
@@ -573,6 +483,8 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
           read: Boolean(savedReadStatus[notificationId] || false),
           imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
           userId: userId,
+          timestamp: announceDate,
+          isNew: false,
         }
       })
 
@@ -586,22 +498,19 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
     }
   }
 
-  // Fetch all notifications
   const fetchNotifications = async () => {
     try {
-      // Get announcements from API
       const announcements = await fetchAnnouncements();
+      const triggered = await fetchTriggeredNotifications();
       
-      // Get scheduled feed/water notifications (they'll be shown as reminders)
-      const scheduled = await fetchScheduledNotifications();
+      const allNotifications = [...announcements, ...triggered];
       
-      // Combine all notifications
-      const allNotifications = [...announcements, ...scheduled];
-      
-      // Sort by time (most recent first)
       allNotifications.sort((a: Notification, b: Notification) => {
-        const timeA = a.scheduledTime ? new Date(a.scheduledTime).getTime() : new Date(a.time).getTime();
-        const timeB = b.scheduledTime ? new Date(b.scheduledTime).getTime() : new Date(b.time).getTime();
+        if (a.isNew && !b.isNew) return -1;
+        if (!a.isNew && b.isNew) return 1;
+        
+        const timeA = new Date(a.timestamp || a.time).getTime();
+        const timeB = new Date(b.timestamp || b.time).getTime();
         return timeB - timeA;
       });
 
@@ -616,10 +525,6 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
   };
 
   useEffect(() => {
-    // Setup notifications
-    setupNotifications();
-    
-    // Load last viewed times
     const loadLastViewed = async () => {
       const announceTime = await getLastViewedTime('announcement');
       const feedTime = await getLastViewedTime('feed');
@@ -628,39 +533,25 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       setLastViewedAnnouncementTime(announceTime);
       setLastViewedFeedTime(feedTime);
       setLastViewedWaterTime(waterTime);
+      
+      const countKey = 'new_feed_water_count';
+      const count = await AsyncStorage.getItem(countKey);
+      setNewFeedWaterCount(count ? parseInt(count) : 0);
     };
     
     loadLastViewed();
     fetchNotifications();
     
-    // Schedule feed/water notifications
-    scheduleFeedWaterNotifications();
-    
-    if (!Notifications) {
-      return;
-    }
+    checkIntervalRef.current = setInterval(() => {
+      checkScheduledTimes();
+    }, 60000);
 
-    // Listen for notification when app is in foreground
-    notificationListener.current = Notifications.addNotificationReceivedListener((notification: any) => {
-      console.log('[Notification] Received in foreground:', notification);
-      // Refresh notifications list
-      fetchNotifications();
-    });
-
-    // Listen for notification responses (when user taps notification)
-    responseListener.current = Notifications.addNotificationResponseReceivedListener((response: any) => {
-      console.log('[Notification] User tapped notification:', response);
-      const data = response.notification.request.content.data as any;
-      
-      // Mark as read and show details
-      if (data.type === 'feed' || data.type === 'water') {
-        fetchNotifications();
-      }
-    });
+    checkScheduledTimes();
 
     return () => {
-      notificationListener.current?.remove();
-      responseListener.current?.remove();
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+      }
     };
   }, [userName]);
 
@@ -673,7 +564,32 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
 
     await saveReadStatus(updatedReadStatus)
 
-    setNotifications((prev) => prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n)))
+    setNotifications((prev) => prev.map((n) => {
+      if (n.id === notificationId) {
+        return { ...n, read: true, isNew: false };
+      }
+      return n;
+    }))
+    
+    const triggerData = await AsyncStorage.getItem(`triggered_${notificationId}`);
+    if (triggerData) {
+      try {
+        const parsed = JSON.parse(triggerData);
+        parsed.isNew = false;
+        await AsyncStorage.setItem(`triggered_${notificationId}`, JSON.stringify(parsed));
+      } catch (e) {
+        console.error('[Notification] Error updating trigger data:', e);
+      }
+    }
+    
+    const notification = notifications.find(n => n.id === notificationId);
+    if (notification?.isNew) {
+      const countKey = 'new_feed_water_count';
+      const currentCount = await AsyncStorage.getItem(countKey);
+      const newCount = Math.max(0, (currentCount ? parseInt(currentCount) : 0) - 1);
+      await AsyncStorage.setItem(countKey, newCount.toString());
+      setNewFeedWaterCount(newCount);
+    }
   }
 
   const markAllAsRead = async () => {
@@ -686,9 +602,27 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
 
     await saveReadStatus(updatedReadStatus)
 
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true, isNew: false })))
     
-    // Track viewed times for all types
+    const allKeys = await AsyncStorage.getAllKeys();
+    const triggeredKeys = allKeys.filter(key => key.startsWith('triggered_'));
+    
+    for (const key of triggeredKeys) {
+      const data = await AsyncStorage.getItem(key);
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          parsed.isNew = false;
+          await AsyncStorage.setItem(key, JSON.stringify(parsed));
+        } catch (e) {
+          console.error('[Notification] Error updating trigger data:', e);
+        }
+      }
+    }
+    
+    await AsyncStorage.setItem('new_feed_water_count', '0');
+    setNewFeedWaterCount(0);
+    
     await trackNotificationViewed('announcement');
     await trackNotificationViewed('feed');
     await trackNotificationViewed('water');
@@ -697,16 +631,17 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
   }
 
   const deleteNotification = async (notificationId: string) => {
-    // If it's a scheduled notification, cancel it
     const notification = notifications.find(n => n.id === notificationId);
     if (notification && notification.type === 'reminder') {
-      if (Notifications) {
-        try {
-          await Notifications.cancelScheduledNotificationAsync(notificationId);
-          console.log('[Notification] Cancelled scheduled notification:', notificationId);
-        } catch (error) {
-          console.error('[Notification] Error cancelling notification:', error);
-        }
+      console.log('[Notification] Removing triggered notification:', notificationId);
+      await AsyncStorage.removeItem(`triggered_${notificationId}`);
+      
+      if (notification.isNew) {
+        const countKey = 'new_feed_water_count';
+        const currentCount = await AsyncStorage.getItem(countKey);
+        const newCount = Math.max(0, (currentCount ? parseInt(currentCount) : 0) - 1);
+        await AsyncStorage.setItem(countKey, newCount.toString());
+        setNewFeedWaterCount(newCount);
       }
     }
     
@@ -732,6 +667,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
     setSelectedNotification({
       ...notification,
       read: true,
+      isNew: false,
     })
     setModalVisible(true)
     console.log("[v0] Modal should be visible now")
@@ -800,6 +736,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
   const filteredNotifications = getFilteredNotifications()
   const unreadCount = notifications.filter((n) => !n.read).length
   const reminderCount = notifications.filter((n) => n.type === "reminder").length
+  const newReminderCount = notifications.filter((n) => n.type === "reminder" && n.isNew).length
 
   const getAbsoluteImageUrl = (imageUrl: string): string => {
     if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
@@ -807,7 +744,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       return imageUrl
     }
 
-    const baseUrl = "http://192.168.1.8:8000"
+    const baseUrl = "http://192.168.1.9:8000"
     const absoluteUrl = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : `${baseUrl}/${imageUrl}`
     console.log("[v0] Converted relative URL to absolute:", imageUrl, "->", absoluteUrl)
     return absoluteUrl
@@ -817,7 +754,6 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
 
-      {/* Header */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
           <View style={styles.backArrow} />
@@ -827,12 +763,11 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
           <TouchableOpacity 
             style={styles.refreshButton} 
             onPress={async () => {
-              await scheduleFeedWaterNotifications();
               await fetchNotifications();
-              Alert.alert('Success', 'Notifications refreshed and schedules synced!');
+              Alert.alert('Success', 'Notifications refreshed!');
             }}
           >
-            <Text style={styles.refreshText}>Sync</Text>
+            <Text style={styles.refreshText}>Refresh</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.markAllButton} onPress={markAllAsRead}>
             <Text style={styles.markAllText}>Mark All</Text>
@@ -840,7 +775,6 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
         </View>
       </View>
 
-      {/* Filter Tabs */}
       <View style={styles.filterContainer}>
         <ScrollView
           horizontal
@@ -875,14 +809,20 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
             style={[styles.filterTab, filter === "reminders" && styles.filterTabActive]}
             onPress={() => setFilter("reminders")}
           >
-            <Text style={[styles.filterTabText, filter === "reminders" && styles.filterTabTextActive]}>
-              ⏰ Reminders ({reminderCount})
-            </Text>
+            <View style={styles.reminderTabContent}>
+              <Text style={[styles.filterTabText, filter === "reminders" && styles.filterTabTextActive]}>
+                ⏰ Reminders ({reminderCount})
+              </Text>
+              {newReminderCount > 0 && (
+                <View style={styles.notificationBadge}>
+                  <Text style={styles.notificationBadgeText}>{newReminderCount}</Text>
+                </View>
+              )}
+            </View>
           </TouchableOpacity>
         </ScrollView>
       </View>
 
-      {/* Notifications List */}
       <View style={styles.content}>
         {filteredNotifications.length === 0 ? (
           <View style={styles.emptyState}>
@@ -894,11 +834,10 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
             <TouchableOpacity 
               style={styles.refreshButtonLarge} 
               onPress={async () => {
-                await scheduleFeedWaterNotifications();
                 await fetchNotifications();
               }}
             >
-              <Text style={styles.refreshButtonText}>Sync Notifications</Text>
+              <Text style={styles.refreshButtonText}>Refresh Notifications</Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -925,7 +864,14 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
               >
                 <View style={styles.notificationHeader}>
                   <View style={styles.notificationLeft}>
-                    <Text style={styles.notificationIcon}>{getTypeIcon(notification.type)}</Text>
+                    <View style={styles.iconContainer}>
+                      <Text style={styles.notificationIcon}>{getTypeIcon(notification.type)}</Text>
+                      {notification.isNew && (
+                        <View style={styles.newBadge}>
+                          <Text style={styles.newBadgeText}>NEW</Text>
+                        </View>
+                      )}
+                    </View>
                     <View style={styles.notificationContent}>
                       <Text
                         style={[styles.notificationTitle, !notification.read && styles.notificationTitleUnread]}
@@ -955,7 +901,6 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
         )}
       </View>
 
-      {/* Notification Detail Modal */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -1013,6 +958,13 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
                     <View style={styles.horseNameContainer}>
                       <Text style={styles.horseNameLabel}>Horse:</Text>
                       <Text style={styles.horseNameValue}>{selectedNotification.horseName}</Text>
+                    </View>
+                  )}
+
+                  {selectedNotification.scheduledTime && (
+                    <View style={styles.scheduledTimeContainer}>
+                      <Text style={styles.scheduledTimeLabel}>⏰ Scheduled Time</Text>
+                      <Text style={styles.scheduledTimeValue}>{selectedNotification.scheduledTime}</Text>
                     </View>
                   )}
 
@@ -1240,6 +1192,26 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "600",
   },
+  reminderTabContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    position: "relative",
+  },
+  notificationBadge: {
+    backgroundColor: "#FF4444",
+    borderRadius: scale(10),
+    minWidth: scale(18),
+    height: scale(18),
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: scale(6),
+    paddingHorizontal: scale(5),
+  },
+  notificationBadgeText: {
+    color: "white",
+    fontSize: moderateScale(10),
+    fontWeight: "bold",
+  },
   content: {
     flex: 1,
   },
@@ -1279,10 +1251,30 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "flex-start",
   },
-  notificationIcon: {
-    fontSize: moderateScale(24),
+  iconContainer: {
+    position: "relative",
     marginRight: scale(12),
     marginTop: scale(2),
+  },
+  notificationIcon: {
+    fontSize: moderateScale(24),
+  },
+  newBadge: {
+    position: "absolute",
+    top: scale(-6),
+    right: scale(-6),
+    backgroundColor: "#FF4444",
+    paddingHorizontal: scale(4),
+    paddingVertical: scale(2),
+    borderRadius: scale(8),
+    borderWidth: 1,
+    borderColor: "white",
+  },
+  newBadgeText: {
+    color: "white",
+    fontSize: moderateScale(8),
+    fontWeight: "bold",
+    letterSpacing: 0.5,
   },
   notificationContent: {
     flex: 1,
@@ -1556,6 +1548,27 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(16),
     fontWeight: "bold",
     color: "#5D4037",
+  },
+  scheduledTimeContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#E3F2FD",
+    padding: scale(12),
+    borderRadius: scale(8),
+    marginBottom: verticalScale(16),
+    borderLeftWidth: 4,
+    borderLeftColor: "#2196F3",
+  },
+  scheduledTimeLabel: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "#1976D2",
+    marginRight: scale(8),
+  },
+  scheduledTimeValue: {
+    fontSize: moderateScale(18),
+    fontWeight: "bold",
+    color: "#0D47A1",
   },
   detailMessageContainer: {
     marginBottom: verticalScale(20),

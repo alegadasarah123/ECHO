@@ -141,11 +141,11 @@ const roleOptions = [
 ]
 
 const routeOptions = [
-  "Route 1 - North Cebu",
-  "Route 2 - South Cebu",
-  "Route 3 - Metro Cebu",
-  "Route 4 - Cebu City Center",
-  "Route 5 - Mactan Island",
+  "M. L. Quezon National Highway",
+  "Ouano Avenue",
+  "F. Cabahug Street",
+  "S. B. Cabahug Street",
+  "P. J. Garcia Street",
 ]
 
 const toOptions = [
@@ -176,7 +176,7 @@ interface ProfilePicture {
 }
 
 const API_CONFIG = {
-  BASE_URL: "http://192.168.1.8:8000/api/signup_mobile/",
+  BASE_URL: "http://192.168.1.9:8000/api/signup_mobile/",
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,
@@ -192,7 +192,6 @@ interface FormData {
   phoneNumber: string
   birthDate: string
   dateOfBirth: Date
-  facebook: string
   profilePicture: ProfilePicture | null
   sex: string
   role: string
@@ -201,8 +200,6 @@ interface FormData {
   municipality: string
   barangay: string
   zipCode: string
-  houseAddress: string
-  route: string
   to: string
   termsAccepted: boolean
 }
@@ -295,7 +292,6 @@ export default function Signup() {
     phoneNumber: "",
     birthDate: "",
     dateOfBirth: new Date(),
-    facebook: "",
     profilePicture: null,
     sex: "",
     role: "",
@@ -304,8 +300,6 @@ export default function Signup() {
     municipality: "",
     barangay: "",
     zipCode: "",
-    houseAddress: "",
-    route: "",
     to: "",
     termsAccepted: false,
   })
@@ -394,12 +388,6 @@ export default function Signup() {
           newErrors.zipCode = "Zip code is required"
         } else if (!/^\d{4}$/.test(formData.zipCode)) {
           newErrors.zipCode = "Zip code must be 4 digits"
-        }
-        if (!formData.houseAddress.trim()) {
-          newErrors.houseAddress = "House address is required"
-        }
-        if (!formData.route) {
-          newErrors.route = "Route is required"
         }
         if (!formData.to) {
           newErrors.to = "Destination is required"
@@ -642,11 +630,8 @@ export default function Signup() {
         municipality: formData.municipality,
         barangay: formData.barangay,
         zipCode: formData.zipCode,
-        houseAddress: formData.houseAddress,
-        route: formData.route,
         to: formData.to,
         email: formData.email,
-        facebook: formData.facebook,
         password: formData.password,
         profilePicture: profileImageBase64,
       }
@@ -695,7 +680,6 @@ export default function Signup() {
                   phoneNumber: "",
                   birthDate: "",
                   dateOfBirth: new Date(),
-                  facebook: "",
                   profilePicture: null,
                   sex: "",
                   role: "",
@@ -704,8 +688,6 @@ export default function Signup() {
                   municipality: "",
                   barangay: "",
                   zipCode: "",
-                  houseAddress: "",
-                  route: "",
                   to: "",
                   termsAccepted: false,
                 })
@@ -1075,27 +1057,6 @@ export default function Signup() {
           {errors.zipCode && <Text style={styles.errorText}>{errors.zipCode}</Text>}
         </View>
 
-        <View style={styles.inputContainer}>
-          <Text style={styles.inputLabel}>House Number or Street Address</Text>
-          <TextInput
-            style={[styles.textInput, errors.houseAddress && styles.inputError]}
-            value={formData.houseAddress}
-            onChangeText={(value) => updateFormData("houseAddress", value)}
-            placeholder="Enter your address"
-            placeholderTextColor="#999"
-          />
-          {errors.houseAddress && <Text style={styles.errorText}>{errors.houseAddress}</Text>}
-        </View>
-
-        <DropdownField
-          label="Route"
-          value={formData.route}
-          placeholder="Please Select"
-          options={routeOptions}
-          onSelect={(value) => updateFormData("route", value)}
-          error={errors.route}
-        />
-
         <DropdownField
           label="To"
           value={formData.to}
@@ -1130,17 +1091,6 @@ export default function Signup() {
     <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
       <Text style={styles.stepTitle}>Tell us about yourself</Text>
       <Text style={styles.stepSubtitle}>Please complete the information below</Text>
-
-      <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Facebook Link</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.facebook}
-          onChangeText={(value) => updateFormData("facebook", value)}
-          placeholder="Your Facebook Link (optional)"
-          placeholderTextColor="#999"
-        />
-      </View>
 
       <View style={styles.buttonRow}>
         <TouchableOpacity style={styles.prevButton} onPress={prevStep}>
@@ -1376,128 +1326,133 @@ export default function Signup() {
 
       <ScrollView style={styles.termsScrollView} showsVerticalScrollIndicator={true}>
         <View style={styles.termsContent}>
-          <Text style={styles.termsMainTitle}>Terms & Policies</Text>
-          <Text style={styles.termsIntro}>
-            Welcome to ECHO, a digital platform designed to monitor, manage, and improve the health and welfare of
-            tartanilla horses in Cebu. By accessing or using the system, users agree to adhere to these Terms and
-            Policies.
+          <Text style={styles.termsMainTitle}>ECHO Mobile Application Terms and Conditions</Text>
+
+          <Text style={styles.termsSectionTitle}>1. Introduction</Text>
+          <Text style={styles.termsText}>
+            Welcome to the ECHO Mobile Application (Equine Care and Health Optimization).
+          </Text>
+          <Text style={styles.termsText}>
+            By registering and using this app, you agree to comply with and be bound by these Terms and Conditions.
+          </Text>
+          <Text style={styles.termsText}>
+            The ECHO App is developed to support the Tartanilla Horse Health Management Program under the Department of
+            Veterinary Medicine and Fisheries (DVMF) and the Cebu Technological University (CTU).
+          </Text>
+          <Text style={styles.termsText}>
+            These terms apply to all Horse Operators (owners) and Kutseros (drivers) using the mobile application to
+            manage and monitor horse health records.
           </Text>
 
-          <Text style={styles.termsSectionTitle}>User Eligibility</Text>
+          <Text style={styles.termsSectionTitle}>2. User Responsibilities</Text>
+          <Text style={styles.termsText}>a. Horse Operator (Owner)</Text>
           <Text style={styles.termsText}>
-            • Users include Kutseros (caretakers/operators), veterinarians, and DVMF officials aged 18 or older.
+            • You must provide complete and accurate information regarding your identity and your horse's details during
+            registration.
           </Text>
           <Text style={styles.termsText}>
-            • Users must register with accurate information and keep login details confidential.
-          </Text>
-
-          <Text style={styles.termsSectionTitle}>User Responsibilities</Text>
-          <Text style={styles.termsText}>
-            • Use the system solely for authorized purposes related to horse health and welfare.
+            • You are responsible for ensuring your horse receives regular veterinary checkups.
           </Text>
           <Text style={styles.termsText}>
-            • Ensure all data entered (horse details, health info) are correct and respectful of privacy.
+            • You shall coordinate with assigned veterinarians for health updates, appointments, and record submissions.
           </Text>
           <Text style={styles.termsText}>
-            • Report any issues, errors, or suspicious activities immediately to the support team.
-          </Text>
-          <Text style={styles.termsText}>• Not attempt to modify, disrupt, or misuse the platform.</Text>
-
-          <Text style={styles.termsSectionTitle}>Data Privacy and Security</Text>
-          <Text style={styles.termsText}>
-            • Personal data and horse records are stored securely and used only for system operations.
+            • You must ensure that all data you enter into the system is truthful and up to date.
           </Text>
           <Text style={styles.termsText}>
-            • Access to sensitive information is role-based and restricted to authorized users.
-          </Text>
-          <Text style={styles.termsText}>• Users should not share login credentials or allow unauthorized access.</Text>
-
-          <Text style={styles.termsSectionTitle}>System Usage</Text>
-          <Text style={styles.termsText}>
-            • The platform requires internet access; offline functionality is not supported.
-          </Text>
-          <Text style={styles.termsText}>
-            • Users must not employ automation or hacking techniques to interfere with the system.
-          </Text>
-          <Text style={styles.termsText}>
-            • The developers are not responsible for system downtime or technical issues beyond their control.
+            • You are responsible for maintaining the security and confidentiality of your account.
           </Text>
 
-          <Text style={styles.termsSectionTitle}>Intellectual Property</Text>
+          <Text style={styles.termsText}>b. Kutsero (Driver)</Text>
           <Text style={styles.termsText}>
-            All system content, features, logos, trademarks, and source code are owned by the system developers or
-            licensors. Users are prohibited from copying, reproducing, modifying, or distributing any system content
-            without explicit permission.
+            • You are responsible for safely handling and operating the horse during daily Tartanilla activities.
+          </Text>
+          <Text style={styles.termsText}>
+            • You must cooperate with the horse operator in monitoring the horse's health status.
+          </Text>
+          <Text style={styles.termsText}>
+            • You agree to report any observed injuries, illnesses, or unusual behavior of the horse through the app or
+            directly to the operator.
+          </Text>
+          <Text style={styles.termsText}>
+            • You shall use the app responsibly and avoid misuse, misinformation, or unauthorized access.
           </Text>
 
-          <Text style={styles.termsSectionTitle}>Limitation of Liability</Text>
+          <Text style={styles.termsSectionTitle}>3. Data Privacy and Protection</Text>
           <Text style={styles.termsText}>
-            • ECHO aims to assist in early detection and management of horse health issues but is not a substitute for
-            professional veterinary advice.
+            • The ECHO App collects personal and animal health information necessary for communication and monitoring
+            within the Tartanilla Program.
           </Text>
           <Text style={styles.termsText}>
-            • The developers and administrators are not liable for any damages resulting from system use or inability to
-            access the platform.
+            • All collected data will be handled responsibly and in accordance with the principles of the Data Privacy
+            Act of 2012 (Republic Act No. 10173).
           </Text>
           <Text style={styles.termsText}>
-            • The platform may experience occasional downtime; no guarantees are provided for uninterrupted service.
-          </Text>
-
-          <Text style={styles.termsSectionTitle}>Updates and Amendments</Text>
-          <Text style={styles.termsText}>
-            • These Terms and Policies may be updated periodically to reflect system improvements, legal updates, or
-            changes in functionality.
+            • Your data may be shared only with authorized DVMF and CTU personnel for official and program-related
+            purposes.
           </Text>
           <Text style={styles.termsText}>
-            • Continued use of the platform after updates constitutes acceptance of the revised policies.
-          </Text>
-          <Text style={styles.termsText}>
-            • Users will be notified of significant changes via system notifications or email.
+            • The ECHO Team implements reasonable safeguards to protect your information from unauthorized use or
+            disclosure.
           </Text>
 
-          <Text style={styles.termsSectionTitle}>Termination and Suspension</Text>
+          <Text style={styles.termsSectionTitle}>4. Account and Security</Text>
           <Text style={styles.termsText}>
-            • Accounts may be suspended or terminated for violations, misuse, or malicious activities.
+            • You are solely responsible for maintaining the confidentiality of your login credentials.
           </Text>
           <Text style={styles.termsText}>
-            • Users may request account deletion, which will remove all user-specific data and horse records from the
-            system.
+            • Any actions performed under your account will be considered your responsibility.
           </Text>
-          <Text style={styles.termsText}>• Terminated users lose access to all platform features.</Text>
-
-          <Text style={styles.termsSectionTitle}>Compliance with Laws</Text>
           <Text style={styles.termsText}>
-            • Users agree to comply with local laws, regulations, and ethical standards for animal welfare.
+            • You must immediately report any unauthorized use or suspected security breach to the ECHO Support Team.
           </Text>
-          <Text style={styles.termsText}>• The system adheres to Philippine data privacy laws and regulations.</Text>
-
-          <Text style={styles.termsSectionTitle}>Support & Communication</Text>
           <Text style={styles.termsText}>
-            Support is available through email, Facebook, and in-app help features. Users can report issues, give
-            feedback, or request assistance via:
-          </Text>
-          <Text style={styles.termsText}>• Email: echosupport@gmail.com</Text>
-          <Text style={styles.termsText}>• Facebook: fb.com/echo</Text>
-          <Text style={styles.termsText}>
-            Emergency and critical alerts can be sent via the system's emergency alert feature, which notifies
-            veterinarians and authorities promptly.
+            • The administrators reserve the right to suspend or deactivate accounts found to be in violation of these
+            terms.
           </Text>
 
-          <Text style={styles.termsSectionTitle}>User Agreement</Text>
-          <Text style={styles.termsText}>• Registering an account implies acceptance of these Terms and Policies.</Text>
-          <Text style={styles.termsText}>• Users agree to use the platform responsibly and ethically.</Text>
+          <Text style={styles.termsSectionTitle}>5. Acceptable Use</Text>
+          <Text style={styles.termsText}>
+            • You agree to use the ECHO App only for legitimate and lawful purposes connected to the Tartanilla Program.
+          </Text>
+          <Text style={styles.termsText}>
+            • You must not tamper with the system, upload false information, or access other users' data without
+            authorization.
+          </Text>
+          <Text style={styles.termsText}>
+            • Misuse of the app, including fraudulent or inappropriate activities, may result in permanent account
+            termination.
+          </Text>
 
-          <Text style={styles.termsSectionTitle}>Data Retention & Confidentiality</Text>
+          <Text style={styles.termsSectionTitle}>6. Limitation of Liability</Text>
           <Text style={styles.termsText}>
-            • Data will be stored securely and retained only for the duration necessary to fulfill the system's purpose.
+            • The ECHO App serves as a digital tool to assist in horse health tracking and communication; it does not
+            replace physical veterinary consultations.
           </Text>
           <Text style={styles.termsText}>
-            • Users' data will not be shared with unauthorized parties unless required by law or for system support.
+            • The developers, administrators, and partner institutions are not liable for any loss, injury, or damage
+            caused by misuse of the app, inaccurate data, or user negligence.
           </Text>
           <Text style={styles.termsText}>
-            • The system encourages users to provide feedback for continuous improvement.
+            • Users are responsible for ensuring that all information entered into the system is correct and updated.
           </Text>
-          <Text style={styles.termsText}>• Feedback can be submitted via email or the Facebook page.</Text>
+
+          <Text style={styles.termsSectionTitle}>7. Modifications to the Terms</Text>
+          <Text style={styles.termsText}>
+            • The ECHO Team may modify or update these Terms and Conditions at any time.
+          </Text>
+          <Text style={styles.termsText}>• Users will be notified of significant changes through the mobile app.</Text>
+          <Text style={styles.termsText}>
+            • Continued use of the application after updates constitutes your acceptance of the revised terms.
+          </Text>
+
+          <Text style={styles.termsSectionTitle}>8. Contact and Support</Text>
+          <Text style={styles.termsText}>For any questions, assistance, or technical concerns, please contact:</Text>
+          <Text style={styles.termsText}>📧 echosys.ph@gmail.com</Text>
+          <Text style={styles.termsText}>
+            ✅ By selecting "I Agree" and proceeding with registration, you confirm that you have read, understood, and
+            accepted these Terms and Conditions.
+          </Text>
         </View>
       </ScrollView>
 

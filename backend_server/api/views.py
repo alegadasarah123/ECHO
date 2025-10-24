@@ -459,8 +459,8 @@ def signup_mobile(request):
             "kutsero_municipality": request.data.get("municipality"),
             "kutsero_brgy": request.data.get("barangay"),
             "kutsero_zipcode": request.data.get("zipCode"),
-            "kutsero_fb": request.data.get("facebook"),
             "kutsero_image": profile_picture_url,
+            "created_at": datetime.utcnow().isoformat(),
         }
         
         # Only add non-None values
