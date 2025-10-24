@@ -390,8 +390,8 @@ def get_notifications(request):
     """GET pending Kutsero and Horse Operator users and INSERT them into notification table."""
     try:
         print("=== STARTING NOTIFICATION PROCESS ===")
-        
-        # STEP 1: GET THE PENDING USERS
+
+        # STEP 1: FETCH PENDING USERS
         print("Fetching pending users...")
         users_result = (
             supabase.table("users")
@@ -425,9 +425,8 @@ def get_notifications(request):
         for user in pending_users:
             if user["id"] not in existing_user_ids:
                 print(f"Inserting notification for user: {user['id']}")
-                
-                current_time = datetime.now()
 
+                current_time = datetime.now()
                 insert_data = {
                     "id": user["id"],
                     "notif_message": f"New {user['role']} registered",
@@ -440,17 +439,38 @@ def get_notifications(request):
 
                 print(f"Inserting data: {insert_data}")
                 try:
-                    # ✅ FIX: Add .select("*") to return the inserted row
-                    insert_result = (
-                        supabase.table("notification")
-                        .insert(insert_data)
-                        .select("*")
-                        .execute()
-                    )
+                    # INSERT ONLY (no select chaining)
+                    insert_result = supabase.table("notification").insert(insert_data).execute()
 
-                    if insert_result.data:
+                    if not insert_result.data:
+                        # ✅ Manually fetch the newly inserted notification
+                        # FIX: Create a new query builder instance instead of chaining
+                        fetch_result = supabase.table("notification").select("*").eq("id", user["id"]).execute()
+                        
+                        if fetch_result.data:
+                            # Get the most recent notification for this user
+                            notifications = fetch_result.data
+                            # Sort by notif_id to get the latest one
+                            notifications.sort(key=lambda x: x.get("notif_id", 0), reverse=True)
+                            new_notif = notifications[0] if notifications else None
+                            
+                            if new_notif:
+                                print(f"Successfully fetched inserted notification: {new_notif}")
+                                inserted_notifications.append({
+                                    "notif_id": new_notif["notif_id"],
+                                    "user_id": new_notif["id"],
+                                    "message": new_notif["notif_message"],
+                                    "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
+                                    "read": new_notif.get("notif_read", False),
+                                    "role": user["role"],
+                                })
+                            else:
+                                print(f"Failed to fetch notification for user {user['id']}")
+                        else:
+                            print(f"No notifications found for user {user['id']}")
+                    else:
+                        # In case insert_result.data actually returns something
                         new_notif = insert_result.data[0]
-                        print(f"Successfully inserted notification: {new_notif}")
                         inserted_notifications.append({
                             "notif_id": new_notif["notif_id"],
                             "user_id": new_notif["id"],
@@ -459,9 +479,6 @@ def get_notifications(request):
                             "read": new_notif.get("notif_read", False),
                             "role": user["role"],
                         })
-                        print(f"SUCCESS: Notification created for user {user['id']}")
-                    else:
-                        print(f"Insert failed - no data returned for user {user['id']}")
 
                 except Exception as e:
                     print(f"FAILED to insert notification for user {user['id']}: {str(e)}")
