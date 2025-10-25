@@ -45,52 +45,52 @@ function DvmfDashboard() {
 
   // Skeleton Loader Components
   const StatSkeleton = () => (
-    <div className="bg-white p-6 rounded-lg shadow-sm flex flex-col items-center text-center animate-pulse">
+    <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm flex flex-col items-center text-center animate-pulse">
       <div className="flex items-center gap-2 mb-3 w-full justify-center">
-        <div className="h-4 w-20 bg-gray-300 rounded"></div>
-        <div className="p-3 rounded-full flex items-center justify-center bg-gray-200">
-          <div className="w-6 h-6 bg-gray-300 rounded"></div>
+        <div className="h-4 w-16 sm:w-20 bg-gray-300 rounded"></div>
+        <div className="p-2 sm:p-3 rounded-full flex items-center justify-center bg-gray-200">
+          <div className="w-5 h-5 sm:w-6 sm:h-6 bg-gray-300 rounded"></div>
         </div>
       </div>
-      <div className="h-10 w-16 bg-gray-300 rounded"></div>
+      <div className="h-8 sm:h-10 w-12 sm:w-16 bg-gray-300 rounded"></div>
     </div>
   )
 
   const ActivitySkeleton = () => (
     <div className="rounded-xl p-2.5 flex items-center gap-2.5 border border-gray-200 animate-pulse">
-      <div className="w-8 h-8 bg-gray-300 rounded-full flex-shrink-0"></div>
-      <div className="flex-1 grid grid-cols-2 gap-2">
-        <div className="h-4 bg-gray-300 rounded col-span-2"></div>
+      <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gray-300 rounded-full flex-shrink-0"></div>
+      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="h-4 bg-gray-300 rounded sm:col-span-2"></div>
         <div className="flex flex-col gap-1">
-          <div className="h-3 w-12 bg-gray-300 rounded"></div>
-          <div className="h-3 w-20 bg-gray-300 rounded"></div>
+          <div className="h-3 w-10 sm:w-12 bg-gray-300 rounded"></div>
+          <div className="h-3 w-16 sm:w-20 bg-gray-300 rounded"></div>
         </div>
         <div className="flex flex-col gap-1">
-          <div className="h-3 w-16 bg-gray-300 rounded"></div>
-          <div className="h-3 w-24 bg-gray-300 rounded"></div>
+          <div className="h-3 w-14 sm:w-16 bg-gray-300 rounded"></div>
+          <div className="h-3 w-20 sm:w-24 bg-gray-300 rounded"></div>
         </div>
       </div>
-      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-        <div className="h-6 w-16 bg-gray-300 rounded"></div>
-        <div className="h-3 w-12 bg-gray-300 rounded"></div>
+      <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
+        <div className="h-6 w-14 sm:w-16 bg-gray-300 rounded"></div>
+        <div className="h-3 w-10 sm:w-12 bg-gray-300 rounded"></div>
       </div>
     </div>
   )
 
   const SosSkeleton = () => (
-    <div className="border border-gray-200 rounded-xl p-4 animate-pulse">
+    <div className="border border-gray-200 rounded-xl p-3 sm:p-4 animate-pulse">
       <div className="flex justify-between items-start mb-3">
-        <div className="h-6 w-16 bg-gray-300 rounded"></div>
-        <div className="h-3 w-12 bg-gray-300 rounded"></div>
+        <div className="h-5 sm:h-6 w-14 sm:w-16 bg-gray-300 rounded"></div>
+        <div className="h-3 w-10 sm:w-12 bg-gray-300 rounded"></div>
       </div>
-      <div className="grid grid-cols-2 gap-2 mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
         <div className="flex items-center gap-1.5">
           <div className="w-4 h-4 bg-gray-300 rounded"></div>
-          <div className="h-3 w-16 bg-gray-300 rounded"></div>
+          <div className="h-3 w-14 sm:w-16 bg-gray-300 rounded"></div>
         </div>
         <div className="flex items-center gap-1.5">
           <div className="w-4 h-4 bg-gray-300 rounded"></div>
-          <div className="h-3 w-16 bg-gray-300 rounded"></div>
+          <div className="h-3 w-14 sm:w-16 bg-gray-300 rounded"></div>
         </div>
       </div>
       <div className="bg-gray-100 px-3 py-2 rounded-lg">
@@ -123,7 +123,7 @@ function DvmfDashboard() {
   }
 
   const getActivityAvatarClasses = (colorIndex) => {
-    const baseClasses = "text-white font-bold rounded-full w-8 h-8 flex items-center justify-center text-xs flex-shrink-0"
+    const baseClasses = "text-white font-bold rounded-full w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-xs flex-shrink-0"
     const colorVariants = [
       "bg-gradient-to-br from-red-600 to-red-500 shadow-lg shadow-red-600/30",
       "bg-gradient-to-br from-blue-600 to-blue-500 shadow-lg shadow-blue-600/30",
@@ -563,15 +563,13 @@ const loadRecentActivities = useCallback(() => {
       {!isImageModalOpen && <Sidebar isOpen={isSidebarOpen} />}
       {!isImageModalOpen && <FloatingMessages />}
 
-      <div className="flex-1 flex flex-col">
-        <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
-          <div className="flex flex-col">
-            <h2 className="text-2xl font-bold text-gray-800 mb-1">Dashboard</h2>
-
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-4 sm:px-6 py-4 flex items-center justify-between">
+          <div className="flex flex-col min-w-0">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800 mb-1 truncate">Dashboard</h2>
           </div>
 
-          
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             {/* ADDED: Refresh Button */}
             <button
               onClick={handleRefresh}
@@ -589,7 +587,7 @@ const loadRecentActivities = useCallback(() => {
               className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
               onClick={() => setNotifsOpen(!notifsOpen)}
             >
-              <Bell size={24} color="#374151" />
+              <Bell size={20} className="sm:w-6 sm:h-6" color="#374151" />
               {unreadNotificationsCount > 0 && (
                 <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs font-bold min-w-[20px]">
                   {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
@@ -608,9 +606,9 @@ const loadRecentActivities = useCallback(() => {
           />
         </header>
 
-        <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
+        <div className="flex-1 p-4 sm:p-6 bg-gray-100 overflow-y-auto">
           {/* Stat Count Section */}
-          <div className="grid grid-cols-3 gap-6 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6">
             {statsLoading ? (
               <>
                 <StatSkeleton />
@@ -619,44 +617,44 @@ const loadRecentActivities = useCallback(() => {
               </>
             ) : (
               <>
-                <div className="bg-white p-6 rounded-lg shadow-sm transition-transform duration-200 cursor-pointer hover:-translate-y-0.5 flex flex-col items-center text-center">
-                  <div className="flex items-center gap-2 mb-3">
+                <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm transition-transform duration-200 flex flex-col items-center text-center">
+                  <div className="flex items-center gap-2 mb-3 w-full justify-between sm:justify-center">
                     <div className="text-gray-600 text-sm font-medium">Total Pending</div>
-                    <div className="mr-2.5 p-3 rounded-full flex items-center justify-center bg-yellow-100 text-yellow-600">
-                      <Clock size={24} />
+                    <div className="p-2 sm:p-3 rounded-full flex items-center justify-center bg-yellow-100 text-yellow-600">
+                      <Clock size={20} className="sm:w-6 sm:h-6" />
                     </div>
                   </div>
-                  <div className="text-4xl font-bold text-black">{recordCount}</div>
+                  <div className="text-3xl sm:text-4xl font-bold text-black">{recordCount}</div>
                 </div>
 
-                <div className="bg-white p-6 rounded-lg shadow-sm transition-transform duration-200 cursor-pointer hover:-translate-y-0.5 flex flex-col items-center text-center">
-                  <div className="flex items-center gap-2 mb-3">
+                <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm transition-transform duration-200 flex flex-col items-center text-center">
+                  <div className="flex items-center gap-2 mb-3 w-full justify-between sm:justify-center">
                     <div className="text-gray-600 text-sm font-medium">Total Approved</div>
-                    <div className="mr-2.5 p-3 rounded-full flex items-center justify-center bg-green-100 text-green-600">
-                      <CheckCircle size={24} />
+                    <div className="p-2 sm:p-3 rounded-full flex items-center justify-center bg-green-100 text-green-600">
+                      <CheckCircle size={20} className="sm:w-6 sm:h-6" />
                     </div>
                   </div>
-                  <div className="text-4xl font-bold text-black">{vetCount}</div>
+                  <div className="text-3xl sm:text-4xl font-bold text-black">{vetCount}</div>
                 </div>
 
-                <div className="bg-white p-6 rounded-lg shadow-sm transition-transform duration-200 cursor-pointer hover:-translate-y-0.5 flex flex-col items-center text-center">
-                  <div className="flex items-center gap-2 mb-3">
+                <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm transition-transform duration-200 flex flex-col items-center text-center">
+                  <div className="flex items-center gap-2 mb-3 w-full justify-between sm:justify-center">
                     <div className="text-gray-600 text-sm font-medium">Total Not Approved</div>
-                    <div className="mr-2.5 p-3 rounded-full flex items-center justify-center bg-red-100 text-red-600">
-                      <XCircle size={24} />
+                    <div className="p-2 sm:p-3 rounded-full flex items-center justify-center bg-red-100 text-red-600">
+                      <XCircle size={20} className="sm:w-6 sm:h-6" />
                     </div>
                   </div>
-                  <div className="text-4xl font-bold text-black">{declinedCount || 0}</div>
+                  <div className="text-3xl sm:text-4xl font-bold text-black">{declinedCount || 0}</div>
                 </div>
               </>
             )}
           </div>
 
-          <div className="grid grid-cols-[1fr_400px] gap-6">
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-4 sm:gap-6">
             {/* Recent Activity Section */}
-            <div className="bg-white p-5 rounded-xl shadow-lg border border-red-100 max-h-[600px] overflow-y-auto">
-              <h3 className="text-xl font-bold mb-1 text-black">Recent Activity</h3>
-              <p className="text-sm text-gray-600 mb-5">Latest added veterinary account</p>
+            <div className="bg-white p-4 sm:p-5 rounded-xl shadow-lg border border-red-100 max-h-[600px] overflow-y-auto">
+              <h3 className="text-lg sm:text-xl font-bold mb-1 text-black">Recent Activity</h3>
+              <p className="text-sm text-gray-600 mb-4 sm:mb-5">Latest added veterinary account</p>
 
               {activitiesLoading ? (
                 <div className="flex flex-col gap-2">
@@ -671,10 +669,10 @@ const loadRecentActivities = useCallback(() => {
                 const diffDays = diffTime / (1000 * 60 * 60 * 24)
                 return diffDays <= 2
               }).length === 0 ? (
-                <div className="flex flex-col items-center justify-center text-center p-8 text-gray-500">
-                  <ClipboardList size={48} className="text-gray-500" />
-                  <h3 className="text-lg mb-2 text-gray-700">No recent activity</h3>
-                  <p className="text-sm">Activity will appear here when available</p>
+                <div className="flex flex-col items-center justify-center text-center p-6 sm:p-8 text-gray-500">
+                  <ClipboardList size={40} className="sm:w-12 sm:h-12 text-gray-500" />
+                  <h3 className="text-base sm:text-lg mb-2 text-gray-700">No recent activity</h3>
+                  <p className="text-xs sm:text-sm">Activity will appear here when available</p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
@@ -698,17 +696,17 @@ const loadRecentActivities = useCallback(() => {
       return (
         <div key={activity.id} className={getActivityCardClasses(colorIndex)}>
           <div className={getActivityAvatarClasses(colorIndex)}>{initials}</div>
-          <div className="flex-1 grid grid-cols-2 gap-1 gap-x-2.5">
-            <div className="font-semibold text-sm text-gray-800 col-span-2">{activity.title}</div>
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-1 gap-x-2.5 min-w-0">
+            <div className="font-semibold text-sm text-gray-800 sm:col-span-2 truncate">{activity.title}</div>
             <div className="flex flex-col gap-0.5">
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Email</span>
-              <span className="text-xs text-gray-700">{activity.email}</span>
+              <span className="text-xs text-gray-700 truncate">{activity.email}</span>
             </div>
             <div className="flex flex-col gap-0.5">
               <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
                 Description
               </span>
-              <span className="text-xs text-gray-700">
+              <span className="text-xs text-gray-700 truncate">
                 {activity.description ? 
                   activity.description.replace('declined', 'Not Approved').replace('Declined', 'Not Approved') 
                   : "System activity update"
@@ -716,11 +714,11 @@ const loadRecentActivities = useCallback(() => {
               </span>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1">
+          <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
             <span className={getRoleClasses(activity.status)}>
               {activity.status === 'declined' ? 'Not Approved' : activity.status}
             </span>
-            <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
+            <span className="text-xs text-gray-500 font-medium whitespace-nowrap hidden sm:block">
               {new Date(activity.date).toLocaleDateString("en-US", {
                 month: "long",
                 day: "numeric",
@@ -729,6 +727,12 @@ const loadRecentActivities = useCallback(() => {
                 hour: "numeric",
                 minute: "numeric",
                 hour12: true
+              })}
+            </span>
+            <span className="text-xs text-gray-500 font-medium whitespace-nowrap sm:hidden">
+              {new Date(activity.date).toLocaleDateString("en-US", {
+                month: "short",
+                day: "numeric",
               })}
             </span>
           </div>
@@ -740,10 +744,10 @@ const loadRecentActivities = useCallback(() => {
             </div>
 
             {/* SOS Emergency Section */}
-            <div className="bg-white rounded-xl shadow-lg border border-red-100 p-5 max-h-96 overflow-y-auto">
+            <div className="bg-white rounded-xl shadow-lg border border-red-100 p-4 sm:p-5 max-h-96 overflow-y-auto">
               <div className="flex items-center gap-3 mb-4 pb-3 border-b-2 border-red-100">
-                <h3 className="text-xl font-bold text-black flex items-center gap-2">
-                  <AlertTriangle size={24} />
+                <h3 className="text-lg sm:text-xl font-bold text-black flex items-center gap-2">
+                  <AlertTriangle size={20} className="sm:w-6 sm:h-6" />
                   SOS Emergency
                 </h3>
               </div>
@@ -755,20 +759,20 @@ const loadRecentActivities = useCallback(() => {
                   <SosSkeleton />
                 </div>
               ) : sosEmergencies.length === 0 ? (
-                <div className="flex flex-col items-center justify-center text-center p-8 text-gray-500">
-                  <AlertTriangle size={48} />
-                  <h3 className="text-lg mb-2 text-gray-700">No active emergencies</h3>
-                  <p className="text-sm">Emergency alerts will appear here</p>
+                <div className="flex flex-col items-center justify-center text-center p-6 sm:p-8 text-gray-500">
+                  <AlertTriangle size={40} className="sm:w-12 sm:h-12" />
+                  <h3 className="text-base sm:text-lg mb-2 text-gray-700">No active emergencies</h3>
+                  <p className="text-xs sm:text-sm">Emergency alerts will appear here</p>
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
                   {sosEmergencies.map((emergency) => (
                     <div
                       key={emergency.id}
-                      className="bg-gradient-to-br from-red-50 to-white border border-red-300 rounded-xl p-4 transition-all duration-300 cursor-pointer relative overflow-hidden hover:-translate-y-0.5 hover:shadow-lg hover:shadow-red-600/15 hover:border-red-600"
+                      className="bg-gradient-to-br from-red-50 to-white border border-red-300 rounded-xl p-3 sm:p-4 overflow-hidden"
                       onClick={() => handleSosItemClick(emergency)}
                     >
-                      <div className="flex justify-between items-start mb-3">
+                      <div className="flex justify-between items-start mb-3 flex-col sm:flex-row gap-2 sm:gap-0">
                         <span
                           className={`px-3 py-1 rounded-2xl text-xs font-semibold uppercase tracking-wide ${
                             emergency.urgent ? "bg-red-500 text-white" : "bg-red-600 text-white"
@@ -779,20 +783,20 @@ const loadRecentActivities = useCallback(() => {
                         <span className="text-xs text-gray-500 font-medium">{emergency.time}</span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-2 mb-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
                         <div className="flex items-center gap-1.5 text-xs text-gray-700">
-                          <User size={16} />
-                          <span>{emergency.contact}</span>
+                          <User size={14} className="sm:w-4 sm:h-4" />
+                          <span className="truncate">{emergency.contact}</span>
                         </div>
                         <div className="flex items-center gap-1.5 text-xs text-gray-700">
-                          <Phone size={16} />
-                          <span>{emergency.phone}</span>
+                          <Phone size={14} className="sm:w-4 sm:h-4" />
+                          <span className="truncate">{emergency.phone}</span>
                         </div>
                       </div>
 
                       <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-600 italic flex items-center gap-1.5 mb-2">
-                        <MapPin size={14} />
-                        <span>{emergency.location}</span>
+                        <MapPin size={12} className="sm:w-3.5 sm:h-3.5" />
+                        <span className="truncate">{emergency.location}</span>
                       </div>
 
                       {/* ADDED: Image view button */}
@@ -821,28 +825,26 @@ const loadRecentActivities = useCallback(() => {
 
       {/* ADDED: Image Modal */}
       {isImageModalOpen && selectedImage && (
-        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000] p-4">
-          <div className="bg-white rounded-lg max-w-4xl max-h-[90vh] w-full overflow-hidden">
-            <div className="flex justify-between items-center p-4 border-b">
-              <h3 className="text-lg font-semibold">
-               
+        <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000] p-2 sm:p-4">
+          <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <div className="flex justify-between items-center p-3 sm:p-4 border-b">
+              <h3 className="text-base sm:text-lg font-semibold truncate">
+                SOS Emergency Image - {selectedImage.emergency?.contact || 'Unknown'}
               </h3>
               <button
                 onClick={handleCloseImageModal}
-                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+                className="p-1 sm:p-2 hover:bg-gray-100 rounded-full transition-colors"
               >
-                <X size={24} />
+                <X size={20} className="sm:w-6 sm:h-6" />
               </button>
             </div>
             
-            <div className="p-4 max-h-[70vh] overflow-auto">
-              
-              
+            <div className="p-2 sm:p-4 max-h-[70vh] overflow-auto">
               <div className="flex justify-center">
                 <img
                   src={selectedImage.url}
                   alt="SOS Emergency"
-                  className="max-w-full max-h-[400px] object-contain rounded-lg border"
+                  className="max-w-full max-h-[300px] sm:max-h-[400px] object-contain rounded-lg border"
                   onError={(e) => {
                     e.target.src = "https://via.placeholder.com/400x300?text=Image+Not+Found"
                   }}

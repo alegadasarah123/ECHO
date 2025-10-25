@@ -1188,7 +1188,7 @@ const MessagesWithDateHeaders = ({ messages, isTyping, isNewConversation, isEmpt
                 <div
                   className={`px-4 py-2 rounded-2xl text-sm ${
                     message.isOwn
-                      ? "bg-blue-500 text-white rounded-br-md"
+                      ? "bg-[#b91c1c] text-white rounded-br-md"
                       : "bg-white text-gray-800 rounded-bl-md shadow-sm"
                   }`}
                 >
@@ -1247,7 +1247,7 @@ const ConversationListItem = ({
     <div
       onClick={() => onSelect(conversation)}
       className={`flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition-colors ${
-        isSelected ? 'bg-blue-50 border-blue-200' : ''
+        isSelected ? 'bg-[#fef2f2] border-[#fecaca]' : ''
       }`}
     >
       <div className="relative">
@@ -1275,7 +1275,7 @@ const ConversationListItem = ({
               {conversation.name ? conversation.name.replace(/\s*\([^)]*\)\s*$/, '').trim() : ''}
             </span>
             {hasUnread && (
-              <div className="w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-medium">
+              <div className="w-5 h-5 bg-[#b91c1c] text-white rounded-full flex items-center justify-center text-xs font-medium">
                 {conversation.unread > 9 ? '9+' : conversation.unread}
               </div>
             )}
@@ -1487,7 +1487,7 @@ const ChatView = ({
             disabled={!newMessage.trim()}
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
               newMessage.trim()
-                ? "bg-blue-500 hover:bg-blue-600 text-white"
+                ? "bg-[#b91c1c] hover:bg-blue-600 text-white"
                 : "bg-gray-300 text-gray-500 cursor-not-allowed"
             }`}
           >
@@ -1528,7 +1528,7 @@ const ConversationList = ({
                 setSearchTerm("");
               }
             }}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-[#b91c1c]"
           />
         </div>
       </div>

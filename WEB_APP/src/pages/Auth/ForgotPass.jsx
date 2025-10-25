@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCircle, Eye, EyeOff, Lock, Mail, Stethoscope } from "lucide-react";
+import { ArrowLeft, CheckCircle, Eye, EyeOff, Lock, Mail } from "lucide-react";
 import { useState } from "react";
 
 function ForgotPass({ onBack }) {
@@ -16,9 +16,8 @@ function ForgotPass({ onBack }) {
     card: { backgroundColor: "#fff", borderRadius: "1rem", padding: "2rem", boxShadow: "0 25px 50px rgba(184, 118, 62, 0.1)", width: "100%", maxWidth: "420px", position: "relative", zIndex: 1 },
     backLink: { position: "absolute", top: "1rem", left: "2rem", display: "flex", alignItems: "center", gap: "0.5rem", color: "#6b7280", cursor: "pointer", fontSize: "0.875rem", transition: "all 0.2s ease" },
     header: { textAlign: "center", marginBottom: "1.5rem" },
-    logo: { display: "flex", alignItems: "center", justifyContent: "center", gap: "0.75rem", marginBottom: "1rem" },
-    logoIcon: { width: "3rem", height: "3rem", backgroundColor: "#B8763E", borderRadius: "0.75rem", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 8px 25px rgba(184, 118, 62, 0.3)" },
-    logoText: { fontSize: "2rem", fontWeight: "bold", color: "#B8763E" },
+    logo: { display: "flex", alignItems: "center", justifyContent: "center", marginBottom: "1rem" },
+    logoImage: { height: "3rem", width: "auto" },
     title: { fontSize: "1.75rem", fontWeight: "bold", color: "#111827", marginBottom: "0.75rem" },
     subtitle: { color: "#6b7280", fontSize: "1rem", lineHeight: "1.5", marginBottom: "0.5rem" },
     form: { display: "flex", flexDirection: "column", gap: "1.25rem" },
@@ -145,10 +144,11 @@ function ForgotPass({ onBack }) {
       <div style={styles.card}>
         <div style={styles.header}>
           <div style={styles.logo}>
-            <div style={styles.logoIcon}>
-              <Stethoscope size={24} color="white" />
-            </div>
-            <span style={styles.logoText}>Echo</span>
+            <img 
+              src="/Images/echo.png" 
+              alt="Echo Logo" 
+              style={styles.logoImage}
+            />
           </div>
           <h1 style={styles.title}>
             {stage === "forgot" ? "Forgot Password?" : stage === "reset" ? "Reset Password" : "Success"}

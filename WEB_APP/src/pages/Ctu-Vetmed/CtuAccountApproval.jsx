@@ -26,7 +26,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
+const API_BASE = "https://echo-ebl8.onrender.com"
 
 const SkeletonLoader = () => (
   <div className="animate-pulse">
@@ -93,6 +93,13 @@ function CtuAccountApproval() {
   const [pinnedPosts, setPinnedPosts] = useState(new Set())
   const [showDropdown, setShowDropdown] = useState({})
   const [posts, setPosts] = useState([])
+
+  // Helper to format status display
+  const formatStatusDisplay = (status) => {
+    if (!status) return "";
+    if (status === "declined") return "Not approved";
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
 
   // Helper to format time for notifications
   const formatTimeAgo = useCallback((timestamp) => {
@@ -524,7 +531,6 @@ const handleNotificationClick = async (notification) => {
   }
 };
 
-
   // ✅ Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
     console.log("Notifications updated from modal:", updatedNotifications);
@@ -883,22 +889,6 @@ const handleNotificationClick = async (notification) => {
             </div>
           </div>
 
-          {/* <div className="flex justify-between items-center mb-5 flex-wrap gap-4">
-            <div className="flex gap-3 items-center flex-wrap">
-              <select
-                className="py-2 px-3 border border-gray-300 rounded-md text-sm bg-white min-h-[40px]"
-                value={recentFilter}
-                onChange={handleRecentFilterChange}
-              >
-                <option value="all">Most Recent</option>
-                <option value="today">Today</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-              </select>
-            </div>
-          </div> */}
-                
-
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             {isLoading ? (
               <div>
@@ -916,12 +906,12 @@ const handleNotificationClick = async (notification) => {
                   <UserX size={48} className="mb-4 opacity-50" />
                 )}
                 <h3 className="text-lg mb-2 text-gray-700">
-                  No {activeTab === "pending" ? "pending" : activeTab === "declined" ? "not approved" : activeTab} registrations
+                  No {formatStatusDisplay(activeTab)} registrations
                 </h3>
                 <p className="text-sm text-gray-500">
                   {activeTab === "pending"
                     ? "New registration requests will appear here"
-                    : `${activeTab === "declined" ? "Not approved" : activeTab} registrations will appear here`}
+                    : `${formatStatusDisplay(activeTab)} registrations will appear here`}
                 </p>
               </div>
             ) : (
@@ -973,7 +963,7 @@ const handleNotificationClick = async (notification) => {
                                   : ""
                           }`}
                         >
-                          {user.users?.status === "declined" ? "Not approved" : user.users?.status}
+                          {formatStatusDisplay(user.users?.status)}
                         </span>
                       </div>
                       <div className="text-gray-500 text-xs mb-0.5 break-words">{user.vet_email}</div>
@@ -1172,10 +1162,7 @@ const handleNotificationClick = async (notification) => {
                               : ""
                       }`}
                     >
-                      {selectedUser.users?.status === "declined" 
-                        ? "Not approved" 
-                        : selectedUser.users?.status.charAt(0).toUpperCase() + selectedUser.users?.status.slice(1)
-                      }
+                      {formatStatusDisplay(selectedUser.users?.status)}
                     </span>
                   </div>
                 </div>
