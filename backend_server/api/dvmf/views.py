@@ -618,25 +618,11 @@ def get_users(request):
     
 
 # -------------------- NOTIFICATIONS --------------------
-# -------------------- NOTIFICATIONS --------------------
-from datetime import datetime, timedelta, timezone as dt_timezone
+# -------------------- GET VET NOTIFICATIONS --------------------
+from datetime import datetime
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework import status
 
-# -------------------- UTILITY --------------------
-manila_tz = dt_timezone(timedelta(hours=8))
-
-def to_manila_time(iso_str):
-    if not iso_str:
-        return datetime.now(manila_tz)
-    try:
-        return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone(manila_tz)
-    except:
-        return datetime.now(manila_tz)
-
-
-# -------------------- GET VET NOTIFICATIONS --------------------
 @api_view(["GET"])
 def get_vetnotifications(request):
     try:
@@ -657,7 +643,8 @@ def get_vetnotifications(request):
         def add_notification(user_id, message, notif_type, related_id, created_at=None):
             if not user_id or not related_id or related_id in existing_keys:
                 return
-            dt_ph = to_manila_time(created_at) if created_at else datetime.now(manila_tz)
+
+            dt_ph = datetime.fromisoformat(created_at) if created_at else datetime.now()
             notifications_to_insert.append({
                 "id": user_id,
                 "notif_message": message,
@@ -728,28 +715,9 @@ def get_vetnotifications(request):
 
         # ---------------- COMMENT NOTIFICATIONS ----------------
         try:
-            latest_notif_time = None
-            latest_notif_res = sr_client.table("notification") \
-                .select("notif_date, notif_time") \
-                .order("notif_date", desc=True) \
-                .order("notif_time", desc=True) \
-                .limit(1) \
-                .maybe_single() \
+            comments_res = sr_client.table("comment") \
+                .select("id, comment_text, comment_date, user_id, announcement_id") \
                 .execute()
-
-            if latest_notif_res.data:
-                latest_notif_time = datetime.strptime(
-                    f"{latest_notif_res.data['notif_date']} {latest_notif_res.data['notif_time']}",
-                    "%Y-%m-%d %H:%M:%S"
-                )
-
-            comments_query = sr_client.table("comment") \
-                .select("id, comment_text, comment_date, user_id, announcement_id")
-
-            if latest_notif_time:
-                comments_query = comments_query.gte("comment_date", latest_notif_time.isoformat())
-
-            comments_res = comments_query.execute()
 
             for comment in (comments_res.data or []):
                 commenter_id = comment.get("user_id")
@@ -761,13 +729,18 @@ def get_vetnotifications(request):
                 if related_id in existing_keys:
                     continue
 
-                announcement_res = sr_client.table("announcement").select("user_id") \
-                    .eq("id", ann_id).maybe_single().execute()
+                # Correct PK column: announce_id
+                announcement_res = sr_client.table("announcement") \
+                    .select("user_id") \
+                    .eq("announce_id", ann_id) \
+                    .maybe_single() \
+                    .execute()
                 post_owner_id = announcement_res.data.get("user_id") if announcement_res.data else None
 
                 if not post_owner_id or post_owner_id == commenter_id:
                     continue
 
+                # Fetch commenter name
                 commenter_name = None
                 kutsero_res = sr_client.table("kutsero_profile").select("kutsero_fname,kutsero_lname") \
                     .eq("kutsero_id", commenter_id).maybe_single().execute()
@@ -795,15 +768,12 @@ def get_vetnotifications(request):
         # ---------------- BULK INSERT (DEDUPED) ----------------
         if notifications_to_insert:
             try:
-                filtered_new = [n for n in notifications_to_insert if n["related_id"] not in existing_keys]
-                if filtered_new:
-                    sr_client.table("notification").insert(filtered_new).execute()
+                sr_client.table("notification").insert(notifications_to_insert).execute()
             except:
                 pass
 
         # ---------------- FETCH ALL VALID NOTIFICATIONS ----------------
         valid_types = ["medrec_request", "approved", "declined", "pending", "comment"]
-
         all_notifs_res = (
             sr_client.table("notification")
             .select("*")
@@ -829,7 +799,6 @@ def get_vetnotifications(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
-
 
 
 
