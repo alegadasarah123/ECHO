@@ -27,6 +27,7 @@ urlpatterns = [
     # Feed Management Endpoints
     path('feeding-schedule/delete/', views.delete_feed_entry, name='delete_feed_entry'),
 
+    # Watering Schedule Endpoints
     path('water-schedule/', views.get_water_schedule, name='get_water_schedule'),
     path('water-schedule/update/', views.update_water_schedule, name='update_water_schedule'),
     path('water-schedule/mark-completed/', views.mark_water_completed, name='mark_water_completed'),
@@ -72,10 +73,11 @@ urlpatterns = [
     path('ai_assistant/', views.ai_assistant, name='ai_assistant'),
     path('get_chat_history/', views.get_chat_history, name='get_chat_history'),
 
-    path('conversations/', views.get_conversations, name='get_conversations'),
+    # Messaging endpoints
+    path('conversations/', views.conversations, name='conversations'),
+    path('available_users/', views.available_users, name='available_users'),
     path('get_messages/', views.get_messages, name='get_messages'),
     path('send_message/', views.send_message, name='send_message'),
-    path('available_users/', views.available_users, name='available_users'),
     path('debug_user_lookup/', views.debug_user_lookup, name='debug_user_lookup'),
 
     # Profile endpoints
@@ -90,7 +92,9 @@ urlpatterns = [
     path('forgot-password/', views.forgot_password, name='forgot_password'),
     path('reset-password/', views.reset_password, name='reset_password'),
 
-
+    #Reminders and Notifications
+    path('feed-water-notifications/', views.feed_water_notifications, name='feed_water_notifications'),
+    path('check-current-schedules/', views.check_current_schedules, name='check_current_schedules'),
 ]
 
 
