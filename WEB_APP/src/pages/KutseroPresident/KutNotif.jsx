@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/kutsero_president";
+const API_BASE = "http://localhost:8000/api/kutsero_president";
 
 const NotificationModal = ({ 
   isOpen, 
@@ -27,7 +27,7 @@ const NotificationModal = ({
     });
   };
 
-  // Mark single notification as read in backend
+  // ✅ FIXED: Mark single notification as read using notif_id
   const markNotificationAsRead = async (notifId) => {
     try {
       const response = await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
@@ -90,17 +90,17 @@ const NotificationModal = ({
     setLoading(false);
   };
 
-  // Handle individual notification click - UPDATED to pass notification data
+  // ✅ FIXED: Handle individual notification click - using notif_id
   const handleNotificationClick = async (notification) => {
-    // Mark as read in backend first
-    if (!notification.read) {
-      const success = await markNotificationAsRead(notification.id);
+    // Mark as read in backend first - using notif_id
+    if (!notification.read && notification.notif_id) {
+      const success = await markNotificationAsRead(notification.notif_id);
       
       if (success) {
         // Update local state
         setLocalNotifications(prev => 
           prev.map(n => 
-            n.id === notification.id ? { ...n, read: true } : n
+            n.notif_id === notification.notif_id ? { ...n, read: true } : n
           )
         );
       }
@@ -164,7 +164,7 @@ const NotificationModal = ({
           {localNotifications.length > 0 ? (
             localNotifications.map((notification, index) => (
               <div
-                key={notification.id || index}
+                key={notification.notif_id || notification.id || index}
                 className={`p-4 border-b border-gray-50 transition-all duration-200 hover:bg-amber-50 cursor-pointer group ${
                   !notification.read ? 'bg-amber-50' : 'bg-white'
                 }`}
