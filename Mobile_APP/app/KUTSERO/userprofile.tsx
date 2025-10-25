@@ -15,11 +15,28 @@ import {
   Modal,
   Dimensions,
   FlatList,
+  Platform,
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
+import { FontAwesome5 } from "@expo/vector-icons"
 
-const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
-const { width: SCREEN_WIDTH } = Dimensions.get('window')
+const { width, height } = Dimensions.get("window")
+
+const scale = (size: number) => {
+  const scaleFactor = width / 375
+  return Math.max(Math.min(size * scaleFactor, size * 1.2), size * 0.8)
+}
+
+const verticalScale = (size: number) => {
+  const scaleFactor = height / 812
+  return Math.max(Math.min(size * scaleFactor, size * 1.15), size * 0.85)
+}
+
+const moderateScale = (size: number, factor = 0.5) => {
+  return size + (scale(size) - size) * factor
+}
+
+const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
 
 interface UserProfileData {
   user_id: string
@@ -182,19 +199,35 @@ export default function UserProfileScreen() {
     }
   }
 
-  const getRoleInfo = (role: string) => {
-    const roleMap: { [key: string]: { icon: string; label: string; color: string } } = {
-      Veterinarian: { icon: "🩺", label: "Veterinarian", color: "#E7F3FF" },
-      Kutsero: { icon: "🐴", label: "Kutsero", color: "#FFF3E0" },
-      "Horse Operator": { icon: "👨‍💼", label: "Horse Operator", color: "#E8F5E9" },
-      "Kutsero President": { icon: "👑", label: "Kutsero President", color: "#F3E5F5" },
-      Dvmf: { icon: "🏛️", label: "DVMF", color: "#E0F2F1" },
-      "Dvmf-Admin": { icon: "🏛️", label: "DVMF Admin", color: "#E0F2F1" },
-      "Ctu-Vetmed": { icon: "🎓", label: "CTU Vetmed", color: "#FFEBEE" },
-      "Ctu-Admin": { icon: "🎓", label: "CTU Admin", color: "#FFEBEE" },
+  const getUserRoleBadgeColor = (role: string) => {
+    switch (role?.toLowerCase()) {
+      case "horse operator":
+        return { bg: "#E3F2FD", text: "#CD853F" }
+      case "kutsero":
+        return { bg: "#E8F5E9", text: "#CD853F" }
+      case "veterinarian":
+        return { bg: "#F3E5F5", text: "#10B981" }
+      case "ctu-vetmed":
+        return { bg: "#FFF3E0", text: "#10B981" }
+      case "dvmf":
+        return { bg: "#FCE4EC", text: "#C2185B" }
+      case "kutsero president":
+        return { bg: "#F1F8E9", text: "#CD853F" }
+      default:
+        return { bg: "#F5F5F5", text: "#666" }
     }
+  }
 
-    return roleMap[role] || { icon: "👤", label: role, color: "#F5F5F5" }
+  const formatRoleLabel = (role: string) => {
+    const roleMap: { [key: string]: string } = {
+      "horse operator": "Horse Operator",
+      "kutsero": "Kutsero",
+      "veterinarian": "Veterinarian",
+      "ctu-vetmed": "CTU Veterinarian",
+      "dvmf": "DVMF",
+      "kutsero president": "Kutsero President",
+    }
+    return roleMap[role?.toLowerCase()] || role
   }
 
   const getDisplayName = () => {
@@ -246,8 +279,8 @@ export default function UserProfileScreen() {
 
     if (roleBasedImage) {
       return (
-        <View style={styles.profileImageBg}>
-          <Image source={roleBasedImage} style={styles.profileImage} />
+        <View style={styles.avatarContainer}>
+          <Image source={roleBasedImage} style={styles.avatar} />
         </View>
       )
     } else if (profileImage) {
@@ -257,10 +290,10 @@ export default function UserProfileScreen() {
           : { uri: profileImage }
 
       return (
-        <View style={styles.profileImageBg}>
+        <View style={styles.avatarContainer}>
           <Image
             source={imageSource}
-            style={styles.profileImage}
+            style={styles.avatar}
             onError={(error) => {
               console.error("Error loading profile image:", error.nativeEvent.error)
             }}
@@ -269,9 +302,9 @@ export default function UserProfileScreen() {
       )
     } else {
       return (
-        <View style={styles.profileImageBg}>
-          <View style={styles.profileImagePlaceholder}>
-            <Text style={styles.profileImageText}>{getInitials()}</Text>
+        <View style={styles.avatarContainer}>
+          <View style={styles.avatarFallback}>
+            <Text style={styles.avatarFallbackText}>{getInitials()}</Text>
           </View>
         </View>
       )
@@ -357,10 +390,14 @@ export default function UserProfileScreen() {
     })
   }
 
+  const handleBack = () => {
+    router.back()
+  }
+
   const ImageCarousel = ({ images, announcementId }: { images: string[], announcementId: string }) => {
     const [currentIndex, setCurrentIndex] = useState(0)
     const flatListRef = useRef<FlatList>(null)
-    const carouselWidth = SCREEN_WIDTH - 32
+    const carouselWidth = width - scale(32)
 
     const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
       if (viewableItems.length > 0) {
@@ -456,8 +493,9 @@ export default function UserProfileScreen() {
     return (
       <View style={styles.errorContainer}>
         <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
-        <Text style={styles.errorText}>User not found</Text>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <FontAwesome5 name="user-slash" size={scale(64)} color="#CCC" />
+        <Text style={styles.errorText}>Profile not found</Text>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Text style={styles.backButtonText}>Go Back</Text>
         </TouchableOpacity>
       </View>
@@ -465,32 +503,42 @@ export default function UserProfileScreen() {
   }
 
   const displayName = getDisplayName()
-  const roleInfo = getRoleInfo(profileData.role)
+  const roleColors = getUserRoleBadgeColor(profileData.role)
   const roleLower = (profileData.role || "").toLowerCase().trim()
   const showAnnouncements = roleLower.includes("dvmf") || roleLower.includes("ctu")
-  const roleBasedProfilePicture = getProfilePictureForRole(profileData.role)
+  const isOwnProfile = currentUserId === profileData.user_id
+
+  const phoneNumber = profileData.profile?.phone
+  const city = profileData.profile?.city
+  const province = profileData.profile?.province
+  const fullAddress = city && province ? `${city}, ${province}` : city || province || null
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
 
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backBtn} onPress={() => router.back()}>
-          <Text style={styles.backIcon}>←</Text>
+        <TouchableOpacity style={styles.backIconButton} onPress={handleBack}>
+          <FontAwesome5 name="arrow-left" size={scale(20)} color="white" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile</Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.profileCard}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Profile Header Card */}
+        <View style={styles.profileHeaderCard}>
           {renderProfileImage()}
-          
-          <Text style={styles.displayName}>{displayName}</Text>
 
-          <View style={[styles.roleBadge, { backgroundColor: roleInfo.color }]}>
-            <Text style={styles.roleBadgeText}>
-              {roleInfo.icon} {roleInfo.label}
+          <Text style={styles.fullName}>{displayName}</Text>
+
+          <View style={[styles.roleBadge, { backgroundColor: roleColors.bg }]}>
+            <Text style={[styles.roleBadgeText, { color: roleColors.text }]}>
+              {formatRoleLabel(profileData.role)}
             </Text>
           </View>
 
@@ -525,118 +573,104 @@ export default function UserProfileScreen() {
             </Text>
           </View>
 
-          <TouchableOpacity style={styles.messageButton} onPress={handleMessagePress}>
-            <Text style={styles.messageButtonText}>Message</Text>
-          </TouchableOpacity>
+          {!isOwnProfile && (
+            <TouchableOpacity style={styles.messageButton} onPress={handleMessagePress} activeOpacity={0.7}>
+              <FontAwesome5 name="comment-dots" size={scale(16)} color="white" />
+              <Text style={styles.messageButtonText}>Send Message</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        <View style={styles.infoSection}>
-          <Text style={styles.sectionTitle}>About</Text>
+        {/* Contact Information Card */}
+        <View style={styles.infoCard}>
+          <View style={styles.infoCardHeader}>
+            <FontAwesome5 name="info-circle" size={scale(18)} color="#C17A47" />
+            <Text style={styles.infoCardTitle}>Contact Information</Text>
+          </View>
 
-          <View style={styles.infoContent}>
-            <View style={styles.infoItem}>
-              <View style={[styles.infoIconContainer, { backgroundColor: roleInfo.color }]}>
-                <Text style={styles.infoIcon}>{roleInfo.icon}</Text>
-              </View>
-              <View style={styles.infoTextContainer}>
-                <Text style={styles.infoLabel}>Role</Text>
-                <Text style={styles.infoText}>{roleInfo.label}</Text>
-              </View>
-            </View>
-
-            <View style={styles.infoItem}>
-              <View style={[styles.infoIconContainer, { backgroundColor: "#E8F0FE" }]}>
-                <Text style={[styles.infoIcon, { fontSize: 20, color: "#2196F3" }]}>📍</Text>
-              </View>
-              <View style={styles.infoTextContainer}>
-                <Text style={styles.infoLabel}>Location</Text>
-                <Text style={styles.infoText}>
-                  {(() => {
-                    const city = profileData.profile?.city
-                    const province = profileData.profile?.province
-                    console.log("📍 Location check - City:", city, "Province:", province)
-                    
-                    if (city && province) return `${city}, ${province}`
-                    if (city) return city
-                    if (province) return province
-                    return "Not specified"
-                  })()}
-                </Text>
-              </View>
-            </View>
-
-            {(profileData.profile?.email || profileData.email) ? (
-              <View style={styles.infoItem}>
-                <View style={[styles.infoIconContainer, { backgroundColor: "#E8F0FE" }]}>
-                  <Text style={[styles.infoIcon, { fontSize: 16, color: "#2196F3" }]}>✉</Text>
+          <View style={styles.detailsContent}>
+            {fullAddress && (
+              <View style={styles.contactItem}>
+                <View style={styles.iconContainer}>
+                  <FontAwesome5 name="map-marker-alt" size={scale(14)} color="#C17A47" />
                 </View>
-                <View style={styles.infoTextContainer}>
-                  <Text style={styles.infoLabel}>Email</Text>
-                  <Text style={styles.infoText}>
+                <View style={styles.contactTextContainer}>
+                  <Text style={styles.contactLabel}>Location</Text>
+                  <Text style={styles.contactText}>{fullAddress}</Text>
+                </View>
+              </View>
+            )}
+
+            {(profileData.profile?.email || profileData.email) && (
+              <View style={styles.contactItem}>
+                <View style={styles.iconContainer}>
+                  <FontAwesome5 name="envelope" size={scale(14)} color="#C17A47" />
+                </View>
+                <View style={styles.contactTextContainer}>
+                  <Text style={styles.contactLabel}>Email</Text>
+                  <Text style={styles.contactText}>
                     {profileData.profile?.email || profileData.email}
                   </Text>
                 </View>
               </View>
-            ) : null}
+            )}
 
-            {profileData.profile?.phone ? (
-              <View style={styles.infoItem}>
-                <View style={[styles.infoIconContainer, { backgroundColor: "#E8F0FE" }]}>
-                  <Text style={[styles.infoIcon, { fontSize: 18, color: "#2196F3" }]}>☎</Text>
+            {phoneNumber && (
+              <View style={styles.contactItem}>
+                <View style={styles.iconContainer}>
+                  <FontAwesome5 name="phone" size={scale(14)} color="#C17A47" />
                 </View>
-                <View style={styles.infoTextContainer}>
-                  <Text style={styles.infoLabel}>Phone</Text>
-                  <Text style={styles.infoText}>{profileData.profile.phone}</Text>
+                <View style={styles.contactTextContainer}>
+                  <Text style={styles.contactLabel}>Phone</Text>
+                  <Text style={styles.contactText}>{phoneNumber}</Text>
                 </View>
               </View>
-            ) : null}
+            )}
 
-            {profileData.profile?.username ? (
-              <View style={styles.infoItem}>
-                <View style={[styles.infoIconContainer, { backgroundColor: "#E8F0FE" }]}>
-                  <Text style={[styles.infoIcon, { fontSize: 18, color: "#2196F3" }]}>👤</Text>
+            {profileData.profile?.username && (
+              <View style={styles.contactItem}>
+                <View style={styles.iconContainer}>
+                  <FontAwesome5 name="user" size={scale(14)} color="#C17A47" />
                 </View>
-                <View style={styles.infoTextContainer}>
-                  <Text style={styles.infoLabel}>Username</Text>
-                  <Text style={styles.infoText}>@{profileData.profile.username}</Text>
+                <View style={styles.contactTextContainer}>
+                  <Text style={styles.contactLabel}>Username</Text>
+                  <Text style={styles.contactText}>@{profileData.profile.username}</Text>
                 </View>
               </View>
-            ) : null}
+            )}
+
+            {!fullAddress && !profileData.profile?.email && !profileData.email && !phoneNumber && !profileData.profile?.username && (
+              <View style={styles.noContactInfo}>
+                <FontAwesome5 name="info-circle" size={scale(16)} color="#999" />
+                <Text style={styles.noContactInfoText}>No contact information available</Text>
+              </View>
+            )}
           </View>
         </View>
 
+        {/* Announcements Section - Keep for DVMF and CTU profiles */}
         {showAnnouncements && (
-          <View style={styles.announcementsSection}>
-            <View style={styles.announcementsSectionHeader}>
-              <Text style={styles.sectionTitle}>Announcements</Text>
+          <View style={styles.infoCard}>
+            <View style={styles.infoCardHeader}>
+              <FontAwesome5 name="bullhorn" size={scale(18)} color="#C17A47" />
+              <Text style={styles.infoCardTitle}>Announcements</Text>
             </View>
+
             {isLoadingAnnouncements ? (
-              <View style={styles.loadingAnnouncementsContainer}>
+              <View style={styles.scheduleLoadingContainer}>
                 <ActivityIndicator size="small" color="#C17A47" />
-                <Text style={styles.loadingAnnouncementsText}>
-                  Loading announcements...
-                </Text>
+                <Text style={styles.scheduleLoadingText}>Loading announcements...</Text>
               </View>
             ) : announcements.length > 0 ? (
               <View style={styles.announcementsList}>
                 {announcements.map((announcement) => {
                   const images = normalizeImageUrls(announcement.image_url)
-                  console.log(`📸 Announcement ${announcement.id}:`, {
-                    raw: announcement.image_url,
-                    normalized: images,
-                    count: images.length
-                  })
                   
                   return (
                     <View key={announcement.id} style={styles.fbPostCard}>
                       <View style={styles.fbPostHeader}>
                         <View style={styles.fbPostAuthorInfo}>
-                          {roleBasedProfilePicture ? (
-                            <Image 
-                              source={roleBasedProfilePicture} 
-                              style={styles.fbPostAvatar}
-                            />
-                          ) : profileData.profile?.profile_image ? (
+                          {profileData.profile?.profile_image ? (
                             <Image
                               source={{ uri: profileData.profile.profile_image }}
                               style={styles.fbPostAvatar}
@@ -673,14 +707,19 @@ export default function UserProfileScreen() {
                 })}
               </View>
             ) : (
-              <View style={styles.emptyAnnouncements}>
-                <Text style={styles.emptyAnnouncementsIcon}>📢</Text>
-                <Text style={styles.emptyAnnouncementsText}>No announcements yet</Text>
-                <Text style={styles.emptyAnnouncementsSubtext}>
-                  This user hasn't posted any announcements
-                </Text>
+              <View style={styles.noScheduleContainer}>
+                <FontAwesome5 name="bullhorn" size={scale(32)} color="#CCC" />
+                <Text style={styles.noScheduleText}>No announcements yet</Text>
               </View>
             )}
+          </View>
+        )}
+
+        {/* Own Profile Note */}
+        {isOwnProfile && (
+          <View style={styles.ownProfileNote}>
+            <FontAwesome5 name="info-circle" size={scale(14)} color="#666" />
+            <Text style={styles.ownProfileNoteText}>This is your profile. To edit, go to Profile tab.</Text>
           </View>
         )}
       </ScrollView>
@@ -705,8 +744,8 @@ export default function UserProfileScreen() {
                 showsHorizontalScrollIndicator={false}
                 initialScrollIndex={selectedImageIndex}
                 getItemLayout={(data, index) => ({
-                  length: SCREEN_WIDTH,
-                  offset: SCREEN_WIDTH * index,
+                  length: width,
+                  offset: width * index,
                   index,
                 })}
                 keyExtractor={(item, index) => `modal-${index}`}
@@ -739,265 +778,296 @@ export default function UserProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F0F2F5",
+    backgroundColor: "#F5F5F5",
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#F0F2F5",
+    backgroundColor: "#F5F5F5",
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 14,
+    marginTop: verticalScale(16),
+    fontSize: moderateScale(16),
     color: "#666",
+    fontWeight: "500",
   },
   errorContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#F0F2F5",
-    padding: 20,
+    backgroundColor: "#F5F5F5",
+    paddingHorizontal: scale(32),
   },
   errorText: {
-    fontSize: 16,
+    fontSize: moderateScale(18),
     color: "#666",
-    marginBottom: 20,
+    marginTop: verticalScale(16),
+    marginBottom: verticalScale(24),
+    textAlign: "center",
   },
   backButton: {
     backgroundColor: "#C17A47",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingHorizontal: scale(32),
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(8),
   },
   backButtonText: {
     color: "white",
-    fontSize: 14,
+    fontSize: moderateScale(16),
     fontWeight: "600",
   },
   header: {
+    backgroundColor: "#C17A47",
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: "#C17A47",
-    paddingTop: 20,
-    paddingBottom: 16,
-    paddingHorizontal: 16,
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(16),
+    paddingTop: Platform.OS === "ios" ? verticalScale(50) : verticalScale(16),
   },
-  backBtn: {
-    width: 40,
-    height: 40,
+  backIconButton: {
+    width: scale(40),
+    height: scale(40),
     justifyContent: "center",
-  },
-  backIcon: {
-    color: "white",
-    fontSize: 24,
+    alignItems: "center",
   },
   headerTitle: {
+    fontSize: moderateScale(20),
+    fontWeight: "bold",
     color: "white",
-    fontSize: 18,
-    fontWeight: "600",
+    flex: 1,
+    textAlign: "center",
   },
   headerSpacer: {
-    width: 40,
+    width: scale(40),
   },
-  content: {
+  scrollView: {
     flex: 1,
   },
-  profileCard: {
+  scrollContent: {
+    paddingBottom: verticalScale(32),
+  },
+  profileHeaderCard: {
     backgroundColor: "white",
-    marginHorizontal: 16,
-    marginTop: 16,
-    marginBottom: 12,
-    borderRadius: 12,
-    padding: 20,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingVertical: verticalScale(32),
+    paddingHorizontal: scale(24),
+    marginBottom: verticalScale(16),
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
   },
-  profileImageBg: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "#E3F2FD",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 3,
-    borderColor: "#C17A47",
-    overflow: "hidden",
-    marginBottom: 12,
+  avatarContainer: {
+    marginBottom: verticalScale(16),
   },
-  profileImage: {
-    width: 94,
-    height: 94,
-    borderRadius: 47,
+  avatar: {
+    width: scale(120),
+    height: scale(120),
+    borderRadius: scale(60),
+    borderWidth: 4,
+    borderColor: "#000000ff",
   },
-  profileImagePlaceholder: {
-    width: 94,
-    height: 94,
-    borderRadius: 47,
+  avatarFallback: {
+    width: scale(120),
+    height: scale(120),
+    borderRadius: scale(60),
     backgroundColor: "#C17A47",
     justifyContent: "center",
     alignItems: "center",
+    borderWidth: 4,
+    borderColor: "#A66A3E",
   },
-  profileImageText: {
-    color: "white",
-    fontSize: 36,
-    fontWeight: "700",
-  },
-  displayName: {
-    fontSize: 20,
+  avatarFallbackText: {
+    fontSize: moderateScale(48),
     fontWeight: "bold",
-    color: "#050505",
-    marginBottom: 6,
+    color: "white",
+  },
+  fullName: {
+    fontSize: moderateScale(24),
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: verticalScale(8),
     textAlign: "center",
   },
   roleBadge: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginBottom: 6,
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(6),
+    borderRadius: scale(20),
+    marginBottom: verticalScale(6),
   },
   roleBadgeText: {
-    color: "#050505",
-    fontSize: 12,
+    fontSize: moderateScale(14),
     fontWeight: "600",
-    textAlign: "center",
   },
   statusBadge: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 10,
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(3),
+    borderRadius: scale(10),
     backgroundColor: "#F0F2F5",
-    marginBottom: 12,
+    marginBottom: verticalScale(12),
   },
   statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    marginRight: 5,
+    width: scale(7),
+    height: scale(7),
+    borderRadius: scale(3.5),
+    marginRight: scale(5),
   },
   statusText: {
-    fontSize: 11,
+    fontSize: moderateScale(11),
     fontWeight: "600",
     textTransform: "capitalize",
   },
   messageButton: {
-    width: "100%",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    backgroundColor: "#C17A47",
-    borderRadius: 8,
+    width: "90%",
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#C17A47",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
-    marginTop: 14,
-  },
-  messageButtonText: {
-    color: "white",
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  infoSection: {
-    backgroundColor: "white",
-    marginHorizontal: 16,
-    marginBottom: 12,
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(25),
+    gap: scale(8),
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    marginTop: verticalScale(10),
   },
-  sectionTitle: {
-    fontSize: 17,
-    fontWeight: "700",
-    color: "#050505",
-    marginBottom: 12,
+  messageButtonText: {
+    color: "white",
+    fontSize: moderateScale(14),
+    fontWeight: "600",
   },
-  infoContent: {
-    gap: 12,
+  infoCard: {
+    backgroundColor: "white",
+    marginHorizontal: scale(16),
+    marginBottom: verticalScale(16),
+    borderRadius: scale(12),
+    padding: scale(16),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  infoItem: {
+  infoCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: verticalScale(16),
+    paddingBottom: verticalScale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+    gap: scale(8),
+  },
+  infoCardTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: "600",
+    color: "#333",
+  },
+  detailsContent: {
+    paddingVertical: verticalScale(8),
+  },
+  contactItem: {
     flexDirection: "row",
     alignItems: "flex-start",
-    gap: 10,
+    marginBottom: verticalScale(16),
+    gap: scale(12),
   },
-  infoIconContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#F0F2F5",
+  iconContainer: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#F5F5F5",
     justifyContent: "center",
     alignItems: "center",
   },
-  infoIcon: {
-    fontSize: 18,
-  },
-  infoTextContainer: {
+  contactTextContainer: {
     flex: 1,
+  },
+  contactLabel: {
+    fontSize: moderateScale(12),
+    color: "#999",
+    marginBottom: verticalScale(2),
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  contactText: {
+    fontSize: moderateScale(14),
+    color: "#333",
+    lineHeight: moderateScale(20),
+  },
+  noContactInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: verticalScale(20),
+    gap: scale(8),
+  },
+  noContactInfoText: {
+    fontSize: moderateScale(14),
+    color: "#999",
+    fontStyle: "italic",
+  },
+  scheduleLoadingContainer: {
+    paddingVertical: verticalScale(20),
+    alignItems: "center",
     justifyContent: "center",
   },
-  infoLabel: {
-    fontSize: 11,
-    color: "#65676B",
-    marginBottom: 1,
-    fontWeight: "500",
+  scheduleLoadingText: {
+    marginTop: verticalScale(8),
+    fontSize: moderateScale(14),
+    color: "#666",
   },
-  infoText: {
-    fontSize: 14,
-    color: "#050505",
-    fontWeight: "400",
+  noScheduleContainer: {
+    paddingVertical: verticalScale(32),
+    alignItems: "center",
+    justifyContent: "center",
   },
-  announcementsSection: {
-    marginBottom: 24,
-    marginHorizontal: 16,
+  noScheduleText: {
+    marginTop: verticalScale(12),
+    fontSize: moderateScale(14),
+    color: "#999",
+    textAlign: "center",
   },
-  announcementsSectionHeader: {
-    marginBottom: 12,
+  ownProfileNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF3E0",
+    marginHorizontal: scale(16),
+    padding: scale(16),
+    borderRadius: scale(12),
+    gap: scale(12),
   },
-  loadingAnnouncementsContainer: {
-    alignItems: 'center',
-    paddingVertical: 20,
-    backgroundColor: "white",
-    borderRadius: 8,
+  ownProfileNoteText: {
+    flex: 1,
+    fontSize: moderateScale(13),
+    color: "#666",
+    lineHeight: moderateScale(18),
   },
-  loadingAnnouncementsText: {
-    textAlign: 'center',
-    marginTop: 10,
-    color: '#666',
-    fontSize: 13,
-  },
+  // Announcements styles
   announcementsList: {
-    gap: 12,
+    gap: verticalScale(12),
   },
   fbPostCard: {
     backgroundColor: "white",
-    borderRadius: 8,
+    borderRadius: scale(8),
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
-    marginBottom: 12,
+    marginBottom: verticalScale(12),
   },
   fbPostHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingHorizontal: scale(12),
+    paddingTop: scale(12),
+    paddingBottom: scale(8),
   },
   fbPostAuthorInfo: {
     flexDirection: "row",
@@ -1005,131 +1075,110 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   fbPostAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 10,
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    marginRight: scale(10),
   },
   fbPostAvatarPlaceholder: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
     backgroundColor: "#C17A47",
     justifyContent: "center",
     alignItems: "center",
-    marginRight: 10,
+    marginRight: scale(10),
   },
   fbPostAvatarText: {
     color: "white",
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontWeight: "600",
   },
   fbPostAuthorText: {
     flex: 1,
   },
   fbPostAuthorName: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontWeight: "600",
     color: "#050505",
-    marginBottom: 2,
+    marginBottom: scale(2),
   },
   fbPostMeta: {
     flexDirection: "row",
     alignItems: "center",
   },
   fbPostTime: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: "#65676B",
   },
   fbPostMetaSeparator: {
-    fontSize: 12,
+    fontSize: moderateScale(12),
     color: "#65676B",
   },
   fbPostVisibility: {
-    fontSize: 11,
+    fontSize: moderateScale(11),
   },
   fbPostTitleContainer: {
-    paddingHorizontal: 12,
-    paddingBottom: 4,
+    paddingHorizontal: scale(12),
+    paddingBottom: scale(4),
   },
   fbPostTitle: {
-    fontSize: 15,
+    fontSize: moderateScale(15),
     fontWeight: "700",
     color: "#050505",
   },
   fbPostContent: {
-    paddingHorizontal: 12,
-    paddingBottom: 12,
+    paddingHorizontal: scale(12),
+    paddingBottom: scale(12),
   },
   fbPostText: {
-    fontSize: 14,
+    fontSize: moderateScale(14),
     color: "#050505",
-    lineHeight: 19,
+    lineHeight: moderateScale(19),
   },
   carouselContainer: {
     position: "relative",
   },
   fbPostImage: {
     width: "100%",
-    height: 280,
+    height: verticalScale(280),
     backgroundColor: "#F0F2F5",
   },
   paginationContainer: {
     position: "absolute",
-    bottom: 12,
+    bottom: scale(12),
     left: 0,
     right: 0,
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    gap: 6,
+    gap: scale(6),
   },
   paginationDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
     backgroundColor: "rgba(255, 255, 255, 0.5)",
   },
   paginationDotActive: {
     backgroundColor: "rgba(255, 255, 255, 0.95)",
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
   },
   imageCounter: {
     position: "absolute",
-    top: 12,
-    right: 12,
+    top: scale(12),
+    right: scale(12),
     backgroundColor: "rgba(0, 0, 0, 0.6)",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: scale(10),
+    paddingVertical: scale(4),
+    borderRadius: scale(12),
   },
   imageCounterText: {
     color: "white",
-    fontSize: 12,
+    fontSize: moderateScale(12),
     fontWeight: "600",
-  },
-  emptyAnnouncements: {
-    alignItems: "center",
-    paddingVertical: 32,
-    backgroundColor: "white",
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  emptyAnnouncementsIcon: {
-    fontSize: 48,
-    marginBottom: 12,
-  },
-  emptyAnnouncementsText: {
-    fontSize: 14,
-    color: "#65676B",
-    fontWeight: "600",
-  },
-  emptyAnnouncementsSubtext: {
-    fontSize: 12,
-    color: "#65676B",
-    marginTop: 4,
   },
   modalContainer: {
     flex: 1,
@@ -1139,11 +1188,11 @@ const styles = StyleSheet.create({
   },
   modalCloseButton: {
     position: "absolute",
-    top: 50,
-    right: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    top: verticalScale(50),
+    right: scale(20),
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
     backgroundColor: "rgba(255, 255, 255, 0.2)",
     justifyContent: "center",
     alignItems: "center",
@@ -1151,31 +1200,31 @@ const styles = StyleSheet.create({
   },
   modalCloseText: {
     color: "white",
-    fontSize: 24,
+    fontSize: moderateScale(24),
     fontWeight: "300",
   },
   modalImageContainer: {
-    width: SCREEN_WIDTH,
+    width: width,
     height: "100%",
     justifyContent: "center",
     alignItems: "center",
   },
   modalImage: {
-    width: SCREEN_WIDTH,
+    width: width,
     height: "80%",
   },
   modalImageCounter: {
     position: "absolute",
-    bottom: 40,
+    bottom: verticalScale(40),
     alignSelf: "center",
     backgroundColor: "rgba(0, 0, 0, 0.7)",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(8),
+    borderRadius: scale(20),
   },
   modalImageCounterText: {
     color: "white",
-    fontSize: 14,
+    fontSize: moderateScale(14),
     fontWeight: "600",
   },
 })

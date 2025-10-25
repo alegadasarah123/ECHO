@@ -55,9 +55,9 @@ const getSafeAreaPadding = () => {
 interface Horse {
   id: string
   name: string
-  healthStatus: "Healthy" | "Under Care" | "Recovering"
+  healthStatus: "Healthy" | "Unhealthy" | "Sick"
   status: string
-  image: any
+  image: string  // Changed to string for URL
   breed?: string
   age?: number
   color?: string
@@ -88,7 +88,7 @@ interface UserData {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.1.8:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
 
 // Helper function to test API connectivity
 const testAPIConnection = async () => {
@@ -123,8 +123,8 @@ export default function HorseSelectionScreen() {
   const [statsData, setStatsData] = useState({
     total: 0,
     healthy: 0,
-    underCare: 0,
-    recovering: 0,
+    unhealthy: 0,
+    sick: 0,
   })
   const safeArea = getSafeAreaPadding()
 
@@ -133,7 +133,7 @@ export default function HorseSelectionScreen() {
     loadUserDataAndHorses()
   }, [])
 
-  // FIXED: Use useFocusEffect for proper screen focus handling
+  // Use useFocusEffect for proper screen focus handling
   useFocusEffect(
     useCallback(() => {
       console.log("Screen focused, refreshing data...")
@@ -184,7 +184,7 @@ export default function HorseSelectionScreen() {
     }
   }
 
-  // FIXED: Updated loadCurrentAssignment function
+  // Updated loadCurrentAssignment function with image URL
   const loadCurrentAssignment = async (kutseroId: string) => {
     try {
       console.log("Loading current assignment for kutsero ID:", kutseroId)
@@ -207,7 +207,7 @@ export default function HorseSelectionScreen() {
             name: data.assignment.horse.name,
             healthStatus: data.assignment.horse.healthStatus as Horse["healthStatus"],
             status: data.assignment.horse.status,
-            image: require("../../assets/images/horse.png"),
+            image: data.assignment.horse.image || "https://via.placeholder.com/150?text=No+Image",
             breed: data.assignment.horse.breed,
             age: data.assignment.horse.age,
             color: data.assignment.horse.color,
@@ -233,7 +233,7 @@ export default function HorseSelectionScreen() {
             ),
           )
 
-          // FIXED: Save complete horse data structure to SecureStore
+          // Save complete horse data structure to SecureStore
           const horseDataToStore = {
             ...horse,
             assignmentId: data.assignment.assignmentId,
@@ -292,13 +292,13 @@ export default function HorseSelectionScreen() {
         const data = await response.json()
         console.log("Received horses data:", data)
 
-        // Transform horses data with proper owner name mapping
+        // Transform horses data with proper image URL mapping
         const horses: Horse[] = data.horses.map((horse: any) => ({
           id: horse.id,
           name: horse.name,
           healthStatus: horse.healthStatus as Horse["healthStatus"],
           status: horse.status,
-          image: require("../../assets/images/horse.png"),
+          image: horse.image || "https://via.placeholder.com/150?text=No+Image",
           breed: horse.breed,
           age: horse.age,
           color: horse.color,
@@ -317,8 +317,8 @@ export default function HorseSelectionScreen() {
         setStatsData({
           total: data.total_count || horses.length,
           healthy: horses.filter((h) => h.healthStatus === "Healthy").length,
-          underCare: horses.filter((h) => h.healthStatus === "Under Care").length,
-          recovering: horses.filter((h) => h.healthStatus === "Recovering").length,
+          unhealthy: horses.filter((h) => h.healthStatus === "Unhealthy").length,
+          sick: horses.filter((h) => h.healthStatus === "Sick").length,
         })
       } else {
         let errorMessage = "Failed to fetch horses"
@@ -426,7 +426,7 @@ export default function HorseSelectionScreen() {
     }
   }
 
-  // FIXED: Updated performHorseAssignment to properly handle state updates
+  // Updated performHorseAssignment to properly handle state updates
   const performHorseAssignment = async (horse: Horse) => {
     setIsAssigning(true)
 
@@ -440,7 +440,7 @@ export default function HorseSelectionScreen() {
       const assignmentData = {
         kutsero_id: kutseroId,
         horse_id: horse.id,
-        date_start: new Date().toISOString(), // FIXED: Use full ISO string
+        date_start: new Date().toISOString(),
         force_switch: true,
       }
 
@@ -460,13 +460,13 @@ export default function HorseSelectionScreen() {
         const result = await response.json()
         console.log("Assignment successful:", result)
 
-        // FIXED: Create the updated horse object from API response
+        // Create the updated horse object from API response
         const updatedHorse: Horse = {
           id: result.horse.id,
           name: result.horse.name,
           healthStatus: result.horse.healthStatus as Horse["healthStatus"],
           status: result.horse.status,
-          image: require("../../assets/images/horse.png"),
+          image: result.horse.image || "https://via.placeholder.com/150?text=No+Image",
           breed: result.horse.breed,
           age: result.horse.age,
           color: result.horse.color,
@@ -474,7 +474,7 @@ export default function HorseSelectionScreen() {
           ownerName: result.horse.ownerName || result.horse.opName || result.horse.operatorName,
           opName: result.horse.opName,
           assignmentStatus: "assigned",
-          currentAssignmentId: result.assignment.assign_id, // FIXED: Use correct field
+          currentAssignmentId: result.assignment.assign_id,
           lastCheckup: result.horse.lastCheckup,
           nextCheckup: result.horse.nextCheckup,
         }
@@ -496,7 +496,7 @@ export default function HorseSelectionScreen() {
           }),
         )
 
-        // FIXED: Save complete horse data structure to SecureStore
+        // Save complete horse data structure to SecureStore
         const horseDataToStore = {
           ...updatedHorse,
           assignmentId: result.assignment.assign_id,
@@ -548,10 +548,10 @@ export default function HorseSelectionScreen() {
     switch (status) {
       case "Healthy":
         return "#4CAF50"
-      case "Under Care":
+      case "Unhealthy":
         return "#FF9800"
-      case "Recovering":
-        return "#2196F3"
+      case "Sick":
+        return "#F44336"
       default:
         return "#666"
     }
@@ -626,12 +626,12 @@ export default function HorseSelectionScreen() {
             <Text style={styles.statLabel}>Healthy</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: "#FF9800" }]}>{statsData.underCare}</Text>
-            <Text style={styles.statLabel}>Under Care</Text>
+            <Text style={[styles.statNumber, { color: "#FF9800" }]}>{statsData.unhealthy}</Text>
+            <Text style={styles.statLabel}>Unhealthy</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: "#2196F3" }]}>{statsData.recovering}</Text>
-            <Text style={styles.statLabel}>Recovering</Text>
+            <Text style={[styles.statNumber, { color: "#F44336" }]}>{statsData.sick}</Text>
+            <Text style={styles.statLabel}>Sick</Text>
           </View>
         </View>
 
@@ -642,9 +642,9 @@ export default function HorseSelectionScreen() {
             <View style={styles.currentSelectionCard}>
               <View style={styles.currentHorseAvatar}>
                 <Image
-                  source={selectedHorse.image}
-                  style={[styles.currentHorseIconImage, { tintColor: "#C17A47" }]}
-                  resizeMode="contain"
+                  source={{ uri: selectedHorse.image }}
+                  style={styles.currentHorseIconImage}
+                  resizeMode="cover"
                 />
               </View>
               <View style={styles.currentHorseInfo}>
@@ -702,9 +702,9 @@ export default function HorseSelectionScreen() {
                 >
                   <View style={styles.horseAvatar}>
                     <Image
-                      source={horse.image}
-                      style={[styles.horseIconImage, { tintColor: isAssignedToOther ? "#999" : "#C17A47" }]}
-                      resizeMode="contain"
+                      source={{ uri: horse.image }}
+                      style={styles.horseIconImage}
+                      resizeMode="cover"
                     />
                   </View>
                   <View style={styles.horseInfo}>
@@ -921,10 +921,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: scale(12),
+    overflow: "hidden",
   },
   currentHorseIconImage: {
-    width: scale(20),
-    height: scale(20),
+    width: "100%",
+    height: "100%",
   },
   currentHorseInfo: {
     flex: 1,
@@ -1016,10 +1017,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     marginRight: scale(12),
+    overflow: "hidden",
   },
   horseIconImage: {
-    width: scale(24),
-    height: scale(24),
+    width: "100%",
+    height: "100%",
   },
   horseInfo: {
     flex: 1,

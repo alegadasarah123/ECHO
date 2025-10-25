@@ -4,7 +4,7 @@ import { FontAwesome5 } from '@expo/vector-icons';
 import FeedLogPage from './FeedLogPage';
 import WaterLogPage from './waterlogpage';
 
-const API_BASE_URL = 'http://192.168.1.8:8000/api/kutsero';
+const API_BASE_URL = 'http://192.168.1.9:8000/api/kutsero';
 
 interface FeedLog {
   log_id: string;

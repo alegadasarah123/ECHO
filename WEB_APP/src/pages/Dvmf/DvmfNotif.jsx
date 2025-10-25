@@ -5,7 +5,7 @@ import { useEffect, useState } from "react"
 const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsRead }) => {
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(false)
-const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
+  const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
 
   // Format date in PH timezone
   const formatDate = (dateStr) => {
@@ -20,6 +20,25 @@ const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
       hour12: true,
       timeZone: "Asia/Manila",
     })
+  }
+
+  // Normalize status to ensure proper capitalization
+  const normalizeStatus = (message) => {
+    if (!message) return message;
+    
+    let normalizedMessage = message;
+    
+    // Replace various decline statuses with "Not Approved"
+    normalizedMessage = normalizedMessage
+      .replace(/\bdeclined\b/gi, "Not Approved")
+      .replace(/\bdecline\b/gi, "Not Approved");
+    
+    // Capitalize pending and approved statuses
+    normalizedMessage = normalizedMessage
+      .replace(/\bpending\b/gi, "Pending")
+      .replace(/\bapproved\b/gi, "Approved");
+ 
+    return normalizedMessage;
   }
 
   // Mark single notification as read in backend
@@ -94,8 +113,6 @@ const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
     onNotificationClick?.(notification)
   }
 
-
-  
   useEffect(() => {
     if (isOpen) {
       setLoading(true)
@@ -109,7 +126,7 @@ const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
             .filter((n) => n.message)
             .map((notif, index) => ({
               id: notif.id,
-              message: notif.message,
+              message: normalizeStatus(notif.message), // ✅ Apply status normalization
               date: notif.date || new Date().toISOString(),
               read: notif.read || false,
               type: notif.type || "general",
@@ -182,7 +199,6 @@ const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
           ) : (
             <div style={{ textAlign: "center", padding: "20px" }}>
               <p style={{ color: "#6b7280", marginBottom: "10px" }}>NO NOTIF</p>
-              
             </div>
           )}
         </div>
@@ -190,7 +206,6 @@ const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
         {/* Footer */}
         {notifications.length > 0 && (
           <div style={styles.footer}>
-            
             <button style={styles.closeButton} onClick={onClose}>
               CLOSE
             </button>

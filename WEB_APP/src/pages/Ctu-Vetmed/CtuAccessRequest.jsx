@@ -26,7 +26,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE_URL = "`https://echo-ebl8.onrender.com/api/ctu_vetmed"
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
 
 const SkeletonLoader = ({ activeTab }) => {
   const getGridConfig = () => {

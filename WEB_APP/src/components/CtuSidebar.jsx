@@ -5,13 +5,12 @@ import {
   ClipboardList,
   FileText,
   Folder,
-  LayoutDashboard,
   LogOut,
   Megaphone,
   Menu,
   Settings,
   UserCheck,
-  X,
+  X
 } from "lucide-react"
 import { forwardRef, useEffect, useState } from "react"
 import { useLocation, useNavigate } from "react-router-dom"
@@ -48,7 +47,7 @@ const Sidebars = forwardRef((props, ref) => {
   }
 
   const sidebarItems = [
-    { icon: LayoutDashboard, label: "Dashboard", path: "/CtuDashboard" },
+    { icon: BarChart3, label: "Dashboard", path: "/CtuDashboard" },
     { icon: UserCheck, label: "Account Approval", path: "/CtuAccountApproval" },
     { icon: FileText, label: "Access Requests", path: "/CtuAccessRequest" },
     { icon: ClipboardList, label: "Horse Records", path: "/CtuHorseRecord" },

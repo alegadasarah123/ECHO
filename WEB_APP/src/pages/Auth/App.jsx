@@ -9,8 +9,7 @@ import {
   Heart,
   MessageSquare,
   Shield,
-  Stethoscope,
-  Users,
+  Users
 } from "lucide-react"
 import { useState } from "react"
 import LogIn from "./logIn"
@@ -19,6 +18,8 @@ function App() {
   const [currentPage, setCurrentPage] = useState("home")
   const [showLearnMore, setShowLearnMore] = useState(false)
   const [imageHovered, setImageHovered] = useState(false)
+  const [showContactModal, setShowContactModal] = useState(false)
+  const [showTermsModal, setShowTermsModal] = useState(false)
 
   const styles = {
     container: {
@@ -47,21 +48,10 @@ function App() {
       textDecoration: "none",
       gap: "0.5rem",
     },
-    logoIcon: {
-      width: "2rem",
-      height: "2rem",
-      backgroundColor: "#B8763E",
-      borderRadius: "0.5rem",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
+    logoImage: {
+      height: "2.5rem",
+      width: "auto",
       transition: "transform 0.2s",
-    },
-    logoText: {
-      fontSize: "1.5rem",
-      fontWeight: "bold",
-      color: "#B8763E",
-      transition: "color 0.2s",
     },
     nav: {
       marginLeft: "auto",
@@ -276,6 +266,7 @@ function App() {
       color: "#6b7280",
       textDecoration: "none",
       transition: "color 0.2s",
+      cursor: "pointer",
     },
     modal: {
       position: "fixed",
@@ -360,10 +351,11 @@ function App() {
       {/* Header */}
       <header style={styles.header}>
         <a href="/" style={styles.logo}>
-          <div style={styles.logoIcon}>
-            <Stethoscope size={20} color="white" />
-          </div>
-          <span style={styles.logoText}>Echo</span>
+          <img 
+            src="/Images/echo.png" 
+            alt="Echo Logo" 
+            style={styles.logoImage}
+          />
         </a>
         <nav style={styles.nav}>
           <a href="#features" style={styles.navLink}>
@@ -380,7 +372,7 @@ function App() {
           <button style={{ ...styles.button, ...styles.secondaryButton }} onClick={() => setCurrentPage("login")}>
             Sign In
           </button>
-          <button style={{ ...styles.button, ...styles.primaryButton }}onClick={() => setCurrentPage("login")}>Get Started</button>
+          <button style={{ ...styles.button, ...styles.primaryButton }} onClick={() => setCurrentPage("login")}>Get Started</button>
         </div>
       </header>
 
@@ -400,7 +392,7 @@ function App() {
                 style={{ ...styles.largeButton, ...styles.primaryButton }}
                 onMouseEnter={() => setImageHovered(true)}
                 onMouseLeave={() => setImageHovered(false)}
-                onClick={() => setCurrentPage("login")} // <-- add this
+                onClick={() => setCurrentPage("login")}
               >
                 Get Started
                 <ArrowRight size={16} />
@@ -602,7 +594,7 @@ function App() {
               style={{ ...styles.largeButton, backgroundColor: "white", color: "#B8763E" }}
               onMouseEnter={() => setImageHovered(true)}
               onMouseLeave={() => setImageHovered(false)}
-              onClick={() => setCurrentPage("login")} // <-- add this
+              onClick={() => setCurrentPage("login")}
             >
               Get Started Today
             </button>
@@ -627,21 +619,26 @@ function App() {
       {/* Footer */}
       <footer style={styles.footer}>
         <div style={styles.footerContent}>
-          <div style={styles.logo}>
-            <div style={{ ...styles.logoIcon, width: "1.5rem", height: "1.5rem" }}>
-              <Stethoscope size={16} color="white" />
-            </div>
-            <span style={{ ...styles.logoText, fontSize: "1.125rem" }}>Echo</span>
-          </div>
           <p style={{ fontSize: "0.75rem", color: "#6b7280" }}>© 2025 Echo - Portal. All rights reserved.</p>
           <nav style={styles.footerNav}>
-            <a href="#" style={styles.footerLink}>
-              Privacy Policy
+            <a 
+              href="#" 
+              style={styles.footerLink}
+              onClick={(e) => {
+                e.preventDefault();
+                setShowTermsModal(true);
+              }}
+            >
+              Terms and Policy
             </a>
-            <a href="#" style={styles.footerLink}>
-              Terms of Service
-            </a>
-            <a href="#" style={styles.footerLink} id="contact">
+            <a 
+              href="#" 
+              style={styles.footerLink}
+              onClick={(e) => {
+                e.preventDefault();
+                setShowContactModal(true);
+              }}
+            >
               Contact Support
             </a>
           </nav>
@@ -818,13 +815,282 @@ function App() {
 
             <button
               style={{ ...styles.largeButton, ...styles.primaryButton, width: "100%", justifyContent: "center" }}
-             onClick={() => setCurrentPage("login")}
+              onClick={() => setCurrentPage("login")}
             >
               Get Started Now
             </button>
           </div>
         </div>
       )}
+
+      {/* Contact Support Modal */}
+      {showContactModal && (
+        <div style={styles.modal} onClick={() => setShowContactModal(false)}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <button style={styles.closeButton} onClick={() => setShowContactModal(false)}>
+              ×
+            </button>
+            <h2 style={{ fontSize: "1.875rem", fontWeight: "bold", color: "#B8763E", marginBottom: "1rem" }}>
+              Contact and Support
+            </h2>
+            <p style={{ color: "#6b7280", marginBottom: "2rem" }}>
+              For any questions, assistance, or technical concerns, please contact our support team:
+            </p>
+            
+            <div style={{ 
+              backgroundColor: "#f8f9fa", 
+              padding: "1.5rem", 
+              borderRadius: "0.5rem",
+              border: "1px solid #e5e7eb",
+              marginBottom: "2rem"
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
+                <div style={{
+                  width: "2.5rem",
+                  height: "2.5rem",
+                  backgroundColor: "#B8763E",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "white"
+                }}>
+                  📧
+                </div>
+                <div>
+                  <h3 style={{ fontWeight: "600", color: "#111827", margin: 0 }}>Email Support</h3>
+                  <p style={{ color: "#B8763E", fontWeight: "500", margin: 0 }}>echosys.ph@gmail.com</p>
+                </div>
+              </div>
+              <p style={{ fontSize: "0.875rem", color: "#6b7280", margin: 0 }}>
+                Our support team typically responds within 24 hours. Please include detailed information about your inquiry or issue for faster assistance.
+              </p>
+            </div>
+
+            <div style={{ 
+              display: "grid", 
+              gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", 
+              gap: "1rem",
+              marginBottom: "2rem"
+            }}>
+              <div style={{ textAlign: "center" }}>
+                <div style={{
+                  width: "3rem",
+                  height: "3rem",
+                  backgroundColor: "#fef3e2",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 0.5rem"
+                }}>
+                  <Clock size={20} color="#B8763E" />
+                </div>
+                <h4 style={{ fontWeight: "600", color: "#111827", margin: "0 0 0.25rem 0" }}>Response Time</h4>
+                <p style={{ fontSize: "0.875rem", color: "#6b7280", margin: 0 }}>Within 24 hours</p>
+              </div>
+              
+              <div style={{ textAlign: "center" }}>
+                <div style={{
+                  width: "3rem",
+                  height: "3rem",
+                  backgroundColor: "#e0f2fe",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  margin: "0 auto 0.5rem"
+                }}>
+                  <Users size={20} color="#0284c7" />
+                </div>
+                <h4 style={{ fontWeight: "600", color: "#111827", margin: "0 0 0.25rem 0" }}>Support Hours</h4>
+                <p style={{ fontSize: "0.875rem", color: "#6b7280", margin: 0 }}>Monday - Friday</p>
+              </div>
+            </div>
+
+            <button
+              style={{ 
+                ...styles.largeButton, 
+                ...styles.primaryButton, 
+                width: "100%", 
+                justifyContent: "center" 
+              }}
+              onClick={() => setShowContactModal(false)}
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
+{/* Terms and Policy Modal */}
+{showTermsModal && (
+  <div style={styles.modal} onClick={() => setShowTermsModal(false)}>
+    <div style={{...styles.modalContent, maxHeight: '90vh'}} onClick={(e) => e.stopPropagation()}>
+      <button style={styles.closeButton} onClick={() => setShowTermsModal(false)}>
+        ×
+      </button>
+      <h2 style={{ fontSize: "1.875rem", fontWeight: "bold", color: "#B8763E", marginBottom: "1rem" }}>
+        Terms and Policy
+      </h2>
+      
+      <div style={{ maxHeight: "60vh", overflowY: "auto", paddingRight: "1rem" }}>
+        {/* Terms and Policy Content */}
+        <div style={{ marginBottom: "2rem" }}>
+          <h3 style={{ fontSize: "1.25rem", fontWeight: "bold", color: "#111827", marginBottom: "1rem" }}>
+            1. Introduction
+          </h3>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            Welcome to the ECHO Mobile Application (Equine Care and Health Optimization).
+            By registering and using this app, you agree to comply with and be bound by these Terms and Conditions.
+            The ECHO App is developed to support the Tartanilla Horse Health Management Program under the Department of Veterinary Medicine and Fisheries (DVMF) and the Cebu Technological University (CTU).
+          </p>
+          <p style={{ color: "#6b7280", lineHeight: "1.6" }}>
+            These terms apply to all DVMF Personnel, CTU-VETMED Staff, Veterinarians, and Kutsero Presidents using the mobile application to manage and monitor horse health records.
+          </p>
+        </div>
+
+        <div style={{ marginBottom: "2rem" }}>
+          <h3 style={{ fontSize: "1.25rem", fontWeight: "bold", color: "#111827", marginBottom: "1rem" }}>
+            2. User Responsibilities
+          </h3>
+          
+          <h4 style={{ fontWeight: "600", color: "#111827", marginBottom: "0.5rem" }}>a. DVMF (Department of Veterinary Medicine and Fisheries)</h4>
+          <ul style={{ color: "#6b7280", marginBottom: "1rem", paddingLeft: "1.5rem", lineHeight: "1.6" }}>
+            <li style={{ marginBottom: "0.5rem" }}>Oversee the implementation and monitoring of the Tartanilla Horse Health Management Program.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Provide technical guidance and support for equine health management practices.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Coordinate with CTU-VETMED for program updates, research, and development.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Ensure compliance with national animal health and welfare standards.</li>
+            <li>Monitor program effectiveness and implement improvements as needed.</li>
+          </ul>
+
+          <h4 style={{ fontWeight: "600", color: "#111827", marginBottom: "0.5rem" }}>b. CTU-VETMED (Cebu Technological University - Veterinary Medicine)</h4>
+          <ul style={{ color: "#6b7280", marginBottom: "1rem", paddingLeft: "1.5rem", lineHeight: "1.6" }}>
+            <li style={{ marginBottom: "0.5rem" }}>Provide academic and technical expertise in equine health management.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Conduct research and development to improve the ECHO application features.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Train and supervise veterinarians and students involved in the program.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Maintain educational standards and curriculum integration.</li>
+            <li>Collaborate with DVMF for program evaluation and enhancement.</li>
+          </ul>
+
+          <h4 style={{ fontWeight: "600", color: "#111827", marginBottom: "0.5rem" }}>c. Veterinarian</h4>
+          <ul style={{ color: "#6b7280", marginBottom: "1rem", paddingLeft: "1.5rem", lineHeight: "1.6" }}>
+            <li style={{ marginBottom: "0.5rem" }}>Conduct regular health checkups and medical assessments for all registered horses.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Update horse medical records accurately and promptly through the ECHO app.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Provide professional advice and treatment recommendations for horse health issues.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Coordinate with Kutsero Presidents for health monitoring and emergency responses.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Report critical health cases to DVMF and CTU-VETMED authorities.</li>
+            <li>Maintain professional ethics and standards in all veterinary practices.</li>
+          </ul>
+
+          <h4 style={{ fontWeight: "600", color: "#111827", marginBottom: "0.5rem" }}>d. Kutsero President</h4>
+          <ul style={{ color: "#6b7280", marginBottom: "1rem", paddingLeft: "1.5rem", lineHeight: "1.6" }}>
+            <li style={{ marginBottom: "0.5rem" }}>Represent and coordinate all kutseros (drivers) under the Tartanilla program.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Ensure proper handling and welfare of horses during daily operations.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Monitor and report horse health conditions to assigned veterinarians.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Facilitate communication between kutseros, veterinarians, and program administrators.</li>
+            <li style={{ marginBottom: "0.5rem" }}>Organize training and orientation sessions for new kutseros.</li>
+            <li>Enforce compliance with animal welfare standards among all members.</li>
+          </ul>
+        </div>
+
+        <div style={{ marginBottom: "2rem" }}>
+          <h3 style={{ fontSize: "1.25rem", fontWeight: "bold", color: "#111827", marginBottom: "1rem" }}>
+            3. Data Privacy and Protection
+          </h3>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            The ECHO App collects personal and animal health information necessary for communication and monitoring within the Tartanilla Program.
+          </p>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            All collected data will be handled responsibly and in accordance with the principles of the Data Privacy Act of 2012 (Republic Act No. 10173).
+          </p>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            Your data may be shared only with authorized DVMF and CTU personnel for official and program-related purposes.
+          </p>
+          <p style={{ color: "#6b7280", lineHeight: "1.6" }}>
+            The ECHO Team implements reasonable safeguards to protect your information from unauthorized use or disclosure.
+          </p>
+        </div>
+
+        <div style={{ marginBottom: "2rem" }}>
+          <h3 style={{ fontSize: "1.25rem", fontWeight: "bold", color: "#111827", marginBottom: "1rem" }}>
+            4. Account and Security
+          </h3>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            You are solely responsible for maintaining the confidentiality of your login credentials.
+          </p>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            Any actions performed under your account will be considered your responsibility.
+          </p>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            You must immediately report any unauthorized use or suspected security breach to the ECHO Support Team.
+          </p>
+          <p style={{ color: "#6b7280", lineHeight: "1.6" }}>
+            The administrators reserve the right to suspend or deactivate accounts found to be in violation of these terms.
+          </p>
+        </div>
+
+        <div style={{ marginBottom: "2rem" }}>
+          <h3 style={{ fontSize: "1.25rem", fontWeight: "bold", color: "#111827", marginBottom: "1rem" }}>
+            5. Acceptable Use
+          </h3>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            You agree to use the ECHO App only for legitimate and lawful purposes connected to the Tartanilla Program.
+          </p>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            You must not tamper with the system, upload false information, or access other users' data without authorization.
+          </p>
+          <p style={{ color: "#6b7280", lineHeight: "1.6" }}>
+            Misuse of the app, including fraudulent or inappropriate activities, may result in permanent account termination.
+          </p>
+        </div>
+
+        <div style={{ marginBottom: "2rem" }}>
+          <h3 style={{ fontSize: "1.25rem", fontWeight: "bold", color: "#111827", marginBottom: "1rem" }}>
+            6. Limitation of Liability
+          </h3>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            The ECHO App serves as a digital tool to assist in horse health tracking and communication; it does not replace physical veterinary consultations.
+          </p>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            The developers, administrators, and partner institutions are not liable for any loss, injury, or damage caused by misuse of the app, inaccurate data, or user negligence.
+          </p>
+          <p style={{ color: "#6b7280", lineHeight: "1.6" }}>
+            Users are responsible for ensuring that all information entered into the system is correct and updated.
+          </p>
+        </div>
+
+        <div style={{ marginBottom: "2rem" }}>
+          <h3 style={{ fontSize: "1.25rem", fontWeight: "bold", color: "#111827", marginBottom: "1rem" }}>
+            7. Modifications to the Terms
+          </h3>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            The ECHO Team may modify or update these Terms and Conditions at any time.
+          </p>
+          <p style={{ color: "#6b7280", marginBottom: "1rem", lineHeight: "1.6" }}>
+            Users will be notified of significant changes through the mobile app.
+          </p>
+          <p style={{ color: "#6b7280", lineHeight: "1.6" }}>
+            Continued use of the application after updates constitutes your acceptance of the revised terms.
+          </p>
+        </div>
+      </div>
+
+      <button
+        style={{ 
+          ...styles.largeButton, 
+          ...styles.primaryButton, 
+          width: "100%", 
+          justifyContent: "center",
+          marginTop: "1rem"
+        }}
+        onClick={() => setShowTermsModal(false)}
+      >
+        I Understand
+      </button>
+    </div>
+  </div>
+)}
     </div>
   )
 }

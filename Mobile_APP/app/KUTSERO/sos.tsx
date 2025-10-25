@@ -171,7 +171,7 @@ export default function SOSEmergencyScreen({ onBack, kutseroId: propKutseroId }:
             console.log("[DEBUG] ⚠️ Pre-set kutseroProfileId to:", kutseroId)
             
             try {
-                const url = `http://192.168.1.8:8000/api/kutsero/profile/${kutseroId}/`
+                const url = `http://192.168.1.9:8000/api/kutsero/profile/${kutseroId}/`
                 console.log("[DEBUG] Fetching from URL:", url)
                 
                 // Create a timeout promise
@@ -486,7 +486,7 @@ export default function SOSEmergencyScreen({ onBack, kutseroId: propKutseroId }:
                 kutsero_profile: sosData.kutsero_profile
             })
 
-            const response = await fetch("http://192.168.1.8:8000/api/kutsero/sos/create/", {
+            const response = await fetch("http://192.168.1.9:8000/api/kutsero/sos/create/", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

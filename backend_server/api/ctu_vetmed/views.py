@@ -295,7 +295,7 @@ def update_vet_status(request, vet_profile_id):
             """
         else:  # declined
             subject = "Your Veterinarian Account Has Been Declined"
-            plain_message = f"Hello {vet_name},\n\nWe’re sorry to inform you that your veterinarian account request has been NOT APPROVEDD by the admin. The reason: {reason_text}. Please contact support if needed.\n\nBest regards,\nECHOSys Team"
+            plain_message = f"Hello {vet_name},\n\nWe’re sorry to inform you that your veterinarian account request was NOT APPROVEDD by the admin. The reason: {reason_text}. Please contact support if needed.\n\nBest regards,\nECHOSys Team"
             html_message = f"""
             <html>
               <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
@@ -763,42 +763,33 @@ def get_users(request):
 
 
 # -------------------- NOTIFICATIONS --------------------
-from datetime import datetime, timedelta, timezone as dt_timezone
+# -------------------- GET VET NOTIFICATIONS --------------------
+from datetime import datetime
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from rest_framework import status
 
-# -------------------- UTILITY --------------------
-manila_tz = dt_timezone(timedelta(hours=8))
-
-def to_manila_time(iso_str):
-    if not iso_str:
-        return datetime.now(manila_tz)
-    try:
-        return datetime.fromisoformat(iso_str.replace("Z", "+00:00")).astimezone(manila_tz)
-    except:
-        return datetime.now(manila_tz)
-
-
-# -------------------- GET VET NOTIFICATIONS --------------------
 @api_view(["GET"])
 def get_vetnotifications(request):
     try:
         existing_keys = set()
         notifications_to_insert = []
 
-        # Fetch existing notifications to avoid duplicates
+        # ---------------- FETCH EXISTING NOTIFICATIONS ----------------
         try:
-            existing_res = sr_client.table("notification").select("*").execute()
-            existing_keys = set(row.get("related_id") for row in (existing_res.data or []) if row.get("related_id"))
+            existing_res = sr_client.table("notification") \
+                .select("related_id") \
+                .not_.is_("related_id", None) \
+                .execute()
+            existing_keys = {row["related_id"] for row in (existing_res.data or [])}
         except:
             existing_keys = set()
 
-        # Helper to add notifications
+        # ---------------- HELPER FUNCTION ----------------
         def add_notification(user_id, message, notif_type, related_id, created_at=None):
-            if not user_id or related_id in existing_keys:
+            if not user_id or not related_id or related_id in existing_keys:
                 return
-            dt_ph = to_manila_time(created_at) if created_at else datetime.now(manila_tz)
+
+            dt_ph = datetime.fromisoformat(created_at) if created_at else datetime.now()
             notifications_to_insert.append({
                 "id": user_id,
                 "notif_message": message,
@@ -810,24 +801,28 @@ def get_vetnotifications(request):
             })
             existing_keys.add(related_id)
 
-        # ---------------- VET REGISTRATION/APPROVAL/DECLINE ----------------
+        # ---------------- VET REGISTRATION / APPROVAL / DECLINE ----------------
         try:
             vets_res = sr_client.table("vet_profile") \
                 .select("vet_id, vet_fname, vet_lname, created_at, users(id, status, role)") \
                 .execute()
+
             for vet in (vets_res.data or []):
                 users = vet.get("users") or {}
                 if users.get("role", "").lower() != "veterinarian":
                     continue
+
                 user_id = users.get("id")
                 status = users.get("status", "").lower()
                 vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
+
                 if status in ["pending", "approved", "declined"]:
+                    related_id = f"vet_{vet['vet_id']}_{status}"
                     add_notification(
                         user_id,
                         f"Veterinarian {status}: Dr. {vet_name}.",
                         status,
-                        f"vet_{vet['vet_id']}_{status}",
+                        related_id,
                         vet.get("created_at")
                     )
         except:
@@ -838,21 +833,26 @@ def get_vetnotifications(request):
             medreq_res = sr_client.table("medrec_access_request") \
                 .select("request_id, vet_profile(vet_fname, vet_lname, users(id)), horse_profile(horse_name), requested_at, request_status") \
                 .execute()
+
             for req in (medreq_res.data or []):
                 if req.get("request_status", "").lower() != "pending":
                     continue
+
                 vet = req.get("vet_profile") or {}
                 users = vet.get("users") or {}
                 user_id = users.get("id")
                 if not user_id:
                     continue
+
                 vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
                 horse_name = (req.get("horse_profile") or {}).get("horse_name", "Unknown Horse")
+
+                related_id = f"medreq_{req['request_id']}"
                 add_notification(
                     user_id,
                     f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
                     "medrec_request",
-                    f"medreq_{req['request_id']}",
+                    related_id,
                     req.get("requested_at")
                 )
         except:
@@ -863,23 +863,29 @@ def get_vetnotifications(request):
             comments_res = sr_client.table("comment") \
                 .select("id, comment_text, comment_date, user_id, announcement_id") \
                 .execute()
+
             for comment in (comments_res.data or []):
                 commenter_id = comment.get("user_id")
                 ann_id = comment.get("announcement_id")
                 if not commenter_id or not ann_id:
                     continue
+
                 related_id = f"comment_{comment['id']}"
                 if related_id in existing_keys:
                     continue
 
-                # Fetch announcement owner
-                announcement_res = sr_client.table("announcement").select("user_id") \
-                    .eq("id", ann_id).maybe_single().execute()
+                # Correct PK column: announce_id
+                announcement_res = sr_client.table("announcement") \
+                    .select("user_id") \
+                    .eq("announce_id", ann_id) \
+                    .maybe_single() \
+                    .execute()
                 post_owner_id = announcement_res.data.get("user_id") if announcement_res.data else None
+
                 if not post_owner_id or post_owner_id == commenter_id:
                     continue
 
-                # Get commenter name (Kutsero or Horse Operator)
+                # Fetch commenter name
                 commenter_name = None
                 kutsero_res = sr_client.table("kutsero_profile").select("kutsero_fname,kutsero_lname") \
                     .eq("kutsero_id", commenter_id).maybe_single().execute()
@@ -890,6 +896,7 @@ def get_vetnotifications(request):
                         .eq("op_id", commenter_id).maybe_single().execute()
                     if op_res.data:
                         commenter_name = f"{op_res.data.get('op_fname', '')} {op_res.data.get('op_lname', '')}".strip()
+
                 if not commenter_name:
                     continue
 
@@ -903,22 +910,22 @@ def get_vetnotifications(request):
         except:
             pass
 
-        # ---------------- BULK INSERT ----------------
+        # ---------------- BULK INSERT (DEDUPED) ----------------
         if notifications_to_insert:
             try:
                 sr_client.table("notification").insert(notifications_to_insert).execute()
             except:
                 pass
 
-        # ---------------- FETCH ALLOWED NOTIFICATIONS ----------------
+        # ---------------- FETCH ALL VALID NOTIFICATIONS ----------------
         valid_types = ["medrec_request", "approved", "declined", "pending", "comment"]
-
         all_notifs_res = (
             sr_client.table("notification")
             .select("*")
-            .in_("notification_type", valid_types)  # ✅ only allowed types
+            .in_("notification_type", valid_types)
             .order("notif_date", desc=True)
             .order("notif_time", desc=True)
+            .limit(50)
             .execute()
         )
 
@@ -937,6 +944,7 @@ def get_vetnotifications(request):
 
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
 
 
 
