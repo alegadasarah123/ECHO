@@ -83,7 +83,7 @@ interface Horse {
   name: string
   healthStatus: "Healthy" | "Under Care" | "Recovering"
   status: string
-  image: string  // Changed to string for URL
+  image: string
   breed?: string
   age?: number
   color?: string
@@ -156,7 +156,7 @@ interface SearchUserProfile {
   }
 }
 
-const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
+const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
 
 // Image Carousel Component
 const ImageCarousel = ({ images }: { images: string[] }) => {
@@ -640,29 +640,6 @@ export default function DashboardScreen() {
     }
   }
 
-  const handleLogout = () => {
-    Alert.alert("Log Out", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Log Out",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await SecureStore.deleteItemAsync("access_token")
-            await SecureStore.deleteItemAsync("refresh_token")
-            await SecureStore.deleteItemAsync("user_data")
-            await SecureStore.deleteItemAsync("selectedHorseData")
-            await SecureStore.deleteItemAsync("checkInData")
-            router.replace("../../pages/auth/login")
-          } catch (error) {
-            console.error("Error during logout:", error)
-            router.replace("../../pages/auth/login")
-          }
-        },
-      },
-    ])
-  }
-
   const handleSearchSubmit = () => {
     if (searchText.trim()) {
       setShowSearchDropdown(false)
@@ -1026,14 +1003,6 @@ export default function DashboardScreen() {
     </TouchableOpacity>
   )
 
-  const MenuIcon = ({ color }: { color: string }) => (
-    <View style={styles.iconContainer}>
-      <View style={[styles.menuBar, { backgroundColor: color }]} />
-      <View style={[styles.menuBar, { backgroundColor: color, marginTop: scale(3) }]} />
-      <View style={[styles.menuBar, { backgroundColor: color, marginTop: scale(3) }]} />
-    </View>
-  )
-
   const unreadNotificationsCount = announcements.filter((announcement) => {
     if (!lastViewedAnnouncementTime) return true
     const announcementDate = new Date(announcement.announce_date || announcement.created_at || "")
@@ -1122,9 +1091,6 @@ export default function DashboardScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.sosButton} onPress={() => setShowSOSEmergency(true)}>
               <Image source={require("../../assets/images/sos.png")} style={styles.sosIcon} resizeMode="contain" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
-              <MenuIcon color="white" />
             </TouchableOpacity>
           </View>
         </View>
@@ -1457,6 +1423,7 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      {/* Facebook-style Comment Modal */}
       <Modal
         visible={showCommentModal}
         animationType="slide"
@@ -1482,8 +1449,12 @@ export default function DashboardScreen() {
                 },
               ]}
             >
+              {/* Modal Header */}
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Comments ({commentCount})</Text>
+                <View style={styles.modalHeaderContent}>
+                  <Text style={styles.modalTitle}>Comments</Text>
+                  <Text style={styles.commentCountText}>{commentCount} comments</Text>
+                </View>
                 <TouchableOpacity
                   onPress={() => {
                     setShowCommentModal(false)
@@ -1491,15 +1462,18 @@ export default function DashboardScreen() {
                     setReplyingTo(null)
                     setReplyText("")
                   }}
+                  style={styles.closeButtonContainer}
                 >
                   <Text style={styles.closeButton}>✕</Text>
                 </TouchableOpacity>
               </View>
 
+              {/* Comments List */}
               <ScrollView
                 style={styles.commentsContainer}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={true}
+                contentContainerStyle={styles.commentsContentContainer}
               >
                 {isLoadingComments ? (
                   <View style={styles.loadingCommentsContainer}>
@@ -1511,6 +1485,7 @@ export default function DashboardScreen() {
                     .filter((comment) => !comment.parent_comment_id)
                     .map((comment) => (
                       <View key={comment.id}>
+                        {/* Main Comment */}
                         <View style={styles.commentItem}>
                           <View style={styles.commentAvatarContainer}>
                             {comment.kutsero_profile_image ? (
@@ -1528,23 +1503,32 @@ export default function DashboardScreen() {
                           </View>
                           <View style={styles.commentContentContainer}>
                             <View style={styles.commentBubble}>
-                              <Text style={styles.commentUser}>
-                                {comment.kutsero_fname && comment.kutsero_lname
-                                  ? `${comment.kutsero_fname} ${comment.kutsero_lname}`
-                                  : comment.kutsero_username || "Anonymous User"}
-                              </Text>
+                              <View style={styles.commentHeader}>
+                                <Text style={styles.commentUserName}>
+                                  {comment.kutsero_fname && comment.kutsero_lname
+                                    ? `${comment.kutsero_fname} ${comment.kutsero_lname}`
+                                    : comment.kutsero_username || "Anonymous User"}
+                                </Text>
+                                <Text style={styles.commentTime}>
+                                  {new Date(comment.comment_date).toLocaleDateString('en-US', { 
+                                    month: 'short', 
+                                    day: 'numeric',
+                                    hour: 'numeric',
+                                    minute: '2-digit'
+                                  })}
+                                </Text>
+                              </View>
                               <Text style={styles.commentText}>{comment.comment_text}</Text>
                             </View>
-                            <View style={styles.commentMetaRow}>
-                              <Text style={styles.commentTime}>{new Date(comment.comment_date).toLocaleString()}</Text>
-                              <TouchableOpacity
+                            <View style={styles.commentActions}>
+                              <TouchableOpacity 
+                                style={styles.commentActionButton}
                                 onPress={() => {
                                   setReplyingTo(comment.id)
                                   setReplyText("")
                                 }}
-                                style={styles.replyButton}
                               >
-                                <Text style={styles.replyButtonText}>Reply</Text>
+                                <Text style={styles.commentActionText}>Reply</Text>
                               </TouchableOpacity>
                               {comment.reply_count && comment.reply_count > 0 && (
                                 <TouchableOpacity
@@ -1561,17 +1545,18 @@ export default function DashboardScreen() {
                           </View>
                         </View>
 
+                        {/* Replies */}
                         {expandedReplies.has(comment.id) && (
                           <View style={styles.repliesContainer}>
                             {isLoadingReplies[comment.id] ? (
-                              <View style={styles.loadingCommentsContainer}>
+                              <View style={styles.loadingRepliesContainer}>
                                 <ActivityIndicator size="small" color="#C17A47" />
-                                <Text style={styles.loadingCommentsText}>Loading replies...</Text>
+                                <Text style={styles.loadingRepliesText}>Loading replies...</Text>
                               </View>
                             ) : replies[comment.id] && replies[comment.id].length > 0 ? (
                               replies[comment.id].map((reply) => (
                                 <View key={reply.id} style={styles.replyItem}>
-                                  <View style={styles.commentAvatarContainer}>
+                                  <View style={styles.replyAvatarContainer}>
                                     {reply.kutsero_profile_image ? (
                                       <Image
                                         source={{ uri: reply.kutsero_profile_image }}
@@ -1585,26 +1570,31 @@ export default function DashboardScreen() {
                                       </View>
                                     )}
                                   </View>
-                                  <View style={styles.commentContentContainer}>
-                                    <View style={styles.commentBubble}>
-                                      <Text style={styles.commentUser}>
-                                        {reply.kutsero_fname && reply.kutsero_lname
-                                          ? `${reply.kutsero_fname} ${reply.kutsero_lname}`
-                                          : reply.kutsero_username || "Anonymous User"}
-                                      </Text>
+                                  <View style={styles.replyContentContainer}>
+                                    <View style={styles.replyBubble}>
+                                      <View style={styles.commentHeader}>
+                                        <Text style={styles.commentUserName}>
+                                          {reply.kutsero_fname && reply.kutsero_lname
+                                            ? `${reply.kutsero_fname} ${reply.kutsero_lname}`
+                                            : reply.kutsero_username || "Anonymous User"}
+                                        </Text>
+                                        <Text style={styles.commentTime}>
+                                          {new Date(reply.comment_date).toLocaleDateString('en-US', { 
+                                            month: 'short', 
+                                            day: 'numeric',
+                                            hour: 'numeric',
+                                            minute: '2-digit'
+                                          })}
+                                        </Text>
+                                      </View>
                                       <Text style={styles.commentText}>{reply.comment_text}</Text>
-                                    </View>
-                                    <View style={styles.commentMetaRow}>
-                                      <Text style={styles.commentTime}>
-                                        {new Date(reply.comment_date).toLocaleString()}
-                                      </Text>
                                     </View>
                                   </View>
                                 </View>
                               ))
                             ) : (
-                              <View style={styles.noCommentsContainer}>
-                                <Text style={styles.noCommentsText}>No replies yet.</Text>
+                              <View style={styles.noRepliesContainer}>
+                                <Text style={styles.noRepliesText}>No replies yet.</Text>
                               </View>
                             )}
                           </View>
@@ -1618,37 +1608,17 @@ export default function DashboardScreen() {
                 )}
               </ScrollView>
 
+              {/* Comment Input - Fixed at bottom */}
               <View style={styles.commentInputContainer}>
                 {replyingTo && (
-                  <View style={styles.replyingToContainerFull}>
-                    <View style={styles.replyingToLeftSection}>
-                      {(() => {
-                        const replyingToComment = selectedAnnouncementComments.find((c) => c.id === replyingTo)
-                        const replyingToProfileImage = replyingToComment?.kutsero_profile_image
-                        const replyingToInitial = (
-                          replyingToComment?.kutsero_fname ||
-                          replyingToComment?.kutsero_username ||
-                          "A"
-                        )
-                          .charAt(0)
-                          .toUpperCase()
-
-                        return replyingToProfileImage ? (
-                          <Image source={{ uri: replyingToProfileImage }} style={styles.replyingToAvatar} />
-                        ) : (
-                          <View style={styles.replyingToAvatar}>
-                            <Text style={styles.replyingToAvatarText}>{replyingToInitial}</Text>
-                          </View>
-                        )
-                      })()}
-                      <View style={styles.replyingToTextContainer}>
-                        <Text style={styles.replyingToLabel}>Replying to </Text>
-                        <Text style={styles.replyingToName}>
-                          {selectedAnnouncementComments.find((c) => c.id === replyingTo)?.kutsero_fname ||
-                            selectedAnnouncementComments.find((c) => c.id === replyingTo)?.kutsero_username ||
-                            "comment"}
-                        </Text>
-                      </View>
+                  <View style={styles.replyingToContainer}>
+                    <View style={styles.replyingToContent}>
+                      <Text style={styles.replyingToLabel}>Replying to </Text>
+                      <Text style={styles.replyingToName}>
+                        {selectedAnnouncementComments.find((c) => c.id === replyingTo)?.kutsero_fname ||
+                          selectedAnnouncementComments.find((c) => c.id === replyingTo)?.kutsero_username ||
+                          "comment"}
+                      </Text>
                     </View>
                     <TouchableOpacity
                       onPress={() => {
@@ -1661,7 +1631,8 @@ export default function DashboardScreen() {
                     </TouchableOpacity>
                   </View>
                 )}
-                <View style={styles.inputRow}>
+                
+                <View style={styles.inputContainer}>
                   {currentUserProfileImage ? (
                     <Image source={{ uri: currentUserProfileImage }} style={styles.currentUserAvatar} />
                   ) : (
@@ -1669,7 +1640,8 @@ export default function DashboardScreen() {
                       <Text style={styles.currentUserAvatarText}>{currentUser.charAt(0).toUpperCase()}</Text>
                     </View>
                   )}
-                  <View style={styles.commentInputWrapper}>
+                  
+                  <View style={styles.textInputContainer}>
                     <TextInput
                       style={styles.commentInput}
                       value={replyingTo ? replyText : newComment}
@@ -1681,19 +1653,14 @@ export default function DashboardScreen() {
                       editable={!isPostingComment}
                       autoCorrect={true}
                       autoCapitalize="sentences"
-                      returnKeyType="default"
-                      blurOnSubmit={false}
-                      textAlignVertical="center"
-                      selectionColor="#1877F2"
                     />
                   </View>
+                  
                   <TouchableOpacity
                     style={[
                       styles.submitButton,
                       {
                         opacity: (replyingTo ? replyText : newComment).trim() && !isPostingComment ? 1 : 0.5,
-                        backgroundColor:
-                          (replyingTo ? replyText : newComment).trim() && !isPostingComment ? "#1877F2" : "#E4E6EA",
                       },
                     ]}
                     onPress={submitComment}
@@ -1702,17 +1669,7 @@ export default function DashboardScreen() {
                     {isPostingComment ? (
                       <ActivityIndicator size="small" color="white" />
                     ) : (
-                      <Text
-                        style={[
-                          styles.submitButtonText,
-                          {
-                            color:
-                              (replyingTo ? replyText : newComment).trim() && !isPostingComment ? "white" : "#65676B",
-                          },
-                        ]}
-                      >
-                        Post
-                      </Text>
+                      <Text style={styles.submitButtonText}>Post</Text>
                     )}
                   </TouchableOpacity>
                 </View>
@@ -2184,10 +2141,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     position: "relative",
   },
-  menuBar: {
-    width: scale(10),
-    height: scale(1.5),
-  },
   dashboardGrid: {
     width: scale(14),
     height: scale(14),
@@ -2245,54 +2198,55 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     backgroundColor: "white",
-    borderTopLeftRadius: scale(20),
-    borderTopRightRadius: scale(20),
-    paddingTop: verticalScale(20),
+    borderTopLeftRadius: scale(12),
+    borderTopRightRadius: scale(12),
     maxHeight: height * 0.9,
   },
   modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: scale(20),
-    paddingBottom: verticalScale(16),
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(12),
     borderBottomWidth: 1,
-    borderBottomColor: "#E0E0E0",
+    borderBottomColor: "#E4E6EA",
+  },
+  modalHeaderContent: {
+    flex: 1,
   },
   modalTitle: {
-    fontSize: moderateScale(16),
-    fontWeight: "600",
-    color: "#333",
+    fontSize: moderateScale(18),
+    fontWeight: "700",
+    color: "#1C1E21",
+  },
+  commentCountText: {
+    fontSize: moderateScale(13),
+    color: "#65676B",
+    marginTop: scale(2),
+  },
+  closeButtonContainer: {
+    padding: scale(4),
   },
   closeButton: {
-    fontSize: moderateScale(18),
-    color: "#666",
-    fontWeight: "bold",
+    fontSize: moderateScale(20),
+    color: "#65676B",
+    fontWeight: "300",
   },
   commentsContainer: {
     flex: 1,
-    paddingHorizontal: scale(20),
-    paddingTop: verticalScale(12),
-    maxHeight: height * 0.5,
+  },
+  commentsContentContainer: {
+    paddingVertical: scale(8),
   },
   commentItem: {
     flexDirection: "row",
-    paddingVertical: verticalScale(12),
-    alignItems: "flex-start",
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(8),
   },
   commentAvatarContainer: {
     marginRight: scale(8),
   },
   commentAvatar: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: scale(18),
-    backgroundColor: "#C17A47",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-  },
-  replyAvatar: {
     width: scale(32),
     height: scale(32),
     borderRadius: scale(16),
@@ -2315,27 +2269,180 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(12),
     paddingVertical: scale(8),
   },
-  commentUser: {
+  commentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: scale(4),
+  },
+  commentUserName: {
     fontSize: moderateScale(13),
     fontWeight: "600",
-    color: "#050505",
-    marginBottom: verticalScale(2),
-  },
-  commentText: {
-    fontSize: moderateScale(13),
-    color: "#050505",
-    lineHeight: moderateScale(18),
-  },
-  commentMetaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: verticalScale(4),
-    paddingLeft: scale(12),
-    gap: scale(12),
+    color: "#1C1E21",
+    flex: 1,
   },
   commentTime: {
     fontSize: moderateScale(11),
     color: "#65676B",
+    marginLeft: scale(8),
+  },
+  commentText: {
+    fontSize: moderateScale(14),
+    color: "#1C1E21",
+    lineHeight: moderateScale(18),
+  },
+  commentActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: scale(4),
+    paddingLeft: scale(4),
+  },
+  commentActionButton: {
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+  },
+  commentActionText: {
+    fontSize: moderateScale(12),
+    color: "#65676B",
+    fontWeight: "600",
+  },
+  repliesContainer: {
+    marginLeft: scale(40),
+    marginTop: scale(4),
+  },
+  replyItem: {
+    flexDirection: "row",
+    paddingVertical: scale(6),
+  },
+  replyAvatarContainer: {
+    marginRight: scale(8),
+  },
+  replyAvatar: {
+    width: scale(28),
+    height: scale(28),
+    borderRadius: scale(14),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  replyContentContainer: {
+    flex: 1,
+  },
+  replyBubble: {
+    backgroundColor: "#F0F2F5",
+    borderRadius: scale(18),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
+  },
+  loadingRepliesContainer: {
+    padding: scale(12),
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: scale(8),
+  },
+  loadingRepliesText: {
+    fontSize: moderateScale(12),
+    color: "#666",
+  },
+  noRepliesContainer: {
+    padding: scale(12),
+    alignItems: "center",
+  },
+  noRepliesText: {
+    fontSize: moderateScale(12),
+    color: "#999",
+  },
+  commentInputContainer: {
+    borderTopWidth: 1,
+    borderTopColor: "#E4E6EA",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(12),
+  },
+  replyingToContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: "#F0F2F5",
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
+    borderRadius: scale(8),
+    marginBottom: scale(8),
+  },
+  replyingToContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  replyingToLabel: {
+    fontSize: moderateScale(12),
+    color: "#65676B",
+    fontWeight: "400",
+  },
+  replyingToName: {
+    fontSize: moderateScale(12),
+    color: "#1C1E21",
+    fontWeight: "600",
+  },
+  cancelReplyButton: {
+    padding: scale(4),
+  },
+  cancelReplyText: {
+    fontSize: moderateScale(16),
+    color: "#65676B",
+    fontWeight: "300",
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: scale(8),
+  },
+  currentUserAvatar: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  currentUserAvatarText: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "white",
+  },
+  textInputContainer: {
+    flex: 1,
+    backgroundColor: "#F0F2F5",
+    borderRadius: scale(20),
+    minHeight: scale(36),
+    maxHeight: verticalScale(100),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
+  },
+  commentInput: {
+    fontSize: moderateScale(14),
+    color: "#1C1E21",
+    lineHeight: moderateScale(18),
+    padding: 0,
+    margin: 0,
+  },
+  submitButton: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(8),
+    borderRadius: scale(18),
+    minWidth: scale(50),
+    height: scale(36),
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  submitButtonText: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "white",
   },
   loadingCommentsContainer: {
     padding: scale(20),
@@ -2349,121 +2456,13 @@ const styles = StyleSheet.create({
     color: "#666",
   },
   noCommentsContainer: {
-    padding: scale(20),
+    padding: scale(40),
     alignItems: "center",
   },
   noCommentsText: {
     fontSize: moderateScale(14),
     color: "#999",
     textAlign: "center",
-  },
-  commentInputContainer: {
-    borderTopWidth: 1,
-    borderTopColor: "#E4E6EA",
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: scale(12),
-    paddingVertical: scale(12),
-  },
-  replyingToContainerFull: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#E3F2FD",
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(8),
-    borderRadius: scale(8),
-    marginBottom: verticalScale(8),
-  },
-  replyingToLeftSection: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  replyingToAvatar: {
-    width: scale(24),
-    height: scale(24),
-    borderRadius: scale(12),
-    backgroundColor: "#C17A47",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: scale(8),
-    overflow: "hidden",
-  },
-  replyingToAvatarText: {
-    fontSize: moderateScale(11),
-    fontWeight: "600",
-    color: "white",
-  },
-  replyingToTextContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  replyingToLabel: {
-    fontSize: moderateScale(12),
-    color: "#1976D2",
-    fontWeight: "400",
-  },
-  replyingToName: {
-    fontSize: moderateScale(12),
-    color: "#1976D2",
-    fontWeight: "600",
-  },
-  cancelReplyButton: {
-    paddingHorizontal: scale(8),
-    paddingVertical: scale(4),
-  },
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    gap: scale(8),
-  },
-  currentUserAvatar: {
-    width: scale(36),
-    height: scale(36),
-    borderRadius: scale(18),
-    backgroundColor: "#C17A47",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-  },
-  currentUserAvatarText: {
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-    color: "white",
-  },
-  commentInputWrapper: {
-    flex: 1,
-    backgroundColor: "#F0F2F5",
-    borderRadius: scale(20),
-    minHeight: scale(36),
-    maxHeight: verticalScale(100),
-    justifyContent: "center",
-    paddingHorizontal: scale(12),
-    paddingVertical: scale(8),
-  },
-  commentInput: {
-    fontSize: moderateScale(14),
-    color: "#1C1E21",
-    lineHeight: moderateScale(18),
-    paddingVertical: 0,
-    paddingHorizontal: 0,
-    margin: 0,
-    backgroundColor: "transparent",
-    textAlignVertical: "center",
-  },
-  submitButton: {
-    paddingHorizontal: scale(16),
-    paddingVertical: scale(8),
-    borderRadius: scale(18),
-    minWidth: scale(50),
-    height: scale(36),
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  submitButtonText: {
-    fontSize: moderateScale(14),
-    fontWeight: "600",
   },
   checkInOutContainer: {
     marginTop: verticalScale(8),
@@ -2654,20 +2653,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     fontWeight: "500",
   },
-  commentActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: verticalScale(8),
-    gap: scale(16),
-  },
-  replyButton: {
-    paddingVertical: verticalScale(2),
-  },
-  replyButtonText: {
-    fontSize: moderateScale(12),
-    color: "#65676B",
-    fontWeight: "600",
-  },
   viewRepliesButton: {
     paddingVertical: verticalScale(2),
   },
@@ -2675,36 +2660,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(12),
     color: "#65676B",
     fontWeight: "600",
-  },
-  repliesContainer: {
-    marginLeft: scale(44),
-    marginTop: verticalScale(4),
-  },
-  replyItem: {
-    flexDirection: "row",
-    paddingVertical: verticalScale(8),
-    alignItems: "flex-start",
-  },
-  replyingToContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#E3F2FD",
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(6),
-    borderRadius: scale(8),
-    marginBottom: verticalScale(4),
-  },
-  replyingToText: {
-    fontSize: moderateScale(12),
-    color: "#1976D2",
-    fontWeight: "500",
-    flex: 1,
-  },
-  cancelReplyText: {
-    fontSize: moderateScale(18),
-    color: "#666",
-    fontWeight: "bold",
   },
   fullScreenContainer: {
     flex: 1,

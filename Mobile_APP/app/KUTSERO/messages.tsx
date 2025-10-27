@@ -1,6 +1,6 @@
 "use client"
 
-import { useFocusEffect, useRouter } from "expo-router"
+import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
   Dimensions,
@@ -19,6 +19,7 @@ import {
   RefreshControl,
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
+import { createClient } from '@supabase/supabase-js'
 
 const { width, height } = Dimensions.get("window")
 
@@ -54,7 +55,14 @@ const getSafeAreaPadding = () => {
   }
 }
 
-const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
+const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
+
+const SUPABASE_URL = "https://drgknejiqupegkyxfaab.supabase.co"
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyZ2tuZWppcXVwZWdreXhmYWFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ5MDAxMTUsImV4cCI6MjA3MDQ3NjExNX0.KcIRm5t6z63X_KHGxDeU5ojwArVTasZWBzh01bD2nzo"
+
+const SUPABASE_ENABLED = false
+
+const supabase = SUPABASE_ENABLED ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
 
 interface Message {
   id?: string
@@ -75,6 +83,7 @@ interface Message {
   profile_image?: string
   partner_name?: string
   email?: string
+  online?: boolean
 }
 
 interface ChatMessage {
@@ -111,9 +120,10 @@ interface AvailableUser {
   email: string
   phone?: string
   status: string
-  profile_image?: string
+  profile_image?: string | null
   first_name?: string
   last_name?: string
+  online?: boolean
 }
 
 const ChatInterface = ({
@@ -125,6 +135,8 @@ const ChatInterface = ({
   onChatInputChange,
   onSendMessage,
   safeArea,
+  onHeaderPress,
+  isOnline,
 }: {
   isAIChat: boolean
   messages: ChatMessage[]
@@ -134,6 +146,8 @@ const ChatInterface = ({
   onChatInputChange: (text: string) => void
   onSendMessage: () => void
   safeArea: { top: number; bottom: number }
+  onHeaderPress?: () => void
+  isOnline?: boolean
 }) => {
   const scrollViewRef = useRef<ScrollView>(null)
 
@@ -151,7 +165,6 @@ const ChatInterface = ({
     const yesterday = new Date(today)
     yesterday.setDate(yesterday.getDate() - 1)
 
-    // Normalize dates to start of day for comparison
     const messageDateOnly = new Date(messageDate.getFullYear(), messageDate.getMonth(), messageDate.getDate())
     const todayOnly = new Date(today.getFullYear(), today.getMonth(), today.getDate())
     const yesterdayOnly = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate())
@@ -168,7 +181,6 @@ const ChatInterface = ({
     const currentDate = new Date(currentMessage.date || new Date().toISOString())
     const previousDate = new Date(previousMessage.date || new Date().toISOString())
     
-    // Normalize to start of day for comparison
     const currentDateOnly = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate())
     const previousDateOnly = new Date(previousDate.getFullYear(), previousDate.getMonth(), previousDate.getDate())
     
@@ -187,9 +199,19 @@ const ChatInterface = ({
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
           <Text style={styles.backButtonText}>←</Text>
         </TouchableOpacity>
-        <View style={styles.headerCenter}>
+        
+        <TouchableOpacity 
+          style={styles.headerCenter} 
+          onPress={onHeaderPress}
+          activeOpacity={onHeaderPress ? 0.7 : 1}
+          disabled={!onHeaderPress}
+        >
           <Text style={styles.headerTitle}>{title}</Text>
-        </View>
+          {!isAIChat && onHeaderPress && (
+            <Text style={styles.headerSubtitle}>Tap to view profile</Text>
+          )}
+        </TouchableOpacity>
+        
         <View style={styles.headerRight}>
           {isAIChat ? (
             <View style={styles.aiStatusIndicator}>
@@ -197,7 +219,10 @@ const ChatInterface = ({
               <Text style={styles.aiStatusText}>Online</Text>
             </View>
           ) : (
-            <Text style={styles.userName}>Online</Text>
+            <View style={styles.aiStatusIndicator}>
+              <View style={[styles.aiStatusDot, !isOnline && styles.offlineDot]} />
+              <Text style={styles.userName}>{isOnline ? 'Online' : 'Offline'}</Text>
+            </View>
           )}
         </View>
       </View>
@@ -271,6 +296,7 @@ const ChatInterface = ({
 
 export default function MessagesScreen() {
   const router = useRouter()
+  const params = useLocalSearchParams()
   const safeArea = getSafeAreaPadding()
 
   const [activeTab, setActiveTab] = useState<"conversations" | "users">("conversations")
@@ -291,6 +317,11 @@ export default function MessagesScreen() {
   const [conversations, setConversations] = useState<Message[]>([])
   const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([])
 
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set())
+  const [totalUnreadCount, setTotalUnreadCount] = useState(0)
+  const onlineChannelRef = useRef<any>(null)
+  const messagesSubscriptionRef = useRef<any>(null)
+
   const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([
     {
       id: "1",
@@ -302,6 +333,125 @@ export default function MessagesScreen() {
   ])
   const [individualChatMessages, setIndividualChatMessages] = useState<ChatMessage[]>([])
 
+  const calculateTotalUnread = useCallback((convs: Message[]) => {
+    const total = convs.reduce((sum, conv) => sum + (conv.unread_count || 0), 0)
+    setTotalUnreadCount(total)
+    console.log('📊 Total unread messages:', total)
+    return total
+  }, [])
+
+  const setupOnlinePresence = useCallback(async () => {
+    if (!userData?.id || !SUPABASE_ENABLED || !supabase) {
+      console.log('⚠️ Supabase not enabled, skipping online presence setup')
+      return
+    }
+
+    console.log('🔄 Setting up online presence for:', userData.id)
+
+    if (onlineChannelRef.current) {
+      await supabase.removeChannel(onlineChannelRef.current)
+    }
+
+    onlineChannelRef.current = supabase.channel('online-users-mobile', {
+      config: {
+        presence: {
+          key: userData.id.toString(),
+        },
+      },
+    })
+
+    onlineChannelRef.current
+      .on('presence', { event: 'sync' }, () => {
+        const state = onlineChannelRef.current.presenceState()
+        const onlineUserIds = new Set<string>()
+        
+        Object.keys(state).forEach(key => {
+          onlineUserIds.add(key)
+        })
+        
+        console.log('👥 Online users synced:', Array.from(onlineUserIds))
+        setOnlineUsers(onlineUserIds)
+      })
+      .on('presence', { event: 'join' }, ({ key }: { key: string }) => {
+        console.log('✅ User joined:', key)
+        setOnlineUsers(prev => new Set([...prev, key]))
+      })
+      .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
+        console.log('❌ User left:', key)
+        setOnlineUsers(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(key)
+          return newSet
+        })
+      })
+      .subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED') {
+          await onlineChannelRef.current.track({
+            user_id: userData.id,
+            online_at: new Date().toISOString(),
+            last_seen: new Date().toISOString(),
+          })
+          console.log('✅ Presence tracking started for:', userData.id)
+        }
+      })
+  }, [userData?.id])
+
+  const setupMessageSubscription = useCallback(() => {
+    if (!userData?.id || !SUPABASE_ENABLED || !supabase) {
+      console.log('⚠️ Supabase not enabled, skipping message subscription')
+      return
+    }
+
+    console.log('🔄 Setting up message subscription for:', userData.id)
+
+    if (messagesSubscriptionRef.current) {
+      messagesSubscriptionRef.current.unsubscribe()
+    }
+
+    messagesSubscriptionRef.current = supabase
+      .channel('messages-realtime-mobile')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'message',
+        },
+        async (payload) => {
+          const newMessage = payload.new
+          console.log('📨 New message received:', newMessage)
+          
+          const involvesCurrentUser = 
+            newMessage.user_id === userData.id || 
+            newMessage.receiver_id === userData.id
+          
+          if (involvesCurrentUser) {
+            console.log('✅ Message involves current user, reloading conversations')
+            await loadConversations()
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'message',
+        },
+        async (payload) => {
+          const updatedMessage = payload.new
+          
+          if (updatedMessage.is_read && updatedMessage.user_id === userData.id) {
+            console.log('✅ Message marked as read, reloading conversations')
+            await loadConversations()
+          }
+        }
+      )
+      .subscribe()
+
+    console.log('✅ Message subscription started')
+  }, [userData?.id])
+
   const getInitials = (name: string) => {
     if (!name) return "?"
     const nameParts = name.trim().split(" ")
@@ -311,60 +461,68 @@ export default function MessagesScreen() {
     return (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase()
   }
 
-  const getProfileImageSource = (email?: string, profileImage?: string, role?: string, name?: string) => {
-  console.log('getProfileImageSource called:', { email, profileImage, role, name })
-  
-  const normalizedRole = role?.toLowerCase() || ''
-  
-  if (normalizedRole.includes('ctu')) {
-    console.log('Returning CTU.jpg for role:', role)
-    return require("../../assets/images/CTU.jpg")
+  const getProfileImageSource = (email?: string, profileImage?: string | null, role?: string, name?: string) => {
+    const normalizedRole = role?.toLowerCase() || ''
+    
+    if (normalizedRole.includes('ctu')) {
+      return require("../../assets/images/CTU.jpg")
+    }
+    
+    if (normalizedRole.includes('dvmf')) {
+      return require("../../assets/images/DVMF.png")
+    }
+    
+    if (email?.toLowerCase().includes('ctu')) {
+      return require("../../assets/images/CTU.jpg")
+    }
+    if (email?.toLowerCase().includes('dvmf')) {
+      return require("../../assets/images/DVMF.png")
+    }
+    
+    if (profileImage) {
+      return { uri: profileImage }
+    }
+    
+    return null
   }
-  
-  if (normalizedRole.includes('dvmf')) {
-    console.log('Returning DVMF.png for role:', role)
-    return require("../../assets/images/DVMF.png")
-  }
-  
-  if (email?.toLowerCase().includes('ctu')) {
-    console.log('Returning CTU.jpg for email:', email)
-    return require("../../assets/images/CTU.jpg")
-  }
-  if (email?.toLowerCase().includes('dvmf')) {
-    console.log('Returning DVMF.png for email:', email)
-    return require("../../assets/images/DVMF.png")
-  }
-  
-  if (profileImage) {
-    console.log('Returning profile image:', profileImage)
-    return { uri: profileImage }
-  }
-  
-  console.log('Returning null, will show initials')
-  return null
-}
 
-  const renderAvatar = (item: Message | AvailableUser) => {
+  const OnlineIndicator = ({ isOnline }: { isOnline: boolean }) => {
+    if (!isOnline) return null
+    
+    return (
+      <View style={styles.onlineIndicator}>
+        <View style={styles.onlineIndicatorDot} />
+      </View>
+    )
+  }
+
+  const renderAvatarWithStatus = (item: Message | AvailableUser) => {
     const name = "sender" in item ? item.sender : item.name
     const email = item.email
     const profileImage = item.profile_image
     const role = item.role
+    const partnerId = "partner_id" in item ? item.partner_id : "id" in item ? item.id : null
+    
+    const isOnline = partnerId ? onlineUsers.has(partnerId.toString()) : false
     
     const imageSource = getProfileImageSource(email, profileImage, role, name)
     
-    if (imageSource) {
-      return (
-        <Image
-          source={imageSource}
-          style={styles.avatarImage}
-          resizeMode="cover"
-        />
-      )
-    }
-    
     return (
-      <View style={styles.initialsContainer}>
-        <Text style={styles.initialsText}>{getInitials(name)}</Text>
+      <View style={styles.avatarWrapper}>
+        <View style={styles.avatarContainer}>
+          {imageSource ? (
+            <Image
+              source={imageSource}
+              style={styles.avatarImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.initialsContainer}>
+              <Text style={styles.initialsText}>{getInitials(name)}</Text>
+            </View>
+          )}
+        </View>
+        <OnlineIndicator isOnline={isOnline} />
       </View>
     )
   }
@@ -451,9 +609,11 @@ export default function MessagesScreen() {
             unread_count: conv.unread_count || (conv.is_read ? 0 : 1),
             profile_image: conv.profile_image || conv.partner_profile_image || null,
             email: conv.email || conv.partner_email || "",
+            online: onlineUsers.has(conv.partner_id?.toString() || ''),
           }))
 
           setConversations(mappedConversations)
+          calculateTotalUnread(mappedConversations)
         }
       }
     } catch (error) {
@@ -473,6 +633,9 @@ export default function MessagesScreen() {
         url += `&role=${roleFilter}`
       }
 
+      console.log('🔍 Fetching users with URL:', url)
+      console.log('🔍 Role filter:', roleFilter)
+
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -482,9 +645,24 @@ export default function MessagesScreen() {
 
       if (response.ok) {
         const data = await response.json()
-        if (data.users) {
-          setAvailableUsers(data.users)
+        console.log('✅ API Response:', data)
+        console.log('👥 Number of users returned:', data.users?.length || 0)
+        
+        if (data.users && data.users.length > 0) {
+          console.log('📋 Sample user roles:', data.users.slice(0, 3).map((u: any) => u.role))
         }
+        
+        if (data.users) {
+          const usersWithStatus = data.users.map((user: AvailableUser) => ({
+            ...user,
+            online: onlineUsers.has(user.id.toString()),
+          }))
+          setAvailableUsers(usersWithStatus)
+        }
+      } else {
+        console.error('❌ API Error:', response.status, response.statusText)
+        const errorText = await response.text()
+        console.error('❌ Error response:', errorText)
       }
     } catch (error) {
       console.error("Error loading available users:", error)
@@ -508,7 +686,6 @@ export default function MessagesScreen() {
       if (response.ok) {
         const data = await response.json()
         if (data.success && data.messages) {
-          // Map messages to include the date field from created_at
           const mappedMessages = data.messages.map((msg: any) => ({
             ...msg,
             date: msg.created_at || new Date().toISOString()
@@ -539,7 +716,6 @@ export default function MessagesScreen() {
 
       if (response.ok) {
         const data = await response.json()
-        // Return message with date field
         return {
           ...data.message,
           date: data.message.created_at || new Date().toISOString()
@@ -685,7 +861,7 @@ export default function MessagesScreen() {
             const errorDate = new Date()
             const errorMessage: ChatMessage = {
               id: (Date.now() + 1).toString(),
-              text: "Sorry, I'm having trouble connecting. Please try again later.",
+              text: "Sorry, I'm having trouble connecting to the server. Please try again later.",
               isUser: false,
               timestamp: errorDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
               date: errorDate.toISOString(),
@@ -705,9 +881,12 @@ export default function MessagesScreen() {
         }
       } else {
         if (!selectedUserId) {
+          console.error("❌ No selectedUserId:", selectedUserId)
           Alert.alert("Error", "Cannot send message. Invalid recipient.")
           return
         }
+
+        console.log("📤 Sending message to:", selectedUserId, "Type:", typeof selectedUserId)
 
         setIndividualChatMessages((prev) => [...prev, userMessage])
         setChatInput("")
@@ -715,9 +894,10 @@ export default function MessagesScreen() {
         const sentMessage = await sendMessageToBackend(selectedUserId, userMessage.text)
 
         if (!sentMessage) {
+          console.error("❌ Failed to send message")
           setIndividualChatMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id))
         } else {
-          // Update the message with the server response data
+          console.log("✅ Message sent successfully:", sentMessage)
           setIndividualChatMessages((prev) => 
             prev.map((msg) => msg.id === userMessage.id ? { ...msg, ...sentMessage } : msg)
           )
@@ -735,15 +915,107 @@ export default function MessagesScreen() {
   }
 
   useEffect(() => {
+    const checkForDirectChat = async () => {
+      console.log("🔍 Checking params:", {
+        openChat: params.openChat,
+        contactId: params.contactId,
+        contactName: params.contactName,
+        userId: params.userId,
+        allParams: JSON.stringify(params),
+      })
+
+      if (params.openChat === "true" && params.contactId) {
+        console.log("✅ Direct chat params detected!")
+        console.log("📨 Opening chat from profile:", params.contactName)
+        console.log("📨 Contact ID:", params.contactId, "Type:", typeof params.contactId)
+
+        if (!userData) {
+          console.log("⏳ Waiting for userData to load...")
+          return
+        }
+
+        console.log("✅ User data available:", userData.id)
+
+        const contactIdValue = params.contactId as string
+
+        const contact: AvailableUser = {
+          id: parseInt(contactIdValue) || contactIdValue as any,
+          name: params.contactName as string,
+          avatar: (params.contactAvatar as string) || "https://via.placeholder.com/150",
+          role: (params.contactRole as string) || "user",
+          email: "",
+          phone: "",
+          status: "active",
+          profile_image: (params.contactAvatar as string) || undefined,
+        }
+
+        console.log("📨 Setting selected user ID:", contactIdValue)
+        console.log("📨 Opening chat interface...")
+
+        setSelectedContact(contact)
+        setSelectedUserId(contactIdValue)
+        setShowIndividualChat(true)
+        setChatInput("")
+        setIndividualChatMessages([])
+        
+        console.log("📨 Loading chat messages for:", contactIdValue)
+        await loadChatMessages(contactIdValue)
+        
+        console.log("✅ Chat opened successfully!")
+      } else {
+        console.log("ℹ️ No direct chat params detected")
+        if (!params.openChat) console.log("   - openChat missing or not 'true'")
+        if (!params.contactId) console.log("   - contactId missing")
+      }
+    }
+
+    if (userData) {
+      console.log("🚀 Running checkForDirectChat with userData:", userData.id)
+      checkForDirectChat()
+    } else {
+      console.log("⏳ userData not ready yet, waiting...")
+    }
+  }, [
+    params.openChat,
+    params.contactId,
+    params.contactName,
+    params.contactAvatar,
+    params.contactRole,
+    params.userId,
+    userData,
+  ])
+
+  useEffect(() => {
     loadUserData()
   }, [])
 
   useEffect(() => {
-    if (userData) {
+    if (userData && SUPABASE_ENABLED && supabase) {
+      setupOnlinePresence()
+      setupMessageSubscription()
+      loadConversations()
+      loadAvailableUsers()
+    } else if (userData) {
       loadConversations()
       loadAvailableUsers()
     }
-  }, [userData])
+
+    return () => {
+      if (supabase && onlineChannelRef.current) {
+        supabase.removeChannel(onlineChannelRef.current)
+      }
+      if (supabase && messagesSubscriptionRef.current) {
+        messagesSubscriptionRef.current.unsubscribe()
+      }
+    }
+  }, [userData, setupOnlinePresence, setupMessageSubscription])
+
+  useEffect(() => {
+    if (userData && onlineUsers.size > 0) {
+      loadConversations()
+      loadAvailableUsers()
+    }
+  }, [onlineUsers])
 
   useEffect(() => {
     if (userData) {
@@ -755,12 +1027,22 @@ export default function MessagesScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (userData) {
+      if (userData && !params.openChat) {
         loadConversations()
         loadAvailableUsers()
       }
-    }, [userData]),
+    }, [userData, params.openChat]),
   )
+
+  useEffect(() => {
+    console.log("📊 State Update:", {
+      showIndividualChat,
+      showAIChat,
+      selectedContact: selectedContact ? ("sender" in selectedContact ? selectedContact.sender : selectedContact.name) : null,
+      selectedUserId,
+      hasMessages: individualChatMessages.length,
+    })
+  }, [showIndividualChat, showAIChat, selectedContact, selectedUserId, individualChatMessages])
 
   const handleBackFromAI = useCallback(() => setShowAIChat(false), [])
   const handleBackFromIndividual = useCallback(() => {
@@ -770,6 +1052,22 @@ export default function MessagesScreen() {
     setIndividualChatMessages([])
     loadConversations()
   }, [userData])
+
+  const handleNavigateToProfile = useCallback(() => {
+    if (!selectedContact || !selectedUserId) {
+      console.log("❌ No contact selected")
+      return
+    }
+
+    console.log("🔍 Navigating to profile:", selectedUserId)
+
+    router.push({
+      pathname: "./userprofile",
+      params: {
+        userId: String(selectedUserId),
+      },
+    })
+  }, [selectedContact, selectedUserId, router])
 
   const handleShowAIChat = useCallback(async () => {
     await loadAIChatHistory()
@@ -802,6 +1100,7 @@ export default function MessagesScreen() {
   }
 
   if (showAIChat) {
+    console.log("🎨 Rendering AI Chat")
     return (
       <ChatInterface
         isAIChat={true}
@@ -812,12 +1111,18 @@ export default function MessagesScreen() {
         onChatInputChange={handleChatInputChange}
         onSendMessage={handleAISendMessage}
         safeArea={safeArea}
+        isOnline={true}
       />
     )
   }
 
   if (showIndividualChat && selectedContact) {
     const contactName = "sender" in selectedContact ? selectedContact.sender : selectedContact.name
+    const partnerId = "partner_id" in selectedContact ? selectedContact.partner_id : "id" in selectedContact ? selectedContact.id : null
+    
+    const isContactOnline = partnerId ? onlineUsers.has(partnerId.toString()) : false
+    
+    console.log("🎨 Rendering Individual Chat with:", contactName)
     return (
       <ChatInterface
         isAIChat={false}
@@ -828,9 +1133,13 @@ export default function MessagesScreen() {
         onChatInputChange={handleChatInputChange}
         onSendMessage={handleIndividualSendMessage}
         safeArea={safeArea}
+        onHeaderPress={handleNavigateToProfile}
+        isOnline={isContactOnline}
       />
     )
   }
+
+  console.log("🎨 Rendering Main Messages Screen")
 
   const DashboardIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
@@ -852,18 +1161,20 @@ export default function MessagesScreen() {
     </View>
   )
 
-  const TabButton = ({
+  const TabButtonWithBadge = ({
     iconSource,
     label,
     tabKey,
     isActive,
     onPress,
+    badgeCount,
   }: {
     iconSource: any
     label: string
     tabKey: string
     isActive: boolean
     onPress?: () => void
+    badgeCount?: number
   }) => (
     <TouchableOpacity
       style={styles.tabButton}
@@ -885,19 +1196,28 @@ export default function MessagesScreen() {
         }
       }}
     >
-      <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
-        {iconSource ? (
-          <Image
-            source={iconSource}
-            style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
-            resizeMode="contain"
-          />
-        ) : tabKey === "home" ? (
-          <DashboardIcon color={isActive ? "white" : "#666"} />
-        ) : tabKey === "profile" ? (
-          <ProfileIcon color={isActive ? "white" : "#666"} />
-        ) : (
-          <View style={styles.fallbackIcon} />
+      <View style={styles.tabButtonContent}>
+        <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
+          {iconSource ? (
+            <Image
+              source={iconSource}
+              style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
+              resizeMode="contain"
+            />
+          ) : tabKey === "home" ? (
+            <DashboardIcon color={isActive ? "white" : "#666"} />
+          ) : tabKey === "profile" ? (
+            <ProfileIcon color={isActive ? "white" : "#666"} />
+          ) : (
+            <View style={styles.fallbackIcon} />
+          )}
+        </View>
+        {badgeCount !== undefined && badgeCount > 0 && (
+          <View style={styles.tabBadgeIcon}>
+            <Text style={styles.tabBadgeIconText}>
+              {badgeCount > 9 ? '9+' : badgeCount}
+            </Text>
+          </View>
         )}
       </View>
       <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
@@ -968,12 +1288,6 @@ export default function MessagesScreen() {
               <Text style={[styles.filterChipText, roleFilter === "" && styles.activeFilterChipText]}>All</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.filterChip, roleFilter === "vet" && styles.activeFilterChip]}
-              onPress={() => setRoleFilter("vet")}
-            >
-              <Text style={[styles.filterChipText, roleFilter === "vet" && styles.activeFilterChipText]}>Vets</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
               style={[styles.filterChip, roleFilter === "kutsero" && styles.activeFilterChip]}
               onPress={() => setRoleFilter("kutsero")}
             >
@@ -986,7 +1300,31 @@ export default function MessagesScreen() {
               onPress={() => setRoleFilter("horse_operator")}
             >
               <Text style={[styles.filterChipText, roleFilter === "horse_operator" && styles.activeFilterChipText]}>
-                Operators
+                Horse Operator
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "Kutsero President" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("Kutsero President")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "Kutsero President" && styles.activeFilterChipText]}>
+                Kutsero President
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "Ctu-Vetmed" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("Ctu-Vetmed")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "Ctu-Vetmed" && styles.activeFilterChipText]}>
+                CTU Vet Med
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "Dvmf" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("Dvmf")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "Dvmf" && styles.activeFilterChipText]}>
+                DVMF
               </Text>
             </TouchableOpacity>
           </ScrollView>
@@ -1008,13 +1346,16 @@ export default function MessagesScreen() {
                 activeOpacity={0.7}
               >
                 <View style={styles.messageLeft}>
-                  <View style={styles.avatarContainer}>
-                    {renderAvatar(message)}
-                  </View>
+                  {renderAvatarWithStatus(message)}
                 </View>
                 <View style={styles.messageContent}>
                   <View style={styles.messageHeader}>
-                    <Text style={styles.senderName}>{message.sender}</Text>
+                    <View style={styles.nameWithStatus}>
+                      <Text style={styles.senderName}>{message.sender}</Text>
+                      {message.online && (
+                        <Text style={styles.onlineText}>● Online</Text>
+                      )}
+                    </View>
                     <Text style={styles.timestamp}>
                       {message.timestamp ||
                         (message.last_message_time
@@ -1047,12 +1388,15 @@ export default function MessagesScreen() {
           availableUsers.map((user) => (
             <TouchableOpacity key={user.id} style={styles.userItem} onPress={() => openChat(user)} activeOpacity={0.7}>
               <View style={styles.messageLeft}>
-                <View style={styles.avatarContainer}>
-                  {renderAvatar(user)}
-                </View>
+                {renderAvatarWithStatus(user)}
               </View>
               <View style={styles.messageContent}>
-                <Text style={styles.senderName}>{user.name}</Text>
+                <View style={styles.nameWithStatus}>
+                  <Text style={styles.senderName}>{user.name}</Text>
+                  {user.online && (
+                    <Text style={styles.onlineText}>● Online</Text>
+                  )}
+                </View>
                 {user.phone && <Text style={styles.userEmail}>{user.phone}</Text>}
                 <View style={styles.userInfoRow}>
                   <Text style={styles.roleText}>{user.role.replace("_", " ")}</Text>
@@ -1082,27 +1426,33 @@ export default function MessagesScreen() {
       </TouchableOpacity>
 
       <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
-        <TabButton iconSource={null} label="Home" tabKey="home" isActive={false} />
-        <TabButton
+        <TabButtonWithBadge iconSource={null} label="Home" tabKey="home" isActive={false} />
+        <TabButtonWithBadge
           iconSource={require("../../assets/images/horse.png")}
           label="Horse"
           tabKey="horse"
           isActive={false}
         />
-        <TabButton iconSource={require("../../assets/images/chat.png")} label="Chat" tabKey="chat" isActive={true} />
-        <TabButton
+        <TabButtonWithBadge 
+          iconSource={require("../../assets/images/chat.png")} 
+          label="Chat" 
+          tabKey="chat" 
+          isActive={true}
+          badgeCount={totalUnreadCount}
+        />
+        <TabButtonWithBadge
           iconSource={require("../../assets/images/calendar.png")}
           label="Calendar"
           tabKey="calendar"
           isActive={false}
         />
-        <TabButton
+        <TabButtonWithBadge
           iconSource={require("../../assets/images/history.png")}
           label="History"
           tabKey="history"
           isActive={false}
         />
-        <TabButton iconSource={null} label="Profile" tabKey="profile" isActive={false} />
+        <TabButtonWithBadge iconSource={null} label="Profile" tabKey="profile" isActive={false} />
       </View>
     </View>
   )
@@ -1160,6 +1510,12 @@ const styles = StyleSheet.create({
     color: "white",
     textAlign: "center",
   },
+  headerSubtitle: {
+    fontSize: moderateScale(10),
+    color: "rgba(255, 255, 255, 0.8)",
+    textAlign: "center",
+    marginTop: verticalScale(2),
+  },
   headerRight: {
     alignItems: "flex-end",
     width: scale(60),
@@ -1185,6 +1541,9 @@ const styles = StyleSheet.create({
     borderRadius: scale(3),
     backgroundColor: "#4CAF50",
     marginRight: scale(4),
+  },
+  offlineDot: {
+    backgroundColor: "#999",
   },
   aiStatusText: {
     fontSize: moderateScale(10),
@@ -1307,6 +1666,9 @@ const styles = StyleSheet.create({
   messageLeft: {
     marginRight: scale(12),
   },
+  avatarWrapper: {
+    position: 'relative',
+  },
   avatarContainer: {
     width: scale(48),
     height: scale(48),
@@ -1334,8 +1696,32 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "white",
   },
-  avatarText: {
-    fontSize: moderateScale(20),
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: scale(2),
+    right: scale(2),
+    width: scale(16),
+    height: scale(16),
+    borderRadius: scale(8),
+    backgroundColor: 'white',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'white',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  onlineIndicatorActive: {
+    backgroundColor: 'white',
+  },
+  onlineIndicatorDot: {
+    width: scale(12),
+    height: scale(12),
+    borderRadius: scale(6),
+    backgroundColor: '#44b700',
   },
   messageContent: {
     flex: 1,
@@ -1346,10 +1732,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: verticalScale(4),
   },
+  nameWithStatus: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
   senderName: {
     fontSize: moderateScale(15),
     fontWeight: "600",
     color: "#333",
+  },
+  onlineText: {
+    fontSize: moderateScale(10),
+    color: '#44b700',
+    marginLeft: scale(6),
+    fontWeight: '600',
   },
   timestamp: {
     fontSize: moderateScale(11),
@@ -1375,18 +1772,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     marginTop: verticalScale(4),
-  },
-  approvedBadge: {
-    backgroundColor: "#4CAF50",
-    paddingHorizontal: scale(8),
-    paddingVertical: scale(2),
-    borderRadius: scale(10),
-    marginLeft: scale(8),
-  },
-  approvedBadgeText: {
-    color: "white",
-    fontSize: moderateScale(10),
-    fontWeight: "500",
   },
   unreadBadge: {
     backgroundColor: "#C17A47",
@@ -1437,6 +1822,7 @@ const styles = StyleSheet.create({
   messageContainer: {
     marginBottom: verticalScale(4),
     flexDirection: "column",
+    width: "100%",
   },
   userMessageContainer: {
     alignItems: "flex-end",
@@ -1590,6 +1976,9 @@ const styles = StyleSheet.create({
     paddingVertical: verticalScale(4),
     paddingHorizontal: scale(2),
   },
+  tabButtonContent: {
+    position: 'relative',
+  },
   tabIcon: {
     width: scale(28),
     height: scale(28),
@@ -1619,6 +2008,25 @@ const styles = StyleSheet.create({
   activeTabLabel: {
     color: "#C17A47",
     fontWeight: "600",
+  },
+  tabBadgeIcon: {
+    position: 'absolute',
+    top: -scale(4),
+    right: -scale(8),
+    backgroundColor: '#FF5252',
+    borderRadius: scale(10),
+    minWidth: scale(18),
+    height: scale(18),
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: scale(4),
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  tabBadgeIconText: {
+    color: 'white',
+    fontSize: moderateScale(9),
+    fontWeight: 'bold',
   },
   iconContainer: {
     width: scale(14),

@@ -74,37 +74,9 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
     }))
   }
 
-  const handleCall = () => {
-    Linking.openURL('tel:+639053685789')
-      .catch(() => Alert.alert('Error', 'Unable to make phone call'))
-  }
-
   const handleEmail = () => {
-    Linking.openURL('mailto:echosupport@gmail.com')
+    Linking.openURL('mailto:echosys.ph@gmail.com')
       .catch(() => Alert.alert('Error', 'Unable to open email app'))
-  }
-
-  const handleFacebook = () => {
-    Linking.openURL('https://facebook.com/echo')
-      .catch(() => Alert.alert('Error', 'Unable to open Facebook'))
-  }
-
-  const handleFeedbackEmail = () => {
-    Linking.openURL('mailto:echosupport@gmail.com')
-      .catch(() => Alert.alert('Error', 'Unable to open email app'))
-  }
-
-  const handleFeedbackFacebook = () => {
-    Linking.openURL('https://facebook.com/echo')
-      .catch(() => Alert.alert('Error', 'Unable to open Facebook'))
-  }
-
-  const handleEmergencyAlert = () => {
-    Alert.alert(
-      'Emergency Alert',
-      'Fill out the emergency form in the app and tap Send. An emergency veterinarian will be dispatched promptly.',
-      [{ text: 'OK' }]
-    )
   }
 
   return (
@@ -152,30 +124,11 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Contact Information</Text>
             <View style={styles.contactItem}>
-              <Text style={styles.contactLabel}>• Phone:</Text>
-              <TouchableOpacity onPress={handleCall}>
-                <Text style={styles.contactLink}>09053685789</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.contactItem}>
               <Text style={styles.contactLabel}>• Email:</Text>
               <TouchableOpacity onPress={handleEmail}>
-                <Text style={styles.contactLink}>echosupport@gmail.com</Text>
+                <Text style={styles.contactLink}>echosys.ph@gmail.com</Text>
               </TouchableOpacity>
             </View>
-            <View style={styles.contactItem}>
-              <Text style={styles.contactLabel}>• Facebook:</Text>
-              <TouchableOpacity onPress={handleFacebook}>
-                <Text style={styles.contactLink}>facebook.com/echo</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          {/* App Version Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>📱 App Version</Text>
-            <Text style={styles.versionText}>Echo v1.0.0</Text>
-            <Text style={styles.versionDate}>Last updated: March 2025</Text>
           </View>
 
           {/* Emergency Assistance Section */}
@@ -185,9 +138,6 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
               If you experience a health emergency with a horse, use the Emergency Alert feature in the app to notify 
               available veterinarians immediately.
             </Text>
-            <TouchableOpacity style={styles.emergencyButton} onPress={handleEmergencyAlert}>
-              <Text style={styles.emergencyButtonText}>Learn More</Text>
-            </TouchableOpacity>
           </View>
 
           {/* Common Questions Section */}
@@ -212,11 +162,11 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
               style={styles.questionItem}
               onPress={() => toggleSection('question2')}
             >
-              <Text style={styles.questionText}>• How can I schedule an appointment?</Text>
+              <Text style={styles.questionText}>• How do I select a horse?</Text>
             </TouchableOpacity>
             {expandedSections.question2 && (
               <Text style={styles.answerText}>
-                Use the Appointments feature to select available times and confirm bookings.
+                From the main screen, tap on the horse profile section to view and select from your registered horses.
               </Text>
             )}
 
@@ -238,11 +188,11 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
               style={styles.questionItem}
               onPress={() => toggleSection('question4')}
             >
-              <Text style={styles.questionText}>• How do I report a bug or give feedback?</Text>
+              <Text style={styles.questionText}>• How to feed or water the horse?</Text>
             </TouchableOpacity>
             {expandedSections.question4 && (
               <Text style={styles.answerText}>
-                Contact support via email or Facebook, or submit feedback through the Help section.
+                Use the daily care section to log feeding and watering activities for your horse. Tap the feed or water button to record the action.
               </Text>
             )}
           </View>
@@ -255,14 +205,8 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
             </Text>
             <View style={styles.contactItem}>
               <Text style={styles.contactLabel}>• Email:</Text>
-              <TouchableOpacity onPress={handleFeedbackEmail}>
-                <Text style={styles.contactLink}>echosupport@gmail.com</Text>
-              </TouchableOpacity>
-            </View>
-            <View style={styles.contactItem}>
-              <Text style={styles.contactLabel}>• Facebook:</Text>
-              <TouchableOpacity onPress={handleFeedbackFacebook}>
-                <Text style={styles.contactLink}>facebook.com/echo</Text>
+              <TouchableOpacity onPress={handleEmail}>
+                <Text style={styles.contactLink}>echosys.ph@gmail.com</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -366,19 +310,6 @@ const styles = StyleSheet.create({
   versionDate: {
     fontSize: moderateScale(12),
     color: "#999",
-  },
-  emergencyButton: {
-    backgroundColor: "#FF4444",
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(8),
-    borderRadius: scale(6),
-    alignSelf: "flex-start",
-    marginTop: verticalScale(8),
-  },
-  emergencyButtonText: {
-    color: "white",
-    fontSize: moderateScale(12),
-    fontWeight: "600",
   },
   questionItem: {
     paddingVertical: verticalScale(8),

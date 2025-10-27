@@ -112,6 +112,13 @@ export default function TermsPolicies({ onBack }: TermsPoliciesProps) {
     </View>
   )
 
+  const SubSection = ({ title, children }: { title: string, children: React.ReactNode }) => (
+    <View style={styles.subSection}>
+      <Text style={styles.subSectionTitle}>{title}</Text>
+      {children}
+    </View>
+  )
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
@@ -122,7 +129,7 @@ export default function TermsPolicies({ onBack }: TermsPoliciesProps) {
           <BackIcon />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerTitle}>Terms & Policies</Text>
+          <Text style={styles.headerTitle}>Terms & Conditions</Text>
         </View>
         <View style={styles.headerRight} />
       </View>
@@ -136,109 +143,80 @@ export default function TermsPolicies({ onBack }: TermsPoliciesProps) {
           { paddingBottom: safeArea.bottom + dynamicSpacing(20) }
         ]}
       >
-        {/* Welcome Section */}
-        <View style={styles.welcomeSection}>
+        {/* Introduction Section */}
+        <ExpandableSection title="1. Introduction" sectionKey="introduction">
           <Text style={styles.welcomeText}>
-            Welcome to ECHO, a digital platform designed to monitor, manage, and improve the health and welfare 
-            of farm animals in real-time. By accessing or using the platform, users agree to adhere to these Terms and Policies.
+            Welcome to the ECHO Mobile Application (Equine Care and Health Optimization). By registering and using this app, you agree to comply with and be bound by these Terms and Conditions.
           </Text>
-        </View>
-
-        {/* User Eligibility */}
-        <ExpandableSection title="User Eligibility" sectionKey="eligibility">
-          <BulletPoint>Users include horse heroes (caretakers), veterinarians, veterinarians, and DMVF officials aged 18 or older.</BulletPoint>
-          <BulletPoint>Users must register with accurate information and keep login details confidential.</BulletPoint>
+          <Text style={styles.welcomeText}>
+            The ECHO App is developed to support the Tartanilla Horse Health Management Program under the Department of Veterinary Medicine and Fisheries (DVMF) and the Cebu Technological University (CTU). These terms apply to all Horse Operators (owners) and Kutseros (drivers) using the mobile application to manage and monitor horse health records.
+          </Text>
         </ExpandableSection>
 
         {/* User Responsibilities */}
-        <ExpandableSection title="User Responsibilities" sectionKey="responsibilities">
-          <BulletPoint>Use the system solely for authorized purposes related to horse health and welfare.</BulletPoint>
-          <BulletPoint>Ensure all data entered (horse details, health info) are correct and respectful of privacy.</BulletPoint>
-          <BulletPoint>Report any suspicious or malicious activities immediately to the support team.</BulletPoint>
-          <BulletPoint>Not attempt to modify, disrupt, or misuse the platform.</BulletPoint>
+        <ExpandableSection title="2. User Responsibilities" sectionKey="responsibilities">
+          <SubSection title="a. Horse Operator (Owner)">
+            <BulletPoint>You must provide complete and accurate information regarding your identity and your horse's details during registration.</BulletPoint>
+            <BulletPoint>You are responsible for ensuring your horse receives regular veterinary checkups.</BulletPoint>
+            <BulletPoint>You shall coordinate with assigned veterinarians for health updates, appointments, and record submissions.</BulletPoint>
+            <BulletPoint>You must ensure that all data you enter into the system is truthful and up to date.</BulletPoint>
+            <BulletPoint>You are responsible for maintaining the security and confidentiality of your account.</BulletPoint>
+          </SubSection>
+
+          <SubSection title="b. Kutsero (Driver)">
+            <BulletPoint>You are responsible for safely handling and operating the horse during daily Tartanilla activities.</BulletPoint>
+            <BulletPoint>You must cooperate with the horse operator in monitoring the horse's health status.</BulletPoint>
+            <BulletPoint>You agree to report any observed injuries, illnesses, or unusual behavior of the horse through the app or directly to the operator.</BulletPoint>
+            <BulletPoint>You shall use the app responsibly and avoid misuse, misinformation, or unauthorized access.</BulletPoint>
+          </SubSection>
         </ExpandableSection>
 
-        {/* Data Privacy and Security */}
-        <ExpandableSection title="Data Privacy and Security" sectionKey="privacy">
-          <BulletPoint>Personal data and horse records are stored securely and used only for system operations.</BulletPoint>
-          <BulletPoint>Access to sensitive information is role-based and restricted to authorized users.</BulletPoint>
-          <BulletPoint>Users should not share login credentials or allow unauthorized access.</BulletPoint>
+        {/* Data Privacy and Protection */}
+        <ExpandableSection title="3. Data Privacy and Protection" sectionKey="privacy">
+          <BulletPoint>The ECHO App collects personal and animal health information necessary for communication and monitoring within the Tartanilla Program.</BulletPoint>
+          <BulletPoint>All collected data will be handled responsibly and in accordance with the principles of the Data Privacy Act of 2012 (Republic Act No. 10173).</BulletPoint>
+          <BulletPoint>Your data may be shared only with authorized DVMF and CTU personnel for official and program-related purposes.</BulletPoint>
+          <BulletPoint>The ECHO Team implements reasonable safeguards to protect your information from unauthorized use or disclosure.</BulletPoint>
         </ExpandableSection>
 
-        {/* System Usage */}
-        <ExpandableSection title="System Usage" sectionKey="usage">
-          <BulletPoint>The platform requires internet access; offline functionality may be limited.</BulletPoint>
-          <BulletPoint>Users must not employ automation or hacking techniques to interfere with the system.</BulletPoint>
-          <BulletPoint>The developers are not responsible for system downtime or technical issues beyond their control.</BulletPoint>
+        {/* Account and Security */}
+        <ExpandableSection title="4. Account and Security" sectionKey="security">
+          <BulletPoint>You are solely responsible for maintaining the confidentiality of your login credentials.</BulletPoint>
+          <BulletPoint>Any actions performed under your account will be considered your responsibility.</BulletPoint>
+          <BulletPoint>You must immediately report any unauthorized use or suspected security breach to the ECHO Support Team.</BulletPoint>
+          <BulletPoint>The administrators reserve the right to suspend or deactivate accounts found to be in violation of these terms.</BulletPoint>
         </ExpandableSection>
 
-        {/* Intellectual Property */}
-        <ExpandableSection title="Intellectual Property" sectionKey="property">
-          <BulletPoint>All system content, features, logos, trademarks, and source code are owned by the system developers or licensors.</BulletPoint>
-          <BulletPoint>Users are prohibited from copying, reproducing, distributing, or reverse-engineering any system content without explicit permission.</BulletPoint>
+        {/* Acceptable Use */}
+        <ExpandableSection title="5. Acceptable Use" sectionKey="use">
+          <BulletPoint>You agree to use the ECHO App only for legitimate and lawful purposes connected to the Tartanilla Program.</BulletPoint>
+          <BulletPoint>You must not tamper with the system, upload false information, or access other users' data without authorization.</BulletPoint>
+          <BulletPoint>Misuse of the app, including fraudulent or inappropriate activities, may result in permanent account termination.</BulletPoint>
         </ExpandableSection>
 
         {/* Limitation of Liability */}
-        <ExpandableSection title="Limitation of Liability" sectionKey="liability">
-          <BulletPoint>ECHO aims to assist in early detection and management of horse health issues but is not a substitute for professional veterinary advice.</BulletPoint>
-          <BulletPoint>The developers and administrators are not liable for any damages resulting from system use or inability to access the platform.</BulletPoint>
-          <BulletPoint>In case of prolonged service downtime, no guarantee are provided for uninterrupted service.</BulletPoint>
+        <ExpandableSection title="6. Limitation of Liability" sectionKey="liability">
+          <BulletPoint>The ECHO App serves as a digital tool to assist in horse health tracking and communication; it does not replace physical veterinary consultations.</BulletPoint>
+          <BulletPoint>The developers, administrators, and partner institutions are not liable for any loss, injury, or damage caused by misuse of the app, inaccurate data, or user negligence.</BulletPoint>
+          <BulletPoint>Users are responsible for ensuring that all information entered into the system is correct and updated.</BulletPoint>
         </ExpandableSection>
 
-        {/* Updates and Amendments */}
-        <ExpandableSection title="Updates and Amendments" sectionKey="updates">
-          <BulletPoint>These Terms and Policies may be updated periodically to reflect system improvements, legal requirements, or operational changes.</BulletPoint>
-          <BulletPoint>Continued use of the platform after updates constitutes acceptance of revised policies.</BulletPoint>
-          <BulletPoint>Users will be notified of significant changes via system notifications or email.</BulletPoint>
+        {/* Modifications to the Terms */}
+        <ExpandableSection title="7. Modifications to the Terms" sectionKey="modifications">
+          <BulletPoint>The ECHO Team may modify or update these Terms and Conditions at any time.</BulletPoint>
+          <BulletPoint>Users will be notified of significant changes through the mobile app.</BulletPoint>
+          <BulletPoint>Continued use of the application after updates constitutes your acceptance of the revised terms.</BulletPoint>
         </ExpandableSection>
 
-        {/* Termination and Suspension */}
-        <ExpandableSection title="Termination and Suspension" sectionKey="termination">
-          <BulletPoint>Accounts may be suspended or terminated for violations, misuse, or malicious activities.</BulletPoint>
-          <BulletPoint>Users may request account deletion, which will remove all associated personal data records from the system.</BulletPoint>
-          <BulletPoint>Terminated users lose access to all platform features.</BulletPoint>
-        </ExpandableSection>
-
-        {/* Compliance with Laws */}
-        <ExpandableSection title="Compliance with Laws" sectionKey="compliance">
-          <BulletPoint>Users agree to comply with local laws, regulations, and ethical standards related to animal welfare.</BulletPoint>
-          <BulletPoint>The system adheres to Philippine data privacy laws and regulations.</BulletPoint>
-        </ExpandableSection>
-
-        {/* Support & Communication */}
-        <ExpandableSection title="Support & Communication" sectionKey="support">
-          <BulletPoint>Support is available through email, Facebook, and in-app help features.</BulletPoint>
-          <BulletPoint>Users can report issues, give feedback, or request assistance via:</BulletPoint>
+        {/* Contact and Support */}
+        <ExpandableSection title="8. Contact and Support" sectionKey="support">
+          <Text style={styles.supportText}>
+            For any questions, assistance, or technical concerns, please contact:
+          </Text>
           <View style={styles.contactInfo}>
-            <Text style={styles.contactText}>Email: echosupport@gmail.com</Text>
-            <Text style={styles.contactText}>Facebook: ECHO Support</Text>
+            <Text style={styles.contactText}>📧 echosys.ph@gmail.com</Text>
           </View>
-          <BulletPoint>Emergency and critical alerts can be sent via the system's emergency alert feature, which notifies veterinarians and authorities promptly.</BulletPoint>
         </ExpandableSection>
-
-        {/* User Agreement */}
-        <ExpandableSection title="User Agreement" sectionKey="agreement">
-          <BulletPoint>Registering an account implies acceptance of these Terms and Policies.</BulletPoint>
-          <BulletPoint>Users agree to use the platform responsibly and ethically.</BulletPoint>
-        </ExpandableSection>
-
-        {/* Data Retention & Confidentiality */}
-        <ExpandableSection title="Data Retention & Confidentiality" sectionKey="retention">
-          <BulletPoint>Data will be stored securely and retained only for the duration necessary to fulfill the system's purpose.</BulletPoint>
-          <BulletPoint>Users' data will not be shared with unauthorized parties unless mandated by law or for system support.</BulletPoint>
-          <BulletPoint>The system encourages users to provide feedback for continuous improvement.</BulletPoint>
-          <BulletPoint>Feedback can be submitted via email or the in-app feedback feature.</BulletPoint>
-        </ExpandableSection>
-
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            By using ECHO, you acknowledge that you have read, understood, and agree to be bound by these Terms and Policies.
-          </Text>
-          <Text style={styles.lastUpdated}>
-            Last updated: January 2025
-          </Text>
-        </View>
       </ScrollView>
     </SafeAreaView>
   )
@@ -293,17 +271,12 @@ const styles = StyleSheet.create({
   scrollContent: {
     flexGrow: 1,
   },
-  welcomeSection: {
-    padding: scale(20),
-    backgroundColor: "#F9F9F9",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E0E0E0",
-  },
   welcomeText: {
     fontSize: moderateScale(14),
-    color: "#666",
+    color: "#333",
     lineHeight: moderateScale(20),
     textAlign: "justify",
+    marginBottom: verticalScale(10),
   },
   sectionContainer: {
     borderBottomWidth: 1,
@@ -346,6 +319,15 @@ const styles = StyleSheet.create({
     paddingVertical: dynamicSpacing(16),
     backgroundColor: "#FAFAFA",
   },
+  subSection: {
+    marginBottom: verticalScale(16),
+  },
+  subSectionTitle: {
+    fontSize: moderateScale(15),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(8),
+  },
   bulletContainer: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -367,35 +349,20 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "justify",
   },
+  supportText: {
+    fontSize: moderateScale(14),
+    color: "#333",
+    lineHeight: moderateScale(20),
+    marginBottom: verticalScale(12),
+  },
   contactInfo: {
     marginLeft: scale(12),
     marginTop: verticalScale(8),
-    marginBottom: verticalScale(8),
   },
   contactText: {
     fontSize: moderateScale(14),
     color: "#C17A47",
     fontWeight: "500",
     marginBottom: verticalScale(4),
-  },
-  footer: {
-    padding: scale(20),
-    backgroundColor: "#F9F9F9",
-    borderTopWidth: 1,
-    borderTopColor: "#E0E0E0",
-    marginTop: dynamicSpacing(20),
-  },
-  footerText: {
-    fontSize: moderateScale(14),
-    color: "#666",
-    lineHeight: moderateScale(20),
-    textAlign: "center",
-    fontStyle: "italic",
-  },
-  lastUpdated: {
-    fontSize: moderateScale(12),
-    color: "#999",
-    textAlign: "center",
-    marginTop: verticalScale(12),
   },
 })

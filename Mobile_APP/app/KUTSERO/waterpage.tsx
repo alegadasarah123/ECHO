@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Alert, SafeAreaView, TextInput } from "react-native";
 import { FontAwesome5 } from '@expo/vector-icons';
+import { Picker } from '@react-native-picker/picker';
 import FeedLogPage from './FeedLogPage';
 import WaterLogPage from './waterlogpage';
 
-const API_BASE_URL = 'http://192.168.1.9:8000/api/kutsero';
+const API_BASE_URL = 'http://172.20.10.2:8000/api/kutsero';
 
 interface FeedLog {
   log_id: string;
@@ -721,7 +722,16 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                 <TextInput style={styles.timeInput} value={feedingTime.hour} onChangeText={(value) => handleTimeChange('hour', value)} placeholder="HH" keyboardType="numeric" maxLength={2} />
                 <Text style={styles.timeSeparator}>:</Text>
                 <TextInput style={styles.timeInput} value={feedingTime.minute} onChangeText={(value) => handleTimeChange('minute', value)} placeholder="MM" keyboardType="numeric" maxLength={2} />
-                <TextInput style={styles.periodInput} value={feedingTime.period} onChangeText={(value) => handleTimeChange('period', value.toUpperCase())} placeholder="AM/PM" maxLength={2} />
+                <View style={styles.periodPickerContainer}>
+                  <Picker
+                    selectedValue={feedingTime.period}
+                    style={styles.periodPicker}
+                    onValueChange={(value) => handleTimeChange('period', value)}
+                  >
+                    <Picker.Item label="AM" value="AM" />
+                    <Picker.Item label="PM" value="PM" />
+                  </Picker>
+                </View>
               </View>
             </View>
 
@@ -922,7 +932,8 @@ const styles = StyleSheet.create({
   timeInputContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   timeInput: { borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 18, fontWeight: '600', backgroundColor: '#F8FAFC', width: 70, textAlign: 'center', color: '#1E293B' },
   timeSeparator: { fontSize: 20, fontWeight: '700', color: '#64748B', marginHorizontal: 12 },
-  periodInput: { borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 18, fontWeight: '600', backgroundColor: '#F8FAFC', width: 90, textAlign: 'center', marginLeft: 15, color: '#1E293B' },
+  periodPickerContainer: { borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, backgroundColor: '#F8FAFC', width: 90, marginLeft: 15, overflow: 'hidden' },
+  periodPicker: { height: 48, width: '100%' },
   periodContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
   periodButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC', borderRadius: 16, paddingVertical: 14, borderWidth: 2, gap: 8 },
   periodButtonActive: { backgroundColor: '#06B6D4', borderColor: '#06B6D4' },

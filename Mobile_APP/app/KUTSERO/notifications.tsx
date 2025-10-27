@@ -318,7 +318,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
     try {
       const encodedUser = encodeURIComponent(userName);
       const response = await fetch(
-        `http://192.168.1.9:8000/api/kutsero/feed-water-notifications/?kutsero_id=${encodedUser}`
+        `http://172.20.10.2:8000/api/kutsero/feed-water-notifications/?kutsero_id=${encodedUser}`
       );
       
       if (!response.ok) {
@@ -385,7 +385,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
   const fetchAnnouncements = async () => {
     try {
       const encodedUser = encodeURIComponent(userName)
-      const apiUrl = `http://192.168.1.9:8000/api/kutsero/announcements/?user=${encodedUser}`
+      const apiUrl = `http://172.20.10.2:8000/api/kutsero/announcements/?user=${encodedUser}`
 
       console.log("[v0] Fetching announcements from:", apiUrl)
 
@@ -744,7 +744,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       return imageUrl
     }
 
-    const baseUrl = "http://192.168.1.9:8000"
+    const baseUrl = "http://172.20.10.2:8000"
     const absoluteUrl = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : `${baseUrl}/${imageUrl}`
     console.log("[v0] Converted relative URL to absolute:", imageUrl, "->", absoluteUrl)
     return absoluteUrl

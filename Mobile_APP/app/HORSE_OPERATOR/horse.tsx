@@ -396,7 +396,7 @@ const HorseScreen = () => {
               )}
             </TouchableOpacity>
             <TouchableOpacity style={styles.sosButton} onPress={() => router.push("/HORSE_OPERATOR/Hsos" as any)}>
-              <Image source={require("../../assets/images/sos2.png")} style={styles.sosIcon} resizeMode="contain" />
+              <Image source={require("../../assets/images/sos.png")} style={styles.sosIcon} resizeMode="contain" />
             </TouchableOpacity>
             <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
               <MenuIcon color="white" />
