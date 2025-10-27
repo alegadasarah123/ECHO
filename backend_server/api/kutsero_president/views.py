@@ -206,87 +206,118 @@ def send_email_async(subject, plain_message, from_email, recipient_list, html_me
 @login_required
 def approve_user(request, user_id):
     """Approve a user, update status, and send email asynchronously."""
-    # ✅ Get Philippine time
-    ph_time = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
+    import traceback, sys
+    print("\n=== DEBUG: approve_user called ===")
+    print("User ID:", user_id)
 
-    # ✅ Get user role
-    user_res = supabase.table("users").select("role").eq("id", str(user_id)).execute()
-    if not user_res.data:
-        return Response({"error": "User not found"}, status=404)
-    role = user_res.data[0]["role"]
+    try:
+        # ✅ FIXED: Get Philippine time (simpler approach)
+        from datetime import timezone
+        ph_time = datetime.now(timezone(timedelta(hours=8)))
+        print("PH time:", ph_time)
 
-    # ✅ Fetch user info
-    if role == "Kutsero":
-        profile_res = supabase.table("kutsero_profile") \
-            .select("kutsero_fname, kutsero_lname, kutsero_email") \
-            .eq("kutsero_id", str(user_id)).execute()
-        if not profile_res.data:
-            return Response({"error": "Kutsero profile not found"}, status=404)
-        data = profile_res.data[0]
-        user_name = f"{data.get('kutsero_fname','')} {data.get('kutsero_lname','')}".strip()
-        user_email = data.get("kutsero_email")
-    elif role == "Horse Operator":
-        profile_res = supabase.table("horse_op_profile") \
-            .select("op_fname, op_lname, op_email") \
-            .eq("op_id", str(user_id)).execute()
-        if not profile_res.data:
-            return Response({"error": "Operator profile not found"}, status=404)
-        data = profile_res.data[0]
-        user_name = f"{data.get('op_fname','')} {data.get('op_lname','')}".strip()
-        user_email = data.get("op_email")
-    else:
-        return Response({"error": f"Unknown role: {role}"}, status=400)
+        # ✅ Get user role
+        user_res = supabase.table("users").select("role").eq("id", str(user_id)).execute()
+        print("User query result:", user_res.data)
+        if not user_res.data:
+            print("❌ User not found")
+            return Response({"error": "User not found"}, status=404)
+        role = user_res.data[0]["role"]
+        print("Role:", role)
 
-    # ✅ Update status
-    res = supabase.table("users").update({
-        "status": "approved",
-        "created_at": ph_time.isoformat()
-    }).eq("id", user_id).execute()
-    if not res.data:
-        return Response({"error": "User not found"}, status=404)
+        # ✅ Fetch user info
+        if role == "Kutsero":
+            print("Fetching Kutsero profile...")
+            profile_res = supabase.table("kutsero_profile") \
+                .select("kutsero_fname, kutsero_lname, kutsero_email") \
+                .eq("kutsero_id", str(user_id)).execute()
+            print("Kutsero profile result:", profile_res.data)
+            if not profile_res.data:
+                print("❌ Kutsero profile not found")
+                return Response({"error": "Kutsero profile not found"}, status=404)
+            data = profile_res.data[0]
+            user_name = f"{data.get('kutsero_fname','')} {data.get('kutsero_lname','')}".strip()
+            user_email = data.get("kutsero_email")
 
-    # ✅ Send email asynchronously
-    if user_email:
-        subject = "Your Account Has Been Approved"
-        plain_message = f"Hello {user_name},\n\nYour account has been approved. You can now log in on your mobile app.\n\nBest regards,\nECHOSys Team"
-        html_message = f"""
-        <html>
-          <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
-            <div style="max-width:600px; margin:auto; background:white; border-radius:12px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.1);">
-              <div style="background-color:#8B4513; padding:20px; text-align:center; color:white;">
-                <h1 style="margin:0; font-size:24px;">Account Approved ✅</h1>
-              </div>
-              <div style="padding:30px; color:#333; font-size:16px; line-height:1.5;">
-                <p>Hello {user_name},</p>
-                <p>Good news! Your account has been approved by the admin. You can now open your mobile app and log in.</p>
-                <div style="text-align:center; margin:30px 0;">
-                  <a 
-                    href="#" 
-                    style="display:inline-block; background-color:#8B4513; color:white; text-decoration:none; padding:12px 25px; border-radius:6px; font-weight:bold; pointer-events:none; opacity:0.8;"
-                  >
-                    Open your mobile app to login
-                  </a>
+        elif role == "Horse Operator":
+            print("Fetching Horse Operator profile...")
+            profile_res = supabase.table("horse_op_profile") \
+                .select("op_fname, op_lname, op_email") \
+                .eq("op_id", str(user_id)).execute()
+            print("Operator profile result:", profile_res.data)
+            if not profile_res.data:
+                print("❌ Operator profile not found")
+                return Response({"error": "Operator profile not found"}, status=404)
+            data = profile_res.data[0]
+            user_name = f"{data.get('op_fname','')} {data.get('op_lname','')}".strip()
+            user_email = data.get("op_email")
+
+        else:
+            print("❌ Unknown role encountered:", role)
+            return Response({"error": f"Unknown role: {role}"}, status=400)
+
+        # ✅ Update status
+        print("Updating user status in Supabase...")
+        res = supabase.table("users").update({
+            "status": "approved",
+            "created_at": ph_time.isoformat()
+        }).eq("id", user_id).execute()
+        print("Update response:", res.data)
+
+        if not res.data:
+            print("❌ User not found after update")
+            return Response({"error": "User not found"}, status=404)
+
+        # ✅ Send email asynchronously
+        if user_email:
+            print(f"Sending approval email to {user_email}")
+            subject = "Your Account Has Been Approved"
+            plain_message = f"Hello {user_name},\n\nYour account has been approved. You can now log in on your mobile app.\n\nBest regards,\nECHOSys Team"
+            html_message = f"""
+            <html>
+              <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
+                <div style="max-width:600px; margin:auto; background:white; border-radius:12px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.1);">
+                  <div style="background-color:#8B4513; padding:20px; text-align:center; color:white;">
+                    <h1 style="margin:0; font-size:24px;">Account Approved ✅</h1>
+                  </div>
+                  <div style="padding:30px; color:#333; font-size:16px; line-height:1.5;">
+                    <p>Hello {user_name},</p>
+                    <p>Good news! Your account has been approved by the admin. You can now open your mobile app and log in.</p>
+                    <div style="text-align:center; margin:30px 0;">
+                      <a 
+                        href="#" 
+                        style="display:inline-block; background-color:#8B4513; color:white; text-decoration:none; padding:12px 25px; border-radius:6px; font-weight:bold; pointer-events:none; opacity:0.8;"
+                      >
+                        Open your mobile app to login
+                      </a>
+                    </div>
+                    <p>Best regards,<br>ECHOSys Team</p>
+                  </div>
                 </div>
-                <p>Best regards,<br>ECHOSys Team</p>
-              </div>
-            </div>
-          </body>
-        </html>
-        """
-        threading.Thread(target=send_email_async, kwargs={
-            "subject": subject,
-            "plain_message": plain_message,
-            "from_email": getattr(settings, "DEFAULT_FROM_EMAIL", None),
-            "recipient_list": [user_email],
-            "html_message": html_message
-        }).start()
+              </body>
+            </html>
+            """
+            threading.Thread(target=send_email_async, kwargs={
+                "subject": subject,
+                "plain_message": plain_message,
+                "from_email": getattr(settings, "DEFAULT_FROM_EMAIL", None),
+                "recipient_list": [user_email],
+                "html_message": html_message
+            }).start()
+        else:
+            print("⚠️ No email found for this user")
 
-    return Response({
-        "message": f"{role.capitalize()} approved successfully",
-        "user_id": user_id,
-        "role": role
-    }, status=200)
+        print("✅ Approve user process completed successfully")
+        return Response({
+            "message": f"{role.capitalize()} approved successfully",
+            "user_id": user_id,
+            "role": role
+        }, status=200)
 
+    except Exception as e:
+        print("❌ ERROR IN approve_user:", str(e))
+        traceback.print_exc(file=sys.stdout)
+        return Response({"error": str(e)}, status=500)
 
 @api_view(["POST"])
 @login_required
@@ -407,12 +438,82 @@ def get_notifications(request):
             print("No pending users found, returning empty array")
             return Response([])
 
-        # STEP 2: CHECK EXISTING NOTIFICATIONS
+        # STEP 2: FETCH ALL PROFILES IN BATCH
+        user_ids = [user["id"] for user in pending_users]
+        user_profiles = {}
+
+        # Fetch Horse Operator profiles
+        try:
+            horse_op_result = (
+                supabase.table("horse_op_profile")
+                .select("op_id, op_fname, op_mname, op_lname")
+                .in_("op_id", user_ids)
+                .execute()
+            )
+            if horse_op_result.data:
+                for profile in horse_op_result.data:
+                    # ✅ GET FIRST NAME, MIDDLE INITIAL, AND LAST NAME
+                    first_name = profile.get('op_fname', '').strip()
+                    last_name = profile.get('op_lname', '').strip()
+                    
+                    # Get middle initial if exists
+                    middle_initial = ""
+                    if profile.get('op_mname') and profile['op_mname'].strip():
+                        middle_initial = f"{profile['op_mname'].strip()[0].upper()}."
+                    
+                    # Format: FirstName M. LastName
+                    if middle_initial:
+                        full_name = f"{first_name} {middle_initial} {last_name}"
+                    else:
+                        full_name = f"{first_name} {last_name}"
+                    
+                    # Clean up extra spaces
+                    full_name = ' '.join(full_name.split())
+                    
+                    user_profiles[profile['op_id']] = full_name
+                    print(f"Found Horse Operator: {full_name}")
+        except Exception as e:
+            print(f"Error fetching Horse Operator profiles: {str(e)}")
+
+        # Fetch Kutsero profiles
+        try:
+            kutsero_result = (
+                supabase.table("kutsero_profile")
+                .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname")
+                .in_("kutsero_id", user_ids)
+                .execute()
+            )
+            if kutsero_result.data:
+                for profile in kutsero_result.data:
+                    # ✅ GET FIRST NAME, MIDDLE INITIAL, AND LAST NAME
+                    first_name = profile.get('kutsero_fname', '').strip()
+                    last_name = profile.get('kutsero_lname', '').strip()
+                    
+                    # Get middle initial if exists
+                    middle_initial = ""
+                    if profile.get('kutsero_mname') and profile['kutsero_mname'].strip():
+                        middle_initial = f"{profile['kutsero_mname'].strip()[0].upper()}."
+                    
+                    # Format: FirstName M. LastName
+                    if middle_initial:
+                        full_name = f"{first_name} {middle_initial} {last_name}"
+                    else:
+                        full_name = f"{first_name} {last_name}"
+                    
+                    # Clean up extra spaces
+                    full_name = ' '.join(full_name.split())
+                    
+                    user_profiles[profile['kutsero_id']] = full_name
+                    print(f"Found Kutsero: {full_name}")
+        except Exception as e:
+            print(f"Error fetching Kutsero profiles: {str(e)}")
+
+        # STEP 3: CHECK EXISTING NOTIFICATIONS
         user_ids = [user["id"] for user in pending_users]
         print(f"Checking existing notifications for user IDs: {user_ids}")
         existing_notifs_result = (
             supabase.table("notification")
-            .select("id")
+            .select("notif_id, id, notif_message, notif_date, notif_time, notif_read")  # ✅ Include all fields
             .in_("id", user_ids)
             .execute()
         )
@@ -421,22 +522,23 @@ def get_notifications(request):
 
         inserted_notifications = []
 
-        # STEP 3: INSERT NEW NOTIFICATIONS
+        # STEP 4: INSERT NEW NOTIFICATIONS
         for user in pending_users:
             if user["id"] not in existing_user_ids:
                 print(f"Inserting notification for user: {user['id']}")
 
-                ph_time = timezone.now() + timedelta(hours=8)
+                current_time = datetime.now()
                 
-                # ✅ Include user name in message
-                user_name = user.get("name", "Unknown User")
-                message = f"New {user['role']} registered: {user_name}"
+                # ✅ GET NAME FROM PROFILE TABLES WITH MIDDLE INITIAL
+                user_name = user_profiles.get(user["id"], f"User {user['id'][:8]}")
+                user_role = user.get('role', 'User')
+                notif_message = f"New {user_role} registered: {user_name}"
 
                 insert_data = {
                     "id": user["id"],
-                    "notif_message": message,
-                    "notif_date": ph_time.date().isoformat(),
-                    "notif_time": ph_time.time().strftime("%H:%M:%S"),
+                    "notif_message": notif_message,
+                    "notif_date": current_time.date().isoformat(),
+                    "notif_time": current_time.time().strftime("%H:%M:%S"),
                     "notif_read": False,
                     "notification_type": "user_registration",
                     "related_id": user["id"],
@@ -452,13 +554,16 @@ def get_notifications(request):
                         fetch_result = supabase.table("notification").select("*").eq("id", user["id"]).execute()
                         
                         if fetch_result.data:
+                            # Get the most recent notification for this user
                             notifications = fetch_result.data
+                            # Sort by notif_id to get the latest one
                             notifications.sort(key=lambda x: x.get("notif_id", 0), reverse=True)
                             new_notif = notifications[0] if notifications else None
                             
                             if new_notif:
                                 print(f"Successfully fetched inserted notification: {new_notif}")
                                 inserted_notifications.append({
+                                    "notif_id": new_notif["notif_id"],
                                     "id": user["id"],
                                     "message": new_notif["notif_message"],
                                     "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
@@ -469,8 +574,10 @@ def get_notifications(request):
                         else:
                             print(f"No notifications found for user {user['id']}")
                     else:
+                        # In case insert_result.data actually returns something
                         new_notif = insert_result.data[0]
                         inserted_notifications.append({
+                            "notif_id": new_notif["notif_id"],
                             "id": user["id"],
                             "message": new_notif["notif_message"],
                             "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
@@ -491,9 +598,10 @@ def get_notifications(request):
             return Response(inserted_notifications)
         else:
             print("No new notifications inserted, fetching existing ones for display")
+            # Fetch existing notifications for pending users WITH notif_id
             existing_notifs_full_result = (
                 supabase.table("notification")
-                .select("*")
+                .select("notif_id, id, notif_message, notif_date, notif_time, notif_read")  # ✅ Include notif_id
                 .in_("id", user_ids)
                 .execute()
             )
@@ -502,6 +610,7 @@ def get_notifications(request):
             if existing_notifs_full_result.data:
                 for notif in existing_notifs_full_result.data:
                     existing_notifs_for_display.append({
+                        "notif_id": notif["notif_id"],
                         "id": notif["id"],
                         "message": notif["notif_message"],
                         "date": f"{notif['notif_date']}T{notif['notif_time']}+08:00",
@@ -517,7 +626,6 @@ def get_notifications(request):
         print(f"ERROR in get_notifications: {str(e)}")
         traceback.print_exc()
         return Response({"error": "Failed to process notifications"}, status=500)
-        
 # -------------------- MARK NOTIFICATION AS READ --------------------
 @api_view(["POST"])
 @login_required

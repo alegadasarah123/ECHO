@@ -17,7 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 // Use your Django backend as proxy
-const BACKEND_BASE_URL = 'http://127.0.0.1:8000';
+const BACKEND_BASE_URL = 'https://echo-ebl8.onrender.com';
 
 // Helper function to fetch data through your Django proxy
 const fetchPSGCData = async (endpoint) => {
@@ -627,7 +627,7 @@ function SignUp() {
 
       console.log("DEBUG: Sending form data with files");
 
-      const response = await fetch("http://localhost:8000/api/signup_vet/", {
+      const response = await fetch("https://echo-ebl8.onrender.com/api/signup_vet/", {
         method: "POST",
         body: formData
       });

@@ -94,6 +94,13 @@ function DvmfAccountApproval() {
   const [showDropdown, setShowDropdown] = useState({})
   const [posts, setPosts] = useState([])
 
+  // Helper to format status display
+  const formatStatusDisplay = (status) => {
+    if (!status) return "";
+    if (status === "declined") return "Not approved";
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
   // Helper to format time for notifications
   const formatTimeAgo = useCallback((timestamp) => {
     const now = new Date()
@@ -878,21 +885,6 @@ function DvmfAccountApproval() {
             </div>
           </div>
 
-           {/*<div className="flex justify-between items-center mb-5 flex-wrap gap-4">
-            <div className="flex gap-3 items-center flex-wrap">
-              <select
-                className="py-2 px-3 border border-gray-300 rounded-md text-sm bg-white min-h-[40px]"
-                value={recentFilter}
-                onChange={handleRecentFilterChange}
-              >
-                <option value="all">Most Recent</option>
-                <option value="today">Today</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-              </select>
-            </div>
-          </div> */}
-
           <div className="bg-white rounded-lg shadow-sm overflow-hidden">
             {isLoading ? (
               <div>
@@ -910,12 +902,12 @@ function DvmfAccountApproval() {
                   <UserX size={48} className="mb-4 opacity-50" />
                 )}
                 <h3 className="text-lg mb-2 text-gray-700">
-                  No {activeTab === "pending" ? "pending" : activeTab === "declined" ? "not approved" : activeTab} registrations
+                  No {formatStatusDisplay(activeTab)} registrations
                 </h3>
                 <p className="text-sm text-gray-500">
                   {activeTab === "pending"
                     ? "New registration requests will appear here"
-                    : `${activeTab === "declined" ? "Not approved" : activeTab} registrations will appear here`}
+                    : `${formatStatusDisplay(activeTab)} registrations will appear here`}
                 </p>
               </div>
             ) : (
@@ -967,7 +959,7 @@ function DvmfAccountApproval() {
                                   : ""
                           }`}
                         >
-                          {user.users?.status === "declined" ? "Not approved" : user.users?.status}
+                          {formatStatusDisplay(user.users?.status)}
                         </span>
                       </div>
                       <div className="text-gray-500 text-xs mb-0.5 break-words">{user.vet_email}</div>
@@ -1166,10 +1158,7 @@ function DvmfAccountApproval() {
                               : ""
                       }`}
                     >
-                      {selectedUser.users?.status === "declined" 
-                        ? "Not approved" 
-                        : selectedUser.users?.status.charAt(0).toUpperCase() + selectedUser.users?.status.slice(1)
-                      }
+                      {formatStatusDisplay(selectedUser.users?.status)}
                     </span>
                   </div>
                 </div>

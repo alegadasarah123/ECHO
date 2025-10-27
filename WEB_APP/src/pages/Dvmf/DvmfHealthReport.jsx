@@ -587,7 +587,7 @@ function DvmfHealthReport() {
       <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
         <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
           <div className="flex flex-col">
-            <h2 className="text-2xl font-bold text-gray-800 mb-1">Health Report</h2>
+            <h2 className="text-2xl font-bold text-gray-800 mb-1">Health Reports</h2>
           </div>
 
           <div className="flex items-center gap-4">

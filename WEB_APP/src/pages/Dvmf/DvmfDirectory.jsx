@@ -65,6 +65,13 @@ function DvmfDirectory() {
   // Refresh state
   const [isRefreshing, setIsRefreshing] = useState(false)
 
+  // Helper function to format status display
+  const formatStatusDisplay = (status) => {
+    if (!status) return "";
+    if (status === "declined") return "Not approved";
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
   // Utility functions
   const formatTimeAgo = useCallback((timestamp) => {
     const now = new Date()
@@ -669,7 +676,7 @@ function DvmfDirectory() {
                         : "bg-gray-100 text-gray-800"
                 }`}
               >
-                {normalizedPerson.status.toUpperCase()}
+                {formatStatusDisplay(normalizedPerson.status)}
               </span>
             }
           />
@@ -1025,7 +1032,7 @@ function DvmfDirectory() {
                                       : "bg-gray-100 text-gray-800"
                               }`}
                             >
-                              {person.status?.toUpperCase()}
+                              {formatStatusDisplay(person.status)}
                             </span>
                           </td>
                           <td className="px-4 py-4">
