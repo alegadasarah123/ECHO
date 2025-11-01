@@ -62,7 +62,7 @@ interface Event {
 }
 
 // API Base URL - UPDATE THIS TO YOUR IP ADDRESS
-const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
+const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
 
 export default function CalendarScreen() {
   const router = useRouter()
@@ -73,6 +73,9 @@ export default function CalendarScreen() {
   const [eventTitle, setEventTitle] = useState("")
   const [selectedDate, setSelectedDate] = useState("")
   const [eventTime, setEventTime] = useState("")
+  const [hour, setHour] = useState("")
+  const [minute, setMinute] = useState("")
+  const [ampm, setAmPm] = useState<"AM" | "PM">("AM")
 
   const safeArea = getSafeAreaPadding()
 
@@ -119,6 +122,9 @@ export default function CalendarScreen() {
     }
     setEventTitle("")
     setEventTime("")
+    setHour("")
+    setMinute("")
+    setAmPm("AM")
     setShowAddEventModal(true)
   }
 
@@ -192,16 +198,33 @@ export default function CalendarScreen() {
       return
     }
 
-    if (!eventTime.trim()) {
+    // Validate time
+    if (!hour || !minute) {
       Alert.alert("Error", "Please enter event time")
       return
     }
+
+    const hourNum = parseInt(hour)
+    const minuteNum = parseInt(minute)
+
+    if (isNaN(hourNum) || hourNum < 1 || hourNum > 12) {
+      Alert.alert("Error", "Please enter a valid hour (1-12)")
+      return
+    }
+
+    if (isNaN(minuteNum) || minuteNum < 0 || minuteNum > 59) {
+      Alert.alert("Error", "Please enter a valid minute (0-59)")
+      return
+    }
+
+    // Format time as "HH:MM AM/PM"
+    const formattedTime = `${hour}:${minute.padStart(2, '0')} ${ampm}`
 
     const newEvent: Event = {
       id: Date.now().toString(),
       title_event: eventTitle.trim(),
       date: selectedDate,
-      time: eventTime.trim()
+      time: formattedTime
     }
 
     try {
@@ -210,7 +233,7 @@ export default function CalendarScreen() {
       const requestBody = {
         title_event: eventTitle.trim(),
         date: selectedDate,
-        time: eventTime.trim()
+        time: formattedTime
       }
 
       console.log("Sending request to add event:", requestBody)
@@ -226,7 +249,9 @@ export default function CalendarScreen() {
       if (response.ok) {
         Alert.alert("Success", "Event created successfully!")
         setEventTitle("")
-        setEventTime("")
+        setHour("")
+        setMinute("")
+        setAmPm("AM")
         setSelectedDate("")
         setShowAddEventModal(false)
         await fetchEvents()
@@ -492,12 +517,8 @@ export default function CalendarScreen() {
           </View>
 
           <View style={styles.eventsSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Events for {getMonthName(currentMonth)}</Text>
-              <TouchableOpacity style={styles.addEventButton} onPress={() => openAddEventModal()} activeOpacity={0.7}>
-                <PlusIcon color="white" size={16} />
-              </TouchableOpacity>
-            </View>
+            {/* REMOVED the section header with plus button */}
+            <Text style={styles.sectionTitle}>Events for {getMonthName(currentMonth)}</Text>
 
             {loading ? (
               <ActivityIndicator size="large" color="#C17A47" style={{ paddingVertical: verticalScale(24) }} />
@@ -587,13 +608,43 @@ export default function CalendarScreen() {
 
                 <View style={styles.inputGroup}>
                   <Text style={styles.inputLabel}>Time *</Text>
-                  <TextInput
-                    style={styles.textInput}
-                    value={eventTime}
-                    onChangeText={setEventTime}
-                    placeholder="e.g., 10:00 AM"
-                    placeholderTextColor="#999"
-                  />
+                  <View style={styles.timeInputContainer}>
+                    <View style={styles.timeInputRow}>
+                      <TextInput
+                        style={[styles.timeInput, styles.hourInput]}
+                        value={hour}
+                        onChangeText={setHour}
+                        placeholder="HH"
+                        placeholderTextColor="#999"
+                        keyboardType="numeric"
+                        maxLength={2}
+                      />
+                      <Text style={styles.timeSeparator}>:</Text>
+                      <TextInput
+                        style={[styles.timeInput, styles.minuteInput]}
+                        value={minute}
+                        onChangeText={setMinute}
+                        placeholder="MM"
+                        placeholderTextColor="#999"
+                        keyboardType="numeric"
+                        maxLength={2}
+                      />
+                    </View>
+                    <View style={styles.ampmContainer}>
+                      <TouchableOpacity
+                        style={[styles.ampmButton, ampm === 'AM' && styles.ampmButtonActive]}
+                        onPress={() => setAmPm('AM')}
+                      >
+                        <Text style={[styles.ampmText, ampm === 'AM' && styles.ampmTextActive]}>AM</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[styles.ampmButton, ampm === 'PM' && styles.ampmButtonActive]}
+                        onPress={() => setAmPm('PM')}
+                      >
+                        <Text style={[styles.ampmText, ampm === 'PM' && styles.ampmTextActive]}>PM</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </View>
               </ScrollView>
 
@@ -795,20 +846,7 @@ const styles = StyleSheet.create({
     borderRadius: scale(12),
     padding: scale(16),
   },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: verticalScale(16),
-  },
-  addEventButton: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
-    backgroundColor: "#C17A47",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  // REMOVED sectionHeader and addEventButton styles since they're no longer used
   tableContainer: {
     borderWidth: 1,
     borderColor: "#E0E0E0",
@@ -938,6 +976,62 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     color: "#333",
     backgroundColor: "#FAFAFA",
+  },
+  // New time input styles
+  timeInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  timeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  timeInput: {
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: scale(8),
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(10),
+    fontSize: moderateScale(14),
+    color: "#333",
+    backgroundColor: "#FAFAFA",
+    textAlign: 'center',
+  },
+  hourInput: {
+    width: scale(60),
+  },
+  minuteInput: {
+    width: scale(60),
+  },
+  timeSeparator: {
+    fontSize: moderateScale(16),
+    color: "#333",
+    marginHorizontal: scale(8),
+  },
+  ampmContainer: {
+    flexDirection: 'row',
+    marginLeft: scale(12),
+  },
+  ampmButton: {
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    backgroundColor: "#FAFAFA",
+  },
+  ampmButtonActive: {
+    backgroundColor: "#C17A47",
+    borderColor: "#C17A47",
+  },
+  ampmText: {
+    fontSize: moderateScale(12),
+    color: "#666",
+    fontWeight: "500",
+  },
+  ampmTextActive: {
+    color: "white",
   },
   modalButtons: {
     flexDirection: "row",

@@ -123,7 +123,7 @@ interface CareActivity {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
+const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
 
 export default function HorseCareScreen() {
   const router = useRouter()
@@ -552,7 +552,7 @@ export default function HorseCareScreen() {
             <Text style={styles.welcomeText}>Welcome,</Text>
             <Text style={styles.userName}>{currentUser}</Text>
           </View>
-          <View style={styles.headerActions}>
+           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.headerButton} onPress={() => setShowNotifications(true)}>
               <Image
                 source={require("../../assets/images/notification.png")}
@@ -562,9 +562,6 @@ export default function HorseCareScreen() {
             </TouchableOpacity>
             <TouchableOpacity style={styles.sosButton} onPress={() => setShowSOSEmergency(true)}>
               <Image source={require("../../assets/images/sos.png")} style={styles.sosIcon} resizeMode="contain" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
-              <MenuIcon color="white" />
             </TouchableOpacity>
           </View>
         </View>

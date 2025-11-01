@@ -140,25 +140,6 @@ const roleOptions = [
   },
 ]
 
-const routeOptions = [
-  "M. L. Quezon National Highway",
-  "Ouano Avenue",
-  "F. Cabahug Street",
-  "S. B. Cabahug Street",
-  "P. J. Garcia Street",
-]
-
-const toOptions = [
-  "SM City Cebu",
-  "Ayala Center Cebu",
-  "Robinson's Galleria Cebu",
-  "SM Seaside City Cebu",
-  "IT Park",
-  "Lahug",
-  "Capitol Site",
-  "Colon Street",
-]
-
 interface DropdownFieldProps {
   label: string
   value: string
@@ -166,7 +147,7 @@ interface DropdownFieldProps {
   options: string[]
   onSelect: (value: string) => void
   disabled?: boolean
-  error?: string // Added error prop
+  error?: string
 }
 
 interface ProfilePicture {
@@ -176,7 +157,7 @@ interface ProfilePicture {
 }
 
 const API_CONFIG = {
-  BASE_URL: "http://192.168.1.9:8000/api/signup_mobile/",
+  BASE_URL: "http://172.20.10.2:8000/api/signup_mobile/",
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,
@@ -200,7 +181,6 @@ interface FormData {
   municipality: string
   barangay: string
   zipCode: string
-  to: string
   termsAccepted: boolean
 }
 
@@ -300,7 +280,6 @@ export default function Signup() {
     municipality: "",
     barangay: "",
     zipCode: "",
-    to: "",
     termsAccepted: false,
   })
 
@@ -389,12 +368,9 @@ export default function Signup() {
         } else if (!/^\d{4}$/.test(formData.zipCode)) {
           newErrors.zipCode = "Zip code must be 4 digits"
         }
-        if (!formData.to) {
-          newErrors.to = "Destination is required"
-        }
         break
 
-      case 5:
+      case 4:
         if (!formData.email.trim()) {
           newErrors.email = "Email is required"
         } else if (!isValidEmail(formData.email)) {
@@ -431,7 +407,7 @@ export default function Signup() {
       return
     }
 
-    if (currentStep < 7) {
+    if (currentStep < 6) {
       setCurrentStep(currentStep + 1)
     }
   }
@@ -630,7 +606,6 @@ export default function Signup() {
         municipality: formData.municipality,
         barangay: formData.barangay,
         zipCode: formData.zipCode,
-        to: formData.to,
         email: formData.email,
         password: formData.password,
         profilePicture: profileImageBase64,
@@ -688,7 +663,6 @@ export default function Signup() {
                   municipality: "",
                   barangay: "",
                   zipCode: "",
-                  to: "",
                   termsAccepted: false,
                 })
                 setSelectedImage(null)
@@ -718,7 +692,7 @@ export default function Signup() {
                 { text: "Go to Login", onPress: () => router.replace("/auth/login") },
               ])
               setErrors({ email: "A user with that email already exists" })
-              setCurrentStep(5) // Go back to credentials step
+              setCurrentStep(4) // Go back to credentials step
               return
             }
           }
@@ -730,7 +704,7 @@ export default function Signup() {
           if (response.status === 409) {
             errorMessage = "A user with that email already exists."
             setErrors({ email: "A user with that email already exists" })
-            setCurrentStep(5)
+            setCurrentStep(4)
           } else if (response.status === 400) {
             errorMessage = "Invalid information provided. Please check your details."
           } else if (response.status === 500) {
@@ -1057,15 +1031,6 @@ export default function Signup() {
           {errors.zipCode && <Text style={styles.errorText}>{errors.zipCode}</Text>}
         </View>
 
-        <DropdownField
-          label="To"
-          value={formData.to}
-          placeholder="Please Select"
-          options={toOptions}
-          onSelect={(value) => updateFormData("to", value)}
-          error={errors.to}
-        />
-
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.prevButton} onPress={prevStep}>
             <Text style={styles.prevButtonText}>Previous</Text>
@@ -1088,31 +1053,6 @@ export default function Signup() {
   }
 
   const renderStep4 = () => (
-    <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
-      <Text style={styles.stepTitle}>Tell us about yourself</Text>
-      <Text style={styles.stepSubtitle}>Please complete the information below</Text>
-
-      <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.prevButton} onPress={prevStep}>
-          <Text style={styles.prevButtonText}>Previous</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
-          <Text style={styles.nextButtonText}>Next</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.signInLinkContainer}>
-        <Text style={styles.signInText}>
-          Already have an account?{" "}
-          <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
-            <Text style={styles.signInLink}>Sign in</Text>
-          </TouchableOpacity>
-        </Text>
-      </View>
-    </ScrollView>
-  )
-
-  const renderStep5 = () => (
     <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
       <Text style={styles.stepTitle}>Login Credentials</Text>
       <Text style={styles.stepSubtitle}>Create your login information</Text>
@@ -1245,7 +1185,7 @@ export default function Signup() {
     </ScrollView>
   )
 
-  const renderStep6 = () => (
+  const renderStep5 = () => (
     <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
       <Text style={styles.stepTitle}>Set Your Profile Picture</Text>
       <Text style={styles.stepSubtitle}>Upload or capture a photo for your profile</Text>
@@ -1319,7 +1259,7 @@ export default function Signup() {
     </ScrollView>
   )
 
-  const renderStep7 = () => (
+  const renderStep6 = () => (
     <View style={styles.stepContainer}>
       <Text style={styles.stepTitle}>Terms & Conditions</Text>
       <Text style={styles.stepSubtitle}>Please read and accept our terms to continue</Text>
@@ -1508,8 +1448,6 @@ export default function Signup() {
         return renderStep5()
       case 6:
         return renderStep6()
-      case 7:
-        return renderStep7()
       default:
         return renderStep1()
     }
@@ -1529,12 +1467,12 @@ export default function Signup() {
         </View>
 
         <View style={styles.progressContainer}>
-          {[1, 2, 3, 4, 5, 6, 7].map((step) => (
+          {[1, 2, 3, 4, 5, 6].map((step) => (
             <View key={step} style={styles.progressStep}>
               <View style={[styles.progressCircle, currentStep >= step && styles.progressCircleActive]}>
                 <Text style={[styles.progressText, currentStep >= step && styles.progressTextActive]}>{step}</Text>
               </View>
-              {step < 7 && <View style={[styles.progressLine, currentStep > step && styles.progressLineActive]} />}
+              {step < 6 && <View style={[styles.progressLine, currentStep > step && styles.progressLineActive]} />}
             </View>
           ))}
         </View>
@@ -2082,13 +2020,6 @@ const styles = StyleSheet.create({
     color: "#B8763E",
     marginBottom: moderateScale(10),
     textAlign: "center",
-  },
-  termsIntro: {
-    fontSize: moderateScale(14),
-    color: "#333333",
-    lineHeight: moderateScale(20),
-    marginBottom: moderateScale(20),
-    textAlign: "justify",
   },
   termsSectionTitle: {
     fontSize: moderateScale(16),

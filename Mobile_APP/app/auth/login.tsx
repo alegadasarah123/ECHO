@@ -58,7 +58,7 @@ export default function LoginScreen() {
 
       console.log("Attempting login for:", email.trim().toLowerCase())
 
-      const response = await fetch("http://192.168.1.9:8000/api/login_mobile/", {
+      const response = await fetch("http://172.20.10.2:8000/api/login_mobile/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -226,10 +226,7 @@ export default function LoginScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.headerSection}>
-          <View style={styles.logoContainer}>
-            <Image source={require("../../assets/images/echo.png")} style={styles.logo} resizeMode="contain" />
-          </View>
-          <Text style={styles.echoText}>ECHO</Text>
+          <Image source={require("../../assets/images/echo.png")} style={styles.logo} resizeMode="contain" />
         </View>
 
         <View style={styles.formCard}>
@@ -328,20 +325,12 @@ const styles = StyleSheet.create({
   },
   headerSection: {
     alignItems: "center",
-    marginBottom: verticalScale(30),
-  },
-  logoContainer: {
-    width: scale(100),
-    height: scale(100),
-    backgroundColor: "#D4A574",
-    borderRadius: scale(50),
-    justifyContent: "center",
-    alignItems: "center",
     marginBottom: verticalScale(15),
   },
   logo: {
-    width: scale(70),
-    height: scale(70),
+    width: scale(150),
+    height: scale(150),
+    marginBottom: verticalScale(5),
   },
   echoText: {
     fontSize: moderateScale(32),

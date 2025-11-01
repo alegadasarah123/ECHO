@@ -17,6 +17,10 @@ import {
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
 import * as ImagePicker from "expo-image-picker"
+import { FontAwesome } from '@expo/vector-icons'
+// Import the separate components
+import HelpSupport from "./help"
+import TermsPolicies from "./terms"
 
 const { width, height } = Dimensions.get("window")
 
@@ -59,7 +63,7 @@ const getSafeAreaPadding = () => {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
+const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
 
 // Updated User data interface
 interface UserData {
@@ -91,14 +95,6 @@ interface UserData {
 }
 
 interface ProfileInformationProps {
-  onBack: () => void
-}
-
-interface HelpSupportProps {
-  onBack: () => void
-}
-
-interface TermsPoliciesProps {
   onBack: () => void
 }
 
@@ -150,178 +146,6 @@ const debugImageInfo = (imageUri: string | null, context: string) => {
   })
 }
 
-// Help & Support Component
-function HelpSupport({ onBack }: HelpSupportProps) {
-  const safeArea = getSafeAreaPadding()
-
-  const BackIcon = () => (
-    <View style={styles.backIconContainer}>
-      <View style={styles.backArrow} />
-    </View>
-  )
-
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-      <View style={[styles.profileInfoHeader, { paddingTop: safeArea.top }]}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <BackIcon />
-        </TouchableOpacity>
-        <Text style={styles.profileInfoHeaderTitle} numberOfLines={1} adjustsFontSizeToFit>
-          Help & Support
-        </Text>
-        <View style={styles.headerRight} />
-      </View>
-
-      <ScrollView style={styles.helpContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.helpSection}>
-          <Text style={styles.helpSectionTitle}>Frequently Asked Questions</Text>
-
-          <View style={styles.helpItem}>
-            <Text style={styles.helpQuestion}>How do I register my horse?</Text>
-            <Text style={styles.helpAnswer}>
-              To register your horse, go to the Horse Care section and tap "Add Horse". Fill in all the required
-              information including your horse's name, age, breed, and health details.
-            </Text>
-          </View>
-
-          <View style={styles.helpItem}>
-            <Text style={styles.helpQuestion}>How do I update my profile information?</Text>
-            <Text style={styles.helpAnswer}>
-              Go to Profile &gt; Profile Information. You can edit your personal details, location, and account
-              information across three easy steps. Don't forget to save your changes.
-            </Text>
-          </View>
-
-          <View style={styles.helpItem}>
-            <Text style={styles.helpQuestion}>How do I schedule a veterinary appointment?</Text>
-            <Text style={styles.helpAnswer}>
-              Use the Calendar section to view available appointments and schedule visits with veterinarians in your
-              area.
-            </Text>
-          </View>
-
-          <View style={styles.helpItem}>
-            <Text style={styles.helpQuestion}>How do I contact support?</Text>
-            <Text style={styles.helpAnswer}>
-              You can reach our support team through the contact information below or use the chat feature for immediate
-              assistance.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.helpSection}>
-          <Text style={styles.helpSectionTitle}>Contact Information</Text>
-
-          <View style={styles.contactItem}>
-            <Text style={styles.contactLabel}>Email:</Text>
-            <Text style={styles.contactValue}>support@kutsero.app</Text>
-          </View>
-
-          <View style={styles.contactItem}>
-            <Text style={styles.contactLabel}>Phone:</Text>
-            <Text style={styles.contactValue}>+63 912 345 6789</Text>
-          </View>
-
-          <View style={styles.contactItem}>
-            <Text style={styles.contactLabel}>Office Hours:</Text>
-            <Text style={styles.contactValue}>Monday - Friday, 8:00 AM - 5:00 PM</Text>
-          </View>
-        </View>
-
-        <View style={styles.helpSection}>
-          <Text style={styles.helpSectionTitle}>App Version</Text>
-          <Text style={styles.versionText}>Version 1.0.0</Text>
-        </View>
-      </ScrollView>
-    </View>
-  )
-}
-
-// Terms & Policies Component
-function TermsPolicies({ onBack }: TermsPoliciesProps) {
-  const safeArea = getSafeAreaPadding()
-
-  const BackIcon = () => (
-    <View style={styles.backIconContainer}>
-      <View style={styles.backArrow} />
-    </View>
-  )
-
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-      <View style={[styles.profileInfoHeader, { paddingTop: safeArea.top }]}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
-          <BackIcon />
-        </TouchableOpacity>
-        <Text style={styles.profileInfoHeaderTitle} numberOfLines={1} adjustsFontSizeToFit>
-          Terms & Policies
-        </Text>
-        <View style={styles.headerRight} />
-      </View>
-
-      <ScrollView style={styles.termsContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.termsSection}>
-          <Text style={styles.termsSectionTitle}>Terms of Service</Text>
-          <Text style={styles.termsText}>
-            Welcome to Kutsero App. By using our application, you agree to comply with and be bound by the following
-            terms and conditions of use.
-          </Text>
-          <Text style={styles.termsText}>
-            1. The content of the pages of this app is for your general information and use only. It is subject to
-            change without notice.
-          </Text>
-          <Text style={styles.termsText}>
-            2. Your use of any information or materials on this app is entirely at your own risk, for which we shall not
-            be liable.
-          </Text>
-          <Text style={styles.termsText}>
-            3. This app contains material which is owned by or licensed to us. This material includes, but is not
-            limited to, the design, layout, look, appearance and graphics.
-          </Text>
-        </View>
-
-        <View style={styles.termsSection}>
-          <Text style={styles.termsSectionTitle}>Privacy Policy</Text>
-          <Text style={styles.termsText}>
-            Your privacy is important to us. This Privacy Policy explains how we collect, use, and protect your
-            information when you use the Kutsero App.
-          </Text>
-          <Text style={styles.termsText}>
-            Information We Collect: - Personal information (name, email, phone number) - Location data for service
-            delivery - Horse care and health information - Usage data and app interactions
-          </Text>
-          <Text style={styles.termsText}>
-            How We Use Your Information: - To provide and maintain our service - To notify you about changes to our
-            service - To provide customer support - To gather analysis or valuable information to improve our service
-          </Text>
-        </View>
-
-        <View style={styles.termsSection}>
-          <Text style={styles.termsSectionTitle}>Data Protection</Text>
-          <Text style={styles.termsText}>
-            We implement appropriate security measures to protect your personal information against unauthorized access,
-            alteration, disclosure, or destruction.
-          </Text>
-          <Text style={styles.termsText}>
-            Your data is stored securely and is only accessed by authorized personnel who need it to provide you with
-            our services.
-          </Text>
-        </View>
-
-        <View style={styles.termsSection}>
-          <Text style={styles.termsSectionTitle}>Contact Us</Text>
-          <Text style={styles.termsText}>
-            If you have any questions about these Terms & Policies, please contact us at:
-          </Text>
-          <Text style={styles.termsText}>Email: legal@kutsero.app Phone: +63 912 345 6789</Text>
-        </View>
-      </ScrollView>
-    </View>
-  )
-}
-
 // Profile Information Component with photo upload functionality
 function ProfileInformation({ onBack }: ProfileInformationProps) {
   const [currentUser, setCurrentUser] = useState("User")
@@ -339,9 +163,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     municipality: "",
     barangay: "",
     zipCode: "",
-    houseNumber: "",
-    route: "",
-    to: "",
     firstName: "",
     middleName: "",
     lastName: "",
@@ -350,7 +171,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     phoneNumber: "",
     province: "",
     email: "",
-    facebook: "",
     username: "",
   })
 
@@ -366,9 +186,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     municipality: "",
     barangay: "",
     zipCode: "",
-    houseNumber: "",
-    route: "",
-    to: "",
     firstName: "",
     middleName: "",
     lastName: "",
@@ -377,7 +194,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
     phoneNumber: "",
     province: "",
     email: "",
-    facebook: "",
     username: "",
   })
 
@@ -463,9 +279,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
                 municipality: profileData.municipality || "",
                 barangay: profileData.barangay || "",
                 zipCode: profileData.zipCode || "",
-                houseNumber: profileData.houseNumber || profileData.house_number || profileData.houseNo || "",
-                route: profileData.route || profileData.street || profileData.road || profileData.address_line_1 || "",
-                to: profileData.to || "",
                 firstName: profileData.firstName || "",
                 middleName: profileData.middleName || "",
                 lastName: profileData.lastName || "",
@@ -474,7 +287,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
                 phoneNumber: profileData.phoneNumber || "",
                 province: profileData.province || "",
                 email: profileData.email || "",
-                facebook: profileData.facebook || "",
                 username: profileData.username || "",
               }
 
@@ -508,9 +320,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
           municipality: profile.kutsero_municipality || "",
           barangay: profile.kutsero_brgy || "",
           zipCode: profile.kutsero_zipcode || "",
-          houseNumber: "",
-          route: "",
-          to: "",
           firstName: profile.kutsero_fname || "",
           middleName: profile.kutsero_mname || "",
           lastName: profile.kutsero_lname || "",
@@ -519,7 +328,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
           phoneNumber: profile.kutsero_phone_num || "",
           province: profile.kutsero_province || "",
           email: profile.kutsero_email || "",
-          facebook: profile.kutsero_fb || "",
           username: profile.kutsero_username || "",
         }
 
@@ -533,9 +341,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
           municipality: "",
           barangay: "",
           zipCode: "",
-          houseNumber: "",
-          route: "",
-          to: "",
           firstName: "",
           middleName: "",
           lastName: "",
@@ -544,7 +349,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
           phoneNumber: "",
           province: "",
           email: "",
-          facebook: "",
           username: "",
         }
         setFormData(emptyFormData)
@@ -798,7 +602,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
               kutsero_province: formData.province,
               kutsero_dob: formData.dateOfBirth,
               kutsero_sex: formData.sex,
-              kutsero_fb: formData.facebook,
               kutsero_image: selectedImage,
             },
           }
@@ -962,7 +765,7 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
               )}
             </View>
             <View style={styles.cameraIconOverlay}>
-              <Text style={styles.cameraIcon}>📷</Text>
+              <FontAwesome name="camera" size={moderateScale(16)} color="#65676B" />
             </View>
           </View>
         </TouchableOpacity>
@@ -1041,39 +844,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
           placeholder="Enter zip code"
           placeholderTextColor="#999"
           keyboardType="numeric"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>House Number</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.houseNumber}
-          onChangeText={(text) => setFormData({ ...formData, houseNumber: text })}
-          placeholder="Enter house number"
-          placeholderTextColor="#999"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Route</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.route}
-          onChangeText={(text) => setFormData({ ...formData, route: text })}
-          placeholder="Enter route"
-          placeholderTextColor="#999"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>To</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.to}
-          onChangeText={(text) => setFormData({ ...formData, to: text })}
-          placeholder="Enter destination"
-          placeholderTextColor="#999"
         />
       </View>
 
@@ -1195,21 +965,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
         />
       </View>
 
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionHeaderText}>ADDRESS IN THE PHILIPPINES</Text>
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Province</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.province}
-          onChangeText={(text) => setFormData({ ...formData, province: text })}
-          placeholder="Enter province"
-          placeholderTextColor="#999"
-        />
-      </View>
-
       <View style={styles.buttonContainer}>
         <TouchableOpacity style={styles.previousButton} onPress={handlePrevious}>
           <Text style={styles.previousButtonText}>Previous</Text>
@@ -1271,17 +1026,6 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
           placeholderTextColor="#999"
           keyboardType="email-address"
           autoCapitalize="none"
-        />
-      </View>
-
-      <View style={styles.inputGroup}>
-        <Text style={styles.inputLabel}>Facebook</Text>
-        <TextInput
-          style={styles.textInput}
-          value={formData.facebook}
-          onChangeText={(text) => setFormData({ ...formData, facebook: text })}
-          placeholder="Enter Facebook name"
-          placeholderTextColor="#999"
         />
       </View>
 
@@ -1507,11 +1251,12 @@ export default function ProfileScreen() {
             await SecureStore.deleteItemAsync("user_data")
             await SecureStore.deleteItemAsync("selectedHorseData")
             await SecureStore.deleteItemAsync("checkInData")
-
-            router.replace("../../pages/auth/login")
+            
+            console.log("All tokens and user data cleared successfully")
+            router.replace("/auth/login")
           } catch (error) {
             console.error("Error during logout:", error)
-            router.replace("../../pages/auth/login")
+            router.replace("/auth/login")
           }
         },
       },
@@ -2120,10 +1865,6 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  cameraIcon: {
-    fontSize: moderateScale(16),
-    color: "#65676B",
-  },
   changePhotoButton: {
     backgroundColor: "#C17A47",
     paddingHorizontal: scale(20),
@@ -2245,82 +1986,6 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.6,
-  },
-  helpContainer: {
-    flex: 1,
-    backgroundColor: "white",
-  },
-  helpSection: {
-    paddingHorizontal: scale(20),
-    paddingVertical: verticalScale(20),
-  },
-  helpSectionTitle: {
-    fontSize: moderateScale(18),
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: verticalScale(16),
-  },
-  helpItem: {
-    marginBottom: verticalScale(20),
-    paddingBottom: verticalScale(16),
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
-  },
-  helpQuestion: {
-    fontSize: moderateScale(16),
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: verticalScale(8),
-    lineHeight: moderateScale(20),
-  },
-  helpAnswer: {
-    fontSize: moderateScale(14),
-    color: "#666",
-    lineHeight: moderateScale(20),
-  },
-  contactItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: verticalScale(12),
-    flexWrap: "wrap",
-  },
-  contactLabel: {
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-    color: "#333",
-    minWidth: scale(80),
-    marginRight: scale(8),
-  },
-  contactValue: {
-    fontSize: moderateScale(14),
-    color: "#666",
-    flex: 1,
-  },
-  versionText: {
-    fontSize: moderateScale(14),
-    color: "#666",
-    textAlign: "center",
-  },
-  termsContainer: {
-    flex: 1,
-    backgroundColor: "white",
-  },
-  termsSection: {
-    paddingHorizontal: scale(20),
-    paddingVertical: verticalScale(20),
-  },
-  termsSectionTitle: {
-    fontSize: moderateScale(18),
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: verticalScale(16),
-  },
-  termsText: {
-    fontSize: moderateScale(14),
-    color: "#666",
-    lineHeight: moderateScale(20),
-    marginBottom: verticalScale(12),
-    textAlign: "justify",
   },
   changePasswordButton: {
     backgroundColor: "#f0f0f0",

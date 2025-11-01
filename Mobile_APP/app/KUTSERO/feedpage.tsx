@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react";
-import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Alert, SafeAreaView, TextInput } from "react-native";
+import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Alert, SafeAreaView, TextInput, Modal } from "react-native";
 import { FontAwesome5 } from '@expo/vector-icons';
 import FeedLogPage from './FeedLogPage';
 import WaterLogPage from './waterlogpage';
 
 // API Configuration
-const API_BASE_URL = 'http://192.168.1.9:8000/api/kutsero';
+const API_BASE_URL = 'http://172.20.10.2:8000/api/kutsero';
 
 interface FeedLog {
   log_id: string;
@@ -306,6 +306,7 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
   const [feedingTime, setFeedingTime] = useState({ hour: '6', minute: '45', period: 'AM' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
 
   const periods = ['Morning', 'Afternoon', 'Evening'];
 
@@ -474,14 +475,14 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
   };
 
   const handleTimeChange = (field: 'hour' | 'minute' | 'period', value: string): void => {
-  if (field === 'hour') {
-    setFeedingTime(prev => ({ ...prev, hour: value }));
-  } else if (field === 'minute') {
-    setFeedingTime(prev => ({ ...prev, minute: value }));
-  } else if (field === 'period') {
-    setFeedingTime(prev => ({ ...prev, period: value.toUpperCase() }));
-  }
-};
+    if (field === 'hour') {
+      setFeedingTime(prev => ({ ...prev, hour: value }));
+    } else if (field === 'minute') {
+      setFeedingTime(prev => ({ ...prev, minute: value }));
+    } else if (field === 'period') {
+      setFeedingTime(prev => ({ ...prev, period: value.toUpperCase() }));
+    }
+  };
 
   const handleAmountChange = (id: string, amount: string): void => {
     setFeedTypes(prev => prev.map(feed => feed.id === id ? { ...feed, amount } : feed));
@@ -707,14 +708,66 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                   keyboardType="numeric" 
                   maxLength={2} 
                 />
-                <TextInput 
+                <TouchableOpacity 
                   style={styles.periodInput} 
-                  value={feedingTime.period} 
-                  onChangeText={(value) => handleTimeChange('period', value.toUpperCase())} 
-                  placeholder="AM/PM" 
-                  maxLength={2} 
-                />
+                  onPress={() => setShowPeriodDropdown(true)}
+                >
+                  <Text style={styles.periodInputText}>{feedingTime.period}</Text>
+                  <FontAwesome5 name="chevron-down" size={12} color="#64748B" />
+                </TouchableOpacity>
               </View>
+              
+              <Modal
+                visible={showPeriodDropdown}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowPeriodDropdown(false)}
+              >
+                <TouchableOpacity 
+                  style={styles.modalOverlay} 
+                  activeOpacity={1} 
+                  onPress={() => setShowPeriodDropdown(false)}
+                >
+                  <View style={styles.dropdownContainer}>
+                    <TouchableOpacity
+                      style={[
+                        styles.dropdownOption,
+                        feedingTime.period === 'AM' && styles.dropdownOptionActive
+                      ]}
+                      onPress={() => {
+                        handleTimeChange('period', 'AM');
+                        setShowPeriodDropdown(false);
+                      }}
+                    >
+                      <Text style={[
+                        styles.dropdownOptionText,
+                        feedingTime.period === 'AM' && styles.dropdownOptionTextActive
+                      ]}>AM</Text>
+                      {feedingTime.period === 'AM' && (
+                        <FontAwesome5 name="check" size={14} color="#3B82F6" />
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.dropdownOption,
+                        feedingTime.period === 'PM' && styles.dropdownOptionActive
+                      ]}
+                      onPress={() => {
+                        handleTimeChange('period', 'PM');
+                        setShowPeriodDropdown(false);
+                      }}
+                    >
+                      <Text style={[
+                        styles.dropdownOptionText,
+                        feedingTime.period === 'PM' && styles.dropdownOptionTextActive
+                      ]}>PM</Text>
+                      {feedingTime.period === 'PM' && (
+                        <FontAwesome5 name="check" size={14} color="#3B82F6" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              </Modal>
             </View>
 
             {isWater ? (
@@ -860,15 +913,20 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                     </View>
                     <Text style={styles.itemTime}>{water.water_time}</Text>
                   </View>
-                  <TouchableOpacity style={[styles.editButton, { backgroundColor: '#ECFEFF' }]} onPress={() => handleEdit(water)}>
-                    <FontAwesome5 name="edit" size={14} color="#06B6D4" />
+                  <TouchableOpacity 
+                    style={[styles.editButton, isWater && { backgroundColor: '#ECFEFF', borderColor: '#A5F3FC' }]} 
+                    onPress={() => handleEdit(water)}
+                  >
+                    <FontAwesome5 name="edit" size={14} color={themeColor} />
                   </TouchableOpacity>
                 </View>
                 
                 <View style={styles.cardContent}>
                   <View style={styles.detailInfo}>
-                    <FontAwesome5 name="tint" size={18} color={water.completed ? '#10B981' : '#06B6D4'} />
-                    <Text style={styles.detailText}>{water.water_amount}</Text>
+                    <View style={styles.feedTypeRow}>
+                      <FontAwesome5 name="tint" size={18} color={water.completed ? '#10B981' : '#06B6D4'} />
+                      <Text style={styles.feedType}>{water.water_amount}</Text>
+                    </View>
                   </View>
                   
                   {water.completed ? (
@@ -880,7 +938,7 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                     </View>
                   ) : (
                     <TouchableOpacity 
-                      style={[styles.markButton, { backgroundColor: themeColor }]} 
+                      style={styles.markButton} 
                       onPress={() => handleMarkAsComplete(water.water_id)}
                     >
                       <Text style={styles.markButtonText}>Mark as Given</Text>
@@ -897,7 +955,7 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                     <Text style={styles.itemTitle}>{meal.fd_meal_type}</Text>
                     <Text style={styles.itemTime}>{meal.fd_time}</Text>
                   </View>
-                  <TouchableOpacity style={[styles.editButton, { backgroundColor: '#EFF6FF' }]} onPress={() => handleEdit(meal)}>
+                  <TouchableOpacity style={styles.editButton} onPress={() => handleEdit(meal)}>
                     <FontAwesome5 name="edit" size={14} color="#3B82F6" />
                   </TouchableOpacity>
                 </View>
@@ -905,7 +963,11 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                 <View style={styles.cardContent}>
                   <View style={styles.detailInfo}>
                     <View style={styles.feedTypeRow}>
-                      <FontAwesome5 name={getFoodIcon(meal.fd_food_type)} size={18} color={meal.completed ? '#10B981' : '#8B5A2B'} />
+                      <FontAwesome5 
+                        name={meal.fd_meal_type === 'Breakfast' ? 'sun' : meal.fd_meal_type === 'Lunch' ? 'cloud-sun' : 'moon'} 
+                        size={18} 
+                        color={meal.completed ? '#10B981' : '#8B5A2B'} 
+                      />
                       <Text style={styles.feedType}>{meal.fd_food_type}</Text>
                     </View>
                     <Text style={styles.feedAmount}>{meal.fd_qty}</Text>
@@ -920,7 +982,7 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                     </View>
                   ) : (
                     <TouchableOpacity 
-                      style={[styles.markButton, { backgroundColor: themeColor }]} 
+                      style={styles.markButton} 
                       onPress={() => handleMarkAsComplete(meal.fd_id)}
                     >
                       <Text style={styles.markButtonText}>Mark as Fed</Text>
@@ -966,12 +1028,19 @@ const styles = StyleSheet.create({
   placeholder: { width: 44 },
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   content: { padding: 20 },
-  section: { backgroundColor: '#FFFFFF', borderRadius: 16, padding: 20, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
-  sectionTitle: { fontSize: 18, fontWeight: '700', color: '#1E293B', marginBottom: 16 },
+  section: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3, borderWidth: 1, borderColor: 'rgba(148, 163, 184, 0.1)' },
+  sectionTitle: { fontSize: 20, fontWeight: '700', color: '#1E293B', marginBottom: 16 },
   timeInputContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   timeInput: { borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 18, fontWeight: '600', backgroundColor: '#F8FAFC', width: 70, textAlign: 'center', color: '#1E293B' },
   timeSeparator: { fontSize: 20, fontWeight: '700', color: '#64748B', marginHorizontal: 12 },
-  periodInput: { borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, fontSize: 18, fontWeight: '600', backgroundColor: '#F8FAFC', width: 90, textAlign: 'center', marginLeft: 15, color: '#1E293B' },
+  periodInput: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 2, borderColor: '#E2E8F0', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#F8FAFC', width: 90, marginLeft: 15 },
+  periodInputText: { fontSize: 18, fontWeight: '600', color: '#1E293B' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' },
+  dropdownContainer: { backgroundColor: '#FFFFFF', borderRadius: 16, paddingVertical: 8, minWidth: 150, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 12, elevation: 8 },
+  dropdownOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderRadius: 8, marginHorizontal: 8 },
+  dropdownOptionActive: { backgroundColor: '#EFF6FF' },
+  dropdownOptionText: { fontSize: 16, fontWeight: '600', color: '#334155' },
+  dropdownOptionTextActive: { color: '#3B82F6' },
   periodContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
   periodButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC', borderRadius: 16, paddingVertical: 14, borderWidth: 2, gap: 8 },
   periodButtonActive: { backgroundColor: '#06B6D4', borderColor: '#06B6D4' },
@@ -990,25 +1059,24 @@ const styles = StyleSheet.create({
   saveButton: { borderRadius: 16, paddingHorizontal: 24, paddingVertical: 14, flex: 1, alignItems: 'center', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
   saveButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   saveButtonDisabled: { backgroundColor: '#9CA3AF', shadowOpacity: 0, elevation: 0 },
-  scheduleCard: { backgroundColor: '#FFFFFF', borderRadius: 16, marginBottom: 16, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  scheduleCard: { backgroundColor: '#FFFFFF', borderRadius: 20, padding: 20, marginBottom: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.06, shadowRadius: 16, elevation: 4, borderWidth: 1, borderColor: 'rgba(148, 163, 184, 0.1)' },
+  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
   itemInfo: { flex: 1 },
-  itemTitle: { fontSize: 18, fontWeight: '700', color: '#1E293B', marginBottom: 4 },
-  itemTime: { fontSize: 14, color: '#64748B', fontWeight: '500' },
+  itemTitle: { fontSize: 22, fontWeight: '700', color: '#1E293B', marginBottom: 6 },
+  itemTime: { fontSize: 15, color: '#64748B', fontWeight: '500', backgroundColor: '#F1F5F9', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, alignSelf: 'flex-start' },
   periodRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   periodIndicator: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
-  editButton: { padding: 8, borderRadius: 8 },
-  cardContent: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  detailInfo: { flex: 1 },
-  detailText: { fontSize: 16, fontWeight: '600', color: '#334155', marginTop: 4 },
+  editButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#BFDBFE' },
+  cardContent: { gap: 16 },
+  detailInfo: { backgroundColor: '#F8FAFC', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' },
   feedTypeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  feedType: { fontSize: 16, fontWeight: '600', color: '#334155', marginLeft: 8 },
-  feedAmount: { fontSize: 14, color: '#64748B', fontWeight: '500' },
-  completedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#DCFCE7', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
-  completedIconContainer: { backgroundColor: '#10B981', borderRadius: 10, width: 20, height: 20, justifyContent: 'center', alignItems: 'center', marginRight: 6 },
-  completedText: { color: '#065F46', fontSize: 14, fontWeight: '600' },
-  markButton: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
-  markButtonText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  feedType: { fontSize: 18, fontWeight: '600', color: '#334155', marginLeft: 12 },
+  feedAmount: { fontSize: 15, color: '#64748B', fontWeight: '500' },
+  completedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#A7F3D0' },
+  completedIconContainer: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  completedText: { color: '#059669', fontSize: 16, fontWeight: '600' },
+  markButton: { backgroundColor: '#10B981', paddingVertical: 16, borderRadius: 16, alignItems: 'center', shadowColor: '#10B981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
+  markButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   addButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderRadius: 16, marginBottom: 16, shadowColor: '#10B981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
   addIconContainer: { backgroundColor: 'rgba(255, 255, 255, 0.2)', borderRadius: 12, width: 32, height: 32, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
   addButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
@@ -1020,4 +1088,4 @@ const styles = StyleSheet.create({
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingVertical: 60 },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: '#374151', marginTop: 16, marginBottom: 8 },
   emptySubtitle: { fontSize: 16, color: '#64748B', textAlign: 'center', lineHeight: 24 },
-}); 
+});

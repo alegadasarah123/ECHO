@@ -36,7 +36,7 @@ const moderateScale = (size: number, factor = 0.5) => {
   return size + (scale(size) - size) * factor
 }
 
-const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
+const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
 
 interface UserProfileData {
   user_id: string
@@ -138,14 +138,6 @@ export default function UserProfileScreen() {
               profile_image: userData.profile_image,
             },
           }
-          
-          console.log("🔍 PROFILE DATA DEBUG:")
-          console.log("   - Full profile:", JSON.stringify(transformedData.profile, null, 2))
-          console.log("   - City:", transformedData.profile?.city)
-          console.log("   - Province:", transformedData.profile?.province)
-          console.log("   - Username:", transformedData.profile?.username)
-          console.log("   - Phone:", transformedData.profile?.phone)
-          console.log("   - Role:", transformedData.role)
           
           setProfileData(transformedData)
           
@@ -262,16 +254,15 @@ export default function UserProfileScreen() {
     return getDisplayName().charAt(0).toUpperCase()
   }
 
-  // Helper function to get profile picture based on role
   const getProfilePictureForRole = (role: string) => {
-    const roleLower = role.toLowerCase().trim();
+    const roleLower = role.toLowerCase().trim()
     if (roleLower.includes('ctu') || roleLower.includes('vet')) {
-      return require("../../assets/images/CTU.jpg");
+      return require("../../assets/images/CTU.jpg")
     } else if (roleLower.includes('dvmf')) {
-      return require("../../assets/images/DVMF.png");
+      return require("../../assets/images/DVMF.png")
     }
-    return null;
-  };
+    return null
+  }
 
   const renderProfileImage = () => {
     const profileImage = profileData?.profile?.profile_image
@@ -378,16 +369,46 @@ export default function UserProfileScreen() {
     setSelectedImageIndex(0)
   }
 
-  const handleMessagePress = () => {
-    if (!profileData) return
-    
-    router.push({
-      pathname: "./messages",
-      params: {
-        preSelectedUserId: profileData.user_id,
-        preSelectedUserName: getDisplayName(),
-      },
-    })
+  // ✅ UPDATED: Follow Horse Operator pattern exactly
+  const handleMessagePress = async () => {
+    try {
+      if (!currentUserId) {
+        router.replace("../../pages/auth/login")
+        return
+      }
+
+      if (!profileData) {
+        Alert.alert("Error", "Profile data not available")
+        return
+      }
+
+      const displayName = getDisplayName()
+      const userIdToPass = String(profileData.user_id)
+      
+      console.log("📱 Opening chat with:", displayName)
+      console.log("📱 Contact details:", {
+        contactId: userIdToPass,
+        contactName: displayName,
+        contactRole: profileData.role,
+        currentUserId: currentUserId,
+      })
+      
+      // Navigate to messages screen with params to open chat directly
+      router.push({
+        pathname: "./messages",
+        params: {
+          openChat: "true",
+          contactId: userIdToPass,
+          contactName: displayName,
+          contactAvatar: profileData.profile?.profile_image || "",
+          contactRole: profileData.role.toLowerCase().replace(/\s+/g, '_'),
+          userId: currentUserId,
+        },
+      })
+    } catch (error) {
+      console.error("Error opening chat:", error)
+      Alert.alert("Error", "Failed to open chat.")
+    }
   }
 
   const handleBack = () => {
@@ -530,7 +551,6 @@ export default function UserProfileScreen() {
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Profile Header Card */}
         <View style={styles.profileHeaderCard}>
           {renderProfileImage()}
 
@@ -573,6 +593,7 @@ export default function UserProfileScreen() {
             </Text>
           </View>
 
+          {/* ✅ MESSAGE BUTTON - Only show if not viewing own profile */}
           {!isOwnProfile && (
             <TouchableOpacity style={styles.messageButton} onPress={handleMessagePress} activeOpacity={0.7}>
               <FontAwesome5 name="comment-dots" size={scale(16)} color="white" />
@@ -581,7 +602,6 @@ export default function UserProfileScreen() {
           )}
         </View>
 
-        {/* Contact Information Card */}
         <View style={styles.infoCard}>
           <View style={styles.infoCardHeader}>
             <FontAwesome5 name="info-circle" size={scale(18)} color="#C17A47" />
@@ -648,7 +668,6 @@ export default function UserProfileScreen() {
           </View>
         </View>
 
-        {/* Announcements Section - Keep for DVMF and CTU profiles */}
         {showAnnouncements && (
           <View style={styles.infoCard}>
             <View style={styles.infoCardHeader}>
@@ -715,7 +734,6 @@ export default function UserProfileScreen() {
           </View>
         )}
 
-        {/* Own Profile Note */}
         {isOwnProfile && (
           <View style={styles.ownProfileNote}>
             <FontAwesome5 name="info-circle" size={scale(14)} color="#666" />
@@ -775,456 +793,81 @@ export default function UserProfileScreen() {
   )
 }
 
+// ... (all your existing styles remain the same)
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F5F5F5",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#F5F5F5",
-  },
-  loadingText: {
-    marginTop: verticalScale(16),
-    fontSize: moderateScale(16),
-    color: "#666",
-    fontWeight: "500",
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#F5F5F5",
-    paddingHorizontal: scale(32),
-  },
-  errorText: {
-    fontSize: moderateScale(18),
-    color: "#666",
-    marginTop: verticalScale(16),
-    marginBottom: verticalScale(24),
-    textAlign: "center",
-  },
-  backButton: {
-    backgroundColor: "#C17A47",
-    paddingHorizontal: scale(32),
-    paddingVertical: verticalScale(12),
-    borderRadius: scale(8),
-  },
-  backButtonText: {
-    color: "white",
-    fontSize: moderateScale(16),
-    fontWeight: "600",
-  },
-  header: {
-    backgroundColor: "#C17A47",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(16),
-    paddingTop: Platform.OS === "ios" ? verticalScale(50) : verticalScale(16),
-  },
-  backIconButton: {
-    width: scale(40),
-    height: scale(40),
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  headerTitle: {
-    fontSize: moderateScale(20),
-    fontWeight: "bold",
-    color: "white",
-    flex: 1,
-    textAlign: "center",
-  },
-  headerSpacer: {
-    width: scale(40),
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: verticalScale(32),
-  },
-  profileHeaderCard: {
-    backgroundColor: "white",
-    alignItems: "center",
-    paddingVertical: verticalScale(32),
-    paddingHorizontal: scale(24),
-    marginBottom: verticalScale(16),
-    borderBottomWidth: 1,
-    borderBottomColor: "#E0E0E0",
-  },
-  avatarContainer: {
-    marginBottom: verticalScale(16),
-  },
-  avatar: {
-    width: scale(120),
-    height: scale(120),
-    borderRadius: scale(60),
-    borderWidth: 4,
-    borderColor: "#000000ff",
-  },
-  avatarFallback: {
-    width: scale(120),
-    height: scale(120),
-    borderRadius: scale(60),
-    backgroundColor: "#C17A47",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 4,
-    borderColor: "#A66A3E",
-  },
-  avatarFallbackText: {
-    fontSize: moderateScale(48),
-    fontWeight: "bold",
-    color: "white",
-  },
-  fullName: {
-    fontSize: moderateScale(24),
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: verticalScale(8),
-    textAlign: "center",
-  },
-  roleBadge: {
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(6),
-    borderRadius: scale(20),
-    marginBottom: verticalScale(6),
-  },
-  roleBadgeText: {
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-  },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: scale(10),
-    paddingVertical: verticalScale(3),
-    borderRadius: scale(10),
-    backgroundColor: "#F0F2F5",
-    marginBottom: verticalScale(12),
-  },
-  statusDot: {
-    width: scale(7),
-    height: scale(7),
-    borderRadius: scale(3.5),
-    marginRight: scale(5),
-  },
-  statusText: {
-    fontSize: moderateScale(11),
-    fontWeight: "600",
-    textTransform: "capitalize",
-  },
-  messageButton: {
-    width: "90%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#C17A47",
-    paddingHorizontal: scale(20),
-    paddingVertical: verticalScale(12),
-    borderRadius: scale(25),
-    gap: scale(8),
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    marginTop: verticalScale(10),
-  },
-  messageButtonText: {
-    color: "white",
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-  },
-  infoCard: {
-    backgroundColor: "white",
-    marginHorizontal: scale(16),
-    marginBottom: verticalScale(16),
-    borderRadius: scale(12),
-    padding: scale(16),
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  infoCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: verticalScale(16),
-    paddingBottom: verticalScale(12),
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
-    gap: scale(8),
-  },
-  infoCardTitle: {
-    fontSize: moderateScale(18),
-    fontWeight: "600",
-    color: "#333",
-  },
-  detailsContent: {
-    paddingVertical: verticalScale(8),
-  },
-  contactItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: verticalScale(16),
-    gap: scale(12),
-  },
-  iconContainer: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
-    backgroundColor: "#F5F5F5",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  contactTextContainer: {
-    flex: 1,
-  },
-  contactLabel: {
-    fontSize: moderateScale(12),
-    color: "#999",
-    marginBottom: verticalScale(2),
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  contactText: {
-    fontSize: moderateScale(14),
-    color: "#333",
-    lineHeight: moderateScale(20),
-  },
-  noContactInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: verticalScale(20),
-    gap: scale(8),
-  },
-  noContactInfoText: {
-    fontSize: moderateScale(14),
-    color: "#999",
-    fontStyle: "italic",
-  },
-  scheduleLoadingContainer: {
-    paddingVertical: verticalScale(20),
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  scheduleLoadingText: {
-    marginTop: verticalScale(8),
-    fontSize: moderateScale(14),
-    color: "#666",
-  },
-  noScheduleContainer: {
-    paddingVertical: verticalScale(32),
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  noScheduleText: {
-    marginTop: verticalScale(12),
-    fontSize: moderateScale(14),
-    color: "#999",
-    textAlign: "center",
-  },
-  ownProfileNote: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFF3E0",
-    marginHorizontal: scale(16),
-    padding: scale(16),
-    borderRadius: scale(12),
-    gap: scale(12),
-  },
-  ownProfileNoteText: {
-    flex: 1,
-    fontSize: moderateScale(13),
-    color: "#666",
-    lineHeight: moderateScale(18),
-  },
-  // Announcements styles
-  announcementsList: {
-    gap: verticalScale(12),
-  },
-  fbPostCard: {
-    backgroundColor: "white",
-    borderRadius: scale(8),
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    marginBottom: verticalScale(12),
-  },
-  fbPostHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: scale(12),
-    paddingTop: scale(12),
-    paddingBottom: scale(8),
-  },
-  fbPostAuthorInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  fbPostAvatar: {
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(20),
-    marginRight: scale(10),
-  },
-  fbPostAvatarPlaceholder: {
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(20),
-    backgroundColor: "#C17A47",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: scale(10),
-  },
-  fbPostAvatarText: {
-    color: "white",
-    fontSize: moderateScale(15),
-    fontWeight: "600",
-  },
-  fbPostAuthorText: {
-    flex: 1,
-  },
-  fbPostAuthorName: {
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-    color: "#050505",
-    marginBottom: scale(2),
-  },
-  fbPostMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  fbPostTime: {
-    fontSize: moderateScale(12),
-    color: "#65676B",
-  },
-  fbPostMetaSeparator: {
-    fontSize: moderateScale(12),
-    color: "#65676B",
-  },
-  fbPostVisibility: {
-    fontSize: moderateScale(11),
-  },
-  fbPostTitleContainer: {
-    paddingHorizontal: scale(12),
-    paddingBottom: scale(4),
-  },
-  fbPostTitle: {
-    fontSize: moderateScale(15),
-    fontWeight: "700",
-    color: "#050505",
-  },
-  fbPostContent: {
-    paddingHorizontal: scale(12),
-    paddingBottom: scale(12),
-  },
-  fbPostText: {
-    fontSize: moderateScale(14),
-    color: "#050505",
-    lineHeight: moderateScale(19),
-  },
-  carouselContainer: {
-    position: "relative",
-  },
-  fbPostImage: {
-    width: "100%",
-    height: verticalScale(280),
-    backgroundColor: "#F0F2F5",
-  },
-  paginationContainer: {
-    position: "absolute",
-    bottom: scale(12),
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: scale(6),
-  },
-  paginationDot: {
-    width: scale(6),
-    height: scale(6),
-    borderRadius: scale(3),
-    backgroundColor: "rgba(255, 255, 255, 0.5)",
-  },
-  paginationDotActive: {
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    width: scale(8),
-    height: scale(8),
-    borderRadius: scale(4),
-  },
-  imageCounter: {
-    position: "absolute",
-    top: scale(12),
-    right: scale(12),
-    backgroundColor: "rgba(0, 0, 0, 0.6)",
-    paddingHorizontal: scale(10),
-    paddingVertical: scale(4),
-    borderRadius: scale(12),
-  },
-  imageCounterText: {
-    color: "white",
-    fontSize: moderateScale(12),
-    fontWeight: "600",
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.95)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalCloseButton: {
-    position: "absolute",
-    top: verticalScale(50),
-    right: scale(20),
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(20),
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    justifyContent: "center",
-    alignItems: "center",
-    zIndex: 10,
-  },
-  modalCloseText: {
-    color: "white",
-    fontSize: moderateScale(24),
-    fontWeight: "300",
-  },
-  modalImageContainer: {
-    width: width,
-    height: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalImage: {
-    width: width,
-    height: "80%",
-  },
-  modalImageCounter: {
-    position: "absolute",
-    bottom: verticalScale(40),
-    alignSelf: "center",
-    backgroundColor: "rgba(0, 0, 0, 0.7)",
-    paddingHorizontal: scale(16),
-    paddingVertical: scale(8),
-    borderRadius: scale(20),
-  },
-  modalImageCounterText: {
-    color: "white",
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-  },
+  // ... copy all your existing styles here
+  container: { flex: 1, backgroundColor: "#F5F5F5" },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F5F5F5" },
+  loadingText: { marginTop: verticalScale(16), fontSize: moderateScale(16), color: "#666", fontWeight: "500" },
+  errorContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F5F5F5", paddingHorizontal: scale(32) },
+  errorText: { fontSize: moderateScale(18), color: "#666", marginTop: verticalScale(16), marginBottom: verticalScale(24), textAlign: "center" },
+  backButton: { backgroundColor: "#C17A47", paddingHorizontal: scale(32), paddingVertical: verticalScale(12), borderRadius: scale(8) },
+  backButtonText: { color: "white", fontSize: moderateScale(16), fontWeight: "600" },
+  header: { backgroundColor: "#C17A47", flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: scale(16), paddingVertical: verticalScale(16), paddingTop: Platform.OS === "ios" ? verticalScale(50) : verticalScale(16) },
+  backIconButton: { width: scale(40), height: scale(40), justifyContent: "center", alignItems: "center" },
+  headerTitle: { fontSize: moderateScale(20), fontWeight: "bold", color: "white", flex: 1, textAlign: "center" },
+  headerSpacer: { width: scale(40) },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingBottom: verticalScale(32) },
+  profileHeaderCard: { backgroundColor: "white", alignItems: "center", paddingVertical: verticalScale(32), paddingHorizontal: scale(24), marginBottom: verticalScale(16), borderBottomWidth: 1, borderBottomColor: "#E0E0E0" },
+  avatarContainer: { marginBottom: verticalScale(16) },
+  avatar: { width: scale(120), height: scale(120), borderRadius: scale(60), borderWidth: 4, borderColor: "#000000ff" },
+  avatarFallback: { width: scale(120), height: scale(120), borderRadius: scale(60), backgroundColor: "#C17A47", justifyContent: "center", alignItems: "center", borderWidth: 4, borderColor: "#A66A3E" },
+  avatarFallbackText: { fontSize: moderateScale(48), fontWeight: "bold", color: "white" },
+  fullName: { fontSize: moderateScale(24), fontWeight: "bold", color: "#333", marginBottom: verticalScale(8), textAlign: "center" },
+  roleBadge: { paddingHorizontal: scale(16), paddingVertical: verticalScale(6), borderRadius: scale(20), marginBottom: verticalScale(6) },
+  roleBadgeText: { fontSize: moderateScale(14), fontWeight: "600" },
+  statusBadge: { flexDirection: "row", alignItems: "center", paddingHorizontal: scale(10), paddingVertical: verticalScale(3), borderRadius: scale(10), backgroundColor: "#F0F2F5", marginBottom: verticalScale(12) },
+  statusDot: { width: scale(7), height: scale(7), borderRadius: scale(3.5), marginRight: scale(5) },
+  statusText: { fontSize: moderateScale(11), fontWeight: "600", textTransform: "capitalize" },
+  messageButton: { width: "90%", flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#C17A47", paddingHorizontal: scale(20), paddingVertical: verticalScale(12), borderRadius: scale(25), gap: scale(8), shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3, marginTop: verticalScale(10) },
+  messageButtonText: { color: "white", fontSize: moderateScale(14), fontWeight: "600" },
+  infoCard: { backgroundColor: "white", marginHorizontal: scale(16), marginBottom: verticalScale(16), borderRadius: scale(12), padding: scale(16), shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  infoCardHeader: { flexDirection: "row", alignItems: "center", marginBottom: verticalScale(16), paddingBottom: verticalScale(12), borderBottomWidth: 1, borderBottomColor: "#F0F0F0", gap: scale(8) },
+  infoCardTitle: { fontSize: moderateScale(18), fontWeight: "600", color: "#333" },
+  detailsContent: { paddingVertical: verticalScale(8) },
+  contactItem: { flexDirection: "row", alignItems: "flex-start", marginBottom: verticalScale(16), gap: scale(12) },
+  iconContainer: { width: scale(32), height: scale(32), borderRadius: scale(16), backgroundColor: "#F5F5F5", justifyContent: "center", alignItems: "center" },
+  contactTextContainer: { flex: 1 },
+  contactLabel: { fontSize: moderateScale(12), color: "#999", marginBottom: verticalScale(2), textTransform: "uppercase", letterSpacing: 0.5 },
+  contactText: { fontSize: moderateScale(14), color: "#333", lineHeight: moderateScale(20) },
+  noContactInfo: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingVertical: verticalScale(20), gap: scale(8) },
+  noContactInfoText: { fontSize: moderateScale(14), color: "#999", fontStyle: "italic" },
+  scheduleLoadingContainer: { paddingVertical: verticalScale(20), alignItems: "center", justifyContent: "center" },
+  scheduleLoadingText: { marginTop: verticalScale(8), fontSize: moderateScale(14), color: "#666" },
+  noScheduleContainer: { paddingVertical: verticalScale(32), alignItems: "center", justifyContent: "center" },
+  noScheduleText: { marginTop: verticalScale(12), fontSize: moderateScale(14), color: "#999", textAlign: "center" },
+  ownProfileNote: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFF3E0", marginHorizontal: scale(16), padding: scale(16), borderRadius: scale(12), gap: scale(12) },
+  ownProfileNoteText: { flex: 1, fontSize: moderateScale(13), color: "#666", lineHeight: moderateScale(18) },
+  announcementsList: { gap: verticalScale(12) },
+  fbPostCard: { backgroundColor: "white", borderRadius: scale(8), shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2, marginBottom: verticalScale(12) },
+  fbPostHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: scale(12), paddingTop: scale(12), paddingBottom: scale(8) },
+  fbPostAuthorInfo: { flexDirection: "row", alignItems: "center", flex: 1 },
+  fbPostAvatar: { width: scale(40), height: scale(40), borderRadius: scale(20), marginRight: scale(10) },
+  fbPostAvatarPlaceholder: { width: scale(40), height: scale(40), borderRadius: scale(20), backgroundColor: "#C17A47", justifyContent: "center", alignItems: "center", marginRight: scale(10) },
+  fbPostAvatarText: { color: "white", fontSize: moderateScale(15), fontWeight: "600" },
+  fbPostAuthorText: { flex: 1 },
+  fbPostAuthorName: { fontSize: moderateScale(14), fontWeight: "600", color: "#050505", marginBottom: scale(2) },
+  fbPostMeta: { flexDirection: "row", alignItems: "center" },
+  fbPostTime: { fontSize: moderateScale(12), color: "#65676B" },
+  fbPostMetaSeparator: { fontSize: moderateScale(12), color: "#65676B" },
+  fbPostVisibility: { fontSize: moderateScale(11) },
+  fbPostTitleContainer: { paddingHorizontal: scale(12), paddingBottom: scale(4) },
+  fbPostTitle: { fontSize: moderateScale(15), fontWeight: "700", color: "#050505" },
+  fbPostContent: { paddingHorizontal: scale(12), paddingBottom: scale(12) },
+  fbPostText: { fontSize: moderateScale(14), color: "#050505", lineHeight: moderateScale(19) },
+  carouselContainer: { position: "relative" },
+  fbPostImage: { width: "100%", height: verticalScale(280), backgroundColor: "#F0F2F5" },
+  paginationContainer: { position: "absolute", bottom: scale(12), left: 0, right: 0, flexDirection: "row", justifyContent: "center", alignItems: "center", gap: scale(6) },
+  paginationDot: { width: scale(6), height: scale(6), borderRadius: scale(3), backgroundColor: "rgba(255, 255, 255, 0.5)" },
+  paginationDotActive: { backgroundColor: "rgba(255, 255, 255, 0.95)", width: scale(8), height: scale(8), borderRadius: scale(4) },
+  imageCounter: { position: "absolute", top: scale(12), right: scale(12), backgroundColor: "rgba(0, 0, 0, 0.6)", paddingHorizontal: scale(10), paddingVertical: scale(4), borderRadius: scale(12) },
+  imageCounterText: { color: "white", fontSize: moderateScale(12), fontWeight: "600" },
+  modalContainer: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.95)", justifyContent: "center", alignItems: "center" },
+  modalCloseButton: { position: "absolute", top: verticalScale(50), right: scale(20), width: scale(40), height: scale(40), borderRadius: scale(20), backgroundColor: "rgba(255, 255, 255, 0.2)", justifyContent: "center", alignItems: "center", zIndex: 10 },
+  modalCloseText: { color: "white", fontSize: moderateScale(24), fontWeight: "300" },
+  modalImageContainer: { width: width, height: "100%", justifyContent: "center", alignItems: "center" },
+  modalImage: { width: width, height: "80%" },
+  modalImageCounter: { position: "absolute", bottom: verticalScale(40), alignSelf: "center", backgroundColor: "rgba(0, 0, 0, 0.7)", paddingHorizontal: scale(16), paddingVertical: scale(8), borderRadius: scale(20) },
+  modalImageCounterText: { color: "white", fontSize: moderateScale(14), fontWeight: "600" },
 })
