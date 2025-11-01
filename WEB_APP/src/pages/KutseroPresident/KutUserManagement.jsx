@@ -151,7 +151,6 @@ const UserManagement = () => {
     setEnlargedImage(null)
   }
 
-  // UPDATED: Fetch notifications from backend - using the loading object
   const fetchNotifications = async () => {
     try {
       setLoading(prev => ({ ...prev, notifications: true }));
@@ -160,18 +159,26 @@ const UserManagement = () => {
         credentials: "include", 
       });
       
+      // Check if response is HTML instead of JSON
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await res.text();
+        console.error('❌ Server returned HTML instead of JSON:', text.substring(0, 200));
+        throw new Error('Server returned HTML response. Check if endpoint exists.');
+      }
+      
       if (!res.ok) {
         throw new Error(`HTTP error! status: ${res.status}`);
       }
       
       const data = await res.json();
       
-      // ✅ FIXED: Use the actual read status from backend
       const formattedNotifications = data.map(notification => ({
+        notif_id: notification.notif_id,
         id: notification.id,
         message: notification.message,
         date: notification.date,
-        read: notification.read || false // Use the actual read status from backend
+        read: notification.read || false
       }));
       
       setNotifications(formattedNotifications);
@@ -181,6 +188,7 @@ const UserManagement = () => {
       const userNotifications = approvalUsers
         .filter(u => u.status === "pending")
         .map(u => ({
+          notif_id: u.id,
           id: u.id,
           message: `${u.name} (${getRoleDisplayName(u.role)}) is pending approval`,
           date: u.created_at !== "N/A" ? new Date(u.created_at) : new Date(),
@@ -193,7 +201,6 @@ const UserManagement = () => {
     }
   };
 
-  // Fetch approval users - UPDATED to include decline_reason
   useEffect(() => {
     const fetchApprovalUsers = async () => {
       try {
@@ -201,7 +208,20 @@ const UserManagement = () => {
           method: "GET",
           credentials: "include",
         })
-        const data = await res.json()
+        
+        // Check if response is HTML instead of JSON
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          const text = await res.text();
+          console.error('❌ Server returned HTML instead of JSON:', text.substring(0, 200));
+          throw new Error('Server returned HTML response. Check if endpoint exists.');
+        }
+        
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        
+        const data = await res.json();
         const formatted = data.map((u) => ({
           id: u.id,
           name: u.name || "N/A",
@@ -219,6 +239,8 @@ const UserManagement = () => {
         setApprovalUsers(formatted)
       } catch (err) {
         console.error("❌ Error fetching approval users:", err)
+        // Set empty array to prevent further errors
+        setApprovalUsers([])
       } finally {
         setLoading(prev => ({ ...prev, approval: false }))
       }
@@ -234,8 +256,20 @@ const UserManagement = () => {
           method: "GET",
           credentials: "include",
         })
-        if (!res.ok) throw new Error("Failed to fetch users")
-        const data = await res.json()
+        
+        // Check if response is HTML instead of JSON
+        const contentType = res.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) {
+          const text = await res.text();
+          console.error('❌ Server returned HTML instead of JSON:', text.substring(0, 200));
+          throw new Error('Server returned HTML response. Check if endpoint exists.');
+        }
+        
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        
+        const data = await res.json();
         const formatted = (data.users || []).map((u) => ({
           id: u.id,
           name: u.name || "N/A",
@@ -252,6 +286,8 @@ const UserManagement = () => {
         setAccountUsers(formatted)
       } catch (err) {
         console.error("Error fetching account users:", err)
+        // Set empty array to prevent further errors
+        setAccountUsers([])
       } finally {
         setLoading(prev => ({ ...prev, accounts: false }))
       }
@@ -317,77 +353,152 @@ const UserManagement = () => {
     }
   }, [highlightedUser]);
 
-  // NEW: Function to extract user name from notification message
-  const extractUserNameFromNotification = (notification) => {
-    // Handle different notification message formats:
-    // "New Kutsero registered: John Doe"
-    // "New Horse Operator registered: Jane Smith"
-    const match = notification.message.match(/registered:\s*(.+)$/);
-    if (match) {
-      return match[1].trim();
-    }
-    
-    // Alternative format: "John Doe (Kutsero) is pending approval"
-    const altMatch = notification.message.match(/^(.+?)\s*\(/);
-    if (altMatch) {
-      return altMatch[1].trim();
-    }
-    
-    return null;
-  };
+// FIXED: Function to extract user name from notification message
+const extractUserNameFromNotification = (notification) => {
+  console.log("Extracting from notification:", notification.message);
+  
+  // Handle the exact format from backend: "New Kutsero registered: John Michael Doe"
+  const match = notification.message.match(/New (?:Kutsero|Horse Operator) registered:\s*(.+)$/);
+  if (match) {
+    const userName = match[1].trim();
+    console.log("Extracted username:", userName);
+    return userName;
+  }
+  
+  console.log("Could not extract username from:", notification.message);
+  return null;
+};
 
-  const handleOpenKutseroManagement = (notification = null) => {
-    console.log("handleOpenKutseroManagement called with:", notification);
+// FIXED: Handle opening Kutsero Management with notification highlighting
+const handleOpenKutseroManagement = (notification = null) => {
+  console.log("handleOpenKutseroManagement called with:", notification);
+  
+  // Store the notification data for highlighting
+  if (notification) {
+    setHighlightedNotification(notification);
     
-    // Store the notification data for highlighting
-    if (notification) {
-      setHighlightedNotification(notification);
-      
-      // Extract user name from notification message
-      const userName = extractUserNameFromNotification(notification);
-      console.log("Extracted username:", userName);
-      
-      if (userName) {
-        // Find the user in approvalUsers - wait a bit for data to load
-        setTimeout(() => {
-          const userToHighlight = approvalUsers.find(u => {
-            const nameMatch = u.name.toLowerCase().includes(userName.toLowerCase());
-            const statusMatch = u.status === "pending";
-            console.log("Searching user:", u.name, "matches:", nameMatch, "status:", u.status);
-            return nameMatch && statusMatch;
-          });
+    // Extract user name from notification message
+    const userName = extractUserNameFromNotification(notification);
+    console.log("Extracted username:", userName);
+    
+    if (userName) {
+      // Wait for approvalUsers to load and find the matching user
+      const findAndHighlightUser = () => {
+        const userToHighlight = approvalUsers.find(u => {
+          // Try exact match first
+          const exactMatch = u.name.toLowerCase() === userName.toLowerCase();
+          // Then try partial match (in case of formatting differences)
+          const partialMatch = u.name.toLowerCase().includes(userName.toLowerCase());
+          const statusMatch = u.status === "pending";
           
-          console.log("User to highlight found:", userToHighlight);
+          console.log("Searching user:", u.name, "vs", userName, "exact:", exactMatch, "partial:", partialMatch, "status:", u.status);
           
+          return (exactMatch || partialMatch) && statusMatch;
+        });
+        
+        console.log("User to highlight found:", userToHighlight);
+        
+        if (userToHighlight) {
+          setHighlightedUser(userToHighlight.id);
+          console.log("Highlighted user ID set to:", userToHighlight.id);
+          
+          // Auto-scroll to the highlighted user
+          setTimeout(() => {
+            const highlightedRow = document.getElementById(`user-row-${userToHighlight.id}`);
+            console.log("Looking for row with ID:", `user-row-${userToHighlight.id}`, "Found:", highlightedRow);
+            
+            if (highlightedRow) {
+              highlightedRow.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'center' 
+              });
+              
+              // Add zoom-in effect
+              highlightedRow.classList.add('highlight-zoom');
+              setTimeout(() => {
+                highlightedRow.classList.remove('highlight-zoom');
+              }, 2000);
+            } else {
+              console.log("Highlighted row not found in DOM");
+            }
+          }, 500);
+        } else {
+          console.log("No matching user found for:", userName);
+          console.log("Available pending users:", approvalUsers
+            .filter(u => u.status === "pending")
+            .map(u => ({ id: u.id, name: u.name, status: u.status }))
+          );
+          
+          // If no name match, try to find by notification user ID
+          if (notification.id) {
+            console.log("Trying to find user by notification ID:", notification.id);
+            const userById = approvalUsers.find(u => u.id === notification.id && u.status === "pending");
+            if (userById) {
+              console.log("Found user by ID:", userById);
+              setHighlightedUser(userById.id);
+              
+              setTimeout(() => {
+                const highlightedRow = document.getElementById(`user-row-${userById.id}`);
+                if (highlightedRow) {
+                  highlightedRow.scrollIntoView({ 
+                    behavior: 'smooth', 
+                    block: 'center' 
+                  });
+                  highlightedRow.classList.add('highlight-zoom');
+                  setTimeout(() => {
+                    highlightedRow.classList.remove('highlight-zoom');
+                  }, 2000);
+                }
+              }, 500);
+            }
+          }
+        }
+      };
+      
+      // If approvalUsers are already loaded, find immediately
+      if (approvalUsers.length > 0) {
+        findAndHighlightUser();
+      } else {
+        // Otherwise wait a bit and try again
+        setTimeout(findAndHighlightUser, 1000);
+      }
+    } else {
+      console.log("Could not extract username from notification");
+      
+      // If we can't extract name, try to use the notification user ID directly
+      if (notification.id) {
+        console.log("Using notification ID directly:", notification.id);
+        const findAndHighlightById = () => {
+          const userToHighlight = approvalUsers.find(u => u.id === notification.id && u.status === "pending");
           if (userToHighlight) {
             setHighlightedUser(userToHighlight.id);
-            console.log("Highlighted user ID set to:", userToHighlight.id);
+            console.log("Highlighted user by ID:", userToHighlight);
             
-            // Auto-scroll to the highlighted user after a longer delay to ensure DOM is ready
             setTimeout(() => {
               const highlightedRow = document.getElementById(`user-row-${userToHighlight.id}`);
-              console.log("Looking for row with ID:", `user-row-${userToHighlight.id}`, "Found:", highlightedRow);
-              
               if (highlightedRow) {
                 highlightedRow.scrollIntoView({ 
                   behavior: 'smooth', 
                   block: 'center' 
                 });
-                
-                // Add a more prominent flash effect
-                highlightedRow.classList.add('highlight-flash');
+                highlightedRow.classList.add('highlight-zoom');
                 setTimeout(() => {
-                  highlightedRow.classList.remove('highlight-flash');
-                }, 3000);
-              } else {
-                console.log("Highlighted row not found in DOM");
+                  highlightedRow.classList.remove('highlight-zoom');
+                }, 2000);
               }
-            }, 1000);
+            }, 500);
           }
-        }, 500);
+        };
+        
+        if (approvalUsers.length > 0) {
+          findAndHighlightById();
+        } else {
+          setTimeout(findAndHighlightById, 1000);
+        }
       }
     }
-  };
+  }
+};
 
   // Notification functions
   const handleMarkAllAsRead = () => {
@@ -397,7 +508,7 @@ const UserManagement = () => {
   const handleNotificationClick = (notification) => {
     setNotifications(prev => 
       prev.map(n => 
-        n.id === notification.id ? { ...n, read: true } : n
+        n.notif_id === notification.notif_id ? { ...n, read: true } : n
       )
     );
     console.log('Notification clicked:', notification);
@@ -655,22 +766,17 @@ const UserManagement = () => {
               <p className="text-sm text-gray-600 m-0 font-normal">Review requests and manage account status</p>
             </div>
 
+            {/* NOTIFICATION BELL - CLEAN BELL ONLY, NO LOADING STATES */}
             <div className="relative">
               <button
                 className="bg-none border-none cursor-pointer p-2 rounded-full relative transition-colors duration-200 hover:bg-gray-100"
                 onClick={() => setNotifOpen(!notifOpen)}
                 aria-label="Notifications"
-                disabled={loading.notifications}
               >
-                <Bell size={24} className={`${loading.notifications ? 'text-gray-300' : 'text-gray-500'}`} />
-                {!loading.notifications && unreadNotificationsCount > 0 && (
+                <Bell size={24} className="text-gray-500" />
+                {unreadNotificationsCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center font-bold">
                     {unreadNotificationsCount}
-                  </span>
-                )}
-                {loading.notifications && (
-                  <span className="absolute -top-1 -right-1 bg-gray-300 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center font-bold">
-                    ...
                   </span>
                 )}
               </button>
@@ -810,7 +916,7 @@ const UserManagement = () => {
                                 id={`user-row-${user.id}`}
                                 className={`text-center border-b border-gray-100 transition-all duration-500 hover:bg-gray-50 group ${
                                   highlightedUser === user.id 
-                                    ? 'bg-yellow-50 border-yellow-200 shadow-inner highlight-row' 
+                                    ? 'highlight-zoom' 
                                     : ''
                                 }`}
                               >
@@ -821,7 +927,7 @@ const UserManagement = () => {
                                   <div className="flex items-center justify-center gap-2">
                                     {user.name}
                                     {highlightedUser === user.id && (
-                                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200 animate-pulse">
+                                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
                                         New
                                       </span>
                                     )}
@@ -1502,37 +1608,34 @@ const UserManagement = () => {
       {/* ADDED: Floating Messages Component */}
       <FloatingMessages />
 
-      {/* Add custom CSS for highlight animation */}
-      <style jsx>{`
-        .highlight-row {
-          animation: highlightPulse 2s ease-in-out;
+      <style>{`
+        .highlight-zoom {
+          animation: zoomInOut 2s ease-in-out;
+          transform-origin: center;
         }
         
-        @keyframes highlightPulse {
+        @keyframes zoomInOut {
           0% {
-            background-color: #fefce8;
-            box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.7);
+            transform: scale(1);
           }
           50% {
-            background-color: #fef9c3;
-            box-shadow: 0 0 0 10px rgba(251, 191, 36, 0);
+            transform: scale(1.02);
           }
           100% {
-            background-color: #fefce8;
-            box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+            transform: scale(1);
           }
         }
         
         .highlight-flash {
-          animation: flash 0.5s ease-in-out 3;
+          animation: gentleFlash 0.3s ease-in-out 2;
         }
         
-        @keyframes flash {
+        @keyframes gentleFlash {
           0%, 100% {
-            background-color: #fefce8;
+            opacity: 1;
           }
           50% {
-            background-color: #fde047;
+            opacity: 0.8;
           }
         }
       `}</style>

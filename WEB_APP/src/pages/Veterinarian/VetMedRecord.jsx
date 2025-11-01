@@ -4,12 +4,12 @@ import {FileText,Heart,Search,Menu, Eye, MessageCircle,Bell,PawPrint,User,Phone,
 import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
 import ProfileModal from '@/components/modal/profileModal';
-import MEDICALRECORDDETAILS from './MedRecordDetails'; // Import the component
+import NotificationModal from '@/components/modal/notificationModal';
+import MEDICALRECORDDETAILS from './MedRecordDetails';
 
 const VetAccessRequests = () => {
   const [selectedFilter, setSelectedFilter] = useState('all');
   const [selectedRecord, setSelectedRecord] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [vetProfile, setVetProfile] = useState(null);
@@ -19,16 +19,45 @@ const VetAccessRequests = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [medicalRecords, setMedicalRecords] = useState([]);
   const [error, setError] = useState(null);
+  const [notifications, setNotifications] = useState([]);
+  const [notificationCount, setNotificationCount] = useState(0);
   
-  // NEW STATE: Track if we should show medical record details
   const [showMedicalRecordDetails, setShowMedicalRecordDetails] = useState(false);
   const [selectedMedicalRecordId, setSelectedMedicalRecordId] = useState(null);
   
-  // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
-  // ---------------- FETCH VET PROFILE ----------------
+  const fetchNotifications = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/veterinarian/get_notifications/", {
+        credentials: "include"
+      });
+      const data = await response.json();
+      
+      if (response.ok) {
+        setNotifications(data.notifications || []);
+        const unreadCount = data.notifications.filter(n => !n.read).length;
+        setNotificationCount(unreadCount);
+      }
+    } catch (error) {
+      // Error handling without console log
+    }
+  };
+
+  const refreshDashboardData = async () => {
+    await Promise.all([
+      fetchMedicalRecords(),
+      fetchNotifications()
+    ]);
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshDashboardData();
+    setIsRefreshing(false);
+  };
+
   const fetchProfile = async () => {
     try {
       const res = await fetch('http://localhost:8000/api/veterinarian/vet_profile/', {
@@ -37,13 +66,11 @@ const VetAccessRequests = () => {
       });
       const data = await res.json();
       if (res.ok) setVetProfile(data.profile);
-      else console.error('Profile fetch error:', data.error);
     } catch (err) {
-      console.error('Profile fetch failed:', err);
+      // Error handling without console log
     }
   };
 
-  // ---------------- GET PROFILE DISPLAY ----------------
   const getProfileDisplay = () => {
     if (!vetProfile) {
       return {
@@ -52,7 +79,6 @@ const VetAccessRequests = () => {
       };
     }
 
-    // Check if there's a valid profile photo
     if (vetProfile.vet_profile_photo && 
         vetProfile.vet_profile_photo.trim() !== '' && 
         !vetProfile.vet_profile_photo.includes('default') &&
@@ -63,7 +89,6 @@ const VetAccessRequests = () => {
       };
     }
 
-    // Fallback to initials
     const firstInitial = vetProfile.vet_fname?.[0] || '';
     const lastInitial = vetProfile.vet_lname?.[0] || '';
     return {
@@ -72,7 +97,6 @@ const VetAccessRequests = () => {
     };
   };
 
-  // ---------------- FETCH MEDICAL RECORDS ----------------
   const fetchMedicalRecords = async () => {
     try {
       setLoading(true);
@@ -93,7 +117,6 @@ const VetAccessRequests = () => {
       const data = await res.json();
       setMedicalRecords(data.records || []);
     } catch (err) {
-      console.error('Failed to fetch medical records:', err);
       setError('Failed to load medical records. Please try again later.');
     } finally {
       setLoading(false);
@@ -101,15 +124,12 @@ const VetAccessRequests = () => {
     }
   };
 
-  const handleRefresh = () => {
-    fetchMedicalRecords();
+  const handleNotificationModalClose = () => {
+    setIsNotificationModalOpen(false);
+    fetchNotifications();
   };
 
   const handleViewRecord = (record) => {
-    console.log("View record clicked:", record);
-    console.log("Record ID:", record.id);
-    
-    // Navigate to medical record details instead of opening modal
     setSelectedMedicalRecordId(record.id);
     setSelectedRecord(record);
     setShowMedicalRecordDetails(true);
@@ -124,17 +144,12 @@ const VetAccessRequests = () => {
   useEffect(() => {
     fetchProfile();
     fetchMedicalRecords();
+    fetchNotifications();
   }, []);
 
-  // Reset to first page when filters or search changes
   useEffect(() => {
     setCurrentPage(1);
   }, [selectedFilter, searchTerm]);
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setSelectedRecord(null);
-  };
 
   const getStatusColor = (status) => {
     switch (status) {
@@ -146,14 +161,11 @@ const VetAccessRequests = () => {
     }
   };
 
-  // Filter records based on selected filter and search term
   const filteredRecords = medicalRecords.filter(record => {
-    // Apply status filter
     if (selectedFilter !== 'all' && record.status !== selectedFilter) {
       return false;
     }
     
-    // Apply search filter
     if (searchTerm) {
       const searchLower = searchTerm.toLowerCase();
       return (
@@ -166,7 +178,6 @@ const VetAccessRequests = () => {
     return true;
   });
 
-  // Pagination logic
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentItems = filteredRecords.slice(indexOfFirstItem, indexOfLastItem);
@@ -186,7 +197,6 @@ const VetAccessRequests = () => {
     }
   };
 
-  // Generate page numbers for pagination
   const pageNumbers = [];
   for (let i = 1; i <= totalPages; i++) {
     pageNumbers.push(i);
@@ -205,7 +215,6 @@ const VetAccessRequests = () => {
     { key: 'completed', label: 'Completed', count: completedCount },
   ];
 
-  // Skeleton Loading Component
   const SkeletonRow = () => (
     <tr className="animate-pulse">
       <td className="px-6 py-4 whitespace-nowrap text-center">
@@ -231,9 +240,7 @@ const VetAccessRequests = () => {
 
   const profileDisplay = getProfileDisplay();
 
-  // If showing medical record details, render that component instead
   if (showMedicalRecordDetails) {
-    console.log("Showing MEDICALRECORDDETAILS with ID:", selectedMedicalRecordId);
     return (
       <MEDICALRECORDDETAILS 
         recordId={selectedMedicalRecordId}
@@ -247,27 +254,31 @@ const VetAccessRequests = () => {
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <Sidebar/>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        {/* Top Bar */}
         <div className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-800 mb-1">Medical Records</h1>
           <div className="flex items-center space-x-4">
             <button 
               onClick={handleRefresh}
               disabled={isRefreshing}
-              className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl transition-colors"
-              title="Refresh"
+              className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-50"
+              title="Refresh data"
             >
               <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
             </button>
+            
             <button 
               onClick={() => setIsNotificationModalOpen(!isNotificationModalOpen)} 
               className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl relative"
             >
               <Bell className="w-5 h-5" />
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
+              {notificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-medium px-2 py-1 rounded-full min-w-5 h-5 flex items-center justify-center">
+                  {notificationCount > 9 ? '9+' : notificationCount}
+                </span>
+              )}
             </button>
+            
             <button onClick={() => setIsProfileModalOpen(true)}>
               <div className="cursor-pointer w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md overflow-hidden">
                 {profileDisplay.type === 'photo' ? (
@@ -276,10 +287,7 @@ const VetAccessRequests = () => {
                     alt="Profile" 
                     className="w-full h-full object-cover"
                     onError={(e) => {
-                      // If image fails to load, fall back to initials
-                      console.error('Profile image failed to load:', profileDisplay.content);
                       e.target.style.display = 'none';
-                      // The initials will show as fallback due to the gradient background
                     }}
                   />
                 ) : (
@@ -292,9 +300,7 @@ const VetAccessRequests = () => {
           </div>
         </div>
 
-        {/* Medical Records Content */}
         <div className="flex-1 p-6 overflow-auto">
-          {/* Error message */}
           {error && (
             <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center">
               <AlertCircle className="w-5 h-5 mr-2" />
@@ -309,9 +315,7 @@ const VetAccessRequests = () => {
             </div>
           )}
 
-          {/* Filters and Search - Search on left, Filters on right */}
           <div className="flex items-center justify-between mb-6">
-            {/* Search Container - On the left */}
             <div className={`relative w-[350px] max-w-full flex items-center bg-white rounded-xl shadow-md overflow-hidden transition-transform duration-200 ${
               searchFocus ? "scale-105 shadow-xl" : "shadow"
             }`}>
@@ -327,7 +331,6 @@ const VetAccessRequests = () => {
               />
             </div>
             
-            {/* Filter Container - On the right */}
             <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-md rounded-xl p-1 border border-gray-200">
               {filterOptions.map((option) => (
                 <button
@@ -351,7 +354,7 @@ const VetAccessRequests = () => {
               ))}
             </div>
           </div>
-          {/* Medical Records Table */}
+
           <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -367,7 +370,6 @@ const VetAccessRequests = () => {
                 </thead>
                 <tbody className="divide-y divide-gray-200">
                   {loading ? (
-                    // Show skeleton loading while data is loading
                     <>
                       <SkeletonRow />
                       <SkeletonRow />
@@ -375,7 +377,6 @@ const VetAccessRequests = () => {
                       <SkeletonRow />
                     </>
                   ) : filteredRecords.length > 0 ? (
-                    // Show actual data when loaded
                     currentItems.map((record) => (
                       <tr key={record.id} className="hover:bg-gray-50/50 transition-colors">
                         <td className="text-center px-6 py-4 whitespace-nowrap">
@@ -410,7 +411,6 @@ const VetAccessRequests = () => {
                       </tr>
                     ))
                   ) : (
-                    // Show no results message
                     <tr>
                       <td colSpan="6" className="px-6 py-24 text-center">
                         <div className="flex flex-col items-center justify-center">
@@ -425,7 +425,6 @@ const VetAccessRequests = () => {
               </table>
             </div>
 
-            {/* Pagination Controls - Attached directly to table */}
             {filteredRecords.length > 0 && !loading && (
               <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
                 <div className="text-sm text-gray-600 mb-4 sm:mb-0">
@@ -439,7 +438,6 @@ const VetAccessRequests = () => {
                 </div>
                 
                 <div className="flex items-center space-x-2">
-                  {/* Items per page selector */}
                   <div className="flex items-center mr-4">
                     <span className="text-sm text-gray-600 mr-2">Show:</span>
                     <select
@@ -457,7 +455,6 @@ const VetAccessRequests = () => {
                     </select>
                   </div>
 
-                  {/* Previous button */}
                   <button
                     onClick={prevPage}
                     disabled={currentPage === 1}
@@ -470,7 +467,6 @@ const VetAccessRequests = () => {
                     <ChevronLeft className="w-4 h-4" />
                   </button>
 
-                  {/* Page numbers */}
                   <div className="flex space-x-1">
                     {pageNumbers.map((number) => (
                       <button
@@ -487,7 +483,6 @@ const VetAccessRequests = () => {
                     ))}
                   </div>
 
-                  {/* Next button */}
                   <button
                     onClick={nextPage}
                     disabled={currentPage === totalPages}
@@ -506,230 +501,14 @@ const VetAccessRequests = () => {
         </div>
       </div>
 
-      {/* Modal */}
-      {isModalOpen && selectedRecord && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-1000 p-4 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-5xl w-full max-h-[85vh] overflow-hidden border border-gray-200/50">
-            {/* Modal Header  */}
-            <div className="bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 text-white p-6 sticky top-0 z-10 shadow-lg">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 bg-white/20 rounded-full flex items-center justify-center">
-                    <FileText className="w-6 h-6 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold">Horse Medical Records</h2>
-                    <p className="text-blue-100 text-sm">
-                      {selectedRecord.status === 'pending' 
-                        ? 'Pending approval' 
-                        : `Approved by ${selectedRecord.approvedBy}`
-                      }
-                    </p>
-                  </div>
-                </div>
-                <button 
-                  onClick={closeModal}
-                  className="p-2 hover:bg-white/20 rounded-full transition-all duration-200 hover:scale-110"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Content */}
-            <div className="overflow-y-auto max-h-[calc(85vh-88px)] custom-scrollbar">
-              {/* Horse Information Card */}
-              <div className="p-6 border-b border-gray-100">
-                <div className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-2xl p-6 border border-gray-200/50">
-                  <div className="flex items-start space-x-6">
-                    <div className="w-24 h-24 bg-gradient-to-br from-blue-400 via-blue-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg">
-                      <PawPrint className="w-10 h-10 text-white" />
-                    </div>
-                    <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      <div className="space-y-4">
-                        <div className="flex items-start space-x-3">
-                          <Heart className="w-5 h-5 text-green-500 mt-0.5" />
-                          <div>
-                            <span className="font-semibold text-gray-700 block">Horse Name</span>
-                            <span className="text-lg text-gray-900 font-medium">{selectedRecord.horseName}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-start space-x-3">
-                          <Clock className="w-5 h-5 text-blue-500 mt-0.5" />
-                          <div>
-                            <span className="font-semibold text-gray-700 block">Age</span>
-                            <span className="text-gray-900">{selectedRecord.horseDetails?.age}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-start space-x-3">
-                          <Shield className="w-5 h-5 text-purple-500 mt-0.5" />
-                          <div>
-                            <span className="font-semibold text-gray-700 block">Breed</span>
-                            <span className="text-gray-900">{selectedRecord.horseDetails?.breed}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="space-y-4">
-                        <div className="flex items-start space-x-3">
-                          <User className="w-5 h-5 text-gray-500 mt-0.5" />
-                          <div>
-                            <span className="font-semibold text-gray-700 block">Owner</span>
-                            <span className="text-gray-900">{selectedRecord.ownerName}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-start space-x-3">
-                          <Phone className="w-5 h-5 text-orange-500 mt-0.5" />
-                          <div>
-                            <span className="font-semibold text-gray-700 block">Contact</span>
-                            <span className="text-gray-900">{selectedRecord.horseDetails?.contact}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-start space-x-3">
-                          <MapPin className="w-5 h-5 text-red-500 mt-0.5" />
-                          <div>
-                            <span className="font-semibold text-gray-700 block">Location</span>
-                            <span className="text-gray-900">{selectedRecord.horseDetails?.location}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Status Information */}
-              {selectedRecord.status === 'pending' && (
-                <div className="p-6 border-b border-gray-100">
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-2xl p-6">
-                    <div className="flex items-center space-x-3">
-                      <Clock3 className="w-6 h-6 text-yellow-600" />
-                      <div>
-                        <h3 className="text-lg font-semibold text-yellow-800">Pending Approval</h3>
-                        <p className="text-yellow-700">This medical record access request is awaiting approval.</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Medical Record Section - Only show if approved or completed */}
-              {(selectedRecord.status === 'approved' || selectedRecord.status === 'completed') && (
-                <div className="p-6 border-b border-gray-100">
-                  <div className="flex items-center space-x-3 mb-6">
-                    <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-blue-600" />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-800">Medical Records</h3>
-                  </div>
-                  <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-                    <table className="w-full">
-                      <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
-                        <tr>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Date</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Diagnosis</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Veterinarian</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Status</th>
-                          <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {selectedRecord.records?.map((record, index) => (
-                          <tr key={index} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-6 py-4 text-sm text-gray-900 font-medium">{record.date}</td>
-                            <td className="px-6 py-4 text-sm text-gray-900">{record.diagnosis}</td>
-                            <td className="px-6 py-4 text-sm text-gray-900">{record.veterinarian}</td>
-                            <td className="px-6 py-4">
-                              <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-medium border border-green-200">
-                                {record.status}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <button className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-md">
-                                View Details
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Treatment History Section - Only show if approved or completed */}
-              {(selectedRecord.status === 'approved' || selectedRecord.status === 'completed') && selectedRecord.treatments && selectedRecord.treatments.length > 0 && (
-                <div className="p-6">
-                  <div className="flex items-center space-x-3 mb-6">
-                    <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center">
-                      <Heart className="w-5 h-5 text-green-600" />
-                    </div>
-                    <h3 className="text-xl font-bold text-gray-800">Treatment History</h3>
-                  </div>
-                  <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
-                    <table className="w-full">
-                      <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
-                        <tr>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Date</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Treatment</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Administered By</th>
-                          <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700">Result</th>
-                          <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {selectedRecord.treatments?.map((treatment, index) => (
-                          <tr key={index} className="hover:bg-gray-50/50 transition-colors">
-                            <td className="px-6 py-4 text-sm text-gray-900 font-medium">{treatment.date}</td>
-                            <td className="px-6 py-4 text-sm text-gray-900">{treatment.treatment}</td>
-                            <td className="px-6 py-4 text-sm text-gray-900">{treatment.administeredBy}</td>
-                            <td className="px-6 py-4">
-                              <span className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-medium border border-green-200">
-                                {treatment.result}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 text-center">
-                              <button className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-xs font-medium transition-all duration-200 hover:shadow-md">
-                                View Details
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 8px;
-        }
-        
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: #f1f5f9;
-          border-radius: 8px;
-        }
-        
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: linear-gradient(to bottom, #3b82f6, #6366f1);
-          border-radius: 8px;
-          border: 2px solid #f1f5f9;
-        }
-        
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: linear-gradient(to bottom, #2563eb, #4f46e5);
-        }
-        
-        .custom-scrollbar {
-          scrollbar-width: thin;
-          scrollbar-color: #3b82f6 #f1f5f9;
-        }
-      `}</style>
       <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} />
+      
+      <NotificationModal 
+        isOpen={isNotificationModalOpen} 
+        onClose={handleNotificationModalClose} 
+        notifications={notifications} 
+      />
+      
       <FloatingMessages />
     </div>
   );

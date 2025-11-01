@@ -34,6 +34,283 @@ def login_required(func):
         return func(request, *args, **kwargs)
     return wrapper
 
+# -------------------- GET NOTIFICATIONS --------------------
+@api_view(["GET"])
+@login_required
+def get_notifications(request):
+    """
+    Get all notifications for the current vet including:
+    - Today's approved appointments
+    - Medical access approvals/declines (note only for declined)
+    """
+    vet_id = get_current_vet_id(request)
+    if not vet_id:
+        return Response({"error": "Unauthorized"}, status=401)
+
+    try:
+        all_notifications = []
+
+        # Get current time in Philippine time
+        current_time = datetime.now()
+        ph_time = current_time
+
+        # First, get existing notifications from notification table to check read status
+        existing_notifs_res = supabase.table("notification").select("*").eq("id", vet_id).execute()
+        existing_notifs = {notif['related_id']: {'notif_read': notif['notif_read'], 'notif_id': notif['notif_id']} for notif in existing_notifs_res.data or []}
+
+        # 1. Get today's approved appointments
+        today = datetime.now().date()
+        today_str = today.strftime("%Y-%m-%d")
+        
+        today_res = supabase.table("appointment").select(
+            """
+            *,
+            horse_profile:horse_id(
+                horse_name,
+                horse_op_profile:op_id(
+                    op_fname,
+                    op_mname,
+                    op_lname
+                )
+            )
+            """
+        ).eq("vet_id", vet_id).eq("app_status", "approved").eq("app_date", today_str).execute()
+
+        for app in today_res.data or []:
+            horse = app.get("horse_profile", {})
+            operator = horse.get("horse_op_profile", {})
+            operator_name = " ".join(filter(None, [
+                operator.get("op_fname"),
+                operator.get("op_mname"),
+                operator.get("op_lname"),
+            ])).strip()
+
+            notif_related_id = f"today-{app['app_id']}"
+            
+            # Check if notification exists and get its read status and actual notif_id
+            existing_notif = existing_notifs.get(notif_related_id)
+            is_read = existing_notif['notif_read'] if existing_notif else False
+            actual_notif_id = existing_notif['notif_id'] if existing_notif else None
+
+            # Insert into notification table if not exists
+            if not existing_notif:
+                notification_data = {
+                    "id": vet_id,
+                    "notif_message": f"TODAY: Appointment with {horse.get('horse_name', '')} at {app.get('app_time', '')}",
+                    "notification_type": "today_appointment",
+                    "related_id": notif_related_id,
+                    "notif_date": ph_time.date().isoformat(),
+                    "notif_time": ph_time.time().strftime("%H:%M:%S")
+                }
+                insert_result = supabase.table("notification").insert(notification_data).execute()
+                if insert_result.data:
+                    actual_notif_id = insert_result.data[0]['notif_id']
+
+            all_notifications.append({
+                "notif_id": actual_notif_id or notif_related_id,  # Use actual notif_id if available
+                "related_id": notif_related_id,
+                "type": "today_appointment",
+                "message": f"TODAY: Appointment with {horse.get('horse_name', '')}",
+                "description": f"Owner: {operator_name} | Time: {app.get('app_time', '')}",
+                "date": f"{ph_time.date().isoformat()}T{ph_time.time().strftime('%H:%M:%S')}+08:00",
+                "read": is_read,
+                "link": "/VetAppointments",
+                "data": app
+            })
+
+        # 2. Get medical access notifications (approved/declined by DVMF/CTU)
+        medical_res = supabase.table("medrec_access_request").select(
+            """
+            *,
+            horse_profile:horse_id(
+                horse_name
+            )
+            """
+        ).eq("vet_id", vet_id).in_("request_status", ["approved", "declined"]).order("approved_at", desc=True).execute()
+
+        for req in medical_res.data or []:
+            horse = req.get("horse_profile", {})
+            status = req.get("request_status")
+            approved_by_id = req.get("approved_by")
+            
+            # Since approved_by is text, we need to manually look up the user info
+            approved_by_name = "System"
+            
+            if approved_by_id:
+                # Try to find the user in different profile tables
+                try:
+                    # Check if it's a DVMF user
+                    dvmf_res = supabase.table("dvmf_user_profile").select("*").eq("dvmf_id", approved_by_id).execute()
+                    if dvmf_res.data:
+                        dvmf_profile = dvmf_res.data[0]
+                        approved_by_name = " ".join(filter(None, [
+                            dvmf_profile.get("dvmf_fname"),
+                            dvmf_profile.get("dvmf_lname")
+                        ])).strip()
+                    else:
+                        # Check if it's a CTU user
+                        ctu_res = supabase.table("ctu_vet_profile").select("*").eq("ctu_id", approved_by_id).execute()
+                        if ctu_res.data:
+                            ctu_profile = ctu_res.data[0]
+                            approved_by_name = " ".join(filter(None, [
+                                ctu_profile.get("ctu_fname"),
+                                ctu_profile.get("ctu_lname")
+                            ])).strip()
+                        else:
+                            # Check if it's a veterinarian
+                            vet_res = supabase.table("vet_profile").select("*").eq("vet_id", approved_by_id).execute()
+                            if vet_res.data:
+                                vet_profile = vet_res.data[0]
+                                approved_by_name = " ".join(filter(None, [
+                                    vet_profile.get("vet_fname"),
+                                    vet_profile.get("vet_mname"),
+                                    vet_profile.get("vet_lname")
+                                ])).strip()
+                except Exception as e:
+                    print(f"Error looking up approver info: {e}")
+                    # If we can't find the user, use the ID as fallback
+                    approved_by_name = f"{approved_by_id}"
+
+            if status == "approved":
+                message = f"Medical access APPROVED for {horse.get('horse_name', 'Unknown Horse')}"
+                notif_type = "medical_access_approved"
+                description = f"By: {approved_by_name}"
+            else:
+                message = f"Medical access DECLINED for {horse.get('horse_name', 'Unknown Horse')}"
+                notif_type = "medical_access_declined"
+                # Only show note for declined status
+                note = req.get('note', 'No reason provided')
+                description = f"By: {approved_by_name} | Note: {note}"
+
+            notif_related_id = f"medical-{req['request_id']}"
+            
+            # Check if notification exists and get its read status and actual notif_id
+            existing_notif = existing_notifs.get(notif_related_id)
+            is_read = existing_notif['notif_read'] if existing_notif else False
+            actual_notif_id = existing_notif['notif_id'] if existing_notif else None
+
+            # Use approved_at time if available, otherwise use current Philippine time
+            if req.get("approved_at"):
+                approved_time = datetime.fromisoformat(req["approved_at"].replace('Z', '+00:00'))
+                # Convert to Philippine time (UTC+8)
+                ph_time_notif = approved_time + timedelta(hours=8)
+                date_str = f"{ph_time_notif.date().isoformat()}T{ph_time_notif.time().strftime('%H:%M:%S')}+08:00"
+            else:
+                date_str = f"{ph_time.date().isoformat()}T{ph_time.time().strftime('%H:%M:%S')}+08:00"
+
+            # Insert into notification table if not exists
+            if not existing_notif:
+                notification_data = {
+                    "id": vet_id,
+                    "notif_message": message,
+                    "notification_type": notif_type,
+                    "related_id": notif_related_id,
+                    "notif_date": ph_time.date().isoformat(),
+                    "notif_time": ph_time.time().strftime("%H:%M:%S")
+                }
+                insert_result = supabase.table("notification").insert(notification_data).execute()
+                if insert_result.data:
+                    actual_notif_id = insert_result.data[0]['notif_id']
+
+            all_notifications.append({
+                "notif_id": actual_notif_id or notif_related_id,  # Use actual notif_id if available
+                "related_id": notif_related_id,
+                "type": notif_type,
+                "message": message,
+                "description": description,
+                "date": date_str,
+                "read": is_read,
+                "link": "/VetMedRecord",
+                "data": req
+            })
+
+        # Sort by date (newest first)
+        sorted_notifications = sorted(
+            all_notifications,
+            key=lambda x: x["date"],
+            reverse=True
+        )
+
+        return Response({"notifications": sorted_notifications}, status=200)
+
+    except Exception as e:
+        print(f"Error fetching notifications: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=500)
+
+# -------------------- MARK NOTIFICATION AS READ --------------------
+@api_view(["POST"])
+@login_required
+def mark_notification_read(request, notif_id):
+    """
+    Mark a specific notification as read in the database
+    """
+    vet_id = get_current_vet_id(request)
+    if not vet_id:
+        return Response({"error": "Unauthorized"}, status=401)
+
+    try:
+        print(f"🔔 Marking notification as read - vet_id: {vet_id}, notif_id: {notif_id}")
+        
+        # Check if it's a related_id (starts with today- or medical-) or actual notif_id (number)
+        if notif_id.startswith(('today-', 'medical-')):
+            # It's a related_id, find the actual notification
+            check_res = supabase.table("notification").select("*").eq("related_id", notif_id).eq("id", vet_id).execute()
+        else:
+            # It's an actual notif_id
+            check_res = supabase.table("notification").select("*").eq("notif_id", notif_id).eq("id", vet_id).execute()
+        
+        if not check_res.data:
+            print(f"❌ Notification not found: {notif_id} for vet: {vet_id}")
+            return Response({"error": "Notification not found"}, status=404)
+        
+        actual_notif_id = check_res.data[0]["notif_id"]
+        print(f"✅ Found notification: {actual_notif_id}")
+        
+        # Update the notification table using the actual notif_id
+        update_res = supabase.table("notification").update({"notif_read": True}).eq("notif_id", actual_notif_id).execute()
+        
+        if update_res.data:
+            print(f"✅ Successfully marked notification as read: {actual_notif_id}")
+            return Response({"message": "Notification marked as read"}, status=200)
+        else:
+            print(f"❌ Failed to update notification: {actual_notif_id}")
+            return Response({"error": "Failed to update notification"}, status=500)
+
+    except Exception as e:
+        print(f"❌ Error marking notification as read: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=500)
+
+# -------------------- MARK ALL NOTIFICATIONS AS READ --------------------
+@api_view(["POST"])
+@login_required
+def mark_all_notifications_read(request):
+    """
+    Mark all notifications as read for the current vet
+    """
+    vet_id = get_current_vet_id(request)
+    if not vet_id:
+        return Response({"error": "Unauthorized"}, status=401)
+
+    try:
+        print(f"🔔 Marking all notifications as read for vet: {vet_id}")
+        
+        # Mark all notifications as read
+        res = supabase.table("notification").update({"notif_read": True}).eq("id", vet_id).eq("notif_read", False).execute()
+        
+        print(f"✅ Marked {len(res.data) if res.data else 0} notifications as read")
+        
+        return Response({
+            "message": "All notifications marked as read",
+            "updated_count": len(res.data) if res.data else 0
+        }, status=200)
+
+    except Exception as e:
+        print(f"❌ Error marking all notifications as read: {str(e)}")
+        traceback.print_exc()
+        return Response({"error": str(e)}, status=500)
+    
 # --------------- MESSAGES -------------------------
 def safe_execute(query, retries=3, delay=1):
     for attempt in range(retries):
@@ -162,7 +439,7 @@ def get_all_users(request):
 @login_required
 def get_conversations(request):
     """
-    Get all conversations for the current user (only users who have exchanged messages)
+    Get all conversations for the current vet (only users who have exchanged messages)
     Excludes Kutsero and Kutsero President users
     """
     try:
@@ -170,10 +447,9 @@ def get_conversations(request):
         if not vet_id:
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Get unique conversation partners
         conversation_partners = set()
-        
-        # Get users who sent messages to current vet
+
+        # Fetch users who sent messages to this vet
         received_res = safe_execute(
             supabase.table("message")
             .select("user_id")
@@ -182,8 +458,8 @@ def get_conversations(request):
         if received_res.data:
             for msg in received_res.data:
                 conversation_partners.add(msg["user_id"])
-                
-        # Get users who received messages from current vet
+
+        # Fetch users who received messages from this vet
         sent_res = safe_execute(
             supabase.table("message")
             .select("receiver_id")
@@ -196,36 +472,39 @@ def get_conversations(request):
         if not conversation_partners:
             return Response([], status=status.HTTP_200_OK)
 
-        # Get user details - EXCLUDE KUTSERO AND KUTSERO PRESIDENT
+        # Allowed roles (excluding Kutsero & Kutsero President)
+        allowed_roles = ["Horse Operator", "Dvmf", "Dvmf-Admin", "Ctu-Vetmed", "Ctu-Admin"]
+
         users_res = safe_execute(
             supabase.table("users")
             .select("id, role, status")
             .in_("id", list(conversation_partners))
+            .in_("role", allowed_roles)
             .eq("status", "approved")
-            .neq("role", "Kutsero")  # 🚫 Exclude Kutsero
-            .neq("role", "Kutsero President")  # 🚫 Exclude Kutsero President
         )
         users = users_res.data or []
         if not users:
             return Response([], status=status.HTTP_200_OK)
 
         conversations = []
-        
+
         for user in users:
             user_id = user["id"]
             role = user["role"]
-            
-            # Get the latest message
+
+            # Get latest message between vet and user
             messages_res = safe_execute(
                 supabase.table("message")
                 .select("*")
-                .or_(f"and(user_id.eq.{vet_id},receiver_id.eq.{user_id}),and(user_id.eq.{user_id},receiver_id.eq.{vet_id})")
+                .or_(
+                    f"and(user_id.eq.{vet_id},receiver_id.eq.{user_id}),"
+                    f"and(user_id.eq.{user_id},receiver_id.eq.{vet_id})"
+                )
                 .order("mes_date", desc=True)
                 .limit(1)
             )
-            
             latest_message = messages_res.data[0] if messages_res.data else None
-            
+
             # Count unread messages
             unread_res = safe_execute(
                 supabase.table("message")
@@ -235,24 +514,26 @@ def get_conversations(request):
                 .eq("is_read", False)
             )
             unread_count = len(unread_res.data) if unread_res.data else 0
-            
-            # Get user profile info
+
+            # Get profile info
             profile_info = get_user_profile_info(user_id, role)
-            
-            # Format timestamp
+
+            # Handle timestamp
             timestamp = ""
+            latest_message_datetime = None
             if latest_message and latest_message.get("mes_date"):
                 try:
                     msg_time = datetime.fromisoformat(str(latest_message["mes_date"]))
                     local_time = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
                     timestamp = local_time
+                    latest_message_datetime = msg_time
                 except Exception:
                     timestamp = str(latest_message["mes_date"])
+                    latest_message_datetime = datetime.now()
 
-            # ✅ CRITICAL FIX: Handle last message content with "You:" prefix
+            # Handle message content
             last_message_content = ""
             last_message_is_own = False
-            
             if latest_message:
                 last_message_is_own = latest_message["user_id"] == vet_id
                 if last_message_is_own:
@@ -261,23 +542,26 @@ def get_conversations(request):
                     last_message_content = latest_message['mes_content']
             else:
                 last_message_content = "No messages yet"
+                latest_message_datetime = datetime.min
 
             conversations.append({
-                'id': user_id,
-                'name': profile_info["name"],
-                'role': role,
-                'avatar': profile_info["avatar"],
-                'online': False,
-                'lastMessage': last_message_content,  # ✅ This now has "You:" prefix
-                'lastMessageSender': latest_message["user_id"] if latest_message else None,
-                'lastMessageIsOwn': last_message_is_own,  # ✅ Boolean for tracking
-                'timestamp': timestamp,
-                'unread': unread_count,
-                'has_conversation': True
+                "id": user_id,
+                "name": profile_info["name"],
+                "role": role,
+                "avatar": profile_info["avatar"],
+                "online": False,
+                "lastMessage": last_message_content,
+                "lastMessageSender": latest_message["user_id"] if latest_message else None,
+                "lastMessageIsOwn": last_message_is_own,
+                "timestamp": timestamp,
+                "displayTimestamp": timestamp,
+                "sortTimestamp": latest_message_datetime if latest_message_datetime else datetime.min,
+                "unread": unread_count,
+                "has_conversation": True,
             })
 
-        # Sort by latest message timestamp
-        conversations.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        # Sort by last message time (latest first)
+        conversations.sort(key=lambda x: x.get("sortTimestamp", datetime.min), reverse=True)
 
         return Response(conversations, status=status.HTTP_200_OK)
 
@@ -285,6 +569,7 @@ def get_conversations(request):
         print("❌ Error fetching conversations:", str(e))
         traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         
 def get_user_profile_info(user_id, role):
     """Helper function to get user profile info based on role (Kutsero excluded)"""
@@ -2576,3 +2861,130 @@ def change_password(request):
     except Exception as e:
         return Response({"error": f"Unexpected server error: {str(e)}"}, status=500)
 
+# -------------------- VET SERVICES MANAGEMENT --------------------
+PREDEFINED_SERVICES = [
+    {"name": "General Check-up", "description": "Routine health assessment and physical examination"},
+    {"name": "Vaccination", "description": "Immunization against common horse diseases"},
+    {"name": "Deworming", "description": "Treatment and prevention of internal parasites"},
+    {"name": "Medication / Treatment", "description": "Administering prescribed medicines or first aid"},
+    {"name": "Laboratory Test", "description": "Blood test, fecal exam, or other diagnostic services"},
+    {"name": "Dental Care", "description": "Floating or filing of horse teeth"},
+    {"name": "Hoof Care", "description": "Minor hoof treatments and health maintenance"},
+    {"name": "Breeding Consultation", "description": "Fertility check, mating advice, or reproductive exams"},
+    {"name": "Emergency Visit", "description": "On-site emergency care for injured or sick horses"},
+    {"name": "Post-treatment Monitoring", "description": "Scheduled check-up after medication or surgery"},
+    {"name": "Surgery", "description": "Surgical procedures and operations"},
+    {"name": "Lameness Evaluation", "description": "Assessment and diagnosis of lameness issues"},
+    {"name": "Chiropractic Care", "description": "Spinal adjustment and musculoskeletal therapy"},
+    {"name": "Acupuncture", "description": "Traditional Chinese medicine treatment"},
+    {"name": "Ultrasound", "description": "Diagnostic imaging using ultrasound technology"},
+    {"name": "X-ray Imaging", "description": "Radiographic examination and imaging"},
+    {"name": "Nutrition Consultation", "description": "Diet planning and nutritional advice"},
+    {"name": "Behavioral Consultation", "description": "Assessment and advice for behavioral issues"},
+    {"name": "Pre-purchase Examination", "description": "Comprehensive health check before horse purchase"},
+    {"name": "Geriatric Care", "description": "Specialized care for older horses"}
+]
+
+@api_view(['GET'])
+@login_required
+def get_vet_services(request):
+    """Get all services for the logged-in veterinarian"""
+    try:
+        vet_id = get_current_vet_id(request)
+        if not vet_id:
+            return Response({"error": "Unauthorized"}, status=401)
+
+        # Fetch all services for this vet
+        res = supabase.table("vet_services")\
+            .select("*")\
+            .eq("vet_id", vet_id)\
+            .order("created_at", desc=True)\
+            .execute()
+
+        services = res.data or []
+        
+        return Response({
+            "success": True,
+            "services": services,
+            "predefined_services": PREDEFINED_SERVICES
+        }, status=200)
+
+    except Exception as e:
+        print(f"Error fetching vet services: {str(e)}")
+        return Response({"error": "Failed to fetch services"}, status=500)
+
+@api_view(['POST'])
+@login_required
+def create_vet_service(request):
+    """Create a new service for the logged-in veterinarian"""
+    try:
+        vet_id = get_current_vet_id(request)
+        if not vet_id:
+            return Response({"error": "Unauthorized"}, status=401)
+
+        data = request.data
+        
+        # Validate required fields
+        service_name = data.get('service_name', '').strip()
+        if not service_name:
+            return Response({"error": "Service name is required"}, status=400)
+
+        # Create new service
+        service_data = {
+            "service_id": str(uuid.uuid4()),
+            "vet_id": vet_id,
+            "service_name": service_name,
+            "description": data.get('description', '').strip(),
+            "created_at": datetime.now().isoformat(),
+            "updated_at": datetime.now().isoformat()
+        }
+
+        res = supabase.table("vet_services").insert(service_data).execute()
+        
+        if not res.data:
+            return Response({"error": "Failed to create service"}, status=500)
+
+        return Response({
+            "success": True,
+            "message": "Service created successfully",
+            "service": res.data[0]
+        }, status=201)
+
+    except Exception as e:
+        print(f"Error creating vet service: {str(e)}")
+        return Response({"error": "Failed to create service"}, status=500)
+
+@api_view(['DELETE'])
+@login_required
+def delete_vet_service(request, service_id):
+    """Delete a service"""
+    try:
+        vet_id = get_current_vet_id(request)
+        if not vet_id:
+            return Response({"error": "Unauthorized"}, status=401)
+
+        # Verify the service belongs to this vet
+        check_res = supabase.table("vet_services")\
+            .select("*")\
+            .eq("service_id", service_id)\
+            .eq("vet_id", vet_id)\
+            .execute()
+
+        if not check_res.data:
+            return Response({"error": "Service not found or access denied"}, status=404)
+
+        # Delete service
+        res = supabase.table("vet_services")\
+            .delete()\
+            .eq("service_id", service_id)\
+            .eq("vet_id", vet_id)\
+            .execute()
+
+        return Response({
+            "success": True,
+            "message": "Service deleted successfully"
+        }, status=200)
+
+    except Exception as e:
+        print(f"Error deleting vet service: {str(e)}")
+        return Response({"error": "Failed to delete service"}, status=500)

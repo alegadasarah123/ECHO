@@ -3,7 +3,132 @@ import {
   X, ArrowLeft, Edit3, Save, User, Phone, Mail, MapPin, Camera, Calendar, FileText,
   Download, Eye, Trash2, Building, Home
 } from 'lucide-react';
-import { provinces, getCities, getBarangays } from './philippinesData';
+
+// Philippines location data - DIRECT IMPLEMENTATION
+const usePhilippinesLocations = () => {
+  const [provinces, setProvinces] = useState([]);
+  const [citiesCache, setCitiesCache] = useState({});
+  const [barangaysCache, setBarangaysCache] = useState({});
+
+  // Load all provinces
+  useEffect(() => {
+    const loadProvinces = async () => {
+      try {
+        const response = await fetch('https://psgc.gitlab.io/api/provinces/', {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        const provincesList = data.map(province => province.name).sort();
+        setProvinces(provincesList);
+        
+      } catch (error) {
+        setProvinces([]);
+      }
+    };
+    
+    loadProvinces();
+  }, []);
+
+  const getCities = async (provinceName) => {
+    if (!provinceName) return [];
+    
+    // Return from cache if available
+    if (citiesCache[provinceName]) {
+      return citiesCache[provinceName];
+    }
+
+    try {
+      // First, get the province code
+      const provincesResponse = await fetch('https://psgc.gitlab.io/api/provinces/');
+      if (!provincesResponse.ok) throw new Error('Failed to fetch provinces list');
+      
+      const provincesData = await provincesResponse.json();
+      const province = provincesData.find(p => p.name === provinceName);
+      
+      if (!province) {
+        throw new Error('Province not found');
+      }
+
+      // Now get cities for this province using its code
+      const citiesResponse = await fetch(`https://psgc.gitlab.io/api/provinces/${province.code}/cities-municipalities/`);
+      
+      if (!citiesResponse.ok) {
+        throw new Error(`HTTP error! status: ${citiesResponse.status}`);
+      }
+      
+      const citiesData = await citiesResponse.json();
+      const cities = citiesData.map(city => city.name).sort();
+      
+      // Update cache
+      setCitiesCache(prev => ({
+        ...prev,
+        [provinceName]: cities
+      }));
+
+      return cities;
+    } catch (error) {
+      return [];
+    }
+  };
+
+  const getBarangays = async (provinceName, cityName) => {
+    if (!provinceName || !cityName) return [];
+    
+    const cacheKey = `${provinceName}-${cityName}`;
+    
+    // Return from cache if available
+    if (barangaysCache[cacheKey]) {
+      return barangaysCache[cacheKey];
+    }
+
+    try {
+      // First, get the city code
+      const citiesResponse = await fetch('https://psgc.gitlab.io/api/cities-municipalities/');
+      if (!citiesResponse.ok) throw new Error('Failed to fetch cities list');
+      
+      const citiesData = await citiesResponse.json();
+      const city = citiesData.find(c => c.name === cityName);
+      
+      if (!city) {
+        throw new Error('City not found');
+      }
+
+      // Now get barangays for this city using its code
+      const barangaysResponse = await fetch(`https://psgc.gitlab.io/api/cities-municipalities/${city.code}/barangays/`);
+      
+      if (!barangaysResponse.ok) {
+        throw new Error(`HTTP error! status: ${barangaysResponse.status}`);
+      }
+      
+      const barangaysData = await barangaysResponse.json();
+      const barangays = barangaysData.map(brgy => brgy.name).sort();
+      
+      // Update cache
+      setBarangaysCache(prev => ({
+        ...prev,
+        [cacheKey]: barangays
+      }));
+
+      return barangays;
+    } catch (error) {
+      return [];
+    }
+  };
+
+  return {
+    provinces,
+    getCities,
+    getBarangays
+  };
+};
 
 const ProfileModal = ({ isOpen, onClose }) => {
   const [isEditing, setIsEditing] = useState(false);
@@ -47,20 +172,110 @@ const ProfileModal = ({ isOpen, onClose }) => {
   const [newProfilePhoto, setNewProfilePhoto] = useState(null);
   const [isDeletingPhoto, setIsDeletingPhoto] = useState(false);
 
+  // Use the Philippines location hook
+  const { provinces, getCities, getBarangays } = usePhilippinesLocations();
+
   // Address dropdown states for home address
   const [homeProvince, setHomeProvince] = useState('');
   const [homeCity, setHomeCity] = useState('');
   const [homeBarangay, setHomeBarangay] = useState('');
+  const [homeCities, setHomeCities] = useState([]);
+  const [homeBarangays, setHomeBarangays] = useState([]);
+  const [loadingHomeCities, setLoadingHomeCities] = useState(false);
+  const [loadingHomeBarangays, setLoadingHomeBarangays] = useState(false);
   
   // Address dropdown states for clinic address
   const [clinicProvince, setClinicProvince] = useState('');
   const [clinicCity, setClinicCity] = useState('');
   const [clinicBarangay, setClinicBarangay] = useState('');
+  const [clinicCities, setClinicCities] = useState([]);
+  const [clinicBarangays, setClinicBarangays] = useState([]);
+  const [loadingClinicCities, setLoadingClinicCities] = useState(false);
+  const [loadingClinicBarangays, setLoadingClinicBarangays] = useState(false);
 
-  const homeCities = getCities(homeProvince);
-  const homeBarangays = getBarangays(homeProvince, homeCity);
-  const clinicCities = getCities(clinicProvince);
-  const clinicBarangays = getBarangays(clinicProvince, clinicCity);
+  // Load home cities when home province changes
+  useEffect(() => {
+    const loadHomeCities = async () => {
+      if (homeProvince) {
+        setLoadingHomeCities(true);
+        const cities = await getCities(homeProvince);
+        setHomeCities(cities);
+        setLoadingHomeCities(false);
+        // Reset dependent fields
+        setHomeCity('');
+        setHomeBarangay('');
+        setHomeBarangays([]);
+      } else {
+        setHomeCities([]);
+        setHomeCity('');
+        setHomeBarangay('');
+        setHomeBarangays([]);
+      }
+    };
+    
+    loadHomeCities();
+  }, [homeProvince]);
+
+  // Load home barangays when home city changes
+  useEffect(() => {
+    const loadHomeBarangays = async () => {
+      if (homeProvince && homeCity) {
+        setLoadingHomeBarangays(true);
+        const barangays = await getBarangays(homeProvince, homeCity);
+        setHomeBarangays(barangays);
+        setLoadingHomeBarangays(false);
+        // Reset barangay
+        setHomeBarangay('');
+      } else {
+        setHomeBarangays([]);
+        setHomeBarangay('');
+      }
+    };
+    
+    loadHomeBarangays();
+  }, [homeProvince, homeCity]);
+
+  // Load clinic cities when clinic province changes
+  useEffect(() => {
+    const loadClinicCities = async () => {
+      if (clinicProvince) {
+        setLoadingClinicCities(true);
+        const cities = await getCities(clinicProvince);
+        setClinicCities(cities);
+        setLoadingClinicCities(false);
+        // Reset dependent fields
+        setClinicCity('');
+        setClinicBarangay('');
+        setClinicBarangays([]);
+      } else {
+        setClinicCities([]);
+        setClinicCity('');
+        setClinicBarangay('');
+        setClinicBarangays([]);
+      }
+    };
+    
+    loadClinicCities();
+  }, [clinicProvince]);
+
+  // Load clinic barangays when clinic city changes
+  useEffect(() => {
+    const loadClinicBarangays = async () => {
+      if (clinicProvince && clinicCity) {
+        setLoadingClinicBarangays(true);
+        const barangays = await getBarangays(clinicProvince, clinicCity);
+        setClinicBarangays(barangays);
+        setLoadingClinicBarangays(false);
+        // Reset barangay
+        setClinicBarangay('');
+      } else {
+        setClinicBarangays([]);
+        setClinicBarangay('');
+      }
+    };
+    
+    loadClinicBarangays();
+  }, [clinicProvince, clinicCity]);
 
   // Show alert function
   const showAlert = (message, type = 'success') => {
@@ -72,15 +287,12 @@ const ProfileModal = ({ isOpen, onClose }) => {
   const cleanUrl = (url) => {
     if (!url) return '';
     
-    console.log('Original URL before cleaning:', url);
-    
     // Remove the [" at the beginning and "] at the end
     let cleaned = url.replace(/^\[\"/, '').replace(/\"\]$/, '');
     
     // Also handle cases where it might be just wrapped in quotes
     cleaned = cleaned.replace(/^\"|\"$/g, '');
     
-    console.log('Cleaned URL:', cleaned);
     return cleaned;
   };
 
@@ -95,7 +307,6 @@ const ProfileModal = ({ isOpen, onClose }) => {
         });
         if (!response.ok) throw new Error('Failed to fetch profile');
         const data = await response.json();
-        console.log('Fetched profile data:', data.profile);
         
         // Clean the document URL when fetching
         const cleanedProfileData = {
@@ -115,7 +326,6 @@ const ProfileModal = ({ isOpen, onClose }) => {
         setClinicCity(data.profile.vet_clinic_city || '');
         setClinicBarangay(data.profile.vet_clinic_brgy || '');
       } catch (err) {
-        console.error(err);
         showAlert('Failed to load profile', 'error');
       }
     };
@@ -194,7 +404,6 @@ const ProfileModal = ({ isOpen, onClose }) => {
       showAlert('Profile updated successfully!', 'success');
 
     } catch (err) {
-      console.error(err);
       showAlert('Failed to update profile', 'error');
     } finally {
       setIsUploading(false);
@@ -230,7 +439,6 @@ const ProfileModal = ({ isOpen, onClose }) => {
       showAlert('Profile photo deleted successfully!', 'success');
 
     } catch (err) {
-      console.error(err);
       showAlert('Failed to delete profile photo', 'error');
     } finally {
       setIsDeletingPhoto(false);
@@ -306,7 +514,6 @@ const ProfileModal = ({ isOpen, onClose }) => {
     }
   };
 
-
   // Format address for display
   const formatAddress = (street, brgy, city, province, zipcode) => {
     return [street, brgy, city, province, zipcode]
@@ -346,11 +553,7 @@ const ProfileModal = ({ isOpen, onClose }) => {
               className="w-full h-full border-0"
               title="Veterinarian Document"
               onError={(e) => {
-                console.error('Failed to load PDF:', documentUrl);
                 showAlert('Failed to load document. Please try downloading instead.', 'error');
-              }}
-              onLoad={() => {
-                console.log('PDF loaded successfully');
               }}
             />
           </div>
@@ -381,7 +584,6 @@ const ProfileModal = ({ isOpen, onClose }) => {
               alt="Profile" 
               className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
               onError={(e) => {
-                console.error('Image failed to load:', imageUrl);
                 showAlert('Failed to load image', 'error');
                 onClose();
               }}
@@ -508,7 +710,6 @@ const ProfileModal = ({ isOpen, onClose }) => {
                       alt="Profile" 
                       className="w-full h-full rounded-full object-cover"
                       onError={(e) => {
-                        console.error('Image failed to load:', profileData.vet_profile_photo);
                         e.target.style.display = 'none';
                       }}
                     />
@@ -803,10 +1004,10 @@ const ProfileModal = ({ isOpen, onClose }) => {
                         <select
                           value={homeCity}
                           onChange={(e) => setHomeCity(e.target.value)}
-                          disabled={!homeProvince || isUploading || isDeletingPhoto}
+                          disabled={!homeProvince || loadingHomeCities || isUploading || isDeletingPhoto}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                         >
-                          <option value="">Select City</option>
+                          <option value="">{loadingHomeCities ? "Loading cities..." : "Select City"}</option>
                           {homeCities.map(c => (
                             <option key={c} value={c}>{c}</option>
                           ))}
@@ -817,10 +1018,10 @@ const ProfileModal = ({ isOpen, onClose }) => {
                         <select
                           value={homeBarangay}
                           onChange={(e) => setHomeBarangay(e.target.value)}
-                          disabled={!homeCity || isUploading || isDeletingPhoto}
+                          disabled={!homeCity || loadingHomeBarangays || isUploading || isDeletingPhoto}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                         >
-                          <option value="">Select Barangay</option>
+                          <option value="">{loadingHomeBarangays ? "Loading barangays..." : "Select Barangay"}</option>
                           {homeBarangays.map(b => (
                             <option key={b} value={b}>{b}</option>
                           ))}
@@ -891,10 +1092,10 @@ const ProfileModal = ({ isOpen, onClose }) => {
                         <select
                           value={clinicCity}
                           onChange={(e) => setClinicCity(e.target.value)}
-                          disabled={!clinicProvince || isUploading || isDeletingPhoto}
+                          disabled={!clinicProvince || loadingClinicCities || isUploading || isDeletingPhoto}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                         >
-                          <option value="">Select City</option>
+                          <option value="">{loadingClinicCities ? "Loading cities..." : "Select City"}</option>
                           {clinicCities.map(c => (
                             <option key={c} value={c}>{c}</option>
                           ))}
@@ -905,10 +1106,10 @@ const ProfileModal = ({ isOpen, onClose }) => {
                         <select
                           value={clinicBarangay}
                           onChange={(e) => setClinicBarangay(e.target.value)}
-                          disabled={!clinicCity || isUploading || isDeletingPhoto}
+                          disabled={!clinicCity || loadingClinicBarangays || isUploading || isDeletingPhoto}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500"
                         >
-                          <option value="">Select Barangay</option>
+                          <option value="">{loadingClinicBarangays ? "Loading barangays..." : "Select Barangay"}</option>
                           {clinicBarangays.map(b => (
                             <option key={b} value={b}>{b}</option>
                           ))}

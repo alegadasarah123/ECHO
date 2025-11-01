@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import {
   Bell, FileText, Heart, Thermometer, Activity, Calendar, User, Phone, Mail, MapPin, 
   Plus, X, Upload, Image, AlertCircle, Lock, Key, Search, Filter, Eye, ClipboardList, 
-  StickyNote, Shield, RefreshCw, CheckCircle, Edit
+  StickyNote, Shield, RefreshCw, CheckCircle, Edit, Minus, Loader, Stethoscope
 } from "lucide-react";
 import MedicalRecords from "./MedicalRecord";
 import TreatmentRecords from "./TreatmentRecord";
@@ -177,7 +177,7 @@ const MedicalRecordsModal = ({ isOpen, onClose, record, vetProfile, horseInfo, o
 };
 
 // Medical Record Details Modal Component
-const MedicalRecordDetailsModal = ({ isOpen, onClose, record, vetProfile, horseInfo }) => {
+const MedicalRecordDetailsModal = ({ isOpen, onClose, record, vetProfile, horseInfo, onRecordFollowUp }) => {
   if (!isOpen) return null;
 
   return (
@@ -187,6 +187,7 @@ const MedicalRecordDetailsModal = ({ isOpen, onClose, record, vetProfile, horseI
         vetProfile={vetProfile}
         horseInfo={horseInfo}
         onClose={onClose}
+        onRecordFollowUp={onRecordFollowUp}
       />
     </div>
   );
@@ -297,20 +298,170 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
   );
 };
 
-// Medical Records Table Component - FIXED WITH ADD FIRST RECORD BUTTON
+// Medical Records Table Component - UPDATED WITH FOLLOW-UP FUNCTIONALITY
 const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddRecord, onEditRecord, onViewRecord, hasAccess, onRequestAccess, accessRequested }) => {
   const [filteredRecords, setFilteredRecords] = useState(records || []);
   const [dateFilter, setDateFilter] = useState({ from: "", to: "" });
   const [currentPage, setCurrentPage] = useState(1);
+  const [expandedRecords, setExpandedRecords] = useState({});
+  const [loadingFollowUps, setLoadingFollowUps] = useState({});
+  const [followUpRecords, setFollowUpRecords] = useState({});
+  const [followUpCounts, setFollowUpCounts] = useState({});
+  const [nestedFollowUps, setNestedFollowUps] = useState({});
   const recordsPerPage = 5;
 
   useEffect(() => {
-    setFilteredRecords(records || []);
+    const parentRecords = (records || []).filter(record => !record.parentMedrecId);
+    setFilteredRecords(parentRecords);
     setCurrentPage(1);
+    
+    if (parentRecords.length > 0) {
+      checkAllFollowUps(parentRecords);
+    }
   }, [records]);
 
+  const getAllFollowUpsInChain = async (parentMedrecId) => {
+    let allFollowUps = [];
+    
+    const getNestedFollowUps = async (medrecId, level = 0) => {
+      try {
+        const response = await fetch(
+          `http://localhost:8000/api/veterinarian/get_followup_records/${medrecId}/`,
+          { method: "GET", credentials: "include" }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          const followUps = data.followup_records || [];
+          
+          for (const followUp of followUps) {
+            allFollowUps.push({
+              ...followUp,
+              nestingLevel: level,
+              rootParentId: parentMedrecId
+            });
+            
+            await getNestedFollowUps(followUp.id, level + 1);
+          }
+        }
+      } catch (error) {
+        // Error handled silently
+      }
+    };
+    
+    await getNestedFollowUps(parentMedrecId);
+    return allFollowUps;
+  };
+
+  const checkAllFollowUps = async (parentRecords) => {
+    const countsMap = {};
+    const nestedMap = {};
+    
+    for (const record of parentRecords) {
+      try {
+        const allFollowUps = await getAllFollowUpsInChain(record.id);
+        const count = allFollowUps.length;
+        
+        countsMap[record.id] = count;
+        nestedMap[record.id] = allFollowUps;
+      } catch (error) {
+        countsMap[record.id] = 0;
+        nestedMap[record.id] = [];
+      }
+    }
+    
+    setFollowUpCounts(countsMap);
+    setNestedFollowUps(nestedMap);
+  };
+
+  const fetchFollowUpRecords = async (parentMedrecId) => {
+    if (followUpRecords[parentMedrecId]) {
+      toggleFollowUps(parentMedrecId);
+      return;
+    }
+
+    setLoadingFollowUps(prev => ({ ...prev, [parentMedrecId]: true }));
+    
+    try {
+      const allFollowUps = await getAllFollowUpsInChain(parentMedrecId);
+      
+      setFollowUpRecords(prev => ({
+        ...prev,
+        [parentMedrecId]: allFollowUps
+      }));
+      toggleFollowUps(parentMedrecId);
+    } catch (error) {
+      // Error handled silently
+    } finally {
+      setLoadingFollowUps(prev => ({ ...prev, [parentMedrecId]: false }));
+    }
+  };
+
+  const toggleFollowUps = (recordId) => {
+    setExpandedRecords(prev => ({
+      ...prev,
+      [recordId]: !prev[recordId]
+    }));
+  };
+
+  const hasFollowUps = (record) => {
+    return !record.parentMedrecId;
+  };
+
+  const getFollowUpCount = (recordId) => {
+    return followUpCounts[recordId] || 0;
+  };
+
+  const shouldShowFollowUpButton = (record) => {
+    return record.isParent && 
+           hasFollowUps(record) && 
+           getFollowUpCount(record.id) > 0;
+  };
+
+  const getDisplayRecords = () => {
+    const displayRecords = [];
+    
+    filteredRecords.forEach(record => {
+      displayRecords.push({ 
+        ...record, 
+        isParent: true, 
+        isFollowUp: false,
+        hasFollowUps: hasFollowUps(record),
+        followUpCount: getFollowUpCount(record.id),
+        nestingLevel: 0
+      });
+      
+      if (expandedRecords[record.id] && followUpRecords[record.id]) {
+        const sortedFollowUps = [...followUpRecords[record.id]].sort((a, b) => 
+          new Date(a.date) - new Date(b.date)
+        );
+        
+        sortedFollowUps.forEach(followUp => {
+          displayRecords.push({ 
+            ...followUp, 
+            isParent: false, 
+            isFollowUp: true,
+            parentRecordId: record.id,
+            hasFollowUps: false,
+            followUpCount: 0,
+            nestingLevel: followUp.nestingLevel || 0
+          });
+        });
+      }
+    });
+    
+    return displayRecords;
+  };
+
+  const displayRecords = getDisplayRecords();
+  
+  const indexOfLastRecord = currentPage * recordsPerPage;
+  const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
+  const currentParentRecords = filteredRecords.slice(indexOfFirstRecord, indexOfLastRecord);
+  const totalPages = Math.ceil(filteredRecords.length / recordsPerPage);
+
   const handleDateFilter = () => {
-    const recordsArray = records || [];
+    const recordsArray = (records || []).filter(record => !record.parentMedrecId);
     if (!dateFilter.from && !dateFilter.to) {
       setFilteredRecords(recordsArray);
       return;
@@ -337,25 +488,37 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
 
   const clearFilter = () => {
     setDateFilter({ from: "", to: "" });
-    setFilteredRecords(records || []);
+    const parentRecords = (records || []).filter(record => !record.parentMedrecId);
+    setFilteredRecords(parentRecords);
     setCurrentPage(1);
   };
 
-  // Check if record belongs to current vet
   const isCurrentVetRecord = (record) => {
     if (!vetProfile || !record.veterinarian) return false;
     const currentVetName = `${vetProfile.first_name} ${vetProfile.last_name}`;
     return record.veterinarian === currentVetName;
   };
 
-  // Calculate pagination
-  const indexOfLastRecord = currentPage * recordsPerPage;
-  const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
-  const currentRecords = filteredRecords.slice(indexOfFirstRecord, indexOfLastRecord);
-  const totalPages = Math.ceil(filteredRecords.length / recordsPerPage);
-
   const handlePageChange = (page) => {
     setCurrentPage(page);
+  };
+
+  const getNestingStyle = (nestingLevel) => {
+    const basePadding = 6;
+    const indentPerLevel = 8;
+    const totalPadding = basePadding + (nestingLevel * indentPerLevel);
+    return { paddingLeft: `${totalPadding}px` };
+  };
+
+  const getNestingBorderColor = (nestingLevel) => {
+    const colors = [
+      'border-l-blue-300',
+      'border-l-green-300',
+      'border-l-purple-300',
+      'border-l-orange-300',
+      'border-l-red-300',
+    ];
+    return colors[Math.min(nestingLevel, colors.length - 1)];
   };
 
   return (
@@ -373,7 +536,7 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
           </div>
         </div>
         
-        {hasAccess && filteredRecords.length > 0 && ( // ONLY SHOW FILTER WHEN RECORDS EXIST
+        {hasAccess && filteredRecords.length > 0 && (
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 w-full lg:w-auto">
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-xl border border-gray-200">
@@ -447,7 +610,7 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
             accessRequested={accessRequested}
             onRequestAccess={onRequestAccess}
           />   
-     </div>
+        </div>
       ) : (filteredRecords.length === 0) ? (
         <div className="text-center py-12 text-gray-500 bg-gray-50 rounded-xl">
           <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-blue-100">
@@ -461,7 +624,6 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
             }
           </p>
           
-          {/* ADD FIRST RECORD BUTTON - SHOWN WHEN NO RECORDS EXIST AND NO FILTERS APPLIED */}
           {!(dateFilter.from || dateFilter.to) && (
             <Button 
               onClick={onAddRecord}
@@ -472,7 +634,6 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
             </Button>
           )}
           
-          {/* CLEAR FILTERS BUTTON - SHOWN WHEN FILTERS ARE APPLIED */}
           {(dateFilter.from || dateFilter.to) && (
             <Button 
               onClick={clearFilter} 
@@ -486,7 +647,7 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
       ) : (
         <>
           <div className="flex justify-between items-center mb-4">
-            <p className="text-gray-600">Showing {currentRecords.length} of {filteredRecords.length} records</p>
+            <p className="text-gray-600">Showing {currentParentRecords.length} of {filteredRecords.length} medical records</p>
 
             <AddRecordButton 
               onClick={onAddRecord}
@@ -508,89 +669,141 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {currentRecords.map((record, index) => {
+                {displayRecords.map((record, index) => {
                   const isCurrentVet = isCurrentVetRecord(record);
+                  const isFollowUpRecord = record.isFollowUp;
+                  const isParentRecord = record.isParent;
+                  const followUpCount = getFollowUpCount(record.id);
+                  const nestingLevel = record.nestingLevel || 0;
+                  
+                  const showFollowUpButton = shouldShowFollowUpButton(record);
                   
                   return (
-                    <tr 
-                      key={index}
-                      className={`
-                        transition-all duration-200 group
-                        ${isCurrentVet 
-                          ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-l-blue-500' 
-                          : 'hover:bg-gray-50'
-                        }
-                      `}
-                    >
-                     <td className="px-6 py-4 whitespace-nowrap text-center">
-                      <div
-                        className={`font-medium ${
-                          isCurrentVet ? "text-blue-900" : "text-gray-900"
-                        }`}
+                    <React.Fragment key={record.id || `followup-${index}`}>
+                      <tr 
+                        style={getNestingStyle(nestingLevel)}
+                        className={`
+                          transition-all duration-200 group
+                          ${isCurrentVet 
+                            ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-l-4 border-l-blue-500' 
+                            : 'hover:bg-gray-50'
+                          }
+                          ${isFollowUpRecord ? `bg-gray-50 border-l-4 ${getNestingBorderColor(nestingLevel)}` : ''}
+                        `}
                       >
-                        {new Date(record.date).toLocaleDateString("en-US", {
-                          year: "numeric",
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </div>
-                    </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            {isFollowUpRecord && (
+                              <div 
+                                className="w-2 h-2 bg-blue-500 rounded-full" 
+                                title={`Follow-up level ${nestingLevel}`}
+                              ></div>
+                            )}
+                            <div
+                              className={`font-medium ${
+                                isCurrentVet ? "text-blue-900" : "text-gray-900"
+                              } ${isFollowUpRecord ? "text-gray-600" : ""}`}
+                            >
+                              {new Date(record.date).toLocaleDateString("en-US", {
+                                year: "numeric",
+                                month: "short",
+                                day: "numeric",
+                              })}
+                              {isFollowUpRecord && (
+                                <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">
+                                  Follow-up {nestingLevel > 0 ? `(${nestingLevel})` : ''}
+                                </span>
+                              )}
+                              {isParentRecord && followUpCount > 0 && (
+                                <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                                  Has {followUpCount} follow-up{followUpCount !== 1 ? 's' : ''}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
 
-                    <td className="px-6 py-4 max-w-xs text-center">
-                      <div
-                        className={`font-medium line-clamp-2 ${
-                          isCurrentVet ? "text-blue-900" : "text-gray-900"
-                        }`}
-                      >
-                        {record.clinicalSigns || "N/A"}
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4 max-w-xs text-center">
-                      <div
-                        className={`font-medium line-clamp-2 ${
-                          isCurrentVet ? "text-blue-900" : "text-gray-900"
-                        }`}
-                      >
-                        {record.diagnosis || "N/A"}
-                      </div>
-                    </td>
-
-                    <td className="px-6 py-4 text-center">
-                      <span
-                        className={`font-medium ${
-                          isCurrentVet ? "text-blue-900" : "text-gray-900"
-                        }`}
-                      >
-                        {record.veterinarian || "N/A"}
-                        {isCurrentVet && (
-                          <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                            You
-                          </span>
-                        )}
-                      </span>
-                    </td>
-
-                      <td className="px-6 py-4">
-                        <div className="flex justify-center gap-2">
-                          <Button 
-                            onClick={() => onViewRecord(record)} 
-                            variant="outline" 
-                            size="sm"
-                            className={`
-                              cursor-pointer flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 shadow-sm hover:shadow-md
-                              ${isCurrentVet 
-                                ? 'border-blue-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-blue-700' 
-                                : 'border-gray-300 bg-white hover:bg-gray-50 hover:border-gray-400 text-gray-700'
-                              }
-                            `}
+                        <td className="px-6 py-4 max-w-xs text-center">
+                          <div
+                            className={`font-medium line-clamp-2 ${
+                              isCurrentVet ? "text-blue-900" : "text-gray-900"
+                            } ${isFollowUpRecord ? "text-gray-600" : ""}`}
                           >
-                            <Eye className="w-4 h-4" />
-                            <span>View Details</span>
-                          </Button>
-                        </div>
-                      </td>                  
-                    </tr>
+                            {record.clinicalSigns || "N/A"}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4 max-w-xs text-center">
+                          <div
+                            className={`font-medium line-clamp-2 ${
+                              isCurrentVet ? "text-blue-900" : "text-gray-900"
+                            } ${isFollowUpRecord ? "text-gray-600" : ""}`}
+                          >
+                            {record.diagnosis || "N/A"}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-4 text-center">
+                          <span
+                            className={`font-medium ${
+                              isCurrentVet ? "text-blue-900" : "text-gray-900"
+                            } ${isFollowUpRecord ? "text-gray-600" : ""}`}
+                          >
+                            {record.veterinarian || "N/A"}
+                            {isCurrentVet && !isFollowUpRecord && (
+                              <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                                You
+                              </span>
+                            )}
+                          </span>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <div className="flex justify-center gap-2">
+                            {showFollowUpButton && (
+                              <Button 
+                                onClick={() => fetchFollowUpRecords(record.id)} 
+                                variant="outline" 
+                                size="sm"
+                                disabled={loadingFollowUps[record.id]}
+                                className="cursor-pointer flex items-center gap-2 px-3 py-1 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 text-gray-700"
+                              >
+                                {loadingFollowUps[record.id] ? (
+                                  <Loader className="w-3 h-3 animate-spin" />
+                                ) : expandedRecords[record.id] ? (
+                                  <>
+                                    <Minus className="w-3 h-3" />
+                                    <span>Hide Follow-ups</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Stethoscope className="w-3 h-3" />
+                                    <span>Show Follow-ups</span>
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                            
+                            <Button 
+                              onClick={() => onViewRecord(record)} 
+                              variant="outline" 
+                              size="sm"
+                              className={`
+                                cursor-pointer flex items-center gap-2 px-4 py-2 rounded-lg border transition-all duration-200 shadow-sm hover:shadow-md
+                                ${isCurrentVet 
+                                  ? 'border-blue-300 bg-white hover:bg-blue-50 hover:border-blue-400 text-blue-700' 
+                                  : 'border-gray-300 bg-white hover:bg-gray-50 hover:border-gray-400 text-gray-700'
+                                }
+                                ${isFollowUpRecord ? 'border-gray-200 bg-gray-100 hover:bg-gray-200 text-gray-600' : ''}
+                              `}
+                            >
+                              <Eye className="w-4 h-4" />
+                              <span>View Details</span>
+                            </Button>
+                          </div>
+                        </td>                  
+                      </tr>
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -654,7 +867,6 @@ const TreatmentRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onVi
     setCurrentPage(1);
   };
 
-  // Get outcome badge styling
   const getOutcomeBadge = (outcome) => {
     if (!outcome) {
       return {
@@ -693,14 +905,12 @@ const TreatmentRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onVi
     }
   };
 
-  // Check if record belongs to current vet
   const isCurrentVetRecord = (record) => {
     if (!vetProfile || !record.veterinarian) return false;
     const currentVetName = `${vetProfile.first_name} ${vetProfile.last_name}`;
     return record.veterinarian === currentVetName;
   };
 
-  // Calculate pagination
   const indexOfLastRecord = currentPage * recordsPerPage;
   const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
   const currentRecords = filteredRecords.slice(indexOfFirstRecord, indexOfLastRecord);
@@ -829,7 +1039,6 @@ const TreatmentRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onVi
                         }
                       `}
                     >
-                      {/* Date Column - Added */}
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <div
                           className={`font-medium ${
@@ -892,9 +1101,6 @@ const TreatmentRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onVi
 };
 
 const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
-  console.log("MEDICALRECORDDETAILS rendered with ID:", recordId);
-  console.log("Record data:", recordData);
-  
   const [vetProfile, setVetProfile] = useState(null);
   const [horseInfo, setHorseInfo] = useState(null);
   const [ownerInfo, setOwnerInfo] = useState(null);
@@ -905,7 +1111,6 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   
-  // Modal states
   const [medicalModalOpen, setMedicalModalOpen] = useState(false);
   const [treatmentModalOpen, setTreatmentModalOpen] = useState(false);
   const [medicalDetailsModalOpen, setMedicalDetailsModalOpen] = useState(false);
@@ -914,25 +1119,18 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [isViewMode, setIsViewMode] = useState(false);
 
-  // Access control states
   const [hasAccess, setHasAccess] = useState(false);
   const [accessRequested, setAccessRequested] = useState(false);
   const [accessModalOpen, setAccessModalOpen] = useState(false);
   const [checkingAccess, setCheckingAccess] = useState(true);
 
-  // Extract horseId from recordData
   const horseId = recordData?.horseId;
 
   useEffect(() => {
-    console.log("useEffect triggered with horseId:", horseId);
-    console.log("recordData:", recordData);
-    
     fetchVetProfile();
     if (horseId) {
       fetchHorseDetails();
     } else if (recordData) {
-      // If we have record data directly, use it
-      console.log("Using recordData directly");
       setHorseInfo({
         id: recordData.horseId,
         name: recordData.horseName,
@@ -942,19 +1140,16 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
         color: recordData.horseColor,
         image: recordData.horseImage,
         status: recordData.status,
-        // Add any other horse info from recordData
       });
       setMedicalRecords(recordData.records || []);
       setTreatmentRecords(recordData.treatments || []);
       setLoading(false);
       setCheckingAccess(false);
       
-      // Check access for this horse
       if (recordData.horseId) {
         checkAccessStatus(recordData.horseId);
       }
     } else {
-      console.log("No horseId or recordData available");
       setLoading(false);
       setCheckingAccess(false);
     }
@@ -970,7 +1165,7 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
       const data = await response.json();
       setVetProfile(data.profile);
     } catch (err) {
-      console.error(err);
+      // Error handled silently
     }
   };
 
@@ -978,7 +1173,6 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
     try {
       setLoading(true);
       setError(null);
-      console.log("Fetching horse details for horseId:", horseId);
       
       const response = await fetch(
         `http://localhost:8000/api/veterinarian/get_horse_details/${horseId}/`,
@@ -988,17 +1182,12 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
       if (!response.ok) throw new Error("Failed to fetch horse details");
       const data = await response.json();
 
-      console.log("Horse details response:", data);
-
-      // Updated to match the new endpoint structure
       setHorseInfo(data.horse || {});
       setOwnerInfo(data.owner || {});
 
-      // Check access status for this horse
       await checkAccessStatus(data.horse?.id);
 
     } catch (err) {
-      console.error("Error fetching horse details:", err);
       setError("Failed to load horse details");
     } finally {
       setLoading(false);
@@ -1008,13 +1197,11 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
 
   const checkAccessStatus = async (horseId) => {
     if (!horseId) {
-      console.log("No horseId provided for access check");
       setHasAccess(false);
       return;
     }
     
     try {
-      console.log("Checking access for horseId:", horseId);
       const response = await fetch(
         `http://localhost:8000/api/veterinarian/check_horse_access/${horseId}/`,
         { method: "GET", credentials: "include" }
@@ -1022,34 +1209,28 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
       
       if (response.ok) {
         const data = await response.json();
-        console.log("Access check response:", data);
         const accessGranted = data.has_access || false;
         setHasAccess(accessGranted);
         setAccessRequested(data.access_requested || false);
         
-        // Automatically fetch both medical and treatment records if access is granted
         if (accessGranted && horseId) {
           await fetchMedicalRecords(horseId);
           await fetchTreatmentRecords(horseId);
         }
       } else {
-        console.log("Access check failed with status:", response.status);
         setHasAccess(false);
       }
     } catch (err) {
-      console.error("Error checking access status:", err);
       setHasAccess(false);
     }
   };
 
   const requestAccess = async () => {
     if (!horseInfo?.id) {
-      console.log("No horse ID available for access request");
       return;
     }
     
     try {
-      console.log("Requesting access for horseId:", horseInfo.id);
       const response = await fetch(
         `http://localhost:8000/api/veterinarian/request_horse_access/${horseInfo.id}/`,
         { 
@@ -1065,20 +1246,16 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
         setAccessRequested(true);
         setAccessModalOpen(false);
         setSuccessMessage("Access request sent successfully!");
-        console.log("Access request successful");
       } else {
-        console.log("Access request failed with status:", response.status);
         setError("Failed to request access");
       }
     } catch (err) {
-      console.error("Error requesting access:", err);
       setError("Failed to request access");
     }
   };
 
   const fetchMedicalRecords = async (horseId) => {
     try {
-      console.log("Fetching medical records for horseId:", horseId);
       const response = await fetch(
         `http://localhost:8000/api/veterinarian/get_horse_medical_records/${horseId}/`,
         { method: "GET", credentials: "include" }
@@ -1087,17 +1264,14 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
       if (!response.ok) throw new Error("Failed to fetch medical records");
       
       const data = await response.json();
-      console.log("Medical records response:", data);
       setMedicalRecords(data.medicalRecords || data.medical_records || []);
     } catch (err) {
-      console.error("Error fetching medical records:", err);
       setMedicalRecords([]);
     }
   };
 
   const fetchTreatmentRecords = async (horseId) => {
     try {
-      console.log("Fetching treatment records for horseId:", horseId);
       const response = await fetch(
         `http://localhost:8000/api/veterinarian/get_horse_treatment_records/${horseId}/`,
         { method: "GET", credentials: "include" }
@@ -1106,15 +1280,12 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
       if (!response.ok) throw new Error("Failed to fetch treatment records");
       
       const data = await response.json();
-      console.log("Treatment records response:", data);
       setTreatmentRecords(data.treatmentRecords || data.treatment_records || []);
     } catch (err) {
-      console.error("Error fetching treatment records:", err);
       setTreatmentRecords([]);
     }
   };
 
-  // Handlers for medical records
   const handleAddRecord = () => {
     if (!hasAccess) {
       setAccessModalOpen(true);
@@ -1139,7 +1310,6 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
     setMedicalDetailsModalOpen(true);
   };
 
-  // Handle treatment record view/add
   const handleTreatmentRecordAction = (record = null, isNew = false) => {
     if (!hasAccess) {
       setAccessModalOpen(true);
@@ -1151,7 +1321,6 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
     setTreatmentModalOpen(true);
   };
 
-  // Handle retry for failed operations
   const handleRetry = () => {
     setError(null);
     if (horseId) {
@@ -1159,26 +1328,27 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
     }
   };
 
-  // Handle dismiss error
   const handleDismissError = () => {
     setError(null);
   };
 
-  // Handle dismiss success message
   const handleDismissSuccess = () => {
     setSuccessMessage(null);
   };
 
-  // Skeleton Loader - Fixed single column
+  const handleFollowUpSuccess = (message) => {
+    setSuccessMessage(message);
+    fetchHorseDetails();
+    setMedicalDetailsModalOpen(false);
+  };
+
   const renderSkeleton = () => (
     <div className="space-y-6 animate-pulse">
-      {/* Single skeleton card for horse info */}
       <div className="h-60 bg-gray-200 rounded-2xl"></div>
       <div className="h-80 bg-gray-200 rounded-2xl"></div>
     </div>
   );
 
-  // If no horse data is available
   if (!horseId && !recordData) {
     return (
       <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
@@ -1206,7 +1376,6 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="flex-1 flex flex-col">
-        {/* Back Button (top-left, no header container) */}
         <div className="px-6 pt-4">
           <Button
             onClick={onBack}
@@ -1216,7 +1385,6 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
           </Button>
         </div>
 
-        {/* Success Message */}
         {successMessage && (
           <SuccessMessage 
             message={successMessage} 
@@ -1224,7 +1392,6 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
           />
         )}
 
-        {/* Main Content */}
         <main className="p-6 space-y-6 overflow-y-auto">
           {error && (
             <ErrorMessage 
@@ -1234,17 +1401,14 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
             />
           )}
 
-          {/* Show Skeleton while loading */}
           {loading || checkingAccess ? (
             renderSkeleton()
           ) : (
             <>
-              {/* Horse Information Card with Owner Information */}
               <Card className="bg-gradient-to-br from-white via-blue-50/30 shadow-lg rounded-2xl border border-white/50 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
                 <CardContent className="p-6">
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     
-                    {/* Horse Information Section - Takes 2/3 width */}
                     <div className="lg:col-span-2 flex flex-col md:flex-row items-start md:items-start space-x-0 md:space-x-6">
                       <div className="relative flex-shrink-0">
                         <img
@@ -1257,7 +1421,6 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
                           }}
                         />
                         
-                        {/* Status Badge */}
                         <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
                           <span className="bg-green-100 text-green-800 text-xs font-semibold px-3 py-1 rounded-full border border-green-200 shadow-sm">
                             {horseInfo?.status || "Active"}
@@ -1282,7 +1445,6 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
                       </div>
                     </div>
 
-                    {/* Owner Information Section - Takes 1/3 width on right side */}
                     <div className="lg:col-span-1">
                       <div className="flex items-center space-x-2 mb-4">
                         <div className="w-8 h-8 bg-gradient-to-br from-purple-400 to-indigo-600 rounded-xl flex items-center justify-center shadow-md">
@@ -1327,7 +1489,6 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
                 </CardContent>
               </Card>
 
-              {/* Tabs for Medical and Treatment Records */}
               <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50">
                 <div className="flex border-b border-gray-200">
                   <button
@@ -1390,7 +1551,6 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
         horseInfo={horseInfo}
       />
       
-      {/* Medical Records Modal - FOR ADDING/EDITING */}
       <MedicalRecordsModal
         isOpen={medicalModalOpen}
         onClose={() => {
@@ -1413,7 +1573,6 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
         hasAccess={hasAccess}
       />
 
-      {/* Medical Record Details Modal - FOR VIEWING */}
       <MedicalRecordDetailsModal
         isOpen={medicalDetailsModalOpen}
         onClose={() => {
@@ -1423,6 +1582,7 @@ const MEDICALRECORDDETAILS = ({ recordId, recordData, onBack }) => {
         record={selectedMedicalRecord}
         vetProfile={vetProfile}
         horseInfo={horseInfo}
+        onRecordFollowUp={handleFollowUpSuccess}
       />
       
       <TreatmentRecordsModal

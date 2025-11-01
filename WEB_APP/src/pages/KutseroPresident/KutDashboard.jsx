@@ -12,13 +12,11 @@ const UserProfileAvatar = ({ user, size = 9 }) => {
   const getInitials = (name) => {
     if (!name || name === "N/A") return "?";
     
-    // Split the name and filter out empty parts
     const nameParts = name.split(' ').filter(part => part.trim() !== '');
     
     if (nameParts.length === 0) return "?";
     if (nameParts.length === 1) return nameParts[0].charAt(0).toUpperCase();
     
-    // Get first letter of first name and first letter of last name
     const firstName = nameParts[0];
     const lastName = nameParts[nameParts.length - 1];
     
@@ -68,10 +66,8 @@ const KutseroDashboard = () => {
   const pendingUsers = users.filter(u => u.status === "pending");
   const declinedUsers = users.filter(u => u.status === "declined");
   
-  // Calculate unread notifications count from notifications state
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
-  // Authentication verification
   useEffect(() => {
     const checkAuth = async () => {
       try {
@@ -85,7 +81,6 @@ const KutseroDashboard = () => {
           setAuthorized(true);
         }
       } catch (err) {
-        console.error("Authentication verification failed:", err);
         navigate("/login");
       } finally {
         setLoading(prev => ({ ...prev, auth: false }));
@@ -94,7 +89,6 @@ const KutseroDashboard = () => {
     checkAuth();
   }, []);
 
-  // Fetch notifications from backend - UPDATED to use actual read status
   const fetchNotifications = async () => {
     try {
       setLoading(prev => ({ ...prev, notifications: true }));
@@ -109,34 +103,21 @@ const KutseroDashboard = () => {
       
       const data = await res.json();
       
-      // ✅ FIXED: Use the actual read status from backend
       const formattedNotifications = data.map(notification => ({
+        notif_id: notification.notif_id,
         id: notification.id,
         message: notification.message,
         date: notification.date,
-        read: notification.read || false // Use the actual read status from backend
+        read: notification.read || false
       }));
       
       setNotifications(formattedNotifications);
     } catch (err) {
-      console.error("Error fetching notifications:", err);
-      // Fallback to user-based notifications if API fails
-      const userNotifications = users
-        .filter(u => u.status === "pending")
-        .map(u => ({
-          id: u.id,
-          message: `${u.name} (${getRoleDisplayName(u.role)}) is pending approval`,
-          date: u.created_at !== "N/A" ? new Date(u.created_at) : new Date(),
-          read: false,
-          type: 'user_approval'
-        }));
-      setNotifications(userNotifications);
     } finally {
       setLoading(prev => ({ ...prev, notifications: false }));
     }
   };
 
-  // Data fetching
   useEffect(() => {
     const fetchUsers = async () => {
       try {
@@ -159,7 +140,6 @@ const KutseroDashboard = () => {
         setUsers(formatted);
         setPendingCount(data.pending_count);
       } catch (err) {
-        console.error("Error fetching users:", err);
       } finally {
         setLoading(prev => ({ ...prev, users: false }));
       }
@@ -174,7 +154,6 @@ const KutseroDashboard = () => {
         const data = await res.json();
         setApprovedCounts(data);
       } catch (err) {
-        console.error("Error fetching approved counts:", err);
       } finally {
         setLoading(prev => ({ ...prev, counts: false }));
       }
@@ -187,44 +166,36 @@ const KutseroDashboard = () => {
     }
   }, [authorized]);
 
-  // Refresh notifications when modal opens
   useEffect(() => {
     if (notifOpen && authorized) {
       fetchNotifications();
     }
   }, [notifOpen, authorized]);
 
-  // Handle mark all as read from the modal
   const handleMarkAllAsRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, read: true })));
   };
 
-  // Handle individual notification click - UPDATED to navigate to UserManagement with notification data
   const handleNotificationClick = (notification) => {
     setNotifications(prev => 
       prev.map(n => 
-        n.id === notification.id ? { ...n, read: true } : n
+        n.notif_id === notification.notif_id ? { ...n, read: true } : n
       )
     );
     
-    // ✅ Navigate to UserManagement with notification data when notification is clicked
-    console.log('Notification clicked, navigating to UserManagement:', notification);
     navigate('/KutUserManagement', { 
       state: { 
-        highlightedNotification: notification,
-        shouldHighlight: true // Add this flag
+        highlightedNotification: notification
       } 
     });
   };
-
-  // Function to handle opening Kutsero Management (UserManagement) with notification data
+  
   const handleOpenKutseroManagement = (notification = null) => {
-    console.log('Opening Kutsero Management from dashboard notification:', notification);
     if (notification) {
       navigate('/KutUserManagement', { 
         state: { 
           highlightedNotification: notification,
-          shouldHighlight: true // Add this flag
+          shouldHighlight: true
         } 
       });
     } else {
@@ -232,7 +203,6 @@ const KutseroDashboard = () => {
     }
   };
 
-  // Helper functions
   const todayDate = new Date().toLocaleDateString();
   const todayRegistrations = users.filter(u => u.created_at === todayDate);
   
@@ -278,7 +248,6 @@ const KutseroDashboard = () => {
     }
   };
 
-  // Skeleton Loading Components (for main content only)
   const StatCardSkeleton = () => (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex items-center gap-4">
       <div className="w-12 h-12 bg-gray-200 rounded-lg animate-pulse"></div>
@@ -336,7 +305,14 @@ const KutseroDashboard = () => {
                 </div>
               </div>
             </div>
-            <div className="w-10 h-10 bg-gray-200 rounded-full animate-pulse"></div>
+            <div className="relative">
+              <button
+                className="cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors duration-200 relative"
+                aria-label="Notifications"
+              >
+                <Bell size={24} className="text-gray-500" />
+              </button>
+            </div>
           </header>
 
           <main className="flex-1 p-8 flex flex-col gap-6 bg-gray-50 overflow-hidden">
@@ -346,9 +322,7 @@ const KutseroDashboard = () => {
               <StatCardSkeleton />
             </div>
 
-            {/* Skeleton Data Sections */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 overflow-hidden">
-              {/* Today's Registrations Skeleton */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col gap-4 overflow-hidden">
                 <div className="flex justify-between items-center pb-3 border-b border-gray-100 shrink-0">
                   <div className="flex items-center gap-3">
@@ -364,7 +338,6 @@ const KutseroDashboard = () => {
                 </div>
               </div>
 
-              {/* Recent Registrations Skeleton */}
               <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col gap-4 overflow-hidden">
                 <div className="flex justify-between items-center pb-3 border-b border-gray-100 shrink-0">
                   <div className="flex items-center gap-3">
@@ -392,7 +365,6 @@ const KutseroDashboard = () => {
     <div className="flex min-h-screen bg-gray-50">
       <Sidebar />
       
-      {/* Main Content */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden">
         <header className="bg-white shadow-sm border-b border-gray-200 px-8 py-4 flex items-center justify-between shrink-0">
           <div className="flex flex-col gap-1">
@@ -409,25 +381,17 @@ const KutseroDashboard = () => {
             </div>
           </div>
 
-          {/* Notification Bell and Quick Stats */}
           <div className="flex items-center gap-6">
-            {/* Notification Bell */}
             <div className="relative">
               <button
                 onClick={() => setNotifOpen(!notifOpen)}
                 className="cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors duration-200 relative"
                 aria-label="Notifications"
-                disabled={loading.notifications}
               >
-                <Bell size={24} className={`${loading.notifications ? 'text-gray-300' : 'text-gray-500'}`} />
-                {!loading.notifications && unreadNotificationsCount > 0 && (
+                <Bell size={24} className="text-gray-500" />
+                {unreadNotificationsCount > 0 && (
                   <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center font-bold">
                     {unreadNotificationsCount}
-                  </span>
-                )}
-                {loading.notifications && (
-                  <span className="absolute -top-1 -right-1 bg-gray-300 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center font-bold">
-                    ...
                   </span>
                 )}
               </button>
@@ -438,13 +402,12 @@ const KutseroDashboard = () => {
                 onNotificationClick={handleNotificationClick}
                 notifications={notifications}
                 onMarkAllAsRead={handleMarkAllAsRead}
-                onOpenKutseroManagement={handleOpenKutseroManagement} // ✅ Add this prop
+                onOpenKutseroManagement={handleOpenKutseroManagement}
               />
             </div>
           </div>
         </header>
 
-        {/* Main Content Area */}
         <main className="flex-1 p-8 flex flex-col gap-6 bg-gray-50 overflow-hidden">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
             {isDataLoading ? (
@@ -455,7 +418,6 @@ const KutseroDashboard = () => {
               </>
             ) : (
               <>
-                {/* Total Approved Users */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex items-center gap-4 hover:shadow-md transition-shadow duration-200">
                   <div className="w-12 h-12 bg-green-50 rounded-lg flex items-center justify-center">
                     <Users size={28} className="text-green-600" />
@@ -468,7 +430,6 @@ const KutseroDashboard = () => {
                   </div>
                 </div>
 
-                {/* Pending Verifications */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex items-center gap-4 hover:shadow-md transition-shadow duration-200">
                   <div className="w-12 h-12 bg-blue-50 rounded-lg flex items-center justify-center">
                     <Users2 size={28} className="text-blue-600" />
@@ -479,7 +440,6 @@ const KutseroDashboard = () => {
                   </div>
                 </div>
 
-                {/* Declined Users */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex items-center gap-4 hover:shadow-md transition-shadow duration-200">
                   <div className="w-12 h-12 bg-red-50 rounded-lg flex items-center justify-center">
                     <XCircle size={28} className="text-red-600" />
@@ -493,9 +453,7 @@ const KutseroDashboard = () => {
             )}
           </div>
 
-          {/* Data Sections Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 flex-1 overflow-hidden">
-            {/* Today's Registrations */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col gap-4 overflow-hidden">
               <div className="flex justify-between items-center pb-3 border-b border-gray-100 shrink-0">
                 <div className="flex items-center gap-3">
@@ -517,7 +475,6 @@ const KutseroDashboard = () => {
                 ) : todayRegistrations.length > 0 ? (
                   todayRegistrations.map((u) => (
                     <div key={u.id} className="flex gap-3 p-3 border border-gray-100 rounded-lg bg-gray-50 items-center hover:bg-gray-100 transition-colors duration-150">
-                      {/* Profile Avatar instead of User icon */}
                       <UserProfileAvatar user={u} size={9} />
                       <div className="flex-1 flex justify-between items-center">
                         <span className="font-medium text-gray-900">{u.name}</span>
@@ -535,7 +492,6 @@ const KutseroDashboard = () => {
               </div>
             </div>
 
-            {/* Recent Registrations */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 flex flex-col gap-4 overflow-hidden">
               <div className="flex justify-between items-center pb-3 border-b border-gray-100 shrink-0">
                 <div className="flex items-center gap-3">
@@ -562,7 +518,6 @@ const KutseroDashboard = () => {
                       const StatusIcon = getStatusIcon(u.status);
                       return (
                         <div key={u.id} className="flex gap-3 p-3 border border-gray-100 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors duration-150">
-                          {/* Profile Avatar instead of User icon */}
                           <UserProfileAvatar user={u} size={9} />
                           <div className="flex-1 flex flex-col gap-1 min-w-0">
                             <div className="flex justify-between items-center">

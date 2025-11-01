@@ -1,86 +1,52 @@
-import {
-  AlertCircle,
-  ArrowLeft,
-  Check,
-  Eye,
-  EyeOff,
-  FileText,
-  Lock,
-  MapPin,
-  Stethoscope,
-  Upload,
-  User,
-  X,
-  ZoomIn
-} from "lucide-react";
+import {AlertCircle,ArrowLeft,Check,Eye,EyeOff,FileText,Lock,MapPin,Stethoscope,Upload,User,X,ZoomIn} from "lucide-react";
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-// Use your Django backend as proxy
-const BACKEND_BASE_URL = 'https://echo-ebl8.onrender.com';
-
-// Helper function to fetch data through your Django proxy
-const fetchPSGCData = async (endpoint) => {
-  try {
-    const response = await fetch(`${BACKEND_BASE_URL}/api/psgc/?endpoint=${encodeURIComponent(endpoint)}`);
-    if (!response.ok) throw new Error(`Failed to fetch ${endpoint}`);
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching PSGC data through proxy:', error);
-    
-    // Try fallback endpoint
-    try {
-      const fallbackResponse = await fetch(`${BACKEND_BASE_URL}/api/psgc-fallback/?endpoint=${encodeURIComponent(endpoint)}`);
-      if (!fallbackResponse.ok) throw new Error('Fallback also failed');
-      return await fallbackResponse.json();
-    } catch (fallbackError) {
-      console.error('Error fetching fallback data:', fallbackError);
-      throw new Error('Both proxy and fallback failed');
-    }
-  }
-};
-
-// Custom hook for Philippines location data - PROVINCES ONLY
+// OPTION 2 API - Philippine Government Data
 const usePhilippinesLocations = () => {
   const [provinces, setProvinces] = useState([]);
   const [citiesCache, setCitiesCache] = useState({});
   const [barangaysCache, setBarangaysCache] = useState({});
   const [apiAvailable, setApiAvailable] = useState(true);
 
-  // Load all PROVINCES on component mount
+  // Load all provinces from Philippine government data
   useEffect(() => {
     const loadProvinces = async () => {
       try {
-        const provincesData = await fetchPSGCData('/provinces');
-        setProvinces(provincesData.map(province => province.name));
+        console.log('Loading provinces from Philippine government API...');
+        
+        // Using the official Philippine Statistics Authority data
+        const response = await fetch('https://psgc.gitlab.io/api/provinces/', {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+          }
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Provinces API response:', data);
+        
+        // Extract province names from the API response and sort alphabetically
+        const provincesList = data.map(province => province.name).sort();
+        
+        console.log('Loaded provinces:', provincesList);
+        setProvinces(provincesList);
         setApiAvailable(true);
+        
       } catch (error) {
-        console.error('Error loading provinces:', error);
-        // Use fallback provinces directly
-        setProvinces([
-          "Abra", "Agusan del Norte", "Agusan del Sur", "Aklan", "Albay",
-          "Antique", "Apayao", "Aurora", "Basilan", "Bataan", 
-          "Batanes", "Batangas", "Benguet", "Biliran", "Bohol",
-          "Bukidnon", "Bulacan", "Cagayan", "Camarines Norte", "Camarines Sur",
-          "Camiguin", "Capiz", "Catanduanes", "Cavite", "Cebu",
-          "Cotabato", "Davao de Oro", "Davao del Norte", "Davao del Sur", "Davao Occidental",
-          "Davao Oriental", "Dinagat Islands", "Eastern Samar", "Guimaras", "Ifugao",
-          "Ilocos Norte", "Ilocos Sur", "Iloilo", "Isabela", "Kalinga",
-          "La Union", "Laguna", "Lanao del Norte", "Lanao del Sur", "Leyte",
-          "Maguindanao del Norte", "Maguindanao del Sur", "Marinduque", "Masbate", "Metro Manila",
-          "Misamis Occidental", "Misamis Oriental", "Mountain Province", "Negros Occidental", "Negros Oriental",
-          "Northern Samar", "Nueva Ecija", "Nueva Vizcaya", "Occidental Mindoro", "Oriental Mindoro",
-          "Palawan", "Pampanga", "Pangasinan", "Quezon", "Quirino",
-          "Rizal", "Romblon", "Samar", "Sarangani", "Siquijor",
-          "Sorsogon", "South Cotabato", "Southern Leyte", "Sultan Kudarat", "Sulu",
-          "Surigao del Norte", "Surigao del Sur", "Tarlac", "Tawi-Tawi", "Zambales",
-          "Zamboanga del Norte", "Zamboanga del Sur", "Zamboanga Sibugay"
-        ]);
+        console.error('Error loading provinces from government API:', error);
+        // Remove offline data - just set empty array
+        setProvinces([]);
         setApiAvailable(false);
       }
     };
+    
     loadProvinces();
-  }, []);
+  }, []); // Empty dependency array to prevent infinite loops
 
   const getCities = async (provinceName) => {
     if (!provinceName) return [];
@@ -91,57 +57,44 @@ const usePhilippinesLocations = () => {
     }
 
     try {
-      // Get all provinces to find the code
-      const provincesData = await fetchPSGCData('/provinces');
+      console.log(`Fetching cities for province: ${provinceName}`);
+      
+      // First, get the province code
+      const provincesResponse = await fetch('https://psgc.gitlab.io/api/provinces/');
+      if (!provincesResponse.ok) throw new Error('Failed to fetch provinces list');
+      
+      const provincesData = await provincesResponse.json();
       const province = provincesData.find(p => p.name === provinceName);
       
-      if (!province) return [];
+      if (!province) {
+        console.log(`Province not found: ${provinceName}`);
+        throw new Error('Province not found');
+      }
 
-      // Get cities directly for this province
-      const cities = await fetchPSGCData(`/provinces/${province.code}/cities-municipalities`);
-      const cityNames = cities.map(city => city.name);
-
+      // Now get cities for this province using its code
+      const citiesResponse = await fetch(`https://psgc.gitlab.io/api/provinces/${province.code}/cities-municipalities/`);
+      
+      if (!citiesResponse.ok) {
+        throw new Error(`HTTP error! status: ${citiesResponse.status}`);
+      }
+      
+      const citiesData = await citiesResponse.json();
+      const cities = citiesData.map(city => city.name).sort(); // Sort cities alphabetically
+      
+      console.log(`Loaded ${cities.length} cities for ${provinceName}:`, cities);
+      
       // Update cache
       setCitiesCache(prev => ({
         ...prev,
-        [provinceName]: cityNames
+        [provinceName]: cities
       }));
 
-      return cityNames;
+      return cities;
     } catch (error) {
-      console.error('Error fetching cities:', error);
+      console.error(`Error fetching cities for ${provinceName}:`, error);
       
-      // Return fallback cities for major provinces
-      const fallbackCities = {
-        "Metro Manila": [
-          "Caloocan City", "Las Piñas City", "Makati City", "Malabon City", "Mandaluyong City", 
-          "Manila City", "Marikina City", "Muntinlupa City", "Navotas City", "Parañaque City", 
-          "Pasay City", "Pasig City", "Pateros", "Quezon City", "San Juan City", 
-          "Taguig City", "Valenzuela City"
-        ],
-        "Cavite": [
-          "Dasmarinas City", "Bacoor City", "Imus City", "General Trias City", "Trece Martires City",
-          "Tagaytay City", "Cavite City", "Silang", "Kawit", "Naic"
-        ],
-        "Cebu": [
-          "Cebu City", "Lapu-Lapu City", "Mandaue City", "Talisay City", "Danao City",
-          "Toledo City", "Naga City", "Bogo City", "Carcar City", "Balamban"
-        ],
-        "Bulacan": [
-          "Malolos City", "Meycauayan City", "San Jose del Monte City", "Santa Maria", "Marilao",
-          "Bocaue", "Balagtas", "Guiguinto", "Plaridel", "Pulilan"
-        ],
-        "Laguna": [
-          "Calamba City", "Santa Rosa City", "San Pedro City", "Biñan City", "Cabuyao City",
-          "San Pablo City", "Los Baños", "Bay", "Victoria", "Nagcarlan"
-        ],
-        "Rizal": [
-          "Antipolo City", "Taytay", "Cainta", "Binangonan", "Angono",
-          "Rodriguez", "San Mateo", "Baras", "Tanay", "Morong"
-        ]
-      };
-      
-      return fallbackCities[provinceName] || [];
+      // Return empty array instead of fallback data
+      return [];
     }
   };
 
@@ -156,59 +109,44 @@ const usePhilippinesLocations = () => {
     }
 
     try {
-      // Get all provinces to find the code
-      const provincesData = await fetchPSGCData('/provinces');
-      const province = provincesData.find(p => p.name === provinceName);
+      console.log(`Fetching barangays for ${cityName}, ${provinceName}`);
       
-      if (!province) return [];
-
-      // Get cities for this province
-      const cities = await fetchPSGCData(`/provinces/${province.code}/cities-municipalities`);
-      const foundCity = cities.find(c => c.name === cityName);
+      // First, get the city code
+      const citiesResponse = await fetch('https://psgc.gitlab.io/api/cities-municipalities/');
+      if (!citiesResponse.ok) throw new Error('Failed to fetch cities list');
       
-      if (foundCity) {
-        // Get barangays directly for this city
-        const barangays = await fetchPSGCData(`/cities-municipalities/${foundCity.code}/barangays`);
-        const barangayNames = barangays.map(barangay => barangay.name);
-        
-        // Update cache
-        setBarangaysCache(prev => ({
-          ...prev,
-          [cacheKey]: barangayNames
-        }));
+      const citiesData = await citiesResponse.json();
+      const city = citiesData.find(c => c.name === cityName);
+      
+      if (!city) {
+        console.log(`City not found: ${cityName}`);
+        throw new Error('City not found');
+      }
 
-        return barangayNames;
+      // Now get barangays for this city using its code
+      const barangaysResponse = await fetch(`https://psgc.gitlab.io/api/cities-municipalities/${city.code}/barangays/`);
+      
+      if (!barangaysResponse.ok) {
+        throw new Error(`HTTP error! status: ${barangaysResponse.status}`);
       }
       
-      return [];
+      const barangaysData = await barangaysResponse.json();
+      const barangays = barangaysData.map(brgy => brgy.name).sort(); // Sort barangays alphabetically
+      
+      console.log(`Loaded ${barangays.length} barangays for ${cityName}:`, barangays);
+      
+      // Update cache
+      setBarangaysCache(prev => ({
+        ...prev,
+        [cacheKey]: barangays
+      }));
+
+      return barangays;
     } catch (error) {
-      console.error('Error fetching barangays:', error);
+      console.error(`Error fetching barangays for ${cityName}, ${provinceName}:`, error);
       
-      // Return fallback barangays for major cities
-      const fallbackBarangays = {
-        "Quezon City": [
-          "Alicia", "Amihan", "Apolonio Samson", "Aurora", "Baesa",
-          "Bagbag", "Bagong Lipunan ng Crame", "Bagong Pag-asa", "Bagong Silangan", "Bagumbayan"
-        ],
-        "Manila City": [
-          "Binondo", "Ermita", "Intramuros", "Malate", "Paco",
-          "Pandacan", "Port Area", "Quiapo", "Sampaloc", "San Andres"
-        ],
-        "Antipolo City": [
-          "Bagong Nayon", "Beverly Hills", "Calawis", "Cupang", "Dela Paz",
-          "Dulong Bayan", "Inarawan", "Mambugan", "Mayamot", "Muntingdilaw"
-        ],
-        "Dasmarinas City": [
-          "Burol", "Burol I", "Burol II", "Burol III", "Emmanuel Bergado I",
-          "Emmanuel Bergado II", "Fatima I", "Fatima II", "Fatima III", "Langkaan I"
-        ],
-        "Cebu City": [
-          "Adlaon", "Agsungot", "Apas", "Babag", "Bacayan",
-          "Banilad", "Binaliw", "Budlaan", "Busay", "Cambinocot"
-        ]
-      };
-      
-      return fallbackBarangays[cityName] || [];
+      // Return empty array instead of fallback data
+      return [];
     }
   };
 
@@ -290,7 +228,7 @@ function SignUp() {
 
   const totalSteps = 5;
 
-  // Load cities when province changes
+  // Load cities when province changes - FIXED: use useCallback or move functions inside useEffect
   useEffect(() => {
     const loadCities = async () => {
       if (province) {
@@ -302,8 +240,9 @@ function SignUp() {
         setCities([]);
       }
     };
+    
     loadCities();
-  }, [province]);
+  }, [province]); // Only depend on province
 
   // Load barangays when city changes
   useEffect(() => {
@@ -317,8 +256,9 @@ function SignUp() {
         setBarangays([]);
       }
     };
+    
     loadBarangays();
-  }, [province, city]);
+  }, [province, city]); // Only depend on province and city
 
   // Load clinic cities when clinic province changes
   useEffect(() => {
@@ -332,8 +272,9 @@ function SignUp() {
         setClinicCities([]);
       }
     };
+    
     loadClinicCities();
-  }, [clinicProvince]);
+  }, [clinicProvince]); // Only depend on clinicProvince
 
   // Load clinic barangays when clinic city changes
   useEffect(() => {
@@ -347,8 +288,9 @@ function SignUp() {
         setClinicBarangays([]);
       }
     };
+    
     loadClinicBarangays();
-  }, [clinicProvince, clinicCity]);
+  }, [clinicProvince, clinicCity]); // Only depend on clinicProvince and clinicCity
 
   // Reset dependent fields when province changes
   useEffect(() => {
@@ -412,7 +354,7 @@ function SignUp() {
         const birthDate = new Date(dob);
         if (birthDate > today) newErrors.dob = "Birthdate cannot be in the future.";
       }
-      if (!sex) newErrors.sex = "Sex is required.";
+      if (!sex) newErrors.sex = "This is required.";
       if (!phoneNumber.trim()) newErrors.phoneNumber = "Phone number is required.";
       else if (!/^(\+63|0)9\d{9}$/.test(phoneNumber)) 
         newErrors.phoneNumber = "Phone number must start with +63 or 09 and be 11 digits.";
@@ -667,9 +609,8 @@ function SignUp() {
     }
   };
 
-  // Field styles
   const fieldStyle = { 
-    padding: "0.75rem", 
+    padding: "0.65rem 0.75rem", 
     borderRadius: "0.5rem", 
     border: "1px solid #d1d5db", 
     width: "100%", 
@@ -678,7 +619,11 @@ function SignUp() {
     boxSizing: "border-box",
     backgroundColor: "#fff",
     height: "44px",
-    transition: "all 0.2s ease"
+    transition: "all 0.2s ease",
+    fontFamily: "inherit",
+    lineHeight: "1.3", 
+    display: "flex",
+    alignItems: "center"
   };
 
   const getFieldStyle = (fieldName, hasError = false) => {
@@ -687,6 +632,35 @@ function SignUp() {
     
     if (hasError) {
       baseStyle.border = "1px solid #ef4444";
+      baseStyle.backgroundColor = "#fef2f2";
+    }
+    
+    if (isFocused) {
+      baseStyle.border = "1px solid #B8763E";
+      baseStyle.boxShadow = "0 0 0 3px rgba(184, 118, 62, 0.1)";
+    }
+    
+    return baseStyle;
+  };
+
+  const selectStyle = {
+    ...fieldStyle,
+    appearance: "none",
+    backgroundImage: `url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e")`,
+    backgroundPosition: "right 0.75rem center",
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "1.25em 1.25em",
+    paddingRight: "2.5rem",
+    cursor: "pointer"
+  };
+
+const getSelectStyle = (fieldName, hasError = false) => {
+    const isFocused = focusedField === fieldName;
+    const baseStyle = { ...selectStyle };
+    
+    if (hasError) {
+      baseStyle.border = "1px solid #ef4444";
+      baseStyle.backgroundColor = "#fef2f2";
     }
     
     if (isFocused) {
@@ -711,7 +685,7 @@ function SignUp() {
     }
   };
 
-  // Custom checkbox component
+  // IMPROVED Custom checkbox component
   const Checkbox = ({ checked, onChange, label, hasError = false }) => (
     <div style={{ display: "flex", alignItems: "flex-start", gap: "0.75rem", cursor: "pointer" }}>
       <div
@@ -738,7 +712,8 @@ function SignUp() {
           fontSize: "0.95rem", 
           color: "#374151",
           fontWeight: 500,
-          lineHeight: "1.4"
+          lineHeight: "1.4",
+          flex: 1
         }}
         onClick={() => onChange(!checked)}
       >
@@ -898,30 +873,6 @@ function SignUp() {
     );
   };
 
-  // API Status Indicator
-  const ApiStatusIndicator = () => (
-    <div style={{
-      backgroundColor: apiAvailable ? "#dcfce7" : "#fef3c7",
-      border: `1px solid ${apiAvailable ? "#bbf7d0" : "#fde68a"}`,
-      borderRadius: "0.375rem",
-      padding: "0.5rem 0.75rem",
-      marginBottom: "1rem",
-      fontSize: "0.875rem",
-      color: apiAvailable ? "#166534" : "#92400e",
-      display: "flex",
-      alignItems: "center",
-      gap: "0.5rem"
-    }}>
-      <div style={{
-        width: "8px",
-        height: "8px",
-        borderRadius: "50%",
-        backgroundColor: apiAvailable ? "#22c55e" : "#f59e0b"
-      }}></div>
-      {apiAvailable ? "Using live location data" : "Using offline location data"}
-    </div>
-  );
-
   // Terms and Conditions Modal
   const TermsModal = () => {
     if (!showTermsModal) return null;
@@ -980,7 +931,7 @@ function SignUp() {
                 cursor: "pointer",
                 padding: "0.5rem",
                 borderRadius: "0.25rem"
-              }}
+            }}
             >
               <X size={20} />
             </button>
@@ -1119,17 +1070,19 @@ function SignUp() {
     );
   };
 
+  // IMPROVED renderStepContent with proper vertical centering
   const renderStepContent = () => {
     switch (currentStep) {
       case 1:
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600, marginBottom: "0.5rem" }}>
+            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600, marginBottom: "1rem" }}>
               <User size={20} /> Personal & Contact Information
             </h3>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "1rem" }}>
-              <div data-field="firstName">
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>First Name *</label>
+            
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "1rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>First Name *</label>
                 <input 
                   style={getFieldStyle("firstName", errors.firstName)} 
                   type="text" 
@@ -1137,11 +1090,13 @@ function SignUp() {
                   onChange={e => { setFirstName(e.target.value); setErrors(prev => ({ ...prev, firstName: "" })); }} 
                   onFocus={() => handleFieldFocus("firstName")}
                   onBlur={() => handleFieldBlur("firstName")}
+                  placeholder="Enter first name"
                 />
-                {errors.firstName && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.firstName}</p>}
+                {errors.firstName && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.firstName}</p>}
               </div>
-              <div>
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Middle Name</label>
+              
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Middle Name</label>
                 <input 
                   style={getFieldStyle("middleName")} 
                   type="text" 
@@ -1149,10 +1104,12 @@ function SignUp() {
                   onChange={e => setMiddleName(e.target.value)} 
                   onFocus={() => handleFieldFocus("middleName")}
                   onBlur={() => handleFieldBlur("middleName")}
+                  placeholder="Enter middle name"
                 />
               </div>
-              <div data-field="lastName">
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Last Name *</label>
+              
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Last Name *</label>
                 <input 
                   style={getFieldStyle("lastName", errors.lastName)} 
                   type="text" 
@@ -1160,13 +1117,15 @@ function SignUp() {
                   onChange={e => { setLastName(e.target.value); setErrors(prev => ({ ...prev, lastName: "" })); }} 
                   onFocus={() => handleFieldFocus("lastName")}
                   onBlur={() => handleFieldBlur("lastName")}
+                  placeholder="Enter last name"
                 />
-                {errors.lastName && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.lastName}</p>}
+                {errors.lastName && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.lastName}</p>}
               </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: "1rem" }}>
-              <div data-field="dob">
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Date Of Birth *</label>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Date Of Birth *</label>
                 <input 
                   style={getFieldStyle("dob", errors.dob)} 
                   type="date" 
@@ -1176,26 +1135,28 @@ function SignUp() {
                   onFocus={() => handleFieldFocus("dob")}
                   onBlur={() => handleFieldBlur("dob")}
                 />
-                {errors.dob && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.dob}</p>}
+                {errors.dob && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.dob}</p>}
               </div>
-              <div data-field="sex">
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Sex *</label>
+              
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Sex *</label>
                 <select 
-                  style={getFieldStyle("sex", errors.sex)} 
+                  style={getSelectStyle("sex", errors.sex)} 
                   value={sex} 
                   onChange={e => { setSex(e.target.value); setErrors(prev => ({ ...prev, sex: "" })); }}
                   onFocus={() => handleFieldFocus("sex")}
                   onBlur={() => handleFieldBlur("sex")}
                 >
-                  <option value="">Please select</option>
+                  <option value="">Select sex</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
                 </select>
-                {errors.sex && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.sex}</p>}
+                {errors.sex && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.sex}</p>}
               </div>
             </div>
-            <div data-field="phoneNumber">
-              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Phone Number *</label>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Phone Number *</label>
               <input 
                 style={getFieldStyle("phoneNumber", errors.phoneNumber)} 
                 type="tel" 
@@ -1210,31 +1171,28 @@ function SignUp() {
                 onFocus={() => handleFieldFocus("phoneNumber")}
                 onBlur={() => handleFieldBlur("phoneNumber")}
               />
-              {errors.phoneNumber && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.phoneNumber}</p>}
+              {errors.phoneNumber && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.phoneNumber}</p>}
             </div>
           </div>
         );
+
       case 2:
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
-            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600, marginBottom: "0.5rem" }}>
+            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600, marginBottom: "1rem" }}>
               <MapPin size={20} /> Address Information
             </h3>
             
-            <ApiStatusIndicator />
-            
-            {/* Permanent Address Section */}
             <div style={{ padding: "1.5rem", backgroundColor: "#f8fafc", borderRadius: "0.75rem", border: "1px solid #e2e8f0" }}>
-              <h4 style={{ color: "#1e293b", fontWeight: 600, marginBottom: "1rem", fontSize: "1.1rem" }}>
+              <h4 style={{ color: "#1e293b", fontWeight: 600, marginBottom: "1.5rem", fontSize: "1.1rem" }}>
                 Permanent Address *
               </h4>
-              <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                {/* Province and City in one row */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                  <div data-field="province">
-                    <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Province *</label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Province *</label>
                     <select 
-                      style={getFieldStyle("province", errors.province)} 
+                      style={getSelectStyle("province", errors.province)} 
                       value={province} 
                       onChange={e => { setProvince(e.target.value); setErrors(prev => ({ ...prev, province: "" })); }}
                       onFocus={() => handleFieldFocus("province")}
@@ -1243,12 +1201,13 @@ function SignUp() {
                       <option value="">Select Province</option>
                       {provinces.map(p => <option key={p} value={p}>{p}</option>)}
                     </select>
-                    {errors.province && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.province}</p>}
+                    {errors.province && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.province}</p>}
                   </div>
-                  <div data-field="city">
-                    <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>City *</label>
+                  
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>City *</label>
                     <select 
-                      style={getFieldStyle("city", errors.city)} 
+                      style={getSelectStyle("city", errors.city)} 
                       value={city} 
                       onChange={e => { setCity(e.target.value); setErrors(prev => ({ ...prev, city: "" })); }} 
                       disabled={!province || loadingCities}
@@ -1258,16 +1217,15 @@ function SignUp() {
                       <option value="">{loadingCities ? "Loading cities..." : "Select City"}</option>
                       {cities.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
-                    {errors.city && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.city}</p>}
+                    {errors.city && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.city}</p>}
                   </div>
                 </div>
 
-                {/* Barangay and Street in one row */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                  <div data-field="barangay">
-                    <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Barangay *</label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Barangay *</label>
                     <select 
-                      style={getFieldStyle("barangay", errors.barangay)} 
+                      style={getSelectStyle("barangay", errors.barangay)} 
                       value={barangay} 
                       onChange={e => { setBarangay(e.target.value); setErrors(prev => ({ ...prev, barangay: "" })); }} 
                       disabled={!city || loadingBarangays}
@@ -1277,10 +1235,11 @@ function SignUp() {
                       <option value="">{loadingBarangays ? "Loading barangays..." : "Select Barangay"}</option>
                       {barangays.map(b => <option key={b} value={b}>{b}</option>)}
                     </select>
-                    {errors.barangay && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.barangay}</p>}
+                    {errors.barangay && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.barangay}</p>}
                   </div>
-                  <div>
-                    <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Street</label>
+                  
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Street</label>
                     <input 
                       style={getFieldStyle("street")} 
                       type="text" 
@@ -1293,10 +1252,9 @@ function SignUp() {
                   </div>
                 </div>
 
-                {/* ZIP Code */}
                 <div style={{ maxWidth: "200px" }}>
-                  <div data-field="zipCode">
-                    <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>ZIP Code *</label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                    <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>ZIP Code *</label>
                     <input 
                       style={getFieldStyle("zipCode", errors.zipCode)} 
                       type="text" 
@@ -1310,15 +1268,14 @@ function SignUp() {
                       onFocus={() => handleFieldFocus("zipCode")}
                       onBlur={() => handleFieldBlur("zipCode")}
                     />
-                    {errors.zipCode && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.zipCode}</p>}
+                    {errors.zipCode && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.zipCode}</p>}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Clinic Address Section */}
             <div style={{ padding: "1.5rem", backgroundColor: "#f8fafc", borderRadius: "0.75rem", border: "1px solid #e2e8f0" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1rem" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "1.5rem" }}>
                 <h4 style={{ color: "#1e293b", fontWeight: 600, fontSize: "1.1rem" }}>
                   Clinic Address
                 </h4>
@@ -1327,7 +1284,6 @@ function SignUp() {
                   onChange={(checked) => {
                     setVetAddressIsClinic(checked);
                     if (checked) {
-                      // Copy permanent address to clinic address
                       setClinicProvince(province);
                       setClinicCity(city);
                       setClinicBarangay(barangay);
@@ -1340,13 +1296,12 @@ function SignUp() {
               </div>
 
               {!vetAddressIsClinic && (
-                <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-                  {/* Province and City in one row */}
+                <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                    <div data-field="clinicProvince">
-                      <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Province *</label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                      <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Province *</label>
                       <select 
-                        style={getFieldStyle("clinicProvince", errors.clinicProvince)} 
+                        style={getSelectStyle("clinicProvince", errors.clinicProvince)} 
                         value={clinicProvince} 
                         onChange={e => { setClinicProvince(e.target.value); setErrors(prev => ({ ...prev, clinicProvince: "" })); }}
                         onFocus={() => handleFieldFocus("clinicProvince")}
@@ -1355,12 +1310,13 @@ function SignUp() {
                         <option value="">Select Province</option>
                         {provinces.map(p => <option key={p} value={p}>{p}</option>)}
                       </select>
-                      {errors.clinicProvince && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.clinicProvince}</p>}
+                      {errors.clinicProvince && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.clinicProvince}</p>}
                     </div>
-                    <div data-field="clinicCity">
-                      <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>City *</label>
+                    
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                      <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>City *</label>
                       <select 
-                        style={getFieldStyle("clinicCity", errors.clinicCity)} 
+                        style={getSelectStyle("clinicCity", errors.clinicCity)} 
                         value={clinicCity} 
                         onChange={e => { setClinicCity(e.target.value); setErrors(prev => ({ ...prev, clinicCity: "" })); }} 
                         disabled={!clinicProvince || loadingClinicCities}
@@ -1370,16 +1326,15 @@ function SignUp() {
                         <option value="">{loadingClinicCities ? "Loading cities..." : "Select City"}</option>
                         {clinicCities.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
-                      {errors.clinicCity && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.clinicCity}</p>}
+                      {errors.clinicCity && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.clinicCity}</p>}
                     </div>
                   </div>
 
-                  {/* Barangay and Street in one row */}
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
-                    <div data-field="clinicBarangay">
-                      <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Barangay *</label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                      <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Barangay *</label>
                       <select 
-                        style={getFieldStyle("clinicBarangay", errors.clinicBarangay)} 
+                        style={getSelectStyle("clinicBarangay", errors.clinicBarangay)} 
                         value={clinicBarangay} 
                         onChange={e => { setClinicBarangay(e.target.value); setErrors(prev => ({ ...prev, clinicBarangay: "" })); }} 
                         disabled={!clinicCity || loadingClinicBarangays}
@@ -1389,10 +1344,11 @@ function SignUp() {
                         <option value="">{loadingClinicBarangays ? "Loading barangays..." : "Select Barangay"}</option>
                         {clinicBarangays.map(b => <option key={b} value={b}>{b}</option>)}
                       </select>
-                      {errors.clinicBarangay && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.clinicBarangay}</p>}
+                      {errors.clinicBarangay && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.clinicBarangay}</p>}
                     </div>
-                    <div>
-                      <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Street</label>
+                    
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                      <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Street</label>
                       <input 
                         style={getFieldStyle("clinicStreet")} 
                         type="text" 
@@ -1405,10 +1361,9 @@ function SignUp() {
                     </div>
                   </div>
 
-                  {/* ZIP Code */}
                   <div style={{ maxWidth: "200px" }}>
-                    <div data-field="clinicZipCode">
-                      <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>ZIP Code <span style={{ fontWeight: 400, color: "#6b7280" }}>(Optional)</span></label>
+                    <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                      <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>ZIP Code <span style={{ fontWeight: 400, color: "#6b7280" }}>(Optional)</span></label>
                       <input 
                         style={getFieldStyle("clinicZipCode", errors.clinicZipCode)} 
                         type="text" 
@@ -1422,7 +1377,7 @@ function SignUp() {
                         onFocus={() => handleFieldFocus("clinicZipCode")}
                         onBlur={() => handleFieldBlur("clinicZipCode")}
                       />
-                      {errors.clinicZipCode && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.clinicZipCode}</p>}
+                      {errors.clinicZipCode && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.clinicZipCode}</p>}
                     </div>
                   </div>
                 </div>
@@ -1435,7 +1390,7 @@ function SignUp() {
                   borderRadius: "0.5rem", 
                   border: "1px solid #d1fae5",
                   color: "#065f46",
-                  fontSize: "0.95rem"
+                  fontSize: "0.9rem"
                 }}>
                   <strong>Note:</strong> Clinic address will use the same details as your permanent address.
                 </div>
@@ -1443,15 +1398,17 @@ function SignUp() {
             </div>
           </div>
         );
+
       case 3:
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600, marginBottom: "0.5rem" }}>
+            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600, marginBottom: "1rem" }}>
               <Stethoscope size={20} /> Professional Info
             </h3>
+            
             <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "1rem" }}>
-              <div data-field="licenseNumber">
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>License Number *</label>
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>License Number *</label>
                 <input 
                   style={getFieldStyle("licenseNumber", errors.licenseNumber)} 
                   type="text" 
@@ -1465,10 +1422,11 @@ function SignUp() {
                   onFocus={() => handleFieldFocus("licenseNumber")}
                   onBlur={() => handleFieldBlur("licenseNumber")}
                 />
-                {errors.licenseNumber && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.licenseNumber}</p>}
+                {errors.licenseNumber && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.licenseNumber}</p>}
               </div>
-              <div data-field="yearsOfExperience">
-                <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Years of Experience *</label>
+              
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+                <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Years of Experience *</label>
                 <input 
                   style={getFieldStyle("yearsOfExperience", errors.yearsOfExperience)} 
                   type="number" 
@@ -1478,11 +1436,12 @@ function SignUp() {
                   onFocus={() => handleFieldFocus("yearsOfExperience")}
                   onBlur={() => handleFieldBlur("yearsOfExperience")}
                 />
-                {errors.yearsOfExperience && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.yearsOfExperience}</p>}
+                {errors.yearsOfExperience && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.yearsOfExperience}</p>}
               </div>
             </div>
-            <div>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Specialization <span style={{ fontWeight: 400, color: "#6b7280" }}>(Optional)</span></label>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Specialization <span style={{ fontWeight: 400, color: "#6b7280" }}>(Optional)</span></label>
               <input 
                 style={getFieldStyle("specialization")} 
                 type="text" 
@@ -1490,10 +1449,12 @@ function SignUp() {
                 onChange={e => setSpecialization(e.target.value)} 
                 onFocus={() => handleFieldFocus("specialization")}
                 onBlur={() => handleFieldBlur("specialization")}
+                placeholder="e.g., Small Animal Surgery"
               />
             </div>
-            <div>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Affiliated Organization <span style={{ fontWeight: 400, color: "#6b7280" }}>(Optional)</span></label>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Affiliated Organization <span style={{ fontWeight: 400, color: "#6b7280" }}>(Optional)</span></label>
               <input 
                 style={getFieldStyle("affiliatedOrganization")} 
                 type="text" 
@@ -1501,42 +1462,17 @@ function SignUp() {
                 onChange={e => setAffiliatedOrganization(e.target.value)} 
                 onFocus={() => handleFieldFocus("affiliatedOrganization")}
                 onBlur={() => handleFieldBlur("affiliatedOrganization")}
+                placeholder="e.g., Philippine Veterinary Medical Association"
               />
             </div>
             
-            <div data-field="document">
-              <label
-                style={{
-                  display: "block",
-                  marginBottom: "0.5rem",
-                  fontWeight: 500,
-                }}
-              >
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>
                 Professional Document *
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: "0.875rem",
-                    color: "#6b7280",
-                    fontWeight: "normal",
-                    marginTop: "0.25rem",
-                  }}
-                >
-                  Upload veterinary certificate (<span style={{ color: "red", fontWeight: "bold" }}>PDF only</span>)
-                </span>
-                <span
-                  style={{
-                    display: "block",
-                    fontSize: "0.875rem",
-                    color: "#6b7280",
-                    fontWeight: "normal",
-                    marginTop: "0.25rem",
-                  }}
-                >
-                  This certificate is required to verify your credentials as a licensed veterinarian and ensure authenticity of your profile.
-                </span>
               </label>
-
+              <span style={{ fontSize: "0.8rem", color: "#6b7280", marginBottom: "0.5rem" }}>
+                Upload veterinary certificate (PDF only). This certificate is required to verify your credentials.
+              </span>
               
               {document ? (
                 <div style={{ 
@@ -1613,19 +1549,20 @@ function SignUp() {
                 </div>
               )}
               
-              {errors.document && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.5rem" }}>{errors.document}</p>}
+              {errors.document && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.document}</p>}
             </div>
           </div>
         );
+
       case 4:
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600, marginBottom: "0.5rem" }}>
+            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600, marginBottom: "1rem" }}>
               <User size={20} /> Profile Photo
             </h3>
             
-            <div>
-              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>
                 Upload Profile Photo <span style={{ fontWeight: 400, color: "#6b7280" }}>(Optional)</span>
               </label>
               
@@ -1695,7 +1632,7 @@ function SignUp() {
                 </div>
               )}
               
-              {errors.profilePhoto && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.5rem" }}>{errors.profilePhoto}</p>}
+              {errors.profilePhoto && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.profilePhoto}</p>}
             </div>
           </div>
         );
@@ -1703,11 +1640,12 @@ function SignUp() {
       case 5:
         return (
           <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600, marginBottom: "0.5rem" }}>
+            <h3 style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#B8763E", fontWeight: 600, marginBottom: "1rem" }}>
               <Lock size={20} /> Set Login Credentials
             </h3>
-            <div data-field="email">
-              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Email *</label>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Email *</label>
               <input 
                 style={getFieldStyle("email", touched.email && errors.email)} 
                 type="email" 
@@ -1720,10 +1658,11 @@ function SignUp() {
                 onFocus={() => handleFieldFocus("email")}
                 onBlur={() => handleFieldBlur("email")}
               />
-              {touched.email && errors.email && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.email}</p>}
+              {touched.email && errors.email && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.email}</p>}
             </div>
-            <div data-field="password">
-              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Password *</label>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Password *</label>
               <div style={{ position: "relative" }}>
                 <input 
                   style={{ 
@@ -1738,6 +1677,7 @@ function SignUp() {
                   }} 
                   onFocus={() => handleFieldFocus("password")}
                   onBlur={() => handleFieldBlur("password")}
+                  placeholder="Enter password"
                 />
                 <button 
                   type="button"
@@ -1756,10 +1696,11 @@ function SignUp() {
                   {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              {touched.password && errors.password && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.password}</p>}
+              {touched.password && errors.password && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.password}</p>}
             </div>
-            <div data-field="confirmPassword">
-              <label style={{ display: "block", marginBottom: "0.5rem", fontWeight: 500 }}>Confirm Password *</label>
+            
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
+              <label style={{ display: "block", fontWeight: 500, fontSize: "0.9rem", color: "#374151" }}>Confirm Password *</label>
               <div style={{ position: "relative" }}>
                 <input 
                   style={{ 
@@ -1774,6 +1715,7 @@ function SignUp() {
                   }} 
                   onFocus={() => handleFieldFocus("confirmPassword")}
                   onBlur={() => handleFieldBlur("confirmPassword")}
+                  placeholder="Confirm password"
                 />
                 <button 
                   type="button"
@@ -1792,11 +1734,11 @@ function SignUp() {
                   {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              {touched.confirmPassword && errors.confirmPassword && <p style={{ color: "#ef4444", fontSize: "0.875rem", marginTop: "0.25rem" }}>{errors.confirmPassword}</p>}
+              {touched.confirmPassword && errors.confirmPassword && <p style={{ color: "#ef4444", fontSize: "0.75rem", margin: "0.25rem 0 0 0" }}>{errors.confirmPassword}</p>}
             </div>
 
             {/* Terms and Conditions Section */}
-            <div data-field="terms">
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
               <div style={{ 
                 backgroundColor: "#f8fafc", 
                 borderRadius: "0.5rem", 
@@ -1831,8 +1773,8 @@ function SignUp() {
                 {errors.terms && (
                   <p style={{ 
                     color: "#ef4444", 
-                    fontSize: "0.875rem", 
-                    marginTop: "0.5rem",
+                    fontSize: "0.75rem", 
+                    margin: "0.5rem 0 0 0",
                     marginLeft: "2rem"
                   }}>
                     {errors.terms}
