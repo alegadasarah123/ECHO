@@ -26,7 +26,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com"
+const API_BASE = "http://localhost:8000/api/ctu_vetmed"
 
 const SkeletonLoader = () => (
   <div className="animate-pulse">
@@ -132,7 +132,7 @@ function CtuAccountApproval() {
   const fetchCounts = async () => {
     setIsLoadingCounts(true)
     try {
-      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get-account-counts/")
+      const response = await fetch("http://localhost:8000/api/ctu_vetmed/get-account-counts/")
       if (!response.ok) throw new Error("Failed to fetch data")
       const result = await response.json()
       setCounts(result.data || result)
@@ -289,7 +289,7 @@ function CtuAccountApproval() {
       )
       setMessage(`Approving user ${vetId}...`)
 
-      const response = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/update-vet-status/${vetId}/`, {
+      const response = await fetch(`http://localhost:8000/api/ctu_vetmed/update-vet-status/${vetId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -343,7 +343,7 @@ function CtuAccountApproval() {
       )
       setMessage(`Marking user ${vetId} as not approved...`)
 
-      const response = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/update-vet-status/${vetId}/`, {
+      const response = await fetch(`http://localhost:8000/api/ctu_vetmed/update-vet-status/${vetId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -407,7 +407,7 @@ function CtuAccountApproval() {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
+    fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -431,7 +431,7 @@ function CtuAccountApproval() {
   // ✅ MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/mark_all_notifications_read/`, {
+      const res = await fetch(`http://localhost:8000/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -559,7 +559,7 @@ const handleNotificationClick = async (notification) => {
   const handleManualRefresh = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get-vet-profiles/")
+      const response = await fetch("http://localhost:8000/api/ctu_vetmed/get-vet-profiles/")
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
       
       const result = await response.json()
@@ -592,7 +592,7 @@ const handleNotificationClick = async (notification) => {
     const loadVetProfiles = async () => {
       setIsLoading(true)
       try {
-        const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get-vet-profiles/", {
+        const response = await fetch("http://localhost:8000/api/ctu_vetmed/get-vet-profiles/", {
           signal: controller.signal,
         })
 
@@ -1257,12 +1257,7 @@ const handleNotificationClick = async (notification) => {
                           {selectedUser.vet_email}
                         </div>
                       </div>
-                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Facebook:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.facebook}
-                        </div>
-                      </div>
+                      
                     </div>
                   </div>
 

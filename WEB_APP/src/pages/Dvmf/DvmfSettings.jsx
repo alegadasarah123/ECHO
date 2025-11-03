@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
+const API_BASE = "http://localhost:8000/api/dvmf";
 
 const DvmfSettings = () => {
   const [activeTab, setActiveTab] = useState("profile")
@@ -81,7 +81,7 @@ const DvmfSettings = () => {
   // MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/mark_all_notifications_read/`, {
+      const res = await fetch(`http://localhost:8000/api/dvmf/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -122,7 +122,7 @@ const DvmfSettings = () => {
   // Mark as read in backend (only if valid ID)
   if (notifId) {
     try {
-      await fetch(`https://echo-ebl8.onrender.com/api/dvmf/mark_notification_read/${notifId}/`, {
+      await fetch(`http://localhost:8000/api/dvmf/mark_notification_read/${notifId}/`, {
         method: "POST",
         credentials: "include",
       });
@@ -182,7 +182,7 @@ const DvmfSettings = () => {
   };
 
   const loadNotifications = useCallback(() => {
-    fetch(`https://echo-ebl8.onrender.com/api/dvmf/get_vetnotifications/`)
+    fetch(`http://localhost:8000/api/dvmf/get_vetnotifications/`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -206,7 +206,7 @@ const DvmfSettings = () => {
     setErrors({})
 
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/save_dvmf_user_profile/`, {
+      const res = await fetch(`http://localhost:8000/api/dvmf/save_dvmf_user_profile/`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -240,7 +240,7 @@ const DvmfSettings = () => {
     setErrors({})
 
     try {
-      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/update_dvmf_user_profile/", {
+      const res = await fetch("http://localhost:8000/api/dvmf/update_dvmf_user_profile/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -282,7 +282,7 @@ const DvmfSettings = () => {
     }
 
     try {
-      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/dvmf_change_password/", {
+      const res = await fetch("http://localhost:8000/api/dvmf/dvmf_change_password/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -364,7 +364,7 @@ const DvmfSettings = () => {
     }
 
     try {
-      const response = await fetch("https://echo-ebl8.onrender.com/api/dvmf/signup/", {
+      const response = await fetch("http://localhost:8000/api/dvmf/signup/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -416,7 +416,7 @@ const DvmfSettings = () => {
   // DEACTIVATE USER
   const deactivateUser = async (id) => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/users/deactivate/${id}/`, {
+      const res = await fetch(`http://localhost:8000/api/dvmf/users/deactivate/${id}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -433,7 +433,7 @@ const DvmfSettings = () => {
   // REACTIVATE USER
   const reactivateUser = async (id) => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/users/reactivate/${id}/`, {
+      const res = await fetch(`http://localhost:8000/api/dvmf/users/reactivate/${id}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -466,7 +466,7 @@ const DvmfSettings = () => {
   // Fetch DVMF profile
   const fetchProfile = async () => {
     try {
-      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/get_dvmf_user_profiles/", {
+      const res = await fetch("http://localhost:8000/api/dvmf/get_dvmf_user_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -510,7 +510,7 @@ const DvmfSettings = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/users/", {
+      const res = await fetch("http://localhost:8000/api/dvmf/users/", {
         method: "GET",
         credentials: "include",
       })

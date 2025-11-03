@@ -24,7 +24,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
-const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
+const API_BASE = "http://localhost:8000/api/dvmf";
 
 
 const TableSkeleton = () => {
@@ -1459,7 +1459,7 @@ function DvmfHorseRecord() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/get_horses/")
+      const res = await fetch("http://localhost:8000/api/dvmf/get_horses/")
       if (!res.ok) throw new Error("Failed to fetch horses")
       const data = await res.json()
       setHorseRecords(data)

@@ -1,6 +1,7 @@
 "use client"
 
 import Sidebar from "@/components/CtuSidebar"
+import jsPDF from "jspdf"
 import {
   AlertTriangle,
   Award,
@@ -11,6 +12,7 @@ import {
   CheckSquare,
   ChevronLeft,
   ChevronRight,
+  Download,
   Eye,
   Folder,
   Info,
@@ -30,7 +32,7 @@ import NotificationModal from "./CtuNotif"
 const initialDirectoryData = []
 const initialNotifications = []
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
+const API_BASE = "http://localhost:8000/api/ctu_vetmed";
 
 function CtuDirectory() {
   const navigate = useNavigate()
@@ -66,6 +68,9 @@ function CtuDirectory() {
 
   // Refresh state
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  // New state for role filter
+  const [roleFilter, setRoleFilter] = useState("all")
 
   // Helper function to format status display
   const formatStatusDisplay = (status) => {
@@ -191,7 +196,7 @@ function CtuDirectory() {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
+    fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -225,20 +230,9 @@ function CtuDirectory() {
 
     filtered = filtered.filter((item) => item.status?.toLowerCase() === "approved")
 
-    // ✅ FIXED: Proper tab filtering logic
-    switch (currentTab) {
-      case "veterinarian":
-        filtered = filtered.filter((item) => item.type?.toLowerCase() === "veterinarian")
-        break
-      case "kutsero":
-        filtered = filtered.filter((item) => item.type?.toLowerCase() === "kutsero")
-        break
-      case "horse operator":
-        filtered = filtered.filter((item) => item.type?.toLowerCase() === "horse operator")
-        break
-      default:
-        // "all" tab - show everything
-        break
+    // Apply role filter
+    if (roleFilter && roleFilter !== "all") {
+      filtered = filtered.filter((item) => item.type?.toLowerCase() === roleFilter.toLowerCase())
     }
 
     // Apply area filter
@@ -259,7 +253,7 @@ function CtuDirectory() {
     }
 
     setFilteredDirectoryData(filtered)
-  }, [directoryData, currentTab, areaFilter, searchTerm])
+  }, [directoryData, roleFilter, areaFilter, searchTerm])
 
   // Effects for initial load and filter changes
   useEffect(() => {
@@ -315,7 +309,7 @@ function CtuDirectory() {
   const handleView = async (person) => {
     try {
       // Optional: fetch full data from API if not already complete
-      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("http://localhost:8000/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -355,7 +349,7 @@ function CtuDirectory() {
   const loadDirectoryData = async () => {
     try {
       setLoading(true)
-      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("http://localhost:8000/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -449,6 +443,224 @@ function CtuDirectory() {
       setIsRefreshing(false)
     }
   }
+
+ // PDF Export Function for Currently Selected Role
+const exportToPDF = () => {
+  // Get the role from the current role filter
+  const selectedRole = roleFilter.toLowerCase();
+  
+  // If "all" is selected, export all data, otherwise filter by selected role
+  const exportData = selectedRole === "all" 
+    ? filteredDirectoryData 
+    : filteredDirectoryData.filter(person => 
+        person.type?.toLowerCase() === selectedRole
+      );
+
+  if (exportData.length === 0) {
+    const roleText = selectedRole === "all" ? "approved user" : selectedRole;
+    alert(`No ${roleText} data available to export.`);
+    return;
+  }
+
+  const doc = new jsPDF("p", "mm", "a4");
+
+  const ctuLogo = "/Images/logo1.png";
+  const currentDate = new Date().toLocaleDateString();
+  
+  // Dynamic role name for display
+  const getRoleDisplayName = () => {
+    switch(selectedRole) {
+      case "veterinarian": return "Veterinarian";
+      case "kutsero": return "Kutsero";
+      case "horse operator": return "Horse Operator";
+      case "all": return "Approved User";
+      default: return "User";
+    }
+  };
+
+  const roleDisplay = getRoleDisplayName();
+
+  // -------------------- HEADER --------------------
+  const addHeader = () => {
+    doc.addImage(ctuLogo, "PNG", 15, 12, 50, 45);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.text("Republic of the Philippines", 105, 18, { align: "center" });
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text("CEBU TECHNOLOGICAL UNIVERSITY", 105, 26, { align: "center" });
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("MAIN CAMPUS", 105, 32, { align: "center" });
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8);
+    doc.text(
+      "M. J. Cuenco Avenue Cor. R. Palma Street, Cebu City, Philippines",
+      105,
+      37,
+      { align: "center" }
+    );
+    doc.text(
+      "Website: http://www.ctu.edu.ph  •  E-mail: ctcmain@ctu.edu.ph",
+      105,
+      41,
+      { align: "center" }
+    );
+    doc.text("Phone: +6332 402 4060 loc. 1102", 105, 45, { align: "center" });
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text("CTU Veterinary Medicine Directory", 105, 58, { align: "center" });
+    
+    // Dynamic title based on selected role
+    if (selectedRole === "all") {
+      doc.text("Approved Users Report", 105, 66, { align: "center" });
+    } else {
+      doc.text(`Approved ${roleDisplay}s Report`, 105, 66, { align: "center" });
+    }
+
+    doc.setLineWidth(0.6);
+    doc.line(15, 70, 195, 70);
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Generated on: ${currentDate}`, 15, 77);
+    
+    
+  };
+
+  // -------------------- FOOTER --------------------
+  const addFooter = (pageNumber) => {
+    const pageHeight = doc.internal.pageSize.height;
+    doc.setFontSize(9);
+    doc.text(`Page ${pageNumber}`, 105, pageHeight - 10, { align: "center" });
+  };
+
+  addHeader();
+  let pageNumber = 1;
+
+  // -------------------- TABLE --------------------
+  const startY = selectedRole === "all" ? 90 : 95; // Adjust start position based on filter info
+  const rowHeight = 10;
+  const pageHeight = doc.internal.pageSize.height;
+  let currentY = startY;
+
+  // ✅ Perfect-fit widths (total = 180 mm)
+  const headers = ["Name", "Role", "Gender", "Address", "Status"];
+  const columnWidths = [38, 32, 20, 70, 20]; // total 180mm
+  const tableStartX = 10; // left margin
+  const tableEndX = tableStartX + columnWidths.reduce((a, b) => a + b, 0); // 195mm
+
+  // ✅ HEADER BAR (red)
+  doc.setFillColor(220, 53, 69);
+  doc.rect(tableStartX, currentY, 180, rowHeight, "F"); // draw 1 full red bar
+  doc.setTextColor(255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+
+  // write each header text inside
+  let currentX = tableStartX;
+  headers.forEach((header, i) => {
+    doc.text(header, currentX + 2, currentY + 6);
+    currentX += columnWidths[i];
+  });
+
+  currentY += rowHeight;
+  doc.setTextColor(0);
+  doc.setFont("helvetica", "normal");
+
+  // ✅ BODY ROWS
+  exportData.forEach((person, index) => {
+    if (currentY + rowHeight > pageHeight - 30) {
+      addFooter(pageNumber);
+      doc.addPage();
+      pageNumber++;
+      addHeader();
+      
+      // Reset Y position for new page
+      currentY = startY;
+      
+      // Redraw table header
+      currentX = tableStartX;
+      doc.setFillColor(220, 53, 69);
+      doc.setTextColor(255);
+      doc.setFont("helvetica", "bold");
+      headers.forEach((header, i) => {
+        doc.rect(currentX, currentY, columnWidths[i], rowHeight, "F");
+        doc.text(header, currentX + 2, currentY + 6);
+        currentX += columnWidths[i];
+      });
+
+      currentY += rowHeight;
+      doc.setTextColor(0);
+      doc.setFont("helvetica", "normal");
+    }
+
+    // alternate row background
+    if (index % 2 === 0) {
+      doc.setFillColor(245, 245, 245);
+      currentX = 10;
+      columnWidths.forEach((w) => {
+        doc.rect(currentX, currentY, w, rowHeight, "F");
+        currentX += w;
+      });
+    }
+
+    doc.setFontSize(8);
+    currentX = 10;
+
+    // Name
+    doc.text(person.name || "N/A", currentX + 2, currentY + 6);
+    currentX += columnWidths[0];
+
+    // Role
+    const role =
+      person.type &&
+      person.type.charAt(0).toUpperCase() + person.type.slice(1);
+    doc.text(role || "N/A", currentX + 2, currentY + 6);
+    currentX += columnWidths[1];
+
+    // Gender
+    doc.text(person.gender || "N/A", currentX + 2, currentY + 6);
+    currentX += columnWidths[2];
+
+    // Address (wrap text)
+    const address = doc.splitTextToSize(person.address || "N/A", columnWidths[3] - 4);
+    doc.text(address, currentX + 2, currentY + 4);
+    currentX += columnWidths[3];
+
+    // Status
+    doc.text(formatStatusDisplay(person.status), currentX + 2, currentY + 6);
+
+    currentY += rowHeight;
+  });
+
+  // ✅ TOTAL COUNT BELOW TABLE
+  currentY += 8;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  
+  // Dynamic total text based on role
+  const totalText = selectedRole === "all" 
+    ? `Total Approved Users: ${exportData.length}`
+    : `Total Approved ${roleDisplay}s: ${exportData.length}`;
+  
+  doc.text(totalText, 15, currentY);
+
+  addFooter(pageNumber);
+  
+  // Dynamic filename based on role
+  const fileName = selectedRole === "all" 
+    ? `CTU-Directory-All-Users-Report-${currentDate.replace(/\//g, "-")}.pdf`
+    : `CTU-Directory-${roleDisplay}-Report-${currentDate.replace(/\//g, "-")}.pdf`;
+  
+  doc.save(fileName);
+};
+
 
   useEffect(() => {
     loadDirectoryData()
@@ -896,11 +1108,9 @@ function CtuDirectory() {
 
       <div className="flex-1 flex flex-col">
         <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
-           <div className="flex flex-col">
-              <h2 className="text-2xl font-bold text-gray-800 mb-1">Directory</h2>
-              
-
-</div>
+          <div className="flex flex-col">
+            <h2 className="text-2xl font-bold text-gray-800 mb-1">Directory</h2>
+          </div>
           
           <div className="flex items-center gap-4">
             {/* 🔄 Refresh Icon */}
@@ -932,20 +1142,49 @@ function CtuDirectory() {
             notifications={notifications}
             onNotificationClick={handleNotificationClick}
             onMarkAllAsRead={handleMarkAllAsRead}
-           
           />
         </header>
 
         <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
-          <div className="flex-1 max-w-md relative mb-4">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
-            <input
-              type="text"
-              className="w-full pl-10 pr-4 py-3 border-2 border-white rounded-lg text-sm outline-none min-h-[50px] bg-white"
-              placeholder="Search directory..."
-              onChange={handleSearchInput}
-              value={searchTerm}
-            />
+          {/* Search and Filters Section */}
+         <div className="flex flex-col md:flex-row gap-4 mb-6">
+            {/* Search Input */}
+            <div className="flex-1 max-w-md relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+              <input
+                type="text"
+                className="w-full pl-12 pr-4 py-3 border-2 border-white rounded-lg text-base outline-none bg-white h-[46px]"
+                placeholder="Search directory..."
+                onChange={handleSearchInput}
+                value={searchTerm}
+              />
+            </div>
+
+            {/* Filters Container - Export PDF at far right */}
+            <div className="flex items-center gap-2 flex-1">
+              {/* Role Filter */}
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="px-4 py-3 border-2 border-white rounded-lg text-base outline-none bg-white h-[46px] min-w-[150px]"
+              >
+                <option value="all">All Roles</option>
+                <option value="veterinarian">Veterinarian</option>
+                <option value="kutsero">Kutsero</option>
+                <option value="horse operator">Horse Operator</option>
+              </select>
+
+              {/* Export PDF Button - Pushed to far right using ml-auto */}
+              <button
+                onClick={exportToPDF}
+                disabled={filteredDirectoryData.length === 0}
+                className="ml-auto flex items-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base h-[40px] whitespace-nowrap"
+                title="Export to PDF"
+              >
+                <Download size={18} />
+                Export PDF
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-5">
