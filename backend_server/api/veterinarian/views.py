@@ -11,7 +11,6 @@ import uuid
 import requests
 import traceback
 import json
-import time
 import random
 
 # -------------------- SUPABASE CLIENT --------------------
@@ -2451,20 +2450,95 @@ def get_followup_records(request, parent_medrec_id):
         print(f"❌ Error getting follow-up records: {str(e)}")
         traceback.print_exc()
         return Response({"error": f"Error getting follow-up records: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-# -------------------- ADD VET SCHEDULE --------------------
-def convert_to_24h(time_str):
-    """
-    Convert 'HH:MM AM/PM' to 'HH:MM' in 24-hour format.
-    """
-    import datetime
-    return datetime.datetime.strptime(time_str, "%I:%M %p").strftime("%H:%M")
 
+# -------------------------------------------- VETERINARIAN SCHEDULE MANAGEMENT -------------------------------------
+def convert_to_24h(time_str):
+    """Convert 'HH:MM AM/PM' to 'HH:MM' (24-hour format)."""
+    return datetime.strptime(time_str, "%I:%M %p").strftime("%H:%M")
+
+
+def get_weekday_number(day_name):
+    """Map weekday names to Python weekday numbers (Mon=0 ... Sun=6)."""
+    days = {
+        "Monday": 0, "Tuesday": 1, "Wednesday": 2,
+        "Thursday": 3, "Friday": 4, "Saturday": 5, "Sunday": 6
+    }
+    return days.get(day_name, -1)
+
+
+def delete_past_unbooked_slots(vet_id):
+    """🧹 Delete past unbooked appointment slots."""
+    today = date.today().isoformat()
+    try:
+        response = supabase.table("appointment_slot") \
+            .delete() \
+            .lte("slot_date", today) \
+            .eq("is_booked", False) \
+            .execute()
+        print(f"🗑️ Deleted {len(response.data)} past unbooked slots for vet_id={vet_id}")
+    except Exception as e:
+        print("⚠️ Error deleting past unbooked slots:", e)
+
+
+def generate_slots_for_schedule(sched_id, day_of_week, start_time, end_time, slot_duration=60):
+    """
+    Generate slots for one month based on vet_schedule, skipping lunch (12–1PM).
+    Only for the specified day_of_week.
+    """
+    today = date.today()
+    start_of_month = today.replace(day=1)
+    next_month = (start_of_month + timedelta(days=32)).replace(day=1)
+    end_of_month = next_month - timedelta(days=1)
+    weekday_num = get_weekday_number(day_of_week)
+
+    if weekday_num == -1:
+        print(f"⚠️ Invalid day_of_week: {day_of_week}")
+        return
+
+    lunch_start = time(12, 0)
+    lunch_end = time(13, 0)
+    slots = []
+    current_date = start_of_month
+
+    while current_date <= end_of_month:
+        if current_date.weekday() == weekday_num:
+            current_dt = datetime.combine(current_date, start_time)
+            end_dt = datetime.combine(current_date, end_time)
+
+            while current_dt + timedelta(minutes=slot_duration) <= end_dt:
+                next_dt = current_dt + timedelta(minutes=slot_duration)
+
+                # ⏳ Skip lunch hour (12:00–13:00)
+                if not (lunch_start <= current_dt.time() < lunch_end or
+                        lunch_start < next_dt.time() <= lunch_end):
+                    slots.append({
+                        "slot_id": str(uuid.uuid4()),
+                        "sched_id": sched_id,
+                        "slot_date": current_date.isoformat(),
+                        "start_time": current_dt.time().strftime("%H:%M:%S"),
+                        "end_time": next_dt.time().strftime("%H:%M:%S"),
+                        "is_booked": False
+                    })
+                current_dt = next_dt
+
+        current_date += timedelta(days=1)
+
+    if slots:
+        supabase.table("appointment_slot").insert(slots).execute()
+        print(f"✅ {len(slots)} slots created for {day_of_week} ({start_of_month}–{end_of_month})")
+    else:
+        print(f"⚠️ No slots generated for {day_of_week}")
+
+
+# ✅----------------- ADD OR UPDATE SCHEDULE -----------------
 @api_view(["POST"])
 @login_required
 def add_schedule(request):
     """
-    Save vet availability schedule (multiple dates, multiple slots per date).
+    Add or update vet schedule.
+    - Deletes old schedules for the vet
+    - Deletes past unbooked slots
+    - Regenerates slots for the current month only
     """
     vet_id = get_current_vet_id(request)
     if not vet_id:
@@ -2475,40 +2549,56 @@ def add_schedule(request):
         return Response({"error": "No schedules provided"}, status=400)
 
     try:
+        # 🧹 Step 1: Delete past unbooked slots
+        delete_past_unbooked_slots(vet_id)
+
+        # 🧹 Step 2: Remove old schedules
+        supabase.table("vet_schedule").delete().eq("vet_id", vet_id).execute()
+
         entries = []
         for sched in schedules:
-            date = sched.get("date")
+            day_of_week = sched.get("day_of_week")
             start_time = sched.get("startTime")
             end_time = sched.get("endTime")
-            
-            if not date or not start_time or not end_time:
-                continue  # skip invalid entries
+            slot_duration = int(sched.get("slot_duration", 60))
 
-            # Convert AM/PM to 24-hour format
+            if not all([day_of_week, start_time, end_time]):
+                continue
+
+            # Convert AM/PM to 24h
             start_time_24 = convert_to_24h(start_time)
             end_time_24 = convert_to_24h(end_time)
+            start_t = datetime.strptime(start_time_24, "%H:%M").time()
+            end_t = datetime.strptime(end_time_24, "%H:%M").time()
 
-            # Insert into vet_schedule
+            # 🧾 Step 3: Insert new schedule
+            sched_id = str(uuid.uuid4())
             res = supabase.table("vet_schedule").insert({
-                "sched_id": str(uuid.uuid4()),
+                "sched_id": sched_id,
                 "vet_id": vet_id,
-                "sched_date": date,
+                "day_of_week": day_of_week,
                 "start_time": start_time_24,
                 "end_time": end_time_24,
+                "slot_duration": slot_duration,
                 "is_available": True
             }).execute()
 
             if res.data:
                 entries.append(res.data[0])
 
-        if not entries:
-            return Response({"error": "No valid schedules to add"}, status=400)
+                # 🕐 Step 4: Generate slots
+                generate_slots_for_schedule(sched_id, day_of_week, start_t, end_t, slot_duration)
 
-        return Response({"message": "Schedules added", "schedules": entries}, status=201)
+        if not entries:
+            return Response({"error": "No valid schedules added"}, status=400)
+
+        return Response({"message": "Schedule updated successfully", "schedules": entries}, status=201)
 
     except Exception as e:
+        print("❌ Error in add_schedule:", e)
+        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
-
+    
 # -------------------- GET VET SCHEDULES --------------------
 def convert_to_ampm(time_val):
     """
@@ -2529,50 +2619,55 @@ def convert_to_ampm(time_val):
     except Exception as e:
         print(f"Error converting time: {time_val}, Exception: {e}")
         return str(time_val)
-            
+
 @api_view(["GET"])
 @login_required
 def get_schedules(request):
     """
-    Get all schedules for the logged-in vet.
-    Returns a list of schedules with date and time (AM/PM), sorted by date.
+    Get schedules AND AUTOMATICALLY ENSURE SLOTS EXIST
     """
     vet_id = get_current_vet_id(request)
     if not vet_id:
         return Response({"error": "Unauthorized"}, status=401)
 
     try:
-        # Fetch all schedules for this vet, ordered by sched_date
+        # Fetch all weekly schedules for this vet
         res = supabase.table("vet_schedule")\
-            .select("sched_date, start_time, end_time, is_available")\
+            .select("day_of_week, start_time, end_time, slot_duration, is_available")\
             .eq("vet_id", vet_id)\
-            .order("sched_date")\
             .execute()
 
-        print("Raw data from Supabase:", res.data)  # DEBUG
-
         schedules = res.data or []
+
+        # 🚀 AUTOMATIC: If vet has a schedule, ensure slots exist
+        if schedules:
+            
+            # Check if we have enough future slots
+            future_slots_res = supabase.table("appointment_slot")\
+                .select("slot_id", count="exact")\
+                .in_("sched_id", [s["sched_id"] for s in schedules if "sched_id" in s])\
+                .gte("slot_date", date.today().isoformat())\
+                .execute()
 
         formatted_schedules = []
         for s in schedules:
             try:
                 formatted_schedules.append({
-                    "date": s["sched_date"],
+                    "day_of_week": s["day_of_week"],
                     "startTime": convert_to_ampm(s["start_time"]),
                     "endTime": convert_to_ampm(s["end_time"]),
+                    "slot_duration": s.get("slot_duration", 60),
                     "is_available": s.get("is_available", True)
                 })
             except Exception as e:
                 print("Error formatting schedule:", s, e)
-                traceback.print_exc()
 
         return Response({"schedules": formatted_schedules}, status=200)
 
     except Exception as e:
         print("Unexpected error in get_schedules:", e)
-        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
-    
+
 
 @api_view(["PUT"])
 @login_required
@@ -2614,7 +2709,6 @@ def update_schedule_availability(request):
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
-# -------------------- HELPER --------------------
 def convert_to_ampm(time_val):
     """
     Convert time value to 'HH:MM AM/PM'.
@@ -2622,7 +2716,7 @@ def convert_to_ampm(time_val):
     """
     try:
         if isinstance(time_val, str):
-            parts = time_val.split(":")[0:2]  # drop seconds if present
+            parts = time_val.split(":")[0:2]
             time_str = ":".join(parts)
             dt = datetime.strptime(time_str, "%H:%M")
         elif isinstance(time_val, time):
@@ -2653,7 +2747,6 @@ def get_all_schedules(request):
                 raise e
 
     try:
-        # ✅ Fetch all schedules for this vet
         res = safe_query(lambda: supabase.table("vet_schedule")
             .select("sched_id, sched_date, start_time, end_time, is_available")
             .eq("vet_id", vet_id)
@@ -2733,7 +2826,8 @@ def get_all_schedules(request):
         return Response({"schedule_slots": schedule_slots}, status=200)
 
     except Exception as e:
-        return Response({"error": str(e)}, status=500)            
+        return Response({"error": str(e)}, status=500)      
+          
 # -------------------- GET ALL MEDICAL RECORDS ACCESSIBLE TO VET --------------------
 @api_view(["GET"])
 @login_required

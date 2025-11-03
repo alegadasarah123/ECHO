@@ -30,7 +30,6 @@ urlpatterns = [
     path("get_all_schedules/", views.get_all_schedules, name="get_all_schedules"),
     path("add_schedule/", views.add_schedule, name="add_schedule"),
     path("get_schedules/", views.get_schedules, name="get_schedules"),
-    path("update_schedule_availability/", views.update_schedule_availability, name="update_schedule_availability"),
     path("get_medrec_access/", views.get_medrec_access, name="get_medrec_access"),
     path("change_password/", views.change_password, name="change_password"),
     path("get_all_users/", views.get_all_users, name="get_all_users"),

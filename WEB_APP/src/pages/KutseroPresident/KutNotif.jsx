@@ -68,6 +68,14 @@ const NotificationModal = ({
     }
   };
 
+  // FIX: Properly handle notification message display
+  const getNotificationMessage = (notification) => {
+    // Try multiple possible fields for the message
+    return notification.message || 
+           notification.notif_message || 
+           `Notification for user ${notification.id}`;
+  };
+
   const unreadCount = localNotifications.filter(n => !n.read).length;
 
   const markAllAsRead = async () => {
@@ -154,10 +162,11 @@ const NotificationModal = ({
                   )}
                   
                   <div className="flex-1 min-w-0">
+                    {/* FIX: Use the helper function to get the message */}
                     <p className={`text-sm font-medium mb-1 ${
                       !notification.read ? 'text-gray-900' : 'text-gray-600'
                     } group-hover:text-gray-900`}>
-                      {notification.message}
+                      {getNotificationMessage(notification)}
                     </p>
                     <span className="text-xs text-gray-500">
                       {formatDate(notification.date)}

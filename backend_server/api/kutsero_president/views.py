@@ -377,8 +377,9 @@ def get_approved_users(request):
 @api_view(["GET"])
 @login_required
 def get_notifications(request):
-    """GET pending Kutsero and Horse Operator users and INSERT them into notification table."""
+    """GET pending Kutsero and Horse Operator users and insert them into notification table."""
     try:
+        # 1️⃣ Fetch all pending users (Kutsero + Horse Operator)
         users_result = (
             supabase.table("users")
             .select("*")
@@ -386,86 +387,89 @@ def get_notifications(request):
             .in_("role", ["Kutsero", "Horse Operator"])
             .execute()
         )
-        pending_users = users_result.data if users_result.data else []
+        pending_users = users_result.data or []
 
         if not pending_users:
+            print("No pending users found.")
             return Response([])
 
         user_ids = [user["id"] for user in pending_users]
+        print(f"Pending user IDs: {user_ids}")
+
         user_profiles = {}
 
-        try:
-            horse_op_result = (
-                supabase.table("horse_op_profile")
-                .select("op_id, op_fname, op_mname, op_lname")
-                .in_("op_id", user_ids)  
-                .execute()
-            )
-            
-            if horse_op_result.data:
-                for profile in horse_op_result.data:
-                    first_name = profile.get('op_fname', '').strip()
-                    middle_name = profile.get('op_mname', '').strip()
-                    last_name = profile.get('op_lname', '').strip()
+        # 2️⃣ Fetch Horse Operator profiles
+        horse_op_result = (
+            supabase.table("horse_op_profile")
+            .select("op_id, op_fname, op_mname, op_lname, op_email")
+            .in_("op_id", user_ids)
+            .execute()
+        )
+        print("Horse Operator profiles:", horse_op_result.data)
 
-                    if middle_name:
-                        full_name = f"{first_name} {middle_name} {last_name}"
-                    else:
-                        full_name = f"{first_name} {last_name}"
+        if horse_op_result.data:
+            for profile in horse_op_result.data:
+                name_parts = [profile.get("op_fname", "").strip()]
+                if profile.get("op_mname"):
+                    name_parts.append(profile["op_mname"].strip())
+                name_parts.append(profile.get("op_lname", "").strip())
 
-                    full_name = ' '.join(full_name.split())
+                full_name = " ".join(name_parts).strip()
+                if full_name:
+                    user_profiles[profile["op_id"]] = full_name
+                elif profile.get("op_email"):
+                    user_profiles[profile["op_id"]] = profile["op_email"].split("@")[0]
 
-                    user_profiles[profile['op_id']] = full_name
-        except Exception:
-            pass
+        # 3️⃣ Fetch Kutsero profiles
+        kutsero_result = (
+            supabase.table("kutsero_profile")
+            .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_email")
+            .in_("kutsero_id", user_ids)
+            .execute()
+        )
+        print("Kutsero profiles:", kutsero_result.data)
 
-        try:
-            kutsero_result = (
-                supabase.table("kutsero_profile")
-                .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname")
-                .in_("kutsero_id", user_ids) 
-                .execute()
-            )
-            
-            if kutsero_result.data:
-                for profile in kutsero_result.data:
-                    first_name = profile.get('kutsero_fname', '').strip()
-                    middle_name = profile.get('kutsero_mname', '').strip()
-                    last_name = profile.get('kutsero_lname', '').strip()
+        if kutsero_result.data:
+            for profile in kutsero_result.data:
+                name_parts = [profile.get("kutsero_fname", "").strip()]
+                if profile.get("kutsero_mname"):
+                    name_parts.append(profile["kutsero_mname"].strip())
+                name_parts.append(profile.get("kutsero_lname", "").strip())
 
-                    if middle_name:
-                        full_name = f"{first_name} {middle_name} {last_name}"
-                    else:
-                        full_name = f"{first_name} {last_name}"
+                full_name = " ".join(name_parts).strip()
+                if full_name:
+                    user_profiles[profile["kutsero_id"]] = full_name
+                elif profile.get("kutsero_email"):
+                    user_profiles[profile["kutsero_id"]] = profile["kutsero_email"].split("@")[0]
 
-                    full_name = ' '.join(full_name.split())
+        print(f"Profiles found: {len(user_profiles)} → {user_profiles}")
 
-                    user_profiles[profile['kutsero_id']] = full_name
-        except Exception:
-            pass
-
-        existing_notifs_result = (
+        # 4️⃣ Check for already existing notifications
+        existing_notifs = (
             supabase.table("notification")
-            .select("notif_id, id, notif_message, notif_date, notif_time, notif_read")
+            .select("id")
             .in_("id", user_ids)
             .execute()
         )
-        existing_user_ids = {notif["id"] for notif in (existing_notifs_result.data or [])}
+        existing_user_ids = {n["id"] for n in (existing_notifs.data or [])}
 
         inserted_notifications = []
 
+        # 5️⃣ Create notifications for pending users without one yet
         for user in pending_users:
             if user["id"] not in existing_user_ids:
                 current_time = datetime.now()
-
                 user_name = user_profiles.get(user["id"])
-                
-                if not user_name:
-                    user_name = user.get('name') or user.get('username') or user.get('email', '').split('@')[0]
-                    if not user_name:
-                        user_name = f"User {user['id'][:8]}"
 
-                user_role = user.get('role', 'User')
+                # Fallback if no name found
+                if not user_name:
+                    user_name = user.get("name") or user.get("username") or None
+                    if not user_name and user.get("email"):
+                        user_name = user["email"].split("@")[0]
+                    if not user_name:
+                        user_name = "Unknown User"
+
+                user_role = user.get("role", "User")
                 notif_message = f"New {user_role} registered: {user_name}"
 
                 insert_data = {
@@ -479,63 +483,48 @@ def get_notifications(request):
                 }
 
                 try:
-                    insert_result = supabase.table("notification").insert(insert_data).execute()
-
-                    if not insert_result.data:
-                        fetch_result = supabase.table("notification").select("*").eq("id", user["id"]).execute()
-
-                        if fetch_result.data:
-                            notifications = fetch_result.data
-                            notifications.sort(key=lambda x: x.get("notif_id", 0), reverse=True)
-                            new_notif = notifications[0] if notifications else None
-
-                            if new_notif:
-                                inserted_notifications.append({
-                                    "notif_id": new_notif["notif_id"],
-                                    "id": user["id"],
-                                    "message": new_notif["notif_message"],
-                                    "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
-                                    "read": new_notif.get("notif_read", False),
-                                })
-                    else:
-                        new_notif = insert_result.data[0]
+                    result = supabase.table("notification").insert(insert_data).execute()
+                    if result.data:
+                        new_notif = result.data[0]
                         inserted_notifications.append({
                             "notif_id": new_notif["notif_id"],
-                            "id": user["id"],
+                            "id": new_notif["id"],
                             "message": new_notif["notif_message"],
+                            "notif_message": new_notif["notif_message"],
                             "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
                             "read": new_notif.get("notif_read", False),
                         })
+                except Exception as e:
+                    print(f"Error inserting notification for {user['id']}: {e}")
 
-                except Exception:
-                    continue
+        # 6️⃣ Fetch all notifications for display
+        all_notifs = (
+            supabase.table("notification")
+            .select("notif_id, id, notif_message, notif_date, notif_time, notif_read")
+            .in_("id", user_ids)
+            .execute()
+        )
 
-        if inserted_notifications:
-            return Response(inserted_notifications)
-        else:
-            existing_notifs_full_result = (
-                supabase.table("notification")
-                .select("notif_id, id, notif_message, notif_date, notif_time, notif_read")
-                .in_("id", user_ids)
-                .execute()
-            )
+        display_notifications = []
+        if all_notifs.data:
+            for notif in all_notifs.data:
+                display_notifications.append({
+                    "notif_id": notif["notif_id"],
+                    "id": notif["id"],
+                    "message": notif["notif_message"],
+                    "notif_message": notif["notif_message"],
+                    "date": f"{notif['notif_date']}T{notif['notif_time']}+08:00",
+                    "read": notif.get("notif_read", False),
+                })
 
-            existing_notifs_for_display = []
-            if existing_notifs_full_result.data:
-                for notif in existing_notifs_full_result.data:
-                    existing_notifs_for_display.append({
-                        "notif_id": notif["notif_id"],
-                        "id": notif["id"],
-                        "message": notif["notif_message"],
-                        "date": f"{notif['notif_date']}T{notif['notif_time']}+08:00",
-                        "read": notif.get("notif_read", False),
-                    })
-
-            return Response(existing_notifs_for_display)
+        combined = inserted_notifications + display_notifications
+        print(f"Total notifications returned: {len(combined)}")
+        return Response(combined or [])
 
     except Exception as e:
+        print(f"Error in get_notifications: {e}")
         return Response({"error": "Failed to process notifications"}, status=500)
-    
+
 # -------------------- MARK NOTIFICATION AS READ --------------------
 @api_view(["POST"])
 @login_required
