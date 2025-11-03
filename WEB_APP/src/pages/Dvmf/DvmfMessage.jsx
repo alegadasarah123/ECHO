@@ -111,6 +111,32 @@ const formatMessageTime = (timestamp) => {
   }
 };
 
+// Helper function to format conversation timestamp
+const formatConversationTime = (timestamp) => {
+  if (!timestamp) return '';
+  
+  try {
+    const messageDate = new Date(timestamp);
+    if (isNaN(messageDate.getTime())) {
+      return '';
+    }
+    
+    const now = new Date();
+    const diffInMinutes = Math.floor((now - messageDate) / (1000 * 60));
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    const diffInDays = Math.floor(diffInHours / 24);
+    
+    if (diffInMinutes < 1) return 'Now';
+    if (diffInMinutes < 60) return `${diffInMinutes}m`;
+    if (diffInHours < 24) return `${diffInHours}h`;
+    if (diffInDays < 7) return `${diffInDays}d`;
+    
+    return messageDate.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  } catch (error) {
+    return '';
+  }
+};
+
 // Helper function to calculate age from date of birth
 const calculateAge = (dob) => {
   if (!dob) return null;
@@ -912,15 +938,15 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
       let endpoint = '';
       
       if (user.role === 'Veterinarian') {
-        endpoint = `https://echo-ebl8.onrender.com/api/dvmf/vet_profile_by_id/${user.id}/`;
+        endpoint = `http://localhost:8000/api/dvmf/vet_profile_by_id/${user.id}/`;
       } else if (user.role === 'Horse Operator') {
-        endpoint = `https://echo-ebl8.onrender.com/api/dvmf/horse_operator_profile_by_id/${user.id}/`;
+        endpoint = `http://localhost:8000/api/dvmf/horse_operator_profile_by_id/${user.id}/`;
       } else if (user.role === 'Kutsero') {
-        endpoint = `https://echo-ebl8.onrender.com/api/dvmf/kutsero_profile_by_id/${user.id}/`;
+        endpoint = `http://localhost:8000/api/dvmf/kutsero_profile_by_id/${user.id}/`;
       } else if (user.role === 'Ctu-Vetmed' || user.role === 'Ctu-Admin') {
-        endpoint = `https://echo-ebl8.onrender.com/api/dvmf/ctu_vet_profile_by_id/${user.id}/`;
+        endpoint = `http://localhost:8000/api/dvmf/ctu_vet_profile_by_id/${user.id}/`;
       } else if (user.role === 'Dvmf' || user.role === 'Dvmf-Admin') {
-        endpoint = `https://echo-ebl8.onrender.com/api/dvmf/dvmf_user_profile_by_id/${user.id}/`;
+        endpoint = `http://localhost:8000/api/dvmf/dvmf_user_profile_by_id/${user.id}/`;
       }
 
       if (endpoint) {
@@ -1293,7 +1319,7 @@ const ConversationListItem = ({
           <span className={`text-xs whitespace-nowrap ${
             hasUnread ? "font-semibold text-gray-900" : "text-gray-500"
           }`}>
-            {conversation.timestamp || ""}
+            {formatConversationTime(conversation.timestamp)}
           </span>
         </div>
       </div>
@@ -1677,7 +1703,7 @@ const FloatingMessages = () => {
 
   const fetchCurrentUserId = async () => {
     try {
-      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/dvmf_user_profile/", {
+      const res = await fetch("http://localhost:8000/api/dvmf/dvmf_user_profile/", {
         credentials: "include"
       });
       if (res.ok) {
@@ -1754,10 +1780,7 @@ const FloatingMessages = () => {
             newMessageData.receiver_id === currentUserId;
           
           if (involvesCurrentUser) {
-            if (newMessageData.user_id === currentUserId) {
-              return;
-            }
-            
+            // Refresh conversations to get updated sorting and unread counts
             await fetchConversations();
             
             if (currentSelectedConv) {
@@ -1789,7 +1812,7 @@ const FloatingMessages = () => {
                 if (newMessageData.receiver_id === currentUserId && currentSelectedConv) {
                   try {
                     await fetch(
-                      `https://echo-ebl8.onrender.com/api/dvmf/mark_messages_as_read/${currentSelectedConv.id}/`,
+                      `http://localhost:8000/api/dvmf/mark_messages_as_read/${currentSelectedConv.id}/`,
                       { 
                         method: "PUT", 
                         credentials: "include",
@@ -1907,7 +1930,7 @@ const FloatingMessages = () => {
   const fetchConversations = async () => {
     try {
       const res = await fetch(
-        "https://echo-ebl8.onrender.com/api/dvmf/get_conversations/", 
+        "http://localhost:8000/api/dvmf/get_conversations/", 
         { credentials: "include" }
       );
       if (res.ok) {
@@ -1939,7 +1962,7 @@ const FloatingMessages = () => {
   const fetchAllUsers = async () => {
     try {
       const res = await fetch(
-        "https://echo-ebl8.onrender.com/api/dvmf/get_all_users/",
+        "http://localhost:8000/api/dvmf/get_all_users/",
         { credentials: "include" }
       );
       if (res.ok) {
@@ -1971,7 +1994,7 @@ const FloatingMessages = () => {
     
     try {
       const res = await fetch(
-        `https://echo-ebl8.onrender.com/api/dvmf/get_conversation/${conversation.id}/`,
+        `http://localhost:8000/api/dvmf/get_conversation/${conversation.id}/`,
         { credentials: "include" }
       );
       
@@ -2000,7 +2023,7 @@ const FloatingMessages = () => {
 
         try {
           const markReadResponse = await fetch(
-            `https://echo-ebl8.onrender.com/api/dvmf/mark_messages_as_read/${conversation.id}/`,
+            `http://localhost:8000/api/dvmf/mark_messages_as_read/${conversation.id}/`,
             { 
               method: "PUT", 
               credentials: "include",
@@ -2064,7 +2087,7 @@ const FloatingMessages = () => {
 
     try {
       const res = await fetch(
-        "https://echo-ebl8.onrender.com/api/dvmf/send_message/",
+        "http://localhost:8000/api/dvmf/send_message/",
         {
           method: "POST",
           headers: { "Content-Type": 'application/json' },
@@ -2075,7 +2098,51 @@ const FloatingMessages = () => {
       
       if (res.ok) {
         setNewMessage("");
-        fetchConversations();
+        
+        // CRITICAL: Update the conversation in the list with current timestamp
+        const currentTime = new Date().toISOString();
+        
+        setConversations(prev => {
+          if (!prev) return [];
+          
+          // Check if conversation already exists in the list
+          const existingConvIndex = prev.findIndex(conv => conv.id === selectedConversation.id);
+          
+          if (existingConvIndex >= 0) {
+            // Update existing conversation with new timestamp and last message
+            return prev.map((conv, index) => 
+              index === existingConvIndex 
+                ? { 
+                    ...conv, 
+                    lastMessage: newMessage,
+                    timestamp: currentTime,
+                    unread: 0 // Reset unread since we sent the message
+                  }
+                : conv
+            ).sort((a, b) => {
+              // Sort by timestamp descending (newest first)
+              const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+              const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+              return timeB - timeA;
+            });
+          } else {
+            // Add new conversation to the list
+            const newConversation = {
+              ...selectedConversation,
+              lastMessage: newMessage,
+              timestamp: currentTime,
+              unread: 0
+            };
+            
+            return [newConversation, ...prev].sort((a, b) => {
+              const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+              const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+              return timeB - timeA;
+            });
+          }
+        });
+        
+        fetchConversations(); // Still call this to ensure sync with backend
       } else {
         setSelectedConversation(prev => ({
           ...prev,
@@ -2118,13 +2185,10 @@ const FloatingMessages = () => {
   const filteredConversations = (conversationsWithOnlineStatus || [])
     .filter((c) => c.name?.toLowerCase().includes(searchTerm.toLowerCase()))
     .sort((a, b) => {
-      // Maintain descending order even after filtering
-      if (a.timestamp && b.timestamp) {
-        return new Date(b.timestamp) - new Date(a.timestamp);
-      }
-      if (a.timestamp && !b.timestamp) return -1;
-      if (!a.timestamp && b.timestamp) return 1;
-      return 0;
+      // Always sort by timestamp descending (newest first)
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return timeB - timeA;
     });
 
   const filteredAllUsers = (allUsersWithOnlineStatus || []).filter((user) =>

@@ -7,7 +7,7 @@ import FloatingMessages from "./DvmfMessage"
 import { Bell, Edit, Mail, MapPin, MessageCircle, MoreVertical, Phone, Pin, RefreshCw, Reply, Send, Upload } from "lucide-react"
 import NotificationModal from "./DvmfNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
+const API_BASE = "http://localhost:8000/api/dvmf";
 
 const PostSkeletonLoader = () => (
   <div className="post-skeleton">
@@ -105,7 +105,7 @@ const DvmfAnnouncement = () => {
     const fetchCurrentUser = async () => {
       setIsUserLoading(true)
       try {
-        const response = await fetch("https://echo-ebl8.onrender.com/api/dvmf/get_current_user/", {
+        const response = await fetch("http://localhost:8000/api/dvmf/get_current_user/", {
           credentials: "include",
         })
 
@@ -545,7 +545,7 @@ const DvmfAnnouncement = () => {
     }
 
     try {
-      const response = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/get_comments/?post_id=${postId}`, {
+      const response = await fetch(`http://localhost:8000/api/dvmf/get_comments/?post_id=${postId}`, {
         credentials: "include",
       })
 
@@ -794,7 +794,7 @@ const DvmfAnnouncement = () => {
   const loadAnnouncements = useCallback(async () => {
     setIsLoadingPosts(true)
     try {
-      const response = await fetch("https://echo-ebl8.onrender.com/api/dvmf/announcements/", {
+      const response = await fetch("http://localhost:8000/api/dvmf/announcements/", {
         credentials: "include",
       })
       const result = await response.json()
@@ -897,7 +897,7 @@ const DvmfAnnouncement = () => {
   // -------------------- ADD COMMENT -------------------- //
   const addComment = async (postId, commentText) => {
     try {
-      const response = await fetch("https://echo-ebl8.onrender.com/api/dvmf/add_comment/", {
+      const response = await fetch("http://localhost:8000/api/dvmf/add_comment/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -926,7 +926,7 @@ const DvmfAnnouncement = () => {
   // -------------------- EDIT COMMENT -------------------- //
   const editComment = async (commentId, newText) => {
     try {
-      const response = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/edit_comment/${commentId}/`, {
+      const response = await fetch(`http://localhost:8000/api/dvmf/edit_comment/${commentId}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -958,7 +958,7 @@ const DvmfAnnouncement = () => {
   // -------------------- EDIT REPLY -------------------- //
   const editReply = async (replyId, newText) => {
     try {
-      const response = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/edit_reply/${replyId}/`, {
+      const response = await fetch(`http://localhost:8000api/dvmf/edit_reply/${replyId}/`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -1036,7 +1036,7 @@ const DvmfAnnouncement = () => {
         announce_img: imagesBase64,
       }
 
-      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/create-post/", {
+      const res = await fetch("http://localhost:8000/api/dvmf/create-post/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -1047,7 +1047,7 @@ const DvmfAnnouncement = () => {
       if (!res.ok) throw new Error(result.error || "Failed to create post")
 
       const postData = result?.post
-      const backendBase = "https://echo-ebl8.onrender.com"
+      const backendBase = "http://localhost:8000"
 
       let imageUrls = []
       if (postData?.announce_img) {
@@ -1118,7 +1118,7 @@ const DvmfAnnouncement = () => {
     }
 
     try {
-      const response = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/edit_post/${postId}/`, {
+      const response = await fetch(`http://localhost:8000/api/dvmf/edit_post/${postId}/`, {
         method: "PATCH",
         credentials: "include",
         headers: {
@@ -1290,7 +1290,7 @@ const DvmfAnnouncement = () => {
     }
 
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/add_reply/`, {
+      const res = await fetch(`http://localhost:8000/api/dvmf/add_reply/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2818,22 +2818,23 @@ const DvmfAnnouncement = () => {
           border-radius: 8px;
         }
 
-        .image-modal-close {
-          position: absolute;
-          top: 20px;
-          right: 30px;
-          background: rgba(255, 255, 255, 0.2);
-          border: none;
-          color: white;
-          font-size: 24px;
-          width: 40px;
-          height: 40px;
-          border-radius: 50%;
-          cursor: pointer;
-          display: flex;
-          align-items: center;
-          justifyContent: "center";
-        }
+      .image-modal-close {
+  position: absolute;
+  top: 20px;
+  right: 25px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  font-size: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 3001;
+}
 
         .image-modal-close:hover {
           background: rgba(255, 255, 255, 0.3);

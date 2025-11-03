@@ -1,4 +1,5 @@
 import Sidebar from "@/components/DvmfSidebar"
+import jsPDF from "jspdf"
 import {
   AlertTriangle,
   Award,
@@ -9,6 +10,7 @@ import {
   CheckSquare,
   ChevronLeft,
   ChevronRight,
+  Download,
   Eye,
   Folder,
   Info,
@@ -28,7 +30,7 @@ import NotificationModal from "./DvmfNotif"
 const initialDirectoryData = []
 const initialNotifications = []
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
+const API_BASE = "http://localhost:8000/api/dvmf";
 
 function DvmfDirectory() {
   const navigate = useNavigate()
@@ -64,6 +66,9 @@ function DvmfDirectory() {
 
   // Refresh state
   const [isRefreshing, setIsRefreshing] = useState(false)
+
+  // New state for role filter
+  const [roleFilter, setRoleFilter] = useState("all")
 
   // Helper function to format status display
   const formatStatusDisplay = (status) => {
@@ -201,7 +206,7 @@ function DvmfDirectory() {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
+    fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -235,20 +240,9 @@ function DvmfDirectory() {
 
     filtered = filtered.filter((item) => item.status?.toLowerCase() === "approved")
 
-    // ✅ FIXED: Proper tab filtering logic
-    switch (currentTab) {
-      case "veterinarian":
-        filtered = filtered.filter((item) => item.type?.toLowerCase() === "veterinarian")
-        break
-      case "kutsero":
-        filtered = filtered.filter((item) => item.type?.toLowerCase() === "kutsero")
-        break
-      case "horse operator":
-        filtered = filtered.filter((item) => item.type?.toLowerCase() === "horse operator")
-        break
-      default:
-        // "all" tab - show everything
-        break
+    // Apply role filter
+    if (roleFilter && roleFilter !== "all") {
+      filtered = filtered.filter((item) => item.type?.toLowerCase() === roleFilter.toLowerCase())
     }
 
     // Apply area filter
@@ -269,7 +263,7 @@ function DvmfDirectory() {
     }
 
     setFilteredDirectoryData(filtered)
-  }, [directoryData, currentTab, areaFilter, searchTerm])
+  }, [directoryData, roleFilter, areaFilter, searchTerm])
 
   // Effects for initial load and filter changes
   useEffect(() => {
@@ -325,7 +319,7 @@ function DvmfDirectory() {
   const handleView = async (person) => {
     try {
       // Optional: fetch full data from API if not already complete
-      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("http://localhost:8000/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -365,7 +359,7 @@ function DvmfDirectory() {
   const loadDirectoryData = async () => {
     try {
       setLoading(true)
-      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_directory_profiles/", {
+      const response = await fetch("http://localhost:8000/api/ctu_vetmed/get_directory_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -459,6 +453,217 @@ function DvmfDirectory() {
       setIsRefreshing(false)
     }
   }
+
+// ✅ PDF Export Function for Currently Selected Role
+const exportToPDF = () => {
+  const selectedRole = roleFilter.toLowerCase();
+
+  const exportData = selectedRole === "all" 
+    ? filteredDirectoryData 
+    : filteredDirectoryData.filter(person => 
+        person.type?.toLowerCase() === selectedRole
+      );
+
+  if (exportData.length === 0) {
+    const roleText = selectedRole === "all" ? "approved user" : selectedRole;
+    alert(`No ${roleText} data available to export.`);
+    return;
+  }
+
+  const doc = new jsPDF("p", "mm", "a4");
+  const currentDate = new Date().toLocaleDateString();
+  const dvmfLogo = "/Images/dvmf.png";
+
+  const getRoleDisplayName = () => {
+    switch (selectedRole) {
+      case "veterinarian": return "Veterinarian";
+      case "kutsero": return "Kutsero";
+      case "horse operator": return "Horse Operator";
+      case "all": return "Approved User";
+      default: return "User";
+    }
+  };
+  const roleDisplay = getRoleDisplayName();
+
+  // -------------------- HEADER --------------------
+  const addHeader = () => {
+    // DVMF Logo
+    doc.addImage(dvmfLogo, "PNG", 15, 10, 50, 45);
+
+    // Government Header
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("Republic of the Philippines", 105, 15, { align: "center" });
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("DEPARTMENT OF VETERINARY MEDICINE", 105, 23, { align: "center" });
+    doc.text("AND FISHERIES (DVMF)", 105, 28, { align: "center" });
+
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("CEBU CITY", 105, 32, { align: "center" });
+
+    // Address & Contact Info
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9);
+    doc.text("Xiamen Street, Cebu City, Philippines", 105, 38, { align: "center" });
+    doc.text("Website: https://www.cebucity.gov.ph/dvmf/", 105, 43, { align: "center" });
+    doc.text("(032) 401 0418", 105, 49, { align: "center" });
+
+    // Directory Title
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text(
+      "Cebu City Government – Department of Veterinary Medicine and Fisheries Directory",
+      105,
+      56,
+      { align: "center" }
+    );
+
+    // Blue divider line
+    doc.setDrawColor(15, 61, 90);
+    doc.setLineWidth(0.7);
+    doc.line(15, 67, 195, 67);
+
+    // Report Title
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text(
+      selectedRole === "all"
+        ? "Approved Users Report"
+        : `Approved ${roleDisplay}s Report`,
+      105,
+      75,
+      { align: "center" }
+    );
+
+    // Generated On
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`Generated on: ${currentDate}`, 15, 83);
+  };
+
+  // -------------------- FOOTER --------------------
+  const addFooter = (pageNumber) => {
+    const pageHeight = doc.internal.pageSize.height;
+    doc.setFontSize(9);
+    doc.text(`Page ${pageNumber}`, 105, pageHeight - 10, { align: "center" });
+  };
+
+  addHeader();
+  let pageNumber = 1;
+
+  // -------------------- TABLE --------------------
+  const startY = 91; // Start lower to avoid overlapping header
+  const rowHeight = 10;
+  const pageHeight = doc.internal.pageSize.height;
+  let currentY = startY;
+
+  // Table headers & widths
+  const headers = ["Name", "Role", "Gender", "Address", "Status"];
+  const columnWidths = [38, 32, 20, 70, 20]; // total 180mm width
+  const tableStartX = 15;
+
+  // Header Bar (Blue)
+  doc.setFillColor(15, 61, 90);
+  doc.rect(tableStartX, currentY, 180, rowHeight, "F");
+  doc.setTextColor(255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+
+  let currentX = tableStartX;
+  headers.forEach((header, i) => {
+    doc.text(header, currentX + 2, currentY + 6);
+    currentX += columnWidths[i];
+  });
+
+  currentY += rowHeight;
+  doc.setTextColor(0);
+  doc.setFont("helvetica", "normal");
+
+  // Table Body
+  exportData.forEach((person, index) => {
+    if (currentY + rowHeight > pageHeight - 30) {
+      addFooter(pageNumber);
+      doc.addPage();
+      pageNumber++;
+      addHeader();
+
+      // Reset table header for new page
+      currentY = startY;
+      currentX = tableStartX;
+
+      doc.setFillColor(15, 61, 90);
+      doc.setTextColor(255);
+      doc.setFont("helvetica", "bold");
+      headers.forEach((header, i) => {
+        doc.rect(currentX, currentY, columnWidths[i], rowHeight, "F");
+        doc.text(header, currentX + 2, currentY + 6);
+        currentX += columnWidths[i];
+      });
+
+      currentY += rowHeight;
+      doc.setTextColor(0);
+      doc.setFont("helvetica", "normal");
+    }
+
+    // Alternate row background
+    if (index % 2 === 0) {
+      doc.setFillColor(245, 245, 245);
+      currentX = tableStartX;
+      columnWidths.forEach((w) => {
+        doc.rect(currentX, currentY, w, rowHeight, "F");
+        currentX += w;
+      });
+    }
+
+    // Row content
+    doc.setFontSize(8);
+    currentX = tableStartX;
+
+    doc.text(person.name || "N/A", currentX + 2, currentY + 6);
+    currentX += columnWidths[0];
+
+    const role = person.type
+      ? person.type.charAt(0).toUpperCase() + person.type.slice(1)
+      : "N/A";
+    doc.text(role, currentX + 2, currentY + 6);
+    currentX += columnWidths[1];
+
+    doc.text(person.gender || "N/A", currentX + 2, currentY + 6);
+    currentX += columnWidths[2];
+
+    const address = doc.splitTextToSize(person.address || "N/A", columnWidths[3] - 4);
+    doc.text(address, currentX + 2, currentY + 4);
+    currentX += columnWidths[3];
+
+    doc.text(formatStatusDisplay(person.status), currentX + 2, currentY + 6);
+    currentY += rowHeight;
+  });
+
+  // Total
+  currentY += 8;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10);
+  const totalText =
+    selectedRole === "all"
+      ? `Total Approved Users: ${exportData.length}`
+      : `Total Approved ${roleDisplay}s: ${exportData.length}`;
+  doc.text(totalText, 15, currentY);
+
+  addFooter(pageNumber);
+
+  const fileName =
+    selectedRole === "all"
+      ? `DVMF-Directory-All-Users-Report-${currentDate.replace(/\//g, "-")}.pdf`
+      : `DVMF-Directory-${roleDisplay}-Report-${currentDate.replace(/\//g, "-")}.pdf`;
+
+  doc.save(fileName);
+};
+
+
 
   useEffect(() => {
     loadDirectoryData()
@@ -946,15 +1151,45 @@ function DvmfDirectory() {
         </header>
 
         <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
-          <div className="flex-1 max-w-md relative mb-4">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
-            <input
-              type="text"
-              className="w-full pl-10 pr-4 py-3 border-2 border-white rounded-lg text-sm outline-none min-h-[50px] bg-white"
-              placeholder="Search directory..."
-              onChange={handleSearchInput}
-              value={searchTerm}
-            />
+          {/* Search and Filters Section */}
+          <div className="flex flex-col md:flex-row gap-4 mb-6">
+            {/* Search Input */}
+            <div className="flex-1 max-w-md relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-500" />
+              <input
+                type="text"
+                className="w-full pl-12 pr-4 py-3 border-2 border-white rounded-lg text-base outline-none bg-white h-[46px]"
+                placeholder="Search directory..."
+                onChange={handleSearchInput}
+                value={searchTerm}
+              />
+            </div>
+
+            {/* Filters Container - Export PDF at far right */}
+            <div className="flex items-center gap-2 flex-1">
+              {/* Role Filter */}
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="px-4 py-3 border-2 border-white rounded-lg text-base outline-none bg-white h-[46px] min-w-[150px]"
+              >
+                <option value="all">All Roles</option>
+                <option value="veterinarian">Veterinarian</option>
+                <option value="kutsero">Kutsero</option>
+                <option value="horse operator">Horse Operator</option>
+              </select>
+
+              {/* Export PDF Button - Pushed to far right using ml-auto */}
+              <button
+                onClick={exportToPDF}
+                disabled={filteredDirectoryData.length === 0}
+                className="ml-auto flex items-center gap-2 px-4 py-3 bg-[#0F3D5A] text-white rounded-lg hover:bg-[#1E5A7C] transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-base h-[40px] whitespace-nowrap"
+                title="Export to PDF"
+              >
+                <Download size={18} />
+                Export PDF
+              </button>
+            </div>
           </div>
 
           <div className="bg-white rounded-lg shadow-sm overflow-hidden mb-5">

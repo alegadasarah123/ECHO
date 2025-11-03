@@ -762,7 +762,6 @@ def get_users(request):
 
 
 
-# -------------------- NOTIFICATIONS --------------------
 # -------------------- GET VET NOTIFICATIONS --------------------
 from datetime import datetime
 from rest_framework.decorators import api_view
@@ -776,22 +775,25 @@ def get_vetnotifications(request):
 
         # ---------------- FETCH EXISTING NOTIFICATIONS ----------------
         try:
+            # Get ALL existing notifications (including read ones) to prevent duplicates
             existing_res = sr_client.table("notification") \
-                .select("related_id") \
+                .select("related_id, notif_read") \
                 .not_.is_("related_id", None) \
                 .execute()
             existing_keys = {row["related_id"] for row in (existing_res.data or [])}
-        except:
+        except Exception as e:
+            print(f"Error fetching existing notifications: {e}")
             existing_keys = set()
 
         # ---------------- HELPER FUNCTION ----------------
         def add_notification(user_id, message, notif_type, related_id, created_at=None):
+            # Prevent duplicates based on related_id regardless of read status
             if not user_id or not related_id or related_id in existing_keys:
                 return
 
             dt_ph = datetime.fromisoformat(created_at) if created_at else datetime.now()
             notifications_to_insert.append({
-                "id": user_id,
+                "user_id": user_id,  # Fixed: should be user_id, not id
                 "notif_message": message,
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
@@ -825,8 +827,8 @@ def get_vetnotifications(request):
                         related_id,
                         vet.get("created_at")
                     )
-        except:
-            pass
+        except Exception as e:
+            print(f"Error in vet notifications: {e}")
 
         # ---------------- MEDICAL RECORD ACCESS REQUESTS ----------------
         try:
@@ -855,8 +857,8 @@ def get_vetnotifications(request):
                     related_id,
                     req.get("requested_at")
                 )
-        except:
-            pass
+        except Exception as e:
+            print(f"Error in medical record notifications: {e}")
 
         # ---------------- COMMENT NOTIFICATIONS ----------------
         try:
@@ -907,15 +909,16 @@ def get_vetnotifications(request):
                     related_id,
                     comment.get("comment_date")
                 )
-        except:
-            pass
+        except Exception as e:
+            print(f"Error in comment notifications: {e}")
 
         # ---------------- BULK INSERT (DEDUPED) ----------------
         if notifications_to_insert:
             try:
                 sr_client.table("notification").insert(notifications_to_insert).execute()
-            except:
-                pass
+                print(f"Inserted {len(notifications_to_insert)} new notifications")
+            except Exception as e:
+                print(f"Error inserting notifications: {e}")
 
         # ---------------- FETCH ALL VALID NOTIFICATIONS ----------------
         valid_types = ["medrec_request", "approved", "declined", "pending", "comment"]
@@ -931,7 +934,7 @@ def get_vetnotifications(request):
 
         notifications = [
             {
-                "id": row.get("id"),
+                "id": row.get("id"),  # This is the notification ID, not user_id
                 "message": row.get("notif_message"),
                 "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
                 "read": row.get("notif_read", False),
@@ -943,8 +946,8 @@ def get_vetnotifications(request):
         return Response(notifications, status=200)
 
     except Exception as e:
+        print(f"Error in get_vetnotifications: {e}")
         return Response({"error": str(e)}, status=500)
-
 
 
 
@@ -998,7 +1001,6 @@ def mark_all_notifications_read(request):
     except Exception as e:
         print(f"Error marking all notifications as read: {e}")
         return Response({"error": "Internal server error"}, status=500)
-
 
 
 # -------------------- GET VET,KUTSERO, HORSE OPERATOR PROFILE IN DIRECRORY --------------------
@@ -1692,6 +1694,7 @@ def get_horses(request):
                 medrec_recommendation,
                 medrec_followup_date,
                 medrec_horsestatus,
+                parent_medrec_id,
                 medrec_vet_id,
                 vet_profile (
                     vet_fname,
@@ -1711,7 +1714,7 @@ def get_horses(request):
         horse_list = []
 
         for horse in horses_response.data:
-            # 🧍 Owner info
+            # Owner info
             owner = horse.get("horse_op_profile", {})
             fullname = " ".join(filter(None, [owner.get("op_fname"), owner.get("op_mname"), owner.get("op_lname")]))
             location = ", ".join(filter(None, [owner.get("op_municipality"), owner.get("op_city"), owner.get("op_province")]))
@@ -1726,7 +1729,7 @@ def get_horses(request):
             if "horse_op_profile" in horse:
                 del horse["horse_op_profile"]
 
-            # 🩺 Vet + Medical Records
+            # Vet + Medical Records
             med_records = horse.get("horse_medical_record", [])
             for record in med_records:
                 # Vet name
@@ -1734,7 +1737,7 @@ def get_horses(request):
                 vet_name = " ".join(filter(None, [vet_info.get("vet_fname"), vet_info.get("vet_mname"), vet_info.get("vet_lname")]))
                 record["vet_name"] = vet_name.strip()
 
-                # ✅ Fix: Clean up medrec_lab_img since it's already a full URL
+                # Clean up medrec_lab_img since it's already a full URL
                 lab_img_path = record.get("medrec_lab_img")
 
                 if lab_img_path and isinstance(lab_img_path, str):
@@ -1754,6 +1757,113 @@ def get_horses(request):
             status=500
         )
 
+
+@api_view(["GET"])
+def get_followup_records(request, parent_medrec_id):
+    """
+    Get all follow-up medical records for a given parent medical record ID
+    including: vitals, diagnosis, prognosis, lab results, vet info and treatments.
+    """
+    try:
+        print(f"🔍 Fetching follow-ups for parent_medrec_id={parent_medrec_id}")
+
+        res = sr_client.table("horse_medical_record").select("""
+            medrec_id,
+            parent_medrec_id,
+            medrec_date,
+            medrec_followup_date,
+            medrec_heart_rate,
+            medrec_resp_rate,
+            medrec_body_temp,
+            medrec_clinical_signs,
+            medrec_diagnostic_protocol,
+            medrec_lab_results,
+            medrec_lab_img,
+            medrec_diagnosis,
+            medrec_prognosis,
+            medrec_recommendation,
+            medrec_horsestatus,
+            medrec_vet_id,
+            vet_profile (
+                vet_fname,
+                vet_mname,
+                vet_lname
+            ),
+            horse_treatment (
+                treatment_id,
+                treatment_name,
+                treatment_dosage,
+                treatment_duration,
+                treatment_outcome
+            )
+        """).eq("parent_medrec_id", parent_medrec_id)\
+          .order("medrec_date", desc=True)\
+          .execute()
+
+        followups = []
+
+        for rec in res.data or []:
+
+            # Format Vet Name
+            vet = rec.get("vet_profile") or {}
+            vet_name = " ".join(filter(None, [
+                vet.get("vet_fname"),
+                vet.get("vet_mname"),
+                vet.get("vet_lname")
+            ])).strip() or "Unknown Veterinarian"
+
+            # Clean lab images
+            img_raw = rec.get("medrec_lab_img")
+            if img_raw:
+                clean_img = img_raw.strip("[]\"'")
+                if not clean_img.startswith("http"):
+                    filename = clean_img.split("/")[-1]
+                    clean_img = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{filename}"
+            else:
+                clean_img = None
+
+            # Build Final Follow-Up Record Object
+            followups.append({
+                "medrec_id": rec.get("medrec_id"),
+                "parent_medrec_id": rec.get("parent_medrec_id"),
+                "medrec_date": rec.get("medrec_date"),
+                "medrec_followup_date": rec.get("medrec_followup_date"),
+
+                # Vitals
+                "medrec_heart_rate": rec.get("medrec_heart_rate"),
+                "medrec_resp_rate": rec.get("medrec_resp_rate"),
+                "medrec_body_temp": rec.get("medrec_body_temp"),
+
+                # Medical details
+                "medrec_clinical_signs": rec.get("medrec_clinical_signs"),
+                "medrec_diagnostic_protocol": rec.get("medrec_diagnostic_protocol"),
+                "medrec_lab_results": rec.get("medrec_lab_results"),
+                "medrec_lab_img": clean_img,
+                "medrec_diagnosis": rec.get("medrec_diagnosis"),
+                "medrec_prognosis": rec.get("medrec_prognosis"),
+                "medrec_recommendation": rec.get("medrec_recommendation"),
+                "medrec_horsestatus": rec.get("medrec_horsestatus"),
+
+                # Treatments
+                "horse_treatment": rec.get("horse_treatment", []),
+
+                # Veterinarian
+                "vet_name": vet_name
+            })
+
+        print(f"✅ Found {len(followups)} follow-ups")
+
+        return Response(
+            {"followups": followups, "count": len(followups)},
+            status=200
+        )
+
+    except Exception as e:
+        logging.exception("Error getting follow-up records")
+        return Response(
+            {"error": str(e)},
+            status=500
+        )
 
 
 
@@ -1904,13 +2014,11 @@ def approve_access_request(request, request_id):
         if not response.data:
             return Response({"error": "Request not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response({
-            "message": "Access request successfully approved ✅",
-            "data": response.data[0]
-        }, status=status.HTTP_200_OK)
+        return Response(response.data[0], status=status.HTTP_200_OK)
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 # -------------------- DECLINE REQUEST -------------------- #
@@ -1976,10 +2084,14 @@ def edit_post(request, post_id):
 @api_view(["GET"])
 def get_horse_statistics(request):
     try:
-        # Join horse_profile → horse_op_profile → users
+        date_from = request.GET.get('date_from')
+        date_to = request.GET.get('date_to')
+        export_details = request.GET.get('export_details') == 'true'
+
+        # Build base query for horse profiles
         query = (
             sr_client.table("horse_profile")
-            .select("horse_status, created_at, horse_op_profile(op_id, users(id, status))")
+            .select("horse_id, horse_name, horse_status, created_at, horse_op_profile(op_id, users(id, status))")
             .execute()
         )
 
@@ -1999,36 +2111,124 @@ def get_horse_statistics(request):
             if user.get("status", "").lower() != "deactivated":
                 filtered_rows.append(row)
 
-        # Mapping categories
+        # Build query for medical records
+        med_records_query = sr_client.table("horse_medical_record").select("*").execute()
+        med_records = med_records_query.data or []
+
+        # Create mapping of horse_id to medical records
+        horse_med_records = {}
+        for record in med_records:
+            horse_id = record.get('medrec_horse_id')
+            if horse_id:
+                if horse_id not in horse_med_records:
+                    horse_med_records[horse_id] = []
+                horse_med_records[horse_id].append(record)
+
+        # For each horse, find the most relevant medical record based on date filters
+        horse_final_status = {}
+        
+        for horse_id in horse_med_records:
+            records = horse_med_records[horse_id]
+            
+            # Sort records by date (newest first)
+            records.sort(key=lambda x: x.get('medrec_date', ''), reverse=True)
+            
+            # Apply date filtering
+            filtered_records = records
+            if date_from:
+                filtered_records = [r for r in filtered_records if r.get('medrec_date') and r['medrec_date'] >= date_from]
+            if date_to:
+                filtered_records = [r for r in filtered_records if r.get('medrec_date') and r['medrec_date'] <= date_to]
+            
+            # Use the most recent record that matches date filters
+            if filtered_records:
+                latest_record = filtered_records[0]
+                horse_final_status[horse_id] = {
+                    'status': latest_record.get('medrec_horsestatus'),
+                    'diagnosis': latest_record.get('medrec_diagnosis'),
+                    'record_date': latest_record.get('medrec_date')
+                }
+            elif not date_from and not date_to:
+                # If no date filters, use the absolute latest record
+                latest_record = records[0]
+                horse_final_status[horse_id] = {
+                    'status': latest_record.get('medrec_horsestatus'),
+                    'diagnosis': latest_record.get('medrec_diagnosis'),
+                    'record_date': latest_record.get('medrec_date')
+                }
+
+        # Enhanced status mapping
         status_mapping = {
             "healthy": ["healthy", "normal", "good", "excellent"],
             "sick": ["sick", "ill", "critical", "emergency"],
-            "unhealthy": ["unhealthy", "poor", "poor_health", "poor health"]
+            "deceased": ["deceased", "dead", "passed away", "died"]
         }
 
-        # Monthly counts
-        monthly_data = defaultdict(lambda: {"healthy": 0, "sick": 0, "unhealthy": 0, "total": 0})
+        # Monthly counts - FIXED: Use medical record dates when available
+        monthly_data = defaultdict(lambda: {"healthy": 0, "sick": 0, "deceased": 0, "total": 0})
+        sick_horses_details = []
 
         for row in filtered_rows:
-            status_text = (row.get("horse_status") or "").strip().lower()
-            created_at = row.get("created_at")
-
-            # Default to current month if no created_at
-            if created_at:
-                try:
-                    date_obj = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                except:
-                    date_obj = datetime.now()
+            horse_id = row.get("horse_id")
+            horse_name = row.get("horse_name")
+            
+            # Determine status and date for grouping
+            status_text = ""
+            diagnosis = ""
+            group_date = None
+            
+            if horse_id in horse_final_status:
+                # Use medical record data
+                med_data = horse_final_status[horse_id]
+                status_text = (med_data.get('status') or "").strip().lower()
+                diagnosis = med_data.get('diagnosis') or ""
+                record_date = med_data.get('record_date')
+                
+                if record_date:
+                    try:
+                        group_date = datetime.fromisoformat(record_date.replace("Z", "+00:00"))
+                    except:
+                        group_date = None
             else:
-                date_obj = datetime.now()
+                # Fall back to profile data (only if no date filters applied)
+                if not date_from and not date_to:
+                    status_text = (row.get("horse_status") or "").strip().lower()
+                    created_at = row.get("created_at")
+                    if created_at:
+                        try:
+                            group_date = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+                        except:
+                            group_date = None
 
-            month_label = date_obj.strftime("%b %Y")  # e.g., "Oct 2025"
+            # Skip if we have date filters but no medical record matches
+            if (date_from or date_to) and horse_id not in horse_final_status:
+                continue
+
+            # Skip if no date available for grouping
+            if not group_date:
+                group_date = datetime.now()
+
+            month_label = group_date.strftime("%b %Y")
 
             # Count categories
+            status_found = False
             for category, keywords in status_mapping.items():
-                if status_text in keywords:
+                if any(keyword in status_text for keyword in keywords):
                     monthly_data[month_label][category] += 1
+                    status_found = True
+                    
+                    # Collect sick horse details for PDF export
+                    if category == "sick" and export_details and horse_name:
+                        sick_horses_details.append({
+                            "horse_name": horse_name,
+                            "diagnosis": diagnosis or "No diagnosis available",
+                            "status": status_text
+                        })
                     break
+
+            if not status_found:
+                # Default to healthy if no specific status found
+                monthly_data[month_label]["healthy"] += 1
 
             monthly_data[month_label]["total"] += 1
 
@@ -2039,8 +2239,14 @@ def get_horse_statistics(request):
                 "month": month,
                 "healthy": monthly_data[month]["healthy"],
                 "sick": monthly_data[month]["sick"],
-                "unhealthy": monthly_data[month]["unhealthy"],
+                "deceased": monthly_data[month]["deceased"],
                 "total": monthly_data[month]["total"]
+            })
+
+        if export_details:
+            return Response({
+                "monthly_data": result,
+                "sick_horses": sick_horses_details
             })
 
         return Response(result)
@@ -2050,9 +2256,6 @@ def get_horse_statistics(request):
             {"detail": "Internal server error", "error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
-
 
 
 # -------------------- ADD COMMENTS --------------------#
@@ -2442,7 +2645,7 @@ def safe_execute(query, retries=3, delay=1):
         try:
             return query.execute()
         except Exception as e:
-            print(f"⚠️ Supabase query failed (attempt {attempt+1}): {e}")
+            print(f"Supabase query failed (attempt {attempt+1}): {e}")
             if attempt < retries - 1:
                 time.sleep(delay)
             else:
@@ -2639,7 +2842,7 @@ def mark_messages_as_read(request, conversation_id):
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
         # ✅ Remove prints in production, but kept for debugging clarity
-        print(f"🔔 Marking messages as read - ctu_id: {ctu_id}, conversation_id: {conversation_id}")
+        print(f"Marking messages as read - ctu_id: {ctu_id}, conversation_id: {conversation_id}")
 
         # ✅ Use sr_client instead of supabase
         res = (
@@ -2652,7 +2855,7 @@ def mark_messages_as_read(request, conversation_id):
         )
 
         updated_count = len(res.data) if res.data else 0
-        print(f"✅ Marked {updated_count} messages as read")
+        print(f"Marked {updated_count} messages as read")
 
         return Response(
             {
@@ -2780,7 +2983,7 @@ def get_conversations(request):
     Shows all users who have exchanged messages with the current user.
     """
     try:
-        # ✅ Use CTU ID instead of vet_id
+        # ✅ Use CTU ID instead of president_id
         ctu_id = get_current_ctu_id(request)
         if not ctu_id:
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
@@ -2857,13 +3060,16 @@ def get_conversations(request):
 
             # ✅ Format timestamp
             timestamp = ""
+            latest_message_datetime = None
             if latest_message and latest_message.get("mes_date"):
                 try:
                     msg_time = datetime.fromisoformat(str(latest_message["mes_date"]))
                     local_time = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
                     timestamp = local_time
+                    latest_message_datetime = msg_time
                 except Exception:
                     timestamp = str(latest_message["mes_date"])
+                    latest_message_datetime = datetime.now()
 
             # ✅ Handle last message content with "You:" prefix
             last_message_content = ""
@@ -2877,6 +3083,7 @@ def get_conversations(request):
                     last_message_content = latest_message['mes_content']
             else:
                 last_message_content = "No messages yet"
+                latest_message_datetime = datetime.min
 
             conversations.append({
                 'id': user_id,
@@ -2889,11 +3096,12 @@ def get_conversations(request):
                 'lastMessageIsOwn': last_message_is_own,
                 'timestamp': timestamp,
                 'unread': unread_count,
-                'has_conversation': True
+                'has_conversation': True,
+                'sortTimestamp': latest_message_datetime if latest_message_datetime else datetime.min
             })
 
-        # ✅ Sort by latest message timestamp (most recent first)
-        conversations.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        # ✅ Sort by latest message datetime (most recent first)
+        conversations.sort(key=lambda x: x.get('sortTimestamp', datetime.min), reverse=True)
 
         return Response(conversations, status=status.HTTP_200_OK)
 
@@ -2901,6 +3109,7 @@ def get_conversations(request):
         print("❌ Error fetching conversations:", str(e))
         traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 @api_view(["GET"])

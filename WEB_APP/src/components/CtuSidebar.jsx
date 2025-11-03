@@ -5,6 +5,7 @@ import {
   ClipboardList,
   FileText,
   Folder,
+  LayoutDashboard,
   LogOut,
   Megaphone,
   Menu,
@@ -47,7 +48,7 @@ const Sidebars = forwardRef((props, ref) => {
   }
 
   const sidebarItems = [
-    { icon: BarChart3, label: "Dashboard", path: "/CtuDashboard" },
+    { icon: LayoutDashboard, label: "Dashboard", path: "/CtuDashboard" },
     { icon: UserCheck, label: "Account Approval", path: "/CtuAccountApproval" },
     { icon: FileText, label: "Access Requests", path: "/CtuAccessRequest" },
     { icon: ClipboardList, label: "Horse Records", path: "/CtuHorseRecord" },

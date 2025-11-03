@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
+const API_BASE = "http://localhost:8000/api/ctu_vetmed";
 
 function CtuDashboard() {
   const navigate = useNavigate()
@@ -16,7 +16,7 @@ function CtuDashboard() {
   const [setIsLogoutModalOpen] = useState(false)
   const [setIsNotificationDropdownOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false) // Added refresh state
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   const [notifications, setNotifications] = useState([])
   const [recordCount, setrecordCount] = useState(0)
@@ -25,7 +25,6 @@ function CtuDashboard() {
   const [recentActivities, setRecentActivities] = useState([])
   const [sosEmergencies, setSosEmergencies] = useState([])
 
-  // Individual loading states for each section
   const [statsLoading, setStatsLoading] = useState(true)
   const [activitiesLoading, setActivitiesLoading] = useState(true)
   const [sosLoading, setSosLoading] = useState(true)
@@ -33,7 +32,6 @@ function CtuDashboard() {
   const [time, setTime] = useState(new Date().toLocaleTimeString())
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
-  // ADDED: State for image modal
   const [isImageModalOpen, setIsImageModalOpen] = useState(false)
   const [selectedImage, setSelectedImage] = useState(null)
 
@@ -41,7 +39,6 @@ function CtuDashboard() {
   const notificationDropdownRef = useRef(null)
   const logoutModalRef = useRef(null)
 
-  // Skeleton Loader Components
   const StatSkeleton = () => (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm flex flex-col items-center text-center animate-pulse">
       <div className="flex items-center gap-2 mb-3 w-full justify-center">
@@ -97,7 +94,6 @@ function CtuDashboard() {
     </div>
   )
 
-  // Enhanced color assignment function
   const getColorIndex = (activity, index) => {
     const stringHash = activity.title.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
     return (index + stringHash) % 10
@@ -147,7 +143,6 @@ function CtuDashboard() {
     return `${baseClasses} ${statusVariants[status] || statusVariants.pending}`
   }
 
-  // ADDED: Function to handle image view
   const handleViewImage = (imageUrl, emergency) => {
     setSelectedImage({
       url: imageUrl,
@@ -156,168 +151,167 @@ function CtuDashboard() {
     setIsImageModalOpen(true)
   }
 
-  // ADDED: Function to close image modal
   const handleCloseImageModal = () => {
     setIsImageModalOpen(false)
     setSelectedImage(null)
   }
 
-  // Data loading functions
-const loadStats = useCallback(() => {
-  console.log("Loading statistics...");
-  setStatsLoading(true);
+  const loadStats = useCallback(() => {
+    setStatsLoading(true);
 
-  fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_status_counts/", {
-    method: "GET",
-    credentials: "include", // 👈 ensures cookies/session are sent
-    headers: {
-      "Content-Type": "application/json",
-    },
-  })
-    .then((res) => {
-      if (!res.ok) {
-        if (res.status === 401) {
-          console.warn("Unauthorized – user might not be logged in.");
+    fetch("http://localhost:8000/api/ctu_vetmed/get_status_counts/", {
+      method: "GET",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! Status: ${res.status}`);
         }
-        throw new Error(`HTTP error! Status: ${res.status}`);
-      }
-      return res.json();
-    })
-    .then((data) => {
-      setrecordCount(data.pending || 0);
-      setvetCount(data.approved || 0);
-      setDeclinedCount(data.declined || 0);
-    })
-    .catch((err) => {
-      console.error("Failed to load statistics:", err);
-    })
-    .finally(() => {
-      setStatsLoading(false);
-    });
-}, []);
-
-const loadRecentActivities = useCallback(() => {
-  setActivitiesLoading(true);
-
-  fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_recent_activity/", {
-    method: "GET",
-    credentials: "include", // Needed for HttpOnly cookie
-  })
-    .then(async (res) => {
-      if (res.status === 401) {
-        return []; // Return empty array so state is safe
-      }
-
-      if (!res.ok) {
-        return []; // Return empty array so state is safe
-      }
-
-      return res.json();
-    })
-    .then((data) => {
-      if (Array.isArray(data)) {
-        setRecentActivities(data);
-      } else if (data.error) {
-        setRecentActivities([]);
-      } else {
-        setRecentActivities([]);
-      }
-
-      setActivitiesLoading(false);
-    })
-    .catch(() => {
-      setRecentActivities([]);
-      setActivitiesLoading(false);
-    });
-}, []);
-
-const loadNotifications = useCallback(() => {
-  fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
-    .then((res) => {
-      if (!res.ok) throw new Error("Failed to fetch notifications");
-      return res.json();
-    })
-    .then((data) => {
-      const formatted = data.map((notif) => ({
-        id: notif.id,
-        message: notif.message,
-        date: notif.date || new Date().toISOString(),
-        read: notif.read || false,
-        type: notif.type || "general"
-      }));
-      setNotifications(formatted);
-    })
-    .catch(() => {});
-}, []);
-
-const loadSosEmergencies = useCallback(() => {
-  setSosLoading(true);
-
-  fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_sos_requests/", {
-    method: "GET",
-    credentials: "include", 
-   
-  })
-    .then((res) => {
-      if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-      return res.json();
-    })
-    .then((data) => {
-      let sosData = [];
-      if (Array.isArray(data)) sosData = data;
-      else if (data.sos_requests && Array.isArray(data.sos_requests)) sosData = data.sos_requests;
-      else if (data.results && Array.isArray(data.results)) sosData = data.results;
-      else {
-        setSosEmergencies([]);
-        setSosLoading(false);
-        return;
-      }
-
-      const formatted = sosData.map((item) => {
-        let formattedTime = "Unknown time";
-        try {
-          if (item.time || item.created_at) {
-            const createdDate = new Date(item.time || item.created_at);
-            formattedTime = createdDate.toLocaleDateString('en-US', {
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric'
-            }) + ' ' + createdDate.toLocaleTimeString('en-US', {
-              hour: 'numeric',
-              minute: 'numeric',
-              hour12: true
-            });
-          }
-        } catch {}
-
-        return {
-          id: item.id,
-          type: item.type || "Emergency",
-          contact: item.contact || "Unknown Contact",
-          phone: item.phone || "N/A",
-          location: item.location || "No location provided",
-          time: formattedTime,
-          urgent: item.urgent === true || item.status === "pending",
-          description: item.description || "No description provided",
-          sos_image_url: item.sos_image_url || null,
-          horse_status: item.horse_status || "Unknown",
-          additional_info: item.additional_info || ""
-        };
+        return res.json();
+      })
+      .then((data) => {
+        setrecordCount(data.pending || 0);
+        setvetCount(data.approved || 0);
+        setDeclinedCount(data.declined || 0);
+      })
+      .catch((err) => {
+        setStatsLoading(false);
+      })
+      .finally(() => {
+        setStatsLoading(false);
       });
+  }, []);
 
-      setSosEmergencies(formatted);
-      setSosLoading(false);
+  const loadRecentActivities = useCallback(() => {
+    setActivitiesLoading(true);
+
+    fetch("http://localhost:8000/api/ctu_vetmed/get_recent_activity/", {
+      method: "GET",
+      credentials: "include",
     })
-    .catch(() => {
-      setSosLoading(false);
-    });
-}, []);
+      .then(async (res) => {
+        if (res.status === 401) {
+          return [];
+        }
 
+        if (!res.ok) {
+          return [];
+        }
+
+        return res.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setRecentActivities(data);
+        } else if (data.error) {
+          setRecentActivities([]);
+        } else {
+          setRecentActivities([]);
+        }
+
+        setActivitiesLoading(false);
+      })
+      .catch(() => {
+        setRecentActivities([]);
+        setActivitiesLoading(false);
+      });
+  }, []);
+
+  const loadNotifications = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/get_vetnotifications/`, {
+        method: "GET",
+        credentials: "include",
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        
+        const formatted = Array.isArray(data) ? data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+          read: notif.read || false,
+          type: notif.type || "general"
+        })) : []
+        
+        setNotifications(formatted)
+      } else {
+        setNotifications([])
+      }
+    } catch (err) {
+      setNotifications([])
+    }
+  }, [])
+
+  const loadSosEmergencies = useCallback(() => {
+    setSosLoading(true);
+
+    fetch("http://localhost:8000/api/ctu_vetmed/get_sos_requests/", {
+      method: "GET",
+      credentials: "include",
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        let sosData = [];
+        if (Array.isArray(data)) sosData = data;
+        else if (data.sos_requests && Array.isArray(data.sos_requests)) sosData = data.sos_requests;
+        else if (data.results && Array.isArray(data.results)) sosData = data.results;
+        else {
+          setSosEmergencies([]);
+          setSosLoading(false);
+          return;
+        }
+
+        const formatted = sosData.map((item) => {
+          let formattedTime = "Unknown time";
+          try {
+            if (item.time || item.created_at) {
+              const createdDate = new Date(item.time || item.created_at);
+              formattedTime = createdDate.toLocaleDateString('en-US', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric'
+              }) + ' ' + createdDate.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: 'numeric',
+                hour12: true
+              });
+            }
+          } catch {}
+
+          return {
+            id: item.id,
+            type: item.type || "Emergency",
+            contact: item.contact || "Unknown Contact",
+            phone: item.phone || "N/A",
+            location: item.location || "No location provided",
+            time: formattedTime,
+            urgent: item.urgent === true || item.status === "pending",
+            description: item.description || "No description provided",
+            sos_image_url: item.sos_image_url || null,
+            horse_status: item.horse_status || "Unknown",
+            additional_info: item.additional_info || ""
+          };
+        });
+
+        setSosEmergencies(formatted);
+        setSosLoading(false);
+      })
+      .catch(() => {
+        setSosLoading(false);
+      });
+  }, []);
 
   const loadDashboardData = useCallback(() => {
     setIsLoading(true)
     
-    // Reset all loading states
     setStatsLoading(true)
     setActivitiesLoading(true)
     setSosLoading(true)
@@ -327,21 +321,16 @@ const loadSosEmergencies = useCallback(() => {
         setIsLoading(false)
       })
       .catch((error) => {
-        console.error("Error loading dashboard data:", error)
         setIsLoading(false)
-        // Ensure loading states are reset even on error
         setStatsLoading(false)
         setActivitiesLoading(false)
         setSosLoading(false)
       })
   }, [loadStats, loadRecentActivities, loadNotifications, loadSosEmergencies])
 
-  // ADDED: Handle refresh function
   const handleRefresh = useCallback(() => {
-    console.log("Manual refresh triggered")
     setIsRefreshing(true)
     
-    // Reset all loading states for visual feedback
     setStatsLoading(true)
     setActivitiesLoading(true)
     setSosLoading(true)
@@ -349,12 +338,9 @@ const loadSosEmergencies = useCallback(() => {
     Promise.all([loadStats(), loadRecentActivities(), loadNotifications(), loadSosEmergencies()])
       .then(() => {
         setIsRefreshing(false)
-        console.log("Manual refresh completed")
       })
       .catch((error) => {
-        console.error("Error during manual refresh:", error)
         setIsRefreshing(false)
-        // Ensure loading states are reset even on error
         setStatsLoading(false)
         setActivitiesLoading(false)
         setSosLoading(false)
@@ -365,120 +351,53 @@ const loadSosEmergencies = useCallback(() => {
     setIsLogoutModalOpen(false)
   }
 
-  // MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
       const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      })
       
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to mark all as read");
+      if (res.ok) {
+        setNotifications(prev => prev.map(notif => ({ ...notif, read: true })))
       }
-      
-      const data = await res.json();
-      console.log("Mark all as read result:", data);
+    } catch (err) {
+    }
+  }
 
-      // Update frontend state
+  const handleNotificationClick = async (notification) => {
+    if (!notification.read) {
       setNotifications(prev =>
-        prev.map(notif => ({ ...notif, read: true }))
-      );
+        prev.map(n => n.id === notification.id ? { ...n, read: true } : n)
+      )
       
-    } catch (err) {
-      console.error("Error marking all as read:", err);
+      try {
+        await fetch(`${API_BASE}/mark_notification_read/${notification.id}/`, {
+          method: "POST",
+          credentials: "include",
+        })
+      } catch (err) {
+      }
     }
-  };
 
-// HANDLE INDIVIDUAL NOTIFICATION CLICK
-// HANDLE INDIVIDUAL NOTIFICATION CLICK
-const handleNotificationClick = async (notification) => {
-  const notifId = notification?.notif_id || notification?.id; // fallback support
-
-  if (!notifId) {
-    console.warn("Notification ID is missing:", notification);
-  }
-
-  // Mark as read in frontend immediately
-  setNotifications((prev) =>
-    prev.map((notif) =>
-      notif.notif_id === notifId || notif.id === notifId
-        ? { ...notif, read: true }
-        : notif
-    )
-  );
-
-  // Mark as read in backend (only if valid ID)
-  if (notifId) {
-    try {
-      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
-        method: "POST",
-        credentials: "include",
-      });
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
+    const message = (notification.message || "").toLowerCase();
+    
+    if (message.includes("veterinarian")) {
+      navigate("/CtuAccountApproval");
+    } else if (message.includes("requested access") || message.includes("medical record")) {
+      navigate("/CtuAccessRequest");
+    } else if (message.includes("comment")) {
+      navigate("/CtuAnnouncement");
     }
+    
+    setNotifsOpen(false);
   }
 
-  const message = (notification.message || "").toLowerCase();
-
-  // Navigate for account-related notifications
-  if (
-    message.includes("new registration") ||
-    message.includes("new veterinarian approved") ||
-    message.includes("veterinarian approved") ||
-    message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered") ||
-    message.includes("veterinarian pending")
-  ) {
-    navigate("/CtuAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
-
-  if (
-    message.includes("pending medical record access") ||
-    message.includes("requested access")
-  ) {
-    navigate("/CtuAccessRequest", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
-
-// Only navigate to CtuAnnouncement for comment-related notifications
-  if (message.includes("comment")) {
-    navigate("/CtuAnnouncement", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
-};
-
-  // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
-    console.log("Notifications updated from modal:", updatedNotifications);
-    console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
     setNotifications(updatedNotifications);
   };
 
-  // Handle opening UserManagement from notifications
   const handleOpenUserManagement = (notification = null) => {
-    console.log('Opening User Management from dashboard notification:', notification)
     if (notification) {
       navigate('/CtuDashboard', { 
         state: { 
@@ -502,7 +421,6 @@ const handleNotificationClick = async (notification) => {
   }, [loadNotifications])
 
   useEffect(() => {
-    console.log("CTU Dashboard initialized")
     loadDashboardData()
   }, [loadDashboardData])
 
@@ -529,22 +447,12 @@ const handleNotificationClick = async (notification) => {
   }, [])
 
   const handleSosItemClick = (emergency) => {
-    console.log("SOS Emergency clicked:", emergency)
   }
 
-  // Calculate unread notifications count
   const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
 
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
-      {isLoading && (
-        <div className="fixed top-0 left-0 w-full h-full bg-white/90 flex flex-col items-center justify-center z-[9999]">
-          <div className="text-6xl animate-pulse"></div>
-          <div className="mt-4 text-lg font-bold text-black">Loading Dashboard...</div>
-        </div>
-      )}
-
-      {/* ADDED: Conditionally render Sidebar and FloatingMessages based on modal state */}
       {!isImageModalOpen && <Sidebar isOpen={isSidebarOpen} />}
       {!isImageModalOpen && <FloatingMessages />}
 
@@ -555,7 +463,6 @@ const handleNotificationClick = async (notification) => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* ADDED: Refresh Button */}
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
@@ -592,7 +499,6 @@ const handleNotificationClick = async (notification) => {
         </header>
 
         <div className="flex-1 p-4 sm:p-6 bg-gray-100 overflow-y-auto">
-          {/* Stat Count Section */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6">
             {statsLoading ? (
               <>
@@ -636,7 +542,6 @@ const handleNotificationClick = async (notification) => {
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-4 sm:gap-6">
-            {/* Recent Activity Section */}
             <div className="bg-white p-4 sm:p-5 rounded-xl shadow-lg border border-red-100 max-h-[600px] overflow-y-auto">
               <h3 className="text-lg sm:text-xl font-bold mb-1 text-black">Recent Activity</h3>
               <p className="text-sm text-gray-600 mb-4 sm:mb-5">Latest added veterinary account</p>
@@ -728,7 +633,6 @@ const handleNotificationClick = async (notification) => {
               )}
             </div>
 
-            {/* SOS Emergency Section */}
             <div className="bg-white rounded-xl shadow-lg border border-red-100 p-4 sm:p-5 max-h-96 overflow-y-auto">
               <div className="flex items-center gap-3 mb-4 pb-3 border-b-2 border-red-100">
                 <h3 className="text-lg sm:text-xl font-bold text-black flex items-center gap-2">
@@ -784,7 +688,6 @@ const handleNotificationClick = async (notification) => {
                         <span className="truncate">{emergency.location}</span>
                       </div>
 
-                      {/* ADDED: Image view button */}
                       {emergency.sos_image_url && (
                         <div className="flex justify-end mt-2">
                           <button
@@ -808,7 +711,6 @@ const handleNotificationClick = async (notification) => {
         </div>
       </div>
 
-      {/* ADDED: Image Modal */}
       {isImageModalOpen && selectedImage && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000] p-2 sm:p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">

@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
+const API_BASE = "http://localhost:8000/api/ctu_vetmed";
 
 const CtuSettings = () => {
   const [activeTab, setActiveTab] = useState("profile")
@@ -82,7 +82,7 @@ const CtuSettings = () => {
   // MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/mark_all_notifications_read/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -123,7 +123,7 @@ const CtuSettings = () => {
   // Mark as read in backend (only if valid ID)
   if (notifId) {
     try {
-      await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/mark_notification_read/${notifId}/`, {
+      await fetch(`http://localhost:8000/api/ctu_vetmed/mark_notification_read/${notifId}/`, {
         method: "POST",
         credentials: "include",
       });
@@ -183,7 +183,7 @@ const handleNotificationsUpdate = (updatedNotifications) => {
 };
 
 const loadNotifications = useCallback(() => {
-  fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/`)
+  fetch(`http://localhost:8000/api/ctu_vetmed/get_vetnotifications/`)
     .then((res) => res.json())
     .then((data) => {
       const formatted = data.map((notif) => ({
@@ -206,7 +206,7 @@ const loadNotifications = useCallback(() => {
     setErrors({})
 
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/save_ctu_vet_profile/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/save_ctu_vet_profile/`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -240,7 +240,7 @@ const loadNotifications = useCallback(() => {
     setErrors({})
 
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/update_ctu_vet_profile/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/update_ctu_vet_profile/`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -282,7 +282,7 @@ const loadNotifications = useCallback(() => {
     }
 
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/ctu_change_password/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/ctu_change_password/`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -364,7 +364,7 @@ const loadNotifications = useCallback(() => {
     }
 
     try {
-      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/signup/", {
+      const response = await fetch("http://localhost:8000/api/ctu_vetmed/signup/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -416,7 +416,7 @@ const loadNotifications = useCallback(() => {
   // DEACTIVATE USER
   const deactivateUser = async (id) => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/users/deactivate/${id}/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/users/deactivate/${id}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -433,7 +433,7 @@ const loadNotifications = useCallback(() => {
   // REACTIVATE USER
   const reactivateUser = async (id) => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/users/reactivate/${id}/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/users/reactivate/${id}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -470,7 +470,7 @@ const loadNotifications = useCallback(() => {
   // Fetch CTU Vet profile
   const fetchProfile = async () => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/get_ctu_vet_profiles/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/get_ctu_vet_profiles/`, {
         method: "GET",
         credentials: "include",
       });
@@ -514,7 +514,7 @@ const loadNotifications = useCallback(() => {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const res = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/users/", {
+      const res = await fetch("http://localhost:8000/api/ctu_vetmed/users/", {
         method: "GET",
         credentials: "include",
       })
