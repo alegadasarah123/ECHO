@@ -53,7 +53,7 @@ urlpatterns = [
 
 
     path("get_horses/", views.get_horses, name="get_horses"),
-     
+     path('get_followup_records/<uuid:horse_id>/', views.get_followup_records, name='get_followup_records'),
     path("get_sos_requests/", views.get_sos_requests, name="get_sos_requests"),
 
      path('medrec_access_requests/', views.get_access_requests, name='get_access_requests'),

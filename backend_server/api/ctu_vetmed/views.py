@@ -2079,14 +2079,28 @@ def edit_post(request, post_id):
 
 
 
-
-
 @api_view(["GET"])
 def get_horse_statistics(request):
     try:
         date_from = request.GET.get('date_from')
         date_to = request.GET.get('date_to')
         export_details = request.GET.get('export_details') == 'true'
+
+        # Convert date strings to datetime objects for proper comparison
+        date_from_dt = None
+        date_to_dt = None
+        
+        if date_from:
+            try:
+                date_from_dt = datetime.strptime(date_from, "%Y-%m-%d").date()
+            except:
+                pass
+        
+        if date_to:
+            try:
+                date_to_dt = datetime.strptime(date_to, "%Y-%m-%d").date()
+            except:
+                pass
 
         # Build base query for horse profiles
         query = (
@@ -2133,12 +2147,32 @@ def get_horse_statistics(request):
             # Sort records by date (newest first)
             records.sort(key=lambda x: x.get('medrec_date', ''), reverse=True)
             
-            # Apply date filtering
             filtered_records = records
-            if date_from:
-                filtered_records = [r for r in filtered_records if r.get('medrec_date') and r['medrec_date'] >= date_from]
-            if date_to:
-                filtered_records = [r for r in filtered_records if r.get('medrec_date') and r['medrec_date'] <= date_to]
+            if date_from_dt or date_to_dt:
+                filtered_records = []
+                for r in records:
+                    rec_date_str = r.get('medrec_date')
+                    if not rec_date_str:
+                        continue
+                    
+                    try:
+                        # Parse the record date
+                        if 'T' in rec_date_str:
+                            # ISO format with time
+                            rec_date = datetime.fromisoformat(rec_date_str.replace("Z", "+00:00")).date()
+                        else:
+                            # Just date
+                            rec_date = datetime.strptime(rec_date_str, "%Y-%m-%d").date()
+                        
+                        # Apply date range filters
+                        if date_from_dt and rec_date < date_from_dt:
+                            continue
+                        if date_to_dt and rec_date > date_to_dt:
+                            continue
+                        
+                        filtered_records.append(r)
+                    except:
+                        continue
             
             # Use the most recent record that matches date filters
             if filtered_records:
@@ -2252,11 +2286,11 @@ def get_horse_statistics(request):
         return Response(result)
 
     except Exception as e:
+        print(f"[v0] Error in get_horse_statistics: {str(e)}")
         return Response(
             {"detail": "Internal server error", "error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
 
 # -------------------- ADD COMMENTS --------------------#
 

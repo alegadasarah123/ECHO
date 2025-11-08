@@ -630,22 +630,25 @@ def get_vetnotifications(request):
 
         # ---------------- FETCH EXISTING NOTIFICATIONS ----------------
         try:
+            # Get ALL existing notifications (including read ones) to prevent duplicates
             existing_res = sr_client.table("notification") \
-                .select("related_id") \
+                .select("related_id, notif_read") \
                 .not_.is_("related_id", None) \
                 .execute()
             existing_keys = {row["related_id"] for row in (existing_res.data or [])}
-        except:
+        except Exception as e:
+            print(f"Error fetching existing notifications: {e}")
             existing_keys = set()
 
         # ---------------- HELPER FUNCTION ----------------
         def add_notification(user_id, message, notif_type, related_id, created_at=None):
+            # Prevent duplicates based on related_id regardless of read status
             if not user_id or not related_id or related_id in existing_keys:
                 return
 
             dt_ph = datetime.fromisoformat(created_at) if created_at else datetime.now()
             notifications_to_insert.append({
-                "id": user_id,
+                "user_id": user_id,  # Fixed: should be user_id, not id
                 "notif_message": message,
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
@@ -679,8 +682,8 @@ def get_vetnotifications(request):
                         related_id,
                         vet.get("created_at")
                     )
-        except:
-            pass
+        except Exception as e:
+            print(f"Error in vet notifications: {e}")
 
         # ---------------- MEDICAL RECORD ACCESS REQUESTS ----------------
         try:
@@ -709,8 +712,8 @@ def get_vetnotifications(request):
                     related_id,
                     req.get("requested_at")
                 )
-        except:
-            pass
+        except Exception as e:
+            print(f"Error in medical record notifications: {e}")
 
         # ---------------- COMMENT NOTIFICATIONS ----------------
         try:
@@ -761,15 +764,16 @@ def get_vetnotifications(request):
                     related_id,
                     comment.get("comment_date")
                 )
-        except:
-            pass
+        except Exception as e:
+            print(f"Error in comment notifications: {e}")
 
         # ---------------- BULK INSERT (DEDUPED) ----------------
         if notifications_to_insert:
             try:
                 sr_client.table("notification").insert(notifications_to_insert).execute()
-            except:
-                pass
+                print(f"Inserted {len(notifications_to_insert)} new notifications")
+            except Exception as e:
+                print(f"Error inserting notifications: {e}")
 
         # ---------------- FETCH ALL VALID NOTIFICATIONS ----------------
         valid_types = ["medrec_request", "approved", "declined", "pending", "comment"]
@@ -785,7 +789,7 @@ def get_vetnotifications(request):
 
         notifications = [
             {
-                "id": row.get("id"),
+                "id": row.get("id"),  # This is the notification ID, not user_id
                 "message": row.get("notif_message"),
                 "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
                 "read": row.get("notif_read", False),
@@ -797,8 +801,8 @@ def get_vetnotifications(request):
         return Response(notifications, status=200)
 
     except Exception as e:
+        print(f"Error in get_vetnotifications: {e}")
         return Response({"error": str(e)}, status=500)
-
 
 
 
@@ -852,6 +856,7 @@ def mark_all_notifications_read(request):
     except Exception as e:
         print(f"Error marking all notifications as read: {e}")
         return Response({"error": "Internal server error"}, status=500)
+
 
 
 # -------------------- GET VET,KUTSERO, HORSE OPERATOR PROFILE IN DIRECRORY --------------------
@@ -1523,10 +1528,12 @@ def search_vet(request):
 
 
 
+# -------------------- display horses with owner full name --------------------
+
 @api_view(['GET'])
 def get_horses(request):
     """
-    Fetch all horses with owner info, medical records (with lab images from Supabase),
+    Fetch all horses with owner info, medical records (with lab images),
     treatments, and veterinarian name.
     """
     try:
@@ -1568,6 +1575,7 @@ def get_horses(request):
                 medrec_recommendation,
                 medrec_followup_date,
                 medrec_horsestatus,
+                parent_medrec_id,
                 medrec_vet_id,
                 vet_profile (
                     vet_fname,
@@ -1587,7 +1595,7 @@ def get_horses(request):
         horse_list = []
 
         for horse in horses_response.data:
-            # 🧍 Owner info
+            # Owner info
             owner = horse.get("horse_op_profile", {})
             fullname = " ".join(filter(None, [owner.get("op_fname"), owner.get("op_mname"), owner.get("op_lname")]))
             location = ", ".join(filter(None, [owner.get("op_municipality"), owner.get("op_city"), owner.get("op_province")]))
@@ -1602,7 +1610,7 @@ def get_horses(request):
             if "horse_op_profile" in horse:
                 del horse["horse_op_profile"]
 
-            # 🩺 Vet + Medical Records
+            # Vet + Medical Records
             med_records = horse.get("horse_medical_record", [])
             for record in med_records:
                 # Vet name
@@ -1610,11 +1618,12 @@ def get_horses(request):
                 vet_name = " ".join(filter(None, [vet_info.get("vet_fname"), vet_info.get("vet_mname"), vet_info.get("vet_lname")]))
                 record["vet_name"] = vet_name.strip()
 
-                # ✅ Lab image from Supabase Storage
+                # Clean up medrec_lab_img since it's already a full URL
                 lab_img_path = record.get("medrec_lab_img")
-                if lab_img_path:
-                    public_url = sr_client.storage.from_("Lab_results").get_public_url(lab_img_path)
-                    record["medrec_lab_img_url"] = public_url
+
+                if lab_img_path and isinstance(lab_img_path, str):
+                    clean_url = lab_img_path.strip().strip('[]"\'')
+                    record["medrec_lab_img_url"] = clean_url if clean_url.startswith("http") else None
                 else:
                     record["medrec_lab_img_url"] = None
 
@@ -1628,6 +1637,116 @@ def get_horses(request):
             {"error": "Internal server error", "details": str(e)},
             status=500
         )
+
+
+@api_view(["GET"])
+def get_followup_records(request, parent_medrec_id):
+    """
+    Get all follow-up medical records for a given parent medical record ID
+    including: vitals, diagnosis, prognosis, lab results, vet info and treatments.
+    """
+    try:
+        print(f"🔍 Fetching follow-ups for parent_medrec_id={parent_medrec_id}")
+
+        res = sr_client.table("horse_medical_record").select("""
+            medrec_id,
+            parent_medrec_id,
+            medrec_date,
+            medrec_followup_date,
+            medrec_heart_rate,
+            medrec_resp_rate,
+            medrec_body_temp,
+            medrec_clinical_signs,
+            medrec_diagnostic_protocol,
+            medrec_lab_results,
+            medrec_lab_img,
+            medrec_diagnosis,
+            medrec_prognosis,
+            medrec_recommendation,
+            medrec_horsestatus,
+            medrec_vet_id,
+            vet_profile (
+                vet_fname,
+                vet_mname,
+                vet_lname
+            ),
+            horse_treatment (
+                treatment_id,
+                treatment_name,
+                treatment_dosage,
+                treatment_duration,
+                treatment_outcome
+            )
+        """).eq("parent_medrec_id", parent_medrec_id)\
+          .order("medrec_date", desc=True)\
+          .execute()
+
+        followups = []
+
+        for rec in res.data or []:
+
+            # Format Vet Name
+            vet = rec.get("vet_profile") or {}
+            vet_name = " ".join(filter(None, [
+                vet.get("vet_fname"),
+                vet.get("vet_mname"),
+                vet.get("vet_lname")
+            ])).strip() or "Unknown Veterinarian"
+
+            # Clean lab images
+            img_raw = rec.get("medrec_lab_img")
+            if img_raw:
+                clean_img = img_raw.strip("[]\"'")
+                if not clean_img.startswith("http"):
+                    filename = clean_img.split("/")[-1]
+                    clean_img = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{filename}"
+            else:
+                clean_img = None
+
+            # Build Final Follow-Up Record Object
+            followups.append({
+                "medrec_id": rec.get("medrec_id"),
+                "parent_medrec_id": rec.get("parent_medrec_id"),
+                "medrec_date": rec.get("medrec_date"),
+                "medrec_followup_date": rec.get("medrec_followup_date"),
+
+                # Vitals
+                "medrec_heart_rate": rec.get("medrec_heart_rate"),
+                "medrec_resp_rate": rec.get("medrec_resp_rate"),
+                "medrec_body_temp": rec.get("medrec_body_temp"),
+
+                # Medical details
+                "medrec_clinical_signs": rec.get("medrec_clinical_signs"),
+                "medrec_diagnostic_protocol": rec.get("medrec_diagnostic_protocol"),
+                "medrec_lab_results": rec.get("medrec_lab_results"),
+                "medrec_lab_img": clean_img,
+                "medrec_diagnosis": rec.get("medrec_diagnosis"),
+                "medrec_prognosis": rec.get("medrec_prognosis"),
+                "medrec_recommendation": rec.get("medrec_recommendation"),
+                "medrec_horsestatus": rec.get("medrec_horsestatus"),
+
+                # Treatments
+                "horse_treatment": rec.get("horse_treatment", []),
+
+                # Veterinarian
+                "vet_name": vet_name
+            })
+
+        print(f"✅ Found {len(followups)} follow-ups")
+
+        return Response(
+            {"followups": followups, "count": len(followups)},
+            status=200
+        )
+
+    except Exception as e:
+        logging.exception("Error getting follow-up records")
+        return Response(
+            {"error": str(e)},
+            status=500
+        )
+
+
 
 
 
