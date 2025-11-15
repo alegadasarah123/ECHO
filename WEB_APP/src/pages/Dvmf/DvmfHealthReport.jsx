@@ -20,7 +20,6 @@ function DvmfHealthReport() {
 
   const [notifications, setNotifications] = useState([])
   const [statistics, setStatistics] = useState({
-    totalHorses: 0,
     healthy: 0,
     sick: 0,
     deceased: 0,
@@ -58,13 +57,6 @@ function DvmfHealthReport() {
       <div className="flex justify-between items-center mb-5">
         <div className="h-6 w-40 bg-gray-300 rounded"></div>
         <div className="h-10 w-32 bg-gray-300 rounded"></div>
-      </div>
-      
-      {/* Date Filters Skeleton */}
-      <div className="flex gap-4 mb-5 flex-wrap">
-        <div className="h-10 w-40 bg-gray-300 rounded"></div>
-        <div className="h-10 w-40 bg-gray-300 rounded"></div>
-        <div className="h-10 w-20 bg-gray-300 rounded"></div>
       </div>
       
       {/* Legend Skeleton */}
@@ -272,13 +264,11 @@ function DvmfHealthReport() {
       .then((data) => {
         console.log("Monthly data received:", data);
         
-        const totalHorses = data.reduce((sum, month) => sum + month.total, 0)
         const healthy = data.reduce((sum, month) => sum + month.healthy, 0)
         const sick = data.reduce((sum, month) => sum + month.sick, 0)
         const deceased = data.reduce((sum, month) => sum + month.deceased, 0)
         
         setStatistics({
-          totalHorses,
           healthy,
           sick,
           deceased,
@@ -310,7 +300,7 @@ function DvmfHealthReport() {
     setDateError("")
   }
 
-  // Quick date range presets
+  // Quick date range presets - FIXED: No loading when choosing dates
   const handleQuickDateRange = (range) => {
     const today = new Date();
     const fromDate = new Date();
@@ -332,8 +322,14 @@ function DvmfHealthReport() {
         return;
     }
     
+    // Just set the dates without triggering loading
     setDateFrom(fromDate.toISOString().split('T')[0]);
     setDateTo(today.toISOString().split('T')[0]);
+    
+    // Clear any existing date error
+    setDateError("");
+    
+    console.log(`Quick date range selected: ${range}`, fromDate.toISOString().split('T')[0], today.toISOString().split('T')[0]);
   }
 
   const handleRefresh = useCallback(() => {
@@ -459,7 +455,6 @@ function DvmfHealthReport() {
 
       pdf.setFontSize(12);
       const stats = [
-        { label: "Total Horses:", value: statistics?.totalHorses ?? 0 },
         { label: "Healthy:", value: statistics?.healthy ?? 0, color: [40, 167, 69] },
         { label: "Sick:", value: statistics?.sick ?? 0, color: [253, 126, 20] },
         { label: "Deceased:", value: statistics?.deceased ?? 0, color: [220, 53, 69] },
@@ -598,10 +593,10 @@ function DvmfHealthReport() {
       pdf.setFontSize(11);
       pdf.setTextColor(80, 80, 80);
 
-      const total = statistics?.totalHorses ?? 0;
       const healthy = statistics?.healthy ?? 0;
       const sick = statistics?.sick ?? 0;
       const deceased = statistics?.deceased ?? 0;
+      const total = healthy + sick + deceased;
 
       const hp = total ? ((healthy / total) * 100).toFixed(1) : "0.0";
       const sp = total ? ((sick / total) * 100).toFixed(1) : "0.0";
@@ -847,26 +842,15 @@ function DvmfHealthReport() {
         <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
           <div className="mb-6">
             {/* Stat Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-[30px]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-[30px]">
               {statsLoading ? (
                 <>
-                  <StatSkeleton />
                   <StatSkeleton />
                   <StatSkeleton />
                   <StatSkeleton />
                 </>
               ) : (
                 <>
-                  <div
-                    className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer border-l-4 border-l-gray-400"
-                    onClick={() => handleStatCardClick("Total Horses", statistics.totalHorses)}
-                  >
-                    <div className="text-4xl lg:text-[36px] font-bold text-gray-900 mb-2">
-                      {statistics.totalHorses}
-                    </div>
-                    <div className="text-sm lg:text-[14px] text-gray-500 font-medium">Total Horses</div>
-                  </div>
-
                   <div
                     className="bg-white p-5 rounded-lg shadow-sm text-center transition-transform hover:-translate-y-0.5 cursor-pointer border-l-4 border-l-green-500"
                     onClick={() => handleStatCardClick("Healthy", statistics.healthy)}
@@ -901,267 +885,270 @@ function DvmfHealthReport() {
             </div>
 
             {/* Line Chart Section */}
-            {chartLoading ? (
-              <ChartSkeleton />
-            ) : (
-              <div 
-                ref={chartRef}
-                className="bg-white rounded-lg shadow-sm p-4 lg:p-6 border border-gray-200"
-              >
-                <div className="flex justify-between items-center mb-5 flex-wrap gap-4">
+            <div 
+              ref={chartRef}
+              className="bg-white rounded-lg shadow-sm p-4 lg:p-6 border border-gray-200"
+            >
+              <div className="flex justify-between items-center mb-5 flex-wrap gap-4">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-5 h-5 text-gray-600" />
+                  <h2 className="text-lg lg:text-[18px] font-semibold text-gray-900">
+                    Monthly Health Status
+                  </h2>
+                </div>
+                <button
+                 className="bg-[#0F3D5A] text-white border-none py-2 px-4 rounded-md text-sm lg:text-[14px] font-medium cursor-pointer transition-colors hover:bg-[#0C3148] min-h-[40px] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  onClick={handleExport}
+                  disabled={exportLoading || (statistics.healthy + statistics.sick + statistics.deceased) === 0}
+                >
+                  {exportLoading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  ) : (
+                    <Download size={16} />
+                  )}
+                  {exportLoading ? 'Exporting...' : 'Export PDF'}
+                </button>
+              </div>
+
+              {/* Date Filters with Quick Presets - ALWAYS VISIBLE */}
+              <div className="bg-gray-50 p-4 rounded-lg mb-5 border border-gray-200">
+                <div className="flex flex-col gap-4">
                   <div className="flex items-center gap-3">
-                    <Calendar className="w-5 h-5 text-gray-600" />
-                    <h2 className="text-lg lg:text-[18px] font-semibold text-gray-900">
-                      Monthly Health Status
-                    </h2>
+                    <Calendar className="w-4 h-4 text-gray-600" />
+                    <h3 className="text-sm font-medium text-gray-700">Date Range Filter</h3>
                   </div>
-                  <button
-                   className="bg-[#0F3D5A] text-white border-none py-2 px-4 rounded-md text-sm lg:text-[14px] font-medium cursor-pointer transition-colors hover:bg-[#0C3148] min-h-[40px] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                    onClick={handleExport}
-                    disabled={exportLoading || statistics.totalHorses === 0}
-                  >
-                    {exportLoading ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    ) : (
-                      <Download size={16} />
-                    )}
-                    {exportLoading ? 'Exporting...' : 'Export PDF'}
-                  </button>
-                </div>
-
-                {/* Date Filters with Quick Presets */}
-                <div className="bg-gray-50 p-4 rounded-lg mb-5 border border-gray-200">
-                  <div className="flex flex-col gap-4">
-                    <div className="flex items-center gap-3">
-                      <Calendar className="w-4 h-4 text-gray-600" />
-                      <h3 className="text-sm font-medium text-gray-700">Date Range Filter</h3>
+                  
+                  <div className="flex gap-4 flex-wrap items-end">
+                    <div className="flex flex-col flex-1 min-w-[150px]">
+                      <label className="text-sm text-gray-600 mb-1 font-medium">Date From</label>
+                      <input
+                        type="date"
+                        value={dateFrom}
+                        onChange={(e) => setDateFrom(e.target.value)}
+                        className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                      />
                     </div>
-                    
-                    <div className="flex gap-4 flex-wrap items-end">
-                      <div className="flex flex-col flex-1 min-w-[150px]">
-                        <label className="text-sm text-gray-600 mb-1 font-medium">Date From</label>
-                        <input
-                          type="date"
-                          value={dateFrom}
-                          onChange={(e) => setDateFrom(e.target.value)}
-                          className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div className="flex flex-col flex-1 min-w-[150px]">
-                        <label className="text-sm text-gray-600 mb-1 font-medium">Date To</label>
-                        <input
-                          type="date"
-                          value={dateTo}
-                          onChange={(e) => setDateTo(e.target.value)}
-                          className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleDateFilterChange}
-                         className="bg-[#0F3D5A] text-white border-none py-2 px-4 rounded-md text-sm font-medium cursor-pointer transition-colors hover:bg-[#0C3148] h-[42px] whitespace-nowrap"
-
-                        >
-                          Apply Filters
-                        </button>
-                        <button
-                          onClick={handleClearFilters}
-                          className="bg-gray-500 text-white border-none py-2 px-4 rounded-md text-sm font-medium cursor-pointer transition-colors hover:bg-gray-600 h-[42px] whitespace-nowrap"
-                        >
-                          Clear
-                        </button>
-                      </div>
+                    <div className="flex flex-col flex-1 min-w-[150px]">
+                      <label className="text-sm text-gray-600 mb-1 font-medium">Date To</label>
+                      <input
+                        type="date"
+                        value={dateTo}
+                        onChange={(e) => setDateTo(e.target.value)}
+                        className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                      />
                     </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleDateFilterChange}
+                       className="bg-[#0F3D5A] text-white border-none py-2 px-4 rounded-md text-sm font-medium cursor-pointer transition-colors hover:bg-[#0C3148] h-[42px] whitespace-nowrap"
 
-                    {/* Date Error Message */}
-                    {dateError && (
-                      <div className="text-red-600 text-sm bg-red-50 p-2 rounded border border-red-200">
-                        {dateError}
-                      </div>
-                    )}
-
-                    {/* Quick Date Range Presets */}
-                    <div className="flex gap-2 flex-wrap">
-                      <span className="text-sm text-gray-600 font-medium mr-2">Quick ranges:</span>
-                      {['week', 'month', 'quarter', 'year'].map((range) => (
-                        <button
-                          key={range}
-                          onClick={() => handleQuickDateRange(range)}
-                          className="text-xs bg-white border border-gray-300 text-gray-700 py-1 px-3 rounded hover:bg-gray-50 transition-colors capitalize"
-                        >
-                          Last {range}
-                        </button>
-                      ))}
+                      >
+                        Apply Filters
+                      </button>
+                      <button
+                        onClick={handleClearFilters}
+                        className="bg-gray-500 text-white border-none py-2 px-4 rounded-md text-sm font-medium cursor-pointer transition-colors hover:bg-gray-600 h-[42px] whitespace-nowrap"
+                      >
+                        Clear
+                      </button>
                     </div>
                   </div>
-                </div>
 
-                {/* Legend */}
-                <div className="flex gap-5 mb-5 justify-center flex-wrap">
-                  <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500 bg-green-50 px-3 py-1 rounded-full">
-                    <div className="w-3 h-3 rounded-sm bg-green-500"></div>
-                    <span className="font-medium">Healthy</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500 bg-orange-50 px-3 py-1 rounded-full">
-                    <div className="w-3 h-3 rounded-sm bg-orange-500"></div>
-                    <span className="font-medium">Sick</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500 bg-red-50 px-3 py-1 rounded-full">
-                    <div className="w-3 h-3 rounded-sm bg-red-500"></div>
-                    <span className="font-medium">Deceased</span>
-                  </div>
-                </div>
-
-                {/* Line Chart */}
-                <div className="w-full overflow-x-auto">
-                  <div className="min-w-[600px]">
-                    <div className="relative h-64 mt-8">
-                      {/* Y-axis labels */}
-                      <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-xs text-gray-500">
-                        {yAxisSteps.map((value) => (
-                          <div 
-                            key={value} 
-                            className="text-right pr-2"
-                            style={{ 
-                              position: 'absolute',
-                              right: '0',
-                              bottom: `${(value / yAxisMax) * 95}%`,
-                              transform: 'translateY(50%)'
-                            }}
-                          >
-                            {value}
-                          </div>
-                        ))}
-                      </div>
-
-                      {/* Chart area */}
-                      <div className="ml-10 pl-5 h-full flex items-end justify-start gap-6 px-0 border-b border-l border-gray-300">
-                        {monthlyData.length > 0 && (
-                          <svg width="100%" height="100%" className="absolute top-0 left-0" style={{ marginLeft: '40px', width: '500px', height: '250px' }}>
-                            {/* Healthy line (Green) */}
-                            <polyline
-                              fill="none"
-                              stroke="#28a745"
-                              strokeWidth="2"
-                              points={monthlyData.map((month, index) => {
-                                const x = index * (500 / Math.max(1, monthlyData.length - 1));
-                                const y = 250 - (month.healthy / yAxisMax) * 230;
-                                return `${x},${y}`;
-                              }).join(' ')}
-                            />
-                            {/* Sick line (Orange) */}
-                            <polyline
-                              fill="none"
-                              stroke="#fd7e14"
-                              strokeWidth="2"
-                              points={monthlyData.map((month, index) => {
-                                const x = index * (500 / Math.max(1, monthlyData.length - 1));
-                                const y = 250 - (month.sick / yAxisMax) * 230;
-                                return `${x},${y}`;
-                              }).join(' ')}
-                            />
-                            {/* Deceased line (Red) */}
-                            <polyline
-                              fill="none"
-                              stroke="#dc3545"
-                              strokeWidth="2"
-                              points={monthlyData.map((month, index) => {
-                                const x = index * (500 / Math.max(1, monthlyData.length - 1));
-                                const y = 250 - (month.deceased / yAxisMax) * 230;
-                                return `${x},${y}`;
-                              }).join(' ')}
-                            />
-                            
-                            {/* Data points */}
-                            {monthlyData.map((month, index) => {
-                              const x = index * (500 / Math.max(1, monthlyData.length - 1));
-                              return (
-                                <g key={index}>
-                                  {/* Healthy point */}
-                                  <circle
-                                    cx={x}
-                                    cy={250 - (month.healthy / yAxisMax) * 230}
-                                    r="3"
-                                    fill="#28a745"
-                                    className="cursor-pointer hover:r-4 transition-all"
-                                  />
-                                  {/* Sick point */}
-                                  <circle
-                                    cx={x}
-                                    cy={250 - (month.sick / yAxisMax) * 230}
-                                    r="3"
-                                    fill="#fd7e14"
-                                    className="cursor-pointer hover:r-4 transition-all"
-                                  />
-                                  {/* Deceased point */}
-                                  <circle
-                                    cx={x}
-                                    cy={250 - (month.deceased / yAxisMax) * 230}
-                                    r="3"
-                                    fill="#dc3545"
-                                    className="cursor-pointer hover:r-4 transition-all"
-                                  />
-                                </g>
-                              );
-                            })}
-
-                            {/* Zero baseline */}
-                            <line
-                              x1="0"
-                              y1="250"
-                              x2="500"
-                              y2="250"
-                              stroke="#6b7280"
-                              strokeWidth="1"
-                              strokeDasharray="2,2"
-                              opacity="0.5"
-                            />
-                          </svg>
-                        )}
-                        
-                        {/* Month labels */}
-                        <div className="absolute bottom-0 left-0 right-0 flex justify-start" style={{ marginLeft: '40px', width: '500px' }}>
-                          {monthlyData.map((monthData, index) => (
-                            <div 
-                              key={index} 
-                              className="flex flex-col items-center absolute transform -translate-x-1/2"
-                              style={{ 
-                                left: `${(index * (500 / Math.max(1, monthlyData.length - 1)))}px`
-                              }}
-                            >
-                              <div className="text-xs text-gray-600 mt-2 font-medium text-center whitespace-nowrap">
-                                {String(monthData.month).substring(0, 3)}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
+                  {/* Date Error Message */}
+                  {dateError && (
+                    <div className="text-red-600 text-sm bg-red-50 p-2 rounded border border-red-200">
+                      {dateError}
                     </div>
+                  )}
 
-                    {monthlyData.length === 0 && !chartLoading && (
-                      <div className="text-center text-gray-500 py-8 bg-gray-50 rounded-lg">
-                        <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                        <p className="text-lg font-medium text-gray-600 mb-2">No Data Available</p>
-                        <p className="text-sm text-gray-500">
-                          {dateFrom || dateTo 
-                            ? "No data found for the selected date range. Try adjusting your filters." 
-                            : "No health data available in the system."
-                          }
-                        </p>
-                        {(dateFrom || dateTo) && (
-                          <button
-                            onClick={handleClearFilters}
-                            className="mt-3 bg-red-700 text-white px-4 py-2 rounded-md text-sm hover:bg-red-800 transition-colors"
-                          >
-                            Clear Date Filters
-                          </button>
-                        )}
-                      </div>
-                    )}
+                  {/* Quick Date Range Presets */}
+                  <div className="flex gap-2 flex-wrap">
+                    <span className="text-sm text-gray-600 font-medium mr-2">Quick ranges:</span>
+                    {['week', 'month', 'quarter', 'year'].map((range) => (
+                      <button
+                        key={range}
+                        onClick={() => handleQuickDateRange(range)}
+                        className="text-xs bg-white border border-gray-300 text-gray-700 py-1 px-3 rounded hover:bg-gray-50 transition-colors capitalize"
+                      >
+                        Last {range}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
-            )}
+
+              {/* Chart Content with Loading State */}
+              {chartLoading ? (
+                <ChartSkeleton />
+              ) : (
+                <>
+                  {/* Legend */}
+                  <div className="flex gap-5 mb-5 justify-center flex-wrap">
+                    <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500 bg-green-50 px-3 py-1 rounded-full">
+                      <div className="w-3 h-3 rounded-sm bg-green-500"></div>
+                      <span className="font-medium">Healthy</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500 bg-orange-50 px-3 py-1 rounded-full">
+                      <div className="w-3 h-3 rounded-sm bg-orange-500"></div>
+                      <span className="font-medium">Sick</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs lg:text-[12px] text-gray-500 bg-red-50 px-3 py-1 rounded-full">
+                      <div className="w-3 h-3 rounded-sm bg-red-500"></div>
+                      <span className="font-medium">Deceased</span>
+                    </div>
+                  </div>
+
+                  {/* Line Chart */}
+                  <div className="w-full overflow-x-auto">
+                    <div className="min-w-[600px]">
+                      <div className="relative h-64 mt-8">
+                        {/* Y-axis labels */}
+                        <div className="absolute left-0 top-0 bottom-0 w-12 flex flex-col justify-between text-xs text-gray-500">
+                          {yAxisSteps.map((value) => (
+                            <div 
+                              key={value} 
+                              className="text-right pr-2"
+                              style={{ 
+                                position: 'absolute',
+                                right: '0',
+                                bottom: `${(value / yAxisMax) * 95}%`,
+                                transform: 'translateY(50%)'
+                              }}
+                            >
+                              {value}
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Chart area */}
+                        <div className="ml-10 pl-5 h-full flex items-end justify-start gap-6 px-0 border-b border-l border-gray-300">
+                          {monthlyData.length > 0 && (
+                            <svg width="100%" height="100%" className="absolute top-0 left-0" style={{ marginLeft: '40px', width: '500px', height: '250px' }}>
+                              {/* Healthy line (Green) */}
+                              <polyline
+                                fill="none"
+                                stroke="#28a745"
+                                strokeWidth="2"
+                                points={monthlyData.map((month, index) => {
+                                  const x = index * (500 / Math.max(1, monthlyData.length - 1));
+                                  const y = 250 - (month.healthy / yAxisMax) * 230;
+                                  return `${x},${y}`;
+                                }).join(' ')}
+                              />
+                              {/* Sick line (Orange) */}
+                              <polyline
+                                fill="none"
+                                stroke="#fd7e14"
+                                strokeWidth="2"
+                                points={monthlyData.map((month, index) => {
+                                  const x = index * (500 / Math.max(1, monthlyData.length - 1));
+                                  const y = 250 - (month.sick / yAxisMax) * 230;
+                                  return `${x},${y}`;
+                                }).join(' ')}
+                              />
+                              {/* Deceased line (Red) */}
+                              <polyline
+                                fill="none"
+                                stroke="#dc3545"
+                                strokeWidth="2"
+                                points={monthlyData.map((month, index) => {
+                                  const x = index * (500 / Math.max(1, monthlyData.length - 1));
+                                  const y = 250 - (month.deceased / yAxisMax) * 230;
+                                  return `${x},${y}`;
+                                }).join(' ')}
+                              />
+                              
+                              {/* Data points */}
+                              {monthlyData.map((month, index) => {
+                                const x = index * (500 / Math.max(1, monthlyData.length - 1));
+                                return (
+                                  <g key={index}>
+                                    {/* Healthy point */}
+                                    <circle
+                                      cx={x}
+                                      cy={250 - (month.healthy / yAxisMax) * 230}
+                                      r="3"
+                                      fill="#28a745"
+                                      className="cursor-pointer hover:r-4 transition-all"
+                                    />
+                                    {/* Sick point */}
+                                    <circle
+                                      cx={x}
+                                      cy={250 - (month.sick / yAxisMax) * 230}
+                                      r="3"
+                                      fill="#fd7e14"
+                                      className="cursor-pointer hover:r-4 transition-all"
+                                    />
+                                    {/* Deceased point */}
+                                    <circle
+                                      cx={x}
+                                      cy={250 - (month.deceased / yAxisMax) * 230}
+                                      r="3"
+                                      fill="#dc3545"
+                                      className="cursor-pointer hover:r-4 transition-all"
+                                    />
+                                  </g>
+                                );
+                              })}
+
+                              {/* Zero baseline */}
+                              <line
+                                x1="0"
+                                y1="250"
+                                x2="500"
+                                y2="250"
+                                stroke="#6b7280"
+                                strokeWidth="1"
+                                strokeDasharray="2,2"
+                                opacity="0.5"
+                              />
+                            </svg>
+                          )}
+                          
+                          {/* Month labels */}
+                          <div className="absolute bottom-0 left-0 right-0 flex justify-start" style={{ marginLeft: '40px', width: '500px' }}>
+                            {monthlyData.map((monthData, index) => (
+                              <div 
+                                key={index} 
+                                className="flex flex-col items-center absolute transform -translate-x-1/2"
+                                style={{ 
+                                  left: `${(index * (500 / Math.max(1, monthlyData.length - 1)))}px`
+                                }}
+                              >
+                                <div className="text-xs text-gray-600 mt-2 font-medium text-center whitespace-nowrap">
+                                  {String(monthData.month).substring(0, 3)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {monthlyData.length === 0 && !chartLoading && (
+                        <div className="text-center text-gray-500 py-8 bg-gray-50 rounded-lg">
+                          <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                          <p className="text-lg font-medium text-gray-600 mb-2">No Data Available</p>
+                          <p className="text-sm text-gray-500">
+                            {dateFrom || dateTo 
+                              ? "No data found for the selected date range. Try adjusting your filters." 
+                              : "No health data available in the system."
+                            }
+                          </p>
+                          {(dateFrom || dateTo) && (
+                            <button
+                              onClick={handleClearFilters}
+                              className="mt-3 bg-[#0F3D5A] text-white px-4 py-2 rounded-md text-sm hover:bg-[#0C3148] transition-colors"
+                            >
+                              Clear Date Filters
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
       </div>

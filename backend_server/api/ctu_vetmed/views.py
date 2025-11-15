@@ -793,7 +793,7 @@ def get_vetnotifications(request):
 
             dt_ph = datetime.fromisoformat(created_at) if created_at else datetime.now()
             notifications_to_insert.append({
-                "user_id": user_id,  # Fixed: should be user_id, not id
+                "user_id": user_id,
                 "notif_message": message,
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
@@ -876,31 +876,58 @@ def get_vetnotifications(request):
                 if related_id in existing_keys:
                     continue
 
-                # Correct PK column: announce_id
+                # Get announcement owner
                 announcement_res = sr_client.table("announcement") \
                     .select("user_id") \
                     .eq("announce_id", ann_id) \
                     .maybe_single() \
                     .execute()
-                post_owner_id = announcement_res.data.get("user_id") if announcement_res.data else None
-
+                
+                # FIX: Check if response and data exist
+                if not announcement_res or not announcement_res.data:
+                    continue
+                    
+                post_owner_id = announcement_res.data.get("user_id")
                 if not post_owner_id or post_owner_id == commenter_id:
                     continue
 
-                # Fetch commenter name
+                # Fetch commenter name with proper null checks
                 commenter_name = None
-                kutsero_res = sr_client.table("kutsero_profile").select("kutsero_fname,kutsero_lname") \
-                    .eq("kutsero_id", commenter_id).maybe_single().execute()
-                if kutsero_res.data:
+                
+                # Check kutsero_profile
+                kutsero_res = sr_client.table("kutsero_profile") \
+                    .select("kutsero_fname,kutsero_lname") \
+                    .eq("kutsero_id", commenter_id) \
+                    .maybe_single() \
+                    .execute()
+                
+                if kutsero_res and kutsero_res.data:
                     commenter_name = f"{kutsero_res.data.get('kutsero_fname', '')} {kutsero_res.data.get('kutsero_lname', '')}".strip()
-                else:
-                    op_res = sr_client.table("horse_op_profile").select("op_fname,op_lname") \
-                        .eq("op_id", commenter_id).maybe_single().execute()
-                    if op_res.data:
+                
+                # If not found in kutsero, check horse_op_profile
+                if not commenter_name:
+                    op_res = sr_client.table("horse_op_profile") \
+                        .select("op_fname,op_lname") \
+                        .eq("op_id", commenter_id) \
+                        .maybe_single() \
+                        .execute()
+                    
+                    if op_res and op_res.data:
                         commenter_name = f"{op_res.data.get('op_fname', '')} {op_res.data.get('op_lname', '')}".strip()
 
+                # If still not found, check vet_profile
                 if not commenter_name:
-                    continue
+                    vet_res = sr_client.table("vet_profile") \
+                        .select("vet_fname,vet_lname") \
+                        .eq("vet_id", commenter_id) \
+                        .maybe_single() \
+                        .execute()
+                    
+                    if vet_res and vet_res.data:
+                        commenter_name = f"{vet_res.data.get('vet_fname', '')} {vet_res.data.get('vet_lname', '')}".strip()
+
+                if not commenter_name:
+                    commenter_name = "Unknown User"
 
                 add_notification(
                     post_owner_id,
@@ -915,8 +942,10 @@ def get_vetnotifications(request):
         # ---------------- BULK INSERT (DEDUPED) ----------------
         if notifications_to_insert:
             try:
-                sr_client.table("notification").insert(notifications_to_insert).execute()
-                print(f"Inserted {len(notifications_to_insert)} new notifications")
+                # FIX: Verify the table structure matches our insert
+                print(f"Attempting to insert {len(notifications_to_insert)} notifications")
+                result = sr_client.table("notification").insert(notifications_to_insert).execute()
+                print(f"Successfully inserted {len(notifications_to_insert)} new notifications")
             except Exception as e:
                 print(f"Error inserting notifications: {e}")
 
@@ -934,7 +963,7 @@ def get_vetnotifications(request):
 
         notifications = [
             {
-                "id": row.get("id"),  # This is the notification ID, not user_id
+                "id": row.get("id"),
                 "message": row.get("notif_message"),
                 "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
                 "read": row.get("notif_read", False),
@@ -948,7 +977,6 @@ def get_vetnotifications(request):
     except Exception as e:
         print(f"Error in get_vetnotifications: {e}")
         return Response({"error": str(e)}, status=500)
-
 
 
 # -------------------- MARK NOTIFICATION AS READ --------------------
@@ -2076,8 +2104,13 @@ def edit_post(request, post_id):
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
 
 
+
+
+
+# -------------------- HORSE STATISTICS --------------------#
 
 @api_view(["GET"])
 def get_horse_statistics(request):
@@ -2086,7 +2119,7 @@ def get_horse_statistics(request):
         date_to = request.GET.get('date_to')
         export_details = request.GET.get('export_details') == 'true'
 
-        # Convert date strings to datetime objects for proper comparison
+        # Convert date strings to datetime objects
         date_from_dt = None
         date_to_dt = None
         
@@ -2102,182 +2135,195 @@ def get_horse_statistics(request):
             except:
                 pass
 
-        # Build base query for horse profiles
-        query = (
-            sr_client.table("horse_profile")
-            .select("horse_id, horse_name, horse_status, created_at, horse_op_profile(op_id, users(id, status))")
-            .execute()
-        )
+        print(f"[DEBUG] Date filters - From: {date_from_dt}, To: {date_to_dt}")
 
-        rows = query.data or []
+        # Get all status data from both tables
+        try:
+            # Get profile statuses
+            profile_query = (
+                sr_client.table("horse_profile")
+                .select("horse_id, horse_name, horse_status, created_at, horse_op_profile(op_id, users(id, status))")
+                .execute()
+            )
+            profile_rows = profile_query.data or []
+        except Exception as db_error:
+            print(f"[DEBUG] Database error: {db_error}")
+            if export_details:
+                return Response({"monthly_data": [], "sick_horses": []})
+            return Response([])
 
-        # Filter out deactivated users
-        filtered_rows = []
-        for row in rows:
-            op_profile = row.get("horse_op_profile")
+        try:
+            # Get medical record statuses
+            med_query = (
+                sr_client.table("horse_medical_record")
+                .select("medrec_id, medrec_horse_id, medrec_horsestatus, medrec_date, medrec_diagnosis, horse_profile(horse_name, horse_op_profile(op_id, users(id, status)))")
+                .execute()
+            )
+            med_rows = med_query.data or []
+        except Exception as db_error:
+            print(f"[DEBUG] Database error: {db_error}")
+            med_rows = []
+
+        # Filter out deactivated users and prepare status events
+        status_events = []
+        
+        # Process profile statuses
+        for profile in profile_rows:
+            op_profile = profile.get("horse_op_profile")
             if not op_profile:
                 continue
-
-            user = op_profile.get("users")
-            if not user:
-                continue
-
-            if user.get("status", "").lower() != "deactivated":
-                filtered_rows.append(row)
-
-        # Build query for medical records
-        med_records_query = sr_client.table("horse_medical_record").select("*").execute()
-        med_records = med_records_query.data or []
-
-        # Create mapping of horse_id to medical records
-        horse_med_records = {}
-        for record in med_records:
-            horse_id = record.get('medrec_horse_id')
-            if horse_id:
-                if horse_id not in horse_med_records:
-                    horse_med_records[horse_id] = []
-                horse_med_records[horse_id].append(record)
-
-        # For each horse, find the most relevant medical record based on date filters
-        horse_final_status = {}
-        
-        for horse_id in horse_med_records:
-            records = horse_med_records[horse_id]
-            
-            # Sort records by date (newest first)
-            records.sort(key=lambda x: x.get('medrec_date', ''), reverse=True)
-            
-            filtered_records = records
-            if date_from_dt or date_to_dt:
-                filtered_records = []
-                for r in records:
-                    rec_date_str = r.get('medrec_date')
-                    if not rec_date_str:
-                        continue
-                    
-                    try:
-                        # Parse the record date
-                        if 'T' in rec_date_str:
-                            # ISO format with time
-                            rec_date = datetime.fromisoformat(rec_date_str.replace("Z", "+00:00")).date()
-                        else:
-                            # Just date
-                            rec_date = datetime.strptime(rec_date_str, "%Y-%m-%d").date()
-                        
-                        # Apply date range filters
-                        if date_from_dt and rec_date < date_from_dt:
-                            continue
-                        if date_to_dt and rec_date > date_to_dt:
-                            continue
-                        
-                        filtered_records.append(r)
-                    except:
-                        continue
-            
-            # Use the most recent record that matches date filters
-            if filtered_records:
-                latest_record = filtered_records[0]
-                horse_final_status[horse_id] = {
-                    'status': latest_record.get('medrec_horsestatus'),
-                    'diagnosis': latest_record.get('medrec_diagnosis'),
-                    'record_date': latest_record.get('medrec_date')
-                }
-            elif not date_from and not date_to:
-                # If no date filters, use the absolute latest record
-                latest_record = records[0]
-                horse_final_status[horse_id] = {
-                    'status': latest_record.get('medrec_horsestatus'),
-                    'diagnosis': latest_record.get('medrec_diagnosis'),
-                    'record_date': latest_record.get('medrec_date')
-                }
-
-        # Enhanced status mapping
-        status_mapping = {
-            "healthy": ["healthy", "normal", "good", "excellent"],
-            "sick": ["sick", "ill", "critical", "emergency"],
-            "deceased": ["deceased", "dead", "passed away", "died"]
-        }
-
-        # Monthly counts - FIXED: Use medical record dates when available
-        monthly_data = defaultdict(lambda: {"healthy": 0, "sick": 0, "deceased": 0, "total": 0})
-        sick_horses_details = []
-
-        for row in filtered_rows:
-            horse_id = row.get("horse_id")
-            horse_name = row.get("horse_name")
-            
-            # Determine status and date for grouping
-            status_text = ""
-            diagnosis = ""
-            group_date = None
-            
-            if horse_id in horse_final_status:
-                # Use medical record data
-                med_data = horse_final_status[horse_id]
-                status_text = (med_data.get('status') or "").strip().lower()
-                diagnosis = med_data.get('diagnosis') or ""
-                record_date = med_data.get('record_date')
                 
-                if record_date:
-                    try:
-                        group_date = datetime.fromisoformat(record_date.replace("Z", "+00:00"))
-                    except:
-                        group_date = None
-            else:
-                # Fall back to profile data (only if no date filters applied)
-                if not date_from and not date_to:
-                    status_text = (row.get("horse_status") or "").strip().lower()
-                    created_at = row.get("created_at")
-                    if created_at:
-                        try:
-                            group_date = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                        except:
-                            group_date = None
-
-            # Skip if we have date filters but no medical record matches
-            if (date_from or date_to) and horse_id not in horse_final_status:
+            user = op_profile.get("users")
+            if not user or user.get("status", "").lower() == "deactivated":
                 continue
-
-            # Skip if no date available for grouping
-            if not group_date:
-                group_date = datetime.now()
-
-            month_label = group_date.strftime("%b %Y")
-
-            # Count categories
-            status_found = False
-            for category, keywords in status_mapping.items():
-                if any(keyword in status_text for keyword in keywords):
-                    monthly_data[month_label][category] += 1
-                    status_found = True
-                    
-                    # Collect sick horse details for PDF export
-                    if category == "sick" and export_details and horse_name:
-                        sick_horses_details.append({
-                            "horse_name": horse_name,
-                            "diagnosis": diagnosis or "No diagnosis available",
-                            "status": status_text
+            
+            horse_status = (profile.get("horse_status") or "").strip().lower()
+            if horse_status:
+                created_at = profile.get("created_at")
+                if created_at:
+                    try:
+                        event_date = datetime.fromisoformat(created_at.replace("Z", "+00:00")).date()
+                        # Apply date filter
+                        if date_from_dt and event_date < date_from_dt:
+                            continue
+                        if date_to_dt and event_date > date_to_dt:
+                            continue
+                            
+                        status_events.append({
+                            "horse_id": profile.get("horse_id"),
+                            "horse_name": profile.get("horse_name"),
+                            "status": horse_status,
+                            "date": event_date,
+                            "source": "profile",
+                            "diagnosis": ""
                         })
-                    break
+                    except Exception as e:
+                        print(f"[DEBUG] Error parsing profile date: {e}")
+                        continue
 
-            if not status_found:
-                # Default to healthy if no specific status found
-                monthly_data[month_label]["healthy"] += 1
+        # Process medical record statuses
+        for med_record in med_rows:
+            horse_profile = med_record.get("horse_profile")
+            if not horse_profile:
+                continue
+                
+            op_profile = horse_profile.get("horse_op_profile")
+            if not op_profile:
+                continue
+                
+            user = op_profile.get("users")
+            if not user or user.get("status", "").lower() == "deactivated":
+                continue
+            
+            med_status = (med_record.get("medrec_horsestatus") or "").strip().lower()
+            if med_status:
+                med_date = med_record.get("medrec_date")
+                if med_date:
+                    try:
+                        if isinstance(med_date, str):
+                            if 'T' in med_date:
+                                event_date = datetime.fromisoformat(med_date.replace("Z", "+00:00")).date()
+                            else:
+                                event_date = datetime.strptime(med_date, "%Y-%m-%d").date()
+                        else:
+                            event_date = med_date
+                            
+                        # Apply date filter
+                        if date_from_dt and event_date < date_from_dt:
+                            continue
+                        if date_to_dt and event_date > date_to_dt:
+                            continue
+                            
+                        status_events.append({
+                            "horse_id": med_record.get("medrec_horse_id"),
+                            "horse_name": horse_profile.get("horse_name"),
+                            "status": med_status,
+                            "date": event_date,
+                            "source": "medical",
+                            "diagnosis": med_record.get("medrec_diagnosis") or ""
+                        })
+                    except Exception as e:
+                        print(f"[DEBUG] Error parsing medical date: {e}")
+                        continue
 
-            monthly_data[month_label]["total"] += 1
+        print(f"[DEBUG] Total status events found: {len(status_events)}")
 
-        # Convert to sorted list by month
+        # FIXED: Group by month and count ALL events (no deduplication)
+        monthly_counts = {}
+        
+        for event in status_events:
+            month_key = event["date"].strftime("%b %Y")
+            
+            if month_key not in monthly_counts:
+                monthly_counts[month_key] = {
+                    "healthy": 0,
+                    "sick": 0, 
+                    "deceased": 0,
+                    "total": 0
+                }
+            
+            # Categorize status - COUNT EVERY EVENT
+            status = event["status"]
+            if any(word in status for word in ["healthy", "normal", "good", "excellent"]):
+                monthly_counts[month_key]["healthy"] += 1
+            elif any(word in status for word in ["sick", "ill", "critical", "emergency"]):
+                monthly_counts[month_key]["sick"] += 1
+            elif any(word in status for word in ["deceased", "dead", "passed away", "died"]):
+                monthly_counts[month_key]["deceased"] += 1
+            
+            monthly_counts[month_key]["total"] += 1
+
+        # Convert to sorted list
         result = []
-        for month in sorted(monthly_data.keys(), key=lambda d: datetime.strptime(d, "%b %Y")):
+        for month_key, counts in monthly_counts.items():
             result.append({
-                "month": month,
-                "healthy": monthly_data[month]["healthy"],
-                "sick": monthly_data[month]["sick"],
-                "deceased": monthly_data[month]["deceased"],
-                "total": monthly_data[month]["total"]
+                "month": month_key,
+                "healthy": counts["healthy"],
+                "sick": counts["sick"],
+                "deceased": counts["deceased"],
+                "total": counts["total"]
             })
+        
+        # Sort by month
+        result.sort(key=lambda x: datetime.strptime(x["month"], "%b %Y"))
+        
+        # If no data, create empty entries for recent months
+        if not result and not date_from_dt and not date_to_dt:
+            current_date = datetime.now()
+            for i in range(3):
+                month_date = current_date.replace(day=1)
+                for _ in range(i):
+                    if month_date.month == 1:
+                        month_date = month_date.replace(year=month_date.year-1, month=12)
+                    else:
+                        month_date = month_date.replace(month=month_date.month-1)
+                
+                month_label = month_date.strftime("%b %Y")
+                result.append({
+                    "month": month_label,
+                    "healthy": 0,
+                    "sick": 0,
+                    "deceased": 0,
+                    "total": 0
+                })
+            result.sort(key=lambda x: datetime.strptime(x["month"], "%b %Y"))
 
+        print(f"[DEBUG] Final monthly data: {result}")
+
+        # Prepare sick horses for export - INCLUDE ALL SICK EVENTS
+        sick_horses_details = []
         if export_details:
+            # Include ALL sick events (not just latest per horse)
+            for event in status_events:
+                status = event["status"]
+                if any(word in status for word in ["sick", "ill", "critical", "emergency"]):
+                    sick_horses_details.append({
+                        "horse_name": event["horse_name"],
+                        "diagnosis": event["diagnosis"] or "No diagnosis available",
+                        "status": event["status"],
+                        "month": event["date"].strftime("%b %Y")
+                    })
+
             return Response({
                 "monthly_data": result,
                 "sick_horses": sick_horses_details
@@ -2286,15 +2332,21 @@ def get_horse_statistics(request):
         return Response(result)
 
     except Exception as e:
-        print(f"[v0] Error in get_horse_statistics: {str(e)}")
-        return Response(
-            {"detail": "Internal server error", "error": str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        print(f"[ERROR] in get_horse_statistics: {str(e)}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        if export_details:
+            return Response({"monthly_data": [], "sick_horses": []})
+        return Response([])
+
+
+
+
+
+
+
 
 # -------------------- ADD COMMENTS --------------------#
-
-
 @api_view(["POST"])
 @login_required
 def add_comment(request):
