@@ -911,7 +911,6 @@ def get_directory_profiles(request):
 
 
 
-
 @api_view(['GET'])
 def display_ctu_profiles(request):
     """
