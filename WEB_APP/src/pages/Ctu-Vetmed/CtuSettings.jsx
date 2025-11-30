@@ -647,34 +647,42 @@ const loadNotifications = useCallback(() => {
 
                   <form onSubmit={profileExists ? handleUpdate : handleSave}>
                     <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative mb-6">
-                      <label className="font-medium mb-1">Full Name:</label>
                       <div className="flex gap-3">
-                        <input
-                          type="text"
-                          name="ctu_fname"
-                          value={profile.ctu_fname}
-                          onChange={handleChange}
-                          readOnly={profileExists && !editing}
-                          className={`flex-1 px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
-                            profileExists && !editing
-                              ? "bg-gray-50 cursor-not-allowed"
-                              : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          }`}
-                          placeholder="First Name"
-                        />
-                        <input
-                          type="text"
-                          name="ctu_lname"
-                          value={profile.ctu_lname}
-                          onChange={handleChange}
-                          readOnly={profileExists && !editing}
-                          className={`flex-1 px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
-                            profileExists && !editing
-                              ? "bg-gray-50 cursor-not-allowed"
-                              : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          }`}
-                          placeholder="Last Name"
-                        />
+                        {/* First Name Field */}
+                        <div className="flex-1 flex flex-col gap-1.5">
+                          <label className="font-medium mb-1">First Name:</label>
+                          <input
+                            type="text"
+                            name="ctu_fname"
+                            value={profile.ctu_fname}
+                            onChange={handleChange}
+                            readOnly={profileExists && !editing}
+                            className={`w-full px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
+                              profileExists && !editing
+                                ? "bg-gray-50 cursor-not-allowed"
+                                : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            }`}
+                            placeholder="First Name"
+                          />
+                        </div>
+                        
+                        {/* Last Name Field */}
+                        <div className="flex-1 flex flex-col gap-1.5">
+                          <label className="font-medium mb-1">Last Name:</label>
+                          <input
+                            type="text"
+                            name="ctu_lname"
+                            value={profile.ctu_lname}
+                            onChange={handleChange}
+                            readOnly={profileExists && !editing}
+                            className={`w-full px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
+                              profileExists && !editing
+                                ? "bg-gray-50 cursor-not-allowed"
+                                : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            }`}
+                            placeholder="Last Name"
+                          />
+                        </div>
                       </div>
                       {(errors.ctu_fname || errors.ctu_lname) && (
                         <p className="text-red-500 text-xs absolute -bottom-4 right-0 m-0">

@@ -18,7 +18,7 @@ import {
   Info,
   MapPin,
   Phone,
-  RefreshCw,
+  RefreshCw, // FIXED: Changed from RefreshCcw to RefreshCw
   Search,
   User,
   X,
@@ -39,6 +39,7 @@ function CtuDirectory() {
   const [notifsOpen, setNotifsOpen] = useState(false)
   const [directoryData, setDirectoryData] = useState(initialDirectoryData)
   const [filteredDirectoryData, setFilteredDirectoryData] = useState(initialDirectoryData)
+  const [currentUser, setCurrentUser] = useState(null) // Add state for current user
 
   // Fixed tab state - using consistent values
   const [currentPage, setCurrentPage] = useState(1)
@@ -98,6 +99,28 @@ function CtuDirectory() {
     }
     return icons[type] || icons.info
   }, [])
+
+  // Function to get current user
+  const getCurrentUser = async () => {
+    try {
+      const response = await fetch(`${API_BASE}/get_current_user/`, {
+        method: "GET",
+        credentials: "include",
+      });
+      
+      if (response.ok) {
+        const userData = await response.json();
+        setCurrentUser(userData);
+        return userData;
+      } else {
+        console.error("Failed to fetch current user");
+        return null;
+      }
+    } catch (error) {
+      console.error("Error fetching current user:", error);
+      return null;
+    }
+  };
 
   // MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
@@ -444,226 +467,252 @@ function CtuDirectory() {
     }
   }
 
- // PDF Export Function for Currently Selected Role
-const exportToPDF = () => {
-  // Get the role from the current role filter
-  const selectedRole = roleFilter.toLowerCase();
-  
-  // If "all" is selected, export all data, otherwise filter by selected role
-  const exportData = selectedRole === "all" 
-    ? filteredDirectoryData 
-    : filteredDirectoryData.filter(person => 
-        person.type?.toLowerCase() === selectedRole
+  // PDF Export Function for Currently Selected Role
+  const exportToPDF = async () => {
+    // Get current user data
+    const userData = await getCurrentUser();
+    const approverName = userData?.name || "CTU Administrator";
+
+    // Get the role from the current role filter
+    const selectedRole = roleFilter.toLowerCase();
+    
+    // If "all" is selected, export all data, otherwise filter by selected role
+    const exportData = selectedRole === 'all' 
+      ? filteredDirectoryData 
+      : filteredDirectoryData.filter(person => 
+          person.type?.toLowerCase() === selectedRole
+        );
+
+    if (exportData.length === 0) {
+      const roleText = selectedRole === 'all' ? 'approved user' : selectedRole;
+      alert(`No ${roleText} data available to export.`);
+      return;
+    }
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+
+    const ctuLogo = '/Images/logo1.png';
+    const currentDate = new Date().toLocaleDateString();
+    
+    // Dynamic role name for display
+    const getRoleDisplayName = () => {
+      switch(selectedRole) {
+        case 'veterinarian': return 'Veterinarian';
+        case 'kutsero': return 'Kutsero';
+        case 'horse operator': return 'Horse Operator';
+        case 'all': return 'Approved User';
+        default: return 'User';
+      }
+    };
+
+    const roleDisplay = getRoleDisplayName();
+
+    // -------------------- HEADER --------------------
+    const addHeader = () => {
+      doc.addImage(ctuLogo, 'PNG', 15, 12, 50, 45);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.text('Republic of the Philippines', 105, 18, { align: 'center' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(13);
+      doc.text('CEBU TECHNOLOGICAL UNIVERSITY', 105, 26, { align: 'center' });
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text('MAIN CAMPUS', 105, 32, { align: 'center' });
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.text(
+        'M. J. Cuenco Avenue Cor. R. Palma Street, Cebu City, Philippines',
+        105,
+        37,
+        { align: 'center' }
       );
+      doc.text(
+        'Website: http://www.ctu.edu.ph  •  E-mail: ctcmain@ctu.edu.ph',
+        105,
+        41,
+        { align: 'center' }
+      );
+      doc.text('Phone: +6332 402 4060 loc. 1102', 105, 45, { align: 'center' });
 
-  if (exportData.length === 0) {
-    const roleText = selectedRole === "all" ? "approved user" : selectedRole;
-    alert(`No ${roleText} data available to export.`);
-    return;
-  }
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.text('CTU Veterinary Medicine Directory', 105, 58, { align: 'center' });
+      
+      // Dynamic title based on selected role
+      if (selectedRole === 'all') {
+        doc.text('Approved Users Report', 105, 66, { align: 'center' });
+      } else {
+        doc.text(`Approved ${roleDisplay}s Report`, 105, 66, { align: 'center' });
+      }
 
-  const doc = new jsPDF("p", "mm", "a4");
+      doc.setLineWidth(0.6);
+      doc.line(15, 70, 195, 70);
 
-  const ctuLogo = "/Images/logo1.png";
-  const currentDate = new Date().toLocaleDateString();
-  
-  // Dynamic role name for display
-  const getRoleDisplayName = () => {
-    switch(selectedRole) {
-      case "veterinarian": return "Veterinarian";
-      case "kutsero": return "Kutsero";
-      case "horse operator": return "Horse Operator";
-      case "all": return "Approved User";
-      default: return "User";
-    }
-  };
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Generated on: ${currentDate}`, 15, 77);
+    };
 
-  const roleDisplay = getRoleDisplayName();
+    // -------------------- FOOTER --------------------
+    const addFooter = (pageNumber) => {
+      const pageHeight = doc.internal.pageSize.height;
+      doc.setFontSize(9);
+      doc.text(`Page ${pageNumber}`, 105, pageHeight - 10, { align: 'center' });
+    };
 
-  // -------------------- HEADER --------------------
-  const addHeader = () => {
-    doc.addImage(ctuLogo, "PNG", 15, 12, 50, 45);
+    addHeader();
+    let pageNumber = 1;
 
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.text("Republic of the Philippines", 105, 18, { align: "center" });
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text("CEBU TECHNOLOGICAL UNIVERSITY", 105, 26, { align: "center" });
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.text("MAIN CAMPUS", 105, 32, { align: "center" });
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.text(
-      "M. J. Cuenco Avenue Cor. R. Palma Street, Cebu City, Philippines",
-      105,
-      37,
-      { align: "center" }
-    );
-    doc.text(
-      "Website: http://www.ctu.edu.ph  •  E-mail: ctcmain@ctu.edu.ph",
-      105,
-      41,
-      { align: "center" }
-    );
-    doc.text("Phone: +6332 402 4060 loc. 1102", 105, 45, { align: "center" });
-
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(12);
-    doc.text("CTU Veterinary Medicine Directory", 105, 58, { align: "center" });
-    
-    // Dynamic title based on selected role
-    if (selectedRole === "all") {
-      doc.text("Approved Users Report", 105, 66, { align: "center" });
-    } else {
-      doc.text(`Approved ${roleDisplay}s Report`, 105, 66, { align: "center" });
-    }
-
-    doc.setLineWidth(0.6);
-    doc.line(15, 70, 195, 70);
-
-    doc.setFontSize(10);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Generated on: ${currentDate}`, 15, 77);
-    
-    
-  };
-
-  // -------------------- FOOTER --------------------
-  const addFooter = (pageNumber) => {
+    // -------------------- TABLE --------------------
+    const startY = selectedRole === 'all' ? 90 : 95; // Original start position
+    const rowHeight = 10;
     const pageHeight = doc.internal.pageSize.height;
+    let currentY = startY;
+
+    // ✅ Perfect-fit widths (total = 180 mm)
+    const headers = ['Name', 'Role', 'Gender', 'Address', 'Status'];
+    const columnWidths = [38, 32, 20, 70, 20]; // total 180mm
+    const tableStartX = 10; // left margin
+    const tableEndX = tableStartX + columnWidths.reduce((a, b) => a + b, 0); // 195mm
+
+    // ✅ HEADER BAR (red)
+    doc.setFillColor(220, 53, 69);
+    doc.rect(tableStartX, currentY, 180, rowHeight, 'F'); // draw 1 full red bar
+    doc.setTextColor(255);
+    doc.setFont('helvetica', 'bold');
     doc.setFontSize(9);
-    doc.text(`Page ${pageNumber}`, 105, pageHeight - 10, { align: "center" });
-  };
 
-  addHeader();
-  let pageNumber = 1;
-
-  // -------------------- TABLE --------------------
-  const startY = selectedRole === "all" ? 90 : 95; // Adjust start position based on filter info
-  const rowHeight = 10;
-  const pageHeight = doc.internal.pageSize.height;
-  let currentY = startY;
-
-  // ✅ Perfect-fit widths (total = 180 mm)
-  const headers = ["Name", "Role", "Gender", "Address", "Status"];
-  const columnWidths = [38, 32, 20, 70, 20]; // total 180mm
-  const tableStartX = 10; // left margin
-  const tableEndX = tableStartX + columnWidths.reduce((a, b) => a + b, 0); // 195mm
-
-  // ✅ HEADER BAR (red)
-  doc.setFillColor(220, 53, 69);
-  doc.rect(tableStartX, currentY, 180, rowHeight, "F"); // draw 1 full red bar
-  doc.setTextColor(255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(9);
-
-  // write each header text inside
-  let currentX = tableStartX;
-  headers.forEach((header, i) => {
-    doc.text(header, currentX + 2, currentY + 6);
-    currentX += columnWidths[i];
-  });
-
-  currentY += rowHeight;
-  doc.setTextColor(0);
-  doc.setFont("helvetica", "normal");
-
-  // ✅ BODY ROWS
-  exportData.forEach((person, index) => {
-    if (currentY + rowHeight > pageHeight - 30) {
-      addFooter(pageNumber);
-      doc.addPage();
-      pageNumber++;
-      addHeader();
-      
-      // Reset Y position for new page
-      currentY = startY;
-      
-      // Redraw table header
-      currentX = tableStartX;
-      doc.setFillColor(220, 53, 69);
-      doc.setTextColor(255);
-      doc.setFont("helvetica", "bold");
-      headers.forEach((header, i) => {
-        doc.rect(currentX, currentY, columnWidths[i], rowHeight, "F");
-        doc.text(header, currentX + 2, currentY + 6);
-        currentX += columnWidths[i];
-      });
-
-      currentY += rowHeight;
-      doc.setTextColor(0);
-      doc.setFont("helvetica", "normal");
-    }
-
-    // alternate row background
-    if (index % 2 === 0) {
-      doc.setFillColor(245, 245, 245);
-      currentX = 10;
-      columnWidths.forEach((w) => {
-        doc.rect(currentX, currentY, w, rowHeight, "F");
-        currentX += w;
-      });
-    }
-
-    doc.setFontSize(8);
-    currentX = 10;
-
-    // Name
-    doc.text(person.name || "N/A", currentX + 2, currentY + 6);
-    currentX += columnWidths[0];
-
-    // Role
-    const role =
-      person.type &&
-      person.type.charAt(0).toUpperCase() + person.type.slice(1);
-    doc.text(role || "N/A", currentX + 2, currentY + 6);
-    currentX += columnWidths[1];
-
-    // Gender
-    doc.text(person.gender || "N/A", currentX + 2, currentY + 6);
-    currentX += columnWidths[2];
-
-    // Address (wrap text)
-    const address = doc.splitTextToSize(person.address || "N/A", columnWidths[3] - 4);
-    doc.text(address, currentX + 2, currentY + 4);
-    currentX += columnWidths[3];
-
-    // Status
-    doc.text(formatStatusDisplay(person.status), currentX + 2, currentY + 6);
+    // write each header text inside
+    let currentX = tableStartX;
+    headers.forEach((header, i) => {
+      doc.text(header, currentX + 2, currentY + 6);
+      currentX += columnWidths[i];
+    });
 
     currentY += rowHeight;
-  });
+    doc.setTextColor(0);
+    doc.setFont('helvetica', 'normal');
 
-  // ✅ TOTAL COUNT BELOW TABLE
-  currentY += 8;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  
-  // Dynamic total text based on role
-  const totalText = selectedRole === "all" 
-    ? `Total Approved Users: ${exportData.length}`
-    : `Total Approved ${roleDisplay}s: ${exportData.length}`;
-  
-  doc.text(totalText, 15, currentY);
+    // ✅ BODY ROWS
+    exportData.forEach((person, index) => {
+      if (currentY + rowHeight > pageHeight - 30) {
+        addFooter(pageNumber);
+        doc.addPage();
+        pageNumber++;
+        addHeader();
+        
+        // Reset Y position for new page
+        currentY = startY;
+        
+        // Redraw table header
+        currentX = tableStartX;
+        doc.setFillColor(220, 53, 69);
+        doc.setTextColor(255);
+        doc.setFont('helvetica', 'bold');
+        headers.forEach((header, i) => {
+          doc.rect(currentX, currentY, columnWidths[i], rowHeight, 'F');
+          doc.text(header, currentX + 2, currentY + 6);
+          currentX += columnWidths[i];
+        });
 
-  addFooter(pageNumber);
-  
-  // Dynamic filename based on role
-  const fileName = selectedRole === "all" 
-    ? `CTU-Directory-All-Users-Report-${currentDate.replace(/\//g, "-")}.pdf`
-    : `CTU-Directory-${roleDisplay}-Report-${currentDate.replace(/\//g, "-")}.pdf`;
-  
-  doc.save(fileName);
-};
+        currentY += rowHeight;
+        doc.setTextColor(0);
+        doc.setFont('helvetica', 'normal');
+      }
 
+      // alternate row background
+      if (index % 2 === 0) {
+        doc.setFillColor(245, 245, 245);
+        currentX = 10;
+        columnWidths.forEach((w) => {
+          doc.rect(currentX, currentY, w, rowHeight, 'F');
+          currentX += w;
+        });
+      }
+
+      doc.setFontSize(8);
+      currentX = 10;
+
+      // Name
+      doc.text(person.name || 'N/A', currentX + 2, currentY + 6);
+      currentX += columnWidths[0];
+
+      // Role
+      const role =
+        person.type &&
+        person.type.charAt(0).toUpperCase() + person.type.slice(1);
+      doc.text(role || 'N/A', currentX + 2, currentY + 6);
+      currentX += columnWidths[1];
+
+      // Gender
+      doc.text(person.gender || 'N/A', currentX + 2, currentY + 6);
+      currentX += columnWidths[2];
+
+      // Address (wrap text)
+      const address = doc.splitTextToSize(person.address || 'N/A', columnWidths[3] - 4);
+      doc.text(address, currentX + 2, currentY + 4);
+      currentX += columnWidths[3];
+
+      // Status
+      doc.text(formatStatusDisplay(person.status), currentX + 2, currentY + 6);
+
+      currentY += rowHeight;
+    });
+
+    // ✅ TOTAL COUNT BELOW TABLE
+    currentY += 8;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    
+    // Dynamic total text based on role
+    const totalText = selectedRole === 'all' 
+      ? `Total Approved Users: ${exportData.length}`
+      : `Total Approved ${roleDisplay}s: ${exportData.length}`;
+    
+    doc.text(totalText, 15, currentY);
+
+   // ✅ ADD "APPROVED BY:" SECTION BELOW TOTAL COUNT
+currentY += 15;
+
+// Approved by label - left aligned
+doc.setFontSize(10);
+doc.setFont("helvetica", "bold");
+doc.text("APPROVED BY:", 15, currentY);
+currentY += 8;
+
+// User's name - centered above the line
+doc.setFontSize(11);
+doc.setFont("helvetica", "bold");
+doc.setTextColor(0, 0, 0);
+doc.text(approverName, 45, currentY, { align: "center" });
+currentY += 4;
+
+// Line for signature - left aligned
+doc.setDrawColor(0, 0, 0);
+doc.setLineWidth(0.5);
+doc.line(20, currentY, 80, currentY);
+
+
+
+    addFooter(pageNumber);
+    
+    // Dynamic filename based on role
+    const fileName = selectedRole === 'all' 
+      ? `CTU-Directory-All-Users-Report-${currentDate.replace(/\//g, '-')}.pdf`
+      : `CTU-Directory-${roleDisplay}-Report-${currentDate.replace(/\//g, '-')}.pdf`;
+    
+    doc.save(fileName);
+  };
 
   useEffect(() => {
     loadDirectoryData()
+    // Get current user on component mount
+    getCurrentUser()
   }, [])
 
   // Skeleton Loader Component for Table Rows
