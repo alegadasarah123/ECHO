@@ -1,11 +1,18 @@
 "use client"
 
 // Enhanced Signup Component with Role Selection - No Username Required
-import { useState, useEffect } from "react"
+import DateTimePicker from "@react-native-community/datetimepicker"
+import * as ImagePicker from "expo-image-picker"
 import { useRouter } from "expo-router"
+import { useEffect, useState } from "react"
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
+  FlatList,
+  Image,
+  Modal,
+  Platform,
   SafeAreaView,
   ScrollView,
   StatusBar,
@@ -14,14 +21,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Modal,
-  FlatList,
-  Image,
-  Platform,
-  ActivityIndicator,
 } from "react-native"
-import DateTimePicker from "@react-native-community/datetimepicker"
-import * as ImagePicker from "expo-image-picker"
 
 const { width, height } = Dimensions.get("window")
 
@@ -325,7 +325,7 @@ interface ProfilePicture {
 }
 
 const API_CONFIG = {
-  BASE_URL: "http://192.168.31.58:8000/api/signup_mobile/",
+  BASE_URL: "http://192.168.31.184:8000/api/signup_mobile/",
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,

@@ -1,24 +1,24 @@
 "use client"
 
-import { useRouter, useLocalSearchParams } from "expo-router"
-import { useEffect, useState, useRef } from "react"
+import { FontAwesome5 } from "@expo/vector-icons"
+import { useLocalSearchParams, useRouter } from "expo-router"
+import * as SecureStore from "expo-secure-store"
+import { useEffect, useRef, useState } from "react"
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Image,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
-  StatusBar,
-  Modal,
   Dimensions,
   FlatList,
+  Image,
+  Modal,
   Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native"
-import * as SecureStore from "expo-secure-store"
-import { FontAwesome5 } from "@expo/vector-icons"
 
 const { width, height } = Dimensions.get("window")
 
@@ -36,7 +36,7 @@ const moderateScale = (size: number, factor = 0.5) => {
   return size + (scale(size) - size) * factor
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.31.184:8000/api/kutsero"
 
 interface UserProfileData {
   user_id: string

@@ -1,12 +1,16 @@
 "use client"
 
-import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router"
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router"
+import * as SecureStore from "expo-secure-store"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
+  ActivityIndicator,
+  Alert,
   Dimensions,
   Image,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -14,12 +18,8 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Alert,
-  ActivityIndicator,
-  RefreshControl,
 } from "react-native"
-import * as SecureStore from "expo-secure-store"
-import { supabase, setupPresence, cleanupPresence } from '../supabaseClient'
+import { cleanupPresence, setupPresence, supabase } from '../supabaseClient'
 
 const { width, height } = Dimensions.get("window")
 
@@ -55,7 +55,7 @@ const getSafeAreaPadding = () => {
   }
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.31.184:8000/api/kutsero"
 
 const SUPABASE_ENABLED = true
 

@@ -1,25 +1,24 @@
 "use client"
 
+import * as Device from 'expo-device'
+import * as Notifications from "expo-notifications"
 import { useRouter } from "expo-router"
-import { useState, useEffect } from "react"
+import * as SecureStore from "expo-secure-store"
+import { useEffect, useState } from "react"
 import {
+  ActivityIndicator,
+  Alert,
   Dimensions,
   Image,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  TouchableOpacity,
-  View,
-  Modal,
   TextInput,
-  Alert,
-  ActivityIndicator,
-  Platform
+  TouchableOpacity,
+  View
 } from "react-native"
-import * as SecureStore from "expo-secure-store"
-import * as Notifications from "expo-notifications"
-import * as Device from 'expo-device'
 
 const { width, height } = Dimensions.get("window")
 
@@ -66,7 +65,7 @@ interface Event {
 }
 
 // API Base URL - UPDATE THIS TO YOUR IP ADDRESS
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.31.184:8000/api/kutsero"
 
 // Configure notifications with proper TypeScript types
 Notifications.setNotificationHandler({

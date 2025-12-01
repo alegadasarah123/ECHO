@@ -1,13 +1,20 @@
 // DashboardScreen.tsx
 "use client"
 
+import AsyncStorage from "@react-native-async-storage/async-storage"
 import { useFocusEffect, useRouter } from "expo-router"
-import { useCallback, useEffect, useState, useRef } from "react"
+import * as SecureStore from "expo-secure-store"
+import { useCallback, useEffect, useRef, useState } from "react"
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
+  FlatList,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -15,22 +22,14 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  ActivityIndicator,
-  Keyboard,
-  KeyboardAvoidingView,
-  Platform,
-  FlatList,
 } from "react-native"
-import * as SecureStore from "expo-secure-store"
 import NotificationsPage from "./notifications"
-import SOSEmergencyScreen from "./sos"
-import AsyncStorage from "@react-native-async-storage/async-storage"
-import { 
-  initializeNotificationSystem, 
+import {
+  addGlobalNotificationListener,
   getFeedWaterCount,
-  resetFeedWaterCount,
-  addGlobalNotificationListener 
+  initializeNotificationSystem
 } from "./notificationService"
+import SOSEmergencyScreen from "./sos"
 
 const { width, height } = Dimensions.get("window")
 
@@ -163,7 +162,7 @@ interface SearchUserProfile {
   }
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.31.184:8000/api/kutsero"
 
 // Image Carousel Component
 const ImageCarousel = ({ images }: { images: string[] }) => {

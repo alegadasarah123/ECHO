@@ -1,9 +1,10 @@
 "use client"
 
+import { useFocusEffect, useRouter } from "expo-router"
 import * as SecureStore from "expo-secure-store"
-import { useRouter, useFocusEffect } from "expo-router"
-import { useEffect, useState, useCallback } from "react"
+import { useCallback, useEffect, useState } from "react"
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   Image,
@@ -14,7 +15,6 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  ActivityIndicator,
 } from "react-native"
 
 const { width, height } = Dimensions.get("window")
@@ -88,7 +88,7 @@ interface UserData {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.31.184:8000/api/kutsero"
 
 // Helper function to test API connectivity
 const testAPIConnection = async () => {

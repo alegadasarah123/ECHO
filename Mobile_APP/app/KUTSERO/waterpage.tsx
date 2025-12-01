@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
-import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Alert, SafeAreaView, TextInput } from "react-native";
 import { FontAwesome5 } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
+import { useEffect, useState } from "react";
+import { Alert, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import FeedLogPage from './FeedLogPage';
 import WaterLogPage from './waterlogpage';
 
-const API_BASE_URL = 'http://192.168.31.58:8000/api/kutsero';
+const API_BASE_URL = 'http://192.168.31.184:8000/api/kutsero';
 
 interface FeedLog {
   log_id: string;

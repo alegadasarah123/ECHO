@@ -1,26 +1,26 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react"
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
+import * as SecureStore from "expo-secure-store";
+import * as TaskManager from 'expo-task-manager';
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  AppState,
+  AppStateStatus,
   Dimensions,
+  Image,
+  Modal,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  Modal,
-  Image,
-  Platform,
-  AppState,
-  AppStateStatus,
-} from "react-native"
-import * as SecureStore from "expo-secure-store"
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
-import * as TaskManager from 'expo-task-manager';
+} from "react-native";
 
 const { width, height } = Dimensions.get("window")
 
@@ -247,7 +247,7 @@ export async function checkScheduledTimesGlobal(userName: string) {
     const encodedUser = encodeURIComponent(userName);
     
     const response = await fetch(
-      `http://192.168.31.58:8000/api/kutsero/check-current-schedules/?kutsero_id=${encodedUser}`
+      `http://192.168.31.184:8000/api/kutsero/check-current-schedules/?kutsero_id=${encodedUser}`
     );
     
     if (!response.ok) {
@@ -552,7 +552,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
     try {
       const encodedUser = encodeURIComponent(userName);
       const response = await fetch(
-        `http://192.168.31.58:8000/api/kutsero/feed-water-notifications/?kutsero_id=${encodedUser}`
+        `http://192.168.31.184:8000/api/kutsero/feed-water-notifications/?kutsero_id=${encodedUser}`
       );
       
       if (!response.ok) {
@@ -629,7 +629,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
   const fetchAnnouncements = async () => {
     try {
       const encodedUser = encodeURIComponent(userName)
-      const apiUrl = `http://192.168.31.58:8000/api/kutsero/announcements/?user=${encodedUser}`
+      const apiUrl = `http://192.168.31.184:8000/api/kutsero/announcements/?user=${encodedUser}`
 
       console.log("[v0] Fetching announcements from:", apiUrl)
 
@@ -1106,7 +1106,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       return imageUrl
     }
 
-    const baseUrl = "http://192.168.31.58:8000"
+    const baseUrl = "http://192.168.31.184:8000"
     const absoluteUrl = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : `${baseUrl}/${imageUrl}`
     console.log("[v0] Converted relative URL to absolute:", imageUrl, "->", absoluteUrl)
     return absoluteUrl

@@ -1,7 +1,10 @@
 "use client"
 import { useFocusEffect, useRouter } from "expo-router"
+import * as SecureStore from "expo-secure-store"
 import { useCallback, useEffect, useState } from "react"
 import {
+  ActivityIndicator,
+  Alert,
   Dimensions,
   Image,
   ScrollView,
@@ -11,10 +14,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Alert,
-  ActivityIndicator,
 } from "react-native"
-import * as SecureStore from "expo-secure-store"
 import FeedPage from "./feedpage"
 import NotificationsPage from "./notifications"
 import SOSEmergencyScreen from "./sos"
@@ -123,7 +123,7 @@ interface CareActivity {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "http://1192.168.31.184:8000/api/kutsero"
 
 export default function HorseCareScreen() {
   const router = useRouter()
