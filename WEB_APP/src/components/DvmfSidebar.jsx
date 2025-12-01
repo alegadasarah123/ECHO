@@ -3,6 +3,7 @@ import {
   ClipboardList,
   FileText,
   Folder,
+  LayoutDashboard,
   LogOut,
   Megaphone,
   Menu,
@@ -45,7 +46,7 @@ const DvmfSidebars = forwardRef((props, ref) => {
   }
 
   const sidebarItems = [
-    { icon: BarChart3, label: "Dashboard", path: "/DvmfDashboard" },
+    { icon: LayoutDashboard, label: "Dashboard", path: "/DvmfDashboard" },
     { icon: UserCheck, label: "Account Approval", path: "/DvmfAccountApproval" },
     { icon: FileText, label: "Access Requests", path: "/DvmfAccessRequest" },
     { icon: ClipboardList, label: "Horse Records", path: "/DvmfHorseRecord" },

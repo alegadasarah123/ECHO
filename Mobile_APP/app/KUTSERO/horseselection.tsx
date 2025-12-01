@@ -55,7 +55,7 @@ const getSafeAreaPadding = () => {
 interface Horse {
   id: string
   name: string
-  healthStatus: "Healthy" | "Unhealthy" | "Sick"
+  healthStatus: "Healthy" | "Sick" | "Deceased"
   status: string
   image: string  // Changed to string for URL
   breed?: string
@@ -88,7 +88,7 @@ interface UserData {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
 
 // Helper function to test API connectivity
 const testAPIConnection = async () => {
@@ -123,8 +123,8 @@ export default function HorseSelectionScreen() {
   const [statsData, setStatsData] = useState({
     total: 0,
     healthy: 0,
-    unhealthy: 0,
     sick: 0,
+    deceased: 0,
   })
   const safeArea = getSafeAreaPadding()
 
@@ -317,8 +317,8 @@ export default function HorseSelectionScreen() {
         setStatsData({
           total: data.total_count || horses.length,
           healthy: horses.filter((h) => h.healthStatus === "Healthy").length,
-          unhealthy: horses.filter((h) => h.healthStatus === "Unhealthy").length,
           sick: horses.filter((h) => h.healthStatus === "Sick").length,
+          deceased: horses.filter((h) => h.healthStatus === "Deceased").length,
         })
       } else {
         let errorMessage = "Failed to fetch horses"
@@ -548,9 +548,9 @@ export default function HorseSelectionScreen() {
     switch (status) {
       case "Healthy":
         return "#4CAF50"
-      case "Unhealthy":
-        return "#FF9800"
       case "Sick":
+        return "#FF9800"
+      case "Deceased":
         return "#F44336"
       default:
         return "#666"
@@ -626,12 +626,12 @@ export default function HorseSelectionScreen() {
             <Text style={styles.statLabel}>Healthy</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: "#FF9800" }]}>{statsData.unhealthy}</Text>
-            <Text style={styles.statLabel}>Unhealthy</Text>
+            <Text style={[styles.statNumber, { color: "#FF9800" }]}>{statsData.sick}</Text>
+            <Text style={styles.statLabel}>Sick</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={[styles.statNumber, { color: "#F44336" }]}>{statsData.sick}</Text>
-            <Text style={styles.statLabel}>Sick</Text>
+            <Text style={[styles.statNumber, { color: "#F44336" }]}>{statsData.deceased}</Text>
+            <Text style={styles.statLabel}>Deceased</Text>
           </View>
         </View>
 

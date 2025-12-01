@@ -325,50 +325,96 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
     const pdf = new jsPDF();
     const { horse, medicalRecord, treatmentHistory } = data;
 
-    const parseLabImages = (labImgData) => {
-      if (!labImgData) return [];
-      
-      try {
-        if (typeof labImgData === 'string' && labImgData.startsWith('[')) {
-          return JSON.parse(labImgData);
-        }
-        if (Array.isArray(labImgData)) {
-          return labImgData;
-        }
-        if (typeof labImgData === 'string') {
-          return [labImgData];
-        }
-      } catch (error) {
-        console.error('Error parsing lab images:', error);
-      }
-      
-      return [];
-    };
+    const logoLeft = "/Images/logo1.png";   // ✅ Your CTU logo
 
-    const primaryColor = [220, 53, 69];
-    const darkColor = [51, 51, 51];
+    // ✅ Convert image to BASE64
+    const getBase64Image = (url) =>
+      new Promise((resolve) => {
+        const img = new Image();
+        img.crossOrigin = "Anonymous";
+        img.onload = function () {
+          const canvas = document.createElement("canvas");
+          canvas.width = this.width;
+          canvas.height = this.height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(this, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        };
+        img.onerror = () => resolve(null);
+        img.src = url;
+      });
+
+    const baseLogo = await getBase64Image(logoLeft);
 
     pdf.setFont("helvetica");
 
-    pdf.setFillColor(...primaryColor);
-    pdf.rect(0, 0, 210, 25, "F");
+    // ✅ =============================
+    // ✅ NEW CTU HEADER DESIGN
+    // ✅ =============================
+    let y = 15;
 
-    pdf.setTextColor(255, 255, 255);
-    pdf.setFontSize(18);
+    // Add CTU Logo
+    if (baseLogo) {
+      pdf.addImage(baseLogo, "PNG", 10, 8,  50, 45);
+    }
+
+    // Header text layout
+    pdf.setFontSize(10);
+    pdf.setFont("helvetica", "normal");
+    pdf.text("Republic of the Philippines", 105, y + 2, { align: "center" });
+
+    pdf.setFontSize(14);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("CEBU TECHNOLOGICAL UNIVERSITY", 105, y + 10, { align: "center" });
+
+    pdf.setFontSize(11);
+    pdf.setFont("helvetica", "bold");
+    pdf.text("MAIN CAMPUS", 105, y + 17, { align: "center" });
+
+    pdf.setFontSize(9);
+    pdf.setFont("helvetica", "normal");
+    pdf.text(
+      "M.J. Cuenco Ave., Cebu City | www.ctu.edu.ph | info@ctu.edu.ph | (032) 402-4060",
+      105,
+      y + 24,
+      { align: "center" }
+    );
+
+    // Record title
+    pdf.setFontSize(13);
     pdf.setFont("helvetica", "bold");
     pdf.text(
       type === "medical" ? "MEDICAL RECORD" : "TREATMENT RECORD",
       105,
-      16,
+      y + 34,
       { align: "center" }
     );
 
-    pdf.setFontSize(9);
-    pdf.text(`Exported on: ${new Date().toLocaleDateString()}`, 200, 22, {
-      align: "right",
-    });
+    // Divider line
+    pdf.setDrawColor(0);
+    pdf.line(15, y + 38, 195, y + 38);
 
-    let yPosition = 35;
+    // ✅ NEW CLEAN SPACING BELOW HEADER
+    let yPosition = y + 65;   // ✅ improved spacing
+
+    // ✅ Color config
+    const primaryColor = [0, 0, 0];
+    const darkColor = [50, 50, 50];
+
+    // ✅ Helpers ------------------------------------------
+    const parseLabImages = (labImgData) => {
+      if (!labImgData) return [];
+      try {
+        if (typeof labImgData === "string" && labImgData.startsWith("[")) {
+          return JSON.parse(labImgData);
+        }
+        if (Array.isArray(labImgData)) return labImgData;
+        if (typeof labImgData === "string") return [labImgData];
+      } catch {
+        return [];
+      }
+      return [];
+    };
 
     const addSection = (title, content) => {
       if (yPosition > 270) {
@@ -376,10 +422,8 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
         yPosition = 20;
       }
 
-      yPosition += 4;
-
       pdf.setTextColor(...primaryColor);
-      pdf.setFontSize(13);
+      pdf.setFontSize(12);
       pdf.setFont("helvetica", "bold");
       pdf.text(title, 15, yPosition);
       yPosition += 6;
@@ -388,7 +432,6 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
         pdf.setTextColor(...darkColor);
         pdf.setFontSize(10);
         pdf.setFont("helvetica", "normal");
-
         const lines = pdf.splitTextToSize(content, 180);
         lines.forEach((line) => {
           if (yPosition > 270) {
@@ -409,29 +452,22 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
         yPosition = 20;
       }
 
-      pdf.setTextColor(...darkColor);
       pdf.setFontSize(10);
+      pdf.setTextColor(...darkColor);
 
       pdf.setFont("helvetica", "bold");
       pdf.text(`${key}:`, 20, yPosition);
 
       pdf.setFont("helvetica", "normal");
-      const valueLines = pdf.splitTextToSize(value || "N/A", 120);
+      const val = value || "N/A";
+      const lines = pdf.splitTextToSize(val, 120);
 
-      if (valueLines.length === 1) {
-        pdf.text(valueLines[0], 70, yPosition);
+      pdf.text(lines[0], 70, yPosition);
+      yPosition += 5;
+
+      for (let i = 1; i < lines.length; i++) {
+        pdf.text(lines[i], 70, yPosition);
         yPosition += 5;
-      } else {
-        pdf.text(valueLines[0], 70, yPosition);
-        yPosition += 5;
-        for (let i = 1; i < valueLines.length; i++) {
-          if (yPosition > 270) {
-            pdf.addPage();
-            yPosition = 20;
-          }
-          pdf.text(valueLines[i], 70, yPosition);
-          yPosition += 5;
-        }
       }
     };
 
@@ -443,151 +479,146 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
 
       pdf.setFontSize(10);
       pdf.setTextColor(...darkColor);
+
       pdf.setFont("helvetica", "bold");
       pdf.text(data[0], 20, yPosition);
+
       pdf.setFont("helvetica", "normal");
       pdf.text(data[1], 60, yPosition);
 
       if (data[2]) {
         pdf.setFont("helvetica", "bold");
-        pdf.text(data[2], 110, yPosition);
+        pdf.text(data[2], 120, yPosition);
+
         pdf.setFont("helvetica", "normal");
-        pdf.text(data[3], 150, yPosition);
+        pdf.text(data[3], 160, yPosition);
       }
 
       yPosition += 5;
     };
 
+    // ✅ =============================
+    // ✅ MAIN MEDICAL CONTENT
+    // ✅ =============================
     if (type === "medical") {
-      addSection("Horse Information", "");
-      addKeyValue("Name", horse?.horse_name || "N/A");
-      addKeyValue("Breed", horse?.horse_breed || "N/A");
-      addKeyValue("Age", horse?.horse_age || "N/A");
-      addKeyValue("Sex", horse?.horse_sex || "N/A");
-      addKeyValue("Owner", horse?.owner_fullname || "N/A");
-      addKeyValue("Contact", horse?.owner_phone || "N/A");
-      addKeyValue("Location", horse?.location || "N/A");
+      addSection("Horse Information");
+      addKeyValue("Name", horse?.horse_name);
+      addKeyValue("Breed", horse?.horse_breed);
+      addKeyValue("Age", horse?.horse_age);
+      addKeyValue("Sex", horse?.horse_sex);
+      addKeyValue("Owner", horse?.owner_fullname);
+      addKeyValue("Contact", horse?.owner_phone);
+      addKeyValue("Location", horse?.location);
 
-      addSection("Record Information", "");
-      addKeyValue("Record Date", medicalRecord.medrec_date || "N/A");
-      addKeyValue(
-        "Follow-up Date",
-        medicalRecord.medrec_followup_date || "No follow-up scheduled"
-      );
-      addKeyValue("Horse Status", medicalRecord.medrec_horsestatus || "N/A");
-      addKeyValue("Veterinarian", medicalRecord.vet_name || "N/A");
+      addSection("Record Information");
+      addKeyValue("Record Date", medicalRecord.medrec_date);
+      addKeyValue("Follow-up Date", medicalRecord.medrec_followup_date);
+      addKeyValue("Horse Status", medicalRecord.medrec_horsestatus);
+      addKeyValue("Veterinarian", medicalRecord.vet_name);
 
-      addSection("Vital Signs", "");
+      addSection("Vital Signs");
       addTableRow([
         "Temperature",
-        `${medicalRecord.medrec_body_temp || "N/A"} °C`,
+        `${medicalRecord.medrec_body_temp} °C`,
         "Heart Rate",
-        `${medicalRecord.medrec_heart_rate || "N/A"} bpm`,
+        `${medicalRecord.medrec_heart_rate} bpm`,
       ]);
       addTableRow([
         "Resp. Rate",
-        `${medicalRecord.medrec_resp_rate || "N/A"} breaths/min`,
-        "",
-        "",
+        `${medicalRecord.medrec_resp_rate} breaths/min`,
       ]);
 
-      addSection("Diagnosis", medicalRecord.medrec_diagnosis || "No diagnosis");
-      addSection(
-        "Clinical Signs",
-        medicalRecord.medrec_clinical_signs || "No signs recorded"
-      );
-      addSection(
-        "Prognosis",
-        medicalRecord.medrec_prognosis || "No prognosis recorded"
-      );
-      addSection(
-        "Recommendations",
-        medicalRecord.medrec_recommendation || "No recommendations"
-      );
+      addSection("Diagnosis", medicalRecord.medrec_diagnosis);
+      addSection("Clinical Signs", medicalRecord.medrec_clinical_signs);
+      addSection("Prognosis", medicalRecord.medrec_prognosis);
+      addSection("Recommendations", medicalRecord.medrec_recommendation);
       addSection(
         "Diagnostic Protocol",
-        medicalRecord.medrec_diagnostic_protocol || "No protocol recorded"
+        medicalRecord.medrec_diagnostic_protocol
       );
 
-      addSection("Laboratory Results", "");
-      addKeyValue("Lab Results", medicalRecord.medrec_lab_results || "No lab results available");
-      
-      const labImages = parseLabImages(medicalRecord.medrec_lab_img);
-      if (labImages.length > 0) {
-        addKeyValue("Lab Images", `${labImages.length} image(s) available - See system for details`);
-      } else {
-        addKeyValue("Lab Images", "No lab images available");
-      }
-    } else {
-      addSection("Horse Information", "");
-      addKeyValue("Name", horse?.horse_name || "N/A");
-      addKeyValue("Breed", horse?.horse_breed || "N/A");
-      addKeyValue("Age", horse?.horse_age || "N/A");
-      addKeyValue("Owner", horse?.owner_fullname || "N/A");
-
-      addSection("Treatment Record", "");
+      addSection("Laboratory Results");
       addKeyValue(
-        "Treatment Date",
-        treatmentHistory.treatment_date || "N/A"
+        "Lab Results",
+        medicalRecord.medrec_lab_results || "No lab results available"
       );
+
+      const labImages = parseLabImages(medicalRecord.medrec_lab_img);
+      addKeyValue(
+        "Lab Images",
+        labImages.length
+          ? `${labImages.length} image(s) available`
+          : "No lab images available"
+      );
+
+      if (medicalRecord.horse_treatment?.length > 0) {
+        addSection("Treatments");
+        medicalRecord.horse_treatment.forEach((t, idx) => {
+          addKeyValue(`Treatment ${idx + 1}`, t.treatment_name);
+          addKeyValue("  Dosage", t.treatment_dosage);
+          addKeyValue("  Duration", t.treatment_duration);
+        });
+      }
+    }
+
+    // ✅ =============================
+    // ✅ TREATMENT RECORD CONTENT
+    // ✅ =============================
+    else {
+      addSection("Horse Information");
+      addKeyValue("Name", horse?.horse_name);
+      addKeyValue("Breed", horse?.horse_breed);
+      addKeyValue("Age", horse?.horse_age);
+      addKeyValue("Owner", horse?.owner_fullname);
+
+      addSection("Treatment Record");
+      addKeyValue("Treatment Date", treatmentHistory.treatment_date);
       addKeyValue(
         "Follow-up Date",
         treatmentHistory.followup_date ||
-          treatmentHistory.parent_record?.medrec_followup_date ||
-          "N/A"
+          treatmentHistory.parent_record?.medrec_followup_date
       );
-      addKeyValue("Administered By", treatmentHistory.vet_name || "N/A");
+      addKeyValue("Administered By", treatmentHistory.vet_name);
       addKeyValue(
         "Veterinarian",
-        medicalRecord?.vet_name || treatmentHistory.vet_name || "N/A"
+        medicalRecord?.vet_name || treatmentHistory.vet_name
       );
       addKeyValue(
         "Horse Status",
-        treatmentHistory.parent_record?.medrec_horsestatus || "N/A"
+        treatmentHistory.parent_record?.medrec_horsestatus
       );
-      addKeyValue(
-        "Recommendation",
-        treatmentHistory.medrec_recommendation || "N/A"
-      );
+      addKeyValue("Recommendation", treatmentHistory.medrec_recommendation);
 
-      addSection("Medical Data at Time of Treatment", "");
+      addSection("Medical Data During Treatment");
       addTableRow([
         "Temperature",
-        `${treatmentHistory.medrec_bodytemp || "N/A"} °C`,
+        `${treatmentHistory.medrec_bodytemp} °C`,
         "Heart Rate",
-        `${treatmentHistory.medrec_heart_rate || "N/A"} bpm`,
+        `${treatmentHistory.medrec_heart_rate} bpm`,
       ]);
       addTableRow([
         "Resp. Rate",
-        `${treatmentHistory.medrec_resp_rate || "N/A"} breaths/min`,
-        "",
-        "",
+        `${treatmentHistory.medrec_resp_rate} breaths/min`,
       ]);
 
-      addSection(
-        "Clinical Signs",
-        treatmentHistory.medrec_clinical_sign || "No information available"
-      );
-      addSection(
-        "Diagnosis",
-        treatmentHistory.medrec_diagnosis || "No information available"
-      );
+      addSection("Clinical Signs", treatmentHistory.medrec_clinical_sign);
+      addSection("Diagnosis", treatmentHistory.medrec_diagnosis);
 
-      addSection("Treatment Details", "");
-      addKeyValue(
-        "Treatment Name",
-        treatmentHistory.treatment_name || "No information available"
-      );
-      addKeyValue("Dosage", treatmentHistory.treatment_dosage || "N/A");
-      addKeyValue("Duration", treatmentHistory.treatment_duration || "N/A");
-      addKeyValue("Outcome", treatmentHistory.treatment_outcome || "N/A");
+      addSection("Treatment Details");
+      const tData = treatmentHistory.full_treatment || treatmentHistory;
+      addKeyValue("Treatment Name", tData.treatment_name);
+      addKeyValue("Dosage", tData.treatment_dosage);
+      addKeyValue("Duration", tData.treatment_duration);
+      addKeyValue("Outcome", tData.treatment_outcome);
+      addKeyValue("Remarks", tData.treatment_remark);
     }
 
+    // ✅ Footer for all pages
     const pageCount = pdf.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       pdf.setPage(i);
       pdf.setFontSize(8);
-      pdf.setTextColor(150, 150, 150);
+      pdf.setTextColor(150);
       pdf.text(`Page ${i} of ${pageCount}`, 105, 290, { align: "center" });
       pdf.text("CTU Veterinary Medicine System", 200, 290, { align: "right" });
     }
@@ -599,6 +630,7 @@ const exportToPDF = async (data, filename = "document.pdf", type = "medical") =>
     return false;
   }
 };
+
 
 const MedicalRecordWithFollowups = ({ record, horse, onViewMedicalRecord }) => {
   const [showFollowups, setShowFollowups] = useState(false);
