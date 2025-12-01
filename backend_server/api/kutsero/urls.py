@@ -78,6 +78,7 @@ urlpatterns = [
     path('available_users/', views.available_users, name='available_users'),
     path('get_messages/', views.get_messages, name='get_messages'),
     path('send_message/', views.send_message, name='send_message'),
+    
     path('debug_user_lookup/', views.debug_user_lookup, name='debug_user_lookup'),
 
     # Profile endpoints

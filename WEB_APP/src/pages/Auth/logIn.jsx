@@ -143,13 +143,17 @@ function LogIn({ onBack }) {
       borderRadius: "0.375rem",
       lineHeight: "1.4",
     },
+    forgotLinkContainer: {
+      display: "flex",
+      justifyContent: "flex-end",
+      width: "100%",
+    },
     forgotLink: {
       color: "#B8763E",
       textDecoration: "none",
       fontWeight: "500",
       transition: "color 0.2s ease",
       cursor: "pointer",
-      textAlign: "right",
       fontSize: "0.875rem",
       paddingTop: "0.25rem",
     },
@@ -377,7 +381,7 @@ function LogIn({ onBack }) {
 
           {error && <div style={styles.error}>{error}</div>}
 
-          <div>
+          <div style={styles.forgotLinkContainer}>
             <span
               style={styles.forgotLink}
               onClick={handleForgotPasswordClick}

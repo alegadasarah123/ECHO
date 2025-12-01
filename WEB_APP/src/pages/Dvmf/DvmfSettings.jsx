@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
+const API_BASE = "http://localhost:8000/api/dvmf";
 
 const DvmfSettings = () => {
   const [activeTab, setActiveTab] = useState("profile")
@@ -81,7 +81,7 @@ const DvmfSettings = () => {
   // MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/mark_all_notifications_read/`, {
+      const res = await fetch(`http://localhost:8000/api/dvmf/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -122,7 +122,7 @@ const DvmfSettings = () => {
   // Mark as read in backend (only if valid ID)
   if (notifId) {
     try {
-      await fetch(`https://echo-ebl8.onrender.com/api/dvmf/mark_notification_read/${notifId}/`, {
+      await fetch(`http://localhost:8000/api/dvmf/mark_notification_read/${notifId}/`, {
         method: "POST",
         credentials: "include",
       });
@@ -182,7 +182,7 @@ const DvmfSettings = () => {
   };
 
   const loadNotifications = useCallback(() => {
-    fetch(`https://echo-ebl8.onrender.com/api/dvmf/get_vetnotifications/`)
+    fetch(`http://localhost:8000/api/dvmf/get_vetnotifications/`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -206,7 +206,7 @@ const DvmfSettings = () => {
     setErrors({})
 
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/save_dvmf_user_profile/`, {
+      const res = await fetch(`http://localhost:8000/api/dvmf/save_dvmf_user_profile/`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -240,7 +240,7 @@ const DvmfSettings = () => {
     setErrors({})
 
     try {
-      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/update_dvmf_user_profile/", {
+      const res = await fetch("http://localhost:8000/api/dvmf/update_dvmf_user_profile/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -282,7 +282,7 @@ const DvmfSettings = () => {
     }
 
     try {
-      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/dvmf_change_password/", {
+      const res = await fetch("http://localhost:8000/api/dvmf/dvmf_change_password/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -364,7 +364,7 @@ const DvmfSettings = () => {
     }
 
     try {
-      const response = await fetch("https://echo-ebl8.onrender.com/api/dvmf/signup/", {
+      const response = await fetch("http://localhost:8000/api/dvmf/signup/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -416,7 +416,7 @@ const DvmfSettings = () => {
   // DEACTIVATE USER
   const deactivateUser = async (id) => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/users/deactivate/${id}/`, {
+      const res = await fetch(`http://localhost:8000/api/dvmf/users/deactivate/${id}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -433,7 +433,7 @@ const DvmfSettings = () => {
   // REACTIVATE USER
   const reactivateUser = async (id) => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/dvmf/users/reactivate/${id}/`, {
+      const res = await fetch(`http://localhost:8000/api/dvmf/users/reactivate/${id}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -466,7 +466,7 @@ const DvmfSettings = () => {
   // Fetch DVMF profile
   const fetchProfile = async () => {
     try {
-      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/get_dvmf_user_profiles/", {
+      const res = await fetch("http://localhost:8000/api/dvmf/get_dvmf_user_profiles/", {
         method: "GET",
         credentials: "include",
       })
@@ -510,7 +510,7 @@ const DvmfSettings = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const res = await fetch("https://echo-ebl8.onrender.com/api/dvmf/users/", {
+      const res = await fetch("http://localhost:8000/api/dvmf/users/", {
         method: "GET",
         credentials: "include",
       })
@@ -639,34 +639,42 @@ const DvmfSettings = () => {
 
                   <form onSubmit={profileExists ? handleUpdate : handleSave}>
                     <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative mb-6">
-                      <label className="font-medium mb-1">Full Name:</label>
                       <div className="flex gap-3">
-                        <input
-                          type="text"
-                          name="dvmf_fname"
-                          value={profile.dvmf_fname}
-                          onChange={handleChange}
-                          readOnly={profileExists && !editing}
-                          className={`flex-1 px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
-                            profileExists && !editing
-                              ? "bg-gray-50 cursor-not-allowed"
-                              : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          }`}
-                          placeholder="First Name"
-                        />
-                        <input
-                          type="text"
-                          name="dvmf_lname"
-                          value={profile.dvmf_lname}
-                          onChange={handleChange}
-                          readOnly={profileExists && !editing}
-                          className={`flex-1 px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
-                            profileExists && !editing
-                              ? "bg-gray-50 cursor-not-allowed"
-                              : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          }`}
-                          placeholder="Last Name"
-                        />
+                        {/* First Name Field */}
+                        <div className="flex-1 flex flex-col gap-1.5">
+                          <label className="font-medium mb-1">First Name:</label>
+                          <input
+                            type="text"
+                            name="dvmf_fname"
+                            value={profile.dvmf_fname}
+                            onChange={handleChange}
+                            readOnly={profileExists && !editing}
+                            className={`w-full px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
+                              profileExists && !editing
+                                ? "bg-gray-50 cursor-not-allowed"
+                                : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            }`}
+                            placeholder="First Name"
+                          />
+                        </div>
+                        
+                        {/* Last Name Field */}
+                        <div className="flex-1 flex flex-col gap-1.5">
+                          <label className="font-medium mb-1">Last Name:</label>
+                          <input
+                            type="text"
+                            name="dvmf_lname"
+                            value={profile.dvmf_lname}
+                            onChange={handleChange}
+                            readOnly={profileExists && !editing}
+                            className={`w-full px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
+                              profileExists && !editing
+                                ? "bg-gray-50 cursor-not-allowed"
+                                : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            }`}
+                            placeholder="Last Name"
+                          />
+                        </div>
                       </div>
                       {(errors.dvmf_fname || errors.dvmf_lname) && (
                         <p className="text-red-500 text-xs absolute -bottom-4 right-0 m-0">

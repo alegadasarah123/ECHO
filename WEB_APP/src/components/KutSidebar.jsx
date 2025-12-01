@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { BarChart3, Users, Heart, LogOut, Menu, UserCheck, Settings, X } from 'lucide-react';
+import { LayoutDashboard, LogOut, Menu, Settings, Users, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const Sidebar = () => {
@@ -33,7 +33,7 @@ const Sidebar = () => {
   };
 
   const sidebarItems = [
-    { icon: BarChart3, label: 'Dashboard', path: '/KutDashboard' },
+    { icon: LayoutDashboard, label: 'Dashboard', path: '/KutDashboard' },
     { icon: Users, label: 'User Management', path: '/KutUserManagement' },
     { icon: Settings, label: 'Settings', path: '/KutSettings' },
   ];

@@ -617,7 +617,6 @@ def get_users(request):
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
-# -------------------- NOTIFICATIONS --------------------
 # -------------------- GET VET NOTIFICATIONS --------------------
 from datetime import datetime
 from rest_framework.decorators import api_view
@@ -631,22 +630,25 @@ def get_vetnotifications(request):
 
         # ---------------- FETCH EXISTING NOTIFICATIONS ----------------
         try:
+            # Get ALL existing notifications (including read ones) to prevent duplicates
             existing_res = sr_client.table("notification") \
-                .select("related_id") \
+                .select("related_id, notif_read") \
                 .not_.is_("related_id", None) \
                 .execute()
             existing_keys = {row["related_id"] for row in (existing_res.data or [])}
-        except:
+        except Exception as e:
+            print(f"Error fetching existing notifications: {e}")
             existing_keys = set()
 
         # ---------------- HELPER FUNCTION ----------------
         def add_notification(user_id, message, notif_type, related_id, created_at=None):
+            # Prevent duplicates based on related_id regardless of read status
             if not user_id or not related_id or related_id in existing_keys:
                 return
 
             dt_ph = datetime.fromisoformat(created_at) if created_at else datetime.now()
             notifications_to_insert.append({
-                "id": user_id,
+                "user_id": user_id,  # Fixed: should be user_id, not id
                 "notif_message": message,
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
@@ -680,8 +682,8 @@ def get_vetnotifications(request):
                         related_id,
                         vet.get("created_at")
                     )
-        except:
-            pass
+        except Exception as e:
+            print(f"Error in vet notifications: {e}")
 
         # ---------------- MEDICAL RECORD ACCESS REQUESTS ----------------
         try:
@@ -710,8 +712,8 @@ def get_vetnotifications(request):
                     related_id,
                     req.get("requested_at")
                 )
-        except:
-            pass
+        except Exception as e:
+            print(f"Error in medical record notifications: {e}")
 
         # ---------------- COMMENT NOTIFICATIONS ----------------
         try:
@@ -762,15 +764,16 @@ def get_vetnotifications(request):
                     related_id,
                     comment.get("comment_date")
                 )
-        except:
-            pass
+        except Exception as e:
+            print(f"Error in comment notifications: {e}")
 
         # ---------------- BULK INSERT (DEDUPED) ----------------
         if notifications_to_insert:
             try:
                 sr_client.table("notification").insert(notifications_to_insert).execute()
-            except:
-                pass
+                print(f"Inserted {len(notifications_to_insert)} new notifications")
+            except Exception as e:
+                print(f"Error inserting notifications: {e}")
 
         # ---------------- FETCH ALL VALID NOTIFICATIONS ----------------
         valid_types = ["medrec_request", "approved", "declined", "pending", "comment"]
@@ -786,7 +789,7 @@ def get_vetnotifications(request):
 
         notifications = [
             {
-                "id": row.get("id"),
+                "id": row.get("id"),  # This is the notification ID, not user_id
                 "message": row.get("notif_message"),
                 "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
                 "read": row.get("notif_read", False),
@@ -798,12 +801,8 @@ def get_vetnotifications(request):
         return Response(notifications, status=200)
 
     except Exception as e:
+        print(f"Error in get_vetnotifications: {e}")
         return Response({"error": str(e)}, status=500)
-
-
-
-
-    
 
 
 
@@ -860,7 +859,6 @@ def mark_all_notifications_read(request):
 
 
 
-
 # -------------------- GET VET,KUTSERO, HORSE OPERATOR PROFILE IN DIRECRORY --------------------
 
 @api_view(['GET'])
@@ -893,7 +891,6 @@ def get_directory_profiles(request):
             {"error": "Internal Server Error", "details": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
 
 
 
@@ -1530,10 +1527,12 @@ def search_vet(request):
 
 
 
+# -------------------- display horses with owner full name --------------------
+
 @api_view(['GET'])
 def get_horses(request):
     """
-    Fetch all horses with owner info, medical records (with lab images from Supabase),
+    Fetch all horses with owner info, medical records (with lab images),
     treatments, and veterinarian name.
     """
     try:
@@ -1575,6 +1574,7 @@ def get_horses(request):
                 medrec_recommendation,
                 medrec_followup_date,
                 medrec_horsestatus,
+                parent_medrec_id,
                 medrec_vet_id,
                 vet_profile (
                     vet_fname,
@@ -1594,7 +1594,7 @@ def get_horses(request):
         horse_list = []
 
         for horse in horses_response.data:
-            # 🧍 Owner info
+            # Owner info
             owner = horse.get("horse_op_profile", {})
             fullname = " ".join(filter(None, [owner.get("op_fname"), owner.get("op_mname"), owner.get("op_lname")]))
             location = ", ".join(filter(None, [owner.get("op_municipality"), owner.get("op_city"), owner.get("op_province")]))
@@ -1609,7 +1609,7 @@ def get_horses(request):
             if "horse_op_profile" in horse:
                 del horse["horse_op_profile"]
 
-            # 🩺 Vet + Medical Records
+            # Vet + Medical Records
             med_records = horse.get("horse_medical_record", [])
             for record in med_records:
                 # Vet name
@@ -1617,11 +1617,12 @@ def get_horses(request):
                 vet_name = " ".join(filter(None, [vet_info.get("vet_fname"), vet_info.get("vet_mname"), vet_info.get("vet_lname")]))
                 record["vet_name"] = vet_name.strip()
 
-                # ✅ Lab image from Supabase Storage
+                # Clean up medrec_lab_img since it's already a full URL
                 lab_img_path = record.get("medrec_lab_img")
-                if lab_img_path:
-                    public_url = sr_client.storage.from_("Lab_results").get_public_url(lab_img_path)
-                    record["medrec_lab_img_url"] = public_url
+
+                if lab_img_path and isinstance(lab_img_path, str):
+                    clean_url = lab_img_path.strip().strip('[]"\'')
+                    record["medrec_lab_img_url"] = clean_url if clean_url.startswith("http") else None
                 else:
                     record["medrec_lab_img_url"] = None
 
@@ -1635,6 +1636,116 @@ def get_horses(request):
             {"error": "Internal server error", "details": str(e)},
             status=500
         )
+
+
+@api_view(["GET"])
+def get_followup_records(request, parent_medrec_id):
+    """
+    Get all follow-up medical records for a given parent medical record ID
+    including: vitals, diagnosis, prognosis, lab results, vet info and treatments.
+    """
+    try:
+        print(f"🔍 Fetching follow-ups for parent_medrec_id={parent_medrec_id}")
+
+        res = sr_client.table("horse_medical_record").select("""
+            medrec_id,
+            parent_medrec_id,
+            medrec_date,
+            medrec_followup_date,
+            medrec_heart_rate,
+            medrec_resp_rate,
+            medrec_body_temp,
+            medrec_clinical_signs,
+            medrec_diagnostic_protocol,
+            medrec_lab_results,
+            medrec_lab_img,
+            medrec_diagnosis,
+            medrec_prognosis,
+            medrec_recommendation,
+            medrec_horsestatus,
+            medrec_vet_id,
+            vet_profile (
+                vet_fname,
+                vet_mname,
+                vet_lname
+            ),
+            horse_treatment (
+                treatment_id,
+                treatment_name,
+                treatment_dosage,
+                treatment_duration,
+                treatment_outcome
+            )
+        """).eq("parent_medrec_id", parent_medrec_id)\
+          .order("medrec_date", desc=True)\
+          .execute()
+
+        followups = []
+
+        for rec in res.data or []:
+
+            # Format Vet Name
+            vet = rec.get("vet_profile") or {}
+            vet_name = " ".join(filter(None, [
+                vet.get("vet_fname"),
+                vet.get("vet_mname"),
+                vet.get("vet_lname")
+            ])).strip() or "Unknown Veterinarian"
+
+            # Clean lab images
+            img_raw = rec.get("medrec_lab_img")
+            if img_raw:
+                clean_img = img_raw.strip("[]\"'")
+                if not clean_img.startswith("http"):
+                    filename = clean_img.split("/")[-1]
+                    clean_img = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{filename}"
+            else:
+                clean_img = None
+
+            # Build Final Follow-Up Record Object
+            followups.append({
+                "medrec_id": rec.get("medrec_id"),
+                "parent_medrec_id": rec.get("parent_medrec_id"),
+                "medrec_date": rec.get("medrec_date"),
+                "medrec_followup_date": rec.get("medrec_followup_date"),
+
+                # Vitals
+                "medrec_heart_rate": rec.get("medrec_heart_rate"),
+                "medrec_resp_rate": rec.get("medrec_resp_rate"),
+                "medrec_body_temp": rec.get("medrec_body_temp"),
+
+                # Medical details
+                "medrec_clinical_signs": rec.get("medrec_clinical_signs"),
+                "medrec_diagnostic_protocol": rec.get("medrec_diagnostic_protocol"),
+                "medrec_lab_results": rec.get("medrec_lab_results"),
+                "medrec_lab_img": clean_img,
+                "medrec_diagnosis": rec.get("medrec_diagnosis"),
+                "medrec_prognosis": rec.get("medrec_prognosis"),
+                "medrec_recommendation": rec.get("medrec_recommendation"),
+                "medrec_horsestatus": rec.get("medrec_horsestatus"),
+
+                # Treatments
+                "horse_treatment": rec.get("horse_treatment", []),
+
+                # Veterinarian
+                "vet_name": vet_name
+            })
+
+        print(f"✅ Found {len(followups)} follow-ups")
+
+        return Response(
+            {"followups": followups, "count": len(followups)},
+            status=200
+        )
+
+    except Exception as e:
+        logging.exception("Error getting follow-up records")
+        return Response(
+            {"error": str(e)},
+            status=500
+        )
+
+
 
 
 
@@ -1656,7 +1767,7 @@ def retry_query(query_func, retries=3, delay=1):
         try:
             return query_func().execute()
         except Exception as e:
-            print(f"⚠️ Supabase query failed (attempt {attempt+1}): {e}")
+            print(f"Supabase query failed (attempt {attempt+1}): {e}")
             if attempt < retries - 1:
                 time.sleep(delay)
             else:
@@ -1802,7 +1913,7 @@ def approve_access_request(request, request_id):
             .update({
                 "request_status": "approved",
                 "approved_at": current_time.isoformat(),  # ✅ Proper timezone.now() usage
-                "approved_by": "CTU-VET"
+                "approved_by": "DVMF"
             }) \
             .eq("request_id", str(request_id)) \
             .execute()
@@ -1810,13 +1921,11 @@ def approve_access_request(request, request_id):
         if not response.data:
             return Response({"error": "Request not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        return Response({
-            "message": "Access request successfully approved ✅",
-            "data": response.data[0]
-        }, status=status.HTTP_200_OK)
+        return Response(response.data[0], status=status.HTTP_200_OK)
 
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 # -------------------- DECLINE REQUEST -------------------- #
@@ -1887,84 +1996,237 @@ def edit_post(request, post_id):
 
 
 
+# -------------------- HORSE STATISTICS --------------------#
+
 @api_view(["GET"])
 def get_horse_statistics(request):
     try:
-        # Join horse_profile → horse_op_profile → users
-        query = (
-            sr_client.table("horse_profile")
-            .select("horse_status, created_at, horse_op_profile(op_id, users(id, status))")
-            .execute()
-        )
+        date_from = request.GET.get('date_from')
+        date_to = request.GET.get('date_to')
+        export_details = request.GET.get('export_details') == 'true'
 
-        rows = query.data or []
+        # Convert date strings to datetime objects
+        date_from_dt = None
+        date_to_dt = None
+        
+        if date_from:
+            try:
+                date_from_dt = datetime.strptime(date_from, "%Y-%m-%d").date()
+            except:
+                pass
+        
+        if date_to:
+            try:
+                date_to_dt = datetime.strptime(date_to, "%Y-%m-%d").date()
+            except:
+                pass
 
-        # Filter out deactivated users
-        filtered_rows = []
-        for row in rows:
-            op_profile = row.get("horse_op_profile")
+        print(f"[DEBUG] Date filters - From: {date_from_dt}, To: {date_to_dt}")
+
+        # Get all status data from both tables
+        try:
+            # Get profile statuses
+            profile_query = (
+                sr_client.table("horse_profile")
+                .select("horse_id, horse_name, horse_status, created_at, horse_op_profile(op_id, users(id, status))")
+                .execute()
+            )
+            profile_rows = profile_query.data or []
+        except Exception as db_error:
+            print(f"[DEBUG] Database error: {db_error}")
+            if export_details:
+                return Response({"monthly_data": [], "sick_horses": []})
+            return Response([])
+
+        try:
+            # Get medical record statuses
+            med_query = (
+                sr_client.table("horse_medical_record")
+                .select("medrec_id, medrec_horse_id, medrec_horsestatus, medrec_date, medrec_diagnosis, horse_profile(horse_name, horse_op_profile(op_id, users(id, status)))")
+                .execute()
+            )
+            med_rows = med_query.data or []
+        except Exception as db_error:
+            print(f"[DEBUG] Database error: {db_error}")
+            med_rows = []
+
+        # Filter out deactivated users and prepare status events
+        status_events = []
+        
+        # Process profile statuses
+        for profile in profile_rows:
+            op_profile = profile.get("horse_op_profile")
             if not op_profile:
                 continue
-
+                
             user = op_profile.get("users")
-            if not user:
+            if not user or user.get("status", "").lower() == "deactivated":
                 continue
+            
+            horse_status = (profile.get("horse_status") or "").strip().lower()
+            if horse_status:
+                created_at = profile.get("created_at")
+                if created_at:
+                    try:
+                        event_date = datetime.fromisoformat(created_at.replace("Z", "+00:00")).date()
+                        # Apply date filter
+                        if date_from_dt and event_date < date_from_dt:
+                            continue
+                        if date_to_dt and event_date > date_to_dt:
+                            continue
+                            
+                        status_events.append({
+                            "horse_id": profile.get("horse_id"),
+                            "horse_name": profile.get("horse_name"),
+                            "status": horse_status,
+                            "date": event_date,
+                            "source": "profile",
+                            "diagnosis": ""
+                        })
+                    except Exception as e:
+                        print(f"[DEBUG] Error parsing profile date: {e}")
+                        continue
 
-            if user.get("status", "").lower() != "deactivated":
-                filtered_rows.append(row)
+        # Process medical record statuses
+        for med_record in med_rows:
+            horse_profile = med_record.get("horse_profile")
+            if not horse_profile:
+                continue
+                
+            op_profile = horse_profile.get("horse_op_profile")
+            if not op_profile:
+                continue
+                
+            user = op_profile.get("users")
+            if not user or user.get("status", "").lower() == "deactivated":
+                continue
+            
+            med_status = (med_record.get("medrec_horsestatus") or "").strip().lower()
+            if med_status:
+                med_date = med_record.get("medrec_date")
+                if med_date:
+                    try:
+                        if isinstance(med_date, str):
+                            if 'T' in med_date:
+                                event_date = datetime.fromisoformat(med_date.replace("Z", "+00:00")).date()
+                            else:
+                                event_date = datetime.strptime(med_date, "%Y-%m-%d").date()
+                        else:
+                            event_date = med_date
+                            
+                        # Apply date filter
+                        if date_from_dt and event_date < date_from_dt:
+                            continue
+                        if date_to_dt and event_date > date_to_dt:
+                            continue
+                            
+                        status_events.append({
+                            "horse_id": med_record.get("medrec_horse_id"),
+                            "horse_name": horse_profile.get("horse_name"),
+                            "status": med_status,
+                            "date": event_date,
+                            "source": "medical",
+                            "diagnosis": med_record.get("medrec_diagnosis") or ""
+                        })
+                    except Exception as e:
+                        print(f"[DEBUG] Error parsing medical date: {e}")
+                        continue
 
-        # Mapping categories
-        status_mapping = {
-            "healthy": ["healthy", "normal", "good", "excellent"],
-            "sick": ["sick", "ill", "critical", "emergency"],
-            "unhealthy": ["unhealthy", "poor", "poor_health", "poor health"]
-        }
+        print(f"[DEBUG] Total status events found: {len(status_events)}")
 
-        # Monthly counts
-        monthly_data = defaultdict(lambda: {"healthy": 0, "sick": 0, "unhealthy": 0, "total": 0})
+        # FIXED: Group by month and count ALL events (no deduplication)
+        monthly_counts = {}
+        
+        for event in status_events:
+            month_key = event["date"].strftime("%b %Y")
+            
+            if month_key not in monthly_counts:
+                monthly_counts[month_key] = {
+                    "healthy": 0,
+                    "sick": 0, 
+                    "deceased": 0,
+                    "total": 0
+                }
+            
+            # Categorize status - COUNT EVERY EVENT
+            status = event["status"]
+            if any(word in status for word in ["healthy", "normal", "good", "excellent"]):
+                monthly_counts[month_key]["healthy"] += 1
+            elif any(word in status for word in ["sick", "ill", "critical", "emergency"]):
+                monthly_counts[month_key]["sick"] += 1
+            elif any(word in status for word in ["deceased", "dead", "passed away", "died"]):
+                monthly_counts[month_key]["deceased"] += 1
+            
+            monthly_counts[month_key]["total"] += 1
 
-        for row in filtered_rows:
-            status_text = (row.get("horse_status") or "").strip().lower()
-            created_at = row.get("created_at")
-
-            # Default to current month if no created_at
-            if created_at:
-                try:
-                    date_obj = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
-                except:
-                    date_obj = datetime.now()
-            else:
-                date_obj = datetime.now()
-
-            month_label = date_obj.strftime("%b %Y")  # e.g., "Oct 2025"
-
-            # Count categories
-            for category, keywords in status_mapping.items():
-                if status_text in keywords:
-                    monthly_data[month_label][category] += 1
-                    break
-
-            monthly_data[month_label]["total"] += 1
-
-        # Convert to sorted list by month
+        # Convert to sorted list
         result = []
-        for month in sorted(monthly_data.keys(), key=lambda d: datetime.strptime(d, "%b %Y")):
+        for month_key, counts in monthly_counts.items():
             result.append({
-                "month": month,
-                "healthy": monthly_data[month]["healthy"],
-                "sick": monthly_data[month]["sick"],
-                "unhealthy": monthly_data[month]["unhealthy"],
-                "total": monthly_data[month]["total"]
+                "month": month_key,
+                "healthy": counts["healthy"],
+                "sick": counts["sick"],
+                "deceased": counts["deceased"],
+                "total": counts["total"]
+            })
+        
+        # Sort by month
+        result.sort(key=lambda x: datetime.strptime(x["month"], "%b %Y"))
+        
+        # If no data, create empty entries for recent months
+        if not result and not date_from_dt and not date_to_dt:
+            current_date = datetime.now()
+            for i in range(3):
+                month_date = current_date.replace(day=1)
+                for _ in range(i):
+                    if month_date.month == 1:
+                        month_date = month_date.replace(year=month_date.year-1, month=12)
+                    else:
+                        month_date = month_date.replace(month=month_date.month-1)
+                
+                month_label = month_date.strftime("%b %Y")
+                result.append({
+                    "month": month_label,
+                    "healthy": 0,
+                    "sick": 0,
+                    "deceased": 0,
+                    "total": 0
+                })
+            result.sort(key=lambda x: datetime.strptime(x["month"], "%b %Y"))
+
+        print(f"[DEBUG] Final monthly data: {result}")
+
+        # Prepare sick horses for export - INCLUDE ALL SICK EVENTS
+        sick_horses_details = []
+        if export_details:
+            # Include ALL sick events (not just latest per horse)
+            for event in status_events:
+                status = event["status"]
+                if any(word in status for word in ["sick", "ill", "critical", "emergency"]):
+                    sick_horses_details.append({
+                        "horse_name": event["horse_name"],
+                        "diagnosis": event["diagnosis"] or "No diagnosis available",
+                        "status": event["status"],
+                        "month": event["date"].strftime("%b %Y")
+                    })
+
+            return Response({
+                "monthly_data": result,
+                "sick_horses": sick_horses_details
             })
 
         return Response(result)
 
     except Exception as e:
-        return Response(
-            {"detail": "Internal server error", "error": str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    
+        print(f"[ERROR] in get_horse_statistics: {str(e)}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        if export_details:
+            return Response({"monthly_data": [], "sick_horses": []})
+        return Response([])
+
+
+
 
 
 
@@ -2486,7 +2748,7 @@ def safe_execute(query, retries=3, delay=1):
         try:
             return query.execute()
         except Exception as e:
-            print(f"⚠️ Supabase query failed (attempt {attempt+1}): {e}")
+            print(f"Supabase query failed (attempt {attempt+1}): {e}")
             if attempt < retries - 1:
                 time.sleep(delay)
             else:
@@ -2675,14 +2937,20 @@ def get_conversation(request, conversation_id):
 @api_view(["GET"])
 @login_required
 def get_conversations(request):
-    """Get all conversations for the currently logged-in DVMF user."""
+    """
+    Get all conversations for the currently logged-in DVMF user.
+    Shows all users who have exchanged messages with the current DVMF account.
+    """
     try:
+        # ✅ Use DVMF ID instead of president_id
         dvmf_id = get_current_dvmf_id(request)
         if not dvmf_id:
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
+        # ✅ Track unique conversation partners
         conversation_partners = set()
 
+        # ✅ Users who sent messages to current DVMF
         received_res = safe_execute(
             sr_client.table("message")
             .select("user_id")
@@ -2692,6 +2960,7 @@ def get_conversations(request):
             for msg in received_res.data:
                 conversation_partners.add(msg["user_id"])
 
+        # ✅ Users who received messages from current DVMF
         sent_res = safe_execute(
             sr_client.table("message")
             .select("receiver_id")
@@ -2701,16 +2970,17 @@ def get_conversations(request):
             for msg in sent_res.data:
                 conversation_partners.add(msg["receiver_id"])
 
+        # ✅ No conversation yet
         if not conversation_partners:
             return Response([], status=status.HTTP_200_OK)
 
+        # ✅ Fetch user details for conversation partners
         users_res = safe_execute(
             sr_client.table("users")
             .select("id, role, status")
             .in_("id", list(conversation_partners))
             .eq("status", "approved")
         )
-
         users = users_res.data or []
         if not users:
             return Response([], status=status.HTTP_200_OK)
@@ -2721,6 +2991,7 @@ def get_conversations(request):
             user_id = user["id"]
             role = user["role"]
 
+            # ✅ Get latest message between current DVMF user and other user
             messages_res = safe_execute(
                 sr_client.table("message")
                 .select("*")
@@ -2733,6 +3004,7 @@ def get_conversations(request):
             )
             latest_message = messages_res.data[0] if messages_res.data else None
 
+            # ✅ Count unread messages
             unread_res = safe_execute(
                 sr_client.table("message")
                 .select("mes_id")
@@ -2742,29 +3014,37 @@ def get_conversations(request):
             )
             unread_count = len(unread_res.data) if unread_res.data else 0
 
+            # ✅ Fetch user profile info
             profile_info = get_user_profile_info(user_id, role)
 
+            # ✅ Format timestamp
             timestamp = ""
+            latest_message_datetime = None
             if latest_message and latest_message.get("mes_date"):
                 try:
                     msg_time = datetime.fromisoformat(str(latest_message["mes_date"]))
-                    timestamp = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
+                    local_time = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
+                    timestamp = local_time
+                    latest_message_datetime = msg_time
                 except Exception:
                     timestamp = str(latest_message["mes_date"])
+                    latest_message_datetime = datetime.now()
 
+            # ✅ Handle last message content with "You:" prefix
             last_message_content = ""
             last_message_is_own = False
 
             if latest_message:
                 last_message_is_own = latest_message["user_id"] == dvmf_id
-                last_message_content = (
-                    f"You: {latest_message['mes_content']}"
-                    if last_message_is_own
-                    else latest_message['mes_content']
-                )
+                if last_message_is_own:
+                    last_message_content = f"You: {latest_message['mes_content']}"
+                else:
+                    last_message_content = latest_message['mes_content']
             else:
                 last_message_content = "No messages yet"
+                latest_message_datetime = datetime.min
 
+            # ✅ Build conversation data
             conversations.append({
                 'id': user_id,
                 'name': profile_info["name"],
@@ -2772,20 +3052,22 @@ def get_conversations(request):
                 'avatar': profile_info["avatar"],
                 'online': False,
                 'lastMessage': last_message_content,
+                'lastMessageSender': latest_message["user_id"] if latest_message else None,
+                'lastMessageIsOwn': last_message_is_own,
                 'timestamp': timestamp,
                 'unread': unread_count,
-                'has_conversation': True
+                'has_conversation': True,
+                'sortTimestamp': latest_message_datetime if latest_message_datetime else datetime.min
             })
 
-        conversations.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        # ✅ Sort by latest message datetime (most recent first)
+        conversations.sort(key=lambda x: x.get('sortTimestamp', datetime.min), reverse=True)
 
         return Response(conversations, status=status.HTTP_200_OK)
 
     except Exception as e:
-        print("❌ Error fetching conversations:", str(e))
-        traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+
 
 
 # -------------------- API VIEW: GET ALL USERS --------------------

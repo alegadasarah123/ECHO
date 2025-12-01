@@ -1,11 +1,245 @@
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useLocation } from "react-router-dom"
-import { Bell, Search, Filter, Eye, CheckCircle, XCircle, Users, ChevronLeft, ChevronRight } from "lucide-react"
+import { Bell, Search, Filter, Eye, CheckCircle, XCircle, Users, ChevronLeft, ChevronRight, RefreshCw, Download } from "lucide-react"
+import { jsPDF } from "jspdf"
 import Sidebar from '@/components/KutSidebar';
 import FloatingMessages from './KutMessages';
 import NotificationModal from './KutNotif';
 
 const API_BASE = "http://localhost:8000/api/kutsero_president"
+
+// SIMPLE FETCH FUNCTION WITH ERROR HANDLING
+const apiFetch = async (endpoint, options = {}) => {
+  try {
+    const response = await fetch(`${API_BASE}${endpoint}`, {
+      credentials: "include",
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      ...options,
+    });
+
+    // Handle 500 errors gracefully
+    if (response.status === 500) {
+      console.warn(`⚠️ Server 500 error for ${endpoint}, returning safe data`);
+      
+      if (endpoint.includes('/get_user_approvals')) {
+        return [];
+      } else if (endpoint.includes('/get_approved_users')) {
+        return { users: [] };
+      } else if (endpoint.includes('/get_notifications')) {
+        return [];
+      } else if (endpoint.includes('/get_kutsero_president')) {
+        return { name: "Kutsero President" }; // Fallback for president name
+      } else {
+        return {};
+      }
+    }
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data;
+  } catch (error) {
+    console.error(`❌ API Error ${endpoint}:`, error);
+    
+    // Return safe defaults for all endpoints
+    if (endpoint.includes('/get_user_approvals')) {
+      return [];
+    } else if (endpoint.includes('/get_approved_users')) {
+      return { users: [] };
+    } else if (endpoint.includes('/get_notifications')) {
+      return [];
+    } else if (endpoint.includes('/get_kutsero_president')) {
+      return { name: "Kutsero President" }; // Fallback for president name
+    } else {
+      return {};
+    }
+  }
+};
+
+
+const exportToPDF = async (users, title, filters = {}, activeTab) => {
+  try {
+    const presidentData = await apiFetch('/get_kutsero_president');
+    const presidentName = presidentData.name || "Kutsero President";
+
+    const filename = activeTab === "approval" ? "User_Approval_List" : "User_Accounts_List";
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 15;
+
+    const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+    let y = 20;
+
+    /** HEADER LOGO */
+    try {
+      const img = new Image();
+      img.src = '/Images/echo.png';
+      doc.addImage(img, 'PNG', pageWidth / 2 - 15, y, 30, 12);
+      y += 25;
+    } catch {
+      doc.setFontSize(16);
+      doc.text('ECHO', pageWidth / 2, y, { align: 'center' });
+      y += 20;
+    }
+
+    /** TITLE + DATE */
+    doc.setFontSize(16);
+    doc.setFont(undefined, 'bold');
+    doc.text(filename.replace(/_/g, ' '), pageWidth / 2, y, { align: 'center' });
+    y += 8;
+
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(120);
+    doc.text(`Generated on ${currentDate} at ${currentTime}`, pageWidth / 2, y, { align: 'center' });
+    y += 15;
+
+    /** FILTER USERS */
+    const activeUsers = users.filter(u => u.status !== "deactivated");
+
+    const kutseroUsers = activeUsers.filter(u => u.role?.toLowerCase().includes("kutsero"));
+    const horseUsers = activeUsers.filter(u => u.role?.toLowerCase().includes("horse operator"));
+
+    let filteredKutsero = kutseroUsers;
+    let filteredHorse = horseUsers;
+
+    if (filters.roleFilter && filters.roleFilter !== "all") {
+      if (filters.roleFilter.includes("kutsero")) filteredHorse = [];
+      if (filters.roleFilter.includes("horse")) filteredKutsero = [];
+    }
+
+    /** TABLE COLUMNS */
+    const col = { name: 40, contact: 30, email: 45, address: 65 };
+    const headerHeight = 10;
+    const rowHeight = 12;
+    const tableWidth = col.name + col.contact + col.email + col.address;
+    const marginX = (pageWidth - tableWidth) / 2; // center table horizontally
+
+    /** TABLE SECTION FUNCTION */
+    const drawTableSection = (list, title) => {
+      if (!list.length) return;
+
+      doc.setFontSize(12);
+      doc.setTextColor(0);
+      doc.setFont(undefined, "bold");
+      doc.text(`${title} (${list.length})`, marginX, y);
+      y += 8;
+
+      const drawHeader = () => {
+        doc.setTextColor(255);
+        doc.setFontSize(10);
+        doc.setFont(undefined, "bold");
+        let x = marginX;
+        const headerCells = [["NAME", col.name], ["CONTACT", col.contact], ["EMAIL", col.email], ["ADDRESS", col.address]];
+        headerCells.forEach(([label, width]) => {
+          doc.setFillColor(210, 105, 30);
+          doc.rect(x, y, width, headerHeight, "F");
+          doc.text(label, x + width / 2, y + 6, { align: "center" });
+          x += width;
+        });
+        y += headerHeight;
+      };
+
+      drawHeader();
+
+      list.forEach((u, i) => {
+        if (y + rowHeight > pageHeight - 40) {
+          doc.addPage();
+          y = 20;
+          drawHeader();
+        }
+
+        let x = marginX;
+        if (i % 2 === 0) {
+          doc.setFillColor(245, 245, 245);
+          doc.rect(x, y, tableWidth, rowHeight, "F");
+        }
+
+        doc.setFontSize(9);
+        doc.setFont(undefined, "normal");
+        doc.setTextColor(0);
+
+        const name = u.name || "N/A";
+        const contact = u.phoneNumber || u.contact_num || "N/A";
+        const email = u.email || "N/A";
+        const address = u.address || "N/A";
+
+        doc.text(name, x + 2, y + 7); x += col.name;
+        doc.text(contact, x + 2, y + 7); x += col.contact;
+        doc.text(email, x + 2, y + 7); x += col.email;
+
+        if (address.length > 35) {
+          const wrapped = doc.splitTextToSize(address, col.address - 4);
+          doc.text(wrapped, x + 2, y + 5);
+        } else {
+          doc.text(address, x + 2, y + 7);
+        }
+
+        y += rowHeight;
+      });
+
+      y += 10;
+    };
+
+    if (filteredKutsero.length) drawTableSection(filteredKutsero, "KUTSERO");
+    if (filteredHorse.length) drawTableSection(filteredHorse, "HORSE OPERATOR");
+
+    /** SIGNATURE SECTION */
+    const totalPages = doc.internal.getNumberOfPages();
+    doc.setPage(totalPages);
+
+    const centerX = pageWidth / 2;
+    const baseY = pageHeight - 35;
+    const lineWidth = 90;
+
+    // Signature line (centered)
+    doc.setLineWidth(0.4);
+    doc.line(centerX - lineWidth / 2, baseY, centerX + lineWidth / 2, baseY);
+
+    // "AUTHORIZED BY:" left aligned to start of line
+    doc.setFontSize(10);
+    doc.setFont(undefined, "bold");
+    doc.setTextColor(0);
+    doc.text("AUTHORIZED BY:", centerX - lineWidth / 2, baseY - 8);
+
+    // Name ABOVE the line (centered on line)
+    doc.setFontSize(11);
+    doc.setFont(undefined, "bold");
+    doc.text(presidentName, centerX, baseY - 3, { align: "center" });
+
+    // Position below line (centered)
+    doc.setFontSize(9);
+    doc.setFont(undefined, "normal");
+    doc.text("Kutsero President", centerX, baseY + 5, { align: "center" });
+
+    // Note below position (centered)
+    doc.setFontSize(8);
+    doc.setTextColor(120);
+    doc.text("Signature over printed name", centerX, baseY + 11, { align: "center" });
+
+    /** PAGE NUMBERS */
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(120);
+      doc.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 10, { align: "center" });
+    }
+
+    doc.save(`${filename}_${new Date().toISOString().split('T')[0]}.pdf`);
+  } catch (err) {
+    console.error(err);
+  }
+};
+
 
 // Skeleton Loading Component
 const TableSkeleton = ({ rows = 5, columns = 5 }) => {
@@ -90,13 +324,13 @@ const UserManagement = () => {
   const [alert, setAlert] = useState(null)
   const [showAlert, setShowAlert] = useState(false)
 
-  // NEW: State for enlarged profile image
+  // State for enlarged profile image
   const [enlargedImage, setEnlargedImage] = useState(null)
 
   // Notification states
   const [notifications, setNotifications] = useState([])
 
-  // NEW: State to track highlighted user from notification
+  // State to track highlighted user from notification
   const [highlightedUser, setHighlightedUser] = useState(null)
   const [highlightedNotification, setHighlightedNotification] = useState(null)
 
@@ -117,13 +351,14 @@ const UserManagement = () => {
   const [showDeclineModal, setShowDeclineModal] = useState(false)
   const [declineReason, setDeclineReason] = useState("")
   const [userToDecline, setUserToDecline] = useState(null)
-
-  // UPDATED: Loading states consolidated like KutseroDashboard
+  const [kutseroPresident, setKutseroPresident] = useState("");
+  // Loading states with refresh states
   const [loading, setLoading] = useState({
     auth: true,
     approval: true,
     accounts: true,
-    notifications: false
+    notifications: false,
+    refreshing: false
   })
 
   // Filter states
@@ -135,8 +370,72 @@ const UserManagement = () => {
     { id: "approval", label: "User Approval", icon: Users },
     { id: "accounts", label: "User Accounts", icon: CheckCircle }
   ]
+  useEffect(() => {
+    const fetchKutseroPresident = async () => {
+      try {
+        const data = await apiFetch('/get_kutsero_president/');
+        setKutseroPresident(data.name || "Kutsero President");
+      } catch (error) {
+        console.error("Error fetching Kutsero President:", error);
+        setKutseroPresident("Kutsero President");
+      }
+    };
 
-  // NEW: Function to handle profile image click
+    fetchKutseroPresident();
+  }, []);
+  // Function to handle manual refresh
+  const handleManualRefresh = useCallback(async () => {
+    console.log("🔄 Manual refresh triggered");
+    setLoading(prev => ({ ...prev, refreshing: true }));
+    
+    try {
+      if (activeTab === "approval") {
+        await fetchApprovalUsers();
+      } else {
+        await fetchAccountUsers();
+      }
+      await fetchNotifications();
+      
+      // SUBTLE SUCCESS INDICATOR - No alert design
+      console.log("✅ Data refreshed successfully");
+      
+    } catch (err) {
+      console.error("❌ Refresh failed:", err);
+      setAlert({ type: "error", message: "Failed to refresh data" });
+    } finally {
+      setLoading(prev => ({ ...prev, refreshing: false }));
+    }
+  }, [activeTab]);
+
+ const handleExportPDF = async () => {
+    try {
+      const usersToExport = activeTab === "approval" 
+        ? getFilteredApprovalUsers() 
+        : getFilteredAccountUsers();
+      
+      if (usersToExport.length === 0) {
+        setAlert({ type: "error", message: "No data to export" });
+        return;
+      }
+
+      const title = activeTab === "approval" 
+        ? "User Approval List" 
+        : "User Accounts List";
+
+      const filters = {
+        searchTerm: searchTerm || null,
+        roleFilter: activeTab === "approval" ? approvalRoleFilter : accountRoleFilter,
+        statusFilter: activeTab === "approval" ? approvalFilter : accountStatusTab
+      };
+
+      await exportToPDF(usersToExport, title, filters, activeTab);
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      setAlert({ type: "error", message: "Failed to export PDF. Please try again." });
+    }
+  };
+
+  // Profile image click handler
   const handleProfileImageClick = (user) => {
     setEnlargedImage({
       src: user.profilePicture || user.profile_picture || "/placeholder.svg",
@@ -146,149 +445,114 @@ const UserManagement = () => {
     })
   }
 
-  // NEW: Function to close enlarged image view
+  // Close enlarged image view
   const closeEnlargedImage = () => {
     setEnlargedImage(null)
   }
 
-  // UPDATED: Fetch notifications from backend - using the loading object
+  // Fetch functions with error handling
   const fetchNotifications = async () => {
     try {
       setLoading(prev => ({ ...prev, notifications: true }));
-      const res = await fetch(`${API_BASE}/get_notifications/`, {
-        method: "GET",
-        credentials: "include", 
-      });
+      const data = await apiFetch('/get_notifications/');
       
-      if (!res.ok) {
-        throw new Error(`HTTP error! status: ${res.status}`);
-      }
-      
-      const data = await res.json();
-      
-      // ✅ FIXED: Use the actual read status from backend
-      const formattedNotifications = data.map(notification => ({
+      const formattedNotifications = Array.isArray(data) ? data.map(notification => ({
+        notif_id: notification.notif_id,
         id: notification.id,
         message: notification.message,
         date: notification.date,
-        read: notification.read || false // Use the actual read status from backend
-      }));
+        read: notification.read || false
+      })) : [];
       
       setNotifications(formattedNotifications);
     } catch (err) {
       console.error("Error fetching notifications:", err);
-      // Fallback to user-based notifications if API fails
-      const userNotifications = approvalUsers
-        .filter(u => u.status === "pending")
-        .map(u => ({
-          id: u.id,
-          message: `${u.name} (${getRoleDisplayName(u.role)}) is pending approval`,
-          date: u.created_at !== "N/A" ? new Date(u.created_at) : new Date(),
-          read: false,
-          type: 'user_approval'
-        }));
-      setNotifications(userNotifications);
+      setNotifications([]);
     } finally {
       setLoading(prev => ({ ...prev, notifications: false }));
     }
   };
 
-  // Fetch approval users - UPDATED to include decline_reason
-  useEffect(() => {
-    const fetchApprovalUsers = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/get_user_approvals/`, {
-          method: "GET",
-          credentials: "include",
-        })
-        const data = await res.json()
-        const formatted = data.map((u) => ({
-          id: u.id,
-          name: u.name || "N/A",
-          email: u.email || "N/A",
-          date: u.created_at ? formatDate(u.created_at) : "N/A",
-          status: (u.status || "pending").toLowerCase(),
-          role: u.role || "N/A",
-          profilePicture: u.profilePicture,
-          dateOfBirth: u.dateOfBirth ? formatDate(u.dateOfBirth) : "N/A",
-          sex: u.sex,
-          phoneNumber: u.phoneNumber,
-          address: u.address,
-          declineReason: u.declineReason || "No reason provided", 
-        }))
-        setApprovalUsers(formatted)
-      } catch (err) {
-        console.error("❌ Error fetching approval users:", err)
-      } finally {
-        setLoading(prev => ({ ...prev, approval: false }))
-      }
+  const fetchApprovalUsers = async () => {
+    try {
+      setLoading(prev => ({ ...prev, approval: true }));
+      const data = await apiFetch('/get_user_approvals/');
+      
+      const formatted = Array.isArray(data) ? data.map((u) => ({
+        id: u.id,
+        name: u.name || "N/A",
+        email: u.email || "N/A",
+        date: u.created_at ? formatDate(u.created_at) : "N/A",
+        status: (u.status || "pending").toLowerCase(),
+        role: u.role || "N/A",
+        profilePicture: u.profilePicture,
+        dateOfBirth: u.dateOfBirth ? formatDate(u.dateOfBirth) : "N/A",
+        sex: u.sex,
+        phoneNumber: u.phoneNumber,
+        address: u.address,
+        declineReason: u.declineReason || "No reason provided", 
+      })) : [];
+      
+      setApprovalUsers(formatted);
+    } catch (err) {
+      console.error("❌ Error fetching approval users:", err);
+      setApprovalUsers([]);
+    } finally {
+      setLoading(prev => ({ ...prev, approval: false }));
     }
-    fetchApprovalUsers()
-  }, [])
+  };
 
-  // Fetch account users
-  useEffect(() => {
-    const fetchAccountUsers = async () => {
-      try {
-        const res = await fetch(`${API_BASE}/get_approved_users/`, {
-          method: "GET",
-          credentials: "include",
-        })
-        if (!res.ok) throw new Error("Failed to fetch users")
-        const data = await res.json()
-        const formatted = (data.users || []).map((u) => ({
-          id: u.id,
-          name: u.name || "N/A",
-          email: u.email || "N/A",
-          contact_num: u.phoneNumber || "N/A",
-          date: u.approved_date ? formatDate(u.approved_date) : "N/A",
-          status: (u.status || "pending").toLowerCase(),
-          role: u.role || "N/A",
-          profile_picture: u.profilePicture || "https://via.placeholder.com/100",
-          dob: u.dateOfBirth ? formatDate(u.dateOfBirth) : "N/A",
-          gender: u.sex || "N/A",
-          address: u.address || "N/A",
-        }))
-        setAccountUsers(formatted)
-      } catch (err) {
-        console.error("Error fetching account users:", err)
-      } finally {
-        setLoading(prev => ({ ...prev, accounts: false }))
-      }
+  const fetchAccountUsers = async () => {
+    try {
+      setLoading(prev => ({ ...prev, accounts: true }));
+      const data = await apiFetch('/get_approved_users/');
+      
+      const formatted = Array.isArray(data.users) ? data.users.map((u) => ({
+        id: u.id,
+        name: u.name || "N/A",
+        email: u.email || "N/A",
+        contact_num: u.phoneNumber || "N/A",
+        date: u.approved_date ? formatDate(u.approved_date) : "N/A",
+        status: (u.status || "pending").toLowerCase(),
+        role: u.role || "N/A",
+        profile_picture: u.profilePicture || "https://via.placeholder.com/100",
+        dob: u.dateOfBirth ? formatDate(u.dateOfBirth) : "N/A",
+        gender: u.sex || "N/A",
+        address: u.address || "N/A",
+      })) : [];
+      
+      setAccountUsers(formatted);
+    } catch (err) {
+      console.error("Error fetching account users:", err);
+      setAccountUsers([]);
+    } finally {
+      setLoading(prev => ({ ...prev, accounts: false }));
     }
-    fetchAccountUsers()
-  }, [])
+  };
 
-  // Fetch notifications when component mounts or approval users change
+  // useEffect hooks
+  useEffect(() => {
+    fetchApprovalUsers();
+    fetchAccountUsers();
+  }, []);
+
   useEffect(() => {
     if (approvalUsers.length > 0) {
       fetchNotifications();
     }
-  }, [approvalUsers]);
+  }, [approvalUsers.length]);
 
-  // Refresh notifications when modal opens
   useEffect(() => {
     if (notifOpen) {
       fetchNotifications();
     }
   }, [notifOpen]);
 
-  // NEW: Handle navigation state for highlighted notifications
+  // Handle navigation state for highlighted notifications
   useEffect(() => {
-    console.log("Location state:", location.state); // Debug log
-    
     if (location.state && location.state.highlightedNotification) {
       const { highlightedNotification } = location.state;
-      console.log("Highlighted notification received:", highlightedNotification);
-      
-      // Set active tab to approval and filter to pending
-      setActiveTab("approval");
-      setApprovalFilter("pending");
-      setSearchTerm("");
-      
       handleOpenKutseroManagement(highlightedNotification);
-      
-      // Clear the state to prevent re-highlighting on refresh
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
@@ -305,86 +569,58 @@ const UserManagement = () => {
     }
   }, [alert])
 
-  // NEW: Effect to clear highlight after some time
+  // Effect to clear highlight after some time
   useEffect(() => {
     if (highlightedUser) {
       const timer = setTimeout(() => {
         setHighlightedUser(null);
         setHighlightedNotification(null);
-      }, 5000); // Clear highlight after 5 seconds
-      
+      }, 5000);
       return () => clearTimeout(timer);
     }
   }, [highlightedUser]);
 
-  // NEW: Function to extract user name from notification message
+  // Function to extract user name from notification message
   const extractUserNameFromNotification = (notification) => {
-    // Handle different notification message formats:
-    // "New Kutsero registered: John Doe"
-    // "New Horse Operator registered: Jane Smith"
-    const match = notification.message.match(/registered:\s*(.+)$/);
-    if (match) {
-      return match[1].trim();
-    }
-    
-    // Alternative format: "John Doe (Kutsero) is pending approval"
-    const altMatch = notification.message.match(/^(.+?)\s*\(/);
-    if (altMatch) {
-      return altMatch[1].trim();
-    }
-    
-    return null;
+    const match = notification.message.match(/New (?:Kutsero|Horse Operator) registered:\s*(.+)$/);
+    return match ? match[1].trim() : null;
   };
 
+  // Handle opening Kutsero Management with notification highlighting
   const handleOpenKutseroManagement = (notification = null) => {
-    console.log("handleOpenKutseroManagement called with:", notification);
-    
-    // Store the notification data for highlighting
     if (notification) {
       setHighlightedNotification(notification);
-      
-      // Extract user name from notification message
       const userName = extractUserNameFromNotification(notification);
-      console.log("Extracted username:", userName);
       
       if (userName) {
-        // Find the user in approvalUsers - wait a bit for data to load
-        setTimeout(() => {
+        const findAndHighlightUser = () => {
           const userToHighlight = approvalUsers.find(u => {
-            const nameMatch = u.name.toLowerCase().includes(userName.toLowerCase());
+            const exactMatch = u.name.toLowerCase() === userName.toLowerCase();
+            const partialMatch = u.name.toLowerCase().includes(userName.toLowerCase());
             const statusMatch = u.status === "pending";
-            console.log("Searching user:", u.name, "matches:", nameMatch, "status:", u.status);
-            return nameMatch && statusMatch;
+            return (exactMatch || partialMatch) && statusMatch;
           });
-          
-          console.log("User to highlight found:", userToHighlight);
           
           if (userToHighlight) {
             setHighlightedUser(userToHighlight.id);
-            console.log("Highlighted user ID set to:", userToHighlight.id);
-            
-            // Auto-scroll to the highlighted user after a longer delay to ensure DOM is ready
             setTimeout(() => {
               const highlightedRow = document.getElementById(`user-row-${userToHighlight.id}`);
-              console.log("Looking for row with ID:", `user-row-${userToHighlight.id}`, "Found:", highlightedRow);
-              
               if (highlightedRow) {
-                highlightedRow.scrollIntoView({ 
-                  behavior: 'smooth', 
-                  block: 'center' 
-                });
-                
-                // Add a more prominent flash effect
-                highlightedRow.classList.add('highlight-flash');
+                highlightedRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                highlightedRow.classList.add('highlight-zoom');
                 setTimeout(() => {
-                  highlightedRow.classList.remove('highlight-flash');
-                }, 3000);
-              } else {
-                console.log("Highlighted row not found in DOM");
+                  highlightedRow.classList.remove('highlight-zoom');
+                }, 2000);
               }
-            }, 1000);
+            }, 500);
           }
-        }, 500);
+        };
+        
+        if (approvalUsers.length > 0) {
+          findAndHighlightUser();
+        } else {
+          setTimeout(findAndHighlightUser, 1000);
+        }
       }
     }
   };
@@ -397,20 +633,11 @@ const UserManagement = () => {
   const handleNotificationClick = (notification) => {
     setNotifications(prev => 
       prev.map(n => 
-        n.id === notification.id ? { ...n, read: true } : n
+        n.notif_id === notification.notif_id ? { ...n, read: true } : n
       )
     );
-    console.log('Notification clicked:', notification);
   };
 
-  useEffect(() => {
-    if (location.state?.highlightedNotification && approvalUsers.length > 0 && !highlightedUser) {
-      console.log("Approval users loaded, re-triggering highlight");
-      const { highlightedNotification } = location.state;
-      handleOpenKutseroManagement(highlightedNotification);
-    }
-  }, [approvalUsers.length, location.state]); 
-  
   // Approval functions
   const handleApprove = async (userId) => {
     try {
@@ -422,7 +649,6 @@ const UserManagement = () => {
         setApprovalUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status: "approved" } : u)))
         handleCloseModal()
         setAlert({ type: "success", message: "User approved successfully!" })
-        // Refresh notifications after approval
         fetchNotifications();
       }
     } catch (err) {
@@ -433,28 +659,22 @@ const UserManagement = () => {
 
   const handleDecline = async (userId, reason = "") => {
     try {
-      // Use the reason parameter directly, don't fall back to "No reason provided"
       const declineReasonToSend = reason.trim() || "No reason provided";
       
       const res = await fetch(`${API_BASE}/decline_user/${userId}/`, {
         method: "POST",
         credentials: "include",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        // Change this to match what your backend expects
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ declineReason: declineReasonToSend }),
       })
+      
       if (res.ok) {
         setApprovalUsers((prev) => prev.map((u) => (u.id === userId ? { ...u, status: "declined", declineReason: declineReasonToSend } : u)))
         handleCloseModal()
         setAlert({ type: "success", message: "User declined successfully!" })
-        
-        // Reset decline modal state
         setShowDeclineModal(false)
         setDeclineReason("")
         setUserToDecline(null)
-        // Refresh notifications after decline
         fetchNotifications();
       }
     } catch (err) {
@@ -496,7 +716,6 @@ const UserManagement = () => {
           prev.map((u) => (pendingUsers.some((p) => p.id === u.id) ? { ...u, status: "approved" } : u)),
         )
         setAlert({ type: "success", message: `✅ Approved ${pendingUsers.length} user(s) successfully!` })
-        // Refresh notifications after bulk approval
         fetchNotifications();
       } else {
         const data = await res.json()
@@ -655,34 +874,41 @@ const UserManagement = () => {
               <p className="text-sm text-gray-600 m-0 font-normal">Review requests and manage account status</p>
             </div>
 
-            <div className="relative">
+            <div className="flex items-center gap-4">
+              {/* REFRESH BUTTON */}
               <button
-                className="bg-none border-none cursor-pointer p-2 rounded-full relative transition-colors duration-200 hover:bg-gray-100"
-                onClick={() => setNotifOpen(!notifOpen)}
-                aria-label="Notifications"
-                disabled={loading.notifications}
+                onClick={handleManualRefresh}
+                disabled={loading.refreshing}
+                className="flex items-center gap-2 px-3 py-2 text-sm bg-[#D2691E] text-white rounded-lg hover:bg-[#A0522D] disabled:opacity-50 transition-colors"
               >
-                <Bell size={24} className={`${loading.notifications ? 'text-gray-300' : 'text-gray-500'}`} />
-                {!loading.notifications && unreadNotificationsCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center font-bold">
-                    {unreadNotificationsCount}
-                  </span>
-                )}
-                {loading.notifications && (
-                  <span className="absolute -top-1 -right-1 bg-gray-300 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center font-bold">
-                    ...
-                  </span>
-                )}
+                <RefreshCw size={16} className={loading.refreshing ? 'animate-spin' : ''} />
+                Refresh
               </button>
 
-              <NotificationModal
-                isOpen={notifOpen}
-                onClose={() => setNotifOpen(false)}
-                onNotificationClick={handleNotificationClick}
-                notifications={notifications}
-                onMarkAllAsRead={handleMarkAllAsRead}
-                onOpenKutseroManagement={handleOpenKutseroManagement} 
-              />
+              {/* NOTIFICATION BELL */}
+              <div className="relative">
+                <button
+                  className="bg-none border-none cursor-pointer p-2 rounded-full relative transition-colors duration-200 hover:bg-gray-100"
+                  onClick={() => setNotifOpen(!notifOpen)}
+                  aria-label="Notifications"
+                >
+                  <Bell size={24} className="text-gray-500" />
+                  {unreadNotificationsCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 text-xs flex items-center justify-center font-bold">
+                      {unreadNotificationsCount}
+                    </span>
+                  )}
+                </button>
+
+                <NotificationModal
+                  isOpen={notifOpen}
+                  onClose={() => setNotifOpen(false)}
+                  onNotificationClick={handleNotificationClick}
+                  notifications={notifications}
+                  onMarkAllAsRead={handleMarkAllAsRead}
+                  onOpenKutseroManagement={handleOpenKutseroManagement} 
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -692,8 +918,8 @@ const UserManagement = () => {
           {/* Content Container */}
           <div className="bg-white border border-gray-300 rounded-xl shadow-sm mb-6 overflow-hidden flex flex-col">
             
-            {/* Tabs */}
-            <div className="flex items-center space-x-4 p-6 pb-4">
+            {/* Tabs with Export Button */}
+            <div className="flex items-center justify-between p-6 pb-4">
               <div className="flex items-center space-x-2 bg-white/80 backdrop-blur-md rounded-xl p-1 border border-gray-200">
                 {tabs.map((tab) => {
                   const IconComponent = tab.icon;
@@ -716,6 +942,17 @@ const UserManagement = () => {
                   );
                 })}
               </div>
+
+              {/* EXPORT BUTTON - Only show on User Accounts tab */}
+              {activeTab === "accounts" && accountStatusTab === "active" && (
+                <button
+                  onClick={handleExportPDF}
+                  className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"
+                >
+                  <Download size={16} />
+                  Export PDF
+                </button>
+              )}
             </div>
 
             {/* User Approval Section */}
@@ -810,7 +1047,7 @@ const UserManagement = () => {
                                 id={`user-row-${user.id}`}
                                 className={`text-center border-b border-gray-100 transition-all duration-500 hover:bg-gray-50 group ${
                                   highlightedUser === user.id 
-                                    ? 'bg-yellow-50 border-yellow-200 shadow-inner highlight-row' 
+                                    ? 'highlight-zoom' 
                                     : ''
                                 }`}
                               >
@@ -821,7 +1058,7 @@ const UserManagement = () => {
                                   <div className="flex items-center justify-center gap-2">
                                     {user.name}
                                     {highlightedUser === user.id && (
-                                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 border border-yellow-200 animate-pulse">
+                                      <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800 border border-gray-200">
                                         New
                                       </span>
                                     )}
@@ -871,7 +1108,7 @@ const UserManagement = () => {
                     )}
                   </div>
                   
-                  {/* Pagination Controls - Attached directly to table */}
+                  {/* Pagination Controls */}
                   {getFilteredApprovalUsers().length > 0 && !loading.approval && (
                     <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
                       <div className="text-sm text-gray-600 mb-4 sm:mb-0">
@@ -1109,7 +1346,7 @@ const UserManagement = () => {
                     )}
                   </div>
                   
-                  {/* Pagination Controls - Attached directly to table */}
+                  {/* Pagination Controls */}
                   {getFilteredAccountUsers().length > 0 && !loading.accounts && (
                     <div className="flex flex-col sm:flex-row items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
                       <div className="text-sm text-gray-600 mb-4 sm:mb-0">
@@ -1194,7 +1431,7 @@ const UserManagement = () => {
           </div>
         </div>
         
-        {/* User Detail Modal - UPDATED with clickable profile image */}
+        {/* User Detail Modal */}
         {showModal && selectedUser && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm bg-opacity-50 flex items-center justify-center z-1000 p-5" onClick={handleCloseModal}>
             <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -1221,7 +1458,6 @@ const UserManagement = () => {
                           alt="Profile"
                           className="w-full h-full rounded-full object-cover"
                           onError={(e) => {
-                            // If image fails to load, create an initial avatar
                             const initials = getInitials(selectedUser.name);
                             if (initials && initials !== "NA") {
                               e.target.src = createInitialAvatar(initials, "#D2691E");
@@ -1288,7 +1524,7 @@ const UserManagement = () => {
                         </div>
                       </div>
 
-                      {/* NEW: Decline Reason Section - Only show for declined users */}
+                      {/* Decline Reason Section - Only show for declined users */}
                       {activeTab === "approval" && selectedUser.status === "declined" && selectedUser.declineReason && (
                         <div className="mb-7">
                           <h3 className="text-lg font-semibold text-gray-700 m-0 mb-4.5 pb-2.5 border-b border-gray-300">Decline Information</h3>
@@ -1332,7 +1568,7 @@ const UserManagement = () => {
           </div>
         )}
 
-        {/* NEW: Enlarged Profile Image Modal */}
+        {/* Enlarged Profile Image Modal */}
         {enlargedImage && (
           <div 
             className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-1001 p-5"
@@ -1357,7 +1593,6 @@ const UserManagement = () => {
                   alt={enlargedImage.alt}
                   className="w-96 h-96 object-cover"
                   onError={(e) => {
-                    // If image fails to load, create an initial avatar
                     const initials = getInitials(enlargedImage.name);
                     if (initials && initials !== "NA") {
                       e.target.src = createInitialAvatar(initials, "#D2691E", 384);
@@ -1476,7 +1711,7 @@ const UserManagement = () => {
           </div>
         )}
 
-        {/* UPDATED: Alert - Center Top Position */}
+        {/* Alert - Center Top Position */}
         {alert && (
           <div
             className={`fixed top-6 left-1/2 transform -translate-x-1/2 py-4 px-6 rounded-lg flex items-center gap-3 shadow-lg transition-all duration-300 z-1000 ${
@@ -1502,37 +1737,34 @@ const UserManagement = () => {
       {/* ADDED: Floating Messages Component */}
       <FloatingMessages />
 
-      {/* Add custom CSS for highlight animation */}
-      <style jsx>{`
-        .highlight-row {
-          animation: highlightPulse 2s ease-in-out;
+      <style>{`
+        .highlight-zoom {
+          animation: zoomInOut 2s ease-in-out;
+          transform-origin: center;
         }
         
-        @keyframes highlightPulse {
+        @keyframes zoomInOut {
           0% {
-            background-color: #fefce8;
-            box-shadow: 0 0 0 0 rgba(251, 191, 36, 0.7);
+            transform: scale(1);
           }
           50% {
-            background-color: #fef9c3;
-            box-shadow: 0 0 0 10px rgba(251, 191, 36, 0);
+            transform: scale(1.02);
           }
           100% {
-            background-color: #fefce8;
-            box-shadow: 0 0 0 0 rgba(251, 191, 36, 0);
+            transform: scale(1);
           }
         }
         
         .highlight-flash {
-          animation: flash 0.5s ease-in-out 3;
+          animation: gentleFlash 0.3s ease-in-out 2;
         }
         
-        @keyframes flash {
+        @keyframes gentleFlash {
           0%, 100% {
-            background-color: #fefce8;
+            opacity: 1;
           }
           50% {
-            background-color: #fde047;
+            opacity: 0.8;
           }
         }
       `}</style>

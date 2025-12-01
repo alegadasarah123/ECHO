@@ -1,121 +1,111 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
-const NotificationModal = ({ isOpen, onClose, notifications = [] }) => {
-  const [pendingAppointments, setPendingAppointments] = useState([]);
-  const [todaysAppointments, setTodaysAppointments] = useState([]);
-  const [loading, setLoading] = useState({
-    pending: false,
-    today: false
-  });
+const NotificationModal = ({ isOpen, onClose }) => {
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [markingRead, setMarkingRead] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (isOpen) {
-      fetchAllNotifications();
+      fetchNotifications();
     }
   }, [isOpen]);
 
   // Fetch all notifications
-  const fetchAllNotifications = async () => {
-    setLoading({
-      pending: true,
-      today: true
-    });
-
+  const fetchNotifications = async () => {
+    setLoading(true);
     try {
-      await Promise.all([
-        fetchPendingAppointments(),
-        fetchTodaysAppointments()
-      ]);
+      const response = await fetch("http://localhost:8000/api/veterinarian/get_notifications/", {
+        credentials: "include"
+      });
+      const data = await response.json();
+      
+      if (response.ok) {
+        console.log("✅ Fetched notifications:", data.notifications);
+        setNotifications(data.notifications || []);
+      } else {
+        console.error("Error fetching notifications:", data.error);
+      }
     } catch (error) {
       console.error("Error fetching notifications:", error);
     } finally {
-      setLoading({
-        pending: false,
-        today: false
+      setLoading(false);
+    }
+  };
+
+  // Mark notification as read
+  const markNotificationAsRead = async (notifId) => {
+    try {
+      console.log("📨 Marking notification as read:", notifId);
+      
+      const response = await fetch(`http://localhost:8000/api/veterinarian/mark_notification_read/${notifId}/`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
-    }
-  };
-
-  // Fetch PENDING APPOINTMENTS
-  const fetchPendingAppointments = async () => {
-    try {
-      const response = await fetch("http://localhost:8000/api/veterinarian/get_all_appointments/");
-      const data = await response.json();
       
-      if (data.appointments) {
-        const pendingApps = data.appointments.filter(app => 
-          app.app_status === "pending"
-        );
-        
-        const formattedPending = pendingApps.map(app => ({
-          id: `pending-${app.app_id}`,
-          type: "pending_appointment",
-          message: `New appointment request from ${app.operator_name}`,
-          description: `Horse: ${app.horse_name} | Service: ${app.app_service || 'General Checkup'} | Date: ${app.app_date}`,
-          link: `/appointments/${app.app_id}`,
-          timestamp: new Date().toISOString(),
-          priority: "high",
-          data: app
-        }));
-        
-        setPendingAppointments(formattedPending);
+      if (response.ok) {
+        console.log("✅ Successfully marked notification as read");
+        return true;
+      } else {
+        const errorData = await response.json();
+        console.error("❌ Failed to mark notification as read:", errorData);
+        return false;
       }
     } catch (error) {
-      console.error("Error fetching pending appointments:", error);
+      console.error("❌ Error marking notification as read:", error);
+      return false;
     }
   };
 
-  // Fetch TODAY'S APPROVED APPOINTMENTS
-  const fetchTodaysAppointments = async () => {
+  // Mark all notifications as read
+  const markAllNotificationsAsRead = async () => {
+    setMarkingRead(true);
     try {
-      const response = await fetch("/api/veterinarian/get_approved_appointments/");
-      const data = await response.json();
+      console.log("📨 Marking all notifications as read");
       
-      if (data.appointments) {
-        const today = new Date();
-        const todayString = today.toLocaleDateString('en-US', { 
-          month: '2-digit', 
-          day: '2-digit', 
-          year: 'numeric' 
-        });
-        
-        const todaysApps = data.appointments.filter(app => {
-          try {
-            // Compare the formatted date strings directly
-            return app.app_date === todayString;
-          } catch (error) {
-            console.error("Error checking appointment date:", error);
-            return false;
-          }
-        });
-        
-        const formattedTodays = todaysApps.map(app => ({
-          id: `today-${app.app_id}`,
-          type: "today_appointment",
-          message: `TODAY: Appointment with ${app.horse_name}`,
-          description: `Owner: ${app.operator_name} | Time: ${app.app_time} | Service: ${app.app_service || 'General Checkup'}`,
-          link: `/appointments/${app.app_id}`,
-          timestamp: app.app_date,
-          appointmentTime: app.app_time,
-          priority: "high",
-          data: app
-        }));
-        
-        setTodaysAppointments(formattedTodays);
+      const response = await fetch("http://localhost:8000/api/veterinarian/mark_all_notifications_read/", {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        console.log("✅ Successfully marked all notifications as read");
+        // Update local state to mark all as read
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+        return true;
+      } else {
+        const errorData = await response.json();
+        console.error("❌ Failed to mark all notifications as read:", errorData);
+        return false;
       }
     } catch (error) {
-      console.error("Error fetching today's appointments:", error);
+      console.error("❌ Error marking all notifications as read:", error);
+      return false;
+    } finally {
+      setMarkingRead(false);
     }
   };
 
-  // Format time display for notifications
+  // Format time display for Philippine time
   const formatNotificationTime = (timestamp) => {
     try {
+      // Parse the timestamp (already in Philippine time +08:00)
       const date = new Date(timestamp);
       const now = new Date();
-      const diffMs = now - date;
+      
+      // Convert both to Philippine time for accurate comparison
+      const phNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
+      const phDate = new Date(date.toLocaleString("en-US", { timeZone: "Asia/Manila" }));
+      
+      const diffMs = phNow - phDate;
       const diffMins = Math.floor(diffMs / 60000);
       const diffHours = Math.floor(diffMs / 3600000);
       const diffDays = Math.floor(diffMs / 86400000);
@@ -125,198 +115,162 @@ const NotificationModal = ({ isOpen, onClose, notifications = [] }) => {
       if (diffHours < 24) return `${diffHours}h ago`;
       if (diffDays < 7) return `${diffDays}d ago`;
       
-      return date.toLocaleDateString();
+      // For older dates, show the actual date and time in Philippine format
+      return phDate.toLocaleDateString('en-PH', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'Asia/Manila'
+      });
     } catch (error) {
       return "Recently";
     }
   };
 
-  // Get priority badge color
-  const getPriorityColor = (priority) => {
-    switch (priority) {
-      case "high": return "bg-red-100 text-red-800 border-red-200";
-      case "medium": return "bg-orange-100 text-orange-800 border-orange-200";
-      case "low": return "bg-blue-100 text-blue-800 border-blue-200";
-      default: return "bg-gray-100 text-gray-800 border-gray-200";
+  // Handle notification click
+  const handleNotificationClick = async (notification) => {
+    console.log("🖱️ Notification clicked:", notification);
+    
+    if (!notification.read) {
+      console.log("📝 Marking as read...");
+      // Use the actual notif_id for marking as read
+      const notifIdToMark = notification.notif_id;
+      const success = await markNotificationAsRead(notifIdToMark);
+      if (success) {
+        console.log("✅ Successfully updated local state");
+        setNotifications(prev => 
+          prev.map(n => 
+            n.notif_id === notification.notif_id ? { ...n, read: true } : n
+          )
+        );
+      } else {
+        console.log("❌ Failed to mark as read, refreshing notifications");
+        // If marking failed, refresh the notifications to get current state
+        fetchNotifications();
+      }
+    }
+
+    onClose();
+
+    // Navigate based on notification type
+    if (notification.link) {
+      navigate(notification.link);
     }
   };
 
-  // Get type badge color
-  const getTypeColor = (type) => {
-    switch (type) {
-      case "pending_appointment": return "bg-purple-100 text-purple-800";
-      case "today_appointment": return "bg-red-100 text-red-800";
-      default: return "bg-gray-100 text-gray-800";
-    }
+  // Handle mark all as read
+  const handleMarkAllAsRead = async () => {
+    await markAllNotificationsAsRead();
   };
 
-  // Get type display name
-  const getTypeDisplayName = (type) => {
-    switch (type) {
-      case "pending_appointment": return "Pending Request";
-      case "today_appointment": return "Today's Appointment";
-      default: return "Notification";
-    }
-  };
-
-  // Combine all notifications
-  const allNotifications = [
-    ...pendingAppointments,
-    ...todaysAppointments,
-    ...notifications.map((n, idx) => 
-      typeof n === "string" ? { 
-        id: `custom-${idx}`, 
-        type: "custom", 
-        message: n, 
-        description: "",
-        link: null,
-        timestamp: new Date().toISOString(),
-        priority: "low"
-      } : n
-    ),
-  ];
-
-  // Sort notifications by priority and timestamp (high priority first, then newest first)
-  const sortedNotifications = allNotifications.sort((a, b) => {
-    const priorityOrder = { high: 3, medium: 2, low: 1 };
-    const priorityDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
-    if (priorityDiff !== 0) return priorityDiff;
-    return new Date(b.timestamp) - new Date(a.timestamp);
-  });
+  // Get unread count
+  const unreadCount = notifications.filter(n => !n.read).length;
 
   if (!isOpen) return null;
 
   return (
-    <div className="absolute right-6 top-16 z-50 w-96 max-w-sm">
-      <div className="bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 bg-gray-50 border-b">
-          <div className="flex items-center space-x-2">
-            <h2 className="text-lg font-semibold text-gray-800">Notifications</h2>
-            {sortedNotifications.length > 0 && (
-              <span className="bg-red-500 text-white text-xs font-medium px-2 py-1 rounded-full">
-                {sortedNotifications.length}
+    <>
+      <div 
+        className="fixed inset-0 z-40"
+        onClick={onClose}
+      />
+      
+      <div className="absolute top-12 right-0 bg-white rounded-xl w-96 max-h-96 overflow-hidden shadow-2xl border border-gray-100 z-50">
+        <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-purple-50">
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-bold text-gray-800">Notifications</h2>
+            {unreadCount > 0 && (
+              <span className="bg-red-500 text-white text-xs font-medium px-2 py-1 rounded-full min-w-6 text-center">
+                {unreadCount}
               </span>
             )}
           </div>
-          <div className="flex items-center space-x-2">
+          
+          <div className="flex items-center gap-2">
             <button
-              onClick={fetchAllNotifications}
-              disabled={Object.values(loading).some(l => l)}
+              onClick={fetchNotifications}
+              disabled={loading}
               className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-200 transition"
               title="Refresh notifications"
             >
-              <svg className={`w-4 h-4 ${Object.values(loading).some(l => l) ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
               </svg>
             </button>
-            <button
-              onClick={onClose}
-              className="text-gray-500 hover:text-gray-700 text-xl leading-none p-1 rounded-full hover:bg-gray-200 transition"
-            >
-              &times;
-            </button>
+            
+            {unreadCount > 0 && (
+              <button
+                onClick={handleMarkAllAsRead}
+                disabled={markingRead}
+                className="text-xs font-medium text-blue-600 hover:text-blue-800 transition-colors duration-200 disabled:opacity-50"
+              >
+                {markingRead ? "Marking..." : "Mark all read"}
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Notification Content */}
-        <div className="max-h-96 overflow-y-auto">
-          {sortedNotifications.length === 0 ? (
-            <div className="p-6 text-center">
-              <div className="text-gray-400 mb-2">
-                <svg className="w-12 h-12 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-              </div>
-              <p className="text-sm text-gray-500">No new notifications</p>
-              <p className="text-xs text-gray-400 mt-1">You're all caught up!</p>
+        <div className="max-h-80 overflow-y-auto">
+          {loading ? (
+            <div className="flex justify-center items-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             </div>
-          ) : (
-            <div className="divide-y divide-gray-100">
-              {sortedNotifications.map((note) => (
-                <div
-                  key={note.id}
-                  onClick={() => {
-                    if (note.link) {
-                      onClose();
-                      navigate(note.link);
-                    }
-                  }}
-                  className={`p-4 transition cursor-pointer border-l-4 ${
-                    note.link ? "hover:bg-gray-50" : ""
-                  } ${
-                    note.type === "pending_appointment" ? "border-l-purple-500 bg-purple-50/50" :
-                    note.type === "today_appointment" ? "border-l-red-500 bg-red-50/50" :
-                    "border-l-gray-400 bg-gray-50/50"
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center space-x-2">
-                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${getTypeColor(note.type)}`}>
-                        {getTypeDisplayName(note.type)}
-                      </span>
-                      <span className={`text-xs font-medium px-2 py-1 rounded-full border ${getPriorityColor(note.priority)}`}>
-                        {note.priority}
-                      </span>
-                    </div>
-                    <span className="text-xs text-gray-500">
-                      {formatNotificationTime(note.timestamp)}
+          ) : notifications.length > 0 ? (
+            notifications.map((notification, index) => (
+              <div
+                key={notification.notif_id || index}
+                className={`p-4 border-b border-gray-50 transition-all duration-200 hover:bg-gray-50 cursor-pointer group ${
+                  !notification.read ? 'bg-blue-50' : 'bg-white'
+                }`}
+                onClick={() => handleNotificationClick(notification)}
+              >
+                <div className="flex items-start gap-3">
+                  {!notification.read && (
+                    <div className="w-2 h-2 bg-red-500 rounded-full mt-2 flex-shrink-0"></div>
+                  )}
+                  
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium mb-1 ${
+                      !notification.read ? 'text-gray-900' : 'text-gray-600'
+                    } group-hover:text-gray-900`}>
+                      {notification.message}
+                    </p>
+                    {notification.description && (
+                      <p className="text-xs text-gray-500 mb-1">{notification.description}</p>
+                    )}
+                    <span className="text-xs text-gray-400">
+                      {formatNotificationTime(notification.date)}
                     </span>
                   </div>
-                  
-                  <p className="text-sm font-medium text-gray-800 mb-1">{note.message}</p>
-                  {note.description && (
-                    <p className="text-xs text-gray-600 mb-2">{note.description}</p>
-                  )}
-                  
-                  {note.type === "today_appointment" && note.appointmentTime && (
-                    <div className="flex items-center mt-1">
-                      <svg className="w-3 h-3 text-red-500 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="text-xs font-medium text-red-600">
-                        Time: {note.appointmentTime}
-                      </span>
-                    </div>
-                  )}
-                  
-                  {note.link && (
-                    <div className="flex justify-between items-center mt-2">
-                      <p className="text-xs text-blue-600 font-medium hover:text-blue-800 transition">
-                        Click to view details →
-                      </p>
-                      {note.type === "today_appointment" && (
-                        <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded-full font-medium">
-                          TODAY
-                        </span>
-                      )}
-                    </div>
-                  )}
                 </div>
-              ))}
+              </div>
+            ))
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-gray-500">
+              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-2">
+                <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+              </div>
+              <p className="text-sm">No notifications</p>
+              <p className="text-xs text-gray-400 mt-1">You're all caught up!</p>
             </div>
           )}
         </div>
 
-        {/* Footer with quick stats */}
-        {sortedNotifications.length > 0 && (
-          <div className="px-4 py-3 bg-gray-50 border-t text-xs text-gray-600">
-            <div className="flex justify-between items-center">
-              <div className="flex space-x-4">
-                <span className="flex items-center">
-                  <span className="w-2 h-2 bg-purple-500 rounded-full mr-1"></span>
-                  Pending: {pendingAppointments.length}
-                </span>
-                <span className="flex items-center">
-                  <span className="w-2 h-2 bg-red-500 rounded-full mr-1"></span>
-                  Today: {todaysAppointments.length}
-                </span>
-              </div>
-            </div>
+        {notifications.length > 0 && (
+          <div className="p-3 border-t border-gray-100 bg-gray-50">
+            <button
+              onClick={onClose}
+              className="w-full text-center text-sm text-gray-600 hover:text-gray-800 font-medium transition-colors duration-200"
+            >
+              Close
+            </button>
           </div>
         )}
       </div>
-    </div>
+    </>
   );
 };
 

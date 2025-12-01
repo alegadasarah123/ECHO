@@ -5,20 +5,18 @@ import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, Eye, MapPin, Ph
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from './DvmfMessage'
-import NotificationModal from "./DvmfNotif"
+import NotificationsModal from "./DvmfNotif"
 
-
-const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
-
+const API_BASE = "http://localhost:8000/api/dvmf";
 
 function DvmfDashboard() {
- const navigate = useNavigate()
+  const navigate = useNavigate()
 
   const [notifsOpen, setNotifsOpen] = useState(false)
   const [setIsLogoutModalOpen] = useState(false)
   const [setIsNotificationDropdownOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
-  const [isRefreshing, setIsRefreshing] = useState(false) // Added refresh state
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   const [notifications, setNotifications] = useState([])
   const [recordCount, setrecordCount] = useState(0)
@@ -27,7 +25,6 @@ function DvmfDashboard() {
   const [recentActivities, setRecentActivities] = useState([])
   const [sosEmergencies, setSosEmergencies] = useState([])
 
-  // Individual loading states for each section
   const [statsLoading, setStatsLoading] = useState(true)
   const [activitiesLoading, setActivitiesLoading] = useState(true)
   const [sosLoading, setSosLoading] = useState(true)
@@ -35,7 +32,6 @@ function DvmfDashboard() {
   const [time, setTime] = useState(new Date().toLocaleTimeString())
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
-  // ADDED: State for image modal
   const [isImageModalOpen, setIsImageModalOpen] = useState(false)
   const [selectedImage, setSelectedImage] = useState(null)
 
@@ -43,7 +39,6 @@ function DvmfDashboard() {
   const notificationDropdownRef = useRef(null)
   const logoutModalRef = useRef(null)
 
-  // Skeleton Loader Components
   const StatSkeleton = () => (
     <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm flex flex-col items-center text-center animate-pulse">
       <div className="flex items-center gap-2 mb-3 w-full justify-center">
@@ -99,7 +94,6 @@ function DvmfDashboard() {
     </div>
   )
 
-  // Enhanced color assignment function
   const getColorIndex = (activity, index) => {
     const stringHash = activity.title.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
     return (index + stringHash) % 10
@@ -149,7 +143,6 @@ function DvmfDashboard() {
     return `${baseClasses} ${statusVariants[status] || statusVariants.pending}`
   }
 
-  // ADDED: Function to handle image view
   const handleViewImage = (imageUrl, emergency) => {
     setSelectedImage({
       url: imageUrl,
@@ -158,22 +151,19 @@ function DvmfDashboard() {
     setIsImageModalOpen(true)
   }
 
-  // ADDED: Function to close image modal
   const handleCloseImageModal = () => {
     setIsImageModalOpen(false)
     setSelectedImage(null)
   }
 
-  // Data loading functions
   const loadStats = useCallback(() => {
     console.log("Loading statistics...")
     setStatsLoading(true)
 
-    fetch("https://echo-ebl8.onrender.com/api/dvmf/get_status_counts/", {
-    method: 'GET',
-    credentials: 'include',
-})
-
+    fetch("http://localhost:8000/api/dvmf/get_status_counts/", {
+      method: 'GET',
+      credentials: 'include',
+    })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
         return res.json()
@@ -190,53 +180,52 @@ function DvmfDashboard() {
       })
   }, [])
 
-const loadRecentActivities = useCallback(() => {
-  setActivitiesLoading(true);
+  const loadRecentActivities = useCallback(() => {
+    setActivitiesLoading(true);
 
-  fetch("https://echo-ebl8.onrender.com/api/dvmf/get_recent_activity/", {
-    method: "GET",
-    credentials: "include", // Needed for HttpOnly cookie
-  })
-    .then(async (res) => {
-      if (res.status === 401) {
-        console.warn("Unauthorized - redirecting to login");
-        // Optionally, redirect the user:
-        // window.location.href = "/login";
-        return []; // Return empty array so state is safe
-      }
-
-      if (!res.ok) {
-        const errorText = await res.text();
-        console.error("Backend returned error:", errorText);
-        return []; // Return empty array so state is safe
-      }
-
-      return res.json();
+    fetch("http://localhost:8000/api/dvmf/get_recent_activity/", {
+      method: "GET",
+      credentials: "include",
     })
-    .then((data) => {
-      // Handle both empty arrays and normal data
-      if (Array.isArray(data)) {
-        setRecentActivities(data);
-      } else if (data.error) {
-        console.error("Backend error:", data.error);
-        setRecentActivities([]);
-      } else {
-        setRecentActivities([]);
-      }
+      .then(async (res) => {
+        if (res.status === 401) {
+          console.warn("Unauthorized - redirecting to login");
+          return [];
+        }
 
-      setActivitiesLoading(false);
-    })
-    .catch((err) => {
-      console.error("Error fetching activity:", err);
-      setRecentActivities([]);
-      setActivitiesLoading(false);
-    });
-}, []);
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error("Backend returned error:", errorText);
+          return [];
+        }
+
+        return res.json();
+      })
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setRecentActivities(data);
+        } else if (data.error) {
+          console.error("Backend error:", data.error);
+          setRecentActivities([]);
+        } else {
+          setRecentActivities([]);
+        }
+
+        setActivitiesLoading(false);
+      })
+      .catch((err) => {
+        console.error("Error fetching activity:", err);
+        setRecentActivities([]);
+        setActivitiesLoading(false);
+      });
+  }, []);
 
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("https://echo-ebl8.onrender.com/api/dvmf/get_vetnotifications/")
+    fetch("http://localhost:8000/api/dvmf/get_vetnotifications/", {
+      credentials: "include"
+    })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -258,81 +247,79 @@ const loadRecentActivities = useCallback(() => {
   }, [])
 
   const loadSosEmergencies = useCallback(() => {
-  console.log("Loading SOS emergencies...")
-  setSosLoading(true)
+    console.log("Loading SOS emergencies...")
+    setSosLoading(true)
 
-  fetch("https://echo-ebl8.onrender.com/api/dvmf/get_sos_requests/", {
-    method: "GET",
-    credentials: "include",
-  })
-    .then((res) => {
-      if (!res.ok) throw new Error(`HTTPS error! Status: ${res.status}`)
-      return res.json()
+    fetch("http://localhost:8000/api/dvmf/get_sos_requests/", {
+      method: "GET",
+      credentials: "include",
     })
-    .then((data) => {
-      console.log("Raw SOS data:", data)
-
-      let sosData = []
-      if (Array.isArray(data)) sosData = data
-      else if (data.sos_requests && Array.isArray(data.sos_requests)) sosData = data.sos_requests
-      else if (data.results && Array.isArray(data.results)) sosData = data.results
-      else {
-        console.warn("Unexpected data structure:", data)
-        setSosEmergencies([])
-        setSosLoading(false)
-        return
-      }
-
-      const formatted = sosData.map((item) => {
-        let formattedTime = "Unknown time"
-        try {
-          if (item.time || item.created_at) {
-            const createdDate = new Date(item.time || item.created_at)
-            
-            // Format as "September 7, 2025 3:15 PM"
-            formattedTime = createdDate.toLocaleDateString('en-US', {
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric'
-            }) + ' ' + createdDate.toLocaleTimeString('en-US', {
-              hour: 'numeric',
-              minute: 'numeric',
-              hour12: true
-            })
-          }
-        } catch {
-          console.warn("Invalid timestamp:", item.time || item.created_at)
-        }
-
-        return {
-          id: item.id,
-          type: item.type || "Emergency",
-          contact: item.contact || "Unknown Contact",
-          phone: item.phone || "N/A",
-          location: item.location || "No location provided",
-          time: formattedTime, // Now uses the formatted timestamp
-          urgent: item.urgent === true || item.status === "pending",
-          description: item.description || "No description provided",
-          sos_image_url: item.sos_image_url || null, // ADDED: Include image URL
-          horse_status: item.horse_status || "Unknown",
-          additional_info: item.additional_info || ""
-        }
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTPS error! Status: ${res.status}`)
+        return res.json()
       })
+      .then((data) => {
+        console.log("Raw SOS data:", data)
 
-      console.log("Formatted SOS data:", formatted)
-      setSosEmergencies(formatted)
-      setSosLoading(false)
-    })
-    .catch((err) => {
-      console.error("Error fetching SOS emergencies:", err)
-      setSosLoading(false)
-    })
-}, [])
+        let sosData = []
+        if (Array.isArray(data)) sosData = data
+        else if (data.sos_requests && Array.isArray(data.sos_requests)) sosData = data.sos_requests
+        else if (data.results && Array.isArray(data.results)) sosData = data.results
+        else {
+          console.warn("Unexpected data structure:", data)
+          setSosEmergencies([])
+          setSosLoading(false)
+          return
+        }
+
+        const formatted = sosData.map((item) => {
+          let formattedTime = "Unknown time"
+          try {
+            if (item.time || item.created_at) {
+              const createdDate = new Date(item.time || item.created_at)
+              
+              formattedTime = createdDate.toLocaleDateString('en-US', {
+                month: 'long',
+                day: 'numeric',
+                year: 'numeric'
+              }) + ' ' + createdDate.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: 'numeric',
+                hour12: true
+              })
+            }
+          } catch {
+            console.warn("Invalid timestamp:", item.time || item.created_at)
+          }
+
+          return {
+            id: item.id,
+            type: item.type || "Emergency",
+            contact: item.contact || "Unknown Contact",
+            phone: item.phone || "N/A",
+            location: item.location || "No location provided",
+            time: formattedTime,
+            urgent: item.urgent === true || item.status === "pending",
+            description: item.description || "No description provided",
+            sos_image_url: item.sos_image_url || null,
+            horse_status: item.horse_status || "Unknown",
+            additional_info: item.additional_info || ""
+          }
+        })
+
+        console.log("Formatted SOS data:", formatted)
+        setSosEmergencies(formatted)
+        setSosLoading(false)
+      })
+      .catch((err) => {
+        console.error("Error fetching SOS emergencies:", err)
+        setSosLoading(false)
+      })
+  }, [])
 
   const loadDashboardData = useCallback(() => {
     setIsLoading(true)
     
-    // Reset all loading states
     setStatsLoading(true)
     setActivitiesLoading(true)
     setSosLoading(true)
@@ -344,19 +331,16 @@ const loadRecentActivities = useCallback(() => {
       .catch((error) => {
         console.error("Error loading dashboard data:", error)
         setIsLoading(false)
-        // Ensure loading states are reset even on error
         setStatsLoading(false)
         setActivitiesLoading(false)
         setSosLoading(false)
       })
   }, [loadStats, loadRecentActivities, loadNotifications, loadSosEmergencies])
 
-  // ADDED: Handle refresh function
   const handleRefresh = useCallback(() => {
     console.log("Manual refresh triggered")
     setIsRefreshing(true)
     
-    // Reset all loading states for visual feedback
     setStatsLoading(true)
     setActivitiesLoading(true)
     setSosLoading(true)
@@ -369,7 +353,6 @@ const loadRecentActivities = useCallback(() => {
       .catch((error) => {
         console.error("Error during manual refresh:", error)
         setIsRefreshing(false)
-        // Ensure loading states are reset even on error
         setStatsLoading(false)
         setActivitiesLoading(false)
         setSosLoading(false)
@@ -380,7 +363,6 @@ const loadRecentActivities = useCallback(() => {
     setIsLogoutModalOpen(false)
   }
 
-  // MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
       const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
@@ -399,7 +381,6 @@ const loadRecentActivities = useCallback(() => {
       const data = await res.json();
       console.log("Mark all as read result:", data);
 
-      // Update frontend state
       setNotifications(prev =>
         prev.map(notif => ({ ...notif, read: true }))
       );
@@ -409,89 +390,81 @@ const loadRecentActivities = useCallback(() => {
     }
   };
 
-  // HANDLE INDIVIDUAL NOTIFICATION CLICK
   const handleNotificationClick = async (notification) => {
-  const notifId = notification?.notif_id || notification?.id; // fallback support
+    const notifId = notification?.notif_id || notification?.id;
 
-  if (!notifId) {
-    console.warn("Notification ID is missing:", notification);
-  }
+    if (!notifId) {
+      console.warn("Notification ID is missing:", notification);
+    }
 
-  // Mark as read in frontend immediately
-  setNotifications((prev) =>
-    prev.map((notif) =>
-      notif.notif_id === notifId || notif.id === notifId
-        ? { ...notif, read: true }
-        : notif
-    )
-  );
+    setNotifications((prev) =>
+      prev.map((notif) =>
+        notif.notif_id === notifId || notif.id === notifId
+          ? { ...notif, read: true }
+          : notif
+      )
+    );
 
-  // Mark as read in backend (only if valid ID)
-  if (notifId) {
-    try {
-      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
-        method: "POST",
-        credentials: "include",
+    if (notifId) {
+      try {
+        await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+          method: "POST",
+          credentials: "include",
+        });
+      } catch (err) {
+        console.error("Error marking notification as read:", err);
+      }
+    }
+
+    const message = (notification.message || "").toLowerCase();
+
+    if (
+      message.includes("new registration") ||
+      message.includes("new veterinarian approved") ||
+      message.includes("veterinarian approved") ||
+      message.includes("veterinarian declined") ||
+      message.includes("veterinarian registered") ||
+      message.includes("veterinarian pending")
+    ) {
+      navigate("/DvmfAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
       });
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
+      return;
+    }
+
+    if (
+      message.includes("pending medical record access") ||
+      message.includes("requested access")
+    ) {
+      navigate("/DvmfAccessRequest", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
+
+    if (message.includes("comment")) {
+      navigate("/DvmfAnnouncement", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
     }
   }
 
-  const message = (notification.message || "").toLowerCase();
-
-  // Navigate for account-related notifications
-  if (
-    message.includes("new registration") ||
-    message.includes("new veterinarian approved") ||
-    message.includes("veterinarian approved") ||
-    message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered") ||
-    message.includes("veterinarian pending")
-  ) {
-    navigate("/DvmfAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
-
-  if (
-    message.includes("pending medical record access") ||
-    message.includes("requested access")
-  ) {
-    navigate("/DvmfAccessRequest", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
-
-// Only navigate to CtuAnnouncement for comment-related notifications
-  if (message.includes("comment")) {
-    navigate("/DvmfAnnouncement", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
-}
-
-
-  // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
     console.log("Notifications updated from modal:", updatedNotifications);
     console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
     setNotifications(updatedNotifications);
   };
 
-  // Handle opening UserManagement from notifications
   const handleOpenUserManagement = (notification = null) => {
     console.log('Opening User Management from dashboard notification:', notification)
     if (notification) {
@@ -547,7 +520,6 @@ const loadRecentActivities = useCallback(() => {
     console.log("SOS Emergency clicked:", emergency)
   }
 
-  // Calculate unread notifications count
   const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
 
   return (
@@ -559,7 +531,6 @@ const loadRecentActivities = useCallback(() => {
         </div>
       )}
 
-      {/* ADDED: Conditionally render Sidebar and FloatingMessages based on modal state */}
       {!isImageModalOpen && <Sidebar isOpen={isSidebarOpen} />}
       {!isImageModalOpen && <FloatingMessages />}
 
@@ -570,7 +541,6 @@ const loadRecentActivities = useCallback(() => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* ADDED: Refresh Button */}
             <button
               onClick={handleRefresh}
               disabled={isRefreshing}
@@ -596,7 +566,7 @@ const loadRecentActivities = useCallback(() => {
             </button>
           </div>
 
-          <NotificationModal
+          <NotificationsModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
             notifications={notifications}
@@ -607,7 +577,6 @@ const loadRecentActivities = useCallback(() => {
         </header>
 
         <div className="flex-1 p-4 sm:p-6 bg-gray-100 overflow-y-auto">
-          {/* Stat Count Section */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6">
             {statsLoading ? (
               <>
@@ -651,7 +620,6 @@ const loadRecentActivities = useCallback(() => {
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-4 sm:gap-6">
-            {/* Recent Activity Section */}
             <div className="bg-white p-4 sm:p-5 rounded-xl shadow-lg border border-red-100 max-h-[600px] overflow-y-auto">
               <h3 className="text-lg sm:text-xl font-bold mb-1 text-black">Recent Activity</h3>
               <p className="text-sm text-gray-600 mb-4 sm:mb-5">Latest added veterinary account</p>
@@ -676,74 +644,73 @@ const loadRecentActivities = useCallback(() => {
                 </div>
               ) : (
                 <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
-  {recentActivities
-    .filter((activity) => {
-      const activityDate = new Date(activity.date)
-      const now = new Date()
-      const diffTime = now - activityDate
-      const diffDays = diffTime / (1000 * 60 * 60 * 24)
-      return diffDays <= 2
-    })
-    .map((activity, index) => {
-      const initials = activity.title
-        .split(" ")
-        .map((word) => word[0])
-        .join("")
-        .toUpperCase()
+                  {recentActivities
+                    .filter((activity) => {
+                      const activityDate = new Date(activity.date)
+                      const now = new Date()
+                      const diffTime = now - activityDate
+                      const diffDays = diffTime / (1000 * 60 * 60 * 24)
+                      return diffDays <= 2
+                    })
+                    .map((activity, index) => {
+                      const initials = activity.title
+                        .split(" ")
+                        .map((word) => word[0])
+                        .join("")
+                        .toUpperCase()
 
-      const colorIndex = getColorIndex(activity, index)
+                      const colorIndex = getColorIndex(activity, index)
 
-      return (
-        <div key={activity.id} className={getActivityCardClasses(colorIndex)}>
-          <div className={getActivityAvatarClasses(colorIndex)}>{initials}</div>
-          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-1 gap-x-2.5 min-w-0">
-            <div className="font-semibold text-sm text-gray-800 sm:col-span-2 truncate">{activity.title}</div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Email</span>
-              <span className="text-xs text-gray-700 truncate">{activity.email}</span>
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                Description
-              </span>
-              <span className="text-xs text-gray-700 truncate">
-                {activity.description ? 
-                  activity.description.replace('declined', 'Not Approved').replace('Declined', 'Not Approved') 
-                  : "System activity update"
-                }
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
-            <span className={getRoleClasses(activity.status)}>
-              {activity.status === 'declined' ? 'Not Approved' : activity.status}
-            </span>
-            <span className="text-xs text-gray-500 font-medium whitespace-nowrap hidden sm:block">
-              {new Date(activity.date).toLocaleDateString("en-US", {
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              }) + ' ' + new Date(activity.date).toLocaleTimeString("en-US", {
-                hour: "numeric",
-                minute: "numeric",
-                hour12: true
-              })}
-            </span>
-            <span className="text-xs text-gray-500 font-medium whitespace-nowrap sm:hidden">
-              {new Date(activity.date).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              })}
-            </span>
-          </div>
-        </div>
-      )
-    })}
-</div>
+                      return (
+                        <div key={activity.id} className={getActivityCardClasses(colorIndex)}>
+                          <div className={getActivityAvatarClasses(colorIndex)}>{initials}</div>
+                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-1 gap-x-2.5 min-w-0">
+                            <div className="font-semibold text-sm text-gray-800 sm:col-span-2 truncate">{activity.title}</div>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Email</span>
+                              <span className="text-xs text-gray-700 truncate">{activity.email}</span>
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                Description
+                              </span>
+                              <span className="text-xs text-gray-700 truncate">
+                                {activity.description ? 
+                                  activity.description.replace('declined', 'Not Approved').replace('Declined', 'Not Approved') 
+                                  : "System activity update"
+                                }
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
+                            <span className={getRoleClasses(activity.status)}>
+                              {activity.status === 'declined' ? 'Not Approved' : activity.status}
+                            </span>
+                            <span className="text-xs text-gray-500 font-medium whitespace-nowrap hidden sm:block">
+                              {new Date(activity.date).toLocaleDateString("en-US", {
+                                month: "long",
+                                day: "numeric",
+                                year: "numeric",
+                              }) + ' ' + new Date(activity.date).toLocaleTimeString("en-US", {
+                                hour: "numeric",
+                                minute: "numeric",
+                                hour12: true
+                              })}
+                            </span>
+                            <span className="text-xs text-gray-500 font-medium whitespace-nowrap sm:hidden">
+                              {new Date(activity.date).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
               )}
             </div>
 
-            {/* SOS Emergency Section */}
             <div className="bg-white rounded-xl shadow-lg border border-red-100 p-4 sm:p-5 max-h-96 overflow-y-auto">
               <div className="flex items-center gap-3 mb-4 pb-3 border-b-2 border-red-100">
                 <h3 className="text-lg sm:text-xl font-bold text-black flex items-center gap-2">
@@ -799,7 +766,6 @@ const loadRecentActivities = useCallback(() => {
                         <span className="truncate">{emergency.location}</span>
                       </div>
 
-                      {/* ADDED: Image view button */}
                       {emergency.sos_image_url && (
                         <div className="flex justify-end mt-2">
                           <button
@@ -823,7 +789,6 @@ const loadRecentActivities = useCallback(() => {
         </div>
       </div>
 
-      {/* ADDED: Image Modal */}
       {isImageModalOpen && selectedImage && (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[10000] p-2 sm:p-4">
           <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden">
@@ -857,4 +822,5 @@ const loadRecentActivities = useCallback(() => {
     </div>
   )
 }
+
 export default DvmfDashboard

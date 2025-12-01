@@ -8,7 +8,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/ctu_vetmed";
+const API_BASE = "http://localhost:8000/api/ctu_vetmed";
 
 const CtuSettings = () => {
   const [activeTab, setActiveTab] = useState("profile")
@@ -82,7 +82,7 @@ const CtuSettings = () => {
   // MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/mark_all_notifications_read/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -123,7 +123,7 @@ const CtuSettings = () => {
   // Mark as read in backend (only if valid ID)
   if (notifId) {
     try {
-      await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/mark_notification_read/${notifId}/`, {
+      await fetch(`http://localhost:8000/api/ctu_vetmed/mark_notification_read/${notifId}/`, {
         method: "POST",
         credentials: "include",
       });
@@ -183,7 +183,7 @@ const handleNotificationsUpdate = (updatedNotifications) => {
 };
 
 const loadNotifications = useCallback(() => {
-  fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/`)
+  fetch(`http://localhost:8000/api/ctu_vetmed/get_vetnotifications/`)
     .then((res) => res.json())
     .then((data) => {
       const formatted = data.map((notif) => ({
@@ -206,7 +206,7 @@ const loadNotifications = useCallback(() => {
     setErrors({})
 
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/save_ctu_vet_profile/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/save_ctu_vet_profile/`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -240,7 +240,7 @@ const loadNotifications = useCallback(() => {
     setErrors({})
 
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/update_ctu_vet_profile/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/update_ctu_vet_profile/`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -282,7 +282,7 @@ const loadNotifications = useCallback(() => {
     }
 
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/ctu_change_password/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/ctu_change_password/`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -364,7 +364,7 @@ const loadNotifications = useCallback(() => {
     }
 
     try {
-      const response = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/signup/", {
+      const response = await fetch("http://localhost:8000/api/ctu_vetmed/signup/", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -416,7 +416,7 @@ const loadNotifications = useCallback(() => {
   // DEACTIVATE USER
   const deactivateUser = async (id) => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/users/deactivate/${id}/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/users/deactivate/${id}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -433,7 +433,7 @@ const loadNotifications = useCallback(() => {
   // REACTIVATE USER
   const reactivateUser = async (id) => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/users/reactivate/${id}/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/users/reactivate/${id}/`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       })
@@ -470,7 +470,7 @@ const loadNotifications = useCallback(() => {
   // Fetch CTU Vet profile
   const fetchProfile = async () => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/api/ctu_vetmed/get_ctu_vet_profiles/`, {
+      const res = await fetch(`http://localhost:8000/api/ctu_vetmed/get_ctu_vet_profiles/`, {
         method: "GET",
         credentials: "include",
       });
@@ -514,7 +514,7 @@ const loadNotifications = useCallback(() => {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const res = await fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/users/", {
+      const res = await fetch("http://localhost:8000/api/ctu_vetmed/users/", {
         method: "GET",
         credentials: "include",
       })
@@ -647,34 +647,42 @@ const loadNotifications = useCallback(() => {
 
                   <form onSubmit={profileExists ? handleUpdate : handleSave}>
                     <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative mb-6">
-                      <label className="font-medium mb-1">Full Name:</label>
                       <div className="flex gap-3">
-                        <input
-                          type="text"
-                          name="ctu_fname"
-                          value={profile.ctu_fname}
-                          onChange={handleChange}
-                          readOnly={profileExists && !editing}
-                          className={`flex-1 px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
-                            profileExists && !editing
-                              ? "bg-gray-50 cursor-not-allowed"
-                              : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          }`}
-                          placeholder="First Name"
-                        />
-                        <input
-                          type="text"
-                          name="ctu_lname"
-                          value={profile.ctu_lname}
-                          onChange={handleChange}
-                          readOnly={profileExists && !editing}
-                          className={`flex-1 px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
-                            profileExists && !editing
-                              ? "bg-gray-50 cursor-not-allowed"
-                              : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          }`}
-                          placeholder="Last Name"
-                        />
+                        {/* First Name Field */}
+                        <div className="flex-1 flex flex-col gap-1.5">
+                          <label className="font-medium mb-1">First Name:</label>
+                          <input
+                            type="text"
+                            name="ctu_fname"
+                            value={profile.ctu_fname}
+                            onChange={handleChange}
+                            readOnly={profileExists && !editing}
+                            className={`w-full px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
+                              profileExists && !editing
+                                ? "bg-gray-50 cursor-not-allowed"
+                                : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            }`}
+                            placeholder="First Name"
+                          />
+                        </div>
+                        
+                        {/* Last Name Field */}
+                        <div className="flex-1 flex flex-col gap-1.5">
+                          <label className="font-medium mb-1">Last Name:</label>
+                          <input
+                            type="text"
+                            name="ctu_lname"
+                            value={profile.ctu_lname}
+                            onChange={handleChange}
+                            readOnly={profileExists && !editing}
+                            className={`w-full px-4 py-3 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 ${
+                              profileExists && !editing
+                                ? "bg-gray-50 cursor-not-allowed"
+                                : "bg-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            }`}
+                            placeholder="Last Name"
+                          />
+                        </div>
                       </div>
                       {(errors.ctu_fname || errors.ctu_lname) && (
                         <p className="text-red-500 text-xs absolute -bottom-4 right-0 m-0">

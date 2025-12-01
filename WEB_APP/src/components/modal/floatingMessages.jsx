@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import {MessageCircle,X,User,Maximize2,ArrowLeft,Send,Search, MapPin, Calendar, Phone, Mail, Building} from "lucide-react";
+import { MessageCircle, X, User, Maximize2, ArrowLeft, Send, Search, MapPin, Calendar, Phone, Mail, Building } from "lucide-react";
 import supabase from "@/supabaseClient.js";
 
 // Add custom scrollbar styles to the document
@@ -414,7 +414,7 @@ const VeterinarianProfileModal = ({ user, profileData, isOpen, onClose }) => {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-500 mb-1">Full Name</p>
                     <p className="text-sm text-gray-900 break-words">{fullName}</p>
-                  </div>
+                </div>
                 </div>
 
                 {/* Phone */}
@@ -846,7 +846,7 @@ const NameWithRole = ({ name, role, showRole = true, onClick, clickable = true, 
     <div className={`flex ${isFullscreen ? 'items-center gap-2' : 'flex-col'}`}>
       <span 
         onClick={shouldBeClickable ? onClick : undefined}
-        className={`font-semibold text-gray-900 ${shouldBeClickable ? 'hover:text-blue-600 cursor-pointer transition-colors' : ''}`}
+        className={`font-semibold text-gray-900 ${shouldBeClickable ? 'hover:text-green-600 cursor-pointer transition-colors' : ''}`}
       >
         {cleanName}
       </span>
@@ -905,7 +905,7 @@ const Avatar = ({ user, size = "md", onClick, clickable = true, inChatView = fal
     />
   ) : (
     <div
-      className={`${sizeClasses[size]} bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-semibold ${
+      className={`${sizeClasses[size]} bg-gradient-to-br from-green-500 to-green-600 rounded-full flex items-center justify-center text-white font-semibold ${
         shouldBeClickable ? "cursor-pointer hover:opacity-80 transition-opacity" : ""
       }`}
       onClick={shouldBeClickable ? onClick : undefined}
@@ -936,8 +936,8 @@ const MessagesWithDateHeaders = ({ messages, isTyping, isNewConversation, isEmpt
     return (
       <div className="flex justify-center my-8">
         <div className="text-center">
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 max-w-md">
-            <MessageCircle className="w-12 h-12 text-blue-400 mx-auto mb-3" />
+          <div className="bg-green-50 border border-green-200 rounded-lg p-6 max-w-md">
+            <MessageCircle className="w-12 h-12 text-green-400 mx-auto mb-3" />
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
               {isNewConversation ? "Start a conversation" : "No messages yet"}
             </h3>
@@ -1016,7 +1016,7 @@ const MessagesWithDateHeaders = ({ messages, isTyping, isNewConversation, isEmpt
                 <div
                   className={`px-4 py-2 rounded-2xl text-sm ${
                     message.isOwn
-                      ? "bg-blue-500 text-white rounded-br-md"
+                      ? "bg-green-500 text-white rounded-br-md"
                       : "bg-white text-gray-800 rounded-bl-md shadow-sm"
                   }`}
                 >
@@ -1035,7 +1035,7 @@ const MessagesWithDateHeaders = ({ messages, isTyping, isNewConversation, isEmpt
                  groupIndex === groupedMessages.length - 1 && 
                  message.is_read === true && (
                   <div className="text-right mt-1">
-                    <span className="text-xs text-blue-500 font-medium">Seen</span>
+                    <span className="text-xs text-green-500 font-medium">Seen</span>
                   </div>
                 )}
               </div>
@@ -1075,7 +1075,7 @@ const ConversationListItem = ({
     <div
       onClick={() => onSelect(conversation)}
       className={`flex items-center gap-3 p-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 transition-colors ${
-        isSelected ? 'bg-blue-50 border-blue-200' : ''
+        isSelected ? 'bg-green-50 border-green-200' : ''
       }`}
     >
       <div className="relative">
@@ -1103,7 +1103,7 @@ const ConversationListItem = ({
               {conversation.name ? conversation.name.replace(/\s*\([^)]*\)\s*$/, '').trim() : ''}
             </span>
             {hasUnread && (
-              <div className="w-5 h-5 bg-blue-500 text-white rounded-full flex items-center justify-center text-xs font-medium">
+              <div className="w-5 h-5 bg-green-500 text-white rounded-full flex items-center justify-center text-xs font-medium">
                 {conversation.unread > 9 ? '9+' : conversation.unread}
               </div>
             )}
@@ -1121,7 +1121,7 @@ const ConversationListItem = ({
           <span className={`text-xs whitespace-nowrap ${
             hasUnread ? "font-semibold text-gray-900" : "text-gray-500"
           }`}>
-            {conversation.timestamp || ""}
+            {conversation.displayTimestamp || conversation.timestamp || ""}
           </span>
         </div>
       </div>
@@ -1306,7 +1306,7 @@ const ChatView = ({
             disabled={!newMessage.trim()}
             className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
               newMessage.trim()
-                ? "bg-blue-500 hover:bg-blue-600 text-white"
+                ? "bg-green-500 hover:bg-green-600 text-white"
                 : "bg-gray-300 text-gray-500 cursor-not-allowed"
             }`}
           >
@@ -1334,7 +1334,7 @@ const ConversationList = ({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-gray-200">
+      <div className="p-4 border-b border-gray-200 flex-shrink-0">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -1347,37 +1347,33 @@ const ConversationList = ({
                 setSearchTerm("");
               }
             }}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
           />
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <div 
-          className="max-h-full overflow-y-auto custom-scrollbar"
-          style={{
-            scrollbarWidth: 'thin',
-            scrollbarColor: '#cbd5e0 #f7fafc',
-          }}
-        >
-          {!displayConversations || displayConversations.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-gray-500">
-              <p className="text-sm">
-                {isSearching ? "No users found" : "No conversations found"}
-              </p>
-            </div>
-          ) : (
-            displayConversations.map((conversation) => (
-              <ConversationListItem
-                key={conversation.id}
-                conversation={conversation}
-                isSelected={selectedConversation?.id === conversation.id}
-                onSelect={handleSelectConversation}
-                onProfileClick={onProfileClick}
-              />
-            ))
-          )}
-        </div>
+      {/* FIXED: SCROLL CONTAINER WITH PROPER HEIGHT CALCULATION */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar" style={{ 
+        height: 'calc(100% - 73px)',
+        maxHeight: 'none'
+      }}>
+        {!displayConversations || displayConversations.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-gray-500 p-4">
+            <p className="text-sm text-center">
+              {isSearching ? "No users found" : "No conversations found"}
+            </p>
+          </div>
+        ) : (
+          displayConversations.map((conversation) => (
+            <ConversationListItem
+              key={conversation.id}
+              conversation={conversation}
+              isSelected={selectedConversation?.id === conversation.id}
+              onSelect={handleSelectConversation}
+              onProfileClick={onProfileClick}
+            />
+          ))
+        )}
       </div>
     </div>
   );
@@ -1574,9 +1570,12 @@ const FloatingMessages = () => {
           
           if (involvesCurrentUser) {
             if (newMessageData.user_id === currentUserId) {
+              // If we sent the message, refresh conversations to update sorting
+              await fetchConversations();
               return;
             }
             
+            // Refresh conversations to get updated sorting and unread counts
             await fetchConversations();
             
             if (currentSelectedConv) {
@@ -1618,23 +1617,16 @@ const FloatingMessages = () => {
                       }
                     );
                     
-                    setConversations(prev => {
-                      if (!prev) return [];
-                      return prev.map(conv => 
-                        conv.id === currentSelectedConv.id 
-                          ? { ...conv, unread: 0 }
-                          : conv
-                      );
-                    });
+                    // No need to update conversations here since fetchConversations already did it
                   } catch (error) {
-                    console.error("Error marking message as read:", error);
+                    // Error handling
                   }
                 }
               }
             }
           }
         }
-      )
+      )      
       .on(
         'postgres_changes',
         {
@@ -1731,26 +1723,12 @@ const FloatingMessages = () => {
       );
       if (res.ok) {
         const data = await res.json();
-        
-        // Sort conversations in descending order based on timestamp (newest first)
-        const sortedConversations = (data || []).sort((a, b) => {
-          // Handle conversations with timestamps
-          if (a.timestamp && b.timestamp) {
-            return new Date(b.timestamp) - new Date(a.timestamp);
-          }
-          // If one conversation has timestamp and other doesn't, prioritize the one with timestamp
-          if (a.timestamp && !b.timestamp) return -1;
-          if (!a.timestamp && b.timestamp) return 1;
-          // If neither has timestamp, maintain original order
-          return 0;
-        });
-        
-        setConversations(sortedConversations);
+
+        setConversations(data || []);
       } else {
         setConversations([]);
       }
     } catch (error) {
-      console.error("Error fetching conversations:", error);
       setConversations([]);
     }
   };
@@ -1768,7 +1746,6 @@ const FloatingMessages = () => {
         setAllUsers([]);
       }
     } catch (error) {
-      console.error("Error fetching all users:", error);
       setAllUsers([]);
     }
   };
@@ -1839,17 +1816,15 @@ const FloatingMessages = () => {
                   : conv
               );
             });
-          } else {
-            console.error("❌ Failed to mark messages as read on conversation open");
           }
         } catch (error) {
-          console.error("❌ Error marking messages as read on conversation open:", error);
+          // Error handling
         }
         
         fetchConversations();
       }
     } catch (error) {
-      console.error("Error fetching messages:", error);
+      // Error handling
     }
   };
 
@@ -1909,9 +1884,8 @@ const FloatingMessages = () => {
     }
   }, [newMessage, selectedConversation, currentUserId]);
 
-  // Profile modal handlers - ALL profiles are clickable now
+  // Profile modal handlers
   const handleProfileClick = (user) => {
-    // Allow ALL user types to have clickable profiles
     setProfileModal({ isOpen: true, user });
   };
 
@@ -1932,16 +1906,7 @@ const FloatingMessages = () => {
 
   // Filter and maintain descending order for conversations
   const filteredConversations = (conversationsWithOnlineStatus || [])
-    .filter((c) => c.name?.toLowerCase().includes(searchTerm.toLowerCase()))
-    .sort((a, b) => {
-      // Maintain descending order even after filtering
-      if (a.timestamp && b.timestamp) {
-        return new Date(b.timestamp) - new Date(a.timestamp);
-      }
-      if (a.timestamp && !b.timestamp) return -1;
-      if (!a.timestamp && b.timestamp) return 1;
-      return 0;
-    });
+    .filter((c) => c.name?.toLowerCase().includes(searchTerm.toLowerCase()));
 
   const filteredAllUsers = (allUsersWithOnlineStatus || []).filter((user) =>
     user.name?.toLowerCase().includes(searchTerm.toLowerCase())

@@ -677,7 +677,7 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
     
     setLoading(true);
     try {
-      const endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/ctu_profile_by_id/${user.id}/`;
+      const endpoint = `http://localhost:8000/api/kutsero_president/ctu_profile_by_id/${user.id}/`;
       
       const res = await fetch(endpoint, { credentials: "include" });
       if (res.ok) {
@@ -685,7 +685,7 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
         setProfileData(data);
       }
     } catch (error) {
-      console.error("Error fetching CTU profile data:", error);
+      // Error handling without console.log
     } finally {
       setLoading(false);
     }
@@ -696,14 +696,14 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
     
     setLoading(true);
     try {
-      const endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/dvmf_profile_by_id/${user.id}/`;
+      const endpoint = `http://localhost:8000/api/kutsero_president/dvmf_profile_by_id/${user.id}/`;
       const res = await fetch(endpoint, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setProfileData(data);
       }
     } catch (error) {
-      console.error("Error fetching DVMF profile data:", error);
+      // Error handling without console.log
     } finally {
       setLoading(false);
     }
@@ -717,9 +717,9 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
       let endpoint = '';
       
       if (user.role === 'Kutsero') {
-        endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/kutsero_profile_by_id/${user.id}/`;
+        endpoint = `http://localhost:8000/api/kutsero_president/kutsero_profile_by_id/${user.id}/`;
       } else if (user.role === 'Horse Operator') {
-        endpoint = `https://echo-ebl8.onrender.com/api/kutsero_president/horse_operator_profile/${user.id}/`;
+        endpoint = `http://localhost:8000/api/kutsero_president/horse_operator_profile/${user.id}/`;
       }
 
       if (endpoint) {
@@ -730,7 +730,7 @@ const ProfileModalHandler = ({ user, isOpen, onClose }) => {
         }
       }
     } catch (error) {
-      console.error("Error fetching profile data:", error);
+      // Error handling without console.log
     } finally {
       setLoading(false);
     }
@@ -1084,7 +1084,7 @@ const ConversationListItem = ({
           <span className={`text-xs whitespace-nowrap ${
             hasUnread ? "font-semibold text-gray-900" : "text-gray-500"
           }`}>
-            {conversation.timestamp || ""}
+            {conversation.displayTimestamp || conversation.timestamp || ""}
           </span>
         </div>
       </div>
@@ -1257,7 +1257,7 @@ const ChatView = ({
               value={newMessage}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder={(!conversation.messages || conversation.messages.length === 0) ? "Send your first message..." : "Type a message... (Press Enter to send)"}
+              placeholder={(!conversation.messages || conversation.messages.length === 0) ? "Send your first message..." : "Type a message... "}
               className="flex-1 bg-transparent text-sm focus:outline-none"
             />
           </div>
@@ -1297,7 +1297,7 @@ const ConversationList = ({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-gray-200">
+      <div className="p-4 border-b border-gray-200 flex-shrink-0">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
@@ -1315,32 +1315,28 @@ const ConversationList = ({
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
-        <div 
-          className="max-h-full overflow-y-auto custom-scrollbar"
-          style={{
-            scrollbarWidth: 'thin',
-            scrollbarColor: '#cbd5e0 #f7fafc',
-          }}
-        >
-          {!displayConversations || displayConversations.length === 0 ? (
-            <div className="flex items-center justify-center h-32 text-gray-500">
-              <p className="text-sm">
-                {isSearching ? "No users found" : "No conversations found"}
-              </p>
-            </div>
-          ) : (
-            displayConversations.map((conversation) => (
-              <ConversationListItem
-                key={conversation.id}
-                conversation={conversation}
-                isSelected={selectedConversation?.id === conversation.id}
-                onSelect={handleSelectConversation}
-                onProfileClick={onProfileClick}
-              />
-            ))
-          )}
-        </div>
+      {/* FIXED: SCROLL CONTAINER WITH PROPER HEIGHT CALCULATION */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar" style={{ 
+        height: 'calc(100% - 73px)',
+        maxHeight: 'none'
+      }}>
+        {!displayConversations || displayConversations.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-gray-500 p-4">
+            <p className="text-sm text-center">
+              {isSearching ? "No users found" : "No conversations found"}
+            </p>
+          </div>
+        ) : (
+          displayConversations.map((conversation) => (
+            <ConversationListItem
+              key={conversation.id}
+              conversation={conversation}
+              isSelected={selectedConversation?.id === conversation.id}
+              onSelect={handleSelectConversation}
+              onProfileClick={onProfileClick}
+            />
+          ))
+        )}
       </div>
     </div>
   );
@@ -1459,7 +1455,7 @@ const FloatingMessages = () => {
 
   const fetchCurrentUserId = async () => {
     try {
-      const res = await fetch("https://echo-ebl8.onrender.com/api/kutsero_president/get_president_profile/", {
+      const res = await fetch("http://localhost:8000/api/kutsero_president/get_president_profile/", {
         credentials: "include"
       });
       if (res.ok) {
@@ -1467,7 +1463,7 @@ const FloatingMessages = () => {
         setCurrentUserId(data.user_id); // ✅ Using user_id from president profile
       }
     } catch (error) {
-      console.error("Error fetching current user ID:", error);
+      // Error handling without console.log
     }
   };
 
@@ -1515,7 +1511,6 @@ const FloatingMessages = () => {
       supabase.removeChannel(typingChannelRef.current);
     }
 
-    // Messages subscription
     messagesSubscriptionRef.current = supabase
       .channel('global-messages-realtime')
       .on(
@@ -1537,9 +1532,12 @@ const FloatingMessages = () => {
           
           if (involvesCurrentUser) {
             if (newMessageData.user_id === currentUserId) {
+              // If we sent the message, refresh conversations to update sorting
+              await fetchConversations();
               return;
             }
             
+            // Refresh conversations to get updated sorting and unread counts
             await fetchConversations();
             
             if (currentSelectedConv) {
@@ -1570,10 +1568,8 @@ const FloatingMessages = () => {
 
                 if (newMessageData.receiver_id === currentUserId && currentSelectedConv) {
                   try {
-                    // ✅ CHANGED: Use Kutsero President mark messages as read endpoint
                     await fetch(
-                      `https://echo-ebl8.onrender.com/api/kutsero_president/mark_messages_as_read/${currentSelectedConv.id}/`,
-                     
+                      `http://localhost:8000/api/kutsero_president/mark_messages_as_read/${currentSelectedConv.id}/`,
                       { 
                         method: "PUT", 
                         credentials: "include",
@@ -1583,23 +1579,16 @@ const FloatingMessages = () => {
                       }
                     );
                     
-                    setConversations(prev => {
-                      if (!prev) return [];
-                      return prev.map(conv => 
-                        conv.id === currentSelectedConv.id 
-                          ? { ...conv, unread: 0 }
-                          : conv
-                      );
-                    });
+                    // No need to update conversations here since fetchConversations already did it
                   } catch (error) {
-                    console.error("Error marking message as read:", error);
+                    // Error handling without console.log
                   }
                 }
               }
             }
           }
         }
-      )
+      )      
       .on(
         'postgres_changes',
         {
@@ -1691,31 +1680,17 @@ const FloatingMessages = () => {
   const fetchConversations = async () => {
     try {
       const res = await fetch(
-        "https://echo-ebl8.onrender.com/api/kutsero_president/get_conversations/", 
+        "http://localhost:8000/api/kutsero_president/get_conversations/", 
         { credentials: "include" }
       );
       if (res.ok) {
         const data = await res.json();
-        
-        // Sort conversations in descending order based on timestamp (newest first)
-        const sortedConversations = (data || []).sort((a, b) => {
-          // Handle conversations with timestamps
-          if (a.timestamp && b.timestamp) {
-            return new Date(b.timestamp) - new Date(a.timestamp);
-          }
-          // If one conversation has timestamp and other doesn't, prioritize the one with timestamp
-          if (a.timestamp && !b.timestamp) return -1;
-          if (!a.timestamp && b.timestamp) return 1;
-          // If neither has timestamp, maintain original order
-          return 0;
-        });
-        
-        setConversations(sortedConversations);
+
+        setConversations(data || []);
       } else {
         setConversations([]);
       }
     } catch (error) {
-      console.error("Error fetching conversations:", error);
       setConversations([]);
     }
   };
@@ -1723,7 +1698,7 @@ const FloatingMessages = () => {
   const fetchAllUsers = async () => {
     try {
       const res = await fetch(
-        "https://echo-ebl8.onrender.com/api/kutsero_president/get_all_users/",
+        "http://localhost:8000/api/kutsero_president/get_all_users/",
         { credentials: "include" }
       );
       if (res.ok) {
@@ -1733,7 +1708,6 @@ const FloatingMessages = () => {
         setAllUsers([]);
       }
     } catch (error) {
-      console.error("Error fetching all users:", error);
       setAllUsers([]);
     }
   };
@@ -1755,7 +1729,7 @@ const FloatingMessages = () => {
     
     try {
       const res = await fetch(
-        `https://echo-ebl8.onrender.com/api/kutsero_president/get_conversation/${conversation.id}/`,
+        `http://localhost:8000/api/kutsero_president/get_conversation/${conversation.id}/`,
         { credentials: "include" }
       );
       
@@ -1784,7 +1758,7 @@ const FloatingMessages = () => {
 
         try {
           const markReadResponse = await fetch(
-            `https://echo-ebl8.onrender.com/api/kutsero_president/mark_messages_as_read/${conversation.id}/`,
+            `http://localhost:8000/api/kutsero_president/mark_messages_as_read/${conversation.id}/`,
             { 
               method: "PUT", 
               credentials: "include",
@@ -1804,17 +1778,15 @@ const FloatingMessages = () => {
                   : conv
               );
             });
-          } else {
-            console.error("❌ Failed to mark messages as read on conversation open");
           }
         } catch (error) {
-          console.error("❌ Error marking messages as read on conversation open:", error);
+          // Error handling without console.log
         }
         
         fetchConversations();
       }
     } catch (error) {
-      console.error("Error fetching messages:", error);
+      // Error handling without console.log
     }
   };
 
@@ -1848,7 +1820,7 @@ const FloatingMessages = () => {
 
     try {
       const res = await fetch(
-        "https://echo-ebl8.onrender.com/api/kutsero_president/send_message/",
+        "http://localhost:8000/api/kutsero_president/send_message/",
         {
           method: "POST",
           headers: { "Content-Type": 'application/json' },
@@ -1897,16 +1869,7 @@ const FloatingMessages = () => {
 
   // Filter and maintain descending order for conversations
   const filteredConversations = (conversationsWithOnlineStatus || [])
-    .filter((c) => c.name?.toLowerCase().includes(searchTerm.toLowerCase()))
-    .sort((a, b) => {
-      // Maintain descending order even after filtering
-      if (a.timestamp && b.timestamp) {
-        return new Date(b.timestamp) - new Date(a.timestamp);
-      }
-      if (a.timestamp && !b.timestamp) return -1;
-      if (!a.timestamp && b.timestamp) return 1;
-      return 0;
-    });
+    .filter((c) => c.name?.toLowerCase().includes(searchTerm.toLowerCase()));
 
   const filteredAllUsers = (allUsersWithOnlineStatus || []).filter((user) =>
     user.name?.toLowerCase().includes(searchTerm.toLowerCase())

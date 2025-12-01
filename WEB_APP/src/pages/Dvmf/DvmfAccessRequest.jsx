@@ -27,7 +27,7 @@ import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
+const API_BASE = "http://localhost:8000/api/dvmf";
 
 
 const SkeletonLoader = ({ activeTab }) => {
@@ -245,7 +245,7 @@ function DvmfAccessRequest() {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("https://echo-ebl8.onrender.com/api/dvmf/get_vetnotifications/")
+    fetch("http://localhost:8000/api/dvmf/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -280,7 +280,7 @@ function DvmfAccessRequest() {
   // Fetch access requests
   const loadAccessRequests = useCallback(() => {
     setIsLoading(true)
-    fetch("https://echo-ebl8.onrender.com/api/dvmf/medrec_access_requests/")
+    fetch("http://localhost:8000/api/dvmf/medrec_access_requests/")
       .then((res) => res.json())
       .then((data) => {
         const formatted = data.map((req) => ({
@@ -329,7 +329,7 @@ function DvmfAccessRequest() {
   const approveRequest = async (requestId) => {
   try {
     const res = await fetch(
-      `https://echo-ebl8.onrender.com/api/dvmf/access-requests/${requestId}/approve/`,
+      `http://localhost:8000/api/dvmf/access-requests/${requestId}/approve/`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -426,7 +426,7 @@ function DvmfAccessRequest() {
 
     try {
       const response = await fetch(
-        `https://echo-ebl8.onrender.com/api/dvmf/access-requests/${currentRequestId}/decline/`,
+        `http://localhost:8000/api/dvmf/access-requests/${currentRequestId}/decline/`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
