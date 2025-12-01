@@ -331,8 +331,8 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(15),
   },
   logo: {
-    width: scale(150),
-    height: scale(150),
+    width: scale(250),
+    height: scale(250),
     marginBottom: verticalScale(5),
   },
   echoText: {
