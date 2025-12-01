@@ -1,4 +1,3 @@
-
 import {
   AlertCircle,
   Bell,
@@ -19,10 +18,7 @@ import { useNavigate } from "react-router-dom";
 import Sidebar from '@/components/VetSidebar';
 import FloatingMessages from '@/components/modal/floatingMessages';
 import ProfileModal from '@/components/modal/profileModal';
-
-
 import NotificationModal from '@/components/modal/notificationModal';
-
 
 const VetAppointmentRequest = () => {
   const [appointments, setAppointments] = useState([]);
@@ -34,6 +30,7 @@ const VetAppointmentRequest = () => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
+  const [notificationCount, setNotificationCount] = useState(0);
   const [statusFilter, setStatusFilter] = useState("all");
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   
@@ -43,9 +40,46 @@ const VetAppointmentRequest = () => {
 
   const navigate = useNavigate();
 
+  // ---------------- FETCH NOTIFICATIONS ----------------
+  const fetchNotifications = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/veterinarian/get_notifications/", {
+        credentials: "include"
+      });
+      const data = await response.json();
+      
+      if (response.ok) {
+        setNotifications(data.notifications || []);
+        // Calculate unread count
+        const unreadCount = data.notifications.filter(n => !n.read).length;
+        setNotificationCount(unreadCount);
+      } else {
+        console.error("Error fetching notifications:", data.error);
+      }
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+    }
+  };
+
+  // ---------------- REFRESH FUNCTION ----------------
+  const refreshDashboardData = async () => {
+    console.log("Refreshing appointment requests data...");
+    await Promise.all([
+      fetchAppointments(),
+      fetchNotifications() // Also refresh notifications
+    ]);
+  };
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshDashboardData();
+    setIsRefreshing(false);
+  };
+
   useEffect(() => {
     fetchAppointments();
     fetchVetProfile();
+    fetchNotifications(); // Fetch notifications on component mount
   }, []);
 
   // Reset to first page when filters or search changes
@@ -135,8 +169,11 @@ const VetAppointmentRequest = () => {
     };
   };
 
-  const handleRefresh = () => {
-    fetchAppointments();
+  // ---------------- HANDLE NOTIFICATION MODAL CLOSE ----------------
+  const handleNotificationModalClose = () => {
+    setIsNotificationModalOpen(false);
+    // Refresh notifications to get updated read status
+    fetchNotifications();
   };
 
   // Function to determine status based on date
@@ -261,18 +298,25 @@ const VetAppointmentRequest = () => {
               <button 
                 onClick={handleRefresh}
                 disabled={isRefreshing}
-                className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl transition-colors"
-                title="Refresh"
+                className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl transition-colors disabled:opacity-50"
+                title="Refresh data"
               >
                 <RefreshCw className={`w-5 h-5 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
+              
+              {/* Notification Button with Count Badge */}
               <button 
                 onClick={() => setIsNotificationModalOpen(!isNotificationModalOpen)} 
                 className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl relative transition-all"
               >
                 <Bell className="w-5 h-5 text-gray-600" />
-                <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
+                {notificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-medium px-2 py-1 rounded-full min-w-5 h-5 flex items-center justify-center">
+                    {notificationCount > 9 ? '9+' : notificationCount}
+                  </span>
+                )}
               </button>
+              
               <button 
                 onClick={() => setIsProfileModalOpen(true)}
                 className="transition-transform hover:scale-105"
@@ -547,7 +591,14 @@ const VetAppointmentRequest = () => {
 
       {/* Profile Modal */}
       <ProfileModal isOpen={isProfileModalOpen} onClose={() => setIsProfileModalOpen(false)} />
-      <NotificationModal isOpen={isNotificationModalOpen} onClose={() => setIsNotificationModalOpen(false)} notifications={notifications} />
+      
+      {/* Notification Modal */}
+      <NotificationModal 
+        isOpen={isNotificationModalOpen} 
+        onClose={handleNotificationModalClose} 
+        notifications={notifications} 
+      />
+      
       <FloatingMessages />
     </div>
   );

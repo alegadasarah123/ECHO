@@ -27,7 +27,6 @@ def login_required(func):
         token = get_token_from_cookie(request)
         if not token:
             return Response({"error": "Authentication required"}, status=401)
-        # Optional: verify token with Supabase here
         return func(request, *args, **kwargs)
     return wrapper
 
@@ -47,11 +46,9 @@ def fetch_and_merge_users():
     auth_res = requests.get(auth_url, headers=headers)
     auth_users = auth_res.json().get("users", [])
 
-    # Fetch core user data
     db_res = supabase.table("users").select("*").execute()
     db_users = {u["id"]: u for u in (db_res.data or [])}
 
-    # Fetch profile tables
     kutsero_res = supabase.table("kutsero_profile").select("*").execute()
     kutsero_profiles = {kp["kutsero_id"]: kp for kp in (kutsero_res.data or [])}
 
@@ -74,7 +71,6 @@ def fetch_and_merge_users():
                 full_name = ""
                 contact_num = ""
 
-                # ✅ KUTSERO
                 if role == "kutsero" and user_id in kutsero_profiles:
                     kp = kutsero_profiles[user_id]
                     full_name = " ".join(filter(None, [
@@ -95,11 +91,9 @@ def fetch_and_merge_users():
                             kp.get("kutsero_province"),
                             kp.get("kutsero_zipcode"),
                         ])),
-                        # ✅ Directly fetch image column from DB
                         "profilePicture": kp.get("kutsero_image")
                     }
 
-                # ✅ HORSE OPERATOR
                 elif role == "horse operator" and user_id in ho_profiles:
                     hp = ho_profiles[user_id]
                     full_name = " ".join(filter(None, [
@@ -121,7 +115,6 @@ def fetch_and_merge_users():
                             hp.get("op_province"),
                             hp.get("op_zipcode"),
                         ])),
-                        # ✅ Use op_image from DB
                         "profilePicture": hp.get("op_image")
                     }
 
@@ -199,78 +192,53 @@ def send_email_async(subject, plain_message, from_email, recipient_list, html_me
             html_message=html_message
         )
     except Exception:
-        pass  # no logger, silently ignore failure
-
+        pass
 
 @api_view(["POST"])
 @login_required
 def approve_user(request, user_id):
     """Approve a user, update status, and send email asynchronously."""
-    import traceback, sys
-    print("\n=== DEBUG: approve_user called ===")
-    print("User ID:", user_id)
-
     try:
-        # ✅ FIXED: Get Philippine time (simpler approach)
         from datetime import timezone
         ph_time = datetime.now(timezone(timedelta(hours=8)))
-        print("PH time:", ph_time)
 
-        # ✅ Get user role
         user_res = supabase.table("users").select("role").eq("id", str(user_id)).execute()
-        print("User query result:", user_res.data)
         if not user_res.data:
-            print("❌ User not found")
             return Response({"error": "User not found"}, status=404)
         role = user_res.data[0]["role"]
-        print("Role:", role)
 
-        # ✅ Fetch user info
         if role == "Kutsero":
-            print("Fetching Kutsero profile...")
             profile_res = supabase.table("kutsero_profile") \
                 .select("kutsero_fname, kutsero_lname, kutsero_email") \
                 .eq("kutsero_id", str(user_id)).execute()
-            print("Kutsero profile result:", profile_res.data)
             if not profile_res.data:
-                print("❌ Kutsero profile not found")
                 return Response({"error": "Kutsero profile not found"}, status=404)
             data = profile_res.data[0]
             user_name = f"{data.get('kutsero_fname','')} {data.get('kutsero_lname','')}".strip()
             user_email = data.get("kutsero_email")
 
         elif role == "Horse Operator":
-            print("Fetching Horse Operator profile...")
             profile_res = supabase.table("horse_op_profile") \
                 .select("op_fname, op_lname, op_email") \
                 .eq("op_id", str(user_id)).execute()
-            print("Operator profile result:", profile_res.data)
             if not profile_res.data:
-                print("❌ Operator profile not found")
                 return Response({"error": "Operator profile not found"}, status=404)
             data = profile_res.data[0]
             user_name = f"{data.get('op_fname','')} {data.get('op_lname','')}".strip()
             user_email = data.get("op_email")
 
         else:
-            print("❌ Unknown role encountered:", role)
             return Response({"error": f"Unknown role: {role}"}, status=400)
 
-        # ✅ Update status
-        print("Updating user status in Supabase...")
         res = supabase.table("users").update({
             "status": "approved",
             "created_at": ph_time.isoformat()
         }).eq("id", user_id).execute()
-        print("Update response:", res.data)
 
         if not res.data:
-            print("❌ User not found after update")
             return Response({"error": "User not found"}, status=404)
 
-        # ✅ Send email asynchronously
         if user_email:
-            print(f"Sending approval email to {user_email}")
             subject = "Your Account Has Been Approved"
             plain_message = f"Hello {user_name},\n\nYour account has been approved. You can now log in on your mobile app.\n\nBest regards,\nECHOSys Team"
             html_message = f"""
@@ -304,10 +272,7 @@ def approve_user(request, user_id):
                 "recipient_list": [user_email],
                 "html_message": html_message
             }).start()
-        else:
-            print("⚠️ No email found for this user")
 
-        print("✅ Approve user process completed successfully")
         return Response({
             "message": f"{role.capitalize()} approved successfully",
             "user_id": user_id,
@@ -315,8 +280,6 @@ def approve_user(request, user_id):
         }, status=200)
 
     except Exception as e:
-        print("❌ ERROR IN approve_user:", str(e))
-        traceback.print_exc(file=sys.stdout)
         return Response({"error": str(e)}, status=500)
 
 @api_view(["POST"])
@@ -325,13 +288,11 @@ def decline_user(request, user_id):
     """Decline a user, update status + reason, and send email asynchronously."""
     decline_reason = request.data.get("declineReason", "No reason provided")
 
-    # ✅ Get user role
     user_res = supabase.table("users").select("role").eq("id", str(user_id)).execute()
     if not user_res.data:
         return Response({"error": "User not found"}, status=404)
     role = user_res.data[0]["role"]
 
-    # ✅ Fetch user info
     if role == "Kutsero":
         profile_res = supabase.table("kutsero_profile") \
             .select("kutsero_fname, kutsero_lname, kutsero_email") \
@@ -353,7 +314,6 @@ def decline_user(request, user_id):
     else:
         return Response({"error": f"Unknown role: {role}"}, status=400)
 
-    # ✅ Update users table
     res = supabase.table("users").update({
         "status": "declined",
         "decline_reason": decline_reason
@@ -361,10 +321,9 @@ def decline_user(request, user_id):
     if not res.data:
         return Response({"error": "User not found"}, status=404)
 
-    # ✅ Send email asynchronously
     if user_email:
         subject = "Your Account Has Been Declined ⚠️"
-        plain_message = f"Hello {user_name},\n\nWe’re sorry to inform you that your account has been declined. Reason: {decline_reason}.\n\nBest regards,\nECHOSys Team"
+        plain_message = f"Hello {user_name},\n\nWe're sorry to inform you that your account has been declined. Reason: {decline_reason}.\n\nBest regards,\nECHOSys Team"
         html_message = f"""
         <html>
           <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
@@ -374,7 +333,7 @@ def decline_user(request, user_id):
               </div>
               <div style="padding:30px; color:#333; font-size:16px; line-height:1.5;">
                 <p>Hello {user_name},</p>
-                <p>We’re sorry to inform you that your account request has been declined by the admin.</p>
+                <p>We're sorry to inform you that your account request has been declined by the admin.</p>
                 <p><strong>Reason:</strong> {decline_reason}</p>
                 <p>Best regards,<br>ECHOSys Team</p>
               </div>
@@ -418,12 +377,9 @@ def get_approved_users(request):
 @api_view(["GET"])
 @login_required
 def get_notifications(request):
-    """GET pending Kutsero and Horse Operator users and INSERT them into notification table."""
+    """GET pending Kutsero and Horse Operator users and insert them into notification table."""
     try:
-        print("=== STARTING NOTIFICATION PROCESS ===")
-
-        # STEP 1: FETCH PENDING USERS
-        print("Fetching pending users...")
+        # 1️⃣ Fetch all pending users (Kutsero + Horse Operator)
         users_result = (
             supabase.table("users")
             .select("*")
@@ -431,107 +387,89 @@ def get_notifications(request):
             .in_("role", ["Kutsero", "Horse Operator"])
             .execute()
         )
-        pending_users = users_result.data if users_result.data else []
-        print(f"Found {len(pending_users)} pending users: {[u['id'] for u in pending_users]}")
+        pending_users = users_result.data or []
 
         if not pending_users:
-            print("No pending users found, returning empty array")
+            print("No pending users found.")
             return Response([])
 
-        # STEP 2: FETCH ALL PROFILES IN BATCH
         user_ids = [user["id"] for user in pending_users]
+        print(f"Pending user IDs: {user_ids}")
+
         user_profiles = {}
 
-        # Fetch Horse Operator profiles
-        try:
-            horse_op_result = (
-                supabase.table("horse_op_profile")
-                .select("op_id, op_fname, op_mname, op_lname")
-                .in_("op_id", user_ids)
-                .execute()
-            )
-            if horse_op_result.data:
-                for profile in horse_op_result.data:
-                    # ✅ GET FIRST NAME, MIDDLE INITIAL, AND LAST NAME
-                    first_name = profile.get('op_fname', '').strip()
-                    last_name = profile.get('op_lname', '').strip()
-                    
-                    # Get middle initial if exists
-                    middle_initial = ""
-                    if profile.get('op_mname') and profile['op_mname'].strip():
-                        middle_initial = f"{profile['op_mname'].strip()[0].upper()}."
-                    
-                    # Format: FirstName M. LastName
-                    if middle_initial:
-                        full_name = f"{first_name} {middle_initial} {last_name}"
-                    else:
-                        full_name = f"{first_name} {last_name}"
-                    
-                    # Clean up extra spaces
-                    full_name = ' '.join(full_name.split())
-                    
-                    user_profiles[profile['op_id']] = full_name
-                    print(f"Found Horse Operator: {full_name}")
-        except Exception as e:
-            print(f"Error fetching Horse Operator profiles: {str(e)}")
+        # 2️⃣ Fetch Horse Operator profiles
+        horse_op_result = (
+            supabase.table("horse_op_profile")
+            .select("op_id, op_fname, op_mname, op_lname, op_email")
+            .in_("op_id", user_ids)
+            .execute()
+        )
+        print("Horse Operator profiles:", horse_op_result.data)
 
-        # Fetch Kutsero profiles
-        try:
-            kutsero_result = (
-                supabase.table("kutsero_profile")
-                .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname")
-                .in_("kutsero_id", user_ids)
-                .execute()
-            )
-            if kutsero_result.data:
-                for profile in kutsero_result.data:
-                    # ✅ GET FIRST NAME, MIDDLE INITIAL, AND LAST NAME
-                    first_name = profile.get('kutsero_fname', '').strip()
-                    last_name = profile.get('kutsero_lname', '').strip()
-                    
-                    # Get middle initial if exists
-                    middle_initial = ""
-                    if profile.get('kutsero_mname') and profile['kutsero_mname'].strip():
-                        middle_initial = f"{profile['kutsero_mname'].strip()[0].upper()}."
-                    
-                    # Format: FirstName M. LastName
-                    if middle_initial:
-                        full_name = f"{first_name} {middle_initial} {last_name}"
-                    else:
-                        full_name = f"{first_name} {last_name}"
-                    
-                    # Clean up extra spaces
-                    full_name = ' '.join(full_name.split())
-                    
-                    user_profiles[profile['kutsero_id']] = full_name
-                    print(f"Found Kutsero: {full_name}")
-        except Exception as e:
-            print(f"Error fetching Kutsero profiles: {str(e)}")
+        if horse_op_result.data:
+            for profile in horse_op_result.data:
+                name_parts = [profile.get("op_fname", "").strip()]
+                if profile.get("op_mname"):
+                    name_parts.append(profile["op_mname"].strip())
+                name_parts.append(profile.get("op_lname", "").strip())
 
-        # STEP 3: CHECK EXISTING NOTIFICATIONS
-        user_ids = [user["id"] for user in pending_users]
-        print(f"Checking existing notifications for user IDs: {user_ids}")
-        existing_notifs_result = (
+                full_name = " ".join(name_parts).strip()
+                if full_name:
+                    user_profiles[profile["op_id"]] = full_name
+                elif profile.get("op_email"):
+                    user_profiles[profile["op_id"]] = profile["op_email"].split("@")[0]
+
+        # 3️⃣ Fetch Kutsero profiles
+        kutsero_result = (
+            supabase.table("kutsero_profile")
+            .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_email")
+            .in_("kutsero_id", user_ids)
+            .execute()
+        )
+        print("Kutsero profiles:", kutsero_result.data)
+
+        if kutsero_result.data:
+            for profile in kutsero_result.data:
+                name_parts = [profile.get("kutsero_fname", "").strip()]
+                if profile.get("kutsero_mname"):
+                    name_parts.append(profile["kutsero_mname"].strip())
+                name_parts.append(profile.get("kutsero_lname", "").strip())
+
+                full_name = " ".join(name_parts).strip()
+                if full_name:
+                    user_profiles[profile["kutsero_id"]] = full_name
+                elif profile.get("kutsero_email"):
+                    user_profiles[profile["kutsero_id"]] = profile["kutsero_email"].split("@")[0]
+
+        print(f"Profiles found: {len(user_profiles)} → {user_profiles}")
+
+        # 4️⃣ Check for already existing notifications
+        existing_notifs = (
             supabase.table("notification")
-            .select("notif_id, id, notif_message, notif_date, notif_time, notif_read")  # ✅ Include all fields
+            .select("id")
             .in_("id", user_ids)
             .execute()
         )
-        existing_user_ids = {notif["id"] for notif in (existing_notifs_result.data or [])}
-        print(f"Users with existing notifications: {existing_user_ids}")
+        existing_user_ids = {n["id"] for n in (existing_notifs.data or [])}
 
         inserted_notifications = []
 
-        # STEP 4: INSERT NEW NOTIFICATIONS
+        # 5️⃣ Create notifications for pending users without one yet
         for user in pending_users:
             if user["id"] not in existing_user_ids:
-                print(f"Inserting notification for user: {user['id']}")
-
                 current_time = datetime.now()
-                
-                # ✅ GET NAME FROM PROFILE TABLES WITH MIDDLE INITIAL
-                user_name = user_profiles.get(user["id"], f"User {user['id'][:8]}")
-                user_role = user.get('role', 'User')
+                user_name = user_profiles.get(user["id"])
+
+                # Fallback if no name found
+                if not user_name:
+                    user_name = user.get("name") or user.get("username") or None
+                    if not user_name and user.get("email"):
+                        user_name = user["email"].split("@")[0]
+                    if not user_name:
+                        user_name = "Unknown User"
+
+                user_role = user.get("role", "User")
                 notif_message = f"New {user_role} registered: {user_name}"
 
                 insert_data = {
@@ -544,101 +482,60 @@ def get_notifications(request):
                     "related_id": user["id"],
                 }
 
-                print(f"Inserting data: {insert_data}")
                 try:
-                    # INSERT ONLY (no select chaining)
-                    insert_result = supabase.table("notification").insert(insert_data).execute()
-
-                    if not insert_result.data:
-                        # ✅ Manually fetch the newly inserted notification
-                        fetch_result = supabase.table("notification").select("*").eq("id", user["id"]).execute()
-                        
-                        if fetch_result.data:
-                            # Get the most recent notification for this user
-                            notifications = fetch_result.data
-                            # Sort by notif_id to get the latest one
-                            notifications.sort(key=lambda x: x.get("notif_id", 0), reverse=True)
-                            new_notif = notifications[0] if notifications else None
-                            
-                            if new_notif:
-                                print(f"Successfully fetched inserted notification: {new_notif}")
-                                inserted_notifications.append({
-                                    "notif_id": new_notif["notif_id"],
-                                    "id": user["id"],
-                                    "message": new_notif["notif_message"],
-                                    "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
-                                    "read": new_notif.get("notif_read", False),
-                                })
-                            else:
-                                print(f"Failed to fetch notification for user {user['id']}")
-                        else:
-                            print(f"No notifications found for user {user['id']}")
-                    else:
-                        # In case insert_result.data actually returns something
-                        new_notif = insert_result.data[0]
+                    result = supabase.table("notification").insert(insert_data).execute()
+                    if result.data:
+                        new_notif = result.data[0]
                         inserted_notifications.append({
                             "notif_id": new_notif["notif_id"],
-                            "id": user["id"],
+                            "id": new_notif["id"],
                             "message": new_notif["notif_message"],
+                            "notif_message": new_notif["notif_message"],
                             "date": f"{new_notif['notif_date']}T{new_notif['notif_time']}+08:00",
                             "read": new_notif.get("notif_read", False),
                         })
-
                 except Exception as e:
-                    print(f"FAILED to insert notification for user {user['id']}: {str(e)}")
-                    continue
-            else:
-                print(f"User {user['id']} already has notification, skipping")
+                    print(f"Error inserting notification for {user['id']}: {e}")
 
-        print(f"Final inserted notifications: {len(inserted_notifications)}")
-        
-        # ✅ ALSO RETURN EXISTING NOTIFICATIONS FOR PENDING USERS
-        if inserted_notifications:
-            print("Returning newly inserted notifications")
-            return Response(inserted_notifications)
-        else:
-            print("No new notifications inserted, fetching existing ones for display")
-            # Fetch existing notifications for pending users WITH notif_id
-            existing_notifs_full_result = (
-                supabase.table("notification")
-                .select("notif_id, id, notif_message, notif_date, notif_time, notif_read")  # ✅ Include notif_id
-                .in_("id", user_ids)
-                .execute()
-            )
-            
-            existing_notifs_for_display = []
-            if existing_notifs_full_result.data:
-                for notif in existing_notifs_full_result.data:
-                    existing_notifs_for_display.append({
-                        "notif_id": notif["notif_id"],
-                        "id": notif["id"],
-                        "message": notif["notif_message"],
-                        "date": f"{notif['notif_date']}T{notif['notif_time']}+08:00",
-                        "read": notif.get("notif_read", False),
-                    })
-                print(f"Returning {len(existing_notifs_for_display)} existing notifications")
-            else:
-                print("No existing notifications found either")
-                
-            return Response(existing_notifs_for_display)
+        # 6️⃣ Fetch all notifications for display
+        all_notifs = (
+            supabase.table("notification")
+            .select("notif_id, id, notif_message, notif_date, notif_time, notif_read")
+            .in_("id", user_ids)
+            .execute()
+        )
+
+        display_notifications = []
+        if all_notifs.data:
+            for notif in all_notifs.data:
+                display_notifications.append({
+                    "notif_id": notif["notif_id"],
+                    "id": notif["id"],
+                    "message": notif["notif_message"],
+                    "notif_message": notif["notif_message"],
+                    "date": f"{notif['notif_date']}T{notif['notif_time']}+08:00",
+                    "read": notif.get("notif_read", False),
+                })
+
+        combined = inserted_notifications + display_notifications
+        print(f"Total notifications returned: {len(combined)}")
+        return Response(combined or [])
 
     except Exception as e:
-        print(f"ERROR in get_notifications: {str(e)}")
-        traceback.print_exc()
+        print(f"Error in get_notifications: {e}")
         return Response({"error": "Failed to process notifications"}, status=500)
+
 # -------------------- MARK NOTIFICATION AS READ --------------------
 @api_view(["POST"])
 @login_required
 def mark_notification_read(request, notif_id):
     """Mark a specific notification as read."""
     try:
-        # Check if notification exists
         result = supabase.table("notification").select("*").eq("notif_id", notif_id).execute()
         
         if not result.data:
             return Response({"error": "Notification not found"}, status=404)
         
-        # Update the notification to mark as read
         update_result = supabase.table("notification").update({
             "notif_read": True
         }).eq("notif_id", notif_id).execute()
@@ -653,7 +550,6 @@ def mark_notification_read(request, notif_id):
             return Response({"error": "Failed to update notification"}, status=500)
             
     except Exception as e:
-        print(f"Error marking notification as read: {e}")
         return Response({"error": "Internal server error"}, status=500)
 
 # -------------------- MARK ALL NOTIFICATIONS AS READ --------------------
@@ -662,7 +558,6 @@ def mark_notification_read(request, notif_id):
 def mark_all_notifications_read(request):
     """Mark all notifications as read."""
     try:
-        # Update all notifications to mark as read
         update_result = supabase.table("notification").update({
             "notif_read": True
         }).eq("notif_read", False).execute()
@@ -674,7 +569,6 @@ def mark_all_notifications_read(request):
         })
             
     except Exception as e:
-        print(f"Error marking all notifications as read: {e}")
         return Response({"error": "Internal server error"}, status=500)
 
 # ------------------------- ACTIVATE / DEACTIVATE USER ------------------------------------
@@ -703,18 +597,15 @@ def reactivate_user(request, user_id):
 @login_required
 def get_president_profile(request):
     try:
-        # 1️⃣ Get token from cookie (adjust your cookie name!)
-        token = request.COOKIES.get("access_token")  # exact cookie name set by login
+        token = request.COOKIES.get("access_token")  
         if not token:
             return Response({"error": "Authentication required"}, status=401)
 
-        # 2️⃣ Decode JWT to get Supabase user_id
         payload = jwt.decode(token, options={"verify_signature": False})
-        user_id = payload.get("sub")  # this is the UUID
+        user_id = payload.get("sub")  
         if not user_id:
             return Response({"error": "Invalid token"}, status=401)
 
-        # 3️⃣ Query Supabase for the profile
         res = supabase.table("kutsero_pres_profile").select("*").eq("user_id", user_id).execute()
         if not res.data:
             return Response({"error": "Profile not found"}, status=404)
@@ -737,7 +628,6 @@ def get_president_profile(request):
 def save_president_profile(request):
     """Kutsero President updates only fname, lname, phone"""
     try:
-        # 1️⃣ Get token and decode user_id
         token = request.COOKIES.get("access_token")
         if not token:
             return Response({"error": "Authentication required"}, status=401)
@@ -747,12 +637,10 @@ def save_president_profile(request):
         if not user_id:
             return Response({"error": "Invalid token"}, status=401)
 
-        # 2️⃣ Get input values
         pres_fname = request.data.get("pres_fname", "").strip()
         pres_lname = request.data.get("pres_lname", "").strip()
         pres_phonenum = request.data.get("pres_phonenum", "").strip()
 
-        # 3️⃣ Validate required fields
         errors = {}
         if not pres_fname:
             errors["pres_fname"] = "First name is required."
@@ -763,20 +651,18 @@ def save_president_profile(request):
         if errors:
             return Response({"errors": errors}, status=400)
 
-        # 4️⃣ Fetch existing profile to get email
         existing = supabase.table("kutsero_pres_profile").select("pres_email").eq("user_id", user_id).execute()
         if not existing.data:
             return Response({"error": "Profile not found; email must exist in DB"}, status=400)
 
         pres_email = existing.data[0]["pres_email"]
 
-        # 5️⃣ Upsert (insert if not exists, update if exists)
         data = {
             "user_id": user_id,
             "pres_fname": pres_fname,
             "pres_lname": pres_lname,
             "pres_phonenum": pres_phonenum,
-            "pres_email": pres_email,  # must include existing email
+            "pres_email": pres_email,  
         }
 
         res = supabase.table("kutsero_pres_profile").upsert(
@@ -790,7 +676,6 @@ def save_president_profile(request):
     except Exception as e:
         return Response({"error": str(e)}, status=500)
 
-
 @api_view(["POST"])
 @login_required
 def update_president_profile(request):
@@ -800,12 +685,10 @@ def update_president_profile(request):
     - Updates both Supabase Auth email and kutsero_pres_profile
     """
     try:
-        # 1️⃣ Get token from cookie
         token = request.COOKIES.get("access_token")
         if not token:
             return Response({"error": "Authentication required"}, status=401)
 
-        # 2️⃣ Decode JWT to get user_id
         try:
             payload = jwt.decode(token, options={"verify_signature": False})
             user_id = payload.get("sub")
@@ -814,13 +697,11 @@ def update_president_profile(request):
         except Exception as e:
             return Response({"error": f"JWT decode error: {str(e)}"}, status=401)
 
-        # 3️⃣ Get input values
         pres_fname = request.data.get("pres_fname", "").strip()
         pres_lname = request.data.get("pres_lname", "").strip()
         pres_email = request.data.get("pres_email", "").strip()
         pres_phonenum = request.data.get("pres_phonenum", "").strip()
 
-        # 4️⃣ Validate required fields
         errors = {}
         if not pres_fname:
             errors["pres_fname"] = "First name is required."
@@ -834,7 +715,6 @@ def update_president_profile(request):
         if errors:
             return Response({"errors": errors}, status=400)
 
-        # 5️⃣ Update Supabase Auth email
         try:
             supabase.auth.admin.update_user_by_id(
                 user_id,
@@ -843,7 +723,6 @@ def update_president_profile(request):
         except Exception as e:
             return Response({"error": f"Supabase auth update failed: {str(e)}"}, status=500)
 
-        # 6️⃣ Upsert profile
         data = {
             "user_id": user_id,
             "pres_fname": pres_fname,
@@ -860,7 +739,6 @@ def update_president_profile(request):
 
     except Exception as e:
         return Response({"error": f"Unexpected server error: {str(e)}"}, status=500)
-
 
 @api_view(["POST"])
 @login_required
@@ -880,7 +758,7 @@ def change_password(request):
 
         current_password = request.data.get("current_password", "").strip()
         new_password = request.data.get("new_password", "").strip()
-        pres_email = request.data.get("email", "").strip()  # frontend just sends email
+        pres_email = request.data.get("email", "").strip()  
 
         errors = {}
         if not current_password:
@@ -892,7 +770,6 @@ def change_password(request):
         if errors:
             return Response({"errors": errors}, status=400)
 
-        # ✅ Verify current password via Supabase REST endpoint
         resp = requests.post(
             f"{SUPABASE_URL}/auth/v1/token?grant_type=password",
             headers={"apikey": SERVICE_ROLE_KEY},
@@ -902,13 +779,11 @@ def change_password(request):
         if resp.status_code != 200 or "access_token" not in verify_data:
             return Response({"errors": {"current_password": "Incorrect current password"}}, status=400)
 
-        # ✅ Update password using Admin API
         supabase.auth.admin.update_user_by_id(user_id, {"password": new_password})
         return Response({"message": "Password updated successfully"})
 
     except Exception as e:
         return Response({"error": f"Unexpected server error: {str(e)}"}, status=500)
-
     
 # -------------------- MESSAGES --------------------
 def safe_execute(query, retries=3, delay=1):
@@ -916,7 +791,6 @@ def safe_execute(query, retries=3, delay=1):
         try:
             return query.execute()
         except Exception as e:
-            print(f"⚠️ Supabase query failed (attempt {attempt+1}): {e}")
             if attempt < retries - 1:
                 time.sleep(delay)
             else:
@@ -932,13 +806,11 @@ def get_current_president_id(request):
         payload = jwt.decode(token, options={"verify_signature": False})
         user_id = payload.get("sub")
         
-        # Verify this user is actually a Kutsero President
         user_res = supabase.table("users").select("role").eq("id", user_id).execute()
         if user_res.data and user_res.data[0].get("role") == "Kutsero President":
             return user_id
         return None
-    except Exception as e:
-        print(f"Error getting current president ID: {e}")
+    except Exception:
         return None
 
 @api_view(["GET"])
@@ -950,10 +822,8 @@ def get_all_users(request):
         if not president_id:
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # ✅ ALLOWED ROLES: Kutsero, Horse Operator, Dvmf, Dvmf-Admin, Ctu-Vetmed, Ctu-Admin
         allowed_roles = ["Kutsero", "Horse Operator", "Dvmf", "Dvmf-Admin", "Ctu-Vetmed", "Ctu-Admin"]
         
-        # ✅ Step 1: Get all approved users from allowed roles except current president
         users_res = safe_execute(
             supabase.table("users")
             .select("id, role, status")
@@ -969,15 +839,11 @@ def get_all_users(request):
         all_users = []
         role_groups = {}
 
-        # ✅ Step 2: Group users by role
         for u in users:
             role_groups.setdefault(u["role"], []).append(u["id"])
 
         profiles_map = {}
 
-        # 🚫 VETERINARIAN REMOVED - Kutsero President cannot message veterinarians
-
-        # 🐴 Horse Operator
         if "Horse Operator" in role_groups:
             ids = role_groups["Horse Operator"]
             res = safe_execute(
@@ -992,7 +858,6 @@ def get_all_users(request):
                     "avatar": p.get("op_image")
                 }
 
-        # 🐴 Kutsero (INCLUDED - President can message Kutsero)
         if "Kutsero" in role_groups:
             ids = role_groups["Kutsero"]
             res = safe_execute(
@@ -1007,7 +872,6 @@ def get_all_users(request):
                     "avatar": p.get("kutsero_image")
                 }
 
-        # 🧑 DVMF + DVMF-Admin (no image)
         for role_key in ["Dvmf", "Dvmf-Admin"]:
             if role_key in role_groups:
                 ids = role_groups[role_key]
@@ -1023,7 +887,6 @@ def get_all_users(request):
                         "avatar": None
                     }
 
-        # 🎓 CTU Vetmed + CTU-Admin (no image)
         for role_key in ["Ctu-Vetmed", "Ctu-Admin"]:
             if role_key in role_groups:
                 ids = role_groups[role_key]
@@ -1039,7 +902,6 @@ def get_all_users(request):
                         "avatar": None
                     }
 
-        # ✅ Step 4: Merge user info
         for u in users:
             uid = u["id"]
             info = profiles_map.get(uid, {"name": f"Unknown ({u['role']})", "avatar": None})
@@ -1053,8 +915,6 @@ def get_all_users(request):
         return Response(all_users, status=status.HTTP_200_OK)
 
     except Exception as e:
-        print("❌ Error fetching users:", str(e))
-        traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(["GET"])
@@ -1068,10 +928,8 @@ def get_conversations(request):
         if not president_id:
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        # Get unique conversation partners
         conversation_partners = set()
         
-        # Get users who sent messages to current president
         received_res = safe_execute(
             supabase.table("message")
             .select("user_id")
@@ -1081,7 +939,6 @@ def get_conversations(request):
             for msg in received_res.data:
                 conversation_partners.add(msg["user_id"])
                 
-        # Get users who received messages from current president
         sent_res = safe_execute(
             supabase.table("message")
             .select("receiver_id")
@@ -1094,7 +951,6 @@ def get_conversations(request):
         if not conversation_partners:
             return Response([], status=status.HTTP_200_OK)
 
-        # Get user details - ONLY from allowed roles
         allowed_roles = ["Kutsero", "Horse Operator", "Dvmf", "Dvmf-Admin", "Ctu-Vetmed", "Ctu-Admin"]
         users_res = safe_execute(
             supabase.table("users")
@@ -1113,7 +969,6 @@ def get_conversations(request):
             user_id = user["id"]
             role = user["role"]
             
-            # Get the latest message
             messages_res = safe_execute(
                 supabase.table("message")
                 .select("*")
@@ -1124,7 +979,6 @@ def get_conversations(request):
             
             latest_message = messages_res.data[0] if messages_res.data else None
             
-            # Count unread messages
             unread_res = safe_execute(
                 supabase.table("message")
                 .select("mes_id")
@@ -1134,20 +988,20 @@ def get_conversations(request):
             )
             unread_count = len(unread_res.data) if unread_res.data else 0
             
-            # Get user profile info
             profile_info = get_user_profile_info(user_id, role)
             
-            # Format timestamp
             timestamp = ""
+            latest_message_datetime = None
             if latest_message and latest_message.get("mes_date"):
                 try:
                     msg_time = datetime.fromisoformat(str(latest_message["mes_date"]))
                     local_time = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
                     timestamp = local_time
+                    latest_message_datetime = msg_time  
                 except Exception:
                     timestamp = str(latest_message["mes_date"])
+                    latest_message_datetime = datetime.now()
 
-            # ✅ CRITICAL FIX: Handle last message content with "You:" prefix
             last_message_content = ""
             last_message_is_own = False
             
@@ -1159,6 +1013,7 @@ def get_conversations(request):
                     last_message_content = latest_message['mes_content']
             else:
                 last_message_content = "No messages yet"
+                latest_message_datetime = datetime.min  
 
             conversations.append({
                 'id': user_id,
@@ -1169,25 +1024,23 @@ def get_conversations(request):
                 'lastMessage': last_message_content,
                 'lastMessageSender': latest_message["user_id"] if latest_message else None,
                 'lastMessageIsOwn': last_message_is_own,
-                'timestamp': timestamp,
+                'timestamp': timestamp, 
+                'displayTimestamp': timestamp,  
+                'sortTimestamp': latest_message_datetime if latest_message_datetime else datetime.min,  
                 'unread': unread_count,
                 'has_conversation': True
             })
 
-        # Sort by latest message timestamp
-        conversations.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
+        conversations.sort(key=lambda x: x.get('sortTimestamp', datetime.min), reverse=True)
 
         return Response(conversations, status=status.HTTP_200_OK)
 
     except Exception as e:
-        print("❌ Error fetching conversations:", str(e))
-        traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+        
 def get_user_profile_info(user_id, role):
     """Helper function to get user profile info based on role"""
     try:
-        # 🐴 Horse Operator
         if role == "Horse Operator":
             res = safe_execute(
                 supabase.table("horse_op_profile")
@@ -1199,7 +1052,6 @@ def get_user_profile_info(user_id, role):
                 full_name = " ".join(filter(None, [p.get("op_fname"), p.get("op_mname"), p.get("op_lname")])).strip()
                 return {"name": f"{full_name} (Horse Operator)", "avatar": p.get("op_image")}
 
-        # 🐴 Kutsero (INCLUDED)
         elif role == "Kutsero":
             res = safe_execute(
                 supabase.table("kutsero_profile")
@@ -1211,7 +1063,6 @@ def get_user_profile_info(user_id, role):
                 full_name = " ".join(filter(None, [p.get("kutsero_fname"), p.get("kutsero_mname"), p.get("kutsero_lname")])).strip()
                 return {"name": f"{full_name} (Kutsero)", "avatar": p.get("kutsero_image")}
 
-        # 🧑 DVMF
         elif role == "Dvmf":
             res = safe_execute(
                 supabase.table("dvmf_user_profile")
@@ -1223,7 +1074,6 @@ def get_user_profile_info(user_id, role):
                 full_name = " ".join(filter(None, [p.get("dvmf_fname"), p.get("dvmf_lname")])).strip()
                 return {"name": f"{full_name} (DVMF)", "avatar": None}
 
-        # 🧑 DVMF Admin
         elif role == "Dvmf-Admin":
             res = safe_execute(
                 supabase.table("dvmf_user_profile")
@@ -1235,7 +1085,6 @@ def get_user_profile_info(user_id, role):
                 full_name = " ".join(filter(None, [p.get("dvmf_fname"), p.get("dvmf_lname")])).strip()
                 return {"name": f"{full_name} (DVMF Admin)", "avatar": None}
 
-        # 🎓 CTU Vetmed
         elif role == "Ctu-Vetmed":
             res = safe_execute(
                 supabase.table("ctu_vet_profile")
@@ -1247,7 +1096,6 @@ def get_user_profile_info(user_id, role):
                 full_name = " ".join(filter(None, [p.get("ctu_fname"), p.get("ctu_lname")])).strip()
                 return {"name": f"{full_name} (CTU Vetmed)", "avatar": None}
 
-        # 🎓 CTU Admin
         elif role == "Ctu-Admin":
             res = safe_execute(
                 supabase.table("ctu_vet_profile")
@@ -1259,13 +1107,12 @@ def get_user_profile_info(user_id, role):
                 full_name = " ".join(filter(None, [p.get("ctu_fname"), p.get("ctu_lname")])).strip()
                 return {"name": f"{full_name} (CTU Admin)", "avatar": None}
 
-    except Exception as e:
-        print(f"Error getting profile info for {user_id} ({role}): {e}")
+    except Exception:
+        pass
 
-    # Fallback
     return {"name": f"User ({role})", "avatar": None}
 
-LOCAL_OFFSET_HOURS = 8  # Manila is UTC+8
+LOCAL_OFFSET_HOURS = 8  
 
 @api_view(["POST"])
 @login_required
@@ -1283,13 +1130,11 @@ def send_message(request):
         if not receiver_id or not message_content:
             return Response({"error": "Missing receiver_id or message"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # ✅ Validate that receiver is from allowed roles
         allowed_roles = ["Kutsero", "Horse Operator", "Dvmf", "Dvmf-Admin", "Ctu-Vetmed", "Ctu-Admin"]
         receiver_res = supabase.table("users").select("role").eq("id", receiver_id).in_("role", allowed_roles).execute()
         if not receiver_res.data:
             return Response({"error": "Cannot message this user"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Use UTC timestamp; Postgres timestamptz will store correctly
         payload = {
             "mes_content": message_content,
             "is_read": False,
@@ -1302,7 +1147,6 @@ def send_message(request):
         if not res.data:
             return Response({"error": "Failed to send message"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Format the timestamp for frontend
         msg = res.data[0]
         msg_time = datetime.fromisoformat(msg["mes_date"])
         msg["mes_date"] = (msg_time + timedelta(hours=LOCAL_OFFSET_HOURS)).strftime("%I:%M %p")
@@ -1310,8 +1154,6 @@ def send_message(request):
         return Response({"message": "Message sent successfully", "data": msg}, status=status.HTTP_201_CREATED)
 
     except Exception as e:
-        print("❌ Error sending message:", str(e))
-        traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @api_view(["GET"])
@@ -1325,7 +1167,6 @@ def get_conversation(request, conversation_id):
 
         receiver_id = conversation_id
 
-        # Fetch messages both ways
         data1 = (supabase.table("message")
                  .select("*")
                  .eq("user_id", president_id)
@@ -1356,8 +1197,6 @@ def get_conversation(request, conversation_id):
         return Response(formatted_messages, status=status.HTTP_200_OK)
 
     except Exception as e:
-        print("❌ Error fetching conversation:", str(e))
-        traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)    
 
 @api_view(["PUT"])
@@ -1369,8 +1208,6 @@ def mark_messages_as_read(request, conversation_id):
         if not president_id:
             return Response({"error": "Unauthorized"}, status=status.HTTP_401_UNAUTHORIZED)
 
-        print(f"🔔 Marking messages as read - president_id: {president_id}, conversation_id: {conversation_id}")
-
         res = (
             supabase.table("message")
             .update({"is_read": True})
@@ -1380,19 +1217,14 @@ def mark_messages_as_read(request, conversation_id):
             .execute()
         )
 
-        print(f"✅ Marked {len(res.data) if res.data else 0} messages as read")
-
         return Response({
             "message": "Messages marked as read",
             "updated_count": len(res.data) if res.data else 0
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
-        print("❌ Error marking messages as read:", str(e))
-        traceback.print_exc()
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# -------------------- KUTSERO PROFILE ENDPOINTS --------------------
 @api_view(["GET"])
 @login_required
 def kutsero_profile_by_id(request, user_id):
@@ -1416,5 +1248,31 @@ def horse_operator_profile(request, user_id):
             return Response(res.data[0])
         else:
             return Response({"error": "Horse Operator profile not found"}, status=404)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+@api_view(["GET"])
+@login_required
+def ctu_profile_by_id(request, user_id):
+    """Get CTU profile by user ID"""
+    try:
+        res = supabase.table("ctu_vet_profile").select("*").eq("ctu_id", user_id).execute()
+        if res.data:
+            return Response(res.data[0])
+        else:
+            return Response({"error": "CTU profile not found"}, status=404)
+    except Exception as e:
+        return Response({"error": str(e)}, status=500)
+
+@api_view(["GET"])
+@login_required
+def dvmf_profile_by_id(request, user_id):
+    """Get DVMF profile by user ID"""
+    try:
+        res = supabase.table("dvmf_user_profile").select("*").eq("dvmf_id", user_id).execute()
+        if res.data:
+            return Response(res.data[0])
+        else:
+            return Response({"error": "DVMF profile not found"}, status=404)
     except Exception as e:
         return Response({"error": str(e)}, status=500)

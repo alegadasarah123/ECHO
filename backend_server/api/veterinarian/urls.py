@@ -3,7 +3,13 @@ from . import views
 
 urlpatterns = [
     path("vet_profile/", views.vet_profile, name="vet_profile"),
-    path("update_vet_profile/", views.update_vet_profile, name="update_vet_profile"),
+    path("get_notifications/", views.get_notifications, name="get_notifications"),
+    path('mark_notification_read/<str:notif_id>/', views.mark_notification_read, name='mark_notification_read'),
+    path("mark_all_notifications_read/", views.mark_all_notifications_read, name="mark_all_notifications_read"),
+    path('get_vet_services/', views.get_vet_services, name='get_vet_services'),
+    path('create_vet_service/', views.create_vet_service, name='create_vet_service'),
+    path('delete_vet_service/<str:service_id>/', views.delete_vet_service, name='delete_vet_service'),
+    path('update_vet_profile/', views.update_vet_profile, name='update_vet_profile'),
     path('update_profile_photo/', views.update_profile_photo, name='update_profile_photo'),
     path('delete_profile_photo/', views.delete_profile_photo, name='delete_profile_photo'),
     path("get_all_appointments/", views.get_all_appointments, name="get_all_appointments"),
@@ -24,7 +30,6 @@ urlpatterns = [
     path("get_all_schedules/", views.get_all_schedules, name="get_all_schedules"),
     path("add_schedule/", views.add_schedule, name="add_schedule"),
     path("get_schedules/", views.get_schedules, name="get_schedules"),
-    path("update_schedule_availability/", views.update_schedule_availability, name="update_schedule_availability"),
     path("get_medrec_access/", views.get_medrec_access, name="get_medrec_access"),
     path("change_password/", views.change_password, name="change_password"),
     path("get_all_users/", views.get_all_users, name="get_all_users"),

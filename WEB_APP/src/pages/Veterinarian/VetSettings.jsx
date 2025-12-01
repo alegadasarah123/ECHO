@@ -323,6 +323,7 @@ const Settings = () => {
   const [isNotificationModalOpen, setIsNotificationModalOpen] = useState(false);
   const [vetProfile, setVetProfile] = useState(null);
   const [notifications, setNotifications] = useState([]);
+  const [notificationCount, setNotificationCount] = useState(0);
   const [loading, setLoading] = useState({ profile: true });
   
   // Password state
@@ -363,6 +364,34 @@ const Settings = () => {
     weeklyReports: true,
     emergencyAlerts: true
   });
+
+  // ---------------- FETCH NOTIFICATIONS ----------------
+  const fetchNotifications = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/api/veterinarian/get_notifications/", {
+        credentials: "include"
+      });
+      const data = await response.json();
+      
+      if (response.ok) {
+        setNotifications(data.notifications || []);
+        // Calculate unread count
+        const unreadCount = data.notifications.filter(n => !n.read).length;
+        setNotificationCount(unreadCount);
+      } else {
+        console.error("Error fetching notifications:", data.error);
+      }
+    } catch (error) {
+      console.error("Error fetching notifications:", error);
+    }
+  };
+
+  // ---------------- HANDLE NOTIFICATION MODAL CLOSE ----------------
+  const handleNotificationModalClose = () => {
+    setIsNotificationModalOpen(false);
+    // Refresh notifications to get updated read status
+    fetchNotifications();
+  };
 
   // Profile display function
   const getProfileDisplay = () => {
@@ -473,6 +502,7 @@ const Settings = () => {
 
   useEffect(() => {
     fetchProfile();
+    fetchNotifications(); // Fetch notifications on component mount
   }, []);
 
   const tabs = [
@@ -496,13 +526,19 @@ const Settings = () => {
         <div className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-gray-800 mb-1">Settings</h1>
           <div className="flex items-center space-x-4">
+            {/* Notification Button with Count Badge */}
             <button 
               onClick={() => setIsNotificationModalOpen(!isNotificationModalOpen)} 
               className="cursor-pointer p-2 hover:bg-gray-100 rounded-xl relative"
             >
               <Bell className="w-5 h-5" />
-              <span className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full"></span>
+              {notificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-medium px-2 py-1 rounded-full min-w-5 h-5 flex items-center justify-center">
+                  {notificationCount > 9 ? '9+' : notificationCount}
+                </span>
+              )}
             </button>
+            
             <button onClick={() => setIsProfileModalOpen(true)}>
               <div className="cursor-pointer w-8 h-8 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-md overflow-hidden">
                 {profileDisplay.type === 'photo' ? (
@@ -584,11 +620,14 @@ const Settings = () => {
         isOpen={isProfileModalOpen} 
         onClose={() => setIsProfileModalOpen(false)} 
       />
+      
+      {/* Notification Modal */}
       <NotificationModal 
         isOpen={isNotificationModalOpen} 
-        onClose={() => setIsNotificationModalOpen(false)} 
+        onClose={handleNotificationModalClose} 
         notifications={notifications} 
       />
+      
       <FloatingMessages />
     </div>
   );

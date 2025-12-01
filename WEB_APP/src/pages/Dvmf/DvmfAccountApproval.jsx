@@ -26,7 +26,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
-const API_BASE = "https://echo-ebl8.onrender.com/api/dvmf";
+const API_BASE = "http://localhost:8000/api/dvmf";
 
 const SkeletonLoader = () => (
   <div className="animate-pulse">
@@ -1252,12 +1252,7 @@ function DvmfAccountApproval() {
                           {selectedUser.vet_email}
                         </div>
                       </div>
-                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Facebook:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.facebook}
-                        </div>
-                      </div>
+                     
                     </div>
                   </div>
 

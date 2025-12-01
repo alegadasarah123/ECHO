@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import Sidebar from "@/components/KutSidebar";
-import { Bell, Edit2, Shield, User, HelpCircle, CheckCircle, Eye, EyeOff, Check, X, Lock, Key, AlertTriangle, RefreshCw } from "lucide-react";
+import { Bell, Edit2, Shield, User, HelpCircle, CheckCircle, Eye, EyeOff, Check, X, Lock, Key, AlertTriangle, RefreshCw, Mail, FileText } from "lucide-react";
 import FloatingMessages from './KutMessages';
 
 const API_BASE = "http://localhost:8000/api/kutsero_president";
@@ -133,8 +133,7 @@ const SettingsPage = () => {
         });
 
         if (!res.ok) {
-          const data = await res.json();
-          console.error("Failed to fetch profile:", data.error);
+          await res.json();
           return;
         }
 
@@ -153,7 +152,7 @@ const SettingsPage = () => {
           setProfileExists(true);
         }
       } catch (err) {
-        console.error("Error fetching profile:", err);
+        // Error handling without console
       }
     };
 
@@ -259,7 +258,6 @@ const SettingsPage = () => {
         setErrorMessage(data.error || "Failed to save profile");
       }
     } catch (error) {
-      console.error("Error saving profile:", error);
       setErrorMessage("Something went wrong. Please try again.");
     }
   };
@@ -302,7 +300,6 @@ const SettingsPage = () => {
         setErrorMessage(data.error || "Failed to update profile");
       }
     } catch (error) {
-      console.error("Error updating profile:", error);
       setErrorMessage("Something went wrong. Please try again.");
     }
   };
@@ -405,18 +402,9 @@ const SettingsPage = () => {
         setPasswordErrors({ general: "Failed to update password. Please try again." });
       }
     } catch (err) {
-      console.error("Password update error:", err);
       setPasswordErrors({ general: "Network error. Please check your connection and try again." });
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const getRoleDisplayName = (role) => {
-    switch (role?.toLowerCase()) {
-      case 'kutsero': return 'Kutsero';
-      case 'horse_operator': return 'Horse Operator';
-      default: return role;
     }
   };
 
@@ -848,25 +836,127 @@ const SettingsPage = () => {
           )}
 
           {activeTab === "support" && (
-            <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
-              <div className="mb-4">
-                <h2 className="text-xl font-semibold text-gray-800 m-0 mb-1">Contact Support</h2>
-                <p className="text-gray-500 m-0 text-sm">Having issues? Our support team is here to help.</p>
-              </div>
-              
-              <form className="max-w-2xl">
-                <div className="mb-4">
-                  <label className="block font-medium text-gray-700 mb-1 text-sm">Your Message</label>
-                  <textarea
-                    rows={4}
-                    placeholder="Describe your issue..."
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm resize-y min-h-24 bg-white focus:outline-none focus:ring-2 focus:ring-[#D2691E] focus:border-transparent transition-all duration-300"
-                  />
+            <div className="space-y-8">
+              {/* Email Support Section */}
+              <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
+                <div className="mb-6">
+                  <h2 className="text-xl font-semibold text-gray-800 m-0 mb-1">Help & Support</h2>
+                  <p className="text-gray-500 m-0 text-sm">Need assistance? Contact our support team via email.</p>
                 </div>
-                <button type="submit" className="px-4 py-2 bg-[#D2691E] text-white border-none rounded-lg font-semibold text-sm cursor-pointer transition-all duration-300 hover:bg-[#b35917]">
-                  Send Message
-                </button>
-              </form>
+                
+                <div className="max-w-2xl">
+                  <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl p-6 border border-blue-200">
+                    <div className="flex items-start space-x-4">
+                      <div className="flex-shrink-0">
+                        <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
+                          <Mail className="w-6 h-6 text-blue-600" />
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-gray-800 mb-2">Email Support</h3>
+                        <p className="text-gray-600 text-sm mb-4">
+                          For any questions, technical issues, or assistance needed, please contact our support team:
+                        </p>
+                        <div className="bg-white rounded-lg p-4 border border-blue-100">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium text-gray-800 text-sm">Support Email</p>
+                              <p className="text-blue-600 font-semibold text-lg">echosys.ph@gmail.com</p>
+                            </div>
+                            <button 
+                              onClick={() => window.location.href = 'mailto:echosys.ph@gmail.com'}
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors"
+                            >
+                              Send Email
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Terms and Conditions Section */}
+              <div className="bg-white rounded-xl p-6 shadow-lg border border-gray-100">
+                <div className="mb-6">
+                  <h2 className="text-xl font-semibold text-gray-800 m-0 mb-1">Terms and Conditions</h2>
+                  <p className="text-gray-500 m-0 text-sm">Official duties, responsibilities, and limitations of the Kutsero President role</p>
+                </div>
+                
+                <div className="max-w-4xl space-y-6">
+                  {/* Note Box */}
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-4">
+                    <div className="flex items-start space-x-3">
+                      <div className="flex-shrink-0">
+                        <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+                      </div>
+                      <div>
+                        <p className="text-green-800 font-medium text-sm">Note:</p>
+                        <p className="text-green-700 text-sm">
+                          This document outlines the official duties, responsibilities, and limitations of the Kutsero President role within ECHO. 
+                          It serves as a guide for proper conduct and system management.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Terms Content */}
+                  <div className="space-y-6">
+                    {/* Section 1 */}
+                    <div className="border-l-4 border-[#D2691E] pl-4">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-3">1. Role and Responsibilities</h3>
+                      <div className="space-y-2 text-gray-600 text-sm">
+                        <p>
+                          The Kutsero President serves an administrative role within ECHO. This position holds special privileges and 
+                          responsibilities to manage users and maintain coordination among Kutseros and Horse Operators.
+                        </p>
+                        <ul className="list-disc list-inside space-y-1 ml-4">
+                          <li>The Kutsero President is authorized to review, approve, or reject registration requests from Kutseros and Horse Operators.</li>
+                          <li>The President may deactivate or reactivate user accounts when necessary to ensure only legitimate members have access.</li>
+                          <li>The President may communicate with Kutseros and Horse Operators, but is restricted from messaging veterinarians to maintain proper communication flow.</li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* Section 2 */}
+                    <div className="border-l-4 border-[#D2691E] pl-4">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-3">2. Use of Authority</h3>
+                      <div className="space-y-2 text-gray-600 text-sm">
+                        <ul className="list-disc list-inside space-y-1 ml-4">
+                          <li>All actions must be performed fairly, transparently, and in accordance with ECHO policies.</li>
+                          <li>Authority must be used solely for official and administrative purposes related to the system's operations.</li>
+                          <li>Misuse of privileges, favoritism, or any unauthorized system manipulation is strictly prohibited.</li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* Section 3 */}
+                    <div className="border-l-4 border-[#D2691E] pl-4">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-3">3. Conduct and Communication</h3>
+                      <div className="space-y-2 text-gray-600 text-sm">
+                        <ul className="list-disc list-inside space-y-1 ml-4">
+                          <li>The Kutsero President must maintain professional and respectful communication with all users.</li>
+                          <li>The chat feature should be used only for official discussions and coordination.</li>
+                          <li>Any form of harassment, discrimination, or inappropriate behavior is not allowed and may lead to disciplinary action.</li>
+                        </ul>
+                      </div>
+                    </div>
+
+                    {/* Section 4 */}
+                    <div className="border-l-4 border-[#D2691E] pl-4">
+                      <h3 className="text-lg font-semibold text-gray-800 mb-3">4. Account and Security</h3>
+                      <div className="space-y-2 text-gray-600 text-sm">
+                        <ul className="list-disc list-inside space-y-1 ml-4">
+                          <li>The Kutsero President is responsible for keeping the account credentials secure at all times.</li>
+                          <li>Login information must not be shared or used by anyone else.</li>
+                          <li>Unauthorized access, credential sharing, or misuse of the account may result in loss of privileges or further administrative measures.</li>
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
           

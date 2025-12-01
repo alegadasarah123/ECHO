@@ -13,7 +13,6 @@ const NotificationModal = ({
   const [localNotifications, setLocalNotifications] = useState([]);
   const [loading, setLoading] = useState(false);
 
-  // ✅ Format ISO timestamp in Philippine Time
   const formatDate = (dateStr) => {
     if (!dateStr) return "";
     return new Date(dateStr).toLocaleString("en-PH", {
@@ -27,7 +26,6 @@ const NotificationModal = ({
     });
   };
 
-  // ✅ FIXED: Mark single notification as read using notif_id
   const markNotificationAsRead = async (notifId) => {
     try {
       const response = await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
@@ -42,16 +40,13 @@ const NotificationModal = ({
         throw new Error('Failed to mark notification as read');
       }
 
-      const data = await response.json();
-      console.log('Notification marked as read:', data);
+      await response.json();
       return true;
     } catch (error) {
-      console.error('Error marking notification as read:', error);
       return false;
     }
   };
 
-  // Mark all notifications as read in backend
   const markAllNotificationsAsRead = async () => {
     try {
       const response = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
@@ -66,59 +61,54 @@ const NotificationModal = ({
         throw new Error('Failed to mark all notifications as read');
       }
 
-      const data = await response.json();
-      console.log('All notifications marked as read:', data);
+      await response.json();
       return true;
     } catch (error) {
-      console.error('Error marking all notifications as read:', error);
       return false;
     }
   };
 
-  // Calculate unread notifications count
+  // FIX: Properly handle notification message display
+  const getNotificationMessage = (notification) => {
+    // Try multiple possible fields for the message
+    return notification.message || 
+           notification.notif_message || 
+           `Notification for user ${notification.id}`;
+  };
+
   const unreadCount = localNotifications.filter(n => !n.read).length;
 
-  // Mark all as read
   const markAllAsRead = async () => {
     setLoading(true);
     const success = await markAllNotificationsAsRead();
     
     if (success) {
       setLocalNotifications(prev => prev.map(n => ({ ...n, read: true })));
-      onMarkAllAsRead?.(); // Call parent function to sync state
+      onMarkAllAsRead?.();
     }
     setLoading(false);
   };
 
-  // ✅ FIXED: Handle individual notification click - using notif_id
   const handleNotificationClick = async (notification) => {
-    // Mark as read in backend first - using notif_id
     if (!notification.read && notification.notif_id) {
-      const success = await markNotificationAsRead(notification.notif_id);
+      await markNotificationAsRead(notification.notif_id);
       
-      if (success) {
-        // Update local state
-        setLocalNotifications(prev => 
-          prev.map(n => 
-            n.notif_id === notification.notif_id ? { ...n, read: true } : n
-          )
-        );
-      }
+      setLocalNotifications(prev => 
+        prev.map(n => 
+          n.notif_id === notification.notif_id ? { ...n, read: true } : n
+        )
+      );
     }
     
-    // Close notification modal
     onClose?.();
     
-    // Open Kutsero Management in pending tab with notification data
     if (onOpenKutseroManagement) {
-      onOpenKutseroManagement(notification); // Pass the clicked notification
+      onOpenKutseroManagement(notification);
     }
     
-    // Call parent notification click handler if provided
     onNotificationClick?.(notification);
   };
 
-  // Sync with parent notifications when modal opens
   useEffect(() => {
     if (isOpen) {
       setLocalNotifications(notifications || []);
@@ -129,15 +119,12 @@ const NotificationModal = ({
 
   return (
     <>
-      {/* Transparent Backdrop */}
       <div 
         className="fixed inset-0 z-40"
         onClick={onClose}
       />
       
-      {/* Notification Modal */}
       <div className="absolute top-12 right-0 bg-white rounded-xl w-80 max-h-96 overflow-hidden shadow-2xl border border-gray-100 z-50">
-        {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gradient-to-r from-amber-50 to-orange-50">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-bold text-amber-900">Notifications</h2>
@@ -159,7 +146,6 @@ const NotificationModal = ({
           )}
         </div>
 
-        {/* Notification List */}
         <div className="max-h-80 overflow-y-auto">
           {localNotifications.length > 0 ? (
             localNotifications.map((notification, index) => (
@@ -171,16 +157,16 @@ const NotificationModal = ({
                 onClick={() => handleNotificationClick(notification)}
               >
                 <div className="flex items-start gap-3">
-                  {/* Status Indicator */}
                   {!notification.read && (
                     <div className="w-2 h-2 bg-red-500 rounded-full mt-2 flex-shrink-0"></div>
                   )}
                   
                   <div className="flex-1 min-w-0">
+                    {/* FIX: Use the helper function to get the message */}
                     <p className={`text-sm font-medium mb-1 ${
                       !notification.read ? 'text-gray-900' : 'text-gray-600'
                     } group-hover:text-gray-900`}>
-                      {notification.message}
+                      {getNotificationMessage(notification)}
                     </p>
                     <span className="text-xs text-gray-500">
                       {formatDate(notification.date)}
@@ -202,7 +188,6 @@ const NotificationModal = ({
           )}
         </div>
 
-        {/* Footer */}
         {localNotifications.length > 0 && (
           <div className="p-3 border-t border-gray-100 bg-gray-50">
             <button

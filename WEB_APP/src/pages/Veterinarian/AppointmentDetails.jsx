@@ -307,23 +307,20 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
   const [expandedRecords, setExpandedRecords] = useState({});
   const [loadingFollowUps, setLoadingFollowUps] = useState({});
   const [followUpRecords, setFollowUpRecords] = useState({});
-  const [followUpCounts, setFollowUpCounts] = useState({}); // Track follow-up counts
-  const [nestedFollowUps, setNestedFollowUps] = useState({}); // Track nested follow-up chains
+  const [followUpCounts, setFollowUpCounts] = useState({});
+  const [nestedFollowUps, setNestedFollowUps] = useState({});
   const recordsPerPage = 5;
 
   useEffect(() => {
-    // Only show parent records initially (records without parentMedrecId)
     const parentRecords = (records || []).filter(record => !record.parentMedrecId);
     setFilteredRecords(parentRecords);
     setCurrentPage(1);
     
-    // Auto-check for follow-up records for all parent records
     if (parentRecords.length > 0) {
       checkAllFollowUps(parentRecords);
     }
   }, [records]);
 
-  // Recursive function to get ALL follow-ups in a chain (nested follow-ups)
   const getAllFollowUpsInChain = async (parentMedrecId) => {
     let allFollowUps = [];
     
@@ -339,19 +336,17 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
           const followUps = data.followup_records || [];
           
           for (const followUp of followUps) {
-            // Add the follow-up with its nesting level
             allFollowUps.push({
               ...followUp,
               nestingLevel: level,
               rootParentId: parentMedrecId
             });
             
-            // Recursively get follow-ups of this follow-up
             await getNestedFollowUps(followUp.id, level + 1);
           }
         }
       } catch (error) {
-        console.error(`Error getting nested follow-ups for ${medrecId}:`, error);
+        // Error handled silently
       }
     };
     
@@ -359,24 +354,18 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
     return allFollowUps;
   };
 
-  // Auto-check for follow-up records for all parent records
   const checkAllFollowUps = async (parentRecords) => {
     const countsMap = {};
     const nestedMap = {};
     
-    // Check each parent record for follow-ups
     for (const record of parentRecords) {
       try {
-        // Get ALL follow-ups in the chain (including nested ones)
         const allFollowUps = await getAllFollowUpsInChain(record.id);
         const count = allFollowUps.length;
         
         countsMap[record.id] = count;
         nestedMap[record.id] = allFollowUps;
-        
-        console.log(`✅ Auto-checked record ${record.id}: ${count} total follow-up(s) in chain`);
       } catch (error) {
-        console.error(`Error checking follow-ups for record ${record.id}:`, error);
         countsMap[record.id] = 0;
         nestedMap[record.id] = [];
       }
@@ -386,10 +375,8 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
     setNestedFollowUps(nestedMap);
   };
 
-  // Fetch follow-up records for a parent record (including nested ones)
   const fetchFollowUpRecords = async (parentMedrecId) => {
     if (followUpRecords[parentMedrecId]) {
-      // Already loaded, just toggle visibility
       toggleFollowUps(parentMedrecId);
       return;
     }
@@ -397,23 +384,20 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
     setLoadingFollowUps(prev => ({ ...prev, [parentMedrecId]: true }));
     
     try {
-      // Get ALL follow-ups in the chain
       const allFollowUps = await getAllFollowUpsInChain(parentMedrecId);
       
-      console.log("📋 All follow-up records in chain:", allFollowUps);
       setFollowUpRecords(prev => ({
         ...prev,
         [parentMedrecId]: allFollowUps
       }));
       toggleFollowUps(parentMedrecId);
     } catch (error) {
-      console.error("Error fetching follow-up records:", error);
+      // Error handled silently
     } finally {
       setLoadingFollowUps(prev => ({ ...prev, [parentMedrecId]: false }));
     }
   };
 
-  // Toggle follow-up records visibility
   const toggleFollowUps = (recordId) => {
     setExpandedRecords(prev => ({
       ...prev,
@@ -421,30 +405,24 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
     }));
   };
 
-  // Check if record has follow-ups (based on parent_medrec_id)
   const hasFollowUps = (record) => {
-    // This record can have follow-ups if it doesn't have a parentMedrecId (it's a parent)
     return !record.parentMedrecId;
   };
 
-  // Get follow-up count for a parent record (including nested ones)
   const getFollowUpCount = (recordId) => {
     return followUpCounts[recordId] || 0;
   };
 
-  // ✅ FIXED: Only show follow-up button if there ARE follow-up records for this parent
   const shouldShowFollowUpButton = (record) => {
     return record.isParent && 
            hasFollowUps(record) && 
            getFollowUpCount(record.id) > 0;
   };
 
-  // Flatten records for display (parent + follow-ups when expanded)
   const getDisplayRecords = () => {
     const displayRecords = [];
     
     filteredRecords.forEach(record => {
-      // Always add the parent record
       displayRecords.push({ 
         ...record, 
         isParent: true, 
@@ -454,22 +432,17 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
         nestingLevel: 0
       });
       
-      // Add follow-up records if expanded and loaded
       if (expandedRecords[record.id] && followUpRecords[record.id]) {
-        console.log("🔄 Adding follow-up records for parent:", record.id, followUpRecords[record.id]);
-        
-        // Sort follow-ups by date to maintain chronological order
         const sortedFollowUps = [...followUpRecords[record.id]].sort((a, b) => 
           new Date(a.date) - new Date(b.date)
         );
         
         sortedFollowUps.forEach(followUp => {
-          // Use the formatted data from backend directly
           displayRecords.push({ 
             ...followUp, 
             isParent: false, 
             isFollowUp: true,
-            parentRecordId: record.id, // Always point to the original parent
+            parentRecordId: record.id,
             hasFollowUps: false,
             followUpCount: 0,
             nestingLevel: followUp.nestingLevel || 0
@@ -478,13 +451,11 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
       }
     });
     
-    console.log("📊 Display records:", displayRecords);
     return displayRecords;
   };
 
   const displayRecords = getDisplayRecords();
   
-  // Calculate pagination using filteredRecords (parent records only)
   const indexOfLastRecord = currentPage * recordsPerPage;
   const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
   const currentParentRecords = filteredRecords.slice(indexOfFirstRecord, indexOfLastRecord);
@@ -518,13 +489,11 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
 
   const clearFilter = () => {
     setDateFilter({ from: "", to: "" });
-    // Only show parent records when clearing filter
     const parentRecords = (records || []).filter(record => !record.parentMedrecId);
     setFilteredRecords(parentRecords);
     setCurrentPage(1);
   };
 
-  // Check if record belongs to current vet
   const isCurrentVetRecord = (record) => {
     if (!vetProfile || !record.veterinarian) return false;
     const currentVetName = `${vetProfile.first_name} ${vetProfile.last_name}`;
@@ -535,22 +504,20 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
     setCurrentPage(page);
   };
 
-  // Get indentation style based on nesting level
   const getNestingStyle = (nestingLevel) => {
-    const basePadding = 6; // px-6 = 1.5rem = 24px
-    const indentPerLevel = 8; // 2rem = 32px per level
+    const basePadding = 6;
+    const indentPerLevel = 8;
     const totalPadding = basePadding + (nestingLevel * indentPerLevel);
     return { paddingLeft: `${totalPadding}px` };
   };
 
-  // Get border color based on nesting level
   const getNestingBorderColor = (nestingLevel) => {
     const colors = [
-      'border-l-blue-300',   // Level 0 (first follow-up)
-      'border-l-green-300',  // Level 1 
-      'border-l-purple-300', // Level 2
-      'border-l-orange-300', // Level 3
-      'border-l-red-300',    // Level 4
+      'border-l-blue-300',
+      'border-l-green-300',
+      'border-l-purple-300',
+      'border-l-orange-300',
+      'border-l-red-300',
     ];
     return colors[Math.min(nestingLevel, colors.length - 1)];
   };
@@ -710,7 +677,6 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
                   const followUpCount = getFollowUpCount(record.id);
                   const nestingLevel = record.nestingLevel || 0;
                   
-                  // ✅ FIXED: Only show button if there ARE follow-up records
                   const showFollowUpButton = shouldShowFollowUpButton(record);
                   
                   return (
@@ -749,7 +715,6 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
                                   Follow-up {nestingLevel > 0 ? `(${nestingLevel})` : ''}
                                 </span>
                               )}
-                              {/* ✅ FIXED: Show exact follow-up count */}
                               {isParentRecord && followUpCount > 0 && (
                                 <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
                                   Has {followUpCount} follow-up{followUpCount !== 1 ? 's' : ''}
@@ -796,7 +761,6 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
 
                         <td className="px-6 py-4">
                           <div className="flex justify-center gap-2">
-                            {/* ✅ FIXED: Only w-up button if there ARE follow-up records */}
                             {showFollowUpButton && (
                               <Button 
                                 onClick={() => fetchFollowUpRecords(record.id)} 
@@ -904,7 +868,6 @@ const TreatmentRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onVi
     setCurrentPage(1);
   };
 
-  // Get outcome badge styling
   const getOutcomeBadge = (outcome) => {
     if (!outcome) {
       return {
@@ -943,14 +906,12 @@ const TreatmentRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onVi
     }
   };
 
-  // Check if record belongs to current vet
   const isCurrentVetRecord = (record) => {
     if (!vetProfile || !record.veterinarian) return false;
     const currentVetName = `${vetProfile.first_name} ${vetProfile.last_name}`;
     return record.veterinarian === currentVetName;
   };
 
-  // Calculate pagination
   const indexOfLastRecord = currentPage * recordsPerPage;
   const indexOfFirstRecord = indexOfLastRecord - recordsPerPage;
   const currentRecords = filteredRecords.slice(indexOfFirstRecord, indexOfLastRecord);
@@ -1079,7 +1040,6 @@ const TreatmentRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onVi
                         }
                       `}
                     >
-                      {/* Date Column - Added */}
                       <td className="px-6 py-4 whitespace-nowrap text-center">
                         <div
                           className={`font-medium ${
@@ -1155,7 +1115,6 @@ const AppointmentDetails = () => {
   const [error, setError] = useState(null);
   const [successMessage, setSuccessMessage] = useState(null);
   
-  // Modal states
   const [medicalModalOpen, setMedicalModalOpen] = useState(false);
   const [treatmentModalOpen, setTreatmentModalOpen] = useState(false);
   const [medicalDetailsModalOpen, setMedicalDetailsModalOpen] = useState(false);
@@ -1164,7 +1123,6 @@ const AppointmentDetails = () => {
   const [isNewRecord, setIsNewRecord] = useState(false);
   const [isViewMode, setIsViewMode] = useState(false);
 
-  // Access control states
   const [hasAccess, setHasAccess] = useState(false);
   const [accessRequested, setAccessRequested] = useState(false);
   const [accessModalOpen, setAccessModalOpen] = useState(false);
@@ -1185,7 +1143,7 @@ const AppointmentDetails = () => {
       const data = await response.json();
       setVetProfile(data.profile);
     } catch (err) {
-      console.error(err);
+      // Error handled silently
     }
   };
 
@@ -1205,11 +1163,9 @@ const AppointmentDetails = () => {
       setMedicalRecords(data.medical_records || []);
       setTreatmentRecords(data.treatment_records || []);  
 
-      // Check access status for this horse
       await checkAccessStatus(data.horseInfo?.id);
 
     } catch (err) {
-      console.error(err);
       setError("Failed to load appointment details");
     } finally {
       setLoading(false);
@@ -1235,7 +1191,6 @@ const AppointmentDetails = () => {
         setHasAccess(accessGranted);
         setAccessRequested(data.access_requested || false);
         
-        // Automatically fetch both medical and treatment records if access is granted
         if (accessGranted && horseId) {
           await fetchMedicalRecords(horseId);
           await fetchTreatmentRecords(horseId);
@@ -1244,7 +1199,6 @@ const AppointmentDetails = () => {
         setHasAccess(false);
       }
     } catch (err) {
-      console.error("Error checking access status:", err);
       setHasAccess(false);
     }
   };
@@ -1272,7 +1226,6 @@ const AppointmentDetails = () => {
         setError("Failed to request access");
       }
     } catch (err) {
-      console.error("Error requesting access:", err);
       setError("Failed to request access");
     }
   };
@@ -1289,7 +1242,6 @@ const AppointmentDetails = () => {
       const data = await response.json();
       setMedicalRecords(data.medicalRecords || data.medical_records || []);
     } catch (err) {
-      console.error("Error fetching medical records:", err);
       setMedicalRecords([]);
     }
   };
@@ -1306,12 +1258,10 @@ const AppointmentDetails = () => {
       const data = await response.json();
       setTreatmentRecords(data.treatmentRecords || data.treatment_records || []);
     } catch (err) {
-      console.error("Error fetching treatment records:", err);
       setTreatmentRecords([]);
     }
   };
 
-  // Handlers for medical records
   const handleAddRecord = () => {
     if (!hasAccess) {
       setAccessModalOpen(true);
@@ -1336,7 +1286,6 @@ const AppointmentDetails = () => {
     setMedicalDetailsModalOpen(true);
   };
 
-  // Handle treatment record view/add
   const handleTreatmentRecordAction = (record = null, isNew = false) => {
     if (!hasAccess) {
       setAccessModalOpen(true);
@@ -1348,33 +1297,27 @@ const AppointmentDetails = () => {
     setTreatmentModalOpen(true);
   };
 
-  // Handle retry for failed operations
   const handleRetry = () => {
     setError(null);
     fetchAppointmentDetails();
   };
 
-  // Handle dismiss error
   const handleDismissError = () => {
     setError(null);
   };
 
-  // Handle dismiss success message
   const handleDismissSuccess = () => {
     setSuccessMessage(null);
   };
 
-  // Handle follow-up success
   const handleFollowUpSuccess = (message) => {
     setSuccessMessage(message);
-    fetchAppointmentDetails(); // Refresh to show new follow-up record
-    setMedicalDetailsModalOpen(false); // Close the modal
+    fetchAppointmentDetails();
+    setMedicalDetailsModalOpen(false);
   };
 
-  // Skeleton Loader - Fixed single column
   const renderSkeleton = () => (
     <div className="space-y-6 animate-pulse">
-      {/* Single skeleton card for horse info */}
       <div className="h-60 bg-gray-200 rounded-2xl"></div>
       <div className="h-80 bg-gray-200 rounded-2xl"></div>
     </div>
@@ -1383,7 +1326,6 @@ const AppointmentDetails = () => {
   return (
     <div className="flex h-screen bg-gradient-to-br from-gray-50 to-gray-100">
       <div className="flex-1 flex flex-col">
-        {/* Back Button (top-left, no header container) */}
         <div className="px-6 pt-4">
           <Button
             onClick={() => navigate(-1)}
@@ -1393,7 +1335,6 @@ const AppointmentDetails = () => {
           </Button>
         </div>
 
-        {/* Success Message */}
         {successMessage && (
           <SuccessMessage 
             message={successMessage} 
@@ -1401,7 +1342,6 @@ const AppointmentDetails = () => {
           />
         )}
 
-        {/* Main Content */}
         <main className="p-6 space-y-6 overflow-y-auto">
           {error && (
             <ErrorMessage 
@@ -1411,17 +1351,14 @@ const AppointmentDetails = () => {
             />
           )}
 
-          {/* Show Skeleton while loading */}
           {loading || checkingAccess ? (
             renderSkeleton()
           ) : (
             <>
-              {/* Horse Information Card with Chief Complaint on Right Side */}
               <Card className="bg-gradient-to-br from-white via-blue-50/30 shadow-lg rounded-2xl border border-white/50 backdrop-blur-sm hover:shadow-xl transition-all duration-300">
                 <CardContent className="p-6">
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     
-                    {/* Horse Information Section - Takes 2/3 width */}
                     <div className="lg:col-span-2 flex flex-col md:flex-row items-start md:items-start space-x-0 md:space-x-6">
                       <div className="relative flex-shrink-0">
                         <img
@@ -1433,7 +1370,6 @@ const AppointmentDetails = () => {
                             e.target.src = "/horse-placeholder.jpg";
                           }}
                         />
-                        {/* STATUS BADGE REMOVED */}
                       </div>
 
                       <div className="flex-1 mt-6 md:mt-0 flex flex-col justify-start text-left">
@@ -1453,7 +1389,6 @@ const AppointmentDetails = () => {
                       </div>
                     </div>
 
-                    {/* Chief Complaint Section - Takes 1/3 width on right side */}
                     <div className="lg:col-span-1">
                       <div className="flex items-center space-x-2 mb-4">
                         <div className="w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-600 rounded-xl flex items-center justify-center shadow-md">
@@ -1472,7 +1407,6 @@ const AppointmentDetails = () => {
                 </CardContent>
               </Card>
 
-              {/* Tabs for Medical and Treatment Records */}
               <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50">
                 <div className="flex border-b border-gray-200">
                   <button
@@ -1535,7 +1469,6 @@ const AppointmentDetails = () => {
         horseInfo={horseInfo}
       />
       
-      {/* Medical Records Modal - FOR ADDING/EDITING */}
       <MedicalRecordsModal
         isOpen={medicalModalOpen}
         onClose={() => {
@@ -1558,7 +1491,6 @@ const AppointmentDetails = () => {
         hasAccess={hasAccess}
       />
 
-      {/* Medical Record Details Modal - FOR VIEWING */}
       <MedicalRecordDetailsModal
         isOpen={medicalDetailsModalOpen}
         onClose={() => {

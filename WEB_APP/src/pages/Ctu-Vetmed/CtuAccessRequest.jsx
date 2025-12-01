@@ -26,7 +26,7 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
 import NotificationModal from "./CtuNotif"
 
-const API_BASE_URL = "https://echo-ebl8.onrender.com/api/ctu_vetmed"
+const API_BASE_URL = "http://localhost:8000/api/ctu_vetmed"
 
 const SkeletonLoader = ({ activeTab }) => {
   const getGridConfig = () => {
@@ -129,7 +129,7 @@ function CtuAccessRequest() {
   // ✅ MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`https://echo-ebl8.onrender.com/mark_all_notifications_read/`, {
+      const res = await fetch(`http://localhost:8000/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -155,7 +155,7 @@ function CtuAccessRequest() {
     }
   };
 
-  // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
+  
  // HANDLE INDIVIDUAL NOTIFICATION CLICK
 const handleNotificationClick = async (notification) => {
   const notifId = notification?.notif_id || notification?.id; // fallback support
@@ -242,7 +242,7 @@ const handleNotificationClick = async (notification) => {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/get_vetnotifications/")
+    fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/")
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -277,7 +277,7 @@ const handleNotificationClick = async (notification) => {
   // Fetch access requests
   const loadAccessRequests = useCallback(() => {
     setIsLoading(true)
-    fetch("https://echo-ebl8.onrender.com/api/ctu_vetmed/medrec_access_requests/")
+    fetch("http://localhost:8000/api/ctu_vetmed/get_access_requests/")
       .then((res) => res.json())
       .then((data) => {
         const formatted = data.map((req) => ({
@@ -326,7 +326,7 @@ const handleNotificationClick = async (notification) => {
   const approveRequest = async (requestId) => {
   try {
     const res = await fetch(
-      `https://echo-ebl8.onrender.com/api/ctu_vetmed/access-requests/${requestId}/approve/`,
+      `http://localhost:8000/api/ctu_vetmed/access-requests/${requestId}/approve/`,
       {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -423,7 +423,7 @@ const handleNotificationClick = async (notification) => {
 
     try {
       const response = await fetch(
-        `https://echo-ebl8.onrender.com/api/ctu_vetmed/access-requests/${currentRequestId}/decline/`,
+        `http://localhost:8000/api/ctu_vetmed/access-requests/${currentRequestId}/decline/`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
