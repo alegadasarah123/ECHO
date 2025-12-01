@@ -1,3 +1,5 @@
+// KUTSERO MESSAGING INTERFACE
+
 "use client"
 
 import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router"
@@ -55,7 +57,7 @@ const getSafeAreaPadding = () => {
   }
 }
 
-const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.101.2:8000/api/kutsero"
 
 const SUPABASE_URL = "https://drgknejiqupegkyxfaab.supabase.co"
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyZ2tuZWppcXVwZWdreXhmYWFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ5MDAxMTUsImV4cCI6MjA3MDQ3NjExNX0.KcIRm5t6z63X_KHGxDeU5ojwArVTasZWBzh01bD2nzo"

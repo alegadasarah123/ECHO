@@ -1,4 +1,4 @@
-// HORSE_OPERATOR/Hbook.tsx
+// HORSE_OPERATOR/Hbook2.tsx
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -16,7 +16,7 @@ import {
   KeyboardAvoidingView,
   Modal,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 
@@ -52,6 +52,18 @@ interface VetProfile {
   vet_avatar: string;
   vet_specialization: string;
   vet_exp_yr: number;
+}
+
+interface Veterinarian {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone?: string;
+  specialization?: string;
+  avatar?: string;
+  vet_type?: string;
+  vet_exp_yr?: number;
 }
 
 const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
@@ -184,18 +196,22 @@ const isDateInTwoMonthWindow = (date: Date, currentDate: Date = new Date()): boo
   return monthDiff >= 0 && monthDiff <= 1;
 };
 
-const Hbook = () => {
+const Hbook2 = () => {
   const [availableHorses, setAvailableHorses] = useState<Horse[]>([]);
   const [vetSchedule, setVetSchedule] = useState<ScheduleSlot[]>([]);
   const [availableDateObjects, setAvailableDateObjects] = useState<Date[]>([]);
   const [availableTimesForDate, setAvailableTimesForDate] = useState<ScheduleSlot[]>([]);
   const [availableServices, setAvailableServices] = useState<VetService[]>([]);
   const [vetProfile, setVetProfile] = useState<VetProfile | null>(null);
+  const [veterinarians, setVeterinarians] = useState<Veterinarian[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingServices, setLoadingServices] = useState(false);
+  const [loadingVeterinarians, setLoadingVeterinarians] = useState(false);
   const [isBookingAppointment, setIsBookingAppointment] = useState(false);
   
   // Form states
+  const [selectedVeterinarian, setSelectedVeterinarian] = useState<Veterinarian | null>(null);
+  const [showVetDropdown, setShowVetDropdown] = useState(false);
   const [selectedHorse, setSelectedHorse] = useState('Select a horse');
   const [showHorseDropdown, setShowHorseDropdown] = useState(false);
   const [selectedService, setSelectedService] = useState('General Consultation');
@@ -211,16 +227,8 @@ const Hbook = () => {
   const [availableDatesSet, setAvailableDatesSet] = useState<Set<string>>(new Set());
 
   const router = useRouter();
-  const params = useLocalSearchParams();
-  
-  // Get parameters passed from Hvetprofile
-  const vetId = params.vetId as string;
-  const vetName = params.vetName as string;
-  const vetAvatar = params.vetAvatar as string;
-  const vetSpecialization = params.vetSpecialization as string;
-  const vetExperience = params.vetExperience as string;
 
-  // ✅ FIXED: Removed unnecessary vetId dependency
+  // ✅ FIXED: Added vetSchedule dependency
   const updateAvailableTimesForDate = useCallback((dateString: string, scheduleData?: ScheduleSlot[]) => {
     const dataToUse = scheduleData || vetSchedule;
     const timesForDate = dataToUse.filter((item: ScheduleSlot) => 
@@ -262,6 +270,36 @@ const Hbook = () => {
     }
   }, [router]);
 
+  // Function to fetch only regular veterinarians (excluding CTU vets) with years of experience
+  const fetchVeterinarians = useCallback(async () => {
+    try {
+      setLoadingVeterinarians(true);
+      console.log("Fetching regular veterinarians (excluding CTU vets)...");
+      
+      const url = `${API_BASE_URL}/get_veterinarians/`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch veterinarians: ${response.status}`);
+      }
+
+      const vetsData = await response.json();
+      console.log("All veterinarians data:", vetsData);
+      
+      // Filter to only include regular veterinarians (vet_type === 'regular')
+      const regularVets = vetsData.filter((vet: Veterinarian) => vet.vet_type === 'regular');
+      console.log("Regular veterinarians only:", regularVets);
+      
+      setVeterinarians(regularVets);
+      
+    } catch (error) {
+      console.error("Error fetching veterinarians:", error);
+      Alert.alert("Error", "Unable to load veterinarians");
+    } finally {
+      setLoadingVeterinarians(false);
+    }
+  }, []);
+
   // ✅ UPDATED: Stable function for fetching horses - now excludes deceased horses
   const fetchHorses = useCallback(async (userId: string) => {
     try {
@@ -291,14 +329,14 @@ const Hbook = () => {
   }, []);
 
   // Stable function for fetching vet services
-  const fetchVetServices = useCallback((vetIdParam: string) => async () => {
-    if (!vetIdParam) return;
+  const fetchVetServices = useCallback(async (vetId: string) => {
+    if (!vetId) return;
     
     try {
       setLoadingServices(true);
-      console.log("Fetching services for vet_id:", vetIdParam);
+      console.log("Fetching services for vet_id:", vetId);
       
-      const url = `${API_BASE_URL}/get_vet_services/?vet_id=${encodeURIComponent(vetIdParam)}`;
+      const url = `${API_BASE_URL}/get_vet_services/?vet_id=${encodeURIComponent(vetId)}`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -318,7 +356,7 @@ const Hbook = () => {
           service_id: service.name,
           service_name: service.name,
           description: service.name,
-          vet_id: vetIdParam,
+          vet_id: vetId,
           icon: service.icon
         }));
         setAvailableServices(defaultServicesWithIcons);
@@ -331,7 +369,7 @@ const Hbook = () => {
         service_id: service.name,
         service_name: service.name,
         description: service.name,
-        vet_id: vetIdParam,
+        vet_id: vetId,
         icon: service.icon
       }));
       setAvailableServices(defaultServicesWithIcons);
@@ -341,13 +379,13 @@ const Hbook = () => {
   }, []);
 
   // Function to fetch actual vet profile data including years of experience
-  const fetchVetProfile = useCallback((vetIdParam: string) => async () => {
-    if (!vetIdParam) return;
+  const fetchVetProfile = useCallback(async (vetId: string) => {
+    if (!vetId) return;
     
     try {
-      console.log("Fetching vet profile for vet_id:", vetIdParam);
+      console.log("Fetching vet profile for vet_id:", vetId);
       
-      const url = `${API_BASE_URL}/get_vet_profile/?vet_id=${encodeURIComponent(vetIdParam)}`;
+      const url = `${API_BASE_URL}/get_vet_profile/?vet_id=${encodeURIComponent(vetId)}`;
       const response = await fetch(url);
 
       if (!response.ok) {
@@ -360,43 +398,37 @@ const Hbook = () => {
       if (vetData && vetData.length > 0) {
         const profile = vetData[0];
         setVetProfile({
-          vet_id: vetIdParam,
+          vet_id: vetId,
           vet_name: `${profile.vet_fname || ''} ${profile.vet_lname || ''}`.trim(),
           vet_avatar: profile.vet_profile_photo || '',
           vet_specialization: profile.vet_specialization || 'General Veterinarian',
           vet_exp_yr: profile.vet_exp_yr || 0
         });
-      } else {
-        setVetProfile({
-          vet_id: vetIdParam,
-          vet_name: vetName,
-          vet_avatar: vetAvatar,
-          vet_specialization: vetSpecialization,
-          vet_exp_yr: parseInt(vetExperience) || 0
-        });
       }
       
     } catch (error) {
       console.error("Error fetching vet profile:", error);
-      // Fallback to params data
-      setVetProfile({
-        vet_id: vetIdParam,
-        vet_name: vetName,
-        vet_avatar: vetAvatar,
-        vet_specialization: vetSpecialization,
-        vet_exp_yr: parseInt(vetExperience) || 0
-      });
+      // Fallback to selected veterinarian data
+      if (selectedVeterinarian) {
+        setVetProfile({
+          vet_id: selectedVeterinarian.id,
+          vet_name: `${selectedVeterinarian.first_name} ${selectedVeterinarian.last_name}`,
+          vet_avatar: selectedVeterinarian.avatar || '',
+          vet_specialization: selectedVeterinarian.specialization || 'General Veterinarian',
+          vet_exp_yr: selectedVeterinarian.vet_exp_yr || 0
+        });
+      }
     }
-  }, [vetName, vetAvatar, vetSpecialization, vetExperience]);
+  }, [selectedVeterinarian]);
 
   // Stable function for fetching schedule
-  const fetchVetSchedule = useCallback((vetIdParam: string) => async () => {
-    if (!vetIdParam) return;
+  const fetchVetSchedule = useCallback(async (vetId: string) => {
+    if (!vetId) return;
     
     try {
-      console.log("Fetching schedule for vet_id:", vetIdParam);
+      console.log("Fetching schedule for vet_id:", vetId);
       
-      const url = `${API_BASE_URL}/get_vet_schedule/?vet_id=${encodeURIComponent(vetIdParam)}`;
+      const url = `${API_BASE_URL}/get_vet_schedule/?vet_id=${encodeURIComponent(vetId)}`;
       const response = await fetch(url);
       
       if (!response.ok) {
@@ -458,7 +490,7 @@ const Hbook = () => {
         Alert.alert(
           'No Available Appointments', 
           'This veterinarian has no available appointment slots at the moment. Please try again later or select a different veterinarian.',
-          [{ text: 'OK', onPress: () => router.back() }]
+          [{ text: 'OK' }]
         );
       }
       
@@ -466,7 +498,27 @@ const Hbook = () => {
       console.error("Error fetching vet schedule:", error);
       Alert.alert("Error", "Unable to load veterinarian schedule");
     }
-  }, [router]);
+  }, []);
+
+  // Handle veterinarian selection
+  const handleVeterinarianSelect = useCallback((vet: Veterinarian) => {
+    setSelectedVeterinarian(vet);
+    setShowVetDropdown(false);
+    
+    // Reset form when veterinarian changes
+    setVetSchedule([]);
+    setAvailableDateObjects([]);
+    setAvailableTimesForDate([]);
+    setAvailableServices([]);
+    setSelectedDate(null);
+    setSelectedTimeSlot(null);
+    setSelectedService('General Consultation');
+    
+    // Fetch data for selected veterinarian
+    fetchVetServices(vet.id);
+    fetchVetProfile(vet.id);
+    fetchVetSchedule(vet.id);
+  }, [fetchVetServices, fetchVetProfile, fetchVetSchedule]);
 
   // ✅ FIXED: Main useEffect with proper dependency management
   useEffect(() => {
@@ -489,12 +541,10 @@ const Hbook = () => {
         // Set the user ID in state
         setCurrentUserId(userId);
         
-        // Fetch horses and vet data in parallel
+        // Fetch horses and veterinarians in parallel
         await Promise.all([
           fetchHorses(userId), // ✅ This now excludes deceased horses
-          fetchVetSchedule(vetId)(),
-          fetchVetServices(vetId)(),
-          fetchVetProfile(vetId)()
+          fetchVeterinarians()
         ]);
       } catch (error) {
         console.error('Error loading data:', error);
@@ -512,7 +562,7 @@ const Hbook = () => {
     return () => {
       isMounted = false;
     };
-  }, [vetId, fetchHorses, fetchVetSchedule, fetchVetServices, fetchVetProfile, getCurrentUserId]);
+  }, [fetchHorses, fetchVeterinarians, getCurrentUserId]);
 
   // Separate useEffect for updating times when vetSchedule changes
   useEffect(() => {
@@ -705,7 +755,9 @@ const Hbook = () => {
       console.log("Selected time slot:", timeSlot);
     } else {
       Alert.alert('Error', 'This time slot is no longer available or has passed.');
-      fetchVetSchedule(vetId)();
+      if (selectedVeterinarian) {
+        fetchVetSchedule(selectedVeterinarian.id);
+      }
     }
   };
 
@@ -795,6 +847,10 @@ const Hbook = () => {
 
   // ✅ FIXED: Confirm appointment booking with slot_id
   const confirmAppointment = async () => {
+    if (!selectedVeterinarian) {
+      Alert.alert('Validation Error', 'Please select a veterinarian for the appointment.');
+      return;
+    }
     if (selectedHorse === 'Select a horse') {
       Alert.alert('Validation Error', 'Please select a horse for the appointment.');
       return;
@@ -812,7 +868,9 @@ const Hbook = () => {
     const selectedDateString = formatDateToDatabaseString(selectedDate);
     if (isScheduleSlotInPast(selectedDateString, selectedTimeSlot.start_time)) {
       Alert.alert('Error', 'The selected time slot has passed. Please select a current or future time slot.');
-      fetchVetSchedule(vetId)();
+      if (selectedVeterinarian) {
+        fetchVetSchedule(selectedVeterinarian.id);
+      }
       return;
     }
 
@@ -833,7 +891,7 @@ const Hbook = () => {
       // ✅ FIXED: Use slot_id instead of sched_id and formatDateToDatabaseString for date
       const bookingData = {
         user_id: userId,
-        vet_id: vetId,
+        vet_id: selectedVeterinarian.id,
         horse_id: selectedHorseData.horse_id,
         date: formatDateToDatabaseString(selectedDate),
         time: selectedTimeSlot.time_display,
@@ -865,7 +923,7 @@ const Hbook = () => {
       if (response.ok) {
         Alert.alert(
           'Booking Confirmed',
-          `Your appointment has been scheduled successfully!\n\nVeterinarian: ${vetProfile?.vet_name || vetName}\nHorse: ${selectedHorse}\nDate: ${formatDateForDisplay(selectedDate)}\nTime: ${selectedTimeSlot.time_display}\nService: ${selectedService}`,
+          `Your appointment has been scheduled successfully!\n\nVeterinarian: ${selectedVeterinarian.first_name} ${selectedVeterinarian.last_name}\nHorse: ${selectedHorse}\nDate: ${formatDateForDisplay(selectedDate)}\nTime: ${selectedTimeSlot.time_display}\nService: ${selectedService}`,
           [
             {
               text: 'OK',
@@ -885,7 +943,9 @@ const Hbook = () => {
       if (error instanceof Error) {
         if (error.message.includes('This time slot has been booked by another user')) {
           errorMessage = 'This time slot was just booked by another user. Please select a different time.';
-          fetchVetSchedule(vetId)();
+          if (selectedVeterinarian) {
+            fetchVetSchedule(selectedVeterinarian.id);
+          }
         } else {
           errorMessage = error.message;
         }
@@ -1008,110 +1068,80 @@ const Hbook = () => {
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle}>Book Appointment</Text>
-            <Text style={styles.headerSubtitle}>Schedule with {vetProfile?.vet_name || vetName}</Text>
+            <Text style={styles.headerSubtitle}>Schedule with a veterinarian</Text>
           </View>
           <View style={styles.headerSpacer} />
         </View>
 
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-          {/* Veterinarian Info Card */}
-          <View style={styles.vetInfoCard}>
-            <View style={styles.vetInfo}>
-              <View style={styles.vetImageContainer}>
-                {vetProfile?.vet_avatar || vetAvatar ? (
-                  <Image
-                    source={{ uri: vetProfile?.vet_avatar || vetAvatar }}
-                    style={styles.vetImage}
-                  />
-                ) : (
-                  <View style={styles.vetImagePlaceholder}>
-                    <FontAwesome5 name="user-md" size={24} color="#CD853F" />
-                  </View>
-                )}
-                <View style={styles.vetStatusBadge}>
-                  <FontAwesome5 name="check" size={8} color="#fff" />
-                </View>
-              </View>
-              <View style={styles.vetDetails}>
-                <Text style={styles.vetName}>{vetProfile?.vet_name || vetName}</Text>
-                <View style={styles.vetSpecializationContainer}>
-                  <FontAwesome5 name="user-md" size={12} color="#CD853F" />
-                  <Text style={styles.vetSpecialization}>
-                    {vetProfile?.vet_specialization || vetSpecialization}
-                  </Text>
-                </View>
-                <View style={styles.vetExperienceContainer}>
-                  <FontAwesome5 name="award" size={12} color="#666" />
-                  <Text style={styles.vetExperience}>
-                    {vetProfile ? `${vetProfile.vet_exp_yr} years of experience` : 
-                    `${parseInt(vetExperience) || 0} years of experience`}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* Form Container */}
+          {/* Select Veterinarian Section */}
           <View style={styles.formContainer}>
-            {/* Select Horse - ✅ UPDATED: Now excludes deceased horses */}
             <View style={styles.formGroup}>
               <View style={styles.formLabelContainer}>
-                <FontAwesome5 name="horse" size={16} color="#CD853F" />
-                <Text style={styles.formLabel}>Select Horse</Text>
-              </View>
-              {renderHorseDropdown()}
-            </View>
-
-            {/* Select Service */}
-            <View style={styles.formGroup}>
-              <View style={styles.formLabelContainer}>
-                <FontAwesome5 name="stethoscope" size={16} color="#CD853F" />
-                <Text style={styles.formLabel}>Select Service</Text>
-                {loadingServices && (
+                <FontAwesome5 name="user-md" size={16} color="#CD853F" />
+                <Text style={styles.formLabel}>Select Veterinarian</Text>
+                {loadingVeterinarians && (
                   <ActivityIndicator size="small" color="#CD853F" style={{ marginLeft: 8 }} />
                 )}
               </View>
+              
+              {/* Consistent Dropdown Design */}
               <TouchableOpacity
-                style={[styles.dropdown, showServiceDropdown && styles.dropdownActive]}
-                onPress={() => setShowServiceDropdown(!showServiceDropdown)}
-                disabled={isBookingAppointment || loadingServices}
+                style={[styles.dropdown, showVetDropdown && styles.dropdownActive]}
+                onPress={() => setShowVetDropdown(!showVetDropdown)}
+                disabled={isBookingAppointment || loadingVeterinarians}
               >
                 <View style={styles.dropdownContentWithIcon}>
-                  <Text style={styles.dropdownText}>{selectedService}</Text>
+                  <Text style={[
+                    styles.dropdownText,
+                    !selectedVeterinarian && styles.dropdownPlaceholder
+                  ]}>
+                    {selectedVeterinarian 
+                      ? `${selectedVeterinarian.first_name} ${selectedVeterinarian.last_name}`
+                      : 'Select a veterinarian'
+                    }
+                  </Text>
                 </View>
                 <FontAwesome5 
-                  name={showServiceDropdown ? "chevron-up" : "chevron-down"} 
+                  name={showVetDropdown ? "chevron-up" : "chevron-down"} 
                   size={16} 
                   color="#666" 
                 />
               </TouchableOpacity>
 
-              {/* Service Dropdown Options */}
-              {showServiceDropdown && availableServices.length > 0 && (
+              {/* Veterinarian Dropdown Options */}
+              {showVetDropdown && veterinarians.length > 0 && (
                 <View style={styles.dropdownOptions}>
                   <ScrollView
                     style={styles.dropdownScrollView}
                     nestedScrollEnabled={true}
                     showsVerticalScrollIndicator={true}
                   >
-                    {availableServices.map((serviceItem) => (
+                    {veterinarians.map((vet) => (
                       <TouchableOpacity
-                        key={`service-${serviceItem.service_id}-${serviceItem.service_name}`}
+                        key={`vet-${vet.id}-${vet.first_name}`}
                         style={styles.dropdownOption}
-                        onPress={() => {
-                          setSelectedService(serviceItem.service_name);
-                          setShowServiceDropdown(false);
-                        }}
+                        onPress={() => handleVeterinarianSelect(vet)}
                         disabled={isBookingAppointment}
                       >
                         <View style={styles.dropdownOptionContent}>
-                          <View style={styles.dropdownOptionDetails}>
-                            <Text style={styles.dropdownOptionText}>{serviceItem.service_name}</Text>
-                            {serviceItem.description && serviceItem.description !== serviceItem.service_name && (
-                              <Text style={styles.dropdownOptionSubtext}>
-                                {serviceItem.description}
-                              </Text>
+                          <View style={styles.vetAvatarContainer}>
+                            {vet.avatar ? (
+                              <Image source={{ uri: vet.avatar }} style={styles.vetAvatar} />
+                            ) : (
+                              <View style={styles.vetAvatarPlaceholder}>
+                                <FontAwesome5 name="user-md" size={16} color="#CD853F" />
+                              </View>
                             )}
+                          </View>
+                          <View style={styles.dropdownOptionDetails}>
+                            <Text style={styles.dropdownOptionText}>
+                              {vet.first_name} {vet.last_name}
+                            </Text>
+                            <Text style={styles.dropdownOptionSubtext}>
+                              {vet.specialization || 'General Veterinarian'}
+                              {vet.vet_exp_yr && ` • ${vet.vet_exp_yr} years experience`}
+                            </Text>
                           </View>
                         </View>
                       </TouchableOpacity>
@@ -1120,104 +1150,234 @@ const Hbook = () => {
                 </View>
               )}
 
-              {availableServices.length === 0 && !loadingServices && (
-                <Text style={styles.noServicesText}>
-                  No services available for this veterinarian
+              {veterinarians.length === 0 && !loadingVeterinarians && (
+                <Text style={styles.noVeterinariansText}>
+                  No veterinarians available at the moment
                 </Text>
               )}
             </View>
 
-            {/* Enhanced Choose Date with Calendar */}
-            <View style={styles.formGroup}>
-              <View style={styles.formLabelContainer}>
-                <FontAwesome5 name="calendar-alt" size={16} color="#CD853F" />
-                <Text style={styles.formLabel}>Choose Available Date</Text>
-              </View>
-
-              {availableDateObjects.length === 0 ? (
-                <View style={styles.noAvailableDatesContainer}>
-                  <FontAwesome5 name="calendar-times" size={40} color="#CD853F" style={{ opacity: 0.5 }} />
-                  <Text style={styles.noAvailableDatesTitle}>No Available Dates</Text>
-                  <Text style={styles.noAvailableDatesText}>
-                    This veterinarian currently has no available appointment dates.
-                  </Text>
+            {/* Show rest of form only when veterinarian is selected */}
+            {selectedVeterinarian && (
+              <>
+                {/* Enhanced Veterinarian Info */}
+                <View style={styles.vetInfoCard}>
+                  <View style={styles.vetInfo}>
+                    <View style={styles.vetImageContainer}>
+                      {selectedVeterinarian.avatar ? (
+                        <Image
+                          source={{ uri: selectedVeterinarian.avatar }}
+                          style={styles.vetImage}
+                        />
+                      ) : (
+                        <View style={styles.vetImagePlaceholder}>
+                          <FontAwesome5 name="user-md" size={24} color="#CD853F" />
+                        </View>
+                      )}
+                      <View style={styles.vetStatusBadge}>
+                        <FontAwesome5 name="check" size={8} color="#fff" />
+                      </View>
+                    </View>
+                    <View style={styles.vetDetails}>
+                      <Text style={styles.vetName}>
+                        {selectedVeterinarian.first_name} {selectedVeterinarian.last_name}
+                      </Text>
+                      <View style={styles.vetSpecializationContainer}>
+                        <FontAwesome5 name="user-md" size={12} color="#CD853F" />
+                        <Text style={styles.vetSpecialization}>
+                          {selectedVeterinarian.specialization || 'General Veterinarian'}
+                        </Text>
+                      </View>
+                      <View style={styles.vetExperienceContainer}>
+                        <FontAwesome5 name="award" size={12} color="#666" />
+                        <Text style={styles.vetExperience}>
+                          {vetProfile ? `${vetProfile.vet_exp_yr} years of experience` : 
+                          selectedVeterinarian.vet_exp_yr ? `${selectedVeterinarian.vet_exp_yr} years of experience` : 
+                          'Experienced veterinarian'}
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
                 </View>
-              ) : (
-                <>
-                  {/* Date Selection Button */}
+
+                {/* Select Horse - ✅ UPDATED: Now excludes deceased horses */}
+                <View style={styles.formGroup}>
+                  <View style={styles.formLabelContainer}>
+                    <FontAwesome5 name="horse" size={16} color="#CD853F" />
+                    <Text style={styles.formLabel}>Select Horse</Text>
+                  </View>
+                  {renderHorseDropdown()}
+                </View>
+
+                {/* Select Service */}
+                <View style={styles.formGroup}>
+                  <View style={styles.formLabelContainer}>
+                    <FontAwesome5 name="stethoscope" size={16} color="#CD853F" />
+                    <Text style={styles.formLabel}>Select Service</Text>
+                    {loadingServices && (
+                      <ActivityIndicator size="small" color="#CD853F" style={{ marginLeft: 8 }} />
+                    )}
+                  </View>
                   <TouchableOpacity
-                    style={styles.datePickerButton}
-                    onPress={() => setShowCalendarModal(true)}
-                    disabled={isBookingAppointment}
+                    style={[styles.dropdown, showServiceDropdown && styles.dropdownActive]}
+                    onPress={() => setShowServiceDropdown(!showServiceDropdown)}
+                    disabled={isBookingAppointment || loadingServices}
                   >
-                    <View style={styles.datePickerContent}>
-                      <Text style={[
-                        styles.datePickerText,
-                        !selectedDate && styles.datePickerPlaceholder
-                      ]}>
-                        {selectedDate ? formatDateForDisplay(selectedDate) : 'Select an available date'}
+                    <View style={styles.dropdownContentWithIcon}>
+                      <Text style={styles.dropdownText}>{selectedService}</Text>
+                    </View>
+                    <FontAwesome5 
+                      name={showServiceDropdown ? "chevron-up" : "chevron-down"} 
+                      size={16} 
+                      color="#666" 
+                    />
+                  </TouchableOpacity>
+
+                  {/* Service Dropdown Options */}
+                  {showServiceDropdown && availableServices.length > 0 && (
+                    <View style={styles.dropdownOptions}>
+                      <ScrollView
+                        style={styles.dropdownScrollView}
+                        nestedScrollEnabled={true}
+                        showsVerticalScrollIndicator={true}
+                      >
+                        {availableServices.map((serviceItem) => (
+                          <TouchableOpacity
+                            key={`service-${serviceItem.service_id}-${serviceItem.service_name}`}
+                            style={styles.dropdownOption}
+                            onPress={() => {
+                              setSelectedService(serviceItem.service_name);
+                              setShowServiceDropdown(false);
+                            }}
+                            disabled={isBookingAppointment}
+                          >
+                            <View style={styles.dropdownOptionContent}>
+                              <View style={styles.dropdownOptionDetails}>
+                                <Text style={styles.dropdownOptionText}>{serviceItem.service_name}</Text>
+                                {serviceItem.description && serviceItem.description !== serviceItem.service_name && (
+                                  <Text style={styles.dropdownOptionSubtext}>
+                                    {serviceItem.description}
+                                  </Text>
+                                )}
+                              </View>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+
+                  {availableServices.length === 0 && !loadingServices && (
+                    <Text style={styles.noServicesText}>
+                      No services available for this veterinarian
+                    </Text>
+                  )}
+                </View>
+
+                {/* Enhanced Choose Date with Calendar */}
+                <View style={styles.formGroup}>
+                  <View style={styles.formLabelContainer}>
+                    <FontAwesome5 name="calendar-alt" size={16} color="#CD853F" />
+                    <Text style={styles.formLabel}>Choose Available Date</Text>
+                  </View>
+
+                  {availableDateObjects.length === 0 ? (
+                    <View style={styles.noAvailableDatesContainer}>
+                      <FontAwesome5 name="calendar-times" size={40} color="#CD853F" style={{ opacity: 0.5 }} />
+                      <Text style={styles.noAvailableDatesTitle}>No Available Dates</Text>
+                      <Text style={styles.noAvailableDatesText}>
+                        This veterinarian currently has no available appointment dates.
                       </Text>
                     </View>
-                    <FontAwesome5 name="chevron-down" size={16} color="#666" />
-                  </TouchableOpacity>
-                </>
-              )}
-            </View>
+                  ) : (
+                    <>
+                      {/* Date Selection Button */}
+                      <TouchableOpacity
+                        style={styles.datePickerButton}
+                        onPress={() => setShowCalendarModal(true)}
+                        disabled={isBookingAppointment}
+                      >
+                        <View style={styles.datePickerContent}>
+                          <Text style={[
+                            styles.datePickerText,
+                            !selectedDate && styles.datePickerPlaceholder
+                          ]}>
+                            {selectedDate ? formatDateForDisplay(selectedDate) : 'Select an available date'}
+                          </Text>
+                        </View>
+                        <FontAwesome5 name="chevron-down" size={16} color="#666" />
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
 
-            {/* Enhanced Choose Time */}
-            <View style={styles.formGroup}>
-              <View style={styles.formLabelContainer}>
-                <FontAwesome5 name="clock" size={16} color="#CD853F" />
-                <Text style={styles.formLabel}>Choose Available Time</Text>
-              </View>
-              {renderTimeSlots()}
-            </View>
+                {/* Enhanced Choose Time */}
+                <View style={styles.formGroup}>
+                  <View style={styles.formLabelContainer}>
+                    <FontAwesome5 name="clock" size={16} color="#CD853F" />
+                    <Text style={styles.formLabel}>Choose Available Time</Text>
+                  </View>
+                  {renderTimeSlots()}
+                </View>
 
-            {/* Enhanced Add Notes */}
-            <View style={styles.formGroup}>
-              <View style={styles.formLabelContainer}>
-                <FontAwesome5 name="sticky-note" size={16} color="#CD853F" />
-                <Text style={styles.formLabel}>Chief Complaint</Text>
-              </View>
-              <View style={styles.notesInputContainer}>
-                <TextInput
-                  style={styles.notesInput}
-                  placeholder="Enter any additional notes for the veterinarian..."
-                  value={appointmentNotes}
-                  onChangeText={setAppointmentNotes}
-                  multiline
-                  numberOfLines={4}
-                  placeholderTextColor="#999"
-                  editable={!isBookingAppointment}
-                />
-              </View>
-            </View>
+                {/* Enhanced Add Notes */}
+                <View style={styles.formGroup}>
+                  <View style={styles.formLabelContainer}>
+                    <FontAwesome5 name="sticky-note" size={16} color="#CD853F" />
+                    <Text style={styles.formLabel}>Chief Complaint</Text>
+                  </View>
+                  <View style={styles.notesInputContainer}>
+                    <TextInput
+                      style={styles.notesInput}
+                      placeholder="Enter any additional notes for the veterinarian..."
+                      value={appointmentNotes}
+                      onChangeText={setAppointmentNotes}
+                      multiline
+                      numberOfLines={4}
+                      placeholderTextColor="#999"
+                      editable={!isBookingAppointment}
+                    />
+                  </View>
+                </View>
 
-            {/* Enhanced Confirm Button */}
-            <TouchableOpacity
-              style={[
-                styles.confirmButton,
-                (isBookingAppointment || availableDateObjects.length === 0) && styles.confirmButtonDisabled
-              ]}
-              onPress={confirmAppointment}
-              disabled={isBookingAppointment || availableDateObjects.length === 0}
-            >
-              <View style={styles.confirmButtonContent}>
-                {isBookingAppointment ? (
-                  <>
-                    <ActivityIndicator size="small" color="#fff" />
-                    <Text style={styles.confirmButtonText}>Booking...</Text>
-                  </>
-                ) : (
-                  <>
-                    <FontAwesome5 name="calendar-check" size={16} color="#fff" />
-                    <Text style={styles.confirmButtonText}>
-                      {availableDateObjects.length === 0 ? 'No Available Dates' : 'Confirm Appointment'}
-                    </Text>
-                  </>
-                )}
+                {/* Enhanced Confirm Button */}
+                <TouchableOpacity
+                  style={[
+                    styles.confirmButton,
+                    (isBookingAppointment || availableDateObjects.length === 0) && styles.confirmButtonDisabled
+                  ]}
+                  onPress={confirmAppointment}
+                  disabled={isBookingAppointment || availableDateObjects.length === 0}
+                >
+                  <View style={styles.confirmButtonContent}>
+                    {isBookingAppointment ? (
+                      <>
+                        <ActivityIndicator size="small" color="#fff" />
+                        <Text style={styles.confirmButtonText}>Booking...</Text>
+                      </>
+                    ) : (
+                      <>
+                        <FontAwesome5 name="calendar-check" size={16} color="#fff" />
+                        <Text style={styles.confirmButtonText}>
+                          {availableDateObjects.length === 0 ? 'No Available Dates' : 'Confirm Appointment'}
+                        </Text>
+                      </>
+                    )}
+                  </View>
+                </TouchableOpacity>
+              </>
+            )}
+
+            {/* Show message when no veterinarian is selected */}
+            {!selectedVeterinarian && !loadingVeterinarians && veterinarians.length > 0 && (
+              <View style={styles.selectVetMessage}>
+                <FontAwesome5 name="user-md" size={48} color="#CD853F" style={{ opacity: 0.5 }} />
+                <Text style={styles.selectVetMessageTitle}>Select a Veterinarian</Text>
+                <Text style={styles.selectVetMessageText}>
+                  Please select a veterinarian from the dropdown above to view available appointment slots and services.
+                </Text>
               </View>
-            </TouchableOpacity>
+            )}
           </View>
         </ScrollView>
 
@@ -1328,85 +1488,10 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
   },
-  // Veterinarian Info Card
-  vetInfoCard: {
-    margin: 20,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
-  vetInfo: {
-    flexDirection: 'row',
-    padding: 20,
-  },
-  vetImageContainer: {
-    position: 'relative',
-    marginRight: 15,
-  },
-  vetImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#f0f0f0',
-  },
-  vetImagePlaceholder: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    backgroundColor: '#FFF8F0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  vetStatusBadge: {
-    position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#4CAF50',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
-  },
-  vetDetails: {
-    flex: 1,
-    justifyContent: 'center',
-  },
-  vetName: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 8,
-  },
-  vetSpecializationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  vetSpecialization: {
-    fontSize: 14,
-    color: '#CD853F',
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  vetExperienceContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  vetExperience: {
-    fontSize: 13,
-    color: '#666',
-    marginLeft: 6,
-  },
   // Form Container
   formContainer: {
     paddingHorizontal: 20,
+    paddingTop: 20,
     paddingBottom: 30,
   },
   formGroup: {
@@ -1498,6 +1583,132 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#666',
     marginTop: 2,
+  },
+  // Veterinarian Selection Styles
+  vetAvatarContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  vetAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  vetAvatarPlaceholder: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFF8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  noVeterinariansText: {
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 8,
+    padding: 8,
+  },
+  selectVetMessage: {
+    alignItems: 'center',
+    padding: 40,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    marginTop: 40,
+  },
+  selectVetMessageTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  selectVetMessageText: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  vetInfoCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    marginBottom: 24,
+  },
+  vetInfo: {
+    flexDirection: 'row',
+    padding: 20,
+  },
+  vetImageContainer: {
+    position: 'relative',
+    marginRight: 15,
+  },
+  vetImage: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#f0f0f0',
+  },
+  vetImagePlaceholder: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#FFF8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  vetStatusBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#4CAF50',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  vetDetails: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  vetName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  vetSpecializationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  vetSpecialization: {
+    fontSize: 14,
+    color: '#CD853F',
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  vetExperienceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  vetExperience: {
+    fontSize: 13,
+    color: '#666',
+    marginLeft: 6,
   },
   // Horse Selection
   noHorsesContainer: {
@@ -1942,4 +2153,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Hbook;
+export default Hbook2;

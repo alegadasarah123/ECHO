@@ -1,3 +1,5 @@
+// KUTSERO PROFILE SCREEN
+
 "use client"
 import { useFocusEffect } from "@react-navigation/native"
 import { useRouter } from "expo-router"

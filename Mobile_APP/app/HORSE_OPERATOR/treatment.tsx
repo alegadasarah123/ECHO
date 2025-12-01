@@ -20,7 +20,7 @@ interface Treatment {
   treatment_outcome?: string;
 }
 
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
+const API_BASE_URL = "http://192.168.101.6:8000/api/horse_operator";
 
 const TreatmentListScreen: React.FC = () => {
   const router = useRouter();

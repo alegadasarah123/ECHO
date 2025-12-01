@@ -27,8 +27,7 @@ interface HorseAssignment {
   kutsero_image?: string;
 }
 
-// const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator";
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator"
+const API_BASE_URL = "http://192.168.101.6:8000/api/horse_operator"
 
 const HorseHandlingScreen = () => {
   const router = useRouter();
@@ -202,6 +201,27 @@ const HorseHandlingScreen = () => {
     }
   };
 
+  // Function to get proper image source
+  const getImageSource = (imageUrl: string | undefined) => {
+    if (!imageUrl) {
+      return { uri: 'https://via.placeholder.com/60x60/f0f0f0/999999?text=K' };
+    }
+    
+    // If it's already a full URL
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return { uri: imageUrl };
+    }
+    
+    // If it's a storage path, construct the full URL
+    if (imageUrl.includes('kutsero_images/') || imageUrl.includes('kutsero_op_profile/')) {
+      const baseUrl = API_BASE_URL.replace('/api/horse_operator', '');
+      return { uri: `${baseUrl}/storage/v1/object/public/${imageUrl}` };
+    }
+    
+    // Default fallback
+    return { uri: 'https://via.placeholder.com/60x60/f0f0f0/999999?text=K' };
+  };
+
   const EmptyState = () => (
     <View style={styles.emptyState}>
       <View style={styles.emptyIconContainer}>
@@ -250,12 +270,12 @@ const HorseHandlingScreen = () => {
               ]}>
                 <View style={styles.cardHeader}>
                   <Image
-                    source={
-                      assignment.kutsero_image && !assignment.kutsero_image.startsWith('file:///')
-                        ? { uri: assignment.kutsero_image }
-                        : { uri: 'https://via.placeholder.com/60x60/f0f0f0/999999?text=K' }
-                    }
+                    source={getImageSource(assignment.kutsero_image)}
                     style={styles.cardProfileImage}
+                    onError={(e) => {
+                      console.log('Image load error:', e.nativeEvent.error);
+                      // Image will fallback to placeholder due to getImageSource logic
+                    }}
                   />
                   <View style={styles.cardContent}>
                     <Text style={styles.cardUserName}>

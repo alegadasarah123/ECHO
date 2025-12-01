@@ -1,3 +1,5 @@
+// KUTSERO Notifications Page
+
 "use client"
 
 import { useEffect, useState, useRef } from "react"
@@ -124,7 +126,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       const encodedUser = encodeURIComponent(userName);
       
       const response = await fetch(
-        `http://192.168.1.9:8000/api/kutsero/check-current-schedules/?kutsero_id=${encodedUser}`
+        `http://192.168.101.2:8000/api/kutsero/check-current-schedules/?kutsero_id=${encodedUser}`
       );
       
       if (!response.ok) {

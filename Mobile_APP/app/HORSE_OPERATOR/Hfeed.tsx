@@ -1,3 +1,5 @@
+// HORSE_OPERATOR/Hfeed.tsx
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -9,10 +11,12 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
+import * as Notifications from 'expo-notifications';
 
 type Meal = {
   id: string;
@@ -23,13 +27,29 @@ type Meal = {
   completed?: boolean;
   completed_at?: string;
   fd_id?: string;
-  fed_by?: string;      // NEW: Who fed the horse
-  fed_by_id?: string;   // NEW: User ID who fed
-  user_type?: string;   // NEW: 'op' or 'kutsero'
+  fed_by?: string;      
+  fed_by_id?: string;   
+  user_type?: string;  
 };
 
-// const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator";
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator"
+type FeedType = {
+  id: string;
+  name: string;
+  amount: string;
+};
+
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
+
+// Configure notification handler
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 const FeedScreen = () => {
   const router = useRouter();
@@ -40,58 +60,32 @@ const FeedScreen = () => {
     
   const [feedingSchedule, setFeedingSchedule] = useState<Meal[]>([]);
   const [showEditView, setShowEditView] = useState(false);
+  const [showAddView, setShowAddView] = useState(false);
   const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isInitialized, setIsInitialized] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
     
   const [feedingTime, setFeedingTime] = useState({
-    hour: '6',
-    minute: '45',
+    hour: '06',
+    minute: '00',
     period: 'AM',
   });
 
-  const [feedTypes, setFeedTypes] = useState([
+  const [mealType, setMealType] = useState<'Breakfast' | 'Lunch' | 'Dinner' | ''>('');
+  const [feedTypes, setFeedTypes] = useState<FeedType[]>([
     { id: '1', name: 'Chaff', amount: '' },
     { id: '2', name: 'Resolve', amount: '' },
     { id: '3', name: 'Dynavy', amount: '' },
     { id: '4', name: 'Magnesium', amount: '' },
   ]);
 
+  // Generate local ID
   const generateLocalId = (): string => {
     return Date.now().toString() + Math.random().toString(36).substr(2, 9);
   };
 
-  const getMealName = (time: string): string => {
-    try {
-      const timeParts = time.split(' ');
-      const timeComponent = timeParts[0];
-      const period = timeParts[1] || 'AM';
-      
-      const hour = parseInt(timeComponent.split(':')[0]);
-      
-      let hour24: number;
-      if (period.toUpperCase() === 'PM' && hour !== 12) {
-        hour24 = hour + 12;
-      } else if (period.toUpperCase() === 'AM' && hour === 12) {
-        hour24 = 0;
-      } else {
-        hour24 = hour;
-      }
-      
-      if (hour24 < 10) {
-        return 'Breakfast';
-      } else if (hour24 < 16) {
-        return 'Lunch';
-      } else {
-        return 'Dinner';
-      }
-    } catch (error) {
-      console.error('Error parsing time:', error);
-      return 'Meal';
-    }
-  };
-
+  // Get meal order for sorting
   const getMealOrder = (mealType: string): number => {
     switch (mealType) {
       case 'Breakfast': return 1;
@@ -101,6 +95,16 @@ const FeedScreen = () => {
     }
   };
 
+  // Sort meals by type
+  const sortMealsByType = useCallback((meals: Meal[]): Meal[] => {
+    return [...meals].sort((a, b) => {
+      const orderA = getMealOrder(a.fd_meal_type);
+      const orderB = getMealOrder(b.fd_meal_type);
+      return orderA - orderB;
+    });
+  }, []);
+
+  // Get current user
   const getCurrentUser = useCallback(async (): Promise<string | null> => {
     if (currentUser) return currentUser;
     
@@ -121,39 +125,7 @@ const FeedScreen = () => {
     return null;
   }, [currentUser]);
 
-  const createDefaultLocalSchedule = useCallback((): Meal[] => {
-    console.log("Creating default local feeding schedule");
-    
-    const defaultSchedule: Meal[] = [
-      {
-        id: generateLocalId(),
-        fd_food_type: 'Chaff',
-        fd_qty: '3 scoops',
-        fd_time: '6:45 AM',
-        fd_meal_type: 'Breakfast',
-        completed: false,
-      },
-      {
-        id: generateLocalId(),
-        fd_food_type: 'Chaff',
-        fd_qty: '3 scoops',
-        fd_time: '12:00 PM',
-        fd_meal_type: 'Lunch',
-        completed: false,
-      },
-      {
-        id: generateLocalId(),
-        fd_food_type: 'Chaff',
-        fd_qty: '3 scoops',
-        fd_time: '7:15 PM',
-        fd_meal_type: 'Dinner',
-        completed: false,
-      },
-    ];
-    
-    return defaultSchedule;
-  }, []);
-
+  // Load today's feed records
   const loadTodaysFeedRecords = useCallback(async (userId: string): Promise<Meal[]> => {
     try {
       const url = `${API_BASE_URL}/get_feeding_schedule/?user_id=${encodeURIComponent(userId)}&horse_id=${encodeURIComponent(horseId)}`;
@@ -164,8 +136,8 @@ const FeedScreen = () => {
         const data = await response.json();
         
         if (data && data.length > 0) {
-          return data.map((item: any) => ({
-            id: item.fd_id,
+          const meals = data.map((item: any) => ({
+            id: item.fd_id || generateLocalId(),
             fd_food_type: item.fd_food_type,
             fd_qty: item.fd_qty,
             fd_time: item.fd_time,
@@ -173,10 +145,14 @@ const FeedScreen = () => {
             completed: item.completed || false,
             completed_at: item.completed_at,
             fd_id: item.fd_id,
-            fed_by: item.fed_by,           // NEW
-            fed_by_id: item.fed_by_id,     // NEW
-            user_type: item.user_type,     // NEW
+            fed_by: item.fed_by,
+            fed_by_id: item.fed_by_id,
+            user_type: item.user_type,
           }));
+          
+          // Sort meals by type
+          const sortedMeals = sortMealsByType(meals);
+          return sortedMeals;
         }
       }
     } catch (error) {
@@ -184,8 +160,398 @@ const FeedScreen = () => {
     }
     
     return [];
-  }, [horseId]);
+  }, [horseId, sortMealsByType]);
 
+  // Parse time string to hours and minutes - FIXED with better error handling
+  const parseTimeString = (timeString: string | undefined): { hours: number, minutes: number } | null => {
+    if (!timeString) {
+      console.warn('❌ Cannot parse undefined time string');
+      return null;
+    }
+    
+    try {
+      const [time, period] = timeString.split(' ');
+      if (!time) {
+        console.warn('❌ Invalid time format:', timeString);
+        return null;
+      }
+      
+      const [hoursStr, minutesStr] = time.split(':');
+      if (!hoursStr || !minutesStr) {
+        console.warn('❌ Invalid time components:', timeString);
+        return null;
+      }
+      
+      let hours = parseInt(hoursStr, 10);
+      const minutes = parseInt(minutesStr, 10);
+      
+      if (isNaN(hours) || isNaN(minutes)) {
+        console.warn('❌ Invalid time numbers:', timeString);
+        return null;
+      }
+      
+      if (period === 'PM' && hours !== 12) {
+        hours += 12;
+      } else if (period === 'AM' && hours === 12) {
+        hours = 0;
+      }
+      
+      console.log(`✅ Parsed time: ${timeString} -> ${hours}:${minutes}`);
+      return { hours, minutes };
+    } catch (error) {
+      console.error('❌ Error parsing time string:', error, 'for time:', timeString);
+      return null;
+    }
+  };
+
+  // Get period emoji for notifications
+  const getPeriodEmoji = (period: string): string => {
+    switch (period) {
+      case 'Breakfast': return '🌅';
+      case 'Lunch': return '☀️';
+      case 'Dinner': return '🌙';
+      default: return '🍽️';
+    }
+  };
+
+  // Get notification subtitle based on period
+  const getNotificationSubtitle = (period: string): string => {
+    switch (period) {
+      case 'Breakfast': return 'Start the day with a nutritious meal!';
+      case 'Lunch': return 'Midday feeding for sustained energy!';
+      case 'Dinner': return 'Evening meal for a comfortable night!';
+      default: return 'Time for feeding!';
+    }
+  };
+
+  // Get motivational message for notification body
+  const getMotivationalMessage = (period: string): string => {
+    const messages = {
+      Breakfast: [
+        "A healthy breakfast for a great day ahead! 🐎",
+        "Morning nutrition sets the tone for the day! 💪",
+        "Perfect time for a energy-boosting meal! 🌟"
+      ],
+      Lunch: [
+        "Stay energized with a midday meal! 🥕",
+        "Lunch time for peak performance! 🏆",
+        "Perfect timing for a nutritious break! ⏰"
+      ],
+      Dinner: [
+        "Evening meal for a peaceful night! 🌜",
+        "Wind down with a satisfying dinner! 🌙",
+        "Final meal of the day! ✨"
+      ]
+    };
+    
+    const periodMessages = messages[period as keyof typeof messages] || [
+      "Time for feeding care! 💕"
+    ];
+    return periodMessages[Math.floor(Math.random() * periodMessages.length)];
+  };
+
+  // Store last viewed feed time for automatic notifications
+  const storeLastViewedFeedTime = useCallback(async (schedule: Meal[]): Promise<void> => {
+    try {
+      const lastViewedData = {
+        horseId,
+        horseName,
+        schedule: schedule.map(meal => ({
+          period: meal.fd_meal_type,
+          time: meal.fd_time,
+          food_type: meal.fd_food_type,
+          amount: meal.fd_qty,
+        })),
+        lastUpdated: new Date().toISOString(),
+      };
+      
+      await SecureStore.setItemAsync(`last_feed_schedule_${horseId}`, JSON.stringify(lastViewedData));
+      console.log('Stored last viewed feed time for automatic notifications');
+    } catch (error) {
+      console.error('Error storing last viewed feed time:', error);
+    }
+  }, [horseId, horseName]);
+
+  // Schedule automatic daily notifications based on last viewed feed time
+  const scheduleAutomaticDailyNotifications = useCallback(async (): Promise<void> => {
+    try {
+      // Get the last stored feed schedule
+      const storedData = await SecureStore.getItemAsync(`last_feed_schedule_${horseId}`);
+      if (!storedData) {
+        console.log('No stored feed schedule found for automatic notifications');
+        return;
+      }
+
+      const lastViewedData = JSON.parse(storedData);
+      const { schedule, lastUpdated } = lastViewedData;
+
+      // Check if data is from today
+      const lastUpdatedDate = new Date(lastUpdated);
+      const today = new Date();
+      const isFromToday = lastUpdatedDate.toDateString() === today.toDateString();
+
+      if (!isFromToday && schedule.length > 0) {
+        console.log('Scheduling automatic daily notifications from last viewed schedule');
+
+        // Cancel existing automatic notifications for this horse
+        const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
+        const autoNotifications = scheduledNotifications.filter(notification => 
+          notification.content.data?.type === 'auto_feed_reminder' && 
+          notification.content.data?.horseId === horseId
+        );
+        
+        for (const notification of autoNotifications) {
+          await Notifications.cancelScheduledNotificationAsync(notification.identifier);
+        }
+
+        // Schedule new automatic notifications
+        for (const meal of schedule) {
+          const notificationTime = parseTimeString(meal.time);
+          if (notificationTime) {
+            const trigger: Notifications.DailyTriggerInput = {
+              type: Notifications.SchedulableTriggerInputTypes.DAILY,
+              hour: notificationTime.hours,
+              minute: notificationTime.minutes,
+            };
+
+            const periodEmoji = getPeriodEmoji(meal.period);
+            const subtitle = getNotificationSubtitle(meal.period);
+            const motivationalMessage = getMotivationalMessage(meal.period);
+
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: `${periodEmoji} ${meal.period} - ${horseName}`,
+                subtitle: subtitle,
+                body: `🍽️ ${meal.food_type} (${meal.amount})\n${motivationalMessage}`,
+                data: { 
+                  type: 'auto_feed_reminder',
+                  horseId: horseId,
+                  horseName: horseName,
+                  period: meal.period,
+                  food_type: meal.food_type,
+                  amount: meal.amount,
+                  time: meal.time,
+                  notificationId: `auto_feed_${horseId}_${meal.period}_${Date.now()}`
+                },
+                sound: 'default',
+                priority: 'high',
+                badge: 1,
+                ...(Platform.OS === 'ios' && {
+                  categoryIdentifier: 'FEED_REMINDER',
+                  threadIdentifier: `horse-feeding-${horseId}`,
+                  summaryArgument: horseName,
+                  relevanceScore: 1.0,
+                }),
+              },
+              trigger,
+            });
+
+            console.log(`✅ Scheduled automatic ${meal.period} notification for ${notificationTime.hours}:${notificationTime.minutes}`);
+          } else {
+            console.warn(`❌ Could not parse time for automatic notification: ${meal.time}`);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error scheduling automatic daily notifications:', error);
+    }
+  }, [horseId, horseName]);
+
+  // Schedule feed notifications - FIXED: Properly handle meal object structure
+  const scheduleFeedNotifications = useCallback(async (schedule: Meal[]): Promise<void> => {
+    try {
+      // First, get all currently scheduled notifications
+      const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
+      console.log(`Currently have ${scheduledNotifications.length} scheduled notifications`);
+      
+      // Cancel only feed-related notifications for this horse
+      const feedNotifications = scheduledNotifications.filter(notification => 
+        (notification.content.data?.type === 'feed_reminder' || 
+         notification.content.data?.type === 'auto_feed_reminder') && 
+        notification.content.data?.horseId === horseId
+      );
+      
+      if (feedNotifications.length > 0) {
+        console.log(`Canceling ${feedNotifications.length} existing feed notifications for horse ${horseId}`);
+        for (const notification of feedNotifications) {
+          await Notifications.cancelScheduledNotificationAsync(notification.identifier);
+        }
+      }
+
+      // Store the current schedule for automatic daily notifications
+      await storeLastViewedFeedTime(schedule);
+
+      // Schedule new notifications for each feed schedule with improved design
+      console.log(`Scheduling ${schedule.length} new feed notifications`);
+      
+      let successfullyScheduled = 0;
+      
+      for (const meal of schedule) {
+        // Use the correct property names from the Meal type
+        const notificationTime = parseTimeString(meal.fd_time);
+        if (notificationTime) {
+          const trigger: Notifications.DailyTriggerInput = {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
+            hour: notificationTime.hours,
+            minute: notificationTime.minutes,
+          };
+
+          const periodEmoji = getPeriodEmoji(meal.fd_meal_type);
+          const subtitle = getNotificationSubtitle(meal.fd_meal_type);
+          const motivationalMessage = getMotivationalMessage(meal.fd_meal_type);
+
+          const notificationId = await Notifications.scheduleNotificationAsync({
+            content: {
+              title: `${periodEmoji} ${meal.fd_meal_type} - ${horseName}`,
+              subtitle: subtitle,
+              body: `🍽️ ${meal.fd_food_type} (${meal.fd_qty})\n${motivationalMessage}`,
+              data: { 
+                type: 'feed_reminder',
+                horseId: horseId,
+                horseName: horseName,
+                period: meal.fd_meal_type,
+                food_type: meal.fd_food_type,
+                amount: meal.fd_qty,
+                time: meal.fd_time,
+                notificationId: `feed_${horseId}_${meal.fd_meal_type}_${Date.now()}`
+              },
+              sound: 'default',
+              priority: 'high',
+              badge: 1,
+              ...(Platform.OS === 'ios' && {
+                categoryIdentifier: 'FEED_REMINDER',
+                threadIdentifier: `horse-feeding-${horseId}`,
+                summaryArgument: horseName,
+                relevanceScore: 1.0,
+              }),
+            },
+            trigger,
+          });
+
+          console.log(`✅ Scheduled ${meal.fd_meal_type} notification for ${notificationTime.hours}:${notificationTime.minutes} (ID: ${notificationId})`);
+          successfullyScheduled++;
+        } else {
+          console.warn(`❌ Could not parse time for ${meal.fd_meal_type}: ${meal.fd_time}`);
+        }
+      }
+
+      // Verify scheduled notifications
+      const finalScheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const feedScheduledCount = finalScheduled.filter(notification => 
+        notification.content.data?.type === 'feed_reminder' && 
+        notification.content.data?.horseId === horseId
+      ).length;
+      
+      console.log(`✅ Successfully scheduled ${successfullyScheduled} feed notifications for horse ${horseId}`);
+      console.log(`📊 Verified: ${feedScheduledCount} feed notifications currently scheduled`);
+      
+    } catch (error) {
+      console.error('❌ Error scheduling notifications:', error);
+    }
+  }, [horseId, horseName, storeLastViewedFeedTime]);
+
+  // Save schedule to database
+  const saveScheduleToDatabase = async (schedule: Meal[]): Promise<boolean> => {
+    if (!currentUser || !horseId) {
+      console.error('Cannot save schedule: Missing user ID or horse ID');
+      return false;
+    }
+
+    try {
+      // Filter out completed meals
+      const scheduleToSave = schedule
+        .filter(meal => !meal.completed)
+        .map(meal => ({
+          time: meal.fd_time,
+          food: meal.fd_food_type,
+          amount: meal.fd_qty,
+          meal_type: meal.fd_meal_type,
+        }));
+
+      const response = await fetch(`${API_BASE_URL}/save_feeding_schedule/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: currentUser,
+          horse_id: horseId,
+          schedule: scheduleToSave,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log('Feeding schedule saved to database. User type:', result.user_type);
+        
+        // Schedule notifications for the new feeding times
+        await scheduleFeedNotifications(schedule);
+        
+        return true;
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to save schedule to database:', errorData);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error saving schedule to database:', error);
+      return false;
+    }
+  };
+
+  // Check if meal is completed (by anyone)
+  const isMealCompleted = useCallback((mealType: string): boolean => {
+    const existingMeal = feedingSchedule.find(meal => 
+      meal.fd_meal_type === mealType && 
+      meal.completed
+    );
+    return !!existingMeal;
+  }, [feedingSchedule]);
+
+  // Get completed meal info
+  const getCompletedMealInfo = useCallback((mealType: string): { fed_by: string, user_type: string } | null => {
+    const existingMeal = feedingSchedule.find(meal => 
+      meal.fd_meal_type === mealType && 
+      meal.completed
+    );
+    return existingMeal ? { 
+      fed_by: existingMeal.fed_by || 'Unknown', 
+      user_type: existingMeal.user_type || 'unknown' 
+    } : null;
+  }, [feedingSchedule]);
+
+  // Check if all meals are completed
+  const areAllMealsCompleted = useCallback((): boolean => {
+    const mealTypes = ['Breakfast', 'Lunch', 'Dinner'];
+    return mealTypes.every(mealType => isMealCompleted(mealType));
+  }, [isMealCompleted]);
+
+  // Get available meal types for adding new schedules
+  const getAvailableMealTypes = useCallback((): ('Breakfast' | 'Lunch' | 'Dinner')[] => {
+    const allMealTypes: ('Breakfast' | 'Lunch' | 'Dinner')[] = ['Breakfast', 'Lunch', 'Dinner'];
+    
+    return allMealTypes.filter(mealType => {
+      // Check if this meal type is completed
+      if (isMealCompleted(mealType)) {
+        return false; // Cannot add schedule for completed meal types
+      }
+      
+      // Check if there's already an existing schedule for this meal type
+      const existingSchedule = feedingSchedule.find(meal => meal.fd_meal_type === mealType);
+      if (existingSchedule) {
+        return false; // Cannot add schedule for existing meal types
+      }
+      
+      return true; // This meal type is available for new schedules
+    });
+  }, [feedingSchedule, isMealCompleted]);
+
+  // Get scheduled meal types (for display purposes)
+  const getScheduledMealTypes = useCallback((): string[] => {
+    return feedingSchedule.map(meal => meal.fd_meal_type);
+  }, [feedingSchedule]);
+
+  // Initialize feed screen
   const initializeFeedScreen = useCallback(async (): Promise<void> => {
     if (isInitialized || !horseId) return;
 
@@ -199,34 +565,77 @@ const FeedScreen = () => {
         return;
       }
 
+      // Load today's feed records
       const todaysRecords = await loadTodaysFeedRecords(userId);
-      const defaultSchedule = createDefaultLocalSchedule();
       
-      const mergedSchedule = defaultSchedule.map(defaultItem => {
-        const dbRecord = todaysRecords.find(record => 
-          record.fd_meal_type === defaultItem.fd_meal_type
-        );
-        
-        if (dbRecord && dbRecord.completed) {
-          return dbRecord;
-        }
-        
-        return defaultItem;
-      }).sort((a, b) => getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type));
+      console.log(`Loaded ${todaysRecords.length} feeding schedule items for today`);
       
-      setFeedingSchedule(mergedSchedule);
-      console.log(`Initialized with ${mergedSchedule.length} feeding schedule items`);
-      
+      setFeedingSchedule(todaysRecords);
       setIsInitialized(true);
+      
+      // Schedule notifications for any existing schedules
+      if (todaysRecords.length > 0) {
+        const activeSchedules = todaysRecords.filter(meal => !meal.completed);
+        if (activeSchedules.length > 0) {
+          await scheduleFeedNotifications(activeSchedules);
+        }
+      }
+      
+      // Schedule automatic daily notifications based on last viewed time
+      await scheduleAutomaticDailyNotifications();
       
     } catch (error: unknown) {
       console.error('Error initializing feed screen:', error);
-      const defaultSchedule = createDefaultLocalSchedule();
-      setFeedingSchedule(defaultSchedule);
+      setFeedingSchedule([]);
     } finally {
       setIsLoading(false);
     }
-  }, [isInitialized, horseId, getCurrentUser, createDefaultLocalSchedule, loadTodaysFeedRecords]);
+  }, [
+    isInitialized, 
+    horseId, 
+    getCurrentUser, 
+    loadTodaysFeedRecords, 
+    scheduleFeedNotifications, 
+    scheduleAutomaticDailyNotifications
+  ]);
+
+  // Request notification permissions on component mount
+  useEffect(() => {
+    const requestPermissions = async () => {
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        if (status !== 'granted') {
+          console.warn('Notification permissions not granted');
+        } else {
+          console.log('Notification permissions granted');
+        }
+      } catch (error) {
+        console.error('Error requesting notification permissions:', error);
+      }
+    };
+
+    requestPermissions();
+  }, []);
+
+  // Set up notification response handling
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      
+      if (data.type === 'feed_reminder' || data.type === 'auto_feed_reminder') {
+        console.log('Feed reminder notification tapped:', data);
+        
+        // Show a friendly message when notification is tapped
+        Alert.alert(
+          `${data.period} Feed Reminder`,
+          `Remember to feed ${data.food_type} (${data.amount}) to ${data.horseName}`,
+          [{ text: 'OK', onPress: () => console.log('Notification handled') }]
+        );
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -244,36 +653,38 @@ const FeedScreen = () => {
     };
   }, [initializeFeedScreen, isInitialized]);
 
+  // Refresh function
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     
     try {
       if (currentUser && horseId) {
         const todaysRecords = await loadTodaysFeedRecords(currentUser);
-        const defaultSchedule = createDefaultLocalSchedule();
+        setFeedingSchedule(todaysRecords);
         
-        const mergedSchedule = defaultSchedule.map(defaultItem => {
-          const dbRecord = todaysRecords.find(record => 
-            record.fd_meal_type === defaultItem.fd_meal_type
-          );
-          
-          if (dbRecord && dbRecord.completed) {
-            return dbRecord;
-          }
-          
-          return defaultItem;
-        }).sort((a, b) => getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type));
+        // Update notifications for active schedules
+        const activeSchedules = todaysRecords.filter(meal => !meal.completed);
+        if (activeSchedules.length > 0) {
+          await scheduleFeedNotifications(activeSchedules);
+        }
         
-        setFeedingSchedule(mergedSchedule);
+        // Schedule automatic daily notifications
+        await scheduleAutomaticDailyNotifications();
       }
     } catch (error) {
       console.error('Error refreshing:', error);
     } finally {
       setRefreshing(false);
     }
-  }, [currentUser, horseId, loadTodaysFeedRecords, createDefaultLocalSchedule]);
+  }, [
+    currentUser, 
+    horseId, 
+    loadTodaysFeedRecords, 
+    scheduleFeedNotifications, 
+    scheduleAutomaticDailyNotifications
+  ]);
 
-  // Refresh when screen comes into focus
+  // Focus effect
   useFocusEffect(
     useCallback(() => {
       if (currentUser && isInitialized) {
@@ -282,17 +693,19 @@ const FeedScreen = () => {
     }, [currentUser, isInitialized, onRefresh])
   );
 
+  // Handle mark as fed
   const handleMarkAsFed = async (meal: Meal): Promise<void> => {
     if (!currentUser) {
       Alert.alert('Error', 'User not found');
       return;
     }
 
-    // Check if already fed
-    if (meal.completed && meal.fed_by) {
+    // Check if meal is already completed
+    if (meal.completed) {
+      const fedBy = meal.fed_by || 'someone';
       Alert.alert(
         'Already Fed',
-        `This meal has already been fed by ${meal.fed_by}.`,
+        `This meal has already been fed by ${fedBy}.`,
         [{ text: 'OK' }]
       );
       return;
@@ -321,7 +734,6 @@ const FeedScreen = () => {
       const result = await response.json();
       
       if (!response.ok) {
-        // Check if it's because someone else already fed it
         if (result.already_fed) {
           Alert.alert(
             'Already Fed',
@@ -334,7 +746,6 @@ const FeedScreen = () => {
               { text: 'OK' }
             ]
           );
-          // Refresh to show the updated state
           await onRefresh();
           return;
         }
@@ -345,81 +756,99 @@ const FeedScreen = () => {
 
       console.log("Meal fed and saved to database:", result);
 
-      // Update local state
+      // Update the local state to mark as completed with proper data from response
       const updatedSchedule = feedingSchedule.map(m =>
         m.id === meal.id 
           ? { 
               ...m, 
               completed: true, 
               completed_at: completedAt,
-              fd_id: result.fd_id,
-              fed_by: result.fed_by,
-              user_type: result.user_type
+              fd_id: result.fd_id || meal.fd_id,
+              fed_by: result.fed_by || 'You',
+              user_type: result.user_type || 'op'
             }
           : m
-      ).sort((a, b) => getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type));
+      );
         
-      setFeedingSchedule(updatedSchedule);
+      setFeedingSchedule(sortMealsByType(updatedSchedule));
+      
+      // Cancel notification for this specific period since it's completed
+      try {
+        const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
+        const notificationToCancel = scheduledNotifications.find(notification => 
+          (notification.content.data?.type === 'feed_reminder' || 
+           notification.content.data?.type === 'auto_feed_reminder') && 
+          notification.content.data?.horseId === horseId &&
+          notification.content.data?.period === meal.fd_meal_type
+        );
+        
+        if (notificationToCancel) {
+          await Notifications.cancelScheduledNotificationAsync(notificationToCancel.identifier);
+          console.log(`Cancelled notification for ${meal.fd_meal_type} period`);
+        }
+      } catch (error) {
+        console.error('Error cancelling notification:', error);
+      }
         
       Alert.alert('Success', `Meal fed to ${horseName} and recorded in database!`);
+      
+      // Refresh to get the latest data from server
+      setTimeout(() => {
+        onRefresh();
+      }, 500);
+      
     } catch (error: any) {
       console.error('Error marking meal as fed:', error);
       Alert.alert('Error', error.message || 'Failed to record feeding');
     }
   };
 
-  const resetDailyFeeds = async (): Promise<void> => {
-    if (!currentUser) {
-      Alert.alert('Error', 'User not found');
+  // Handle add new schedule
+  const handleAddNewSchedule = (): void => {
+    // Check if all meals are completed
+    if (areAllMealsCompleted()) {
+      Alert.alert(
+        'All Meals Completed',
+        `All meals have been completed. You cannot add new schedules when all meals are already fed.`,
+        [{ text: 'OK' }]
+      );
       return;
     }
 
-    Alert.alert(
-      'Reset Daily Feeds',
-      'This will reset all feeding records for today. Are you sure?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const response = await fetch(`${API_BASE_URL}/reset_daily_feeds/`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  user_id: currentUser,
-                  horse_id: horseId,
-                }),
-              });
+    // Get available meal types
+    const availableMealTypes = getAvailableMealTypes();
+    
+    if (availableMealTypes.length === 0) {
+      Alert.alert(
+        'No Available Meal Types',
+        `All meal types either have existing schedules or have been completed.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
 
-              if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to reset daily feeds');
-              }
-
-              const resetSchedule = createDefaultLocalSchedule();
-              setFeedingSchedule(resetSchedule);
-              
-              Alert.alert('Success', 'Daily feeding records reset successfully');
-            } catch (error: any) {
-              console.error('Error resetting daily feeds:', error);
-              Alert.alert('Error', error.message || 'Failed to reset daily feeds');
-            }
-          }
-        }
-      ]
-    );
+    setFeedingTime({
+      hour: '06',
+      minute: '00',
+      period: 'AM',
+    });
+    setMealType('');
+    setFeedTypes([
+      { id: '1', name: 'Chaff', amount: '' },
+      { id: '2', name: 'Resolve', amount: '' },
+      { id: '3', name: 'Dynavy', amount: '' },
+      { id: '4', name: 'Magnesium', amount: '' },
+    ]);
+    setShowAddView(true);
   };
 
+  // Handle edit meal
   const handleEdit = (meal: Meal): void => {
-    // Don't allow editing if already fed by someone
-    if (meal.completed && meal.fed_by) {
+    if (meal.completed) {
+      const fedBy = meal.fed_by || 'someone';
       Alert.alert(
         'Cannot Edit',
-        `This meal was already fed by ${meal.fed_by}. You cannot edit completed meals.`,
+        `This meal was already fed by ${fedBy}. You cannot edit completed meals.`,
         [{ text: 'OK' }]
       );
       return;
@@ -433,6 +862,7 @@ const FeedScreen = () => {
       minute: time[1],
       period: timeParts[1] || 'AM',
     });
+    setMealType(meal.fd_meal_type as any);
           
     setFeedTypes([
       { id: '1', name: 'Chaff', amount: meal.fd_food_type === 'Chaff' ? meal.fd_qty : '' },
@@ -444,10 +874,114 @@ const FeedScreen = () => {
     setShowEditView(true);
   };
 
+  // Handle delete meal
+  const handleDeleteMeal = async (meal: Meal): Promise<void> => {
+    if (meal.completed) {
+      const fedBy = meal.fed_by || 'someone';
+      Alert.alert(
+        'Cannot Delete',
+        `This meal has already been completed by ${fedBy} and cannot be deleted.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    Alert.alert(
+      'Delete Meal Schedule',
+      `Are you sure you want to delete the ${meal.fd_meal_type} schedule? This will remove it from your daily schedule.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (meal.fd_id) {
+                const dbSuccess = await deleteMealFromDatabase(meal.fd_id);
+                if (!dbSuccess) {
+                  Alert.alert('Error', 'Failed to delete meal from database');
+                  return;
+                }
+              }
+
+              const updatedSchedule = feedingSchedule.filter(m => m.id !== meal.id);
+              setFeedingSchedule(sortMealsByType(updatedSchedule));
+              
+              // Update notifications - cancel the specific notification and reschedule remaining ones
+              try {
+                const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
+                const notificationToCancel = scheduledNotifications.find(notification => 
+                  (notification.content.data?.type === 'feed_reminder' || 
+                   notification.content.data?.type === 'auto_feed_reminder') && 
+                  notification.content.data?.horseId === horseId &&
+                  notification.content.data?.period === meal.fd_meal_type
+                );
+                
+                if (notificationToCancel) {
+                  await Notifications.cancelScheduledNotificationAsync(notificationToCancel.identifier);
+                  console.log(`Cancelled notification for ${meal.fd_meal_type}`);
+                }
+                
+                // Reschedule remaining notifications to ensure they're properly set
+                const activeSchedules = updatedSchedule.filter(m => !m.completed);
+                if (activeSchedules.length > 0) {
+                  await scheduleFeedNotifications(activeSchedules);
+                }
+              } catch (error) {
+                console.error('Error updating notifications:', error);
+              }
+              
+              Alert.alert('Success', `${meal.fd_meal_type} schedule deleted successfully`);
+              
+            } catch (error: any) {
+              console.error('Error deleting meal:', error);
+              Alert.alert('Error', 'Failed to delete meal');
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  // Delete meal from database
+  const deleteMealFromDatabase = async (mealId: string): Promise<boolean> => {
+    if (!currentUser) {
+      console.error('Cannot delete meal: Missing user ID');
+      return false;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/delete_feed_schedule/`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_id: currentUser,
+          fd_id: mealId,
+        }),
+      });
+
+      if (response.ok) {
+        console.log('Meal deleted from database successfully');
+        return true;
+      } else {
+        const errorData = await response.json();
+        console.error('Failed to delete meal from database:', errorData);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error deleting meal from database:', error);
+      return false;
+    }
+  };
+
+  // Handle feed log navigation
   const handleFeedLog = (): void => {
     router.push('/HORSE_OPERATOR/Hfeedlog');
   };
 
+  // Handle time change
   const handleTimeChange = (field: 'hour' | 'minute' | 'period', value: string): void => {
     setFeedingTime(prev => ({
       ...prev,
@@ -455,6 +989,7 @@ const FeedScreen = () => {
     }));
   };
 
+  // Handle amount change
   const handleAmountChange = (id: string, amount: string): void => {
     setFeedTypes(prev =>
       prev.map(feed =>
@@ -463,6 +998,7 @@ const FeedScreen = () => {
     );
   };
 
+  // Handle add feed type
   const handleAddFeedType = (): void => {
     Alert.prompt(
       'Add Feed Type',
@@ -485,6 +1021,111 @@ const FeedScreen = () => {
     );
   };
 
+  // Handle save new schedule
+  const handleSaveNewSchedule = async (): Promise<void> => {
+    const activeFeed = feedTypes.find(feed => feed.amount.trim() !== '');
+          
+    if (!activeFeed) {
+      Alert.alert('Error', 'Please specify at least one feed type with an amount.');
+      return;
+    }
+
+    if (!mealType) {
+      Alert.alert('Error', 'Please select a meal type.');
+      return;
+    }
+          
+    try {
+      const updatedTime = `${feedingTime.hour}:${feedingTime.minute} ${feedingTime.period}`;
+
+      // Check if meal type is already completed
+      if (isMealCompleted(mealType)) {
+        const completedInfo = getCompletedMealInfo(mealType);
+        Alert.alert(
+          'Cannot Add Schedule',
+          `This ${mealType} has already been completed by ${completedInfo?.fed_by}. You cannot add a new schedule for completed meals.`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+
+      // Check if meal type already exists
+      const existingMeal = feedingSchedule.find(meal => meal.fd_meal_type === mealType);
+      if (existingMeal) {
+        // Check if the existing meal is completed by anyone
+        if (existingMeal.completed) {
+          const fedBy = existingMeal.fed_by || 'someone';
+          Alert.alert(
+            'Meal Already Completed',
+            `The ${mealType} schedule has already been completed by ${fedBy}. You cannot replace completed meals.`,
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+
+        Alert.alert(
+          'Meal Type Exists',
+          `A ${mealType} schedule already exists. Would you like to replace it?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Replace',
+              onPress: async () => {
+                const updatedSchedule = feedingSchedule.map(meal =>
+                  meal.fd_meal_type === mealType
+                    ? {
+                        ...meal,
+                        fd_time: updatedTime,
+                        fd_food_type: activeFeed.name,
+                        fd_qty: activeFeed.amount,
+                        fd_meal_type: mealType,
+                      }
+                    : meal
+                );
+                
+                setFeedingSchedule(sortMealsByType(updatedSchedule));
+                setShowAddView(false);
+                
+                const success = await saveScheduleToDatabase(updatedSchedule);
+                if (success) {
+                  Alert.alert('Success', `${mealType} schedule updated for ${horseName}!`);
+                } else {
+                  Alert.alert('Warning', 'Schedule updated locally but failed to save to database');
+                }
+              }
+            }
+          ]
+        );
+        return;
+      }
+
+      const newMeal: Meal = {
+        id: generateLocalId(),
+        fd_time: updatedTime,
+        fd_food_type: activeFeed.name,
+        fd_qty: activeFeed.amount,
+        fd_meal_type: mealType,
+        completed: false,
+      };
+
+      const updatedSchedule = [...feedingSchedule, newMeal];
+          
+      setFeedingSchedule(sortMealsByType(updatedSchedule));
+      setShowAddView(false);
+      
+      const success = await saveScheduleToDatabase(updatedSchedule);
+      if (success) {
+        Alert.alert('Success', `${mealType} schedule added for ${horseName}!`);
+      } else {
+        Alert.alert('Warning', 'Schedule added locally but failed to save to database');
+      }
+    } catch (error) {
+      console.error('Error saving new schedule:', error);
+      Alert.alert('Error', 'Failed to save new schedule');
+    }
+  };
+
+  // Handle save changes
   const handleSaveChanges = async (): Promise<void> => {
     const activeFeed = feedTypes.find(feed => feed.amount.trim() !== '');
           
@@ -495,9 +1136,19 @@ const FeedScreen = () => {
           
     if (!editingMeal || !currentUser) return;
 
+    // Check if this meal is completed
+    if (editingMeal.completed) {
+      const fedBy = editingMeal.fed_by || 'someone';
+      Alert.alert(
+        'Cannot Edit',
+        `This meal has already been completed by ${fedBy}. You cannot edit it.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     try {
       const updatedTime = `${feedingTime.hour}:${feedingTime.minute} ${feedingTime.period}`;
-      const mealType = getMealName(updatedTime);
 
       const updatedSchedule = feedingSchedule.map(meal =>
         meal.id === editingMeal.id
@@ -506,23 +1157,49 @@ const FeedScreen = () => {
               fd_time: updatedTime,
               fd_food_type: activeFeed.name,
               fd_qty: activeFeed.amount,
-              fd_meal_type: mealType,
+              fd_meal_type: mealType || editingMeal.fd_meal_type,
             }
           : meal
-      ).sort((a, b) => getMealOrder(a.fd_meal_type) - getMealOrder(b.fd_meal_type));
+      );
           
-      setFeedingSchedule(updatedSchedule);
+      setFeedingSchedule(sortMealsByType(updatedSchedule));
       setShowEditView(false);
       
-      Alert.alert('Success', `Feeding schedule updated for ${horseName}!`);
+      const success = await saveScheduleToDatabase(updatedSchedule);
+      if (success) {
+        Alert.alert('Success', `Feeding schedule updated for ${horseName}!`);
+      } else {
+        Alert.alert('Warning', 'Schedule updated locally but failed to save to database');
+      }
     } catch (error) {
       console.error('Error saving changes:', error);
       Alert.alert('Error', 'Failed to save changes');
     }
   };
 
+  // Handle cancel
   const handleCancel = (): void => {
     setShowEditView(false);
+    setShowAddView(false);
+  };
+
+  // Get meal icon
+  const getMealIcon = (mealType: string): string => {
+    switch (mealType) {
+      case 'Breakfast': return 'sun';
+      case 'Lunch': return 'cloud-sun';
+      case 'Dinner': return 'moon';
+      default: return 'utensils';
+    }
+  };
+
+  // Get available meal types for display
+  const availableMealTypes = getAvailableMealTypes();
+  const scheduledMealTypes = getScheduledMealTypes();
+
+  // Check if a meal type is already scheduled (for UI display)
+  const isMealTypeScheduled = (mealType: string): boolean => {
+    return scheduledMealTypes.includes(mealType);
   };
 
   if (isLoading) {
@@ -535,6 +1212,7 @@ const FeedScreen = () => {
     );
   }
 
+  // Edit View
   if (showEditView) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -548,6 +1226,51 @@ const FeedScreen = () => {
 
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Meal Type</Text>
+              <View style={styles.mealTypeContainer}>
+                {(['Breakfast', 'Lunch', 'Dinner'] as const).map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[
+                      styles.mealTypeButton,
+                      mealType === type && styles.mealTypeButtonSelected,
+                      (isMealCompleted(type) || isMealTypeScheduled(type)) && styles.mealTypeButtonDisabled
+                    ]}
+                    onPress={() => {
+                      if (isMealCompleted(type)) {
+                        const completedInfo = getCompletedMealInfo(type);
+                        Alert.alert(
+                          'Cannot Select',
+                          `This ${type} has been completed by ${completedInfo?.fed_by} and cannot be modified.`,
+                          [{ text: 'OK' }]
+                        );
+                        return;
+                      }
+                      if (isMealTypeScheduled(type) && type !== editingMeal?.fd_meal_type) {
+                        Alert.alert(
+                          'Already Scheduled',
+                          `A ${type} schedule already exists. You cannot have multiple schedules for the same meal type.`,
+                          [{ text: 'OK' }]
+                        );
+                        return;
+                      }
+                      setMealType(type);
+                    }}
+                    disabled={isMealCompleted(type) || (isMealTypeScheduled(type) && type !== editingMeal?.fd_meal_type)}
+                  >
+                    <Text style={[
+                      styles.mealTypeButtonText,
+                      mealType === type && styles.mealTypeButtonTextSelected,
+                      (isMealCompleted(type) || isMealTypeScheduled(type)) && styles.mealTypeButtonTextDisabled
+                    ]}>
+                      {type}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Feeding Time</Text>
               <View style={styles.timeInputContainer}>
@@ -568,13 +1291,25 @@ const FeedScreen = () => {
                   keyboardType="numeric"
                   maxLength={2}
                 />
-                <TextInput
-                  style={styles.periodInput}
-                  value={feedingTime.period}
-                  onChangeText={(value) => handleTimeChange('period', value.toUpperCase())}
-                  placeholder="AM/PM"
-                  maxLength={2}
-                />
+                <View style={styles.periodContainer}>
+                  {(['AM', 'PM'] as const).map((period) => (
+                    <TouchableOpacity
+                      key={period}
+                      style={[
+                        styles.periodButton,
+                        feedingTime.period === period && styles.periodButtonSelected
+                      ]}
+                      onPress={() => handleTimeChange('period', period)}
+                    >
+                      <Text style={[
+                        styles.periodButtonText,
+                        feedingTime.period === period && styles.periodButtonTextSelected
+                      ]}>
+                        {period}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
               </View>
             </View>
 
@@ -595,15 +1330,9 @@ const FeedScreen = () => {
               </View>
 
               <TouchableOpacity style={styles.addFeedButton} onPress={handleAddFeedType}>
+                <FontAwesome5 name="plus" size={16} color="#fff" />
                 <Text style={styles.addFeedButtonText}>Add Feed Type</Text>
               </TouchableOpacity>
-            </View>
-
-            <View style={styles.infoBox}>
-              <FontAwesome5 name="info-circle" size={16} color="#CD853F" />
-              <Text style={styles.infoText}>
-                Schedule changes are saved locally. Database entries are only created when you mark the meal as fed.
-              </Text>
             </View>
           </View>
         </ScrollView>
@@ -620,8 +1349,154 @@ const FeedScreen = () => {
     );
   }
 
+  // Add View
+  if (showAddView) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => setShowAddView(false)} style={styles.backButton}>
+            <FontAwesome5 name="arrow-left" size={20} color="white" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Add Feeding Schedule</Text>
+          <View style={styles.placeholder} />
+        </View>
+
+        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+          <View style={styles.content}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Meal Type</Text>
+              <View style={styles.mealTypeContainer}>
+                {(['Breakfast', 'Lunch', 'Dinner'] as const).map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    style={[
+                      styles.mealTypeButton,
+                      mealType === type && styles.mealTypeButtonSelected,
+                      (isMealCompleted(type) || isMealTypeScheduled(type)) && styles.mealTypeButtonDisabled
+                    ]}
+                    onPress={() => {
+                      if (isMealCompleted(type)) {
+                        const completedInfo = getCompletedMealInfo(type);
+                        Alert.alert(
+                          'Cannot Select',
+                          `This ${type} has been completed by ${completedInfo?.fed_by} and cannot be modified.`,
+                          [{ text: 'OK' }]
+                        );
+                        return;
+                      }
+                      if (isMealTypeScheduled(type)) {
+                        Alert.alert(
+                          'Already Scheduled',
+                          `A ${type} schedule already exists. You cannot have multiple schedules for the same meal type.`,
+                          [{ text: 'OK' }]
+                        );
+                        return;
+                      }
+                      setMealType(type);
+                    }}
+                    disabled={isMealCompleted(type) || isMealTypeScheduled(type)}
+                  >
+                    <Text style={[
+                      styles.mealTypeButtonText,
+                      mealType === type && styles.mealTypeButtonTextSelected,
+                      (isMealCompleted(type) || isMealTypeScheduled(type)) && styles.mealTypeButtonTextDisabled
+                    ]}>
+                      {type}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Feeding Time</Text>
+              <View style={styles.timeInputContainer}>
+                <TextInput
+                  style={styles.timeInput}
+                  value={feedingTime.hour}
+                  onChangeText={(value) => handleTimeChange('hour', value)}
+                  placeholder="HH"
+                  keyboardType="numeric"
+                  maxLength={2}
+                />
+                <Text style={styles.timeSeparator}>:</Text>
+                <TextInput
+                  style={styles.timeInput}
+                  value={feedingTime.minute}
+                  onChangeText={(value) => handleTimeChange('minute', value)}
+                  placeholder="MM"
+                  keyboardType="numeric"
+                  maxLength={2}
+                />
+                <View style={styles.periodContainer}>
+                  {(['AM', 'PM'] as const).map((period) => (
+                    <TouchableOpacity
+                      key={period}
+                      style={[
+                        styles.periodButton,
+                        feedingTime.period === period && styles.periodButtonSelected
+                      ]}
+                      onPress={() => handleTimeChange('period', period)}
+                    >
+                      <Text style={[
+                        styles.periodButtonText,
+                        feedingTime.period === period && styles.periodButtonTextSelected
+                      ]}>
+                        {period}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Feed Types & Amounts</Text>
+              <View style={styles.feedTypesGrid}>
+                {feedTypes.map((feed) => (
+                  <View key={feed.id} style={styles.feedTypeCard}>
+                    <Text style={styles.feedTypeName}>{feed.name}</Text>
+                    <TextInput
+                      style={styles.amountInput}
+                      value={feed.amount}
+                      onChangeText={(value) => handleAmountChange(feed.id, value)}
+                      placeholder="Enter amount"
+                    />
+                  </View>
+                ))}
+              </View>
+
+              <TouchableOpacity style={styles.addFeedButton} onPress={handleAddFeedType}>
+                <FontAwesome5 name="plus" size={16} color="#fff" />
+                <Text style={styles.addFeedButtonText}>Add Feed Type</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </ScrollView>
+
+        <View style={styles.bottomButtons}>
+          <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[
+              styles.saveButton,
+              !mealType && styles.saveButtonDisabled
+            ]} 
+            onPress={handleSaveNewSchedule}
+            disabled={!mealType}
+          >
+            <Text style={styles.saveButtonText}>Add Schedule</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Main Feed List View
   return (
     <SafeAreaView style={styles.safeArea}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.push('/HORSE_OPERATOR/horse')} style={styles.backButton}>
           <FontAwesome5 name="arrow-left" size={20} color="#fff" />
@@ -630,10 +1505,12 @@ const FeedScreen = () => {
           <FontAwesome5 name="horse-head" size={20} color="#fff" />
           <Text style={styles.headerTitle}>{horseName} Feeds</Text>
         </View>
-        <TouchableOpacity style={styles.feedLogButton} onPress={handleFeedLog}>
-          <FontAwesome5 name="clipboard-list" size={14} color="#fff" />
-          <Text style={styles.feedLogText}>Log</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRight}>
+          <TouchableOpacity style={styles.feedLogButton} onPress={handleFeedLog}>
+            <FontAwesome5 name="clipboard-list" size={14} color="#fff" />
+            <Text style={styles.feedLogText}>Log</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView 
@@ -649,77 +1526,110 @@ const FeedScreen = () => {
         }
       >
         <View style={styles.content}>
-          {feedingSchedule.map((meal) => (
-            <View key={meal.id} style={styles.mealCard}>
-              <View style={styles.cardHeader}>
-                <View style={styles.mealInfo}>
-                  <View style={styles.mealTitleRow}>
-                    <Text style={styles.mealTitle}>{meal.fd_meal_type}</Text>
-                  </View>
-                  <Text style={styles.mealTime}>{meal.fd_time}</Text>
-                </View>
-                <TouchableOpacity 
-                  style={[
-                    styles.editButton,
-                    meal.completed && styles.editButtonDisabled
-                  ]} 
-                  onPress={() => handleEdit(meal)}
-                  disabled={meal.completed}
-                >
-                  <FontAwesome5 
-                    name="edit" 
-                    size={14} 
-                    color={meal.completed ? "#9CA3AF" : "#3B82F6"} 
-                  />
-                </TouchableOpacity>
-              </View>
+          {areAllMealsCompleted() && (
+            <View style={styles.allCompletedAlert}>
+              <FontAwesome5 name="check-circle" size={16} color="#fff" />
+              <Text style={styles.allCompletedAlertText}>
+                All meals have been completed today.
+              </Text>
+            </View>
+          )}
 
-              <View style={styles.cardContent}>
-                <View style={styles.feedInfo}>
-                  <View style={styles.feedTypeRow}>
-                    <FontAwesome5 
-                      name={meal.fd_meal_type === 'Breakfast' ? 'sun' : meal.fd_meal_type === 'Lunch' ? 'cloud-sun' : 'moon'} 
-                      size={18} 
-                      color={meal.completed ? '#10B981' : '#8B5A2B'} 
-                    />
-                    <Text style={styles.feedType}>{meal.fd_food_type}</Text>
-                  </View>
-                  <Text style={styles.feedAmount}>{meal.fd_qty}</Text>
-                </View>
-
-                {meal.completed ? (
-                  <View style={styles.completedSection}>
-                    <View style={styles.completedBadge}>
-                      <View style={styles.completedIconContainer}>
-                        <FontAwesome5 name="check" size={14} color="#fff" />
+          {feedingSchedule.length === 0 ? (
+            <View style={styles.emptyState}>
+              <FontAwesome5 name="utensils" size={64} color="#E2E8F0" />
+              <Text style={styles.emptyStateTitle}>No feeding schedule found</Text>
+              <Text style={styles.emptyStateText}>
+                Add your first feeding schedule to get started.
+              </Text>
+              <TouchableOpacity style={styles.addFirstScheduleButton} onPress={handleAddNewSchedule}>
+                <FontAwesome5 name="plus" size={16} color="#fff" />
+                <Text style={styles.addFirstScheduleButtonText}>Add New Feeding Schedule</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <>
+              {feedingSchedule.map((meal) => (
+                <View key={meal.id} style={[
+                  styles.mealCard,
+                  meal.completed && styles.lockedMealCard
+                ]}>
+                  <View style={styles.cardHeader}>
+                    <View style={styles.mealInfo}>
+                      <View style={styles.mealTitleRow}>
+                        <FontAwesome5 
+                          name={getMealIcon(meal.fd_meal_type)} 
+                          size={18} 
+                          color="#CD853F" 
+                        />
+                        <Text style={styles.mealTitle}>{meal.fd_meal_type}</Text>
                       </View>
-                      <Text style={styles.completedText}>Fed</Text>
+                      <Text style={styles.mealTime}>{meal.fd_time}</Text>
                     </View>
-                    {meal.fed_by && (
-                      <View style={styles.fedByContainer}>
-                        <FontAwesome5 name="user" size={12} color="#6B7280" />
-                        <Text style={styles.fedByText}>Fed by: {meal.fed_by}</Text>
+                    <View style={styles.mealActions}>
+                      {!meal.completed && (
+                        <>
+                          <TouchableOpacity 
+                            style={styles.editButton}
+                            onPress={() => handleEdit(meal)}
+                          >
+                            <FontAwesome5 name="edit" size={14} color="#3B82F6" />
+                          </TouchableOpacity>
+                          <TouchableOpacity 
+                            style={styles.deleteButton}
+                            onPress={() => handleDeleteMeal(meal)}
+                          >
+                            <FontAwesome5 name="trash" size={14} color="#EF4444" />
+                          </TouchableOpacity>
+                        </>
+                      )}
+                    </View>
+                  </View>
+
+                  <View style={styles.cardContent}>
+                    <View style={styles.feedInfo}>
+                      <View style={styles.feedTypeRow}>
+                        <Text style={styles.feedType}>{meal.fd_food_type}</Text>
+                        <Text style={styles.feedAmount}>{meal.fd_qty}</Text>
                       </View>
+                    </View>
+
+                    {meal.completed ? (
+                      <View style={styles.completedSection}>
+                        <View style={styles.completedStatus}>
+                          <View style={styles.completedIconContainer}>
+                            <FontAwesome5 name="check" size={14} color="#fff" />
+                          </View>
+                          <Text style={styles.completedText}>Fed</Text>
+                        </View>
+                        {meal.fed_by && (
+                          <View style={styles.fedByContainer}>
+                            <FontAwesome5 name="user" size={12} color="#6B7280" />
+                            <Text style={styles.fedByText}>Fed by: {meal.fed_by}</Text>
+                          </View>
+                        )}
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={styles.markFedButton}
+                        onPress={() => handleMarkAsFed(meal)}
+                      >
+                        <Text style={styles.markFedButtonText}>
+                          Mark as Fed
+                        </Text>
+                      </TouchableOpacity>
                     )}
                   </View>
-                ) : (
-                  <TouchableOpacity
-                    style={styles.markFedButton}
-                    onPress={() => handleMarkAsFed(meal)}
-                  >
-                    <Text style={styles.markFedButtonText}>Mark as Fed</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          ))}
+                </View>
+              ))}
 
-          <TouchableOpacity style={styles.resetButton} onPress={resetDailyFeeds}>
-            <View style={styles.resetIconContainer}>
-              <FontAwesome5 name="redo" size={14} color="#fff" />
-            </View>
-            <Text style={styles.resetButtonText}>Reset Daily Records</Text>
-          </TouchableOpacity>
+              {availableMealTypes.length > 0 && (
+                <TouchableOpacity style={styles.addScheduleButton} onPress={handleAddNewSchedule}>
+                  <Text style={styles.addScheduleButtonText}>Add Feeding Schedule</Text>
+                </TouchableOpacity>
+              )}
+            </>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -765,6 +1675,10 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginLeft: 8,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   feedLogButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -772,6 +1686,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 22,
+    marginRight: 8,
   },
   feedLogText: {
     color: '#fff',
@@ -789,48 +1704,59 @@ const styles = StyleSheet.create({
   content: {
     padding: 20,
   },
-  infoBox: {
+  allCompletedAlert: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#10B981',
     padding: 12,
     borderRadius: 12,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: '#FDE68A',
+    marginBottom: 16,
   },
-  infoText: {
+  allCompletedAlertText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+    marginLeft: 8,
     flex: 1,
-    marginLeft: 8,
-    fontSize: 13,
-    color: '#92400E',
-    lineHeight: 18,
   },
-  mealTitleRow: {
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 40,
+  },
+  emptyStateTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#64748B',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: '#94A3B8',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 24,
+  },
+  addFirstScheduleButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    backgroundColor: '#10B981',
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderRadius: 16,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 3,
   },
-  savedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 6,
+  addFirstScheduleButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
     marginLeft: 8,
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-  },
-  savedBadgeText: {
-    fontSize: 10,
-    color: '#065F46',
-    fontWeight: '600',
-    marginLeft: 3,
-  },
-  editButtonDisabled: {
-    backgroundColor: '#F3F4F6',
-    borderColor: '#E5E7EB',
   },
   mealCard: {
     backgroundColor: '#FFFFFF',
@@ -845,6 +1771,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(148, 163, 184, 0.1)',
   },
+  lockedMealCard: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+    opacity: 0.8,
+  },
   cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -854,10 +1785,16 @@ const styles = StyleSheet.create({
   mealInfo: {
     flex: 1,
   },
+  mealTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
   mealTitle: {
     fontSize: 22,
     fontWeight: '700',
     color: '#1E293B',
+    marginLeft: 8,
   },
   mealTime: {
     fontSize: 15,
@@ -869,15 +1806,30 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignSelf: 'flex-start',
   },
+  mealActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   editButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: '#EFF6FF',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#BFDBFE',
+  },
+  deleteButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#FEF2F2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FECACA',
   },
   cardContent: {
     gap: 16,
@@ -891,24 +1843,23 @@ const styles = StyleSheet.create({
   },
   feedTypeRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
   },
   feedType: {
     fontSize: 18,
     fontWeight: '600',
     color: '#334155',
-    marginLeft: 12,
   },
   feedAmount: {
-    fontSize: 15,
+    fontSize: 16,
     color: '#64748B',
     fontWeight: '500',
   },
   completedSection: {
     gap: 8,
   },
-  completedBadge: {
+  completedStatus: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ECFDF5',
@@ -962,33 +1913,43 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  resetButton: {
+  addScheduleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#EF4444',
+    backgroundColor: '#CD853F',
     paddingVertical: 16,
     borderRadius: 16,
     marginTop: 20,
-    shadowColor: '#EF4444',
+    marginBottom: 5,
+    shadowColor: '#CD853F',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 3,
   },
-  resetIconContainer: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  resetButtonText: {
-    color: '#fff',
+  addScheduleButtonText: {
+    color: '#ffffffff',
     fontSize: 16,
     fontWeight: '700',
+  },
+  noAvailableMealsInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8FAFC',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  noAvailableMealsText: {
+    fontSize: 14,
+    color: '#64748B',
+    fontWeight: '500',
+    marginLeft: 8,
+    textAlign: 'center',
   },
   section: {
     marginBottom: 24,
@@ -1008,6 +1969,43 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1E293B',
     marginBottom: 16,
+  },
+  mealTypeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  mealTypeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#CD853F',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  mealTypeButtonSelected: {
+    backgroundColor: '#CD853F',
+    borderColor: '#CD853F',
+  },
+  mealTypeButtonDisabled: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#E2E8F0',
+  },
+  mealTypeButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#CD853F',
+  },
+  mealTypeButtonTextSelected: {
+    color: '#FFFFFF',
+  },
+  mealTypeButtonTextDisabled: {
+    color: '#94A3B8',
   },
   timeInputContainer: {
     flexDirection: 'row',
@@ -1033,19 +2031,29 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginHorizontal: 12,
   },
-  periodInput: {
+  periodContainer: {
+    flexDirection: 'row',
+    marginLeft: 15,
     borderWidth: 2,
     borderColor: '#E2E8F0',
     borderRadius: 12,
+    overflow: 'hidden',
+  },
+  periodButton: {
     paddingHorizontal: 16,
     paddingVertical: 12,
-    fontSize: 18,
-    fontWeight: '600',
     backgroundColor: '#F8FAFC',
-    width: 90,
-    textAlign: 'center',
-    marginLeft: 15,
-    color: '#1E293B',
+  },
+  periodButtonSelected: {
+    backgroundColor: '#CD853F',
+  },
+  periodButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  periodButtonTextSelected: {
+    color: '#FFFFFF',
   },
   feedTypesGrid: {
     flexDirection: 'row',
@@ -1086,10 +2094,13 @@ const styles = StyleSheet.create({
     color: '#334155',
   },
   addFeedButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#3B82F6',
     borderRadius: 16,
     paddingVertical: 16,
-    alignItems: 'center',
+    gap: 8,
     shadowColor: '#3B82F6',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
@@ -1143,6 +2154,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 3,
+  },
+  saveButtonDisabled: {
+    backgroundColor: '#9CA3AF',
+    shadowColor: 'transparent',
   },
   saveButtonText: {
     color: '#fff',

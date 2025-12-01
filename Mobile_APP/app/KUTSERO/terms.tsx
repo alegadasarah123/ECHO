@@ -1,3 +1,5 @@
+// KUTSERO Terms & Conditions Screen
+
 "use client"
 import { useState } from "react"
 import {
@@ -8,7 +10,7 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    View,
+    View, 
 } from "react-native"
 
 const { width, height } = Dimensions.get("window")

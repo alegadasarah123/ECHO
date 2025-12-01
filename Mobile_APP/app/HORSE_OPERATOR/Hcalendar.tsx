@@ -1,6 +1,8 @@
+// HORSE_OPERATOR/Hcalendar.tsx
+
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import {
   View,
   Text,
@@ -11,10 +13,13 @@ import {
   Alert,
   Dimensions,
   StatusBar,
+  Image,
+  RefreshControl,
 } from "react-native"
 import { FontAwesome5 } from "@expo/vector-icons"
 import { useRouter, useFocusEffect } from "expo-router"
 import * as SecureStore from "expo-secure-store"
+import * as Notifications from 'expo-notifications'
 
 interface Appointment {
   id: string
@@ -27,7 +32,7 @@ interface Appointment {
   date: string
   time: string
   notes?: string
-  status: "scheduled" | "pending" | "approved" | "cancelled" | "declined"
+  status: "today" | "pending" | "approved" | "cancelled" | "declined"
   declineReason?: string
   created_at?: string
 }
@@ -39,8 +44,15 @@ interface User {
   op_email: string
 }
 
+interface VetDetails {
+  clinic_location: string
+  phone_number: string
+  email: string
+  vet_name: string
+}
+
 // Configuration
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator"
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
 
 const { width, height } = Dimensions.get("window")
 
@@ -76,40 +88,371 @@ const getSafeAreaPadding = () => {
   }
 }
 
-interface TabButtonProps {
-  iconName: string
+// Configure notifications handler
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+})
+
+// Storage key for tracking notified appointments
+const LAST_NOTIFIED_APPOINTMENTS_KEY = "last_notified_appointments"
+const CACHED_APPOINTMENTS_KEY = "cached_appointments"
+const CACHE_DURATION_MS = 5 * 60 * 1000 // 5 minutes cache duration
+
+const TabButton = ({
+  iconSource,
+  label,
+  tabKey,
+  isActive,
+  onPress,
+}: {
+  iconSource: any
   label: string
   tabKey: string
   isActive: boolean
   onPress?: () => void
-}
-
-const TabButton = ({ iconName, label, isActive, onPress }: TabButtonProps) => {
-  return (
-    <TouchableOpacity 
-      style={styles.navItem} 
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <View style={[styles.navIcon, isActive && styles.activeNavIcon]}>
-        <FontAwesome5 name={iconName} size={scale(16)} color={isActive ? "#fff" : "#666"} />
-      </View>
-      <Text style={[styles.navLabel, isActive && styles.activeNavLabel]}>{label}</Text>
-    </TouchableOpacity>
-  )
-}
+}) => (
+  <TouchableOpacity style={styles.tabButton} onPress={onPress}>
+    <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
+      {iconSource ? (
+        <Image
+          source={iconSource}
+          style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
+          resizeMode="contain"
+        />
+      ) : (
+        <View style={styles.fallbackIcon} />
+      )}
+    </View>
+    <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
+  </TouchableOpacity>
+)
 
 const CalendarScreen = () => {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null)
+  const [vetDetails, setVetDetails] = useState<VetDetails | null>(null)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [userId, setUserId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [deletingAppointments, setDeletingAppointments] = useState<Set<string>>(new Set())
   const [viewMode, setViewMode] = useState<"calendar" | "all">("calendar")
+  const [refreshing, setRefreshing] = useState(false)
+  
   const router = useRouter()
   const safeArea = getSafeAreaPadding()
+  const activeTab: string = "bookings"
+  
+  // Refs to track state
+  const isMounted = useRef(false)
+  const isScreenFocused = useRef(false)
+
+  // Helper function to determine status priority for coloring
+  const getStatusPriority = useCallback((status: string) => {
+    switch (status) {
+      case "approved": return 3
+      case "pending": return 2
+      case "today": return 1
+      default: return 0
+    }
+  }, [])
+
+  // Save appointments to cache
+  const saveAppointmentsToCache = useCallback(async (appointments: Appointment[]) => {
+    try {
+      const cacheData = {
+        appointments,
+        timestamp: Date.now()
+      }
+      await SecureStore.setItemAsync(CACHED_APPOINTMENTS_KEY, JSON.stringify(cacheData))
+      console.log('💾 Appointments cached successfully')
+    } catch (error) {
+      console.error('❌ Error caching appointments:', error)
+    }
+  }, [])
+
+  // Load appointments from cache
+  const loadAppointmentsFromCache = useCallback(async () => {
+    try {
+      const cachedData = await SecureStore.getItemAsync(CACHED_APPOINTMENTS_KEY)
+      if (cachedData) {
+        const parsed = JSON.parse(cachedData)
+        const { appointments, timestamp } = parsed
+        
+        // Check if cache is still valid
+        if (Date.now() - timestamp < CACHE_DURATION_MS) {
+          console.log('📂 Loading appointments from cache')
+          return appointments as Appointment[]
+        } else {
+          console.log('⏰ Cache expired, will fetch fresh data')
+        }
+      }
+      return null
+    } catch (error) {
+      console.error('❌ Error loading cached appointments:', error)
+      return null
+    }
+  }, [])
+
+  // Request notification permissions
+  const requestNotificationPermissions = useCallback(async () => {
+    try {
+      const { status } = await Notifications.requestPermissionsAsync()
+      if (status === 'granted') {
+        console.log('✅ Notification permissions granted')
+        return true
+      } else {
+        console.log('⚠️ Notification permissions denied')
+        return false
+      }
+    } catch (error) {
+      console.error('❌ Error requesting notification permissions:', error)
+      return false
+    }
+  }, [])
+
+  // Send new appointment notification
+  const sendNewAppointmentNotification = useCallback(async (appointment: Appointment) => {
+    try {
+      console.log(`📢 Sending new appointment notification for: ${appointment.app_id}`)
+      
+      const hasPermission = await requestNotificationPermissions()
+      if (!hasPermission) {
+        console.log('⏭️ No notification permission, skipping')
+        return false
+      }
+
+      const title = '📅 New Appointment Booked!'
+      const body = `You have a new appointment for ${appointment.horseName} with ${appointment.contactName} on ${appointment.date} at ${appointment.time}.`
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          data: {
+            type: 'new_appointment',
+            appointmentId: appointment.app_id,
+            appointmentStatus: appointment.status,
+            horseName: appointment.horseName,
+            vetName: appointment.contactName,
+            time: appointment.time,
+            date: appointment.date,
+          },
+          sound: 'default',
+        },
+        trigger: null, // Show immediately
+      })
+
+      console.log(`✅ Sent new appointment notification for ${appointment.app_id}`)
+      return true
+    } catch (error) {
+      console.error('❌ Error sending new appointment notification:', error)
+      return false
+    }
+  }, [requestNotificationPermissions])
+
+  // Send status change notification
+  const sendStatusChangeNotification = useCallback(async (
+    appointment: Appointment, 
+    oldStatus: string
+  ) => {
+    try {
+      console.log(`🔄 Sending status change notification: ${oldStatus} -> ${appointment.status} for ${appointment.app_id}`)
+      
+      const hasPermission = await requestNotificationPermissions()
+      if (!hasPermission) {
+        console.log('⏭️ No notification permission, skipping')
+        return false
+      }
+
+      let title = ''
+      let body = ''
+
+      // Only send notifications for specific status changes
+      if (appointment.status === 'approved' && oldStatus !== 'approved') {
+        title = '✅ Appointment Approved!'
+        body = `Your appointment for ${appointment.horseName} with ${appointment.contactName} has been approved.`
+      } else if (appointment.status === 'declined' && oldStatus !== 'declined') {
+        title = '❌ Appointment Declined'
+        body = `Your appointment for ${appointment.horseName} with ${appointment.contactName} has been declined.`
+        if (appointment.declineReason) {
+          body += ` Reason: ${appointment.declineReason}`
+        }
+      } else if (appointment.status === 'cancelled' && oldStatus !== 'cancelled') {
+        title = '🗑️ Appointment Cancelled'
+        body = `Your appointment for ${appointment.horseName} with ${appointment.contactName} has been cancelled.`
+      }
+      // Don't send notification for pending status changes (new appointments will get their own notification)
+
+      // Only send if we have a title (meaning it's a meaningful status change)
+      if (title && body) {
+        console.log(`📢 Sending status change notification: ${title}`)
+        
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title,
+            body,
+            data: {
+              type: 'appointment_status_change',
+              appointmentId: appointment.app_id,
+              appointmentStatus: appointment.status,
+              horseName: appointment.horseName,
+              vetName: appointment.contactName,
+              time: appointment.time,
+              date: appointment.date,
+              oldStatus,
+            },
+            sound: 'default',
+          },
+          trigger: null,
+        })
+
+        console.log(`✅ Sent status change notification for ${appointment.app_id}`)
+        return true
+      } else {
+        console.log(`⏭️ No notification sent for status change: ${oldStatus} -> ${appointment.status}`)
+        return false
+      }
+    } catch (error) {
+      console.error('❌ Error sending status change notification:', error)
+      return false
+    }
+  }, [requestNotificationPermissions])
+
+  // Load last notified appointments from storage
+  const loadLastNotifiedAppointments = useCallback(async () => {
+    try {
+      const stored = await SecureStore.getItemAsync(LAST_NOTIFIED_APPOINTMENTS_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        console.log('📋 Loaded last notified appointments:', Object.keys(parsed).length)
+        return parsed as {[key: string]: {status: string, created_at: string}}
+      }
+      console.log('📋 No previously notified appointments found')
+      return {}
+    } catch (error) {
+      console.error('❌ Error loading last notified appointments:', error)
+      return {}
+    }
+  }, [])
+
+  // Save last notified appointments to storage
+  const saveLastNotifiedAppointments = useCallback(async (notifiedAppointments: {[key: string]: {status: string, created_at: string}}) => {
+    try {
+      await SecureStore.setItemAsync(LAST_NOTIFIED_APPOINTMENTS_KEY, JSON.stringify(notifiedAppointments))
+      console.log('💾 Saved last notified appointments:', Object.keys(notifiedAppointments).length)
+    } catch (error) {
+      console.error('❌ Error saving last notified appointments:', error)
+    }
+  }, [])
+
+  // Check and send notifications for appointments
+  const checkAndSendNotifications = useCallback(async (currentAppointments: Appointment[]) => {
+    if (currentAppointments.length === 0) {
+      return
+    }
+
+    console.log('🔍 Checking appointments for notifications...')
+    console.log('📊 Current appointments count:', currentAppointments.length)
+
+    try {
+      // Load previously notified appointments
+      const lastNotified = await loadLastNotifiedAppointments()
+      const updatedNotified: {[key: string]: {status: string, created_at: string}} = { ...lastNotified }
+      let notificationsSent = 0
+
+      // Check each appointment
+      for (const appointment of currentAppointments) {
+        const appointmentId = appointment.app_id
+        const currentStatus = appointment.status
+        const createdAt = appointment.created_at || ''
+
+        const previouslyNotified = lastNotified[appointmentId]
+        
+        if (!previouslyNotified) {
+          // This is a completely new appointment - send new appointment notification
+          console.log(`🎯 New appointment detected: ${appointmentId} (${currentStatus})`)
+          
+          const notificationSent = await sendNewAppointmentNotification(appointment)
+          if (notificationSent) {
+            notificationsSent++
+          }
+          
+          // Mark as notified with current status
+          updatedNotified[appointmentId] = { status: currentStatus, created_at: createdAt }
+        } else if (previouslyNotified.status !== currentStatus) {
+          // Status has changed - send status change notification
+          console.log(`🎯 Status change detected: ${appointmentId} (${previouslyNotified.status} -> ${currentStatus})`)
+          
+          const notificationSent = await sendStatusChangeNotification(appointment, previouslyNotified.status)
+          if (notificationSent) {
+            notificationsSent++
+          }
+          
+          // Update with new status
+          updatedNotified[appointmentId] = { status: currentStatus, created_at: createdAt }
+        } else {
+          // Status hasn't changed, just update the record with current data
+          updatedNotified[appointmentId] = { status: currentStatus, created_at: createdAt }
+        }
+      }
+
+      // Clean up old appointments that are no longer in current list
+      const currentAppointmentIds = new Set(currentAppointments.map(apt => apt.app_id))
+      Object.keys(updatedNotified).forEach(id => {
+        if (!currentAppointmentIds.has(id)) {
+          delete updatedNotified[id]
+        }
+      })
+
+      // Save updated notified appointments
+      await saveLastNotifiedAppointments(updatedNotified)
+
+      console.log(`✅ Notification check complete. Sent ${notificationsSent} notification(s)`)
+      return notificationsSent
+    } catch (error) {
+      console.error('❌ Error in notification check:', error)
+      return 0
+    }
+  }, [loadLastNotifiedAppointments, saveLastNotifiedAppointments, sendNewAppointmentNotification, sendStatusChangeNotification])
+
+  // Set up notification response handling
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data
+      
+      if (data.type === 'new_appointment' || data.type === 'appointment_status_change') {
+        console.log('Appointment notification tapped:', data)
+        
+        // Find and select the appointment
+        const appointment = appointments.find(apt => apt.app_id === data.appointmentId)
+        if (appointment) {
+          setSelectedAppointment(appointment)
+        }
+      }
+    })
+
+    return () => subscription.remove()
+  }, [appointments])
+
+  // Initialize notification permissions
+  useEffect(() => {
+    requestNotificationPermissions()
+  }, [requestNotificationPermissions])
+
+  // Check for notifications when appointments update (only once after fetch)
+  useEffect(() => {
+    if (appointments.length > 0 && !loading && isMounted.current) {
+      console.log('🔄 Appointments updated, checking for notifications...')
+      checkAndSendNotifications(appointments)
+    }
+  }, [appointments, loading, checkAndSendNotifications])
 
   const loadUserId = useCallback(async () => {
     try {
@@ -168,8 +511,28 @@ const CalendarScreen = () => {
   }, [loadUserId])
 
   const fetchAppointments = useCallback(
-    async (userIdToUse?: string) => {
+    async (userIdToUse?: string, forceRefresh: boolean = false) => {
       try {
+        // Check if we should load from cache (unless force refresh is true)
+        if (!forceRefresh) {
+          const cachedAppointments = await loadAppointmentsFromCache()
+          if (cachedAppointments) {
+            console.log('📂 Using cached appointments')
+            setAppointments(cachedAppointments)
+            setLoading(false)
+            setRefreshing(false)
+            
+            // We still need to check for updates in the background
+            // but we don't block the UI
+            setTimeout(() => {
+              if (isMounted.current) {
+                fetchAppointments(userIdToUse, true) // Force refresh in background
+              }
+            }, 1000)
+            return
+          }
+        }
+
         let uid = userIdToUse || userId
         if (!uid) {
           const userData = await loadUserId()
@@ -212,23 +575,123 @@ const CalendarScreen = () => {
                 date: apt.app_date || apt.date,
                 time: apt.app_time || apt.time,
                 notes: apt.app_complain || apt.notes || "",
-                status: apt.app_status || apt.status || "scheduled",
+                status: apt.app_status || apt.status || "today",
                 declineReason: apt.decline_reason || apt.declineReason,
                 created_at: apt.created_at || apt.app_created_at,
               }))
               .filter((apt) => !deletingAppointments.has(apt.app_id))
           : []
 
+        console.log("🔄 Setting new appointments state")
         setAppointments(transformedAppointments)
+        
+        // Save to cache
+        await saveAppointmentsToCache(transformedAppointments)
+        
         console.log("✅ Transformed appointments:", transformedAppointments)
       } catch (error: any) {
         console.error("❌ Error loading appointments:", error)
-        Alert.alert("Error", error.message || "Unable to load appointments")
-        setAppointments([])
+        
+        // If we were forcing a refresh and failed, don't show error to user
+        // since they still have cached data
+        if (!forceRefresh) {
+          Alert.alert("Error", error.message || "Unable to load appointments")
+        }
+        
+        // Try to load from cache as fallback
+        const cachedAppointments = await loadAppointmentsFromCache()
+        if (cachedAppointments) {
+          setAppointments(cachedAppointments)
+        } else {
+          setAppointments([])
+        }
+      } finally {
+        setLoading(false)
+        setRefreshing(false)
       }
     },
-    [userId, loadUserId, deletingAppointments],
+    [userId, loadUserId, deletingAppointments, loadAppointmentsFromCache, saveAppointmentsToCache],
   )
+
+  // Manual refresh function
+  const handleRefresh = useCallback(async () => {
+    console.log('🔄 Manual refresh triggered')
+    setRefreshing(true)
+    
+    const user = await fetchCurrentUser()
+    if (user && user.op_id) {
+      await fetchAppointments(user.op_id, true) // Force refresh
+    }
+  }, [fetchCurrentUser, fetchAppointments])
+
+  const fetchVetDetails = useCallback(async (vetId: string) => {
+    try {
+      console.log("📞 Fetching veterinarian details for:", vetId)
+      
+      const response = await fetch(
+        `${API_BASE_URL}/get_vet_profile/?vet_id=${vetId}`
+      )
+      
+      if (response.ok) {
+        const vetDataArray = await response.json()
+        console.log("✅ Veterinarian details:", vetDataArray)
+        
+        if (vetDataArray && vetDataArray.length > 0) {
+          const vetData = vetDataArray[0]
+          
+          // Format address based on your backend data
+          let clinicLocation = "Clinic location not available"
+          if (vetData.vet_address_is_clinic) {
+            // Use clinic address
+            const clinicParts = []
+            if (vetData.vet_clinic_street) clinicParts.push(vetData.vet_clinic_street)
+            if (vetData.vet_clinic_brgy) clinicParts.push(`Brgy. ${vetData.vet_clinic_brgy}`)
+            if (vetData.vet_clinic_city) clinicParts.push(vetData.vet_clinic_city)
+            if (vetData.vet_clinic_province) clinicParts.push(vetData.vet_clinic_province)
+            if (vetData.vet_clinic_zipcode) clinicParts.push(vetData.vet_clinic_zipcode)
+            clinicLocation = clinicParts.join(", ") || "Clinic location not available"
+          } else {
+            // Use personal address
+            const addressParts = []
+            if (vetData.vet_street) addressParts.push(vetData.vet_street)
+            if (vetData.vet_brgy) addressParts.push(`Brgy. ${vetData.vet_brgy}`)
+            if (vetData.vet_city) addressParts.push(vetData.vet_city)
+            if (vetData.vet_province) addressParts.push(vetData.vet_province)
+            if (vetData.vet_zipcode) addressParts.push(vetData.vet_zipcode)
+            clinicLocation = addressParts.join(", ") || "Address not available"
+          }
+          
+          // Get vet full name
+          const vetName = `${vetData.vet_fname || ''} ${vetData.vet_lname || ''}`.trim() || "Unknown Veterinarian"
+          
+          setVetDetails({
+            clinic_location: clinicLocation,
+            phone_number: vetData.vet_phone_num || "Phone number not available",
+            email: vetData.vet_email || "Email not available",
+            vet_name: vetName
+          })
+        } else {
+          throw new Error("No veterinarian data found")
+        }
+      } else {
+        console.warn("⚠️ Could not fetch veterinarian details, using fallback")
+        setVetDetails({
+          clinic_location: "Clinic location not available",
+          phone_number: "Phone number not available", 
+          email: "Email not available",
+          vet_name: "Unknown Veterinarian"
+        })
+      }
+    } catch (error) {
+      console.error("❌ Error fetching veterinarian details:", error)
+      setVetDetails({
+        clinic_location: "Clinic location not available",
+        phone_number: "Phone number not available",
+        email: "Email not available",
+        vet_name: "Unknown Veterinarian"
+      })
+    }
+  }, [])
 
   const cancelAppointment = useCallback(
     async (appointmentId: string) => {
@@ -243,10 +706,26 @@ const CalendarScreen = () => {
 
         if (response.ok) {
           console.log("✅ Appointment cancelled successfully")
-          if (userId) {
-            await fetchAppointments(userId)
+          
+          // Update the appointment status locally
+          const updatedAppointments = appointments.map(apt => 
+            apt.app_id === appointmentId 
+              ? { ...apt, status: 'cancelled' as const }
+              : apt
+          )
+          
+          setAppointments(updatedAppointments)
+          
+          // Update selected appointment if it's the one being cancelled
+          if (selectedAppointment?.app_id === appointmentId) {
+            setSelectedAppointment(prev => 
+              prev ? { ...prev, status: 'cancelled' as const } : null
+            )
           }
-          setSelectedAppointment(null)
+          
+          // Update cache with new data
+          await saveAppointmentsToCache(updatedAppointments)
+          
           Alert.alert("Success", "Appointment cancelled successfully")
         } else {
           const errorData = await response.text()
@@ -258,7 +737,7 @@ const CalendarScreen = () => {
         Alert.alert("Error", "Failed to cancel appointment")
       }
     },
-    [userId, fetchAppointments],
+    [appointments, selectedAppointment, saveAppointmentsToCache],
   )
 
   const deleteAppointmentPermanently = useCallback(
@@ -267,10 +746,14 @@ const CalendarScreen = () => {
         console.log("🗑️ Permanently deleting appointment:", appointmentId)
 
         setDeletingAppointments((prev) => new Set(prev).add(appointmentId))
-        setAppointments((prev) => prev.filter((apt) => apt.app_id !== appointmentId))
+        
+        // Remove from local state immediately
+        const updatedAppointments = appointments.filter((apt) => apt.app_id !== appointmentId)
+        setAppointments(updatedAppointments)
 
         if (selectedAppointment?.app_id === appointmentId) {
           setSelectedAppointment(null)
+          setVetDetails(null)
         }
 
         const response = await fetch(`${API_BASE_URL}/delete_appointment_permanently/${appointmentId}/`, {
@@ -282,6 +765,10 @@ const CalendarScreen = () => {
 
         if (response.ok) {
           console.log("✅ Appointment deleted permanently")
+          
+          // Update cache with new data
+          await saveAppointmentsToCache(updatedAppointments)
+          
           Alert.alert("Success", "Appointment deleted permanently")
 
           setDeletingAppointments((prev) => {
@@ -289,10 +776,6 @@ const CalendarScreen = () => {
             newSet.delete(appointmentId)
             return newSet
           })
-
-          if (userId) {
-            await fetchAppointments(userId)
-          }
         } else {
           const errorData = await response.text()
           console.error("❌ Failed to delete appointment permanently:", errorData)
@@ -303,8 +786,9 @@ const CalendarScreen = () => {
             return newSet
           })
 
+          // Restore the appointment
           if (userId) {
-            await fetchAppointments(userId)
+            await fetchAppointments(userId, true)
           }
 
           Alert.alert("Error", "Failed to delete appointment permanently")
@@ -319,13 +803,13 @@ const CalendarScreen = () => {
         })
 
         if (userId) {
-          await fetchAppointments(userId)
+          await fetchAppointments(userId, true)
         }
 
         Alert.alert("Error", "Failed to delete appointment permanently")
       }
     },
-    [userId, fetchAppointments, selectedAppointment?.app_id],
+    [userId, appointments, selectedAppointment?.app_id, fetchAppointments, saveAppointmentsToCache],
   )
 
   const canRescheduleAppointment = useCallback((appointment: Appointment) => {
@@ -359,59 +843,162 @@ const CalendarScreen = () => {
     }
   }, [])
 
+  // Initial data load - only once on mount
   useEffect(() => {
     const initializeData = async () => {
+      if (isMounted.current) {
+        return
+      }
+
       setLoading(true)
       try {
-        const user = await fetchCurrentUser()
-        if (user && user.op_id) {
-          await fetchAppointments(user.op_id)
+        console.log('🚀 Initializing calendar data...')
+        
+        // First check cache
+        const cachedAppointments = await loadAppointmentsFromCache()
+        
+        if (cachedAppointments) {
+          console.log('📂 Using cached data')
+          setAppointments(cachedAppointments)
+          const user = await fetchCurrentUser()
+          setLoading(false)
+          
+          // Fetch fresh data in background without blocking UI
+          setTimeout(async () => {
+            if (user && user.op_id && isMounted.current) {
+              await fetchAppointments(user.op_id, true)
+            }
+          }, 1000)
+        } else {
+          console.log('📡 Fetching fresh data (no cache)')
+          const user = await fetchCurrentUser()
+          if (user && user.op_id) {
+            await fetchAppointments(user.op_id, false)
+          }
         }
+        
+        isMounted.current = true
       } catch (error) {
         console.error("❌ Error initializing data:", error)
-      } finally {
         setLoading(false)
       }
     }
 
     initializeData()
-  }, [fetchCurrentUser, fetchAppointments])
 
+    return () => {
+      isMounted.current = false
+    }
+  }, [fetchCurrentUser, fetchAppointments, loadAppointmentsFromCache])
+
+  // Fetch vet details when appointment is selected
+  useEffect(() => {
+    if (selectedAppointment) {
+      fetchVetDetails(selectedAppointment.contactId)
+    } else {
+      // Reset when no appointment is selected
+      setVetDetails(null)
+    }
+  }, [selectedAppointment, fetchVetDetails])
+
+  // Handle screen focus - fetch fresh data when screen comes into focus
   useFocusEffect(
     useCallback(() => {
-      console.log("🎯 Calendar screen focused - refreshing appointments...")
-      if (userId) {
-        fetchAppointments(userId)
+      console.log("🎯 Calendar screen focused")
+      isScreenFocused.current = true
+      
+      // Only fetch if we have a user ID and the screen was previously not focused
+      const refreshData = async () => {
+        const user = await fetchCurrentUser()
+        if (user && user.op_id && isMounted.current) {
+          // Check if cache is expired
+          const cachedAppointments = await loadAppointmentsFromCache()
+          if (!cachedAppointments) {
+            // No valid cache, fetch fresh data
+            await fetchAppointments(user.op_id, false)
+          }
+        }
       }
-    }, [fetchAppointments, userId]),
+      
+      refreshData()
+      
+      return () => {
+        isScreenFocused.current = false
+      }
+    }, [fetchCurrentUser, fetchAppointments, loadAppointmentsFromCache]),
   )
 
   const getCalendarData = useCallback(() => {
     const year = currentDate.getFullYear()
     const month = currentDate.getMonth()
+    
+    // Get first day of the month
     const firstDay = new Date(year, month, 1)
-
-    const startDate = new Date(firstDay)
-    const dayOfWeek = firstDay.getDay()
-    const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek
-    startDate.setDate(firstDay.getDate() + mondayOffset)
-
+    // Get last day of the month
+    const lastDay = new Date(year, month + 1, 0)
+    
+    // Get the day of the week for the first day (0 = Sunday, 1 = Monday, etc.)
+    const firstDayOfWeek = firstDay.getDay()
+    
+    // Get the day of the week for the last day
+    const lastDayOfWeek = lastDay.getDay()
+    
+    // Calculate days from previous month to show
+    const daysFromPrevMonth = firstDayOfWeek
+    
+    // Calculate days from next month to show
+    const daysFromNextMonth = 6 - lastDayOfWeek
+    
     const days = []
-    const currentDateForLoop = new Date(startDate)
-    for (let i = 0; i < 42; i++) {
-      days.push(new Date(currentDateForLoop))
-      currentDateForLoop.setDate(currentDateForLoop.getDate() + 1)
+    
+    // Add days from previous month
+    const prevMonthLastDay = new Date(year, month, 0).getDate()
+    for (let i = daysFromPrevMonth - 1; i >= 0; i--) {
+      const date = new Date(year, month - 1, prevMonthLastDay - i)
+      days.push(date)
     }
+    
+    // Add days from current month
+    const daysInMonth = lastDay.getDate()
+    for (let i = 1; i <= daysInMonth; i++) {
+      const date = new Date(year, month, i)
+      days.push(date)
+    }
+    
+    // Add days from next month
+    for (let i = 1; i <= daysFromNextMonth; i++) {
+      const date = new Date(year, month + 1, i)
+      days.push(date)
+    }
+    
     return { days, firstDay }
   }, [currentDate])
 
-  const hasAppointments = useCallback(
-    (date: Date) => {
-      const dateString = date.toISOString().split("T")[0]
-      return appointments.some((apt) => apt.date === dateString && apt.status !== "cancelled")
-    },
-    [appointments],
-  )
+  // Updated function to get appointment dates with their status
+  const getAppointmentDatesWithStatus = useCallback(() => {
+    const datesWithAppointments = new Map<string, string>() // date -> status
+    appointments.forEach((apt) => {
+      if (apt.status !== "cancelled" && apt.status !== "declined") {
+        // Parse the appointment date and format it to YYYY-MM-DD for consistent comparison
+        const appointmentDate = new Date(apt.date)
+        const year = appointmentDate.getFullYear()
+        const month = String(appointmentDate.getMonth() + 1).padStart(2, '0')
+        const day = String(appointmentDate.getDate()).padStart(2, '0')
+        const formattedDate = `${year}-${month}-${day}`
+        
+        // Store the status for this date
+        // If multiple appointments on same date, keep the most "important" status
+        const currentStatus = datesWithAppointments.get(formattedDate)
+        if (!currentStatus || getStatusPriority(apt.status) > getStatusPriority(currentStatus)) {
+          datesWithAppointments.set(formattedDate, apt.status)
+        }
+        
+        console.log(`📅 Appointment found: ${apt.date} -> ${formattedDate} (${apt.status})`)
+      }
+    })
+    console.log("📅 Dates with appointments:", Array.from(datesWithAppointments.entries()))
+    return datesWithAppointments
+  }, [appointments, getStatusPriority])
 
   const goToPreviousMonth = useCallback(() => {
     setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
@@ -442,7 +1029,7 @@ const CalendarScreen = () => {
 
   const isCurrentMonth = useCallback(
     (date: Date) => {
-      return date.getMonth() === currentDate.getMonth()
+      return date.getMonth() === currentDate.getMonth() && date.getFullYear() === currentDate.getFullYear()
     },
     [currentDate],
   )
@@ -480,7 +1067,7 @@ const CalendarScreen = () => {
     return appointments.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }, [appointments])
 
-  const deleteAppointment = useCallback(
+  const handleDeleteAppointment = useCallback(
     (appointmentId: string) => {
       Alert.alert("Cancel Appointment", "Are you sure you want to cancel this appointment?", [
         { text: "No", style: "cancel" },
@@ -519,51 +1106,17 @@ const CalendarScreen = () => {
 
   const handleBackToCalendar = useCallback(() => {
     setSelectedAppointment(null)
+    setVetDetails(null)
   }, [])
 
-  // const handleReschedule = useCallback(() => {
-  //   if (selectedAppointment) {
-  //     const rescheduleCheck = canRescheduleAppointment(selectedAppointment)
-
-  //     if (!rescheduleCheck.canReschedule) {
-  //       Alert.alert("Reschedule Not Available", rescheduleCheck.reason, [
-  //         {
-  //           text: "OK",
-  //           style: "default",
-  //         },
-  //       ])
-  //       return
-  //     }
-
-  //     if (rescheduleCheck.reason) {
-  //       Alert.alert("Reschedule Appointment", rescheduleCheck.reason + "\n\nProceed with rescheduling?", [
-  //         {
-  //           text: "Cancel",
-  //           style: "cancel",
-  //         },
-  //         {
-  //           text: "Continue",
-  //           onPress: () => {
-  //             router.push({
-  //               pathname: "/HORSE_OPERATOR/resched",
-  //               params: { appointment: JSON.stringify(selectedAppointment) },
-  //             })
-  //           },
-  //         },
-  //       ])
-  //     } else {
-  //       router.push({
-  //         pathname: "/HORSE_OPERATOR/resched",
-  //         params: { appointment: JSON.stringify(selectedAppointment) },
-  //       })
-  //     }
-  //   }
-  // }, [selectedAppointment, canRescheduleAppointment, router])
+  const handleAddAppointment = useCallback(() => {
+    router.push("/HORSE_OPERATOR/Hbook2" as any)
+  }, [router])
 
   const getStatusColor = useCallback((status: string) => {
     switch (status) {
-      case "scheduled":
-        return "#2196F3"
+      case "today":
+        return "#2196F3" 
       case "pending":
         return "#FF9800"
       case "approved":
@@ -578,7 +1131,14 @@ const CalendarScreen = () => {
   }, [])
 
   const getStatusText = useCallback((status: string) => {
-    return status.charAt(0).toUpperCase() + status.slice(1)
+    const statusMap: {[key: string]: string} = {
+      'today': 'Today',
+      'pending': 'Pending',
+      'approved': 'Approved', 
+      'cancelled': 'Cancelled',
+      'declined': 'Declined'
+    }
+    return statusMap[status] || status.charAt(0).toUpperCase() + status.slice(1)
   }, [])
 
   const formatCreationTime = useCallback((createdAt?: string) => {
@@ -601,6 +1161,7 @@ const CalendarScreen = () => {
   const { days } = getCalendarData()
   const upcomingAppointments = getUpcomingAppointments()
   const allAppointments = getAllAppointments()
+  const appointmentDatesWithStatus = getAppointmentDatesWithStatus()
 
   if (loading) {
     return (
@@ -622,7 +1183,7 @@ const CalendarScreen = () => {
           </TouchableOpacity>
         ) : null}
         <Text style={styles.headerTitle}>{selectedAppointment ? "Appointment Details" : "Calendar"}</Text>
-        {currentUser && (
+        {currentUser && !selectedAppointment && (
           <View style={styles.userInfo}>
             <Text style={styles.userText}>
               {currentUser.op_fname} {currentUser.op_lname}
@@ -631,7 +1192,18 @@ const CalendarScreen = () => {
         )}
       </View>
 
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.container} 
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={["#000000ff"]}
+            tintColor="#000000ff"
+          />
+        }
+      >
         {!selectedAppointment ? (
           <View>
             <View style={styles.viewToggleContainer}>
@@ -680,7 +1252,7 @@ const CalendarScreen = () => {
                   </View>
 
                   <View style={styles.dayHeaders}>
-                    {["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"].map((day) => (
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
                       <Text key={day} style={styles.dayHeader}>
                         {day}
                       </Text>
@@ -689,28 +1261,80 @@ const CalendarScreen = () => {
 
                   <View style={styles.calendarGrid}>
                     {days.map((day, index) => {
-                      const hasApt = hasAppointments(day)
                       const isCurrentMonthDay = isCurrentMonth(day)
                       const isTodayDate = isToday(day)
+                      
+                      // Format the calendar date for comparison with appointment dates
+                      const year = day.getFullYear()
+                      const month = String(day.getMonth() + 1).padStart(2, '0')
+                      const date = String(day.getDate()).padStart(2, '0')
+                      const dateString = `${year}-${month}-${date}`
+                      
+                      const appointmentStatus = appointmentDatesWithStatus.get(dateString)
+                      const hasAppointmentOnDate = !!appointmentStatus
+                      
+                      // Get background color based on appointment status
+                      let backgroundColor = 'transparent'
+                      let borderColor = 'transparent'
+                      let textColor = isCurrentMonthDay ? '#333' : '#ccc'
+                      
+                      if (hasAppointmentOnDate && isCurrentMonthDay) {
+                        backgroundColor = getStatusColor(appointmentStatus!) + '20' // 20% opacity
+                        borderColor = getStatusColor(appointmentStatus!)
+                      }
+                      
+                      // Set today's date to use the blue color (same as "today" status)
+                      if (isTodayDate) {
+                        backgroundColor = '#2196F3' // Blue color for today
+                        textColor = '#fff'
+                      }
+                      
                       return (
                         <TouchableOpacity
                           key={index}
-                          style={[styles.dayCell, isTodayDate && styles.todayCell, hasApt && styles.appointmentCell]}
+                          style={[
+                            styles.dayCell, 
+                            isTodayDate && styles.todayCell,
+                            hasAppointmentOnDate && isCurrentMonthDay && {
+                              backgroundColor,
+                              borderColor,
+                              borderWidth: 2,
+                            }
+                          ]}
                         >
                           <Text
                             style={[
                               styles.dayText,
                               !isCurrentMonthDay && styles.otherMonthText,
                               isTodayDate && styles.todayText,
-                              hasApt && styles.appointmentText,
+                              { color: textColor },
+                              hasAppointmentOnDate && isCurrentMonthDay && styles.appointmentDateText,
                             ]}
                           >
                             {day.getDate()}
                           </Text>
-                          {hasApt && <View style={styles.appointmentDot} />}
                         </TouchableOpacity>
                       )
                     })}
+                  </View>
+
+                  {/* Status Legend */}
+                  <View style={styles.legendContainer}>
+                    <Text style={styles.legendTitle}>Status Legend:</Text>
+                    <View style={styles.legendItems}>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendColor, { backgroundColor: '#4CAF50' }]} />
+                        <Text style={styles.legendText}>Approved</Text>
+                      </View>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendColor, { backgroundColor: '#FF9800' }]} />
+                        <Text style={styles.legendText}>Pending</Text>
+                      </View>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendColor, { backgroundColor: '#2196F3' }]} />
+                        <Text style={styles.legendText}>Today</Text>
+                      </View>
+                    </View>
                   </View>
                 </View>
 
@@ -786,9 +1410,6 @@ const CalendarScreen = () => {
                                   },
                                 ]}
                               >
-                                <View
-                                  style={[styles.statusDot, { backgroundColor: getStatusColor(appointment.status) }]}
-                                />
                                 <Text style={[styles.tagText, { color: getStatusColor(appointment.status) }]}>
                                   {getStatusText(appointment.status)}
                                 </Text>
@@ -808,7 +1429,7 @@ const CalendarScreen = () => {
                             !deletingAppointments.has(appointment.app_id) && (
                               <TouchableOpacity
                                 style={styles.deleteButton}
-                                onPress={() => deleteAppointment(appointment.app_id)}
+                                onPress={() => handleDeleteAppointment(appointment.app_id)}
                               >
                                 <FontAwesome5 name="trash" size={18} color="#ff4444" />
                               </TouchableOpacity>
@@ -890,9 +1511,6 @@ const CalendarScreen = () => {
                                 },
                               ]}
                             >
-                              <View
-                                style={[styles.statusDot, { backgroundColor: getStatusColor(appointment.status) }]}
-                              />
                               <Text style={[styles.tagText, { color: getStatusColor(appointment.status) }]}>
                                 {getStatusText(appointment.status)}
                               </Text>
@@ -912,7 +1530,7 @@ const CalendarScreen = () => {
                           !deletingAppointments.has(appointment.app_id) && (
                             <TouchableOpacity
                               style={styles.deleteButton}
-                              onPress={() => deleteAppointment(appointment.app_id)}
+                              onPress={() => handleDeleteAppointment(appointment.app_id)}
                             >
                               <FontAwesome5 name="trash" size={18} color="#ff4444" />
                             </TouchableOpacity>
@@ -926,58 +1544,103 @@ const CalendarScreen = () => {
           </View>
         ) : (
           <View>
-            <View style={styles.detailsCard}>
-              <View
-                style={[styles.appointmentDateBox, { backgroundColor: getStatusColor(selectedAppointment.status) }]}
-              >
-                <Text style={styles.appointmentDayText}>{getDayAbbreviation(selectedAppointment.date)}</Text>
-                <Text style={styles.appointmentDayNumber}>{getDayNumber(selectedAppointment.date)}</Text>
-              </View>
-              <View style={styles.appointmentSummary}>
-                <Text style={styles.horseName}>{selectedAppointment.horseName}</Text>
-                <Text style={styles.appointmentDateFull}>{formatAppointmentDate(selectedAppointment.date)}</Text>
-                <View style={styles.timeServiceContainer}>
-                  <FontAwesome5 name="clock" size={14} color="#666" style={styles.icon} />
-                  <Text style={styles.timeServiceText}>
-                    {selectedAppointment.time} — {selectedAppointment.service}
-                  </Text>
+            {/* Updated Details Card to match appointment card style */}
+            <TouchableOpacity style={styles.appointmentCard} disabled>
+              <View style={styles.appointmentCardInner}>
+                <View style={[styles.appointmentDate, { backgroundColor: getStatusColor(selectedAppointment.status) }]}>
+                  <Text style={styles.appointmentDayText}>{getDayAbbreviation(selectedAppointment.date)}</Text>
+                  <Text style={styles.appointmentDayNumber}>{getDayNumber(selectedAppointment.date)}</Text>
                 </View>
-                {selectedAppointment.created_at && (
-                  <Text style={styles.bookingTime}>Booked: {formatCreationTime(selectedAppointment.created_at)}</Text>
-                )}
-                <View style={styles.tagsContainer}>
-                  <View style={[styles.tag, { backgroundColor: getStatusColor(selectedAppointment.status) + "20" }]}>
-                    <Text style={[styles.tagText, { color: getStatusColor(selectedAppointment.status) }]}>
-                      {getStatusText(selectedAppointment.status)}
+                <View style={styles.appointmentDetails}>
+                  <Text style={styles.appointmentHorse}>{selectedAppointment.horseName}</Text>
+                  <View style={styles.appointmentInfoRow}>
+                    <FontAwesome5 name="calendar" size={12} color="#888" />
+                    <Text style={styles.appointmentTime}>{formatAppointmentDate(selectedAppointment.date)}</Text>
+                  </View>
+                  <View style={styles.appointmentInfoRow}>
+                    <FontAwesome5 name="clock" size={12} color="#888" />
+                    <Text style={styles.appointmentTime}>{selectedAppointment.time}</Text>
+                  </View>
+                  <View style={styles.appointmentInfoRow}>
+                    <FontAwesome5 name="stethoscope" size={12} color="#888" />
+                    <Text style={styles.appointmentService}>{selectedAppointment.service}</Text>
+                  </View>
+                  <View style={styles.appointmentInfoRow}>
+                    <FontAwesome5 name="user-md" size={12} color="#888" />
+                    <Text style={styles.appointmentDoctor}>{selectedAppointment.contactName}</Text>
+                  </View>
+                  <View style={styles.appointmentInfoRow}>
+                    <FontAwesome5 name="calendar-plus" size={12} color="#888" />
+                    <Text style={styles.appointmentCreatedAt}>
+                      Booked:{" "}
+                      {selectedAppointment.created_at
+                        ? formatCreationTime(selectedAppointment.created_at)
+                        : "Date unavailable"}
                     </Text>
+                  </View>
+                  <View style={styles.appointmentTags}>
+                    <View
+                      style={[
+                        styles.tag,
+                        {
+                          backgroundColor: getStatusColor(selectedAppointment.status) + "20",
+                          borderColor: getStatusColor(selectedAppointment.status),
+                        },
+                      ]}
+                    >
+                      <Text style={[styles.tagText, { color: getStatusColor(selectedAppointment.status) }]}>
+                        {getStatusText(selectedAppointment.status)}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
 
+            {/* Clean Veterinarian Info Section */}
             <View style={styles.infoSection}>
-              <View style={styles.infoRow}>
-                <FontAwesome5 name="user-md" size={16} color="#CD853F" style={styles.infoIcon} />
-                <Text style={styles.infoLabel}>Vet:</Text>
-                <Text style={styles.infoText}>{selectedAppointment.contactName}</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <FontAwesome5 name="clinic-medical" size={16} color="#CD853F" style={styles.infoIcon} />
-                <Text style={styles.infoLabel}>Clinic:</Text>
-                <Text style={styles.infoText}>Cebu Animal Health Center</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <FontAwesome5 name="map-marker-alt" size={16} color="#CD853F" style={styles.infoIcon} />
-                <Text style={styles.infoLabel}>Location:</Text>
-                <Text style={styles.infoText}>Salinas Drive, Lahug, Cebu City</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <FontAwesome5 name="phone" size={16} color="#CD853F" style={styles.infoIcon} />
-                <Text style={styles.infoText}>0912-345-6789</Text>
-              </View>
-              <View style={styles.infoRow}>
-                <FontAwesome5 name="envelope" size={16} color="#CD853F" style={styles.infoIcon} />
-                <Text style={styles.infoText}>contact@cebuvet.com</Text>
+              <Text style={styles.sectionTitle}>Veterinarian Information</Text>
+              
+              <View style={styles.infoCard}>
+                <View style={styles.infoItem}>
+                  <View style={styles.infoIconContainer}>
+                    <FontAwesome5 name="map-marker-alt" size={16} color="#CD853F" />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Clinic Location</Text>
+                    <Text style={styles.infoText}>
+                      {vetDetails?.clinic_location || "Location not available"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.divider} />
+
+                <View style={styles.infoItem}>
+                  <View style={styles.infoIconContainer}>
+                    <FontAwesome5 name="phone" size={16} color="#CD853F" />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Contact</Text>
+                    <Text style={styles.infoText}>
+                      {vetDetails?.phone_number || "Phone not available"}
+                    </Text>
+                  </View>
+                </View>
+
+                <View style={styles.divider} />
+
+                <View style={styles.infoItem}>
+                  <View style={styles.infoIconContainer}>
+                    <FontAwesome5 name="envelope" size={16} color="#CD853F" />
+                  </View>
+                  <View style={styles.infoContent}>
+                    <Text style={styles.infoLabel}>Email</Text>
+                    <Text style={styles.infoText}>
+                      {vetDetails?.email || "Email not available"}
+                    </Text>
+                  </View>
+                </View>
               </View>
             </View>
 
@@ -1003,21 +1666,7 @@ const CalendarScreen = () => {
                 <View>
                   {(() => {
                     const rescheduleCheck = canRescheduleAppointment(selectedAppointment)
-                    if (rescheduleCheck.canReschedule) {
-                      // return (
-                      //   // <View>
-                      //   //   {rescheduleCheck.reason && (
-                      //   //     <View style={styles.rescheduleTimeInfo}>
-                      //   //       <FontAwesome5 name="clock" size={14} color="#FF9800" style={styles.timeIcon} />
-                      //   //       <Text style={styles.rescheduleTimeText}>{rescheduleCheck.reason}</Text>
-                      //   //     </View>
-                      //   //   )}
-                      //   //   <TouchableOpacity style={styles.rescheduleButton} onPress={handleReschedule}>
-                      //   //     <Text style={styles.rescheduleButtonText}>Reschedule</Text>
-                      //   //   </TouchableOpacity>
-                      //   // </View>
-                      // )
-                    } else {
+                    if (!rescheduleCheck.canReschedule) {
                       return (
                         <View style={styles.rescheduleDisabledSection}>
                           <View style={styles.rescheduleTimeInfo}>
@@ -1035,18 +1684,13 @@ const CalendarScreen = () => {
                         </View>
                       )
                     }
+                    return null
                   })()}
                 </View>
               )}
 
             {(selectedAppointment.status === "cancelled" || selectedAppointment.status === "declined") && (
               <View style={styles.permanentDeleteSection}>
-                <View style={styles.deleteWarningInfo}>
-                  <FontAwesome5 name="exclamation-triangle" size={14} color="#f44336" style={styles.timeIcon} />
-                  <Text style={styles.deleteWarningText}>
-                    This appointment is {selectedAppointment.status}. You can permanently delete it from your records.
-                  </Text>
-                </View>
                 <TouchableOpacity
                   style={styles.permanentDeleteButton}
                   onPress={() => handleLongPress(selectedAppointment)}
@@ -1070,40 +1714,47 @@ const CalendarScreen = () => {
         )}
       </ScrollView>
 
+      {/* Floating Add Button */}
+      {!selectedAppointment && (
+        <TouchableOpacity style={styles.floatingAddButton} onPress={handleAddAppointment}>
+          <FontAwesome5 name="plus" size={24} color="#fff" />
+        </TouchableOpacity>
+      )}
+
       <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
         <TabButton 
-          iconName="home" 
+          iconSource={require("../../assets/images/home.png")} 
           label="Home" 
           tabKey="home" 
-          isActive={false}
-          onPress={() => router.push("../HORSE_OPERATOR/home" as any)}
+          isActive={activeTab === "home"}
+          onPress={() => router.push("/HORSE_OPERATOR/home" as any)} 
         />
         <TabButton
-          iconName="horse"
-          label="Horse"
+          iconSource={require("../../assets/images/horse.png")}
+          label="Horses"
           tabKey="horses"
-          isActive={false}
+          isActive={activeTab === "horses"}
           onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}
         />
         <TabButton
-          iconName="comment-dots"
+          iconSource={require("../../assets/images/chat.png")}
           label="Chat"
           tabKey="messages"
-          isActive={false}
+          isActive={activeTab === "messages"}
           onPress={() => router.push("../HORSE_OPERATOR/Hmessage" as any)}
         />
         <TabButton
-          iconName="calendar-alt"
+          iconSource={require("../../assets/images/calendar.png")}
           label="Calendar"
           tabKey="bookings"
-          isActive={true}
+          isActive={activeTab === "bookings"}
           onPress={() => router.push("../HORSE_OPERATOR/Hcalendar" as any)}
         />
         <TabButton
-          iconName="user"
+          iconSource={require("../../assets/images/profile.png")}
           label="Profile"
           tabKey="profile"
-          isActive={false}
+          isActive={activeTab === "profile"}
           onPress={() => router.push("../HORSE_OPERATOR/profile" as any)}
         />
       </View>
@@ -1200,46 +1851,55 @@ const styles = StyleSheet.create({
   },
   calendarContainer: {
     backgroundColor: "#fff",
-    borderRadius: 15,
+    borderRadius: 20,
     padding: 20,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 4,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
     marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
   },
   monthNavigation: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 20,
+    paddingHorizontal: 10,
   },
   navButton: {
-    width: 32,
-    height: 32,
+    width: 40,
+    height: 40,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f0f0f0",
-    borderRadius: 16,
+    backgroundColor: "#f8f8f8",
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
   },
   monthYear: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "bold",
     color: "#333",
+    textAlign: "center",
   },
   dayHeaders: {
     flexDirection: "row",
-    marginBottom: 10,
+    marginBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: "#f0f0f0",
+    paddingBottom: 10,
   },
   dayHeader: {
     flex: 1,
     textAlign: "center",
-    fontSize: 12,
-    fontWeight: "600",
+    fontSize: 14,
+    fontWeight: "700",
     color: "#666",
     paddingVertical: 5,
   },
@@ -1253,14 +1913,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
+    marginVertical: 2,
+    borderRadius: 25,
   },
   todayCell: {
-    backgroundColor: "#CD853F",
-    borderRadius: 20,
-  },
-  appointmentCell: {
-    backgroundColor: "#e8f5e8",
-    borderRadius: 20,
+    backgroundColor: "#2196F3", // Blue color for today
+    shadowColor: "#2196F3",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 4,
   },
   dayText: {
     fontSize: 16,
@@ -1274,21 +1936,50 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "bold",
   },
-  appointmentText: {
-    color: "#2d5a2d",
+  appointmentDateText: {
     fontWeight: "bold",
   },
-  appointmentDot: {
-    position: "absolute",
-    bottom: 2,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#4CAF50",
+  statusIndicator: {
+    position: 'absolute',
+    bottom: 4,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+  },
+  legendContainer: {
+    marginTop: 20,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  legendTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  legendItems: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  legendColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  legendText: {
+    fontSize: 12,
+    color: '#666',
   },
   appointmentsSection: {
     paddingHorizontal: 0,
-    paddingBottom: 20,
+    paddingBottom: 50,
   },
   sectionHeader: {
     flexDirection: "row",
@@ -1304,17 +1995,77 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#333",
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+    marginLeft: 4,
+  },
+  infoCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  infoItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 12,
+  },
+  infoIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFF8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+    borderWidth: 1,
+    borderColor: '#FFE8D6',
+  },
+  infoContent: {
+    flex: 1,
+  },
+  infoLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  infoText: {
+    fontSize: 16,
+    color: '#333',
+    lineHeight: 22,
+    fontWeight: '500',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginVertical: 4,
   },
   appointmentBadge: {
     backgroundColor: "#CD853F",
     paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
     minWidth: 32,
     alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
   },
   appointmentBadgeText: {
     fontSize: 14,
@@ -1370,6 +2121,8 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
     overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#f0f0f0",
   },
   appointmentCardInner: {
     flexDirection: "row",
@@ -1384,6 +2137,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#4CAF50",
     borderRadius: 12,
     marginRight: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   appointmentDayText: {
     fontSize: 11,
@@ -1418,13 +2176,6 @@ const styles = StyleSheet.create({
     marginLeft: 6,
     fontWeight: "500",
   },
-  divider: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: "#ccc",
-    marginHorizontal: 8,
-  },
   appointmentService: {
     fontSize: 13,
     color: "#666",
@@ -1458,12 +2209,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
   },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginRight: 6,
-  },
   tagText: {
     fontSize: 12,
     fontWeight: "700",
@@ -1492,6 +2237,22 @@ const styles = StyleSheet.create({
     right: 12,
     top: 12,
   },
+  floatingAddButton: {
+    position: 'absolute',
+    right: 25,
+    bottom: 100,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#CD853F',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+  },
   tabBar: {
     flexDirection: "row",
     backgroundColor: "white",
@@ -1503,13 +2264,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-around",
   },
-  navItem: {
+  tabButton: {
     flex: 1,
     alignItems: "center",
     paddingVertical: verticalScale(4),
     paddingHorizontal: scale(2),
   },
-  navIcon: {
+  tabIcon: {
     width: scale(28),
     height: scale(28),
     borderRadius: scale(14),
@@ -1517,76 +2278,27 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: verticalScale(2),
   },
-  navLabel: {
+  tabLabel: {
     fontSize: moderateScale(9),
     color: "#666",
     textAlign: "center",
   },
-  activeNavLabel: {
+  activeTabLabel: {
     color: "#CD853F",
     fontWeight: "600",
   },
-  activeNavIcon: {
+  activeTabIcon: {
     backgroundColor: "#CD853F",
   },
-  detailsCard: {
-    flexDirection: "row",
-    backgroundColor: "#fff",
-    borderRadius: 15,
-    padding: 20,
-    marginBottom: 20,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+  tabIconImage: {
+    width: scale(16),
+    height: scale(16),
   },
-  appointmentDateBox: {
-    width: 80,
-    height: 80,
-    backgroundColor: "#4CAF50",
-    borderRadius: 10,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 15,
-  },
-  appointmentSummary: {
-    flex: 1,
-  },
-  horseName: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 5,
-  },
-  appointmentDateFull: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#CD853F",
-    marginBottom: 8,
-  },
-  timeServiceContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 5,
-  },
-  icon: {
-    marginRight: 5,
-  },
-  timeServiceText: {
-    fontSize: 16,
-    color: "#666",
-  },
-  bookingTime: {
-    fontSize: 12,
-    color: "#888",
-    fontStyle: "italic",
-    marginBottom: 10,
-  },
-  tagsContainer: {
-    flexDirection: "row",
-    gap: 8,
+  fallbackIcon: {
+    width: scale(14),
+    height: scale(14),
+    backgroundColor: "#666",
+    borderRadius: scale(2),
   },
   infoSection: {
     backgroundColor: "#fff",
@@ -1609,19 +2321,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginRight: 10,
   },
-  infoLabel: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#333",
-    marginRight: 5,
-  },
-  infoText: {
-    fontSize: 16,
-    color: "#666",
-    flexShrink: 1,
-  },
   notesSection: {
-    marginBottom: 20,
+    marginBottom: 70,
   },
   notesLabel: {
     fontSize: 18,
@@ -1632,7 +2333,7 @@ const styles = StyleSheet.create({
   notesBox: {
     backgroundColor: "#fff3cd",
     borderRadius: 10,
-    padding: 15,
+    padding: 20,
   },
   notesText: {
     fontSize: 16,

@@ -157,7 +157,7 @@ interface ProfilePicture {
 }
 
 const API_CONFIG = {
-  BASE_URL: "http://172.20.10.2:8000/api/signup_mobile/",
+  BASE_URL: "http://192.168.101.6:8000/api/signup_mobile/",
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,
@@ -1287,7 +1287,7 @@ export default function Signup() {
           <Text style={styles.termsSectionTitle}>2. User Responsibilities</Text>
           <Text style={styles.termsText}>a. Horse Operator (Owner)</Text>
           <Text style={styles.termsText}>
-            • You must provide complete and accurate information regarding your identity and your horse's details during
+            • You must provide complete and accurate information regarding your identity and your horse&#39;s details during
             registration.
           </Text>
           <Text style={styles.termsText}>
@@ -1308,7 +1308,7 @@ export default function Signup() {
             • You are responsible for safely handling and operating the horse during daily Tartanilla activities.
           </Text>
           <Text style={styles.termsText}>
-            • You must cooperate with the horse operator in monitoring the horse's health status.
+            • You must cooperate with the horse operator in monitoring the horse&#39;s health status.
           </Text>
           <Text style={styles.termsText}>
             • You agree to report any observed injuries, illnesses, or unusual behavior of the horse through the app or
@@ -1356,7 +1356,7 @@ export default function Signup() {
             • You agree to use the ECHO App only for legitimate and lawful purposes connected to the Tartanilla Program.
           </Text>
           <Text style={styles.termsText}>
-            • You must not tamper with the system, upload false information, or access other users' data without
+            • You must not tamper with the system, upload false information, or access other users&#39; data without
             authorization.
           </Text>
           <Text style={styles.termsText}>
@@ -1390,7 +1390,7 @@ export default function Signup() {
           <Text style={styles.termsText}>For any questions, assistance, or technical concerns, please contact:</Text>
           <Text style={styles.termsText}>📧 echosys.ph@gmail.com</Text>
           <Text style={styles.termsText}>
-            ✅ By selecting "I Agree" and proceeding with registration, you confirm that you have read, understood, and
+            ✅ By selecting &quot;I Agree&quot; and proceeding with registration, you confirm that you have read, understood, and
             accepted these Terms and Conditions.
           </Text>
         </View>

@@ -113,6 +113,13 @@ def get_chat_history(request):
 
     return Response({"success": True, "history": history}, status=status.HTTP_200_OK)
 
+
+
+
+
+
+
+
 # ------------------------------------------------ Messages ------------------------------------------------
 # Philippine timezone
 PHILIPPINE_TZ = ZoneInfo('Asia/Manila')
@@ -5220,4 +5227,340 @@ def check_current_schedules(request):
         return Response({
             'success': False,
             'message': f'Error checking schedules: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ===========================================================================
+
+# ------------------------------------------------ HORSE OPERATOR REMINDER NOTIF ------------------------------------------------
+def get_operator_by_input(operator_input):
+    """
+    Returns a list of operator dicts with 'operator_id' from input.
+    Accepts either UUID or first name (operator_fname)
+    """
+    try:
+        # Try to parse as UUID
+        val = uuid.UUID(operator_input, version=4)
+        operator_response = supabase.table('operator_profile')\
+            .select('operator_id, operator_fname, operator_lname')\
+            .eq('operator_id', str(val))\
+            .execute()
+    except ValueError:
+        # Treat as first name
+        operator_response = supabase.table('operator_profile')\
+            .select('operator_id, operator_fname, operator_lname')\
+            .eq('operator_fname', operator_input)\
+            .execute()
+
+    return operator_response.data if operator_response.data else []
+
+
+@api_view(['GET'])
+def operator_feed_water_notifications(request):
+    """
+    Fetch all feed and water schedule notifications for a specific operator.
+    Always returns notifications even if horse is checked out.
+    Accepts either UUID or first name.
+    """
+    try:
+        operator_input = request.GET.get('operator_id')
+        horse_id = request.GET.get('horse_id')
+
+        if not operator_input:
+            return Response({
+                'success': False,
+                'message': 'operator_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        now = datetime.now()
+        current_time = now.strftime('%I:%M %p')
+        notifications = []
+
+        operators = get_operator_by_input(operator_input)
+        if not operators:
+            return Response({
+                'success': True,
+                'data': [],
+                'count': 0,
+                'current_time': current_time,
+                'message': 'Operator not found'
+            })
+
+        operator_uuid = operators[0]['operator_id']
+
+        # Map horse IDs to names
+        horses_response = supabase.table('horse_profile')\
+            .select('horse_id, horse_name')\
+            .execute()
+        horse_map = {h['horse_id']: h['horse_name'] for h in (horses_response.data or [])}
+
+        # Fetch feed schedules (ignore horse status)
+        feeds = (supabase.table('feed_detail')
+                 .select('*')
+                 .eq('operator_id', operator_uuid)
+                 .execute().data or [])
+        if horse_id:
+            feeds = [f for f in feeds if f.get('horse_id') == horse_id]
+
+        for feed in feeds:
+            horse_name = horse_map.get(feed.get('horse_id'), 'Unknown Horse')
+            notifications.append({
+                'id': f'feed_{feed.get("fd_id")}',
+                'type': 'feed',
+                'title': f'🍽️ {feed.get("fd_meal_type")} Time',
+                'message': f'Time to feed {horse_name}: {feed.get("fd_food_type")} ({feed.get("fd_qty")})',
+                'scheduled_time': feed.get('fd_time'),
+                'horse_id': feed.get('horse_id'),
+                'horse_name': horse_name,
+                'details': {
+                    'meal_type': feed.get('fd_meal_type'),
+                    'food_type': feed.get('fd_food_type'),
+                    'quantity': feed.get('fd_qty'),
+                },
+                'timestamp': now.isoformat(),
+            })
+
+        # Fetch water schedules (ignore horse status)
+        waters = (supabase.table('water_detail')
+                  .select('*')
+                  .eq('operator_id', operator_uuid)
+                  .execute().data or [])
+        if horse_id:
+            waters = [w for w in waters if w.get('horse_id') == horse_id]
+
+        for water in waters:
+            horse_name = horse_map.get(water.get('horse_id'), 'Unknown Horse')
+            notifications.append({
+                'id': f'water_{water.get("water_id")}',
+                'type': 'water',
+                'title': f'💧 {water.get("water_period")} Watering Time',
+                'message': f'Time to give {horse_name} water: {water.get("water_amount")}',
+                'scheduled_time': water.get('water_time'),
+                'horse_id': water.get('horse_id'),
+                'horse_name': horse_name,
+                'details': {
+                    'period': water.get('water_period'),
+                    'amount': water.get('water_amount'),
+                },
+                'timestamp': now.isoformat(),
+            })
+
+        return Response({
+            'success': True,
+            'data': notifications,
+            'count': len(notifications),
+            'current_time': current_time,
+        })
+
+    except Exception as e:
+        print(f"Error in operator_feed_water_notifications: {str(e)}")
+        return Response({
+            'success': False,
+            'message': f'Error fetching notifications: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def operator_check_current_schedules(request):
+    """
+    Check if any feed/water schedules are due right now for operator.
+    Always returns due notifications even if horse is checked out.
+    Accepts either UUID or first name.
+    """
+    try:
+        operator_input = request.GET.get('operator_id')
+        if not operator_input:
+            return Response({
+                'success': False,
+                'message': 'operator_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        now = datetime.now()
+        current_time = now.strftime('%I:%M %p')
+        prev_minute = (now - timedelta(minutes=1)).strftime('%I:%M %p')
+        due_notifications = []
+
+        operators = get_operator_by_input(operator_input)
+        if not operators:
+            return Response({
+                'success': True,
+                'data': [],
+                'count': 0,
+                'current_time': current_time,
+                'has_due_schedules': False,
+            })
+
+        operator_uuid = operators[0]['operator_id']
+
+        # Map horse IDs to names
+        horses_response = supabase.table('horse_profile')\
+            .select('horse_id, horse_name')\
+            .execute()
+        horse_map = {h['horse_id']: h['horse_name'] for h in (horses_response.data or [])}
+
+        # Check feed schedules (ignore horse status)
+        feeds = (supabase.table('feed_detail')
+                 .select('*')
+                 .eq('operator_id', operator_uuid)
+                 .execute().data or [])
+        for feed in feeds:
+            if feed.get('fd_time') in [current_time, prev_minute]:
+                horse_name = horse_map.get(feed.get('horse_id'), 'Unknown Horse')
+                due_notifications.append({
+                    'id': f'feed_{feed.get("fd_id")}',
+                    'type': 'feed',
+                    'title': f'🍽️ {feed.get("fd_meal_type")} Time!',
+                    'message': f'Time to feed {horse_name}: {feed.get("fd_food_type")} ({feed.get("fd_qty")})',
+                    'scheduled_time': feed.get('fd_time'),
+                    'horse_id': feed.get('horse_id'),
+                    'horse_name': horse_name,
+                    'priority': 'high',
+                    'timestamp': now.isoformat(),
+                })
+
+        # Check water schedules (ignore horse status)
+        waters = (supabase.table('water_detail')
+                  .select('*')
+                  .eq('operator_id', operator_uuid)
+                  .execute().data or [])
+        for water in waters:
+            if water.get('water_time') in [current_time, prev_minute]:
+                horse_name = horse_map.get(water.get('horse_id'), 'Unknown Horse')
+                due_notifications.append({
+                    'id': f'water_{water.get("water_id")}',
+                    'type': 'water',
+                    'title': f'💧 {water.get("water_period")} Watering Time!',
+                    'message': f'Time to give {horse_name} water: {water.get("water_amount")}',
+                    'scheduled_time': water.get('water_time'),
+                    'horse_id': water.get('horse_id'),
+                    'horse_name': horse_name,
+                    'priority': 'high',
+                    'timestamp': now.isoformat(),
+                })
+
+        return Response({
+            'success': True,
+            'data': due_notifications,
+            'count': len(due_notifications),
+            'current_time': current_time,
+            'has_due_schedules': len(due_notifications) > 0,
+        })
+
+    except Exception as e:
+        print(f"Error in operator_check_current_schedules: {str(e)}")
+        return Response({
+            'success': False,
+            'message': f'Error checking schedules: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def operator_notifications(request):
+    """
+    Fetch all notifications for operator including announcements and scheduled reminders.
+    Accepts either UUID or first name.
+    """
+    try:
+        operator_input = request.GET.get('user_id')
+        if not operator_input:
+            return Response({
+                'success': False,
+                'message': 'user_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        now = datetime.now()
+        notifications = []
+
+        operators = get_operator_by_input(operator_input)
+        if not operators:
+            return Response({
+                'success': True,
+                'notifications': [],
+                'count': 0,
+                'message': 'Operator not found'
+            })
+
+        operator_uuid = operators[0]['operator_id']
+
+        # Fetch announcements
+        announcements_response = supabase.table('announcement')\
+            .select('*')\
+            .order('announce_date', desc=True)\
+            .execute()
+        
+        announcements = announcements_response.data or []
+        
+        for announcement in announcements:
+            # Format the date
+            announce_date = announcement.get('announce_date')
+            if announce_date:
+                if isinstance(announce_date, str):
+                    try:
+                        announce_date = datetime.fromisoformat(announce_date.replace('Z', '+00:00'))
+                    except:
+                        announce_date = datetime.now()
+                formatted_date = announce_date.strftime('%B %d, %Y at %I:%M %p')
+            else:
+                formatted_date = "Unknown date"
+            
+            # Handle image URLs
+            image_urls = []
+            raw_image_url = announcement.get('image_url') or announcement.get('announce_image')
+            if raw_image_url:
+                if isinstance(raw_image_url, str):
+                    if raw_image_url.startswith('['):
+                        try:
+                            image_urls = json.loads(raw_image_url)
+                            if not isinstance(image_urls, list):
+                                image_urls = [image_urls]
+                        except:
+                            image_urls = [raw_image_url]
+                    else:
+                        image_urls = [raw_image_url]
+            
+            notifications.append({
+                'id': f"announce_{announcement.get('announce_id')}",
+                'notification_id': f"announce_{announcement.get('announce_id')}",
+                'title': announcement.get('announce_title', 'Announcement'),
+                'message': announcement.get('announce_content', ''),
+                'time': formatted_date,
+                'type': 'system',
+                'priority': 'medium',
+                'image_urls': image_urls,
+                'created_at': announcement.get('announce_date'),
+                'source': 'announcement',
+                'posted_by_role': announcement.get('posted_by_role', 'Admin'),
+                'formatted_date': formatted_date,
+            })
+
+        # Fetch scheduled reminders
+        feed_water_notifs = operator_feed_water_notifications(request._request).data
+        if isinstance(feed_water_notifs, dict) and feed_water_notifs.get('success'):
+            for notif in feed_water_notifs.get('data', []):
+                notifications.append({
+                    'id': notif.get('id'),
+                    'notification_id': notif.get('id'),
+                    'title': notif.get('title'),
+                    'message': notif.get('message'),
+                    'time': notif.get('scheduled_time', 'Scheduled'),
+                    'type': 'reminder',
+                    'priority': notif.get('priority', 'medium'),
+                    'horseName': notif.get('horse_name'),
+                    'scheduledTime': notif.get('scheduled_time'),
+                    'created_at': notif.get('timestamp'),
+                    'source': 'schedule',
+                })
+
+        return Response({
+            'success': True,
+            'notifications': notifications,
+            'count': len(notifications),
+            'current_time': now.strftime('%I:%M %p'),
+        })
+
+    except Exception as e:
+        print(f"Error in operator_notifications: {str(e)}")
+        return Response({
+            'success': False,
+            'message': f'Error fetching operator notifications: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
