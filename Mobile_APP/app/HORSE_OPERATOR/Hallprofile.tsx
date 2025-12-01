@@ -1,3 +1,5 @@
+// HORSE_OPERATOR/Hallprofile.tsx
+
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
@@ -13,6 +15,8 @@ import {
   Dimensions,
   Platform,
   Alert,
+  Modal,
+  TouchableWithoutFeedback,
 } from "react-native"
 import { useRouter, useLocalSearchParams } from "expo-router"
 import { FontAwesome5 } from "@expo/vector-icons"
@@ -34,7 +38,7 @@ const moderateScale = (size: number, factor = 0.5) => {
   return size + (scale(size) - size) * factor
 }
 
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator"
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
 
 interface UserProfile {
   id: string
@@ -56,15 +60,13 @@ interface UserProfile {
 
 interface VetSchedule {
   sched_id: string
-  sched_date: string
-  formatted_date: string
+  vet_id: string
   day_of_week: string
   start_time: string
   end_time: string
-  time_display: string
-  start_time_formatted: string
-  end_time_formatted: string
+  slot_duration: number
   is_available: boolean
+  created_at: string
 }
 
 interface Contact {
@@ -74,19 +76,62 @@ interface Contact {
   role: string
 }
 
+interface Post {
+  id: string
+  title: string
+  content: string
+  author: string
+  author_role: string
+  created_at: string
+  formatted_date: string
+  image_url?: string
+  is_announcement: boolean
+  category?: string
+}
+
 export default function UnifiedProfileView() {
   const router = useRouter()
   const params = useLocalSearchParams()
 
   const [loading, setLoading] = useState(true)
   const [scheduleLoading, setScheduleLoading] = useState(false)
+  const [postsLoading, setPostsLoading] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string>("")
   const [profileData, setProfileData] = useState<UserProfile | null>(null)
   const [vetSchedules, setVetSchedules] = useState<VetSchedule[]>([])
+  const [userPosts, setUserPosts] = useState<Post[]>([])
+  const [expandedPosts, setExpandedPosts] = useState<{ [key: string]: boolean }>({})
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [imageModalVisible, setImageModalVisible] = useState(false)
 
   const hasLoadedProfile = useRef(false)
 
-  const fetchVetSchedule = useCallback(async (vetId: string) => {
+  // Function to get profile picture based on user role
+  const getProfilePicture = (userData: UserProfile | null) => {
+    if (!userData) return null
+    
+    const userRole = userData.role?.toLowerCase()
+    
+    // CTU role - use CTU logo
+    if (userRole === 'ctu_veterinarian' || userRole === 'ctu-vetmed' || userRole === 'ctu-admin') {
+      return require("../../assets/images/CTU.jpg")
+    }
+    
+    // DVMF role - use DVMF logo  
+    if (userRole === 'dvmf' || userRole === 'dvmf-admin') {
+      return require("../../assets/images/DVMF.png")
+    }
+    
+    // For other users, use their profile image if available
+    if (userData.profile?.profile_image) {
+      return { uri: userData.profile.profile_image }
+    }
+    
+    // Fallback to initials avatar
+    return null
+  }
+
+  const fetchVetBaseSchedule = useCallback(async (vetId: string) => {
     try {
       setScheduleLoading(true)
       const storedAccessToken = await SecureStore.getItemAsync("access_token")
@@ -95,9 +140,10 @@ export default function UnifiedProfileView() {
         throw new Error("No access token found")
       }
 
-      console.log("📅 Fetching schedule for vet:", vetId)
+      console.log("📅 Fetching vet base schedule for vet:", vetId)
 
-      const response = await fetch(`${API_BASE_URL}/get_vet_schedule_for_profile/?vet_id=${vetId}`, {
+      // FIXED: Use consistent endpoint format with trailing slash
+      const scheduleResponse = await fetch(`${API_BASE_URL}/get_vet_base_schedule/?vet_id=${vetId}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${storedAccessToken}`,
@@ -105,19 +151,76 @@ export default function UnifiedProfileView() {
         },
       })
 
-      if (response.ok) {
-        const scheduleData = await response.json()
-        console.log("✅ Schedule loaded:", scheduleData)
-        setVetSchedules(scheduleData.schedules || [])
+      console.log("📊 Schedule response status:", scheduleResponse.status)
+
+      if (scheduleResponse.ok) {
+        const scheduleData = await scheduleResponse.json()
+        console.log("✅ Vet base schedule loaded:", scheduleData)
+        
+        // Handle different response formats
+        if (scheduleData.schedules && Array.isArray(scheduleData.schedules)) {
+          setVetSchedules(scheduleData.schedules)
+        } else if (Array.isArray(scheduleData)) {
+          setVetSchedules(scheduleData)
+        } else {
+          console.log("⚠️ Unexpected schedule data format:", scheduleData)
+          setVetSchedules([])
+        }
       } else {
-        console.log("⚠️ No schedule data available")
+        console.log("⚠️ No base schedule data available, status:", scheduleResponse.status)
         setVetSchedules([])
       }
     } catch (error) {
-      console.error("❌ Error fetching vet schedule:", error)
+      console.error("❌ Error fetching vet base schedule:", error)
       setVetSchedules([])
     } finally {
       setScheduleLoading(false)
+    }
+  }, [])
+
+  const fetchUserPosts = useCallback(async (userId: string) => {
+    try {
+      setPostsLoading(true)
+      const storedAccessToken = await SecureStore.getItemAsync("access_token")
+
+      if (!storedAccessToken) {
+        throw new Error("No access token found")
+      }
+
+      console.log("📝 Fetching posts for user:", userId)
+
+      const response = await fetch(`${API_BASE_URL}/get_user_posts/${userId}/`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${storedAccessToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+      console.log("📊 Posts response status:", response.status)
+
+      if (response.ok) {
+        const postsData = await response.json()
+        console.log("✅ Posts loaded:", postsData)
+        
+        // Handle different response formats
+        if (postsData.posts && Array.isArray(postsData.posts)) {
+          setUserPosts(postsData.posts)
+        } else if (Array.isArray(postsData)) {
+          setUserPosts(postsData)
+        } else {
+          console.log("⚠️ Unexpected posts data format:", postsData)
+          setUserPosts([])
+        }
+      } else {
+        console.log("⚠️ No posts data available, status:", response.status)
+        setUserPosts([])
+      }
+    } catch (error) {
+      console.error("❌ Error fetching user posts:", error)
+      setUserPosts([])
+    } finally {
+      setPostsLoading(false)
     }
   }, [])
 
@@ -133,7 +236,6 @@ export default function UnifiedProfileView() {
 
         console.log("🔍 Fetching unified profile for user:", userId)
 
-        // ✅ UPDATED: Use unified get_user_profile endpoint
         const response = await fetch(`${API_BASE_URL}/get_user_profile/${userId}/`, {
           method: "GET",
           headers: {
@@ -142,19 +244,35 @@ export default function UnifiedProfileView() {
           },
         })
 
+        console.log("📊 Profile response status:", response.status)
+
         if (response.ok) {
           const result = await response.json()
+          console.log("📋 Profile response data:", result)
           
           if (result.success && result.user) {
             const userData = result.user
             console.log("✅ Profile loaded from unified API:", userData)
-            console.log("User type:", result.user_type)
+            console.log("User role:", userData.role)
             setProfileData(userData)
 
-            // If user is a regular veterinarian, fetch their schedule
-            const isRegularVet = userData.role === "Veterinarian"
+            // If user is a regular veterinarian, fetch their base schedule
+            const isRegularVet = userData.role === "Veterinarian" || userData.role === "veterinarian"
             if (isRegularVet) {
-              await fetchVetSchedule(userData.id)
+              console.log("🩺 User is a veterinarian, fetching schedule...")
+              await fetchVetBaseSchedule(userData.id)
+            } else {
+              console.log("👤 User is not a veterinarian, role:", userData.role)
+            }
+
+            // If user is CTU or DVMF, fetch their posts
+            const isCTUorDVMF = userData.role?.toLowerCase().includes('ctu') || 
+                               userData.role?.toLowerCase().includes('dvmf')
+            if (isCTUorDVMF) {
+              console.log("🏢 User is CTU/DVMF, fetching posts...")
+              await fetchUserPosts(userData.id)
+            } else {
+              console.log("👤 User is not CTU/DVMF, role:", userData.role)
             }
           } else {
             throw new Error(result.error || "Failed to fetch user profile")
@@ -171,7 +289,7 @@ export default function UnifiedProfileView() {
         setLoading(false)
       }
     },
-    [router, fetchVetSchedule],
+    [router, fetchVetBaseSchedule, fetchUserPosts],
   )
 
   useEffect(() => {
@@ -226,15 +344,20 @@ export default function UnifiedProfileView() {
       case "horse operator":
         return { bg: "#E3F2FD", text: "#CD853F" }
       case "kutsero":
-        return { bg: "#E8F5E9", text: "#CD853F" }
+        return { bg: "#E3F2FD", text: "#CD853F" }
       case "veterinarian":
         return { bg: "#F3E5F5", text: "#10B981" }
+      case "ctu_veterinarian":
       case "ctu-vetmed":
-        return { bg: "#FFF3E0", text: "#10B981" }
+        return { bg: "#FCE4EC", text: "#c2181eff" }
+      case "ctu-admin":
+        return { bg: "#FCE4EC", text: "#c2181eff" }
       case "dvmf":
-        return { bg: "#FCE4EC", text: "#C2185B" }
+        return { bg: "#FCE4EC", text: "#c2181eff" }
+      case "dvmf-admin":
+        return { bg: "#FCE4EC", text: "#c2181eff" }
       case "kutsero president":
-        return { bg: "#F1F8E9", text: "#CD853F" }
+        return { bg: "#E3F2FD", text: "#CD853F" }
       default:
         return { bg: "#F5F5F5", text: "#666" }
     }
@@ -245,6 +368,7 @@ export default function UnifiedProfileView() {
       "horse operator": "Horse Operator",
       "kutsero": "Kutsero",
       "veterinarian": "Veterinarian",
+      "ctu_veterinarian": "CTU Veterinarian",
       "ctu-vetmed": "CTU Veterinarian",
       "dvmf": "DVMF",
       "kutsero president": "Kutsero President",
@@ -316,6 +440,128 @@ export default function UnifiedProfileView() {
     router.back()
   }
 
+  const togglePostExpansion = (postId: string) => {
+    setExpandedPosts(prev => ({
+      ...prev,
+      [postId]: !prev[postId]
+    }))
+  }
+
+  const handleImagePress = (imageUrl: string) => {
+    setSelectedImage(imageUrl)
+    setImageModalVisible(true)
+  }
+
+  const closeImageModal = () => {
+    setImageModalVisible(false)
+    setSelectedImage(null)
+  }
+
+  const formatTimeTo12Hour = (time24: string) => {
+    try {
+      if (!time24) return time24
+      
+      const timeParts = time24.split(':')
+      if (timeParts.length < 2) return time24
+      
+      let hours = parseInt(timeParts[0])
+      const minutes = timeParts[1]
+      
+      const period = hours >= 12 ? 'PM' : 'AM'
+      hours = hours % 12 || 12
+      
+      return `${hours}:${minutes} ${period}`
+    } catch {
+      return time24
+    }
+  }
+
+  const formatTimeRange = (startTime: string, endTime: string) => {
+    try {
+      const formattedStart = formatTimeTo12Hour(startTime)
+      const formattedEnd = formatTimeTo12Hour(endTime)
+      return `${formattedStart} - ${formattedEnd}`
+    } catch {
+      return `${startTime} - ${endTime}`
+    }
+  }
+
+  const getDayName = (dayOfWeek: string) => {
+    const days: { [key: string]: string } = {
+      'monday': 'Monday',
+      'tuesday': 'Tuesday', 
+      'wednesday': 'Wednesday',
+      'thursday': 'Thursday',
+      'friday': 'Friday',
+      'saturday': 'Saturday',
+      'sunday': 'Sunday'
+    }
+    return days[dayOfWeek.toLowerCase()] || dayOfWeek
+  }
+
+  const renderPostItem = (post: Post) => {
+    const isExpanded = expandedPosts[post.id]
+    const contentLength = post.content.length
+    const shouldTruncate = contentLength > 150
+    const displayContent = shouldTruncate && !isExpanded 
+      ? post.content.substring(0, 150) + '...' 
+      : post.content
+
+    return (
+      <View key={post.id} style={styles.postItem}>
+        <View style={styles.postHeader}>
+          <Text style={styles.postTitle}>{post.title}</Text>
+          {post.is_announcement && (
+            <View style={styles.announcementBadge}>
+              <FontAwesome5 name="bullhorn" size={scale(10)} color="white" />
+              <Text style={styles.announcementBadgeText}>Announcement</Text>
+            </View>
+          )}
+        </View>
+        
+        <Text style={styles.postContent} numberOfLines={isExpanded ? undefined : 3}>
+          {displayContent}
+        </Text>
+        
+        {shouldTruncate && (
+          <TouchableOpacity 
+            style={styles.seeMoreButton}
+            onPress={() => togglePostExpansion(post.id)}
+          >
+            <Text style={styles.seeMoreText}>
+              {isExpanded ? 'See Less' : 'See More'}
+            </Text>
+          </TouchableOpacity>
+        )}
+        
+        {post.image_url && (
+          <TouchableOpacity 
+            onPress={() => handleImagePress(post.image_url!)}
+            activeOpacity={0.8}
+          >
+            <Image 
+              source={{ uri: post.image_url }} 
+              style={styles.postImage}
+              resizeMode="cover"
+            />
+            <View style={styles.imageOverlay}>
+              <FontAwesome5 name="expand" size={scale(16)} color="white" />
+            </View>
+          </TouchableOpacity>
+        )}
+        
+        <View style={styles.postFooter}>
+          <Text style={styles.postDate}>{post.formatted_date}</Text>
+          {post.category && (
+            <View style={styles.categoryBadge}>
+              <Text style={styles.categoryText}>{post.category}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    )
+  }
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -347,12 +593,53 @@ export default function UnifiedProfileView() {
   const province = profileData.profile.province
   const fullAddress = city && province ? `${city}, ${province}` : city || province || null
   
-  // ✅ FIXED: Only define variables that are actually used
-  const isRegularVet = profileData.role === "Veterinarian"
+  // Get profile picture based on role
+  const profilePicture = getProfilePicture(profileData)
+  
+  // Check user types
+  const isRegularVet = profileData.role === "Veterinarian" || profileData.role === "veterinarian"
+  const isCTUorDVMF = profileData.role?.toLowerCase().includes('ctu') || 
+                     profileData.role?.toLowerCase().includes('dvmf')
+
+  console.log("👤 Profile Analysis:", {
+    role: profileData.role,
+    isRegularVet,
+    isCTUorDVMF,
+    hasSchedules: vetSchedules.length > 0,
+    hasPosts: userPosts.length > 0
+  })
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
+
+      {/* Full Screen Image Modal */}
+      <Modal
+        visible={imageModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeImageModal}
+      >
+        <View style={styles.imageModalContainer}>
+          <TouchableWithoutFeedback onPress={closeImageModal}>
+            <View style={styles.imageModalBackground}>
+              {selectedImage && (
+                <Image 
+                  source={{ uri: selectedImage }} 
+                  style={styles.fullScreenImage}
+                  resizeMode="contain"
+                />
+              )}
+              <TouchableOpacity 
+                style={styles.closeImageButton}
+                onPress={closeImageModal}
+              >
+                <FontAwesome5 name="times" size={scale(20)} color="white" />
+              </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </Modal>
 
       <View style={styles.header}>
         <TouchableOpacity style={styles.backIconButton} onPress={handleBack}>
@@ -370,8 +657,12 @@ export default function UnifiedProfileView() {
         {/* Profile Header Card */}
         <View style={styles.profileHeaderCard}>
           <View style={styles.avatarContainer}>
-            {profileData.profile.profile_image ? (
-              <Image source={{ uri: profileData.profile.profile_image }} style={styles.avatar} resizeMode="cover" />
+            {profilePicture ? (
+              <Image 
+                source={profilePicture} 
+                style={styles.avatar} 
+                resizeMode="cover" 
+              />
             ) : (
               <View style={styles.avatarFallback}>
                 <Text style={styles.avatarFallbackText}>
@@ -450,52 +741,96 @@ export default function UnifiedProfileView() {
           </View>
         </View>
 
-        {/* Veterinarian Schedule Card - Only show for regular veterinarians */}
+        {/* Veterinarian Schedule Information - Only show for regular veterinarians */}
         {isRegularVet && (
+          <>
+            {/* Regular Schedule Card - Shows vet's regular availability */}
+            <View style={styles.infoCard}>
+              <View style={styles.infoCardHeader}>
+                <FontAwesome5 name="calendar-alt" size={scale(18)} color="#10B981" />
+                <Text style={styles.infoCardTitle}>Available Every</Text>
+              </View>
+
+              {scheduleLoading ? (
+                <View style={styles.scheduleLoadingContainer}>
+                  <ActivityIndicator size="small" color="#10B981" />
+                  <Text style={styles.scheduleLoadingText}>Loading schedule...</Text>
+                </View>
+              ) : vetSchedules.length > 0 ? (
+                <View style={styles.regularScheduleContainer}>
+                  <View style={styles.scheduleDaysContainer}>
+                    {vetSchedules.map((schedule, index) => (
+                      <View key={schedule.sched_id || index} style={styles.scheduleDayItem}>
+                        <View style={styles.dayHeader}>
+                          <FontAwesome5 name="calendar-day" size={scale(14)} color="#10B981" />
+                          <Text style={styles.dayName}>
+                            {getDayName(schedule.day_of_week)}
+                          </Text>
+                        </View>
+                        <View style={styles.timeContainer}>
+                          <FontAwesome5 name="clock" size={scale(12)} color="#666" />
+                          <Text style={styles.timeText}>
+                            {formatTimeRange(schedule.start_time, schedule.end_time)}
+                          </Text>
+                        </View>
+                      </View>
+                    ))}
+                  </View>
+
+                  {/* Book Appointment Button */}
+                  {!isOwnProfile && (
+                    <TouchableOpacity
+                      style={styles.bookAppointmentButton}
+                      onPress={handleBookAppointment}
+                      activeOpacity={0.7}
+                    >
+                      <FontAwesome5 name="calendar-plus" size={scale(16)} color="white" />
+                      <Text style={styles.bookAppointmentText}>Book an Appointment</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ) : (
+                <View style={styles.noScheduleContainer}>
+                  <FontAwesome5 name="calendar-times" size={scale(32)} color="#CCC" />
+                  <Text style={styles.noScheduleText}>No regular schedule set</Text>
+                </View>
+              )}
+            </View>
+          </>
+        )}
+
+        {/* Posts/Announcements Card - Only show for CTU and DVMF users */}
+        {isCTUorDVMF && (
           <View style={styles.infoCard}>
             <View style={styles.infoCardHeader}>
-              <FontAwesome5 name="calendar-check" size={scale(18)} color="#10B981" />
-              <Text style={styles.infoCardTitle}>Available Schedule</Text>
+              <FontAwesome5 name="newspaper" size={scale(18)} color="#C17A47" />
+              <Text style={styles.infoCardTitle}>
+                {profileData.role?.toLowerCase().includes('ctu') ? 'CTU Announcements' : 'DVMF Announcements'}
+              </Text>
             </View>
 
-            {scheduleLoading ? (
-              <View style={styles.scheduleLoadingContainer}>
-                <ActivityIndicator size="small" color="#10B981" />
-                <Text style={styles.scheduleLoadingText}>Loading schedule...</Text>
+            {postsLoading ? (
+              <View style={styles.postsLoadingContainer}>
+                <ActivityIndicator size="small" color="#C17A47" />
+                <Text style={styles.postsLoadingText}>Loading announcements...</Text>
               </View>
-            ) : vetSchedules.length > 0 ? (
-              <View style={styles.scheduleContainer}>
-                {vetSchedules.map((schedule) => (
-                  <View key={schedule.sched_id} style={styles.scheduleItem}>
-                    <View style={styles.scheduleDateContainer}>
-                      <FontAwesome5 name="calendar" size={scale(14)} color="#10B981" />
-                      <View style={styles.scheduleDateTextContainer}>
-                        <Text style={styles.scheduleDayOfWeek}>{schedule.day_of_week}</Text>
-                        <Text style={styles.scheduleDate}>{schedule.formatted_date}</Text>
-                      </View>
-                    </View>
-                    <View style={styles.scheduleTimeContainer}>
-                      <FontAwesome5 name="clock" size={scale(12)} color="#666" />
-                      <Text style={styles.scheduleTime}>{schedule.time_display}</Text>
-                    </View>
-                  </View>
-                ))}
-
-                {!isOwnProfile && (
-                  <TouchableOpacity
-                    style={styles.viewAllScheduleButton}
-                    onPress={handleBookAppointment}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.viewAllScheduleText}>Book an Appointment</Text>
-                    <FontAwesome5 name="arrow-right" size={scale(12)} color="#10B981" />
+            ) : userPosts.length > 0 ? (
+              <View style={styles.postsContainer}>
+                {userPosts.slice(0, 3).map(renderPostItem)}
+                
+                {userPosts.length > 3 && (
+                  <TouchableOpacity style={styles.viewAllPostsButton}>
+                    <Text style={styles.viewAllPostsText}>View All Announcements</Text>
+                    <FontAwesome5 name="arrow-right" size={scale(12)} color="#C17A47" />
                   </TouchableOpacity>
                 )}
               </View>
             ) : (
-              <View style={styles.noScheduleContainer}>
-                <FontAwesome5 name="calendar-times" size={scale(32)} color="#CCC" />
-                <Text style={styles.noScheduleText}>No available schedule at the moment</Text>
+              <View style={styles.noPostsContainer}>
+                <FontAwesome5 name="newspaper" size={scale(32)} color="#CCC" />
+                <Text style={styles.noPostsText}>
+                  No announcements posted yet
+                </Text>
               </View>
             )}
           </View>
@@ -604,6 +939,7 @@ const styles = StyleSheet.create({
     borderRadius: scale(60),
     borderWidth: 4,
     borderColor: "#000000ff",
+    overflow: "hidden",
   },
   avatarFallback: {
     width: scale(120),
@@ -655,11 +991,6 @@ const styles = StyleSheet.create({
     marginTop: verticalScale(10),
   },
   messageButtonText: {
-    color: "white",
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-  },
-  bookButtonText: {
     color: "white",
     fontSize: moderateScale(14),
     fontWeight: "600",
@@ -759,65 +1090,77 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     color: "#666",
   },
-  scheduleContainer: {
+  
+  // Regular Schedule Styles
+  regularScheduleContainer: {
     paddingVertical: verticalScale(8),
   },
-  scheduleItem: {
+  scheduleDaysContainer: {
+    gap: verticalScale(8),
+  },
+  scheduleDayItem: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingVertical: verticalScale(12),
     paddingHorizontal: scale(12),
-    backgroundColor: "#F9F9F9",
+    backgroundColor: "#F0F9FF",
     borderRadius: scale(8),
-    marginBottom: verticalScale(8),
+    borderLeftWidth: 3,
+    borderLeftColor: "#10B981",
   },
-  scheduleDateContainer: {
+  dayHeader: {
     flexDirection: "row",
     alignItems: "center",
     gap: scale(8),
     flex: 1,
   },
-  scheduleDateTextContainer: {
-    flex: 1,
-  },
-  scheduleDayOfWeek: {
+  dayName: {
     fontSize: moderateScale(14),
     fontWeight: "600",
     color: "#333",
-    marginBottom: verticalScale(2),
   },
-  scheduleDate: {
-    fontSize: moderateScale(12),
-    color: "#666",
-  },
-  scheduleTimeContainer: {
+  timeContainer: {
     flexDirection: "row",
     alignItems: "center",
-    gap: scale(4),
-    paddingLeft: scale(12),
+    gap: scale(6),
   },
-  scheduleTime: {
+  timeText: {
     fontSize: moderateScale(12),
     color: "#666",
     fontWeight: "500",
   },
-  viewAllScheduleButton: {
+  scheduleNote: {
+    fontSize: moderateScale(12),
+    color: "#999",
+    fontStyle: "italic",
+    marginTop: verticalScale(8),
+    textAlign: "center",
+  },
+  
+  // Book Appointment Button
+  bookAppointmentButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: verticalScale(12),
-    paddingHorizontal: scale(16),
-    backgroundColor: "#F0FDF4",
-    borderRadius: scale(8),
-    marginTop: verticalScale(8),
-    gap: scale(8),
+    backgroundColor: "#10B981",
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(14),
+    borderRadius: scale(12),
+    marginTop: verticalScale(16),
+    gap: scale(10),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  viewAllScheduleText: {
-    fontSize: moderateScale(14),
-    color: "#10B981",
+  bookAppointmentText: {
+    color: "white",
+    fontSize: moderateScale(16),
     fontWeight: "600",
   },
+  
   noScheduleContainer: {
     paddingVertical: verticalScale(32),
     alignItems: "center",
@@ -828,5 +1171,163 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     color: "#999",
     textAlign: "center",
+  },
+  
+  // Posts/Announcements Styles
+  postsLoadingContainer: {
+    paddingVertical: verticalScale(20),
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  postsLoadingText: {
+    marginTop: verticalScale(8),
+    fontSize: moderateScale(14),
+    color: "#666",
+  },
+  postsContainer: {
+    paddingVertical: verticalScale(8),
+  },
+  postItem: {
+    backgroundColor: "#F9F9F9",
+    borderRadius: scale(8),
+    padding: scale(12),
+    marginBottom: verticalScale(8),
+    borderLeftWidth: 3,
+    borderLeftColor: "#C17A47",
+  },
+  postHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: verticalScale(8),
+  },
+  postTitle: {
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+    color: "#333",
+    flex: 1,
+    marginRight: scale(8),
+  },
+  announcementBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(4),
+    borderRadius: scale(4),
+    gap: scale(4),
+  },
+  announcementBadgeText: {
+    fontSize: moderateScale(10),
+    color: "white",
+    fontWeight: "600",
+  },
+  postContent: {
+    fontSize: moderateScale(14),
+    color: "#666",
+    lineHeight: moderateScale(20),
+    marginBottom: verticalScale(4),
+  },
+  seeMoreButton: {
+    alignSelf: 'flex-start',
+    marginBottom: verticalScale(8),
+  },
+  seeMoreText: {
+    fontSize: moderateScale(12),
+    color: "#C17A47",
+    fontWeight: "600",
+  },
+  postImage: {
+    width: "100%",
+    height: verticalScale(120),
+    borderRadius: scale(6),
+    marginBottom: verticalScale(8),
+  },
+  imageOverlay: {
+    position: 'absolute',
+    top: scale(8),
+    right: scale(8),
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  postFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  postDate: {
+    fontSize: moderateScale(12),
+    color: "#999",
+  },
+  categoryBadge: {
+    backgroundColor: "#E3F2FD",
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(2),
+    borderRadius: scale(4),
+  },
+  categoryText: {
+    fontSize: moderateScale(10),
+    color: "#1976D2",
+    fontWeight: "500",
+  },
+  viewAllPostsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(16),
+    backgroundColor: "#FFF3E0",
+    borderRadius: scale(8),
+    marginTop: verticalScale(8),
+    gap: scale(8),
+  },
+  viewAllPostsText: {
+    fontSize: moderateScale(14),
+    color: "#C17A47",
+    fontWeight: "600",
+  },
+  noPostsContainer: {
+    paddingVertical: verticalScale(32),
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  noPostsText: {
+    marginTop: verticalScale(12),
+    fontSize: moderateScale(14),
+    color: "#999",
+    textAlign: "center",
+  },
+  
+  // Image Modal Styles
+  imageModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalBackground: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenImage: {
+    width: '95%',
+    height: '80%',
+  },
+  closeImageButton: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? verticalScale(50) : verticalScale(20),
+    right: scale(20),
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 })

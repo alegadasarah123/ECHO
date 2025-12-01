@@ -1,3 +1,5 @@
+// KUTSERO PROFILE SCREEN
+
 "use client"
 import { FontAwesome } from '@expo/vector-icons'
 import { useFocusEffect } from "@react-navigation/native"

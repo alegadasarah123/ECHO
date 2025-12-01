@@ -44,8 +44,6 @@ const barangayData: { [province: string]: { [cityMunicipality: string]: string[]
 };
 
 const sexOptions = ["Male", "Female", "Other", "Prefer not to say"];
-const routeOptions = ["Route 1 - North Cebu", "Route 2 - South Cebu", "Route 3 - Metro Cebu", "Route 4 - Cebu City Center", "Route 5 - Mactan Island"];
-const toOptions = ["SM City Cebu", "Ayala Center Cebu", "Robinson's Galleria Cebu", "SM Seaside City Cebu", "IT Park", "Lahug", "Capitol Site", "Colon Street"];
 
 interface UserProfileData {
   firstName?: string;
@@ -79,7 +77,13 @@ interface DropdownFieldProps {
   isEditing: boolean;
 }
 
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
+interface ChangePasswordData {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}
+
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator";
 
 const ProfileInfoScreen = () => {
   const router = useRouter();
@@ -91,6 +95,18 @@ const ProfileInfoScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [dropdownVisible, setDropdownVisible] = useState<string | null>(null);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+  const [passwordData, setPasswordData] = useState<ChangePasswordData>({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [passwordErrors, setPasswordErrors] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
 
   const loadUserId = async (): Promise<string | undefined> => {
     try {
@@ -155,10 +171,7 @@ const ProfileInfoScreen = () => {
         barangay: data.op_brgy || '',
         zipCode: data.op_zipcode || '',
         houseAddress: data.op_house_add || '',
-        route: data.op_routefrom || '',
-        routeTo: data.op_routeto || '',
         email: data.op_email || '',
-        facebook: data.op_fb || '',
         profileImage: data.op_image || '',
       };
 
@@ -196,10 +209,7 @@ const ProfileInfoScreen = () => {
         op_brgy: dataToSave.barangay,
         op_zipcode: dataToSave.zipCode,
         op_house_add: dataToSave.houseAddress,
-        op_routefrom: dataToSave.route,
-        op_routeto: dataToSave.routeTo,
         op_email: dataToSave.email,
-        op_fb: dataToSave.facebook,
         op_image: dataToSave.profileImage,
       };
 
@@ -238,6 +248,130 @@ const ProfileInfoScreen = () => {
       return false;
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  // PASSWORD CHANGE HANDLERS
+  const handlePasswordChange = async () => {
+    if (!passwordData.currentPassword.trim()) {
+      Alert.alert("Validation Error", "Please enter your current password.")
+      return
+    }
+    if (!passwordData.newPassword.trim()) {
+      Alert.alert("Validation Error", "Please enter a new password.")
+      return
+    }
+    if (!passwordData.confirmPassword.trim()) {
+      Alert.alert("Validation Error", "Please confirm your new password.")
+      return
+    }
+
+    if (passwordData.newPassword !== passwordData.confirmPassword) {
+      Alert.alert("Validation Error", "New password and confirmation do not match.")
+      return
+    }
+
+    if (passwordData.newPassword.length < 8) {
+      Alert.alert("Validation Error", "New password must be at least 8 characters long.")
+      return
+    }
+
+    Alert.alert("Change Password", "Are you sure you want to change your password?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Change",
+        onPress: () => savePasswordChange(),
+      },
+    ])
+  }
+
+  const savePasswordChange = async () => {
+    try {
+      setIsChangingPassword(true)
+
+      if (!userData?.email) {
+        Alert.alert("Error", "Unable to change password: No email found in your profile.")
+        setIsChangingPassword(false)
+        return
+      }
+
+      const email = userData.email
+
+      console.log("🔄 Attempting to change password for:", email)
+      console.log("📤 Sending request to:", `${API_BASE_URL}/change_password/`)
+
+      const response = await fetch(`${API_BASE_URL}/change_password/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: email,
+          currentPassword: passwordData.currentPassword,
+          newPassword: passwordData.newPassword,
+        }),
+      })
+
+      console.log("📥 Password change response status:", response.status)
+      
+      let result;
+      try {
+        result = await response.json()
+        console.log("📥 Password change response data:", result)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      } catch (parseError) {
+        console.log("❌ Failed to parse response as JSON")
+        result = { error: "Invalid server response" }
+      }
+
+      if (response.ok && result.success) {
+        Alert.alert("Success", result.message || "Your password has been changed successfully!", [
+          {
+            text: "OK",
+            onPress: () => {
+              setShowChangePassword(false)
+              setPasswordData({
+                currentPassword: "",
+                newPassword: "",
+                confirmPassword: "",
+              })
+            },
+          },
+        ])
+      } else {
+        // Handle specific error cases
+        let errorMessage = result.error || result.message || "Failed to change password. Please try again."
+        
+        if (response.status === 401) {
+          errorMessage = "Current password is incorrect."
+        } else if (response.status === 400) {
+          errorMessage = result.error || "Invalid request. Please check your inputs."
+        } else if (response.status === 500) {
+          errorMessage = "Server error. Please try again later."
+        }
+        
+        Alert.alert("Error", errorMessage)
+      }
+    } catch (error) {
+      console.error("❌ Error changing password:", error)
+      Alert.alert("Error", "Network error. Please check your connection and try again.")
+    } finally {
+      setIsChangingPassword(false)
+    }
+  }
+
+  const handlePasswordInputChange = (field: keyof ChangePasswordData, value: string) => {
+    setPasswordData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+    
+    // Clear error when user starts typing
+    if (passwordErrors[field]) {
+      setPasswordErrors(prev => ({
+        ...prev,
+        [field]: ''
+      }));
     }
   };
 
@@ -533,6 +667,37 @@ const ProfileInfoScreen = () => {
     );
   };
 
+  const renderPasswordInput = (
+    label: string, 
+    value: string, 
+    placeholder: string, 
+    onChangeText: (text: string) => void, 
+    secureTextEntry = true,
+    error?: string
+  ) => {
+    return (
+      <View style={styles.inputGroup}>
+        <Text style={styles.inputLabel}>{label}</Text>
+        <View style={[
+          styles.inputContainer, 
+          error ? styles.inputError : {}
+        ]}>
+          <TextInput
+            style={[styles.inputText, { flex: 1 }]}
+            value={value}
+            placeholder={placeholder}
+            placeholderTextColor="#999"
+            secureTextEntry={secureTextEntry}
+            onChangeText={onChangeText}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+        </View>
+        {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      </View>
+    );
+  };
+
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -620,6 +785,15 @@ const ProfileInfoScreen = () => {
             </Text>
             <Text style={styles.profileSubtext}>Horse Operator</Text>
           </View>
+
+          {/* Change Password Button */}
+          <TouchableOpacity 
+            style={styles.changePasswordButton}
+            onPress={() => setShowChangePassword(true)}
+          >
+            <FontAwesome5 name="key" size={16} color="#CD853F" />
+            <Text style={styles.changePasswordText}>Change Password</Text>
+          </TouchableOpacity>
         </View>
 
         <View style={styles.formContainer}>
@@ -649,7 +823,6 @@ const ProfileInfoScreen = () => {
             </View>
             {renderTextInputField('Phone Number', 'phoneNumber', '+63 XXX XXX XXXX', 'mobile-alt')}
             {renderTextInputField('Email', 'email', 'your.email@example.com', 'envelope')}
-            {renderTextInputField('Facebook', 'facebook', 'Facebook profile URL', 'facebook')}
           </View>
 
           <View style={styles.sectionCard}>
@@ -710,29 +883,6 @@ const ProfileInfoScreen = () => {
             {renderTextInputField('House Number / Street', 'houseAddress', 'Enter complete address')}
           </View>
 
-          <View style={styles.sectionCard}>
-            <View style={styles.sectionHeader}>
-              <FontAwesome5 name="route" size={16} color="#CD853F" />
-              <Text style={styles.sectionTitle}>Route Information</Text>
-            </View>
-            <DropdownField
-              label="Route From"
-              value={editableUserData.route || ''}
-              placeholder="Select your route"
-              options={routeOptions}
-              onSelect={(value) => setEditableUserData((prev) => ({ ...prev, route: value }))}
-              isEditing={isEditing}
-            />
-            <DropdownField
-              label="Route To"
-              value={editableUserData.routeTo || ''}
-              placeholder="Select destination"
-              options={toOptions}
-              onSelect={(value) => setEditableUserData((prev) => ({ ...prev, routeTo: value }))}
-              isEditing={isEditing}
-            />
-          </View>
-
           {isEditing && (
             <TouchableOpacity 
               style={[styles.saveButton, isSaving && styles.saveButtonDisabled]} 
@@ -754,6 +904,79 @@ const ProfileInfoScreen = () => {
           )}
         </View>
       </ScrollView>
+
+      {/* Change Password Modal */}
+      <Modal
+        visible={showChangePassword}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !isChangingPassword && setShowChangePassword(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.passwordModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Change Password</Text>
+              <TouchableOpacity 
+                onPress={() => setShowChangePassword(false)}
+                disabled={isChangingPassword}
+              >
+                <FontAwesome name="times" size={20} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.passwordForm}>
+              {renderPasswordInput(
+                'Current Password',
+                passwordData.currentPassword,
+                'Enter current password',
+                (text) => handlePasswordInputChange('currentPassword', text),
+                true
+              )}
+              
+              {renderPasswordInput(
+                'New Password',
+                passwordData.newPassword,
+                'Enter new password',
+                (text) => handlePasswordInputChange('newPassword', text),
+                true
+              )}
+              
+              {renderPasswordInput(
+                'Confirm New Password',
+                passwordData.confirmPassword,
+                'Confirm new password',
+                (text) => handlePasswordInputChange('confirmPassword', text),
+                true
+              )}
+
+              <View style={styles.passwordButtonContainer}>
+                <TouchableOpacity 
+                  style={[styles.cancelButton, isChangingPassword && styles.disabledButton]}
+                  onPress={() => setShowChangePassword(false)}
+                  disabled={isChangingPassword}
+                >
+                  <Text style={styles.cancelButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.confirmButton, isChangingPassword && styles.disabledButton]}
+                  onPress={handlePasswordChange}
+                  disabled={isChangingPassword}
+                >
+                  {isChangingPassword ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <FontAwesome5 name="key" size={16} color="#fff" />
+                      <Text style={styles.confirmButtonText}>Change Password</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -873,6 +1096,7 @@ const styles = StyleSheet.create({
   },
   profileNameContainer: {
     alignItems: 'center',
+    marginBottom: 16,
   },
   profileName: {
     fontSize: 24,
@@ -885,6 +1109,22 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#6B7280',
     fontWeight: '500',
+  },
+  changePasswordButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    backgroundColor: '#FEF3E2',
+    borderRadius: 25,
+    gap: 8,
+    borderWidth: 1.5,
+    borderColor: '#CD853F',
+  },
+  changePasswordText: {
+    color: '#CD853F',
+    fontSize: 15,
+    fontWeight: '600',
   },
   formContainer: {
     paddingHorizontal: 16,
@@ -934,6 +1174,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
   },
+  inputError: {
+    borderColor: '#EF4444',
+  },
   inputIconLeft: {
     marginRight: 12,
   },
@@ -945,6 +1188,12 @@ const styles = StyleSheet.create({
   placeholderText: {
     color: '#9CA3AF',
     fontWeight: '400',
+  },
+  errorText: {
+    color: '#EF4444',
+    fontSize: 12,
+    marginTop: 4,
+    marginLeft: 4,
   },
   dropdownContainer: {
     flexDirection: 'row',
@@ -980,6 +1229,18 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 400,
     maxHeight: '70%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  passwordModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '80%',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
@@ -1046,6 +1307,48 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 17,
     fontWeight: '700',
+  },
+  passwordForm: {
+    padding: 20,
+  },
+  passwordButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 24,
+    gap: 12,
+  },
+  cancelButton: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+    backgroundColor: '#F9FAFB',
+  },
+  cancelButtonText: {
+    color: '#374151',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  confirmButton: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#CD853F',
+    gap: 8,
+  },
+  confirmButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  disabledButton: {
+    opacity: 0.6,
   },
 });
 

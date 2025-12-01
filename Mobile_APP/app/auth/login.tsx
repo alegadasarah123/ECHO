@@ -209,8 +209,8 @@ export default function LoginScreen() {
   }
 
   const handleForgotPassword = () => {
-    router.push({ pathname: "./forgot-password" })
-}
+    router.push("/auth/forgot-password")
+  }
 
   const togglePasswordVisibility = useCallback(() => {
     setShowPassword((prev) => !prev)
@@ -301,12 +301,9 @@ export default function LoginScreen() {
           <View style={styles.footerSection}>
             <Text style={styles.footerText}>
               Don&#39;t have an account?{" "}
-              <Text
-                   style={styles.signUpText}  onPress={() =>
-                       !isLoginLoading && router.push({ pathname: "./signup" })
-                     }>
+              <Text style={styles.signUpText} onPress={() => !isLoginLoading && router.push("/auth/signup")}>
                 Sign Up
-            </Text>
+              </Text>
             </Text>
           </View>
         </View>
@@ -331,8 +328,8 @@ const styles = StyleSheet.create({
     marginBottom: verticalScale(15),
   },
   logo: {
-    width: scale(150),
-    height: scale(150),
+    width: scale(250),
+    height: scale(250),
     marginBottom: verticalScale(5),
   },
   echoText: {

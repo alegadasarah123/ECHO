@@ -61,7 +61,7 @@ interface VetScheduleItem {
 
 type ScheduleResponse = VetScheduleItem[];
 
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator";
 
 const Hvetprofile = () => {
   const [vetProfile, setVetProfile] = useState<VetProfile | null>(null);

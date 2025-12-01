@@ -113,6 +113,13 @@ def get_chat_history(request):
 
     return Response({"success": True, "history": history}, status=status.HTTP_200_OK)
 
+
+
+
+
+
+
+
 # ------------------------------------------------ Messages ------------------------------------------------
 # Philippine timezone
 PHILIPPINE_TZ = ZoneInfo('Asia/Manila')
@@ -2210,19 +2217,19 @@ def get_water_logs(request):
 @api_view(['GET'])
 def available_horses(request):
     """
-    Get all horses with their op info for horse selection, including image from Supabase storage
+    Get all horses with their op info, health status, and image URL from Supabase Storage
     """
     op_id = request.GET.get("op_id")
     
     try:
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         today = str(date.today())
-        
-        # Get all horses
+
+        # Get all horses including horse_status from database
         horses_response = service_client.table("horse_profile").select(
-            "horse_id, horse_name, horse_breed, horse_age, horse_color, horse_image, op_id"
+            "horse_id, horse_name, horse_breed, horse_age, horse_color, horse_image, horse_status, op_id"
         ).execute()
-        
+
         if not horses_response.data:
             return Response({
                 'horses': [],
@@ -2230,120 +2237,115 @@ def available_horses(request):
                 'available_count': 0,
                 'assigned_count': 0
             }, status=status.HTTP_200_OK)
-        
-        # Get all ops from horse_op_profile table
+
+        # Get all ops
         ops_response = service_client.table("horse_op_profile").select(
             "op_id, op_fname, op_lname"
         ).execute()
-        
+
         # Get all active assignments (where date_end is null)
         active_assignments_response = service_client.table("horse_assignment").select(
             "assign_id, horse_id, kutsero_id, date_start, date_end"
         ).is_("date_end", "null").execute()
-        
-        # Lookup dictionaries
+
+        # Create lookup dictionaries
         ops_dict = {op['op_id']: op for op in ops_response.data} if ops_response.data else {}
         assignments_dict = {assign['horse_id']: assign for assign in active_assignments_response.data} if active_assignments_response.data else {}
-        
+
         horses = []
         for horse in horses_response.data:
-            # 🖼 Handle horse image
-            horse_image_url = None
-            horse_image = horse.get('horse_image')
-            
-            if horse_image:
+            # Generate image URL from Supabase storage
+            image_path = horse.get("horse_image")
+            if image_path:
                 try:
-                    # If already a full URL
-                    if isinstance(horse_image, str) and horse_image.startswith('http'):
-                        horse_image_url = horse_image
-                        logger.info(f"Horse image is already a full URL: {horse_image_url}")
-                    
-                    # If it's base64 data
-                    elif isinstance(horse_image, str) and horse_image.startswith('data:image'):
-                        horse_image_url = horse_image
-                        logger.info("Horse image is base64 data")
-                    
-                    # Otherwise, construct full Supabase storage URL
-                    elif isinstance(horse_image, str) and horse_image.strip():
-                        filename = horse_image.strip()
-                        horse_image_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET_NAME}/{filename}"
-                        logger.info(f"Constructed horse image URL: {horse_image_url}")
-                    
+                    image_url = service_client.storage.from_(BUCKET_NAME).get_public_url(image_path)
+                    if not image_url:
+                        image_url = "https://via.placeholder.com/150?text=No+Image"
+                except Exception:
+                    image_url = "https://via.placeholder.com/150?text=No+Image"
+            else:
+                image_url = "https://via.placeholder.com/150?text=No+Image"
+
+            # Get op info
+            op_name = "No Op Assigned"
+            if horse.get('op_id'):
+                op = ops_dict.get(horse['op_id'])
+                if op:
+                    if op.get('op_fname') and op.get('op_lname'):
+                        op_name = f"{op['op_fname']} {op['op_lname']}"
+                    elif op.get('op_fname'):
+                        op_name = op['op_fname']
+                    elif op.get('op_lname'):
+                        op_name = op['op_lname']
                     else:
-                        logger.warning(f"Could not parse horse image for horse_id {horse['horse_id']}")
-                        horse_image_url = "https://via.placeholder.com/150?text=No+Image"
-                        
-                except Exception as img_error:
-                    logger.warning(f"Error parsing horse image for horse_id {horse['horse_id']}: {img_error}")
-                    horse_image_url = "https://via.placeholder.com/150?text=No+Image"
-            else:
-                logger.info(f"No horse image for horse_id {horse['horse_id']}")
-                horse_image_url = "https://via.placeholder.com/150?text=No+Image"
-            
-            # 🧍 Operator info
-            op = ops_dict.get(horse['op_id']) if horse.get('op_id') else None
-            if op:
-                if op.get('op_fname') and op.get('op_lname'):
-                    op_name = f"{op['op_fname']} {op['op_lname']}"
-                elif op.get('op_fname'):
-                    op_name = op['op_fname']
-                elif op.get('op_lname'):
-                    op_name = op['op_lname']
+                        op_name = "Unnamed Op"
                 else:
-                    op_name = "Unnamed Op"
-            else:
-                op_name = "No Op Assigned"
+                    op_name = "Op Not Found"
+
+            # Get health status directly from database
+            # The database stores: 'healthy', 'unhealthy', 'sick', or other values
+            db_health_status = horse.get('horse_status', '').strip().lower()
             
-            # 🐎 Assignment status
+            # Map database values to frontend format
+            if db_health_status == 'healthy':
+                health_status = 'Healthy'
+            elif db_health_status in ['unhealthy', 'sick']:
+                health_status = 'Sick'
+            elif db_health_status == 'deceased':
+                health_status = 'Deceased'
+            else:
+                # Default to Healthy if status is missing or unrecognized
+                health_status = 'Healthy'
+
+            # Check assignment status
             assignment = assignments_dict.get(horse['horse_id'])
             if assignment:
                 assignment_status = 'assigned'
-                health_status = 'Under Care'
                 status_text = 'Currently assigned'
                 current_assignment_id = assignment['assign_id']
                 assignment_start = assignment['date_start']
                 assignment_end = assignment['date_end']
             else:
                 assignment_status = 'available'
-                health_status = 'Healthy'
                 status_text = 'Ready for work'
                 current_assignment_id = None
                 assignment_start = None
                 assignment_end = None
-            
-            # ✅ Append formatted horse info
+
             horses.append({
                 'id': horse['horse_id'],
-                'name': horse['horse_name'] or 'Unnamed Horse',
-                'breed': horse['horse_breed'] or 'Mixed Breed',
-                'age': horse['horse_age'] or 5,
-                'color': horse['horse_color'] or 'Brown',
-                'image': horse_image_url,
-                'healthStatus': health_status,
+                'name': horse.get('horse_name', 'Unnamed Horse'),
+                'breed': horse.get('horse_breed', 'Mixed Breed'),
+                'age': horse.get('horse_age', 5),
+                'color': horse.get('horse_color', 'Brown'),
+                'image': image_url,
+                'healthStatus': health_status,  # Using actual database value
                 'status': status_text,
                 'opName': op_name,
+                'operatorName': op_name,  # Added for frontend compatibility
+                'ownerName': op_name,  # Added for frontend compatibility
                 'assignmentStatus': assignment_status,
                 'currentAssignmentId': current_assignment_id,
                 'checkedInAt': assignment_start,
                 'checkedOutAt': assignment_end,
-                'lastCheckup': f"{((datetime.now() - datetime(2024, 5, 25)).days)} days ago",
-                'nextCheckup': "June 15, 2025"
+                'lastCheckup': 'N/A',  # You can add this field to your database if needed
+                'nextCheckup': 'N/A',  # You can add this field to your database if needed
             })
-        
-        # Calculate stats
+
+        # Calculate statistics based on actual database values
         total_count = len(horses)
         available_count = len([h for h in horses if h['assignmentStatus'] == 'available'])
         assigned_count = len([h for h in horses if h['assignmentStatus'] == 'assigned'])
-        
+
         return Response({
             'horses': horses,
             'total_count': total_count,
             'available_count': available_count,
             'assigned_count': assigned_count
         }, status=status.HTTP_200_OK)
-        
+
     except Exception as e:
-        logger.error(f"Error fetching horses for assignment: {e}")
+        print(f"Error fetching horses for assignment: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -5038,63 +5040,6 @@ def get_kutsero_by_input(kutsero_input):
     return kutsero_response.data if kutsero_response.data else []
 
 
-user_push_tokens = {}
-
-def send_push_notification(expo_push_token, title, message, data=None):
-    """
-    Simple function to send push notifications via Expo
-    """
-    try:
-        if not expo_push_token:
-            return False
-            
-        # Expo push notification API
-        response = requests.post(
-            'https://exp.host/--/api/v2/push/send',
-            json={
-                'to': expo_push_token,
-                'title': title,
-                'body': message,
-                'sound': 'default',
-                'data': data or {}
-            },
-            headers={'Content-Type': 'application/json'}
-        )
-        
-        return response.status_code == 200
-    except Exception as e:
-        print(f"Push notification error: {e}")
-        return False
-
-@api_view(['POST'])
-def register_push_token(request):
-    """
-    Simple endpoint to register push token
-    """
-    try:
-        kutsero_id = request.data.get('kutsero_id')
-        expo_push_token = request.data.get('expo_push_token')
-        
-        if not kutsero_id or not expo_push_token:
-            return Response({
-                'success': False, 
-                'message': 'kutsero_id and expo_push_token are required'
-            }, status=status.HTTP_400_BAD_REQUEST)
-        
-        user_push_tokens[kutsero_id] = expo_push_token
-        print(f"Registered push token for kutsero {kutsero_id}")
-        
-        return Response({
-            'success': True, 
-            'message': 'Push token registered successfully'
-        })
-        
-    except Exception as e:
-        return Response({
-            'success': False,
-            'message': f'Error: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 @api_view(['GET'])
 def feed_water_notifications(request):
     """
@@ -5199,10 +5144,11 @@ def feed_water_notifications(request):
             'message': f'Error fetching notifications: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 @api_view(['GET'])
 def check_current_schedules(request):
     """
-    Check if any feed/water schedules are due right now and send push notifications.
+    Check if any feed/water schedules are due right now.
     Always returns due notifications even if horse is checked out.
     Accepts either UUID or first name.
     """
@@ -5218,7 +5164,6 @@ def check_current_schedules(request):
         current_time = now.strftime('%I:%M %p')
         prev_minute = (now - timedelta(minutes=1)).strftime('%I:%M %p')
         due_notifications = []
-        push_notifications_sent = 0
 
         kutseros = get_kutsero_by_input(kutsero_input)
         if not kutseros:
@@ -5238,9 +5183,6 @@ def check_current_schedules(request):
             .execute()
         horse_map = {h['horse_id']: h['horse_name'] for h in (horses_response.data or [])}
 
-        # Check if user has push token
-        expo_push_token = user_push_tokens.get(kutsero_uuid)
-
         # Check feed schedules (ignore horse status)
         feeds = (supabase.table('feed_detail')
                  .select('*')
@@ -5249,9 +5191,7 @@ def check_current_schedules(request):
         for feed in feeds:
             if feed.get('fd_time') in [current_time, prev_minute]:
                 horse_name = horse_map.get(feed.get('horse_id'), 'Unknown Horse')
-                
-                # Create notification data
-                notification_data = {
+                due_notifications.append({
                     'id': f'feed_{feed.get("fd_id")}',
                     'type': 'feed',
                     'title': f'🍽️ {feed.get("fd_meal_type")} Time!',
@@ -5261,20 +5201,7 @@ def check_current_schedules(request):
                     'horse_name': horse_name,
                     'priority': 'high',
                     'timestamp': now.isoformat(),
-                }
-                due_notifications.append(notification_data)
-                
-                # Send push notification if token exists
-                if expo_push_token:
-                    success = send_push_notification(
-                        expo_push_token,
-                        notification_data['title'],
-                        notification_data['message'],
-                        {'type': 'feed_reminder', 'horse_name': horse_name, 'feed_id': feed.get('fd_id')}
-                    )
-                    if success:
-                        push_notifications_sent += 1
-                        print(f"📤 Sent feed push notification to {kutsero_uuid}")
+                })
 
         # Check water schedules (ignore horse status)
         waters = (supabase.table('water_detail')
@@ -5284,9 +5211,7 @@ def check_current_schedules(request):
         for water in waters:
             if water.get('water_time') in [current_time, prev_minute]:
                 horse_name = horse_map.get(water.get('horse_id'), 'Unknown Horse')
-                
-                # Create notification data
-                notification_data = {
+                due_notifications.append({
                     'id': f'water_{water.get("water_id")}',
                     'type': 'water',
                     'title': f'💧 {water.get("water_period")} Watering Time!',
@@ -5296,20 +5221,7 @@ def check_current_schedules(request):
                     'horse_name': horse_name,
                     'priority': 'high',
                     'timestamp': now.isoformat(),
-                }
-                due_notifications.append(notification_data)
-                
-                # Send push notification if token exists
-                if expo_push_token:
-                    success = send_push_notification(
-                        expo_push_token,
-                        notification_data['title'],
-                        notification_data['message'],
-                        {'type': 'water_reminder', 'horse_name': horse_name, 'water_id': water.get('water_id')}
-                    )
-                    if success:
-                        push_notifications_sent += 1
-                        print(f"📤 Sent water push notification to {kutsero_uuid}")
+                })
 
         return Response({
             'success': True,
@@ -5317,7 +5229,6 @@ def check_current_schedules(request):
             'count': len(due_notifications),
             'current_time': current_time,
             'has_due_schedules': len(due_notifications) > 0,
-            'push_notifications_sent': push_notifications_sent
         })
 
     except Exception as e:
@@ -5325,4 +5236,340 @@ def check_current_schedules(request):
         return Response({
             'success': False,
             'message': f'Error checking schedules: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ===========================================================================
+
+# ------------------------------------------------ HORSE OPERATOR REMINDER NOTIF ------------------------------------------------
+def get_operator_by_input(operator_input):
+    """
+    Returns a list of operator dicts with 'operator_id' from input.
+    Accepts either UUID or first name (operator_fname)
+    """
+    try:
+        # Try to parse as UUID
+        val = uuid.UUID(operator_input, version=4)
+        operator_response = supabase.table('operator_profile')\
+            .select('operator_id, operator_fname, operator_lname')\
+            .eq('operator_id', str(val))\
+            .execute()
+    except ValueError:
+        # Treat as first name
+        operator_response = supabase.table('operator_profile')\
+            .select('operator_id, operator_fname, operator_lname')\
+            .eq('operator_fname', operator_input)\
+            .execute()
+
+    return operator_response.data if operator_response.data else []
+
+
+@api_view(['GET'])
+def operator_feed_water_notifications(request):
+    """
+    Fetch all feed and water schedule notifications for a specific operator.
+    Always returns notifications even if horse is checked out.
+    Accepts either UUID or first name.
+    """
+    try:
+        operator_input = request.GET.get('operator_id')
+        horse_id = request.GET.get('horse_id')
+
+        if not operator_input:
+            return Response({
+                'success': False,
+                'message': 'operator_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        now = datetime.now()
+        current_time = now.strftime('%I:%M %p')
+        notifications = []
+
+        operators = get_operator_by_input(operator_input)
+        if not operators:
+            return Response({
+                'success': True,
+                'data': [],
+                'count': 0,
+                'current_time': current_time,
+                'message': 'Operator not found'
+            })
+
+        operator_uuid = operators[0]['operator_id']
+
+        # Map horse IDs to names
+        horses_response = supabase.table('horse_profile')\
+            .select('horse_id, horse_name')\
+            .execute()
+        horse_map = {h['horse_id']: h['horse_name'] for h in (horses_response.data or [])}
+
+        # Fetch feed schedules (ignore horse status)
+        feeds = (supabase.table('feed_detail')
+                 .select('*')
+                 .eq('operator_id', operator_uuid)
+                 .execute().data or [])
+        if horse_id:
+            feeds = [f for f in feeds if f.get('horse_id') == horse_id]
+
+        for feed in feeds:
+            horse_name = horse_map.get(feed.get('horse_id'), 'Unknown Horse')
+            notifications.append({
+                'id': f'feed_{feed.get("fd_id")}',
+                'type': 'feed',
+                'title': f'🍽️ {feed.get("fd_meal_type")} Time',
+                'message': f'Time to feed {horse_name}: {feed.get("fd_food_type")} ({feed.get("fd_qty")})',
+                'scheduled_time': feed.get('fd_time'),
+                'horse_id': feed.get('horse_id'),
+                'horse_name': horse_name,
+                'details': {
+                    'meal_type': feed.get('fd_meal_type'),
+                    'food_type': feed.get('fd_food_type'),
+                    'quantity': feed.get('fd_qty'),
+                },
+                'timestamp': now.isoformat(),
+            })
+
+        # Fetch water schedules (ignore horse status)
+        waters = (supabase.table('water_detail')
+                  .select('*')
+                  .eq('operator_id', operator_uuid)
+                  .execute().data or [])
+        if horse_id:
+            waters = [w for w in waters if w.get('horse_id') == horse_id]
+
+        for water in waters:
+            horse_name = horse_map.get(water.get('horse_id'), 'Unknown Horse')
+            notifications.append({
+                'id': f'water_{water.get("water_id")}',
+                'type': 'water',
+                'title': f'💧 {water.get("water_period")} Watering Time',
+                'message': f'Time to give {horse_name} water: {water.get("water_amount")}',
+                'scheduled_time': water.get('water_time'),
+                'horse_id': water.get('horse_id'),
+                'horse_name': horse_name,
+                'details': {
+                    'period': water.get('water_period'),
+                    'amount': water.get('water_amount'),
+                },
+                'timestamp': now.isoformat(),
+            })
+
+        return Response({
+            'success': True,
+            'data': notifications,
+            'count': len(notifications),
+            'current_time': current_time,
+        })
+
+    except Exception as e:
+        print(f"Error in operator_feed_water_notifications: {str(e)}")
+        return Response({
+            'success': False,
+            'message': f'Error fetching notifications: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def operator_check_current_schedules(request):
+    """
+    Check if any feed/water schedules are due right now for operator.
+    Always returns due notifications even if horse is checked out.
+    Accepts either UUID or first name.
+    """
+    try:
+        operator_input = request.GET.get('operator_id')
+        if not operator_input:
+            return Response({
+                'success': False,
+                'message': 'operator_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        now = datetime.now()
+        current_time = now.strftime('%I:%M %p')
+        prev_minute = (now - timedelta(minutes=1)).strftime('%I:%M %p')
+        due_notifications = []
+
+        operators = get_operator_by_input(operator_input)
+        if not operators:
+            return Response({
+                'success': True,
+                'data': [],
+                'count': 0,
+                'current_time': current_time,
+                'has_due_schedules': False,
+            })
+
+        operator_uuid = operators[0]['operator_id']
+
+        # Map horse IDs to names
+        horses_response = supabase.table('horse_profile')\
+            .select('horse_id, horse_name')\
+            .execute()
+        horse_map = {h['horse_id']: h['horse_name'] for h in (horses_response.data or [])}
+
+        # Check feed schedules (ignore horse status)
+        feeds = (supabase.table('feed_detail')
+                 .select('*')
+                 .eq('operator_id', operator_uuid)
+                 .execute().data or [])
+        for feed in feeds:
+            if feed.get('fd_time') in [current_time, prev_minute]:
+                horse_name = horse_map.get(feed.get('horse_id'), 'Unknown Horse')
+                due_notifications.append({
+                    'id': f'feed_{feed.get("fd_id")}',
+                    'type': 'feed',
+                    'title': f'🍽️ {feed.get("fd_meal_type")} Time!',
+                    'message': f'Time to feed {horse_name}: {feed.get("fd_food_type")} ({feed.get("fd_qty")})',
+                    'scheduled_time': feed.get('fd_time'),
+                    'horse_id': feed.get('horse_id'),
+                    'horse_name': horse_name,
+                    'priority': 'high',
+                    'timestamp': now.isoformat(),
+                })
+
+        # Check water schedules (ignore horse status)
+        waters = (supabase.table('water_detail')
+                  .select('*')
+                  .eq('operator_id', operator_uuid)
+                  .execute().data or [])
+        for water in waters:
+            if water.get('water_time') in [current_time, prev_minute]:
+                horse_name = horse_map.get(water.get('horse_id'), 'Unknown Horse')
+                due_notifications.append({
+                    'id': f'water_{water.get("water_id")}',
+                    'type': 'water',
+                    'title': f'💧 {water.get("water_period")} Watering Time!',
+                    'message': f'Time to give {horse_name} water: {water.get("water_amount")}',
+                    'scheduled_time': water.get('water_time'),
+                    'horse_id': water.get('horse_id'),
+                    'horse_name': horse_name,
+                    'priority': 'high',
+                    'timestamp': now.isoformat(),
+                })
+
+        return Response({
+            'success': True,
+            'data': due_notifications,
+            'count': len(due_notifications),
+            'current_time': current_time,
+            'has_due_schedules': len(due_notifications) > 0,
+        })
+
+    except Exception as e:
+        print(f"Error in operator_check_current_schedules: {str(e)}")
+        return Response({
+            'success': False,
+            'message': f'Error checking schedules: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def operator_notifications(request):
+    """
+    Fetch all notifications for operator including announcements and scheduled reminders.
+    Accepts either UUID or first name.
+    """
+    try:
+        operator_input = request.GET.get('user_id')
+        if not operator_input:
+            return Response({
+                'success': False,
+                'message': 'user_id is required'
+            }, status=status.HTTP_400_BAD_REQUEST)
+
+        now = datetime.now()
+        notifications = []
+
+        operators = get_operator_by_input(operator_input)
+        if not operators:
+            return Response({
+                'success': True,
+                'notifications': [],
+                'count': 0,
+                'message': 'Operator not found'
+            })
+
+        operator_uuid = operators[0]['operator_id']
+
+        # Fetch announcements
+        announcements_response = supabase.table('announcement')\
+            .select('*')\
+            .order('announce_date', desc=True)\
+            .execute()
+        
+        announcements = announcements_response.data or []
+        
+        for announcement in announcements:
+            # Format the date
+            announce_date = announcement.get('announce_date')
+            if announce_date:
+                if isinstance(announce_date, str):
+                    try:
+                        announce_date = datetime.fromisoformat(announce_date.replace('Z', '+00:00'))
+                    except:
+                        announce_date = datetime.now()
+                formatted_date = announce_date.strftime('%B %d, %Y at %I:%M %p')
+            else:
+                formatted_date = "Unknown date"
+            
+            # Handle image URLs
+            image_urls = []
+            raw_image_url = announcement.get('image_url') or announcement.get('announce_image')
+            if raw_image_url:
+                if isinstance(raw_image_url, str):
+                    if raw_image_url.startswith('['):
+                        try:
+                            image_urls = json.loads(raw_image_url)
+                            if not isinstance(image_urls, list):
+                                image_urls = [image_urls]
+                        except:
+                            image_urls = [raw_image_url]
+                    else:
+                        image_urls = [raw_image_url]
+            
+            notifications.append({
+                'id': f"announce_{announcement.get('announce_id')}",
+                'notification_id': f"announce_{announcement.get('announce_id')}",
+                'title': announcement.get('announce_title', 'Announcement'),
+                'message': announcement.get('announce_content', ''),
+                'time': formatted_date,
+                'type': 'system',
+                'priority': 'medium',
+                'image_urls': image_urls,
+                'created_at': announcement.get('announce_date'),
+                'source': 'announcement',
+                'posted_by_role': announcement.get('posted_by_role', 'Admin'),
+                'formatted_date': formatted_date,
+            })
+
+        # Fetch scheduled reminders
+        feed_water_notifs = operator_feed_water_notifications(request._request).data
+        if isinstance(feed_water_notifs, dict) and feed_water_notifs.get('success'):
+            for notif in feed_water_notifs.get('data', []):
+                notifications.append({
+                    'id': notif.get('id'),
+                    'notification_id': notif.get('id'),
+                    'title': notif.get('title'),
+                    'message': notif.get('message'),
+                    'time': notif.get('scheduled_time', 'Scheduled'),
+                    'type': 'reminder',
+                    'priority': notif.get('priority', 'medium'),
+                    'horseName': notif.get('horse_name'),
+                    'scheduledTime': notif.get('scheduled_time'),
+                    'created_at': notif.get('timestamp'),
+                    'source': 'schedule',
+                })
+
+        return Response({
+            'success': True,
+            'notifications': notifications,
+            'count': len(notifications),
+            'current_time': now.strftime('%I:%M %p'),
+        })
+
+    except Exception as e:
+        print(f"Error in operator_notifications: {str(e)}")
+        return Response({
+            'success': False,
+            'message': f'Error fetching operator notifications: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

@@ -166,7 +166,7 @@ const SOSScreen = () => {
 
       console.log('Sending SOS data:', sosData);
 
-      const response = await fetch('http://192.168.101.2:8000/api/horse_operator/sos/create/', {
+      const response = await fetch('http://192.168.31.58:8000/api/horse_operator/sos/create/', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
