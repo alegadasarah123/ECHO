@@ -10,6 +10,10 @@ import time
 import traceback
 from datetime import datetime, timedelta
 from rest_framework import status
+import logging
+
+# -------------------- LOGGING SETUP --------------------
+logger = logging.getLogger(__name__)
 
 # -------------------- SUPABASE CLIENT --------------------
 supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
@@ -37,131 +41,189 @@ def test_cookie(request):
 
 # -------------------- CORE REUSABLE FUNCTION --------------------
 def fetch_and_merge_users():
-    """Fetch users from Supabase auth + db and merge profiles with details"""
-    auth_url = f"{SUPABASE_URL}/auth/v1/admin/users"
-    headers = {
-        "apikey": SERVICE_ROLE_KEY,
-        "Authorization": f"Bearer {SERVICE_ROLE_KEY}"
-    }
-    auth_res = requests.get(auth_url, headers=headers)
-    auth_users = auth_res.json().get("users", [])
+    """Fetch users from Supabase auth + db with COMPLETE error isolation"""
+    try:
+        logger.info("🔄 Starting fetch_and_merge_users")
+        
+        # 1. Auth users with timeout
+        auth_url = f"{SUPABASE_URL}/auth/v1/admin/users"
+        headers = {
+            "apikey": SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SERVICE_ROLE_KEY}"
+        }
+        
+        auth_res = requests.get(auth_url, headers=headers, timeout=10)
+        auth_res.raise_for_status()
+        auth_users = auth_res.json().get("users", [])
+        logger.info(f"✅ Auth users fetched: {len(auth_users)}")
 
-    db_res = supabase.table("users").select("*").execute()
-    db_users = {u["id"]: u for u in (db_res.data or [])}
+        # 2. Database queries with individual error handling
+        db_users = {}
+        try:
+            db_res = supabase.table("users").select("*").execute()
+            db_users = {u["id"]: u for u in (db_res.data or [])}
+            logger.info(f"✅ DB users fetched: {len(db_users)}")
+        except Exception as e:
+            logger.error(f"❌ DB users failed: {e}")
+            db_users = {}
 
-    kutsero_res = supabase.table("kutsero_profile").select("*").execute()
-    kutsero_profiles = {kp["kutsero_id"]: kp for kp in (kutsero_res.data or [])}
+        kutsero_profiles = {}
+        try:
+            kutsero_res = supabase.table("kutsero_profile").select("*").execute()
+            kutsero_profiles = {kp["kutsero_id"]: kp for kp in (kutsero_res.data or [])}
+            logger.info(f"✅ Kutsero profiles: {len(kutsero_profiles)}")
+        except Exception as e:
+            logger.error(f"❌ Kutsero profiles failed: {e}")
 
-    ho_res = supabase.table("horse_op_profile").select("*").execute()
-    ho_profiles = {hp["op_id"]: hp for hp in (ho_res.data or [])}
+        ho_profiles = {}
+        try:
+            ho_res = supabase.table("horse_op_profile").select("*").execute()
+            ho_profiles = {hp["op_id"]: hp for hp in (ho_res.data or [])}
+            logger.info(f"✅ Horse OP profiles: {len(ho_profiles)}")
+        except Exception as e:
+            logger.error(f"❌ Horse OP profiles failed: {e}")
 
-    allowed_roles = {"kutsero", "horse operator"}
-    merged = []
+        # 3. Merge with safety
+        merged = []
+        allowed_roles = {"kutsero", "horse operator"}
 
-    for au in auth_users:
-        user_id = au["id"]
-        if user_id in db_users:
-            db_u = db_users[user_id]
-            role_raw = (db_u.get("role") or "").strip()
-            role = role_raw.lower()
-            status = (db_u.get("status") or "pending").lower()
+        for au in auth_users:
+            try:
+                user_id = au["id"]
+                if user_id in db_users:
+                    db_u = db_users[user_id]
+                    role_raw = (db_u.get("role") or "").strip()
+                    role = role_raw.lower()
+                    status = (db_u.get("status") or "pending").lower()
 
-            if role in allowed_roles:
-                profile = {}
-                full_name = ""
-                contact_num = ""
+                    if role in allowed_roles:
+                        profile = {}
+                        full_name = ""
+                        contact_num = ""
 
-                if role == "kutsero" and user_id in kutsero_profiles:
-                    kp = kutsero_profiles[user_id]
-                    full_name = " ".join(filter(None, [
-                        kp.get("kutsero_fname"),
-                        kp.get("kutsero_mname"),
-                        kp.get("kutsero_lname")
-                    ]))
-                    contact_num = kp.get("kutsero_phone_num", "")
+                        if role == "kutsero" and user_id in kutsero_profiles:
+                            kp = kutsero_profiles[user_id]
+                            full_name = " ".join(filter(None, [
+                                kp.get("kutsero_fname", ""),
+                                kp.get("kutsero_mname", ""),
+                                kp.get("kutsero_lname", "")
+                            ])).strip()
+                            contact_num = kp.get("kutsero_phone_num", "")
 
-                    profile = {
-                        "dateOfBirth": kp.get("kutsero_dob"),
-                        "sex": kp.get("kutsero_sex"),
-                        "phoneNumber": kp.get("kutsero_phone_num"),
-                        "address": ", ".join(filter(None, [
-                            kp.get("kutsero_brgy"),
-                            kp.get("kutsero_municipality"),
-                            kp.get("kutsero_city"),
-                            kp.get("kutsero_province"),
-                            kp.get("kutsero_zipcode"),
-                        ])),
-                        "profilePicture": kp.get("kutsero_image")
-                    }
+                            profile = {
+                                "dateOfBirth": kp.get("kutsero_dob"),
+                                "sex": kp.get("kutsero_sex"),
+                                "phoneNumber": contact_num,
+                                "address": ", ".join(filter(None, [
+                                    kp.get("kutsero_brgy"),
+                                    kp.get("kutsero_municipality"),
+                                    kp.get("kutsero_city"),
+                                    kp.get("kutsero_province"),
+                                    kp.get("kutsero_zipcode"),
+                                ])),
+                                "profilePicture": kp.get("kutsero_image")
+                            }
 
-                elif role == "horse operator" and user_id in ho_profiles:
-                    hp = ho_profiles[user_id]
-                    full_name = " ".join(filter(None, [
-                        hp.get("op_fname"),
-                        hp.get("op_mname"),
-                        hp.get("op_lname")
-                    ]))
-                    contact_num = hp.get("op_phone_num", "")
+                        elif role == "horse operator" and user_id in ho_profiles:
+                            hp = ho_profiles[user_id]
+                            full_name = " ".join(filter(None, [
+                                hp.get("op_fname", ""),
+                                hp.get("op_mname", ""),
+                                hp.get("op_lname", "")
+                            ])).strip()
+                            contact_num = hp.get("op_phone_num", "")
 
-                    profile = {
-                        "dateOfBirth": str(hp.get("op_dob")),
-                        "sex": hp.get("op_sex"),
-                        "phoneNumber": hp.get("op_phone_num"),
-                        "address": ", ".join(filter(None, [
-                            hp.get("op_house_add"),
-                            hp.get("op_brgy"),
-                            hp.get("op_municipality"),
-                            hp.get("op_city"),
-                            hp.get("op_province"),
-                            hp.get("op_zipcode"),
-                        ])),
-                        "profilePicture": hp.get("op_image")
-                    }
+                            profile = {
+                                "dateOfBirth": str(hp.get("op_dob", "")),
+                                "sex": hp.get("op_sex"),
+                                "phoneNumber": contact_num,
+                                "address": ", ".join(filter(None, [
+                                    hp.get("op_house_add"),
+                                    hp.get("op_brgy"),
+                                    hp.get("op_municipality"),
+                                    hp.get("op_city"),
+                                    hp.get("op_province"),
+                                    hp.get("op_zipcode"),
+                                ])),
+                                "profilePicture": hp.get("op_image")
+                            }
 
-                merged.append({
-                    "id": user_id,
-                    "email": au.get("email", ""),
-                    "created_at": au.get("created_at", ""),
-                    "name": full_name.strip(),
-                    "contact_num": contact_num,
-                    "role": role_raw,
-                    "status": status,
-                    "declineReason": db_u.get("decline_reason", ""), 
-                    **profile
-                })
+                        merged.append({
+                            "id": user_id,
+                            "email": au.get("email", ""),
+                            "created_at": au.get("created_at", ""),
+                            "name": full_name or "Unknown User",
+                            "contact_num": contact_num,
+                            "role": role_raw,
+                            "status": status,
+                            "declineReason": db_u.get("decline_reason", ""), 
+                            **profile
+                        })
+            except Exception as e:
+                logger.error(f"❌ Failed to merge user {au.get('id')}: {e}")
+                continue
 
-    return merged
+        logger.info(f"✅ Merge complete: {len(merged)} users")
+        return merged
+
+    except Exception as e:
+        logger.error(f"💥 CRITICAL: fetch_and_merge_users failed: {e}")
+        return []  # NEVER CRASH - RETURN EMPTY ARRAY
 
 # -------------------- DASHBOARD USERS --------------------
 @api_view(["GET"])
 @login_required
 def get_users(request):
-    users = fetch_and_merge_users()
-    pending_count = sum(
-        1 for u in users if u["status"].strip().lower() == "pending" and u["role"] in ["Kutsero", "Horse Operator"]
-    )
-    return Response({"users": users, "pending_count": pending_count})
+    try:
+        logger.info("🔥 get_users called")
+        users = fetch_and_merge_users()
+        pending_count = sum(
+            1 for u in users if u.get("status", "").strip().lower() == "pending" 
+            and u.get("role", "") in ["Kutsero", "Horse Operator"]
+        )
+        response_data = {"users": users, "pending_count": pending_count}
+        logger.info(f"✅ get_users returning: {len(users)} users, {pending_count} pending")
+        return Response(response_data)
+    except Exception as e:
+        logger.error(f"💥 get_users CRASHED: {e}")
+        return Response({"users": [], "pending_count": 0})
 
 @api_view(["GET"])
 @login_required
 def get_approved_counts(request):
-    users = fetch_and_merge_users()
-    approved_kutsero_count = sum(
-        1 for u in users if u.get("role", "").strip().lower() == "kutsero" and u.get("status", "").strip().lower() == "approved"
-    )
-    approved_horse_operator_count = sum(
-        1 for u in users if u.get("role", "").strip().lower() == "horse operator" and u.get("status", "").strip().lower() == "approved"
-    )
-    return Response({
-        "approved_kutsero_count": approved_kutsero_count,
-        "approved_horse_operator_count": approved_horse_operator_count,
-    })
+    try:
+        logger.info("🔥 get_approved_counts called")
+        users = fetch_and_merge_users()
+        approved_kutsero_count = sum(
+            1 for u in users if u.get("role", "").strip().lower() == "kutsero" and u.get("status", "").strip().lower() == "approved"
+        )
+        approved_horse_operator_count = sum(
+            1 for u in users if u.get("role", "").strip().lower() == "horse operator" and u.get("status", "").strip().lower() == "approved"
+        )
+        response_data = {
+            "approved_kutsero_count": approved_kutsero_count,
+            "approved_horse_operator_count": approved_horse_operator_count,
+        }
+        logger.info(f"✅ get_approved_counts returning: {response_data}")
+        return Response(response_data)
+    except Exception as e:
+        logger.error(f"💥 get_approved_counts CRASHED: {e}")
+        return Response({
+            "approved_kutsero_count": 0,
+            "approved_horse_operator_count": 0,
+        })
 
 @api_view(["GET"])
 @login_required
 def get_user_approvals(request):
-    users = fetch_and_merge_users()
-    return Response(users)
+    try:
+        logger.info("🔥 get_user_approvals called")
+        users = fetch_and_merge_users()
+        logger.info(f"✅ get_user_approvals returning: {len(users)} users")
+        return Response(users)
+    except Exception as e:
+        logger.error(f"💥 get_user_approvals CRASHED: {e}")
+        return Response([])
 
 @api_view(["POST"])
 @login_required
@@ -359,19 +421,25 @@ def decline_user(request, user_id):
 @api_view(["GET"])
 @login_required
 def get_approved_users(request):
-    users = fetch_and_merge_users()
-    
-    allowed_roles = ["kutsero", "horse operator"]
-    filtered_users = [
-        u for u in users
-        if u.get("role", "").strip().lower() in allowed_roles
-        and u.get("status", "").strip().lower() in ["approved", "deactivated"]
-    ]
+    try:
+        logger.info("🔥 get_approved_users called")
+        users = fetch_and_merge_users()
+        
+        allowed_roles = ["kutsero", "horse operator"]
+        filtered_users = [
+            u for u in users
+            if u.get("role", "").strip().lower() in allowed_roles
+            and u.get("status", "").strip().lower() in ["approved", "deactivated"]
+        ]
 
-    for u in filtered_users:
-        u["approved_date"] = u.pop("created_at", "N/A")
-    
-    return Response({"users": filtered_users})
+        for u in filtered_users:
+            u["approved_date"] = u.pop("created_at", "N/A")
+        
+        logger.info(f"✅ get_approved_users returning: {len(filtered_users)} users")
+        return Response({"users": filtered_users})
+    except Exception as e:
+        logger.error(f"💥 get_approved_users CRASHED: {e}")
+        return Response({"users": []})
 
 # -------------------- NOTIFICATIONS --------------------
 @api_view(["GET"])
@@ -379,6 +447,8 @@ def get_approved_users(request):
 def get_notifications(request):
     """GET pending Kutsero and Horse Operator users and insert them into notification table."""
     try:
+        logger.info("🔥 get_notifications called")
+        
         # 1️⃣ Fetch all pending users (Kutsero + Horse Operator)
         users_result = (
             supabase.table("users")
@@ -390,59 +460,61 @@ def get_notifications(request):
         pending_users = users_result.data or []
 
         if not pending_users:
-            print("No pending users found.")
+            logger.info("No pending users found.")
             return Response([])
 
         user_ids = [user["id"] for user in pending_users]
-        print(f"Pending user IDs: {user_ids}")
+        logger.info(f"Pending user IDs: {user_ids}")
 
         user_profiles = {}
 
         # 2️⃣ Fetch Horse Operator profiles
-        horse_op_result = (
-            supabase.table("horse_op_profile")
-            .select("op_id, op_fname, op_mname, op_lname, op_email")
-            .in_("op_id", user_ids)
-            .execute()
-        )
-        print("Horse Operator profiles:", horse_op_result.data)
+        try:
+            horse_op_result = (
+                supabase.table("horse_op_profile")
+                .select("op_id, op_fname, op_mname, op_lname, op_email")
+                .in_("op_id", user_ids)
+                .execute()
+            )
+            if horse_op_result.data:
+                for profile in horse_op_result.data:
+                    name_parts = [profile.get("op_fname", "").strip()]
+                    if profile.get("op_mname"):
+                        name_parts.append(profile["op_mname"].strip())
+                    name_parts.append(profile.get("op_lname", "").strip())
 
-        if horse_op_result.data:
-            for profile in horse_op_result.data:
-                name_parts = [profile.get("op_fname", "").strip()]
-                if profile.get("op_mname"):
-                    name_parts.append(profile["op_mname"].strip())
-                name_parts.append(profile.get("op_lname", "").strip())
-
-                full_name = " ".join(name_parts).strip()
-                if full_name:
-                    user_profiles[profile["op_id"]] = full_name
-                elif profile.get("op_email"):
-                    user_profiles[profile["op_id"]] = profile["op_email"].split("@")[0]
+                    full_name = " ".join(name_parts).strip()
+                    if full_name:
+                        user_profiles[profile["op_id"]] = full_name
+                    elif profile.get("op_email"):
+                        user_profiles[profile["op_id"]] = profile["op_email"].split("@")[0]
+        except Exception as e:
+            logger.error(f"❌ Horse Operator profiles failed: {e}")
 
         # 3️⃣ Fetch Kutsero profiles
-        kutsero_result = (
-            supabase.table("kutsero_profile")
-            .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_email")
-            .in_("kutsero_id", user_ids)
-            .execute()
-        )
-        print("Kutsero profiles:", kutsero_result.data)
+        try:
+            kutsero_result = (
+                supabase.table("kutsero_profile")
+                .select("kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_email")
+                .in_("kutsero_id", user_ids)
+                .execute()
+            )
+            if kutsero_result.data:
+                for profile in kutsero_result.data:
+                    name_parts = [profile.get("kutsero_fname", "").strip()]
+                    if profile.get("kutsero_mname"):
+                        name_parts.append(profile["kutsero_mname"].strip())
+                    name_parts.append(profile.get("kutsero_lname", "").strip())
 
-        if kutsero_result.data:
-            for profile in kutsero_result.data:
-                name_parts = [profile.get("kutsero_fname", "").strip()]
-                if profile.get("kutsero_mname"):
-                    name_parts.append(profile["kutsero_mname"].strip())
-                name_parts.append(profile.get("kutsero_lname", "").strip())
+                    full_name = " ".join(name_parts).strip()
+                    if full_name:
+                        user_profiles[profile["kutsero_id"]] = full_name
+                    elif profile.get("kutsero_email"):
+                        user_profiles[profile["kutsero_id"]] = profile["kutsero_email"].split("@")[0]
+        except Exception as e:
+            logger.error(f"❌ Kutsero profiles failed: {e}")
 
-                full_name = " ".join(name_parts).strip()
-                if full_name:
-                    user_profiles[profile["kutsero_id"]] = full_name
-                elif profile.get("kutsero_email"):
-                    user_profiles[profile["kutsero_id"]] = profile["kutsero_email"].split("@")[0]
-
-        print(f"Profiles found: {len(user_profiles)} → {user_profiles}")
+        logger.info(f"Profiles found: {len(user_profiles)}")
 
         # 4️⃣ Check for already existing notifications
         existing_notifs = (
@@ -495,7 +567,7 @@ def get_notifications(request):
                             "read": new_notif.get("notif_read", False),
                         })
                 except Exception as e:
-                    print(f"Error inserting notification for {user['id']}: {e}")
+                    logger.error(f"Error inserting notification for {user['id']}: {e}")
 
         # 6️⃣ Fetch all notifications for display
         all_notifs = (
@@ -518,12 +590,12 @@ def get_notifications(request):
                 })
 
         combined = inserted_notifications + display_notifications
-        print(f"Total notifications returned: {len(combined)}")
+        logger.info(f"Total notifications returned: {len(combined)}")
         return Response(combined or [])
 
     except Exception as e:
-        print(f"Error in get_notifications: {e}")
-        return Response({"error": "Failed to process notifications"}, status=500)
+        logger.error(f"💥 Error in get_notifications: {e}")
+        return Response([])  # NEVER RETURN 500
 
 # -------------------- MARK NOTIFICATION AS READ --------------------
 @api_view(["POST"])
@@ -1276,3 +1348,42 @@ def dvmf_profile_by_id(request, user_id):
             return Response({"error": "DVMF profile not found"}, status=404)
     except Exception as e:
         return Response({"error": str(e)}, status=500)
+
+@api_view(["GET"])
+@login_required
+def get_kutsero_president(request):
+    """Get the current Kutsero President's name for PDF authorization"""
+    try:
+        token = request.COOKIES.get("access_token")  
+        if not token:
+            return Response({"error": "Authentication required"}, status=401)
+
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")  
+        if not user_id:
+            return Response({"error": "Invalid token"}, status=401)
+
+        # Get the president's profile
+        res = supabase.table("kutsero_pres_profile").select("pres_fname, pres_lname").eq("user_id", user_id).execute()
+        if not res.data:
+            return Response({"error": "President profile not found"}, status=404)
+
+        profile = res.data[0]
+        pres_fname = profile.get("pres_fname", "").strip()
+        pres_lname = profile.get("pres_lname", "").strip()
+        
+        # Combine first and last name
+        full_name = f"{pres_fname} {pres_lname}".strip()
+        
+        if not full_name:
+            full_name = "Kutsero President"  # Fallback
+        
+        return Response({
+            "name": full_name,
+            "pres_fname": pres_fname,
+            "pres_lname": pres_lname
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching Kutsero President: {e}")
+        return Response({"name": "Kutsero President"})  # Safe fallback

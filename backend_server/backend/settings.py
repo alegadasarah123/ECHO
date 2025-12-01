@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "api.kutsero",
     "api.kutsero_president",
     "api.veterinarian",
+    "api.horse_operator",
 ]
 
 # MIDDLEWARE

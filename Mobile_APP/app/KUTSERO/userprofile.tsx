@@ -36,7 +36,7 @@ const moderateScale = (size: number, factor = 0.5) => {
   return size + (scale(size) - size) * factor
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.101.2:8000/api/kutsero"
 
 interface UserProfileData {
   user_id: string

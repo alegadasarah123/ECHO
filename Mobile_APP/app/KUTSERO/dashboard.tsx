@@ -1,4 +1,5 @@
-// DashboardScreen.tsx
+// KUTSERO Dashboard Screen
+
 "use client"
 
 import { useFocusEffect, useRouter } from "expo-router"
@@ -25,12 +26,6 @@ import * as SecureStore from "expo-secure-store"
 import NotificationsPage from "./notifications"
 import SOSEmergencyScreen from "./sos"
 import AsyncStorage from "@react-native-async-storage/async-storage"
-import { 
-  initializeNotificationSystem, 
-  getFeedWaterCount,
-  resetFeedWaterCount,
-  addGlobalNotificationListener 
-} from "./notificationService"
 
 const { width, height } = Dimensions.get("window")
 
@@ -163,12 +158,13 @@ interface SearchUserProfile {
   }
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.101.6:8000/api/kutsero"
 
 // Image Carousel Component
 const ImageCarousel = ({ images }: { images: string[] }) => {
   const [currentIndex, setCurrentIndex] = useState(0)
   const flatListRef = useRef<FlatList>(null)
+
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
 
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
@@ -267,10 +263,6 @@ export default function DashboardScreen() {
   const [isSearching, setIsSearching] = useState(false)
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Notification badges
-  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0)
-  const [newFeedWaterCount, setNewFeedWaterCount] = useState(0)
-
   const defaultHorse: Horse = {
     id: "default",
     name: "No Horse Assigned",
@@ -294,9 +286,6 @@ export default function DashboardScreen() {
   const [isLoadingComments, setIsLoadingComments] = useState(false)
   const [isPostingComment, setIsPostingComment] = useState(false)
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
-
-  // Notification listener ref
-  const notificationListenerRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const keyboardDidShowListener = Keyboard.addListener("keyboardDidShow", (e) => {
@@ -424,8 +413,15 @@ export default function DashboardScreen() {
 
       if (response.ok) {
         const data = await response.json()
+        console.log("[v0] Search API response:", JSON.stringify(data, null, 2))
+        console.log("[v0] Users array:", data.users)
+        console.log("[v0] Users length:", data.users?.length)
+
         setSearchResults(data.users || [])
         setShowSearchDropdown(data.users && data.users.length > 0)
+
+        console.log("[v0] Search results set:", data.users?.length || 0)
+        console.log("[v0] Show dropdown:", data.users && data.users.length > 0)
       } else if (response.status === 401) {
         await loadUserData()
         setSearchResults([])
@@ -469,37 +465,6 @@ export default function DashboardScreen() {
       }
     }
   }, [searchText, userData?.access_token])
-
-  const fetchUnreadMessages = async () => {
-    try {
-      if (!userData?.profile?.kutsero_id || !userData?.access_token) return
-
-      const response = await fetch(`${API_BASE_URL}/messages/unread_count/?kutsero_id=${userData.profile.kutsero_id}`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${userData.access_token}`,
-        },
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setUnreadMessagesCount(data.unread_count || 0)
-      }
-    } catch (error) {
-      console.error("Error fetching unread messages:", error)
-    }
-  }
-
-  const fetchFeedWaterUpdates = async () => {
-    try {
-      const count = await getFeedWaterCount();
-      console.log('[Dashboard] Feed/water count from storage:', count);
-      setNewFeedWaterCount(count);
-    } catch (error) {
-      console.error("Error fetching feed/water updates:", error)
-    }
-  }
 
   const fetchAnnouncements = async () => {
     try {
@@ -611,27 +576,6 @@ export default function DashboardScreen() {
     }
   }
 
-  // Initialize notification system when user data is loaded
-  useEffect(() => {
-    if (currentUser && currentUser !== "User") {
-      console.log('[Dashboard] Initializing notification system for user:', currentUser);
-      initializeNotificationSystem(currentUser);
-      
-      // Set up global notification listener
-      notificationListenerRef.current = addGlobalNotificationListener((notification) => {
-        console.log('[Dashboard] Received global notification:', notification);
-        // Refresh feed/water count when notification is received
-        fetchFeedWaterUpdates();
-      });
-    }
-
-    return () => {
-      if (notificationListenerRef.current) {
-        notificationListenerRef.current();
-      }
-    };
-  }, [currentUser]);
-
   useEffect(() => {
     loadUserData()
   }, [])
@@ -640,16 +584,7 @@ export default function DashboardScreen() {
     useCallback(() => {
       loadUserData()
       fetchAnnouncements()
-      fetchUnreadMessages()
-      fetchFeedWaterUpdates()
-      
-      const interval = setInterval(() => {
-        fetchUnreadMessages()
-        fetchFeedWaterUpdates()
-      }, 30000)
-      
-      return () => clearInterval(interval)
-    }, [userData?.profile?.kutsero_id, selectedHorse.id]),
+    }, []),
   )
 
   const loadUserData = async () => {
@@ -681,6 +616,7 @@ export default function DashboardScreen() {
           } else if (kutsero_username) {
             displayName = kutsero_username
           }
+          // Set profile image
           if (kutsero_profile_image) {
             setCurrentUserProfileImage(kutsero_profile_image)
           }
@@ -742,7 +678,7 @@ export default function DashboardScreen() {
   }, [])
 
   const fetchComments = async (announcementId: string) => {
-    setIsLoadingComments(true);
+    setIsLoadingComments(true)
     try {
       const response = await fetch(`${API_BASE_URL}/announcements/${announcementId}/comments/`, {
         method: "GET",
@@ -750,32 +686,23 @@ export default function DashboardScreen() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${userData?.access_token}`,
         },
-      });
+      })
 
       if (response.ok) {
-        const data = await response.json();
-        const normalizedComments = data.comments.map((comment: any) => ({
-          ...comment,
-          kutsero_fname: comment.kutsero_fname || "",
-          kutsero_lname: comment.kutsero_lname || "",
-          horse_op_fname: comment.horse_op_fname || "",
-          horse_op_lname: comment.horse_op_lname || "",
-          comment_text: comment.comment_text || "",
-        }));
-
-        setComments((prev) => ({ ...prev, [announcementId]: normalizedComments }));
+        const data = await response.json()
+        setComments((prev) => ({ ...prev, [announcementId]: data.comments || [] }))
       } else {
-        console.error("[ERROR] Failed to fetch comments:", response.status);
+        console.error("[ERROR] Failed to fetch comments:", response.status)
       }
     } catch (error) {
-      console.error("[ERROR] Error fetching comments:", error);
+      console.error("[ERROR] Error fetching comments:", error)
     } finally {
-      setIsLoadingComments(false);
+      setIsLoadingComments(false)
     }
-  };
+  }
 
   const fetchReplies = async (commentId: string) => {
-    setIsLoadingReplies((prev) => ({ ...prev, [commentId]: true }));
+    setIsLoadingReplies((prev) => ({ ...prev, [commentId]: true }))
     try {
       const response = await fetch(`${API_BASE_URL}/comments/${commentId}/replies/`, {
         method: "GET",
@@ -783,80 +710,66 @@ export default function DashboardScreen() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${userData?.access_token}`,
         },
-      });
+      })
 
       if (response.ok) {
-        const data = await response.json();
-        const normalizedReplies = data.replies.map((reply: any) => ({
-          ...reply,
-          kutsero_fname: reply.kutsero_fname || "",
-          kutsero_lname: reply.kutsero_lname || "",
-          horse_op_fname: reply.horse_op_fname || "",
-          horse_op_lname: reply.horse_op_lname || "",
-          comment_text: reply.comment_text || "",
-        }));
-
-        setReplies((prev) => ({ ...prev, [commentId]: normalizedReplies }));
+        const data = await response.json()
+        setReplies((prev) => ({ ...prev, [commentId]: data.replies || [] }))
       } else {
-        console.error("[ERROR] Failed to fetch replies:", response.status);
+        console.error("[ERROR] Failed to fetch replies:", response.status)
       }
     } catch (error) {
-      console.error("[ERROR] Error fetching replies:", error);
+      console.error("[ERROR] Error fetching replies:", error)
     } finally {
-      setIsLoadingReplies((prev) => ({ ...prev, [commentId]: false }));
+      setIsLoadingReplies((prev) => ({ ...prev, [commentId]: false }))
     }
-  };
+  }
 
   const toggleReplies = (commentId: string) => {
-    const newExpanded = new Set(expandedReplies);
+    const newExpanded = new Set(expandedReplies)
     if (newExpanded.has(commentId)) {
-      newExpanded.delete(commentId);
+      newExpanded.delete(commentId)
     } else {
-      newExpanded.add(commentId);
+      newExpanded.add(commentId)
       if (!replies[commentId]) {
-        fetchReplies(commentId);
+        fetchReplies(commentId)
       }
     }
-    setExpandedReplies(newExpanded);
-  };
+    setExpandedReplies(newExpanded)
+  }
 
   const handleComment = (announcementId: string) => {
     if (!announcementId || announcementId === "undefined") {
-      Alert.alert("Error", "Unable to load comments. Please try again.");
-      return;
+      Alert.alert("Error", "Unable to load comments. Please try again.")
+      return
     }
-    setSelectedAnnouncementId(announcementId);
-    setShowCommentModal(true);
-    setReplyingTo(null);
-    setReplyText("");
-    fetchComments(announcementId);
-  };
+    setSelectedAnnouncementId(announcementId)
+    setShowCommentModal(true)
+    setReplyingTo(null)
+    setReplyText("")
+    fetchComments(announcementId)
+  }
 
   const submitComment = async () => {
     if (!newComment.trim() && !replyText.trim()) {
-      Alert.alert("Error", "Please enter a comment before posting.");
-      return;
+      Alert.alert("Error", "Please enter a comment before posting.")
+      return
     }
 
     if (!selectedAnnouncementId || !userData?.profile?.kutsero_id || !userData?.access_token) {
-      Alert.alert("Error", "Unable to post comment. Please try again.");
-      return;
+      Alert.alert("Error", "Unable to post comment. Please try again.")
+      return
     }
 
-    setIsPostingComment(true);
+    setIsPostingComment(true)
     try {
       const commentBody: any = {
         comment_text: replyingTo ? replyText.trim() : newComment.trim(),
-      };
-
-      if (userData.profile.kutsero_id) {
-        commentBody.kutsero_id = userData.profile.kutsero_id;
-      } else if (userData.profile.horse_op_id) {
-        commentBody.horse_op_id = userData.profile.horse_op_id;
+        kutsero_id: userData.profile.kutsero_id,
       }
 
       if (replyingTo) {
-        commentBody.parent_comment_id = replyingTo;
+        commentBody.parent_comment_id = replyingTo
       }
 
       const response = await fetch(`${API_BASE_URL}/announcements/${selectedAnnouncementId}/comments/`, {
@@ -866,47 +779,47 @@ export default function DashboardScreen() {
           Authorization: `Bearer ${userData.access_token}`,
         },
         body: JSON.stringify(commentBody),
-      });
+      })
 
       if (response.ok) {
-        const data = await response.json();
+        const data = await response.json()
 
         if (replyingTo) {
           setReplies((prev) => ({
             ...prev,
             [replyingTo]: [data.comment, ...(prev[replyingTo] || [])],
-          }));
+          }))
           setComments((prev) => ({
             ...prev,
             [selectedAnnouncementId]: prev[selectedAnnouncementId].map((comment) =>
-              comment.id === replyingTo ? { ...comment, reply_count: (comment.reply_count || 0) + 1 } : comment
+              comment.id === replyingTo ? { ...comment, reply_count: (comment.reply_count || 0) + 1 } : comment,
             ),
-          }));
-          setReplyText("");
-          setReplyingTo(null);
-          Alert.alert("Success", "Your reply has been posted!");
+          }))
+          setReplyText("")
+          setReplyingTo(null)
+          Alert.alert("Success", "Your reply has been posted!")
         } else {
           setComments((prev) => ({
             ...prev,
             [selectedAnnouncementId]: [data.comment, ...(prev[selectedAnnouncementId] || [])],
-          }));
-          setNewComment("");
-          Alert.alert("Success", "Your comment has been posted!");
+          }))
+          setNewComment("")
+          Alert.alert("Success", "Your comment has been posted!")
         }
 
-        fetchAnnouncements();
+        fetchAnnouncements()
       } else {
-        const errorData = await response.text();
-        console.error("[ERROR] Failed to post:", errorData);
-        Alert.alert("Error", "Failed to post comment");
+        const errorData = await response.text()
+        console.error("[ERROR] Failed to post:", errorData)
+        Alert.alert("Error", "Failed to post comment")
       }
     } catch (error) {
-      console.error("[ERROR] Network error:", error);
-      Alert.alert("Error", "Network error. Please check your connection.");
+      console.error("[ERROR] Network error:", error)
+      Alert.alert("Error", "Network error. Please check your connection.")
     } finally {
-      setIsPostingComment(false);
+      setIsPostingComment(false)
     }
-  };
+  }
 
   const getHealthStatusColor = (status: Horse["healthStatus"]) => {
     switch (status) {
@@ -1110,11 +1023,7 @@ export default function DashboardScreen() {
   }
 
   if (showNotifications) {
-    return <NotificationsPage onBack={() => {
-      setShowNotifications(false);
-      // Refresh the feed/water count when coming back from notifications
-      fetchFeedWaterUpdates();
-    }} userName={currentUser} />
+    return <NotificationsPage onBack={() => setShowNotifications(false)} userName={currentUser} />
   }
 
   if (showSOSEmergency) {
@@ -1176,18 +1085,9 @@ export default function DashboardScreen() {
                 style={[styles.headerIconImage, { tintColor: "white" }]}
                 resizeMode="contain"
               />
-              {/* Total notification badge */}
-              {(unreadNotificationsCount + newFeedWaterCount) > 0 && (
+              {unreadNotificationsCount > 0 && (
                 <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>
-                    {unreadNotificationsCount + newFeedWaterCount}
-                  </Text>
-                </View>
-              )}
-              {/* Feed/Water specific badge */}
-              {newFeedWaterCount > 0 && (
-                <View style={styles.feedWaterBadge}>
-                  <Text style={styles.feedWaterBadgeText}>🍽️ {newFeedWaterCount}</Text>
+                  <Text style={styles.notificationBadgeText}>{unreadNotificationsCount}</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -1551,6 +1451,7 @@ export default function DashboardScreen() {
                 },
               ]}
             >
+              {/* Modal Header */}
               <View style={styles.modalHeader}>
                 <View style={styles.modalHeaderContent}>
                   <Text style={styles.modalTitle}>Comments</Text>
@@ -1569,6 +1470,7 @@ export default function DashboardScreen() {
                 </TouchableOpacity>
               </View>
 
+              {/* Comments List */}
               <ScrollView
                 style={styles.commentsContainer}
                 keyboardShouldPersistTaps="handled"
@@ -1585,6 +1487,7 @@ export default function DashboardScreen() {
                     .filter((comment) => !comment.parent_comment_id)
                     .map((comment) => (
                       <View key={comment.id}>
+                        {/* Main Comment */}
                         <View style={styles.commentItem}>
                           <View style={styles.commentAvatarContainer}>
                             {comment.kutsero_profile_image ? (
@@ -1644,6 +1547,7 @@ export default function DashboardScreen() {
                           </View>
                         </View>
 
+                        {/* Replies */}
                         {expandedReplies.has(comment.id) && (
                           <View style={styles.repliesContainer}>
                             {isLoadingReplies[comment.id] ? (
@@ -1706,6 +1610,7 @@ export default function DashboardScreen() {
                 )}
               </ScrollView>
 
+              {/* Comment Input - Fixed at bottom */}
               <View style={styles.commentInputContainer}>
                 {replyingTo && (
                   <View style={styles.replyingToContainer}>
@@ -1776,6 +1681,7 @@ export default function DashboardScreen() {
         </View>
       </Modal>
 
+      {/* Full Screen Image Modal for Horse */}
       <Modal
         visible={fullScreenImage !== null}
         transparent={true}
@@ -1872,32 +1778,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   notificationBadgeText: {
-    color: "white",
-    fontSize: moderateScale(9),
-    fontWeight: "bold",
-  },
-  feedWaterBadge: {
-    position: "absolute",
-    top: scale(28),
-    right: scale(-8),
-    backgroundColor: "#FF9800",
-    borderRadius: scale(10),
-    paddingHorizontal: scale(6),
-    paddingVertical: scale(2),
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1.5,
-    borderColor: "white",
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  feedWaterBadgeText: {
     color: "white",
     fontSize: moderateScale(9),
     fontWeight: "bold",

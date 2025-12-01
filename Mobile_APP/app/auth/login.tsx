@@ -58,7 +58,7 @@ export default function LoginScreen() {
 
       console.log("Attempting login for:", email.trim().toLowerCase())
 
-      const response = await fetch("http://192.168.31.58:8000/api/login_mobile/", {
+      const response = await fetch("http://10.254.39.148:8000/api/login_mobile/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -209,8 +209,8 @@ export default function LoginScreen() {
   }
 
   const handleForgotPassword = () => {
-    router.push({ pathname: "./forgot-password" })
-}
+    router.push("/auth/forgot-password")
+  }
 
   const togglePasswordVisibility = useCallback(() => {
     setShowPassword((prev) => !prev)
@@ -301,12 +301,9 @@ export default function LoginScreen() {
           <View style={styles.footerSection}>
             <Text style={styles.footerText}>
               Don&#39;t have an account?{" "}
-              <Text
-                   style={styles.signUpText}  onPress={() =>
-                       !isLoginLoading && router.push({ pathname: "./signup" })
-                     }>
+              <Text style={styles.signUpText} onPress={() => !isLoginLoading && router.push("/auth/signup")}>
                 Sign Up
-            </Text>
+              </Text>
             </Text>
           </View>
         </View>

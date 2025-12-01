@@ -27,5 +27,6 @@ urlpatterns = [
     path("kutsero_profile_by_id/<str:user_id>/", views.kutsero_profile_by_id, name="kutsero_profile_by_id"),
     path("horse_operator_profile/<str:user_id>/", views.horse_operator_profile, name="horse_operator_profile"),
     path("dvmf_profile_by_id/<str:user_id>/", views.dvmf_profile_by_id, name="dvmf_profile_by_id"),
-    path("ctu_profile_by_id/<str:user_id>/", views.ctu_profile_by_id, name="ctu_profile_by_id")
+    path("ctu_profile_by_id/<str:user_id>/", views.ctu_profile_by_id, name="ctu_profile_by_id"),
+    path("get_kutsero_president/", views.get_kutsero_president, name="get_kutsero_president")
 ]

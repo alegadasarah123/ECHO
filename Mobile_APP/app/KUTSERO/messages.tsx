@@ -1,3 +1,5 @@
+// KUTSERO MESSAGING INTERFACE
+
 "use client"
 
 import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router"
@@ -19,7 +21,7 @@ import {
   RefreshControl,
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
-import { supabase, setupPresence, cleanupPresence } from '../supabaseClient'
+import { createClient } from '@supabase/supabase-js'
 
 const { width, height } = Dimensions.get("window")
 
@@ -55,9 +57,14 @@ const getSafeAreaPadding = () => {
   }
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.101.2:8000/api/kutsero"
 
-const SUPABASE_ENABLED = true
+const SUPABASE_URL = "https://drgknejiqupegkyxfaab.supabase.co"
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyZ2tuZWppcXVwZWdreXhmYWFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ5MDAxMTUsImV4cCI6MjA3MDQ3NjExNX0.KcIRm5t6z63X_KHGxDeU5ojwArVTasZWBzh01bD2nzo"
+
+const SUPABASE_ENABLED = false
+
+const supabase = SUPABASE_ENABLED ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
 
 interface Message {
   id?: string
@@ -209,14 +216,14 @@ const ChatInterface = ({
         
         <View style={styles.headerRight}>
           {isAIChat ? (
-            <View style={styles.statusContainer}>
-              <View style={styles.statusDot} />
-              <Text style={styles.statusText}>Online</Text>
+            <View style={styles.aiStatusIndicator}>
+              <View style={styles.aiStatusDot} />
+              <Text style={styles.aiStatusText}>Online</Text>
             </View>
           ) : (
-            <View style={styles.statusContainer}>
-              <View style={[styles.statusDot, !isOnline && styles.offlineStatusDot]} />
-              <Text style={styles.statusText}>{isOnline ? 'Online' : 'Offline'}</Text>
+            <View style={styles.aiStatusIndicator}>
+              <View style={[styles.aiStatusDot, !isOnline && styles.offlineDot]} />
+              <Text style={styles.userName}>{isOnline ? 'Online' : 'Offline'}</Text>
             </View>
           )}
         </View>
@@ -335,6 +342,118 @@ export default function MessagesScreen() {
     return total
   }, [])
 
+  const setupOnlinePresence = useCallback(async () => {
+    if (!userData?.id || !SUPABASE_ENABLED || !supabase) {
+      console.log('⚠️ Supabase not enabled, skipping online presence setup')
+      return
+    }
+
+    console.log('🔄 Setting up online presence for:', userData.id)
+
+    if (onlineChannelRef.current) {
+      await supabase.removeChannel(onlineChannelRef.current)
+    }
+
+    onlineChannelRef.current = supabase.channel('online-users-mobile', {
+      config: {
+        presence: {
+          key: userData.id.toString(),
+        },
+      },
+    })
+
+    onlineChannelRef.current
+      .on('presence', { event: 'sync' }, () => {
+        const state = onlineChannelRef.current.presenceState()
+        const onlineUserIds = new Set<string>()
+        
+        Object.keys(state).forEach(key => {
+          onlineUserIds.add(key)
+        })
+        
+        console.log('👥 Online users synced:', Array.from(onlineUserIds))
+        setOnlineUsers(onlineUserIds)
+      })
+      .on('presence', { event: 'join' }, ({ key }: { key: string }) => {
+        console.log('✅ User joined:', key)
+        setOnlineUsers(prev => new Set([...prev, key]))
+      })
+      .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
+        console.log('❌ User left:', key)
+        setOnlineUsers(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(key)
+          return newSet
+        })
+      })
+      .subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED') {
+          await onlineChannelRef.current.track({
+            user_id: userData.id,
+            online_at: new Date().toISOString(),
+            last_seen: new Date().toISOString(),
+          })
+          console.log('✅ Presence tracking started for:', userData.id)
+        }
+      })
+  }, [userData?.id])
+
+  const setupMessageSubscription = useCallback(() => {
+    if (!userData?.id || !SUPABASE_ENABLED || !supabase) {
+      console.log('⚠️ Supabase not enabled, skipping message subscription')
+      return
+    }
+
+    console.log('🔄 Setting up message subscription for:', userData.id)
+
+    if (messagesSubscriptionRef.current) {
+      messagesSubscriptionRef.current.unsubscribe()
+    }
+
+    messagesSubscriptionRef.current = supabase
+      .channel('messages-realtime-mobile')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'message',
+        },
+        async (payload) => {
+          const newMessage = payload.new
+          console.log('📨 New message received:', newMessage)
+          
+          const involvesCurrentUser = 
+            newMessage.user_id === userData.id || 
+            newMessage.receiver_id === userData.id
+          
+          if (involvesCurrentUser) {
+            console.log('✅ Message involves current user, reloading conversations')
+            await loadConversations()
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'message',
+        },
+        async (payload) => {
+          const updatedMessage = payload.new
+          
+          if (updatedMessage.is_read && updatedMessage.user_id === userData.id) {
+            console.log('✅ Message marked as read, reloading conversations')
+            await loadConversations()
+          }
+        }
+      )
+      .subscribe()
+
+    console.log('✅ Message subscription started')
+  }, [userData?.id])
+
   const getInitials = (name: string) => {
     if (!name) return "?"
     const nameParts = name.trim().split(" ")
@@ -369,24 +488,24 @@ export default function MessagesScreen() {
     return null
   }
 
-  // Enhanced avatar with cross-platform online status
+  const OnlineIndicator = ({ isOnline }: { isOnline: boolean }) => {
+    if (!isOnline) return null
+    
+    return (
+      <View style={styles.onlineIndicator}>
+        <View style={styles.onlineIndicatorDot} />
+      </View>
+    )
+  }
+
   const renderAvatarWithStatus = (item: Message | AvailableUser) => {
     const name = "sender" in item ? item.sender : item.name
     const email = item.email
     const profileImage = item.profile_image
     const role = item.role
+    const partnerId = "partner_id" in item ? item.partner_id : "id" in item ? item.id : null
     
-    // Get the correct user ID for cross-platform online status check
-    let userId: string | undefined;
-    if ("partner_id" in item && item.partner_id) {
-      userId = item.partner_id.toString();
-    } else if ("user_id" in item && item.user_id) {
-      userId = item.user_id.toString();
-    } else if ("id" in item && item.id) {
-      userId = item.id.toString();
-    }
-    
-    const isOnline = userId ? onlineUsers.has(userId) : false;
+    const isOnline = partnerId ? onlineUsers.has(partnerId.toString()) : false
     
     const imageSource = getProfileImageSource(email, profileImage, role, name)
     
@@ -405,16 +524,7 @@ export default function MessagesScreen() {
             </View>
           )}
         </View>
-        {/* Always show status indicator */}
-        <View style={[
-          styles.onlineIndicator, 
-          isOnline ? styles.onlineIndicatorActive : styles.offlineIndicator
-        ]}>
-          <View style={[
-            styles.onlineIndicatorDot,
-            isOnline ? styles.onlineIndicatorDotActive : styles.offlineIndicatorDot
-          ]} />
-        </View>
+        <OnlineIndicator isOnline={isOnline} />
       </View>
     )
   }
@@ -480,32 +590,29 @@ export default function MessagesScreen() {
       if (response.ok) {
         const data = await response.json()
         if (data.conversations) {
-          const mappedConversations = data.conversations.map((conv: any, index: number) => {
-            const partnerId = conv.partner_id?.toString();
-            return {
-              id: conv.id || `conv-${index}`,
-              partner_id: conv.partner_id,
-              user_id: conv.partner_id,
-              sender: conv.sender || conv.partner_name || conv.name || "Unknown User",
-              preview: conv.preview || conv.last_message || "",
-              last_message: conv.last_message || "",
-              timestamp:
-                conv.timestamp ||
-                (conv.last_message_time
-                  ? new Date(conv.last_message_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                  : ""),
-              last_message_time: conv.last_message_time,
-              unread: conv.unread !== undefined ? conv.unread : !conv.is_read,
-              is_read: conv.is_read,
-              avatar: conv.avatar || conv.partner_avatar || "👤",
-              role: conv.role || conv.partner_role || "",
-              status: conv.status || "",
-              unread_count: conv.unread_count || (conv.is_read ? 0 : 1),
-              profile_image: conv.profile_image || conv.partner_profile_image || null,
-              email: conv.email || conv.partner_email || "",
-              online: partnerId ? onlineUsers.has(partnerId) : false,
-            }
-          })
+          const mappedConversations = data.conversations.map((conv: any, index: number) => ({
+            id: conv.id || `conv-${index}`,
+            partner_id: conv.partner_id,
+            user_id: conv.partner_id,
+            sender: conv.sender || conv.partner_name || conv.name || "Unknown User",
+            preview: conv.preview || conv.last_message || "",
+            last_message: conv.last_message || "",
+            timestamp:
+              conv.timestamp ||
+              (conv.last_message_time
+                ? new Date(conv.last_message_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                : ""),
+            last_message_time: conv.last_message_time,
+            unread: conv.unread !== undefined ? conv.unread : !conv.is_read,
+            is_read: conv.is_read,
+            avatar: conv.avatar || conv.partner_avatar || "👤",
+            role: conv.role || conv.partner_role || "",
+            status: conv.status || "",
+            unread_count: conv.unread_count || (conv.is_read ? 0 : 1),
+            profile_image: conv.profile_image || conv.partner_profile_image || null,
+            email: conv.email || conv.partner_email || "",
+            online: onlineUsers.has(conv.partner_id?.toString() || ''),
+          }))
 
           setConversations(mappedConversations)
           calculateTotalUnread(mappedConversations)
@@ -528,6 +635,9 @@ export default function MessagesScreen() {
         url += `&role=${roleFilter}`
       }
 
+      console.log('🔍 Fetching users with URL:', url)
+      console.log('🔍 Role filter:', roleFilter)
+
       const response = await fetch(url, {
         method: "GET",
         headers: {
@@ -537,6 +647,12 @@ export default function MessagesScreen() {
 
       if (response.ok) {
         const data = await response.json()
+        console.log('✅ API Response:', data)
+        console.log('👥 Number of users returned:', data.users?.length || 0)
+        
+        if (data.users && data.users.length > 0) {
+          console.log('📋 Sample user roles:', data.users.slice(0, 3).map((u: any) => u.role))
+        }
         
         if (data.users) {
           const usersWithStatus = data.users.map((user: AvailableUser) => ({
@@ -545,6 +661,10 @@ export default function MessagesScreen() {
           }))
           setAvailableUsers(usersWithStatus)
         }
+      } else {
+        console.error('❌ API Error:', response.status, response.statusText)
+        const errorText = await response.text()
+        console.error('❌ Error response:', errorText)
       }
     } catch (error) {
       console.error("Error loading available users:", error)
@@ -763,9 +883,12 @@ export default function MessagesScreen() {
         }
       } else {
         if (!selectedUserId) {
+          console.error("❌ No selectedUserId:", selectedUserId)
           Alert.alert("Error", "Cannot send message. Invalid recipient.")
           return
         }
+
+        console.log("📤 Sending message to:", selectedUserId, "Type:", typeof selectedUserId)
 
         setIndividualChatMessages((prev) => [...prev, userMessage])
         setChatInput("")
@@ -773,8 +896,10 @@ export default function MessagesScreen() {
         const sentMessage = await sendMessageToBackend(selectedUserId, userMessage.text)
 
         if (!sentMessage) {
+          console.error("❌ Failed to send message")
           setIndividualChatMessages((prev) => prev.filter((msg) => msg.id !== userMessage.id))
         } else {
+          console.log("✅ Message sent successfully:", sentMessage)
           setIndividualChatMessages((prev) => 
             prev.map((msg) => msg.id === userMessage.id ? { ...msg, ...sentMessage } : msg)
           )
@@ -791,225 +916,27 @@ export default function MessagesScreen() {
     setIsRefreshing(false)
   }
 
-  // Enhanced cross-platform presence setup
-  useEffect(() => {
-    if (!userData?.id || !SUPABASE_ENABLED || !supabase) {
-      console.log('⚠️ Cross-platform presence setup skipped - missing requirements')
-      return
-    }
-
-    let isMounted = true
-
-    const initCrossPlatformPresence = async () => {
-      try {
-        console.log('🔄 Initializing cross-platform presence for user:', userData.id)
-        
-        // Clean up existing channel
-        if (onlineChannelRef.current) {
-          await cleanupPresence(onlineChannelRef.current)
-          onlineChannelRef.current = null
-        }
-
-        // Set up cross-platform presence
-        onlineChannelRef.current = await setupPresence(
-          userData.id.toString(),
-          // onPresenceSync callback
-          (onlineUserIds) => {
-            if (isMounted) {
-              console.log('👥 Cross-platform presence synced, online users:', Array.from(onlineUserIds))
-              setOnlineUsers(new Set(onlineUserIds))
-              
-              // Force update conversations with current online status
-              setConversations(prev => prev.map(conv => {
-                const partnerId = conv.partner_id?.toString();
-                const isOnline = partnerId ? onlineUserIds.has(partnerId) : false;
-                console.log(`🔍 Conversation ${conv.sender} (ID: ${partnerId}): ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
-                return {
-                  ...conv,
-                  online: isOnline
-                };
-              }))
-              
-              // Force update available users with current online status
-              setAvailableUsers(prev => prev.map(user => {
-                const isOnline = onlineUserIds.has(user.id.toString());
-                console.log(`🔍 User ${user.name} (ID: ${user.id}): ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
-                return {
-                  ...user,
-                  online: isOnline
-                };
-              }))
-            }
-          },
-          // onUserJoin callback (user came online from web or mobile)
-          (userId) => {
-            if (isMounted && userId !== userData.id.toString()) {
-              console.log('✅ User came online from any platform:', userId)
-              setOnlineUsers(prev => {
-                const newSet = new Set(prev)
-                newSet.add(userId)
-                
-                // Immediately update conversations
-                setConversations(convs => convs.map(conv => {
-                  const partnerId = conv.partner_id?.toString();
-                  if (partnerId === userId) {
-                    console.log(`✅ Marking conversation ${conv.sender} as ONLINE`);
-                    return { ...conv, online: true };
-                  }
-                  return conv;
-                }))
-                
-                // Immediately update available users
-                setAvailableUsers(users => users.map(user => {
-                  if (user.id.toString() === userId) {
-                    console.log(`✅ Marking user ${user.name} as ONLINE`);
-                    return { ...user, online: true };
-                  }
-                  return user;
-                }))
-                
-                return newSet
-              })
-            }
-          },
-          // onUserLeave callback (user went offline from web or mobile)
-          (userId) => {
-            if (isMounted && userId !== userData.id.toString()) {
-              console.log('❌ User went offline from any platform:', userId)
-              setOnlineUsers(prev => {
-                const newSet = new Set(prev)
-                newSet.delete(userId)
-                
-                // Immediately update conversations
-                setConversations(convs => convs.map(conv => {
-                  const partnerId = conv.partner_id?.toString();
-                  if (partnerId === userId) {
-                    console.log(`❌ Marking conversation ${conv.sender} as OFFLINE`);
-                    return { ...conv, online: false };
-                  }
-                  return conv;
-                }))
-                
-                // Immediately update available users
-                setAvailableUsers(users => users.map(user => {
-                  if (user.id.toString() === userId) {
-                    console.log(`❌ Marking user ${user.name} as OFFLINE`);
-                    return { ...user, online: false };
-                  }
-                  return user;
-                }))
-                
-                return newSet
-              })
-            }
-          }
-        )
-        
-        if (onlineChannelRef.current) {
-          console.log('✅ Cross-platform presence setup complete')
-        } else {
-          console.error('❌ Cross-platform presence setup failed')
-        }
-      } catch (err) {
-        console.error('❌ Error setting up cross-platform presence:', err)
-      }
-    }
-
-    initCrossPlatformPresence()
-
-    // Cleanup on unmount
-    return () => {
-      isMounted = false
-      if (onlineChannelRef.current) {
-        console.log('🧹 Cleaning up cross-platform presence on unmount')
-        cleanupPresence(onlineChannelRef.current)
-      }
-    }
-  }, [userData?.id])
-
-  // Update online status when conversations or available users change
-  useEffect(() => {
-    if (onlineUsers.size > 0) {
-      // Update conversations with current cross-platform online status
-      setConversations(prev => prev.map(conv => {
-        const partnerId = conv.partner_id?.toString();
-        return {
-          ...conv,
-          online: partnerId ? onlineUsers.has(partnerId) : false
-        };
-      }))
-      
-      // Update available users with current cross-platform online status
-      setAvailableUsers(prev => prev.map(user => ({
-        ...user,
-        online: onlineUsers.has(user.id.toString())
-      })))
-    }
-  }, [onlineUsers])
-
-  // Setup message subscription
-  useEffect(() => {
-    if (!userData?.id || !SUPABASE_ENABLED || !supabase) return
-
-    console.log('🔄 Setting up cross-platform message subscription')
-
-    if (messagesSubscriptionRef.current) {
-      messagesSubscriptionRef.current.unsubscribe()
-    }
-
-    messagesSubscriptionRef.current = supabase
-      .channel('messages-realtime-mobile')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'message',
-        },
-        async (payload) => {
-          const newMessage = payload.new
-          const involvesCurrentUser =
-            newMessage.user_id === userData.id || newMessage.receiver_id === userData.id
-          if (involvesCurrentUser) {
-            console.log('📨 New message received:', newMessage)
-            await loadConversations()
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'message',
-        },
-        async (payload) => {
-          const updatedMessage = payload.new
-          if (updatedMessage.is_read && updatedMessage.user_id === userData.id) {
-            console.log('✅ Message marked as read')
-            await loadConversations()
-          }
-        }
-      )
-      .subscribe()
-
-    console.log('✅ Cross-platform message subscription started')
-
-    return () => {
-      messagesSubscriptionRef.current?.unsubscribe()
-    }
-  }, [userData?.id])
-
-  // Handle direct chat from URL params
   useEffect(() => {
     const checkForDirectChat = async () => {
+      console.log("🔍 Checking params:", {
+        openChat: params.openChat,
+        contactId: params.contactId,
+        contactName: params.contactName,
+        userId: params.userId,
+        allParams: JSON.stringify(params),
+      })
+
       if (params.openChat === "true" && params.contactId) {
         console.log("✅ Direct chat params detected!")
+        console.log("📨 Opening chat from profile:", params.contactName)
+        console.log("📨 Contact ID:", params.contactId, "Type:", typeof params.contactId)
 
         if (!userData) {
           console.log("⏳ Waiting for userData to load...")
           return
         }
+
+        console.log("✅ User data available:", userData.id)
 
         const contactIdValue = params.contactId as string
 
@@ -1024,42 +951,82 @@ export default function MessagesScreen() {
           profile_image: (params.contactAvatar as string) || undefined,
         }
 
+        console.log("📨 Setting selected user ID:", contactIdValue)
+        console.log("📨 Opening chat interface...")
+
         setSelectedContact(contact)
         setSelectedUserId(contactIdValue)
         setShowIndividualChat(true)
         setChatInput("")
         setIndividualChatMessages([])
         
+        console.log("📨 Loading chat messages for:", contactIdValue)
         await loadChatMessages(contactIdValue)
+        
+        console.log("✅ Chat opened successfully!")
+      } else {
+        console.log("ℹ️ No direct chat params detected")
+        if (!params.openChat) console.log("   - openChat missing or not 'true'")
+        if (!params.contactId) console.log("   - contactId missing")
       }
     }
 
     if (userData) {
+      console.log("🚀 Running checkForDirectChat with userData:", userData.id)
       checkForDirectChat()
+    } else {
+      console.log("⏳ userData not ready yet, waiting...")
     }
-  }, [params.openChat, params.contactId, params.contactName, params.contactAvatar, params.contactRole, userData])
+  }, [
+    params.openChat,
+    params.contactId,
+    params.contactName,
+    params.contactAvatar,
+    params.contactRole,
+    params.userId,
+    userData,
+  ])
 
-  // Load initial data
   useEffect(() => {
     loadUserData()
   }, [])
 
-  // Reload conversations and users when userData is available
   useEffect(() => {
-    if (userData) {
+    if (userData && SUPABASE_ENABLED && supabase) {
+      setupOnlinePresence()
+      setupMessageSubscription()
+      loadConversations()
+      loadAvailableUsers()
+    } else if (userData) {
       loadConversations()
       loadAvailableUsers()
     }
-  }, [userData])
 
-  // Load users when search or filter changes
+    return () => {
+      if (supabase && onlineChannelRef.current) {
+        supabase.removeChannel(onlineChannelRef.current)
+      }
+      if (supabase && messagesSubscriptionRef.current) {
+        messagesSubscriptionRef.current.unsubscribe()
+      }
+    }
+  }, [userData, setupOnlinePresence, setupMessageSubscription])
+
   useEffect(() => {
-    if (userData && activeTab === "users") {
+    if (userData && onlineUsers.size > 0) {
+      loadConversations()
       loadAvailableUsers()
+    }
+  }, [onlineUsers])
+
+  useEffect(() => {
+    if (userData) {
+      if (activeTab === "users") {
+        loadAvailableUsers()
+      }
     }
   }, [searchQuery, roleFilter, activeTab])
 
-  // Refresh on focus
   useFocusEffect(
     useCallback(() => {
       if (userData && !params.openChat) {
@@ -1068,6 +1035,16 @@ export default function MessagesScreen() {
       }
     }, [userData, params.openChat]),
   )
+
+  useEffect(() => {
+    console.log("📊 State Update:", {
+      showIndividualChat,
+      showAIChat,
+      selectedContact: selectedContact ? ("sender" in selectedContact ? selectedContact.sender : selectedContact.name) : null,
+      selectedUserId,
+      hasMessages: individualChatMessages.length,
+    })
+  }, [showIndividualChat, showAIChat, selectedContact, selectedUserId, individualChatMessages])
 
   const handleBackFromAI = useCallback(() => setShowAIChat(false), [])
   const handleBackFromIndividual = useCallback(() => {
@@ -1080,8 +1057,11 @@ export default function MessagesScreen() {
 
   const handleNavigateToProfile = useCallback(() => {
     if (!selectedContact || !selectedUserId) {
+      console.log("❌ No contact selected")
       return
     }
+
+    console.log("🔍 Navigating to profile:", selectedUserId)
 
     router.push({
       pathname: "./userprofile",
@@ -1122,6 +1102,7 @@ export default function MessagesScreen() {
   }
 
   if (showAIChat) {
+    console.log("🎨 Rendering AI Chat")
     return (
       <ChatInterface
         isAIChat={true}
@@ -1139,15 +1120,11 @@ export default function MessagesScreen() {
 
   if (showIndividualChat && selectedContact) {
     const contactName = "sender" in selectedContact ? selectedContact.sender : selectedContact.name
-    let partnerId: string | undefined;
-    if ("partner_id" in selectedContact && selectedContact.partner_id) {
-      partnerId = selectedContact.partner_id.toString();
-    } else if ("id" in selectedContact && selectedContact.id) {
-      partnerId = selectedContact.id.toString();
-    }
+    const partnerId = "partner_id" in selectedContact ? selectedContact.partner_id : "id" in selectedContact ? selectedContact.id : null
     
-    const isContactOnline = partnerId ? onlineUsers.has(partnerId) : false;
+    const isContactOnline = partnerId ? onlineUsers.has(partnerId.toString()) : false
     
+    console.log("🎨 Rendering Individual Chat with:", contactName)
     return (
       <ChatInterface
         isAIChat={false}
@@ -1163,6 +1140,8 @@ export default function MessagesScreen() {
       />
     )
   }
+
+  console.log("🎨 Rendering Main Messages Screen")
 
   const DashboardIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
@@ -1258,7 +1237,7 @@ export default function MessagesScreen() {
         </View>
         <View style={styles.headerRight}>
           <Text style={styles.userName}>{currentUser}</Text>
-          {userData?.user_status === "pending" && <Text style={styles.userStatusText}>Pending</Text>}
+          {userData?.user_status === "pending" && <Text style={styles.statusText}>Pending</Text>}
         </View>
       </View>
 
@@ -1376,10 +1355,7 @@ export default function MessagesScreen() {
                     <View style={styles.nameWithStatus}>
                       <Text style={styles.senderName}>{message.sender}</Text>
                       {message.online && (
-                        <View style={styles.onlineTextBadge}>
-                          <View style={styles.onlineTextDot} />
-                          <Text style={styles.onlineText}>Online</Text>
-                        </View>
+                        <Text style={styles.onlineText}>● Online</Text>
                       )}
                     </View>
                     <Text style={styles.timestamp}>
@@ -1420,10 +1396,7 @@ export default function MessagesScreen() {
                 <View style={styles.nameWithStatus}>
                   <Text style={styles.senderName}>{user.name}</Text>
                   {user.online && (
-                    <View style={styles.onlineTextBadge}>
-                      <View style={styles.onlineTextDot} />
-                      <Text style={styles.onlineText}>Online</Text>
-                    </View>
+                    <Text style={styles.onlineText}>● Online</Text>
                   )}
                 </View>
                 {user.phone && <Text style={styles.userEmail}>{user.phone}</Text>}
@@ -1555,29 +1528,29 @@ const styles = StyleSheet.create({
     color: "white",
     fontWeight: "500",
   },
-  userStatusText: {
-    fontSize: moderateScale(10),
-    color: "#FFE082",
-    fontWeight: "500",
-  },
   statusText: {
     fontSize: moderateScale(10),
     color: "#FFE082",
     fontWeight: "500",
   },
-  statusContainer: {
+  aiStatusIndicator: {
     flexDirection: "row",
     alignItems: "center",
-    gap: scale(4),
   },
-  statusDot: {
-    width: scale(8),
-    height: scale(8),
-    borderRadius: scale(4),
+  aiStatusDot: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
     backgroundColor: "#4CAF50",
+    marginRight: scale(4),
   },
-  offlineStatusDot: {
+  offlineDot: {
     backgroundColor: "#999",
+  },
+  aiStatusText: {
+    fontSize: moderateScale(10),
+    color: "white",
+    fontWeight: "500",
   },
   searchContainer: {
     backgroundColor: "#C17A47",
@@ -1725,7 +1698,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "white",
   },
-  // Enhanced online indicator styles
   onlineIndicator: {
     position: 'absolute',
     bottom: scale(2),
@@ -1745,21 +1717,13 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   onlineIndicatorActive: {
-    // No additional styles for active container
-  },
-  offlineIndicator: {
-    // No additional styles for offline container
+    backgroundColor: 'white',
   },
   onlineIndicatorDot: {
-    width: scale(8),
-    height: scale(8),
-    borderRadius: scale(4),
-  },
-  onlineIndicatorDotActive: {
+    width: scale(12),
+    height: scale(12),
+    borderRadius: scale(6),
     backgroundColor: '#44b700',
-  },
-  offlineIndicatorDot: {
-    backgroundColor: '#999',
   },
   messageContent: {
     flex: 1,
@@ -1779,26 +1743,11 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(15),
     fontWeight: "600",
     color: "#333",
-    marginRight: scale(8),
-  },
-  onlineTextBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: scale(8),
-    paddingVertical: scale(2),
-    borderRadius: scale(10),
-    gap: scale(4),
-  },
-  onlineTextDot: {
-    width: scale(6),
-    height: scale(6),
-    borderRadius: scale(3),
-    backgroundColor: '#44b700',
   },
   onlineText: {
     fontSize: moderateScale(10),
     color: '#44b700',
+    marginLeft: scale(6),
     fontWeight: '600',
   },
   timestamp: {
