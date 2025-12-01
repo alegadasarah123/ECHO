@@ -17,7 +17,7 @@ import * as SecureStore from "expo-secure-store"
 
 const { width } = Dimensions.get("window")
 
-const API_BASE_URL = "http://192.168.101.2:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
 
 interface SearchUserProfile {
   id: string

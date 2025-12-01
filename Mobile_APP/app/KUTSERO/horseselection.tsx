@@ -88,7 +88,7 @@ interface UserData {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.101.2:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
 
 // Helper function to test API connectivity
 const testAPIConnection = async () => {

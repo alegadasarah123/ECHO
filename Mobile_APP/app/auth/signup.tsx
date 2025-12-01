@@ -157,7 +157,7 @@ interface ProfilePicture {
 }
 
 const API_CONFIG = {
-  BASE_URL: "http://192.168.101.6:8000/api/signup_mobile/",
+  BASE_URL: "http://192.168.31.58:8000/api/signup_mobile/",
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,
