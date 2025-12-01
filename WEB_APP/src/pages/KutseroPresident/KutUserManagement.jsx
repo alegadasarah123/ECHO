@@ -30,6 +30,8 @@ const apiFetch = async (endpoint, options = {}) => {
         return { users: [] };
       } else if (endpoint.includes('/get_notifications')) {
         return [];
+      } else if (endpoint.includes('/get_kutsero_president')) {
+        return { name: "Kutsero President" }; // Fallback for president name
       } else {
         return {};
       }
@@ -51,153 +53,193 @@ const apiFetch = async (endpoint, options = {}) => {
       return { users: [] };
     } else if (endpoint.includes('/get_notifications')) {
       return [];
+    } else if (endpoint.includes('/get_kutsero_president')) {
+      return { name: "Kutsero President" }; // Fallback for president name
     } else {
       return {};
     }
   }
 };
 
-// PDF Export Function - ACTUAL PDF DOWNLOAD
-const exportToPDF = (users, title, filters = {}, activeTab) => {
-  // Determine filename based on filters
-  let filename = "User_List";
-  
-  if (activeTab === "approval") {
-    if (filters.roleFilter && filters.roleFilter !== 'all' && filters.roleFilter !== 'All') {
-      filename = `${filters.roleFilter.charAt(0).toUpperCase() + filters.roleFilter.slice(1)}_List`;
-    } else {
-      filename = "User_Approval_List";
-    }
-  } else {
-    if (filters.roleFilter && filters.roleFilter !== 'All') {
-      filename = `${filters.roleFilter.charAt(0).toUpperCase() + filters.roleFilter.slice(1)}_List`;
-    } else {
-      filename = "User_Accounts_List";
-    }
-  }
 
-  // Create PDF
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const currentDate = new Date().toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric'
-  });
+const exportToPDF = async (users, title, filters = {}, activeTab) => {
+  try {
+    const presidentData = await apiFetch('/get_kutsero_president');
+    const presidentName = presidentData.name || "Kutsero President";
 
-  let yPosition = 20;
-  
-  // Title
-  doc.setFontSize(20);
-  doc.setTextColor(210, 105, 30); // #D2691E
-  doc.text(filename.replace(/_/g, ' '), pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 10;
-  
-  // Date
-  doc.setFontSize(12);
-  doc.setTextColor(100, 100, 100);
-  doc.text(`Generated on ${currentDate}`, pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 8;
-  
-  // Authorized by
-  doc.setFontSize(11);
-  doc.setTextColor(0, 0, 0);
-  doc.text('Authorized by: Kutsero President', pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 15;
-  
-  // Report info box
-  doc.setDrawColor(210, 105, 30);
-  doc.setFillColor(248, 249, 250);
-  doc.rect(15, yPosition - 5, pageWidth - 30, 25, 'F');
-  doc.rect(15, yPosition - 5, pageWidth - 30, 25, 'S');
-  
-  doc.setFontSize(10);
-  doc.setTextColor(0, 0, 0);
-  doc.text(`Total Users: ${users.length}`, 20, yPosition);
-  
-  let filterText = '';
-  if (filters.searchTerm) {
-    filterText += `Search: "${filters.searchTerm}" `;
-  }
-  if (filters.roleFilter && filters.roleFilter !== 'all' && filters.roleFilter !== 'All') {
-    filterText += `Role: ${filters.roleFilter} `;
-  }
-  if (filters.statusFilter) {
-    filterText += `Status: ${filters.statusFilter}`;
-  }
-  
-  if (filterText) {
-    doc.text(`Filters: ${filterText}`, 20, yPosition + 8);
-  }
-  
-  yPosition += 30;
-  
-  // Group users by role
-  const groupedUsers = {
-    'KUTSERO': users.filter(user => user.role?.toLowerCase().includes('kutsero')),
-    'HORSE OPERATOR': users.filter(user => user.role?.toLowerCase().includes('horse operator'))
-  };
-  
-  // Add user names
-  for (const [roleName, roleUsers] of Object.entries(groupedUsers)) {
-    if (roleUsers.length > 0) {
-      // Check if we need a new page
-      if (yPosition > 250) {
-        doc.addPage();
-        yPosition = 20;
-      }
-      
-      // Role title with background
-      doc.setFillColor(210, 105, 30);
-      doc.setDrawColor(210, 105, 30);
-      doc.rect(15, yPosition, pageWidth - 30, 8, 'F');
-      
+    const filename = activeTab === "approval" ? "User_Approval_List" : "User_Accounts_List";
+
+    const doc = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const margin = 15;
+
+    const currentDate = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const currentTime = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+    let y = 20;
+
+    /** HEADER LOGO */
+    try {
+      const img = new Image();
+      img.src = '/Images/echo.png';
+      doc.addImage(img, 'PNG', pageWidth / 2 - 15, y, 30, 12);
+      y += 25;
+    } catch {
+      doc.setFontSize(16);
+      doc.text('ECHO', pageWidth / 2, y, { align: 'center' });
+      y += 20;
+    }
+
+    /** TITLE + DATE */
+    doc.setFontSize(16);
+    doc.setFont(undefined, 'bold');
+    doc.text(filename.replace(/_/g, ' '), pageWidth / 2, y, { align: 'center' });
+    y += 8;
+
+    doc.setFontSize(10);
+    doc.setFont(undefined, 'normal');
+    doc.setTextColor(120);
+    doc.text(`Generated on ${currentDate} at ${currentTime}`, pageWidth / 2, y, { align: 'center' });
+    y += 15;
+
+    /** FILTER USERS */
+    const activeUsers = users.filter(u => u.status !== "deactivated");
+
+    const kutseroUsers = activeUsers.filter(u => u.role?.toLowerCase().includes("kutsero"));
+    const horseUsers = activeUsers.filter(u => u.role?.toLowerCase().includes("horse operator"));
+
+    let filteredKutsero = kutseroUsers;
+    let filteredHorse = horseUsers;
+
+    if (filters.roleFilter && filters.roleFilter !== "all") {
+      if (filters.roleFilter.includes("kutsero")) filteredHorse = [];
+      if (filters.roleFilter.includes("horse")) filteredKutsero = [];
+    }
+
+    /** TABLE COLUMNS */
+    const col = { name: 40, contact: 30, email: 45, address: 65 };
+    const headerHeight = 10;
+    const rowHeight = 12;
+    const tableWidth = col.name + col.contact + col.email + col.address;
+    const marginX = (pageWidth - tableWidth) / 2; // center table horizontally
+
+    /** TABLE SECTION FUNCTION */
+    const drawTableSection = (list, title) => {
+      if (!list.length) return;
+
       doc.setFontSize(12);
-      doc.setTextColor(255, 255, 255);
-      doc.text(`${roleName} (${roleUsers.length})`, 20, yPosition + 6);
-      yPosition += 12;
-      
-      // User names
-      doc.setFontSize(10);
-      doc.setTextColor(0, 0, 0);
-      
-      const sortedUsers = [...roleUsers].sort((a, b) => 
-        (a.name || '').localeCompare(b.name || '')
-      );
-      
-      sortedUsers.forEach((user, index) => {
-        // Check if we need a new page
-        if (yPosition > 280) {
-          doc.addPage();
-          yPosition = 20;
-        }
-        
-        // Alternate background for rows
-        if (index % 2 === 0) {
-          doc.setFillColor(249, 249, 249);
-          doc.rect(15, yPosition - 2, pageWidth - 30, 6, 'F');
-        }
-        
-        doc.text(`• ${user.name || 'N/A'}`, 20, yPosition + 2);
-        yPosition += 6;
-      });
-      
-      yPosition += 8;
-    }
-  }
+      doc.setTextColor(0);
+      doc.setFont(undefined, "bold");
+      doc.text(`${title} (${list.length})`, marginX, y);
+      y += 8;
 
-  // Footer
-  const totalPages = doc.internal.getNumberOfPages();
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i);
+      const drawHeader = () => {
+        doc.setTextColor(255);
+        doc.setFontSize(10);
+        doc.setFont(undefined, "bold");
+        let x = marginX;
+        const headerCells = [["NAME", col.name], ["CONTACT", col.contact], ["EMAIL", col.email], ["ADDRESS", col.address]];
+        headerCells.forEach(([label, width]) => {
+          doc.setFillColor(210, 105, 30);
+          doc.rect(x, y, width, headerHeight, "F");
+          doc.text(label, x + width / 2, y + 6, { align: "center" });
+          x += width;
+        });
+        y += headerHeight;
+      };
+
+      drawHeader();
+
+      list.forEach((u, i) => {
+        if (y + rowHeight > pageHeight - 40) {
+          doc.addPage();
+          y = 20;
+          drawHeader();
+        }
+
+        let x = marginX;
+        if (i % 2 === 0) {
+          doc.setFillColor(245, 245, 245);
+          doc.rect(x, y, tableWidth, rowHeight, "F");
+        }
+
+        doc.setFontSize(9);
+        doc.setFont(undefined, "normal");
+        doc.setTextColor(0);
+
+        const name = u.name || "N/A";
+        const contact = u.phoneNumber || u.contact_num || "N/A";
+        const email = u.email || "N/A";
+        const address = u.address || "N/A";
+
+        doc.text(name, x + 2, y + 7); x += col.name;
+        doc.text(contact, x + 2, y + 7); x += col.contact;
+        doc.text(email, x + 2, y + 7); x += col.email;
+
+        if (address.length > 35) {
+          const wrapped = doc.splitTextToSize(address, col.address - 4);
+          doc.text(wrapped, x + 2, y + 5);
+        } else {
+          doc.text(address, x + 2, y + 7);
+        }
+
+        y += rowHeight;
+      });
+
+      y += 10;
+    };
+
+    if (filteredKutsero.length) drawTableSection(filteredKutsero, "KUTSERO");
+    if (filteredHorse.length) drawTableSection(filteredHorse, "HORSE OPERATOR");
+
+    /** SIGNATURE SECTION */
+    const totalPages = doc.internal.getNumberOfPages();
+    doc.setPage(totalPages);
+
+    const centerX = pageWidth / 2;
+    const baseY = pageHeight - 35;
+    const lineWidth = 90;
+
+    // Signature line (centered)
+    doc.setLineWidth(0.4);
+    doc.line(centerX - lineWidth / 2, baseY, centerX + lineWidth / 2, baseY);
+
+    // "AUTHORIZED BY:" left aligned to start of line
+    doc.setFontSize(10);
+    doc.setFont(undefined, "bold");
+    doc.setTextColor(0);
+    doc.text("AUTHORIZED BY:", centerX - lineWidth / 2, baseY - 8);
+
+    // Name ABOVE the line (centered on line)
+    doc.setFontSize(11);
+    doc.setFont(undefined, "bold");
+    doc.text(presidentName, centerX, baseY - 3, { align: "center" });
+
+    // Position below line (centered)
+    doc.setFontSize(9);
+    doc.setFont(undefined, "normal");
+    doc.text("Kutsero President", centerX, baseY + 5, { align: "center" });
+
+    // Note below position (centered)
     doc.setFontSize(8);
-    doc.setTextColor(100, 100, 100);
-    doc.text(`Page ${i} of ${totalPages} | ECHO`, pageWidth / 2, 290, { align: 'center' });
+    doc.setTextColor(120);
+    doc.text("Signature over printed name", centerX, baseY + 11, { align: "center" });
+
+    /** PAGE NUMBERS */
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(120);
+      doc.text(`Page ${i} of ${totalPages}`, pageWidth / 2, pageHeight - 10, { align: "center" });
+    }
+
+    doc.save(`${filename}_${new Date().toISOString().split('T')[0]}.pdf`);
+  } catch (err) {
+    console.error(err);
   }
-  
-  // Save PDF
-  doc.save(`${filename}_${new Date().toISOString().split('T')[0]}.pdf`);
 };
+
 
 // Skeleton Loading Component
 const TableSkeleton = ({ rows = 5, columns = 5 }) => {
@@ -309,7 +351,7 @@ const UserManagement = () => {
   const [showDeclineModal, setShowDeclineModal] = useState(false)
   const [declineReason, setDeclineReason] = useState("")
   const [userToDecline, setUserToDecline] = useState(null)
-
+  const [kutseroPresident, setKutseroPresident] = useState("");
   // Loading states with refresh states
   const [loading, setLoading] = useState({
     auth: true,
@@ -328,7 +370,19 @@ const UserManagement = () => {
     { id: "approval", label: "User Approval", icon: Users },
     { id: "accounts", label: "User Accounts", icon: CheckCircle }
   ]
+  useEffect(() => {
+    const fetchKutseroPresident = async () => {
+      try {
+        const data = await apiFetch('/get_kutsero_president/');
+        setKutseroPresident(data.name || "Kutsero President");
+      } catch (error) {
+        console.error("Error fetching Kutsero President:", error);
+        setKutseroPresident("Kutsero President");
+      }
+    };
 
+    fetchKutseroPresident();
+  }, []);
   // Function to handle manual refresh
   const handleManualRefresh = useCallback(async () => {
     console.log("🔄 Manual refresh triggered");
@@ -353,29 +407,32 @@ const UserManagement = () => {
     }
   }, [activeTab]);
 
-  // Function to export user list as PDF
-  const handleExportPDF = () => {
-    const usersToExport = activeTab === "approval" 
-      ? getFilteredApprovalUsers() 
-      : getFilteredAccountUsers();
-    
-    if (usersToExport.length === 0) {
-      setAlert({ type: "error", message: "No data to export" });
-      return;
+ const handleExportPDF = async () => {
+    try {
+      const usersToExport = activeTab === "approval" 
+        ? getFilteredApprovalUsers() 
+        : getFilteredAccountUsers();
+      
+      if (usersToExport.length === 0) {
+        setAlert({ type: "error", message: "No data to export" });
+        return;
+      }
+
+      const title = activeTab === "approval" 
+        ? "User Approval List" 
+        : "User Accounts List";
+
+      const filters = {
+        searchTerm: searchTerm || null,
+        roleFilter: activeTab === "approval" ? approvalRoleFilter : accountRoleFilter,
+        statusFilter: activeTab === "approval" ? approvalFilter : accountStatusTab
+      };
+
+      await exportToPDF(usersToExport, title, filters, activeTab);
+    } catch (error) {
+      console.error("Error exporting PDF:", error);
+      setAlert({ type: "error", message: "Failed to export PDF. Please try again." });
     }
-
-    const title = activeTab === "approval" 
-      ? "User Approval List" 
-      : "User Accounts List";
-
-    const filters = {
-      searchTerm: searchTerm || null,
-      roleFilter: activeTab === "approval" ? approvalRoleFilter : accountRoleFilter,
-      statusFilter: activeTab === "approval" ? approvalFilter : accountStatusTab
-    };
-
-    exportToPDF(usersToExport, title, filters, activeTab);
-    setAlert({ type: "success", message: `PDF downloaded with ${usersToExport.length} users!` });
   };
 
   // Profile image click handler
@@ -887,7 +944,7 @@ const UserManagement = () => {
               </div>
 
               {/* EXPORT BUTTON - Only show on User Accounts tab */}
-              {activeTab === "accounts" && (
+              {activeTab === "accounts" && accountStatusTab === "active" && (
                 <button
                   onClick={handleExportPDF}
                   className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors text-sm font-medium"

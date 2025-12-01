@@ -2467,18 +2467,36 @@ def get_weekday_number(day_name):
 
 
 def delete_past_unbooked_slots(vet_id):
-    """🧹 Delete past unbooked appointment slots."""
+    """🧹 Delete ONLY past UNBOOKED appointment slots. KEEP booked ones."""
     today = date.today().isoformat()
     try:
+        # Get all schedule IDs for this vet
+        schedule_res = supabase.table("vet_schedule") \
+            .select("sched_id") \
+            .eq("vet_id", vet_id) \
+            .execute()
+        
+        schedule_ids = [sched["sched_id"] for sched in schedule_res.data] if schedule_res.data else []
+        
+        if not schedule_ids:
+            print(f"⚠️ No schedules found for vet_id={vet_id}")
+            return 0
+        
+        # Delete ONLY unbooked past slots
         response = supabase.table("appointment_slot") \
             .delete() \
+            .in_("sched_id", schedule_ids) \
             .lte("slot_date", today) \
             .eq("is_booked", False) \
             .execute()
-        print(f"🗑️ Deleted {len(response.data)} past unbooked slots for vet_id={vet_id}")
+            
+        deleted_count = len(response.data) if response.data else 0
+        print(f"🗑️ Deleted {deleted_count} past UNBOOKED slots for vet_id={vet_id}")
+        return deleted_count
+        
     except Exception as e:
         print("⚠️ Error deleting past unbooked slots:", e)
-
+        return 0
 
 def generate_slots_for_schedule(sched_id, day_of_week, start_time, end_time, slot_duration=60):
     """
@@ -2531,14 +2549,15 @@ def generate_slots_for_schedule(sched_id, day_of_week, start_time, end_time, slo
 
 
 # ✅----------------- ADD OR UPDATE SCHEDULE -----------------
+# ✅----------------- ADD OR UPDATE SCHEDULE -----------------
 @api_view(["POST"])
 @login_required
 def add_schedule(request):
     """
-    Add or update vet schedule.
-    - Deletes old schedules for the vet
-    - Deletes past unbooked slots
-    - Regenerates slots for the current month only
+    WORKING SOLUTION:
+    - DELETE ALL old vet_schedule records
+    - DELETE UNBOOKED SLOTS that have NO appointments
+    - Create new schedules
     """
     vet_id = get_current_vet_id(request)
     if not vet_id:
@@ -2549,12 +2568,49 @@ def add_schedule(request):
         return Response({"error": "No schedules provided"}, status=400)
 
     try:
-        # 🧹 Step 1: Delete past unbooked slots
-        delete_past_unbooked_slots(vet_id)
+        # 🗑️ STEP 1: GET OLD SCHEDULE IDs
+        old_schedules_res = supabase.table("vet_schedule").select("sched_id").eq("vet_id", vet_id).execute()
+        old_schedule_ids = [sched["sched_id"] for sched in old_schedules_res.data] if old_schedules_res.data else []
+        
+        if old_schedule_ids:
+            # 🚨 STEP 2: SAFELY DELETE UNBOOKED SLOTS
+            today = date.today().isoformat()
+            
+            # Get all future slots from old schedules
+            future_slots_res = supabase.table("appointment_slot").select("slot_id, is_booked").in_("sched_id", old_schedule_ids).gte("slot_date", today).execute()
+            
+            if future_slots_res.data:
+                # Separate slots by booking status
+                unbooked_slot_ids = []
+                booked_slot_ids = []
+                
+                for slot in future_slots_res.data:
+                    if slot["is_booked"] == False or slot["is_booked"] == "FALSE" or slot["is_booked"] == "false":
+                        unbooked_slot_ids.append(slot["slot_id"])
+                    else:
+                        booked_slot_ids.append(slot["slot_id"])
+                
+                print(f"🔍 Found {len(unbooked_slot_ids)} unbooked slots and {len(booked_slot_ids)} booked slots")
+                
+                # DOUBLE CHECK: Verify unbooked slots have no appointments
+                if unbooked_slot_ids:
+                    appointments_check = supabase.table("appointment").select("slot_id").in_("slot_id", unbooked_slot_ids).execute()
+                    slots_with_appointments = [app["slot_id"] for app in appointments_check.data] if appointments_check.data else []
+                    
+                    # Only delete slots that are TRULY unbooked and have NO appointments
+                    safe_to_delete = [slot_id for slot_id in unbooked_slot_ids if slot_id not in slots_with_appointments]
+                    
+                    if safe_to_delete:
+                        supabase.table("appointment_slot").delete().in_("slot_id", safe_to_delete).execute()
+                        print(f"🗑️ SAFELY DELETED {len(safe_to_delete)} UNBOOKED SLOTS WITH NO APPOINTMENTS")
+                    else:
+                        print("✅ No safe slots to delete")
+            
+            # 🗑️ STEP 3: DELETE ALL OLD VET_SCHEDULE RECORDS
+            supabase.table("vet_schedule").delete().eq("vet_id", vet_id).execute()
+            print(f"🗑️ DELETED {len(old_schedule_ids)} OLD VET_SCHEDULE RECORDS")
 
-        # 🧹 Step 2: Remove old schedules
-        supabase.table("vet_schedule").delete().eq("vet_id", vet_id).execute()
-
+        # ✅ STEP 4: CREATE NEW SCHEDULES
         entries = []
         for sched in schedules:
             day_of_week = sched.get("day_of_week")
@@ -2571,7 +2627,7 @@ def add_schedule(request):
             start_t = datetime.strptime(start_time_24, "%H:%M").time()
             end_t = datetime.strptime(end_time_24, "%H:%M").time()
 
-            # 🧾 Step 3: Insert new schedule
+            # Create new schedule
             sched_id = str(uuid.uuid4())
             res = supabase.table("vet_schedule").insert({
                 "sched_id": sched_id,
@@ -2585,20 +2641,18 @@ def add_schedule(request):
 
             if res.data:
                 entries.append(res.data[0])
-
-                # 🕐 Step 4: Generate slots
                 generate_slots_for_schedule(sched_id, day_of_week, start_t, end_t, slot_duration)
+                print(f"✅ Created schedule for {day_of_week}")
 
-        if not entries:
-            return Response({"error": "No valid schedules added"}, status=400)
-
-        return Response({"message": "Schedule updated successfully", "schedules": entries}, status=201)
+        return Response({
+            "message": "Schedule updated successfully", 
+            "schedules": entries
+        }, status=201)
 
     except Exception as e:
         print("❌ Error in add_schedule:", e)
-        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
-    
+        
 # -------------------- GET VET SCHEDULES --------------------
 def convert_to_ampm(time_val):
     """

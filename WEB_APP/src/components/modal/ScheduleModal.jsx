@@ -20,10 +20,26 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
     { id: 'Sunday', label: 'Sunday' }
   ];
 
+  const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+
   const durationOptions = [
     { value: 60, label: '1 hour' },
     { value: 90, label: '1.5 hours' },
     { value: 120, label: '2 hours' }
+  ];
+
+  // Generate hour options (1-12)
+  const hourOptions = Array.from({ length: 12 }, (_, i) => ({
+    value: (i + 1).toString(),
+    label: (i + 1).toString()
+  }));
+
+  // Generate minute options (00, 15, 30, 45)
+  const minuteOptions = [
+    { value: '00', label: '00' },
+    { value: '15', label: '15' },
+    { value: '30', label: '30' },
+    { value: '45', label: '45' }
   ];
   
   const [schedule, setSchedule] = useState({
@@ -34,7 +50,7 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
     endHour: '5',
     endMinute: '00',
     endPeriod: 'PM',
-    duration: 60 // FIXED: Changed from 30 to 60
+    duration: 60
   });
 
   // Fetch existing schedules when modal opens
@@ -45,8 +61,62 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
     }
   }, [isOpen]);
 
+  // Convert time from backend format to frontend format
+  const convertFromAMPM = (timeStr) => {
+    console.log("🕒 Converting from AMPM:", timeStr);
+    
+    if (!timeStr) {
+      console.log("❌ Empty time string");
+      return { hour: '9', minute: '00', period: 'AM' };
+    }
+    
+    try {
+      let hour, minute, period;
+
+      // Handle multiple possible formats
+      if (timeStr.includes(':')) {
+        const parts = timeStr.split(' ');
+        let timePart = parts[0];
+        
+        // Check if period is in the second part
+        period = parts[1] || '';
+        
+        // Handle case where period might be attached to time (like "9:00AM")
+        if (!period && (timePart.toUpperCase().includes('AM') || timePart.toUpperCase().includes('PM'))) {
+          period = timePart.toUpperCase().includes('AM') ? 'AM' : 'PM';
+          timePart = timePart.replace(/AM|PM/gi, '').trim();
+        }
+        
+        const timeComponents = timePart.split(':');
+        hour = timeComponents[0];
+        minute = timeComponents[1] || '00';
+        
+        // Remove leading zero from hour
+        hour = hour.replace(/^0/, '') || '9';
+        
+        // If no period detected, determine from hour
+        if (!period) {
+          const hourNum = parseInt(hour);
+          period = hourNum < 12 ? 'AM' : 'PM';
+        }
+      } else {
+        // Fallback for unexpected formats
+        console.log("❌ Unexpected time format:", timeStr);
+        return { hour: '9', minute: '00', period: 'AM' };
+      }
+      
+      console.log("🕒 Successfully parsed:", { hour, minute, period });
+      return { hour, minute, period };
+      
+    } catch (error) {
+      console.error("❌ Error converting time:", timeStr, error);
+      return { hour: '9', minute: '00', period: 'AM' };
+    }
+  };
+
   const fetchExistingSchedules = async () => {
     try {
+      console.log("🔄 Fetching schedules...");
       const response = await fetch("http://localhost:8000/api/veterinarian/get_schedules/", {
         method: "GET",
         credentials: "include",
@@ -54,13 +124,22 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
 
       if (response.ok) {
         const data = await response.json();
+        console.log("✅ API Response:", data);
         setExistingSchedules(data.schedules || []);
         
         if (data.schedules && data.schedules.length > 0) {
           const days = data.schedules.map(s => s.day_of_week);
           const firstSchedule = data.schedules[0];
+          
+          console.log("📅 First schedule data:", firstSchedule);
+          
           const startTime = convertFromAMPM(firstSchedule.startTime);
           const endTime = convertFromAMPM(firstSchedule.endTime);
+          
+          console.log("🕒 Converted times:", { 
+            startTime, 
+            endTime 
+          });
           
           setSchedule({
             days: days,
@@ -70,10 +149,11 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
             endHour: endTime.hour,
             endMinute: endTime.minute,
             endPeriod: endTime.period,
-            duration: firstSchedule.slot_duration || 60 // FIXED: Changed from 30 to 60
+            duration: firstSchedule.slot_duration || 60
           });
         } else {
           // If no schedule exists, start in edit mode
+          console.log("📅 No existing schedules found");
           setIsEditing(true);
           setSchedule({
             days: [],
@@ -83,20 +163,17 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
             endHour: '5',
             endMinute: '00',
             endPeriod: 'PM',
-            duration: 60 // FIXED: Changed from 30 to 60
+            duration: 60
           });
         }
+      } else {
+        console.error("❌ Failed to fetch schedules:", response.status);
+        const errorData = await response.json();
+        console.error("❌ Error details:", errorData);
       }
     } catch (err) {
-      console.error("Error fetching schedules", err);
+      console.error("❌ Network error fetching schedules:", err);
     }
-  };
-
-  // Convert "9:00 AM" to {hour: "9", minute: "00", period: "AM"}
-  const convertFromAMPM = (timeStr) => {
-    const [time, period] = timeStr.split(' ');
-    const [hour, minute] = time.split(':');
-    return { hour, minute, period };
   };
 
   const toggleDaySelection = (dayId) => {
@@ -108,6 +185,26 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
         ? prev.days.filter(id => id !== dayId)
         : [...prev.days, dayId]
     }));
+  };
+
+  const toggleWeekdaysSelection = () => {
+    if (!isEditing) return;
+    
+    const allWeekdaysSelected = weekdays.every(day => schedule.days.includes(day));
+    
+    if (allWeekdaysSelected) {
+      // Remove all weekdays
+      setSchedule(prev => ({
+        ...prev,
+        days: prev.days.filter(day => !weekdays.includes(day))
+      }));
+    } else {
+      // Add all weekdays, keep any existing weekend days
+      setSchedule(prev => ({
+        ...prev,
+        days: [...new Set([...prev.days, ...weekdays])]
+      }));
+    }
   };
 
   const handleTimeChange = (field, value) => {
@@ -179,7 +276,7 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
         }))
       };
 
-      console.log("Saving schedule with payload:", payload); // Debug log
+      console.log("💾 Saving schedule with payload:", payload);
 
       const response = await fetch("http://localhost:8000/api/veterinarian/add_schedule/", {
         method: "POST",
@@ -203,9 +300,10 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
         }, 2000);
       } else {
         setErrorMessage(data.error || "Failed to save schedule");
+        console.error("❌ Save failed:", data);
       }
     } catch (err) {
-      console.error("Error saving schedule", err);
+      console.error("❌ Error saving schedule", err);
       setErrorMessage("Error saving schedule");
     } finally {
       setLoading(false);
@@ -288,6 +386,22 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
                     <div className="w-2 h-6 bg-green-500 rounded-full mr-3"></div>
                     Working Days
                   </h4>
+                  
+                  {/* Weekdays Checkbox */}
+                  {isEditing && (
+                    <div className="mb-4">
+                      <label className="flex items-center space-x-3 p-3 bg-blue-50 rounded-lg border border-blue-200 cursor-pointer hover:bg-blue-100 transition-colors">
+                        <input
+                          type="checkbox"
+                          checked={weekdays.every(day => schedule.days.includes(day))}
+                          onChange={toggleWeekdaysSelection}
+                          className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
+                        />
+                        <span className="font-semibold text-blue-800">Select All Weekdays (Mon-Fri)</span>
+                      </label>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-2 gap-3">
                     {daysOfWeek.map(day => (
                       <button
@@ -344,29 +458,35 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
                     <div className={`p-4 rounded-xl border ${isEditing ? 'bg-gray-50 border-gray-200' : 'bg-gray-100 border-gray-300'}`}>
                       <label className="block text-sm font-semibold text-gray-700 mb-3">Start Time</label>
                       <div className="flex gap-3 items-center justify-center">
-                        <input
-                          type="number"
-                          min="1"
-                          max="12"
+                        <select
                           value={schedule.startHour}
                           onChange={(e) => handleTimeChange('startHour', e.target.value)}
-                          className={`w-20 px-4 py-3 border rounded-lg text-center text-lg font-semibold ${
-                            isEditing ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 text-gray-600'
+                          className={`w-20 px-3 py-3 border rounded-lg text-center text-lg font-semibold ${
+                            isEditing ? 'border-gray-300 bg-white cursor-pointer' : 'border-gray-200 bg-gray-50 text-gray-600 cursor-default'
                           }`}
                           disabled={!isEditing}
-                        />
+                        >
+                          {hourOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                         <span className="text-gray-600 text-xl font-bold">:</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="59"
+                        <select
                           value={schedule.startMinute}
-                          onChange={(e) => handleTimeChange('startMinute', e.target.value.padStart(2, '0'))}
-                          className={`w-20 px-4 py-3 border rounded-lg text-center text-lg font-semibold ${
-                            isEditing ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 text-gray-600'
+                          onChange={(e) => handleTimeChange('startMinute', e.target.value)}
+                          className={`w-20 px-3 py-3 border rounded-lg text-center text-lg font-semibold ${
+                            isEditing ? 'border-gray-300 bg-white cursor-pointer' : 'border-gray-200 bg-gray-50 text-gray-600 cursor-default'
                           }`}
                           disabled={!isEditing}
-                        />
+                        >
+                          {minuteOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                         <select
                           value={schedule.startPeriod}
                           onChange={(e) => handleTimeChange('startPeriod', e.target.value)}
@@ -385,29 +505,35 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
                     <div className={`p-4 rounded-xl border ${isEditing ? 'bg-gray-50 border-gray-200' : 'bg-gray-100 border-gray-300'}`}>
                       <label className="block text-sm font-semibold text-gray-700 mb-3">End Time</label>
                       <div className="flex gap-3 items-center justify-center">
-                        <input
-                          type="number"
-                          min="1"
-                          max="12"
+                        <select
                           value={schedule.endHour}
                           onChange={(e) => handleTimeChange('endHour', e.target.value)}
-                          className={`w-20 px-4 py-3 border rounded-lg text-center text-lg font-semibold ${
-                            isEditing ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 text-gray-600'
+                          className={`w-20 px-3 py-3 border rounded-lg text-center text-lg font-semibold ${
+                            isEditing ? 'border-gray-300 bg-white cursor-pointer' : 'border-gray-200 bg-gray-50 text-gray-600 cursor-default'
                           }`}
                           disabled={!isEditing}
-                        />
+                        >
+                          {hourOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                         <span className="text-gray-600 text-xl font-bold">:</span>
-                        <input
-                          type="number"
-                          min="0"
-                          max="59"
+                        <select
                           value={schedule.endMinute}
-                          onChange={(e) => handleTimeChange('endMinute', e.target.value.padStart(2, '0'))}
-                          className={`w-20 px-4 py-3 border rounded-lg text-center text-lg font-semibold ${
-                            isEditing ? 'border-gray-300 bg-white' : 'border-gray-200 bg-gray-50 text-gray-600'
+                          onChange={(e) => handleTimeChange('endMinute', e.target.value)}
+                          className={`w-20 px-3 py-3 border rounded-lg text-center text-lg font-semibold ${
+                            isEditing ? 'border-gray-300 bg-white cursor-pointer' : 'border-gray-200 bg-gray-50 text-gray-600 cursor-default'
                           }`}
                           disabled={!isEditing}
-                        />
+                        >
+                          {minuteOptions.map(option => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                         <select
                           value={schedule.endPeriod}
                           onChange={(e) => handleTimeChange('endPeriod', e.target.value)}

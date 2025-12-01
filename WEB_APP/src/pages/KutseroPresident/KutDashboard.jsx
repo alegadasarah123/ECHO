@@ -54,37 +54,58 @@ const KutseroDashboard = () => {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState({
     auth: true,
-    users: false,
-    counts: false,
-    notifications: false
+    all: false
   });
   const [error, setError] = useState(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [dataLoadAttempts, setDataLoadAttempts] = useState(0);
   
   const pendingUsers = users.filter(u => u.status === "pending");
   const declinedUsers = users.filter(u => u.status === "declined");
   const unreadNotificationsCount = notifications.filter(n => !n.read).length;
 
-  // SIMPLE FETCH FUNCTION WITH ERROR HANDLING
-  const apiFetch = useCallback(async (endpoint, options = {}) => {
+  // CLEAN API FETCH WITH RETRY LOGIC (NO DEBUG LOGS)
+  const apiFetch = useCallback(async (endpoint, options = {}, retryCount = 0) => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY = 1000 * Math.pow(2, retryCount);
+    
     try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
       const response = await fetch(`${API_BASE}${endpoint}`, {
         credentials: "include",
         headers: {
           'Content-Type': 'application/json',
           ...options.headers,
         },
+        signal: controller.signal,
         ...options,
       });
 
+      clearTimeout(timeoutId);
+
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(`Auth error: HTTP ${response.status}`);
+        }
+        
+        if (response.status >= 500 && retryCount < MAX_RETRIES) {
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+          return apiFetch(endpoint, options, retryCount + 1);
+        }
+        
         throw new Error(`HTTP ${response.status}`);
       }
 
-      const data = await response.json();
-      return data;
+      return await response.json();
+      
     } catch (error) {
-      console.error(`API Error ${endpoint}:`, error);
+      if (retryCount < MAX_RETRIES && error.name !== 'AbortError') {
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY));
+        return apiFetch(endpoint, options, retryCount + 1);
+      }
+      
       throw error;
     }
   }, []);
@@ -101,7 +122,6 @@ const KutseroDashboard = () => {
           setError(null);
         }
       } catch (err) {
-        console.error("Auth check failed:", err);
         setError("Connection issue - retrying...");
         setTimeout(() => setRetryCount(prev => prev + 1), 2000);
       } finally {
@@ -112,51 +132,47 @@ const KutseroDashboard = () => {
     checkAuth();
   }, [navigate, apiFetch, retryCount]);
 
-  // LOAD ALL DATA
+  // CLEAN DATA LOADING - NO DEBUG LOGS
   const loadDashboardData = useCallback(async () => {
     if (!authorized) return;
 
+    setDataLoadAttempts(prev => prev + 1);
+    
     try {
       setError(null);
+      setLoading(prev => ({ ...prev, all: true }));
       
-      // Load users and pending count
-      setLoading(prev => ({ ...prev, users: true }));
-      const usersData = await apiFetch('/get_users/');
+      // Use Promise.allSettled to handle partial failures
+      const results = await Promise.allSettled([
+        apiFetch('/get_users/').catch(e => ({ users: [], pending_count: 0 })),
+        apiFetch('/get_approved_counts/').catch(e => ({ approved_kutsero_count: 0, approved_horse_operator_count: 0 })),
+        apiFetch('/get_notifications/').catch(e => [])
+      ]);
+
+      // Safely extract results with fallbacks
+      const usersData = results[0].status === 'fulfilled' ? results[0].value : { users: [], pending_count: 0 };
+      const countsData = results[1].status === 'fulfilled' ? results[1].value : { approved_kutsero_count: 0, approved_horse_operator_count: 0 };
+      const notifData = results[2].status === 'fulfilled' ? results[2].value : [];
+
+      // ATOMIC STATE UPDATES
       setUsers(usersData.users || []);
       setPendingCount(usersData.pending_count || 0);
-
-      // Load approved counts
-      setLoading(prev => ({ ...prev, counts: true }));
-      const countsData = await apiFetch('/get_approved_counts/');
       setApprovedCounts({
         approved_kutsero_count: countsData.approved_kutsero_count || 0,
         approved_horse_operator_count: countsData.approved_horse_operator_count || 0,
       });
-
-      // Load notifications
-      setLoading(prev => ({ ...prev, notifications: true }));
-      const notifData = await apiFetch('/get_notifications/');
       setNotifications(Array.isArray(notifData) ? notifData : []);
 
     } catch (err) {
-      console.error("Failed to load dashboard data:", err);
-      setError("Failed to load data. Please refresh the page.");
+      setError("System temporarily unavailable - retrying...");
       
-      // Set safe defaults
+      // EMERGENCY FALLBACKS
       setUsers([]);
       setPendingCount(0);
-      setApprovedCounts({
-        approved_kutsero_count: 0,
-        approved_horse_operator_count: 0,
-      });
+      setApprovedCounts({ approved_kutsero_count: 0, approved_horse_operator_count: 0 });
       setNotifications([]);
     } finally {
-      setLoading(prev => ({
-        ...prev,
-        users: false,
-        counts: false,
-        notifications: false
-      }));
+      setLoading(prev => ({ ...prev, all: false }));
     }
   }, [authorized, apiFetch]);
 
@@ -290,7 +306,39 @@ const KutseroDashboard = () => {
     </div>
   );
 
-  const isDataLoading = loading.auth || loading.users || loading.counts;
+  // EMERGENCY FALLBACK UI
+  if (error && dataLoadAttempts > 3) {
+    return (
+      <div className="flex min-h-screen bg-gray-50">
+        <Sidebar />
+        <div className="flex-1 p-8 flex items-center justify-center">
+          <div className="text-center bg-white p-8 rounded-xl shadow-lg border border-red-200 max-w-md w-full">
+            <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Connection Issues</h2>
+            <p className="text-gray-600 mb-4">We're having trouble loading data. This might be a temporary server issue.</p>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={() => {
+                  setDataLoadAttempts(0);
+                  setError(null);
+                  loadDashboardData();
+                }}
+                className="bg-[#D2691E] text-white px-6 py-2 rounded-lg hover:bg-[#A0522D] transition-colors"
+              >
+                Try Again
+              </button>
+              <button
+                onClick={() => window.location.reload()}
+                className="bg-gray-500 text-white px-6 py-2 rounded-lg hover:bg-gray-600 transition-colors"
+              >
+                Reload Page
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (loading.auth) {
     return (
@@ -353,10 +401,10 @@ const KutseroDashboard = () => {
             
             <button
               onClick={handleManualRefresh}
-              disabled={loading.users || loading.counts}
+              disabled={loading.all}
               className="flex items-center gap-2 px-3 py-2 text-sm bg-[#D2691E] text-white rounded-lg hover:bg-[#A0522D] disabled:opacity-50 transition-colors"
             >
-              <RefreshCw size={16} className={loading.users || loading.counts ? 'animate-spin' : ''} />
+              <RefreshCw size={16} className={loading.all ? 'animate-spin' : ''} />
               Refresh
             </button>
 
@@ -389,7 +437,7 @@ const KutseroDashboard = () => {
         <main className="flex-1 p-8 flex flex-col gap-6 bg-gray-50 overflow-hidden">
           {/* STATS CARDS */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
-            {isDataLoading ? (
+            {loading.all ? (
               <>
                 <StatCardSkeleton />
                 <StatCardSkeleton />
@@ -447,7 +495,7 @@ const KutseroDashboard = () => {
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-                {loading.users ? (
+                {loading.all ? (
                   <>
                     <UserItemSkeleton />
                     <UserItemSkeleton />
@@ -484,7 +532,7 @@ const KutseroDashboard = () => {
               </div>
 
               <div className="flex-1 overflow-y-auto space-y-3 pr-2">
-                {loading.users ? (
+                {loading.all ? (
                   <>
                     <RecentUserSkeleton />
                     <RecentUserSkeleton />

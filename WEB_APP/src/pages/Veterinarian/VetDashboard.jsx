@@ -110,11 +110,9 @@ const VetDashboard = () => {
   const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
   const [vetProfile, setVetProfile] = useState(null);
   const [appointments, setAppointments] = useState([]);
-  const [scheduleSlots, setScheduleSlots] = useState([]);
   const [loading, setLoading] = useState({
     profile: true,
     appointments: true,
-    schedule: true,
     services: true
   });
   const [refreshing, setRefreshing] = useState(false);
@@ -137,6 +135,10 @@ const VetDashboard = () => {
     service: null,
     deleting: false
   });
+
+  // Current schedule state
+  const [currentSchedule, setCurrentSchedule] = useState(null);
+  const [loadingSchedule, setLoadingSchedule] = useState(false);
 
   // ---------------- SERVICES FUNCTIONS ----------------
   const fetchServices = useCallback(async () => {
@@ -304,80 +306,42 @@ const VetDashboard = () => {
     }
   }, []);
 
-  const fetchScheduleSlots = useCallback(async () => {
+  // ---------------- CURRENT SCHEDULE FUNCTIONS ----------------
+  const fetchCurrentSchedule = useCallback(async () => {
+    setLoadingSchedule(true);
     try {
-      const res = await fetch('http://localhost:8000/api/veterinarian/get_all_schedules/', {
+      const response = await fetch('http://localhost:8000/api/veterinarian/get_schedules/', {
         method: 'GET',
         credentials: 'include',
       });
-
-      const data = await res.json();
-      if (res.ok) {
-        const processedSlots = processScheduleSlots(data.schedule_slots || []);
-        setScheduleSlots(processedSlots);
+      
+      if (response.ok) {
+        const data = await response.json();
+        setCurrentSchedule(data.schedules || []);
       } else {
-        setScheduleSlots([]);
+        setCurrentSchedule([]);
       }
-    } catch (err) {
-      setScheduleSlots([]);
+    } catch (error) {
+      console.error('Error fetching schedule:', error);
+      setCurrentSchedule([]);
     } finally {
-      setLoading(prev => ({ ...prev, schedule: false }));
+      setLoadingSchedule(false);
     }
   }, []);
 
   const refreshDashboardData = useCallback(async () => {
     await Promise.all([
       fetchAppointments(),
-      fetchScheduleSlots(),
       fetchNotifications(),
-      fetchServices()
+      fetchServices(),
+      fetchCurrentSchedule()
     ]);
-  }, [fetchAppointments, fetchScheduleSlots, fetchNotifications, fetchServices]);
+  }, [fetchAppointments, fetchNotifications, fetchServices, fetchCurrentSchedule]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
     await refreshDashboardData();
     setRefreshing(false);
-  };
-
-  const processScheduleSlots = (slots) => {
-    const dateGroups = {};
-    
-    slots.forEach(slot => {
-      const date = slot.date || new Date().toLocaleDateString();
-      
-      if (!dateGroups[date]) {
-        dateGroups[date] = [];
-      }
-      
-      dateGroups[date].push({
-        id: slot.id || `${date}-${slot.startTime}`,
-        date: date,
-        time: `${slot.startTime} - ${slot.endTime}`,
-        available: slot.available !== undefined ? slot.available : true,
-        pending: slot.pending || false,
-        operator_name: slot.operator_name,
-        app_status: slot.pending ? 'pending' : 'approved'
-      });
-    });
-    
-    return Object.entries(dateGroups)
-      .map(([date, timeSlots]) => ({
-        date,
-        timeSlots: timeSlots.sort((a, b) => {
-          const timeToMinutes = (time) => {
-            if (!time) return 0;
-            const [timePart, modifier] = time.split(' ');
-            let [hours, minutes] = timePart.split(':').map(Number);
-            if (modifier === 'PM' && hours !== 12) hours += 12;
-            if (modifier === 'AM' && hours === 12) hours = 0;
-            return hours * 60 + (minutes || 0);
-          };
-          
-          return timeToMinutes(a.time) - timeToMinutes(b.time);
-        })
-      }))
-      .sort((a, b) => new Date(a.date) - new Date(b.date)); 
   };
 
   const calculateTimeUntilAppointment = (appointment) => {
@@ -462,10 +426,10 @@ const VetDashboard = () => {
   useEffect(() => {
     fetchProfile();
     fetchAppointments();
-    fetchScheduleSlots();
     fetchNotifications();
     fetchServices();
-  }, [fetchProfile, fetchAppointments, fetchScheduleSlots, fetchNotifications, fetchServices]);
+    fetchCurrentSchedule();
+  }, [fetchProfile, fetchAppointments, fetchNotifications, fetchServices, fetchCurrentSchedule]);
 
   const today = new Date();
   const approvedTodayAppointments = appointments.filter(app => {
@@ -550,12 +514,97 @@ const VetDashboard = () => {
     });
   };
 
-  const formatTime = (timeString) => {
-    if (!timeString) return '';
-    return timeString.replace(/:00$/, '');
+  // Format schedule for display
+  const formatScheduleDisplay = (schedules) => {
+    if (!schedules || schedules.length === 0) {
+      return "No schedule set";
+    }
+
+    // Group by days and find common time slots
+    const days = schedules.map(s => s.day_of_week);
+    const uniqueDays = [...new Set(days)];
+    
+    // Check if all schedules have the same time
+    const firstSchedule = schedules[0];
+    const allSameTime = schedules.every(schedule => 
+      schedule.startTime === firstSchedule.startTime && 
+      schedule.endTime === firstSchedule.endTime
+    );
+
+    if (allSameTime && uniqueDays.length > 1) {
+      const dayRange = formatDayRange(uniqueDays);
+      return `${dayRange} ${firstSchedule.startTime} - ${firstSchedule.endTime}`;
+    } else {
+      // Multiple different time slots - show simplified version
+      return `${uniqueDays.length} day(s) with varying times`;
+    }
   };
 
-  const profileDisplay = getProfileDisplay();
+  // Format day range (e.g., "Monday-Friday")
+  const formatDayRange = (days) => {
+    const dayOrder = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const sortedDays = days.sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+    
+    if (sortedDays.length === 1) {
+      return sortedDays[0];
+    }
+    
+    // Check if consecutive weekdays
+    const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    const isConsecutiveWeekdays = sortedDays.every(day => weekdays.includes(day)) &&
+      sortedDays.length === weekdays.indexOf(sortedDays[sortedDays.length - 1]) - weekdays.indexOf(sortedDays[0]) + 1;
+    
+    if (isConsecutiveWeekdays && sortedDays.length > 1) {
+      if (sortedDays.length === 5) return 'Monday-Friday';
+      return `${sortedDays[0]}-${sortedDays[sortedDays.length - 1]}`;
+    }
+    
+    return sortedDays.join(', ');
+  };
+
+  // Render schedule details
+const renderScheduleDetails = (schedules) => {
+  if (!schedules || schedules.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full text-gray-400">
+        <Calendar className="w-12 h-12 mb-2" />
+        <p>No schedule set</p>
+        <p className="text-sm mt-2">Set your schedule to start receiving appointments</p>
+      </div>
+    );
+  }
+
+  // Group schedules by time slots
+  const scheduleGroups = {};
+  schedules.forEach(schedule => {
+    const timeKey = `${schedule.startTime} - ${schedule.endTime}`;
+    if (!scheduleGroups[timeKey]) {
+      scheduleGroups[timeKey] = [];
+    }
+    scheduleGroups[timeKey].push(schedule.day_of_week);
+  });
+
+return (
+  <div className="flex flex-col items-center justify-center h-full space-y-8">
+    {Object.entries(scheduleGroups).map(([timeSlot, days], index) => (
+      <div key={index} className="text-center">
+        <div className="text-3xl text-gray-800 font-medium mb-3">
+          {formatDayRange(days)}
+        </div>
+        <div className="text-xl text-blue-600 font-normal">
+          {timeSlot}
+        </div>
+        <div className="text-sm text-gray-500 mt-2">
+          {days.length} day{days.length !== 1 ? 's' : ''} • {schedules[0]?.slot_duration === 60 ? '1 hour' : 
+            schedules[0]?.slot_duration === 90 ? '1.5 hours' : '2 hours'} slots
+        </div>
+      </div>
+    ))}
+  </div>
+);
+};
+
+const profileDisplay = getProfileDisplay();
 
   // ---------------- SERVICES CONTENT ----------------
   const ServicesContent = () => {
@@ -773,86 +822,27 @@ const VetDashboard = () => {
 
         <div className="bg-white/80 backdrop-blur-md rounded-2xl shadow-lg border border-gray-100 h-[500px] flex flex-col">
           <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-800">Appointment Schedule</h2>
+            <div>
+              <h2 className="text-xl font-semibold text-gray-800">My Schedule</h2>
+
+            </div>
             <button 
               onClick={() => setIsScheduleModalOpen(true)}
               className="cursor-pointer flex items-center space-x-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-4 py-2 rounded-xl transition-all duration-200 shadow-md hover:shadow-lg"
             >
               <Calendar className="w-4 h-4" />
-              <span>My Schedule</span>
+              <span>{currentSchedule && currentSchedule.length > 0 ? 'Manage Schedule' : 'Set Schedule'}</span>
             </button>
           </div>
-          <div className="overflow-auto flex-1">
-            {scheduleSlots.length > 0 ? (
-              <div className="divide-y divide-gray-100">
-                {scheduleSlots.map((dateGroup, groupIndex) => (
-                  <div key={dateGroup.date} className="p-4 hover:bg-gray-50 transition-colors duration-150">
-                    <div className="flex items-center mb-3">
-                      <div className="w-1.5 h-6 bg-blue-500 rounded-full mr-3"></div>
-                      <h3 className="text-lg font-semibold text-gray-800">
-                        {formatDate(dateGroup.date)}
-                      </h3>
-                      <span className="ml-2 text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                        {dateGroup.timeSlots.length} slot{dateGroup.timeSlots.length !== 1 ? 's' : ''}
-                      </span>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {dateGroup.timeSlots.map((slot) => (
-                        <div 
-                          key={slot.id} 
-                          className={`p-3 rounded-lg border transition-all duration-150 ${
-                            slot.available 
-                              ? 'bg-blue-50 border-blue-200 hover:bg-blue-100' 
-                              : slot.pending
-                              ? 'bg-yellow-50 border-yellow-200 hover:bg-yellow-100'
-                              : 'bg-red-50 border-red-200 hover:bg-red-100'
-                          }`}
-                        >
-                          <div className="flex justify-between items-center mb-1">
-                            <div className="flex items-center">
-                              <Clock3 className={`w-4 h-4 mr-2 ${
-                                slot.available 
-                                  ? 'text-blue-500' 
-                                  : slot.pending
-                                  ? 'text-yellow-500'
-                                  : 'text-red-500'
-                              }`} />
-                              <span className="font-medium text-gray-800 text-sm whitespace-nowrap">
-                                {formatTime(slot.time)}
-                              </span>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center justify-between">
-                            <span className={`text-xs font-medium px-2 py-1 rounded-full ${
-                              slot.available 
-                                ? 'bg-blue-100 text-blue-800' 
-                                : slot.pending
-                                ? 'bg-yellow-100 text-yellow-800'
-                                : 'bg-red-100 text-red-800'
-                            }`}>
-                              {slot.available ? 'Available' : slot.pending ? 'Pending' : 'Booked' }
-                            </span>
-                            
-                            {!slot.available && (
-                              <div className="text-sm text-gray-600 text-right">
-                                by {slot.operator_name}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>                        
-                  </div>
-                ))}
+
+          <div className="p-6 overflow-y-auto flex-1">
+            {loadingSchedule ? (
+              <div className="flex flex-col items-center justify-center h-full">
+                <Loader className="w-8 h-8 animate-spin text-blue-500 mb-2" />
+                <p className="text-gray-500">Loading schedule...</p>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-gray-400">
-                <Calendar className="w-12 h-12 mb-2" />
-                <p>No schedule available</p>
-                <p className="text-sm mt-2">Add a schedule to get started</p>
-              </div>
+              renderScheduleDetails(currentSchedule)
             )}
           </div>
         </div>
