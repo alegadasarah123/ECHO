@@ -112,7 +112,7 @@ export default function HistoryScreen() {
   const safeArea = getSafeAreaPadding()
 
   // Replace with your actual API base URL
-  const API_BASE_URL = "http://172.20.10.2:8000/api/kutsero"
+  const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
 
   // Load user data from SecureStore (matching dashboard approach)
   const loadUserData = async (): Promise<UserData | null> => {
