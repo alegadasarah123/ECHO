@@ -158,7 +158,7 @@ interface SearchUserProfile {
   }
 }
 
-const API_BASE_URL = "http://192.168.101.6:8000/api/kutsero"
+const API_BASE_URL = "http://10.254.39.148:8000/api/kutsero"
 
 // Image Carousel Component
 const ImageCarousel = ({ images }: { images: string[] }) => {

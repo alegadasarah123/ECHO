@@ -1,3 +1,5 @@
+// KUTSERO FEED PAGE COMPONENT
+
 import { useState, useEffect } from "react";
 import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Alert, SafeAreaView, TextInput, Modal } from "react-native";
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -5,7 +7,7 @@ import FeedLogPage from './FeedLogPage';
 import WaterLogPage from './waterlogpage';
 
 // API Configuration
-const API_BASE_URL = 'http://192.168.101.2:8000/api/kutsero';
+const API_BASE_URL = 'http://10.254.39.148:8000/api/kutsero';
 
 interface FeedLog {
   log_id: string;
