@@ -22,6 +22,7 @@ SUPABASE_URL = settings.SUPABASE_URL
 SUPABASE_ANON_KEY = settings.SUPABASE_ANON_KEY
 
 # --------------------------------------------------------------- LOGIN WEB -------------------------------------------------------------------------------------------
+# --------------------------------------------------------------- LOGIN WEB -------------------------------------------------------------------------------------------
 @api_view(['POST'])
 def login(request):
     email = request.data.get("email", "").strip()
@@ -30,7 +31,7 @@ def login(request):
     if not email or not password:
         return Response({"error": "Email and password are required"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # 1️⃣ Authenticate with Supabase Auth
+    # ---------------- 1️⃣ Authenticate with Supabase Auth ----------------
     login_url = f"{settings.SUPABASE_URL}/auth/v1/token?grant_type=password"
     headers = {
         "apikey": settings.SUPABASE_ANON_KEY,
@@ -56,7 +57,7 @@ def login(request):
     if not access_token or not user_id:
         return Response({"error": "Login failed: missing token or user id"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # 2️⃣ Fetch user data from public.users using service role key
+    # ---------------- 2️⃣ Fetch user data from public.users ----------------
     service_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)
     user_query = service_client.table("users").select("role, status, decline_reason").eq("id", user_id).execute()
     
@@ -68,35 +69,27 @@ def login(request):
     user_status = role_info.get("status", "pending").strip().lower()
     decline_reason = role_info.get("decline_reason")
 
-    # ❌ Prevent users with "declined" status from logging in
-    if user_status == "declined":
-        error_msg = "Your account registration has been declined."
-        if decline_reason:
+    # ---------------- 3️⃣ Block all declined/deactivated/suspended users ----------------
+    blocked_statuses = ["declined", "deactivated", "suspended"]
+    if user_status in blocked_statuses:
+        error_msg = f"Your account is {user_status}."
+        if user_status == "declined" and decline_reason:
             error_msg += f" Reason: {decline_reason}"
         return Response({"error": error_msg}, status=status.HTTP_403_FORBIDDEN)
 
-    # ❌ PREVENT UNAPPROVED VETERINARIANS FROM LOGGING IN
-    if user_role == "Veterinarian" and user_status != "approved":
-        if user_status == "pending":
-            return Response({
-               "error": "Your account is pending approval. Please wait for administrator approval. Check your email for updates."
-            }, status=status.HTTP_403_FORBIDDEN)
-        else:
-            return Response({
-                "error": f"Your account status is '{user_status}'. Please contact administrator for assistance."
-            }, status=status.HTTP_403_FORBIDDEN)
+    # ---------------- 4️⃣ Special case: pending veterinarians ----------------
+    if user_role.lower() == "veterinarian" and user_status != "approved":
+        return Response({
+           "error": "Your account is pending approval. Please wait for administrator approval. Check your email for updates."
+        }, status=status.HTTP_403_FORBIDDEN)
 
     print(f"[LOGIN] User ID: {user_id}, Role: {user_role}, Status: {user_status}")
 
-    
-
-    # 3️⃣ Set HttpOnly cookie
+    # ---------------- 5️⃣ Set HttpOnly cookie ----------------
     response = Response({
         "message": "Login successful",
         "role": user_role,
         "status": user_status,
-        
-
     }, status=status.HTTP_200_OK)
 
     # Cookie expires in 1 day
@@ -110,6 +103,7 @@ def login(request):
     )
 
     return response
+
 
 
 @api_view(['GET'])
