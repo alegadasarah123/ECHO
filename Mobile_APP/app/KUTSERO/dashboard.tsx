@@ -158,7 +158,7 @@ interface SearchUserProfile {
   }
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
 
 // Image Carousel Component
 const ImageCarousel = ({ images }: { images: string[] }) => {
@@ -231,6 +231,65 @@ const ImageCarousel = ({ images }: { images: string[] }) => {
     </View>
   )
 }
+
+// Dashboard Icon Component
+const DashboardIcon = ({ color }: { color: string }) => (
+  <View style={styles.iconContainer}>
+    <View style={styles.dashboardGrid}>
+      <View style={[styles.gridSquare, styles.gridTopLeft, { backgroundColor: color }]} />
+      <View style={[styles.gridSquare, styles.gridTopRight, { backgroundColor: color }]} />
+      <View style={[styles.gridSquare, styles.gridBottomLeft, { backgroundColor: color }]} />
+      <View style={[styles.gridSquare, styles.gridBottomRight, { backgroundColor: color }]} />
+    </View>
+  </View>
+)
+
+// Profile Icon Component
+const ProfileIcon = ({ color }: { color: string }) => (
+  <View style={styles.iconContainer}>
+    <View style={styles.profileContainer}>
+      <View style={[styles.profileHead, { backgroundColor: color }]} />
+      <View style={[styles.profileBody, { backgroundColor: color }]} />
+    </View>
+  </View>
+)
+
+// Tab Button Component
+const TabButton = ({
+  iconSource,
+  label,
+  tabKey,
+  isActive,
+  onPress,
+}: {
+  iconSource: any
+  label: string
+  tabKey: string
+  isActive: boolean
+  onPress?: () => void
+}) => (
+  <TouchableOpacity
+    style={styles.tabButton}
+    onPress={onPress}
+  >
+    <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
+      {iconSource ? (
+        <Image
+          source={iconSource}
+          style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
+          resizeMode="contain"
+        />
+      ) : tabKey === "home" ? (
+        <DashboardIcon color={isActive ? "white" : "#666"} />
+      ) : tabKey === "profile" ? (
+        <ProfileIcon color={isActive ? "white" : "#666"} />
+      ) : (
+        <View style={styles.fallbackIcon} />
+      )}
+    </View>
+    <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
+  </TouchableOpacity>
+)
 
 export default function DashboardScreen() {
   const router = useRouter()
@@ -752,12 +811,10 @@ export default function DashboardScreen() {
 
   const submitComment = async () => {
     if (!newComment.trim() && !replyText.trim()) {
-      Alert.alert("Error", "Please enter a comment before posting.")
       return
     }
 
     if (!selectedAnnouncementId || !userData?.profile?.kutsero_id || !userData?.access_token) {
-      Alert.alert("Error", "Unable to post comment. Please try again.")
       return
     }
 
@@ -797,25 +854,21 @@ export default function DashboardScreen() {
           }))
           setReplyText("")
           setReplyingTo(null)
-          Alert.alert("Success", "Your reply has been posted!")
         } else {
           setComments((prev) => ({
             ...prev,
             [selectedAnnouncementId]: [data.comment, ...(prev[selectedAnnouncementId] || [])],
           }))
           setNewComment("")
-          Alert.alert("Success", "Your comment has been posted!")
         }
 
         fetchAnnouncements()
       } else {
         const errorData = await response.text()
         console.error("[ERROR] Failed to post:", errorData)
-        Alert.alert("Error", "Failed to post comment")
       }
     } catch (error) {
       console.error("[ERROR] Network error:", error)
-      Alert.alert("Error", "Network error. Please check your connection.")
     } finally {
       setIsPostingComment(false)
     }
@@ -938,72 +991,6 @@ export default function DashboardScreen() {
       return dateString
     }
   }
-
-  const DashboardIcon = ({ color }: { color: string }) => (
-    <View style={styles.iconContainer}>
-      <View style={styles.dashboardGrid}>
-        <View style={[styles.gridSquare, styles.gridTopLeft, { backgroundColor: color }]} />
-        <View style={[styles.gridSquare, styles.gridTopRight, { backgroundColor: color }]} />
-        <View style={[styles.gridSquare, styles.gridBottomLeft, { backgroundColor: color }]} />
-        <View style={[styles.gridSquare, styles.gridBottomRight, { backgroundColor: color }]} />
-      </View>
-    </View>
-  )
-
-  const ProfileIcon = ({ color }: { color: string }) => (
-    <View style={styles.iconContainer}>
-      <View style={styles.profileContainer}>
-        <View style={[styles.profileHead, { backgroundColor: color }]} />
-        <View style={[styles.profileBody, { backgroundColor: color }]} />
-      </View>
-    </View>
-  )
-
-  const TabButton = ({
-    iconSource,
-    label,
-    tabKey,
-    isActive,
-    onPress,
-  }: {
-    iconSource: any
-    label: string
-    tabKey: string
-    isActive: boolean
-    onPress?: () => void
-  }) => (
-    <TouchableOpacity
-      style={styles.tabButton}
-      onPress={() => {
-        if (onPress) {
-          onPress()
-        } else {
-          if (tabKey === "horse") router.push("./horsecare")
-          else if (tabKey === "chat") router.push("./messages")
-          else if (tabKey === "calendar") router.push("./calendar")
-          else if (tabKey === "history") router.push("./history")
-          else if (tabKey === "profile") router.push("./profile")
-        }
-      }}
-    >
-      <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
-        {iconSource ? (
-          <Image
-            source={iconSource}
-            style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
-            resizeMode="contain"
-          />
-        ) : tabKey === "home" ? (
-          <DashboardIcon color={isActive ? "white" : "#666"} />
-        ) : tabKey === "profile" ? (
-          <ProfileIcon color={isActive ? "white" : "#666"} />
-        ) : (
-          <View style={styles.fallbackIcon} />
-        )}
-      </View>
-      <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
-    </TouchableOpacity>
-  )
 
   const unreadNotificationsCount = announcements.filter((announcement) => {
     if (!lastViewedAnnouncementTime) return true
@@ -1401,27 +1388,48 @@ export default function DashboardScreen() {
         </ScrollView>
 
         <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
-          <TabButton iconSource={null} label="Home" tabKey="home" isActive={true} />
+          <TabButton 
+            iconSource={null} 
+            label="Home" 
+            tabKey="home" 
+            isActive={true} 
+            onPress={() => {}} 
+          />
           <TabButton
             iconSource={require("../../assets/images/horse.png")}
             label="Horse"
             tabKey="horse"
             isActive={false}
+            onPress={() => router.push("./horsecare")}
           />
-          <TabButton iconSource={require("../../assets/images/chat.png")} label="Chat" tabKey="chat" isActive={false} />
+          <TabButton 
+            iconSource={require("../../assets/images/chat.png")} 
+            label="Chat" 
+            tabKey="chat" 
+            isActive={false} 
+            onPress={() => router.push("./messages")} 
+          />
           <TabButton
             iconSource={require("../../assets/images/calendar.png")}
             label="Calendar"
             tabKey="calendar"
             isActive={false}
+            onPress={() => router.push("./calendar")}
           />
           <TabButton
             iconSource={require("../../assets/images/history.png")}
             label="History"
             tabKey="history"
             isActive={false}
+            onPress={() => router.push("./history")}
           />
-          <TabButton iconSource={null} label="Profile" tabKey="profile" isActive={false} />
+          <TabButton 
+            iconSource={null} 
+            label="Profile" 
+            tabKey="profile" 
+            isActive={false} 
+            onPress={() => router.push("./profile")} 
+          />
         </View>
       </View>
 

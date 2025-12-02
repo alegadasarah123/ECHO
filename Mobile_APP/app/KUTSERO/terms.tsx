@@ -1,5 +1,3 @@
-// KUTSERO Terms & Conditions Screen
-
 "use client"
 import { useState } from "react"
 import {
@@ -10,12 +8,11 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    View, 
+    View,
 } from "react-native"
 
 const { width, height } = Dimensions.get("window")
 
-// Enhanced responsive scaling functions
 const scale = (size: number) => {
   const scaleFactor = width / 375 
   const scaledSize = size * scaleFactor
@@ -33,7 +30,6 @@ const moderateScale = (size: number, factor = 0.5) => {
   return Math.max(Math.min(scaledSize, size * 1.1), size * 0.9)
 }
 
-// Mobile-optimized spacing
 const dynamicSpacing = (baseSize: number) => {
   if (width < 350) return verticalScale(baseSize * 0.7)
   if (width < 400) return verticalScale(baseSize * 0.85)
@@ -41,7 +37,6 @@ const dynamicSpacing = (baseSize: number) => {
   return verticalScale(baseSize)
 }
 
-// Safe area calculations
 const getSafeAreaPadding = () => {
   const statusBarHeight = StatusBar.currentHeight || 0
   return {
@@ -54,15 +49,69 @@ interface TermsPoliciesProps {
   onBack: () => void
 }
 
+const BackIcon = () => (
+  <View style={styles.backIconContainer}>
+    <View style={styles.backArrow} />
+  </View>
+)
+
+const ExpandableSection = ({ 
+  title, 
+  children, 
+  sectionKey,
+  expandedSections,
+  toggleSection
+}: { 
+  title: string
+  children: React.ReactNode
+  sectionKey: string
+  expandedSections: {[key: string]: boolean}
+  toggleSection: (key: string) => void
+}) => {
+  const isExpanded = expandedSections[sectionKey]
+  
+  return (
+    <View style={styles.sectionContainer}>
+      <TouchableOpacity 
+        style={styles.sectionHeader}
+        onPress={() => toggleSection(sectionKey)}
+        activeOpacity={0.7}
+      >
+        <Text style={styles.sectionTitle}>{title}</Text>
+        <View style={[
+          styles.expandIcon,
+          isExpanded && styles.expandIconRotated
+        ]}>
+          <View style={styles.expandArrow} />
+        </View>
+      </TouchableOpacity>
+      
+      {isExpanded && (
+        <View style={styles.sectionContent}>
+          {children}
+        </View>
+      )}
+    </View>
+  )
+}
+
+const BulletPoint = ({ children }: { children: string }) => (
+  <View style={styles.bulletContainer}>
+    <View style={styles.bullet} />
+    <Text style={styles.bulletText}>{children}</Text>
+  </View>
+)
+
+const SubSection = ({ title, children }: { title: string, children: React.ReactNode }) => (
+  <View style={styles.subSection}>
+    <Text style={styles.subSectionTitle}>{title}</Text>
+    {children}
+  </View>
+)
+
 export default function TermsPolicies({ onBack }: TermsPoliciesProps) {
   const [expandedSections, setExpandedSections] = useState<{[key: string]: boolean}>({})
   const safeArea = getSafeAreaPadding()
-
-  const BackIcon = () => (
-    <View style={styles.backIconContainer}>
-      <View style={styles.backArrow} />
-    </View>
-  )
 
   const toggleSection = (sectionKey: string) => {
     setExpandedSections(prev => ({
@@ -71,61 +120,10 @@ export default function TermsPolicies({ onBack }: TermsPoliciesProps) {
     }))
   }
 
-  const ExpandableSection = ({ 
-    title, 
-    children, 
-    sectionKey 
-  }: { 
-    title: string
-    children: React.ReactNode
-    sectionKey: string 
-  }) => {
-    const isExpanded = expandedSections[sectionKey]
-    
-    return (
-      <View style={styles.sectionContainer}>
-        <TouchableOpacity 
-          style={styles.sectionHeader}
-          onPress={() => toggleSection(sectionKey)}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.sectionTitle}>{title}</Text>
-          <View style={[
-            styles.expandIcon,
-            isExpanded && styles.expandIconRotated
-          ]}>
-            <View style={styles.expandArrow} />
-          </View>
-        </TouchableOpacity>
-        
-        {isExpanded && (
-          <View style={styles.sectionContent}>
-            {children}
-          </View>
-        )}
-      </View>
-    )
-  }
-
-  const BulletPoint = ({ children }: { children: string }) => (
-    <View style={styles.bulletContainer}>
-      <View style={styles.bullet} />
-      <Text style={styles.bulletText}>{children}</Text>
-    </View>
-  )
-
-  const SubSection = ({ title, children }: { title: string, children: React.ReactNode }) => (
-    <View style={styles.subSection}>
-      <Text style={styles.subSectionTitle}>{title}</Text>
-      {children}
-    </View>
-  )
-
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
       
-      {/* Header */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
           <BackIcon />
@@ -136,7 +134,6 @@ export default function TermsPolicies({ onBack }: TermsPoliciesProps) {
         <View style={styles.headerRight} />
       </View>
 
-      {/* Content */}
       <ScrollView 
         style={styles.content}
         showsVerticalScrollIndicator={false}
@@ -145,8 +142,12 @@ export default function TermsPolicies({ onBack }: TermsPoliciesProps) {
           { paddingBottom: safeArea.bottom + dynamicSpacing(20) }
         ]}
       >
-        {/* Introduction Section */}
-        <ExpandableSection title="1. Introduction" sectionKey="introduction">
+        <ExpandableSection 
+          title="1. Introduction" 
+          sectionKey="introduction"
+          expandedSections={expandedSections}
+          toggleSection={toggleSection}
+        >
           <Text style={styles.welcomeText}>
             Welcome to the ECHO Mobile Application (Equine Care and Health Optimization). By registering and using this app, you agree to comply with and be bound by these Terms and Conditions.
           </Text>
@@ -155,8 +156,12 @@ export default function TermsPolicies({ onBack }: TermsPoliciesProps) {
           </Text>
         </ExpandableSection>
 
-        {/* User Responsibilities */}
-        <ExpandableSection title="2. User Responsibilities" sectionKey="responsibilities">
+        <ExpandableSection 
+          title="2. User Responsibilities" 
+          sectionKey="responsibilities"
+          expandedSections={expandedSections}
+          toggleSection={toggleSection}
+        >
           <SubSection title="a. Horse Operator (Owner)">
             <BulletPoint>You must provide complete and accurate information regarding your identity and your horse's details during registration.</BulletPoint>
             <BulletPoint>You are responsible for ensuring your horse receives regular veterinary checkups.</BulletPoint>
@@ -173,45 +178,69 @@ export default function TermsPolicies({ onBack }: TermsPoliciesProps) {
           </SubSection>
         </ExpandableSection>
 
-        {/* Data Privacy and Protection */}
-        <ExpandableSection title="3. Data Privacy and Protection" sectionKey="privacy">
+        <ExpandableSection 
+          title="3. Data Privacy and Protection" 
+          sectionKey="privacy"
+          expandedSections={expandedSections}
+          toggleSection={toggleSection}
+        >
           <BulletPoint>The ECHO App collects personal and animal health information necessary for communication and monitoring within the Tartanilla Program.</BulletPoint>
           <BulletPoint>All collected data will be handled responsibly and in accordance with the principles of the Data Privacy Act of 2012 (Republic Act No. 10173).</BulletPoint>
           <BulletPoint>Your data may be shared only with authorized DVMF and CTU personnel for official and program-related purposes.</BulletPoint>
           <BulletPoint>The ECHO Team implements reasonable safeguards to protect your information from unauthorized use or disclosure.</BulletPoint>
         </ExpandableSection>
 
-        {/* Account and Security */}
-        <ExpandableSection title="4. Account and Security" sectionKey="security">
+        <ExpandableSection 
+          title="4. Account and Security" 
+          sectionKey="security"
+          expandedSections={expandedSections}
+          toggleSection={toggleSection}
+        >
           <BulletPoint>You are solely responsible for maintaining the confidentiality of your login credentials.</BulletPoint>
           <BulletPoint>Any actions performed under your account will be considered your responsibility.</BulletPoint>
           <BulletPoint>You must immediately report any unauthorized use or suspected security breach to the ECHO Support Team.</BulletPoint>
           <BulletPoint>The administrators reserve the right to suspend or deactivate accounts found to be in violation of these terms.</BulletPoint>
         </ExpandableSection>
 
-        {/* Acceptable Use */}
-        <ExpandableSection title="5. Acceptable Use" sectionKey="use">
+        <ExpandableSection 
+          title="5. Acceptable Use" 
+          sectionKey="use"
+          expandedSections={expandedSections}
+          toggleSection={toggleSection}
+        >
           <BulletPoint>You agree to use the ECHO App only for legitimate and lawful purposes connected to the Tartanilla Program.</BulletPoint>
           <BulletPoint>You must not tamper with the system, upload false information, or access other users' data without authorization.</BulletPoint>
           <BulletPoint>Misuse of the app, including fraudulent or inappropriate activities, may result in permanent account termination.</BulletPoint>
         </ExpandableSection>
 
-        {/* Limitation of Liability */}
-        <ExpandableSection title="6. Limitation of Liability" sectionKey="liability">
+        <ExpandableSection 
+          title="6. Limitation of Liability" 
+          sectionKey="liability"
+          expandedSections={expandedSections}
+          toggleSection={toggleSection}
+        >
           <BulletPoint>The ECHO App serves as a digital tool to assist in horse health tracking and communication; it does not replace physical veterinary consultations.</BulletPoint>
           <BulletPoint>The developers, administrators, and partner institutions are not liable for any loss, injury, or damage caused by misuse of the app, inaccurate data, or user negligence.</BulletPoint>
           <BulletPoint>Users are responsible for ensuring that all information entered into the system is correct and updated.</BulletPoint>
         </ExpandableSection>
 
-        {/* Modifications to the Terms */}
-        <ExpandableSection title="7. Modifications to the Terms" sectionKey="modifications">
+        <ExpandableSection 
+          title="7. Modifications to the Terms" 
+          sectionKey="modifications"
+          expandedSections={expandedSections}
+          toggleSection={toggleSection}
+        >
           <BulletPoint>The ECHO Team may modify or update these Terms and Conditions at any time.</BulletPoint>
           <BulletPoint>Users will be notified of significant changes through the mobile app.</BulletPoint>
           <BulletPoint>Continued use of the application after updates constitutes your acceptance of the revised terms.</BulletPoint>
         </ExpandableSection>
 
-        {/* Contact and Support */}
-        <ExpandableSection title="8. Contact and Support" sectionKey="support">
+        <ExpandableSection 
+          title="8. Contact and Support" 
+          sectionKey="support"
+          expandedSections={expandedSections}
+          toggleSection={toggleSection}
+        >
           <Text style={styles.supportText}>
             For any questions, assistance, or technical concerns, please contact:
           </Text>

@@ -1,5 +1,3 @@
-// KUTSERO Notifications Page
-
 "use client"
 
 import { useEffect, useState, useRef } from "react"
@@ -14,11 +12,52 @@ import {
   View,
   Modal,
   Image,
+  Platform,
+  AppState,
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Notifications from 'expo-notifications';
+import * as Device from 'expo-device';
 
 const { width, height } = Dimensions.get("window")
+
+// Global notification state management
+let globalNotificationListeners: ((notification: any) => void)[] = [];
+
+export const addGlobalNotificationListener = (listener: (notification: any) => void) => {
+  globalNotificationListeners.push(listener);
+  console.log('[Global Notification] Added listener, total:', globalNotificationListeners.length);
+  return () => {
+    globalNotificationListeners = globalNotificationListeners.filter(l => l !== listener);
+    console.log('[Global Notification] Removed listener, total:', globalNotificationListeners.length);
+  };
+};
+
+export const triggerGlobalNotification = (notification: any) => {
+  console.log('[Global Notification] Triggering to', globalNotificationListeners.length, 'listeners');
+  globalNotificationListeners.forEach(listener => {
+    try {
+      listener(notification);
+    } catch (error) {
+      console.error('[Global Notification] Error in listener:', error);
+    }
+  });
+};
+
+// Configure notification behavior for foreground - FIXED VERSION
+Notifications.setNotificationHandler({
+  handleNotification: async (notification) => {
+    console.log('[Notification] Handling notification in foreground:', notification);
+    
+    return {
+      shouldShowBanner: true,   // Replaces shouldShowAlert
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowList: true,
+    };
+  },
+});
 
 // Scaling functions
 const scale = (size: number) => {
@@ -83,6 +122,220 @@ interface NotificationsPageProps {
   userName: string
 }
 
+// Send local notification - ENHANCED VERSION
+export async function sendLocalNotification(title: string, body: string, data?: any) {
+  try {
+    const notificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: title,
+        body: body,
+        data: data || {},
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+        vibrate: [0, 250, 250, 250],
+        badge: 1,
+        autoDismiss: false,
+        // Add category for handling in background
+        categoryIdentifier: 'REMINDER',
+      },
+      trigger: null, // Trigger immediately
+    });
+    
+    console.log('[Notification] Local notification sent with ID:', notificationId);
+    
+    triggerGlobalNotification({
+      title,
+      body,
+      data,
+      id: notificationId,
+      timestamp: new Date().toISOString()
+    });
+    
+    return notificationId;
+  } catch (error) {
+    console.error('[Notification] Error sending notification:', error);
+    return null;
+  }
+}
+
+// Schedule feed/water notification for specific time
+export async function scheduleFeedWaterNotification(
+  notificationData: any,
+  scheduledTime: string,
+  notificationId: string
+): Promise<string | null> {
+  try {
+    // Parse scheduled time (format: "HH:MM AM/PM" or "HH:MM")
+    let [timePart, ampm] = scheduledTime.split(' ');
+    let [hours, minutes] = timePart.split(':').map(Number);
+    
+    // Convert to 24-hour format if AM/PM is specified
+    if (ampm) {
+      if (ampm.toUpperCase() === 'PM' && hours < 12) {
+        hours += 12;
+      } else if (ampm.toUpperCase() === 'AM' && hours === 12) {
+        hours = 0;
+      }
+    }
+    
+    // Create date for today with the scheduled time
+    const now = new Date();
+    const scheduledDate = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+      hours,
+      minutes,
+      0
+    );
+    
+    // If the scheduled time is in the past, schedule for tomorrow
+    if (scheduledDate <= now) {
+      scheduledDate.setDate(scheduledDate.getDate() + 1);
+    }
+    
+    // Also schedule a reminder 5 minutes before (like calendar)
+    const reminderTime = new Date(scheduledDate.getTime() - 5 * 60 * 1000);
+    
+    console.log('[Notification] Scheduling for:', scheduledDate);
+    console.log('[Notification] Reminder at:', reminderTime);
+    
+    // Schedule the main notification
+    const mainNotificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: notificationData.title || "🐴 Reminder",
+        body: notificationData.message || `${notificationData.horseName} needs attention`,
+        data: {
+          ...notificationData,
+          id: notificationId,
+          type: 'reminder',
+          horseName: notificationData.horseName,
+          scheduledTime: scheduledTime,
+          channelId: 'high-priority'
+        },
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+        vibrate: [0, 250, 250, 250],
+        badge: 1,
+        categoryIdentifier: 'REMINDER',
+      },
+      trigger: {
+        type: 'date',
+        date: scheduledDate,
+      } as Notifications.DateTriggerInput,
+    });
+    
+    // Schedule a 5-minute reminder (optional)
+    const reminderNotificationId = await Notifications.scheduleNotificationAsync({
+      content: {
+        title: "⏰ Reminder in 5 minutes",
+        body: `${notificationData.horseName}: ${notificationData.message}`,
+        data: {
+          ...notificationData,
+          id: notificationId,
+          type: 'reminder_reminder',
+          horseName: notificationData.horseName,
+          scheduledTime: scheduledTime,
+          channelId: 'high-priority'
+        },
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.HIGH,
+        vibrate: [0, 250, 250, 250],
+        badge: 1,
+        categoryIdentifier: 'REMINDER',
+      },
+      trigger: {
+        type: 'date',
+        date: reminderTime,
+      } as Notifications.DateTriggerInput,
+    });
+    
+    console.log('[Notification] Scheduled notifications with IDs:', mainNotificationId, reminderNotificationId);
+    
+    // Store the notification IDs for cancellation if needed
+    await AsyncStorage.setItem(`scheduled_notif_${notificationId}`, JSON.stringify({
+      mainId: mainNotificationId,
+      reminderId: reminderNotificationId,
+      scheduledTime: scheduledDate.toISOString()
+    }));
+    
+    return mainNotificationId;
+  } catch (error) {
+    console.error('[Notification] Error scheduling notification:', error);
+    return null;
+  }
+}
+
+// Cancel scheduled notifications for a specific notification ID
+export async function cancelScheduledNotification(notificationId: string) {
+  try {
+    // Get stored notification IDs
+    const stored = await AsyncStorage.getItem(`scheduled_notif_${notificationId}`);
+    if (stored) {
+      const data = JSON.parse(stored);
+      
+      // Cancel main notification
+      if (data.mainId) {
+        await Notifications.cancelScheduledNotificationAsync(data.mainId);
+      }
+      
+      // Cancel reminder notification
+      if (data.reminderId) {
+        await Notifications.cancelScheduledNotificationAsync(data.reminderId);
+      }
+      
+      console.log('[Notification] Cancelled scheduled notifications for:', notificationId);
+    }
+    
+    // Clean up storage
+    await AsyncStorage.removeItem(`scheduled_notif_${notificationId}`);
+  } catch (error) {
+    console.error('[Notification] Error cancelling scheduled notifications:', error);
+  }
+}
+
+// Schedule all future feed/water notifications on app start
+const scheduleAllFutureFeedWaterNotifications = async () => {
+  try {
+    // Get all triggered notifications that are reminders
+    const allKeys = await AsyncStorage.getAllKeys();
+    const triggeredKeys = allKeys.filter(key => key.startsWith('triggered_'));
+    
+    for (const key of triggeredKeys) {
+      const data = await AsyncStorage.getItem(key);
+      if (data) {
+        try {
+          const parsed = JSON.parse(data);
+          if (parsed.scheduledTime && parsed.horseName) {
+            // Reschedule this notification for future occurrences
+            const notificationId = key.replace('triggered_', '');
+            
+            // Check if we already have scheduled notifications for this
+            const scheduledKey = `scheduled_notif_${notificationId}`;
+            const alreadyScheduled = await AsyncStorage.getItem(scheduledKey);
+            
+            if (!alreadyScheduled) {
+              await scheduleFeedWaterNotification(
+                {
+                  title: parsed.title,
+                  message: parsed.message,
+                  horseName: parsed.horseName,
+                },
+                parsed.scheduledTime,
+                notificationId
+              );
+            }
+          }
+        } catch (e) {
+          console.error('[Notification] Error processing triggered notification:', e);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[Notification] Error scheduling future notifications:', error);
+  }
+};
+
 async function trackNotificationViewed(type: 'feed' | 'water' | 'announcement'): Promise<void> {
   try {
     const key = `last_viewed_${type}_notifications`;
@@ -104,6 +357,165 @@ async function getLastViewedTime(type: 'feed' | 'water' | 'announcement'): Promi
   }
 }
 
+// Initialize notification system with proper channels
+export async function initializeNotificationSystem(userName: string) {
+  // Configure notification channels for Android
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'Default',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+      sound: 'default',
+      enableVibrate: true,
+      showBadge: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+    
+    await Notifications.setNotificationChannelAsync('high-priority', {
+      name: 'High Priority Notifications',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+      sound: 'default',
+      enableVibrate: true,
+      showBadge: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+    
+    await Notifications.setNotificationChannelAsync('reminders', {
+      name: 'Reminders',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#4CAF50',
+      sound: 'default',
+      enableVibrate: true,
+      showBadge: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+  }
+
+  if (Device.isDevice) {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync({
+        ios: {
+          allowAlert: true,
+          allowBadge: true,
+          allowSound: true,
+        },
+      });
+      finalStatus = status;
+    }
+    if (finalStatus !== 'granted') {
+      console.log('[Notification] Notification permissions not granted');
+      return false;
+    }
+    console.log('[Notification] Notification permissions granted');
+  } else {
+    console.log('[Notification] Notifications require a physical device');
+  }
+  
+  return true;
+}
+
+// Check for scheduled notifications
+export async function checkScheduledTimesGlobal(userName: string) {
+  try {
+    const encodedUser = encodeURIComponent(userName);
+    
+    const response = await fetch(
+      `http://192.168.1.9:8000/api/kutsero/check-current-schedules/?kutsero_id=${encodedUser}`
+    );
+    
+    if (!response.ok) {
+      console.error('[Notification] Failed to check current schedules');
+      return false;
+    }
+    
+    const data = await response.json();
+    console.log('[Notification] Global check schedules response:', data);
+    
+    if (!data.success || !data.data || data.data.length === 0) {
+      console.log('[Notification] No schedules due at this time');
+      return false;
+    }
+    
+    const now = new Date();
+    let newNotificationsAdded = false;
+    
+    for (const schedule of data.data) {
+      const notifId = schedule.id;
+      const triggeredKey = `triggered_${notifId}`;
+      
+      const alreadyTriggered = await AsyncStorage.getItem(triggeredKey);
+      
+      if (!alreadyTriggered) {
+        const triggeredNotif = {
+          id: notifId,
+          title: schedule.title,
+          message: schedule.message,
+          time: now.toLocaleDateString("en-US", {
+            year: "numeric",
+            month: "short",
+            day: "numeric",
+          }) + " at " + now.toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+          horseName: schedule.horse_name,
+          scheduledTime: schedule.scheduled_time,
+          timestamp: now.toISOString(),
+          isNew: true,
+        };
+        
+        await AsyncStorage.setItem(triggeredKey, JSON.stringify(triggeredNotif));
+        console.log('[Notification] Triggered notification:', notifId);
+        newNotificationsAdded = true;
+        
+        // Schedule notifications for this schedule for future occurrences
+        await scheduleFeedWaterNotification(
+          {
+            title: schedule.title,
+            message: schedule.message,
+            horseName: schedule.horse_name,
+          },
+          schedule.scheduled_time,
+          notifId
+        );
+        
+        // Also send immediate notification
+        await sendLocalNotification(
+          `🐴 ${schedule.title}`,
+          `${schedule.horse_name}: ${schedule.message}`,
+          { 
+            type: 'reminder', 
+            id: notifId,
+            horseName: schedule.horse_name,
+            scheduledTime: schedule.scheduled_time,
+            channelId: 'high-priority'
+          }
+        );
+        
+        const countKey = 'new_feed_water_count';
+        const currentCount = await AsyncStorage.getItem(countKey);
+        const newCount = currentCount ? parseInt(currentCount) + 1 : 1;
+        await AsyncStorage.setItem(countKey, newCount.toString());
+        
+        // Update badge count
+        const currentBadge = await Notifications.getBadgeCountAsync();
+        await Notifications.setBadgeCountAsync((currentBadge || 0) + 1);
+      }
+    }
+    
+    return newNotificationsAdded;
+  } catch (error) {
+    console.error('[Notification] Error checking scheduled times:', error);
+    return false;
+  }
+}
+
 export default function NotificationsPage({ onBack, userName }: NotificationsPageProps) {
   const safeArea = getSafeAreaPadding()
 
@@ -114,101 +526,21 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
   const [imageError, setImageError] = useState(false)
   const [imageLoading, setImageLoading] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
-  const [lastViewedAnnouncementTime, setLastViewedAnnouncementTime] = useState<string | null>(null)
-  const [lastViewedFeedTime, setLastViewedFeedTime] = useState<string | null>(null)
-  const [lastViewedWaterTime, setLastViewedWaterTime] = useState<string | null>(null)
   const [newFeedWaterCount, setNewFeedWaterCount] = useState(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const checkIntervalRef = useRef<any>(null);
+  const checkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const notificationListener = useRef<Notifications.Subscription | null>(null);
+  const responseListener = useRef<Notifications.Subscription | null>(null);
+  const isInitialized = useRef(false);
+  const isMounted = useRef(true);
 
   const checkScheduledTimes = async () => {
     try {
-      const encodedUser = encodeURIComponent(userName);
-      
-      const response = await fetch(
-        `http://192.168.31.58:8000/api/kutsero/check-current-schedules/?kutsero_id=${encodedUser}`
-      );
-      
-      if (!response.ok) {
-        console.error('[Notification] Failed to check current schedules');
-        return;
-      }
-      
-      const data = await response.json();
-      console.log('[Notification] Check schedules response:', data);
-      
-      if (!data.success || !data.data || data.data.length === 0) {
-        console.log('[Notification] No schedules due at this time');
-        return;
-      }
-      
-      const now = new Date();
-      const displayTime = now.toLocaleDateString("en-US", {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-      }) + " at " + now.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-      
-      let newNotificationsAdded = false;
-      
-      for (const schedule of data.data) {
-        const notifId = schedule.id;
-        const triggeredKey = `triggered_${notifId}`;
-        
-        const alreadyTriggered = await AsyncStorage.getItem(triggeredKey);
-        
-        if (!alreadyTriggered) {
-          const triggeredNotif = {
-            id: notifId,
-            title: schedule.title,
-            message: schedule.message,
-            time: displayTime,
-            horseName: schedule.horse_name,
-            scheduledTime: schedule.scheduled_time,
-            timestamp: now.toISOString(),
-            isNew: true,
-          };
-          
-          await AsyncStorage.setItem(triggeredKey, JSON.stringify(triggeredNotif));
-          console.log('[Notification] Triggered notification:', notifId);
-          newNotificationsAdded = true;
-          
-          const countKey = 'new_feed_water_count';
-          const currentCount = await AsyncStorage.getItem(countKey);
-          const newCount = currentCount ? parseInt(currentCount) + 1 : 1;
-          await AsyncStorage.setItem(countKey, newCount.toString());
-          setNewFeedWaterCount(newCount);
-        }
-      }
-      
-      if (newNotificationsAdded) {
-        await fetchNotifications();
-      }
-      
-      const allKeys = await AsyncStorage.getAllKeys();
-      const triggeredKeys = allKeys.filter(key => key.startsWith('triggered_'));
-      
-      for (const key of triggeredKeys) {
-        const data = await AsyncStorage.getItem(key);
-        if (data) {
-          try {
-            const parsed = JSON.parse(data);
-            const notifTime = new Date(parsed.time);
-            const diffHours = (now.getTime() - notifTime.getTime()) / 1000 / 60 / 60;
-            if (diffHours > 24) {
-              await AsyncStorage.removeItem(key);
-              console.log('[Notification] Cleaned up old notification:', key);
-            }
-          } catch (e) {
-            console.error('[Notification] Error cleaning up:', e);
-          }
-        }
-      }
+      return await checkScheduledTimesGlobal(userName);
     } catch (error) {
       console.error('[Notification] Error checking scheduled times:', error);
+      return false;
     }
   };
 
@@ -320,7 +652,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
     try {
       const encodedUser = encodeURIComponent(userName);
       const response = await fetch(
-        `http://172.20.10.2:8000/api/kutsero/feed-water-notifications/?kutsero_id=${encodedUser}`
+        `http://192.168.1.9:8000/api/kutsero/feed-water-notifications/?kutsero_id=${encodedUser}`
       );
       
       if (!response.ok) {
@@ -329,7 +661,6 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       }
       
       const data = await response.json();
-      console.log('[Notification] Fetched feed/water notifications:', data);
       
       if (!data.success || !data.data) {
         return [];
@@ -341,6 +672,8 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       const allKeys = await AsyncStorage.getAllKeys();
       const triggeredKeys = allKeys.filter(key => key.startsWith('triggered_'));
       const triggeredIds = new Set(triggeredKeys.map(key => key.replace('triggered_', '')));
+      
+      let newCount = 0;
       
       for (const notif of data.data) {
         if (triggeredIds.has(notif.id)) {
@@ -355,6 +688,10 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
               displayTime = parsed.time || notif.timestamp;
               timestamp = parsed.timestamp || notif.timestamp;
               isNew = parsed.isNew || false;
+              
+              if (isNew) {
+                newCount++;
+              }
             } catch (e) {
               console.error('[Notification] Error parsing trigger data:', e);
             }
@@ -376,7 +713,9 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
         }
       }
       
-      console.log('[Notification] Processed triggered notifications:', triggeredNotifications.length);
+      await AsyncStorage.setItem('new_feed_water_count', newCount.toString());
+      setNewFeedWaterCount(newCount);
+      
       return triggeredNotifications;
     } catch (error) {
       console.error('[Notification] Error fetching triggered notifications:', error);
@@ -387,7 +726,7 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
   const fetchAnnouncements = async () => {
     try {
       const encodedUser = encodeURIComponent(userName)
-      const apiUrl = `http://172.20.10.2:8000/api/kutsero/announcements/?user=${encodedUser}`
+      const apiUrl = `http://192.168.1.9:8000/api/kutsero/announcements/?user=${encodedUser}`
 
       console.log("[v0] Fetching announcements from:", apiUrl)
 
@@ -409,9 +748,10 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       }
 
       const data = await response.json()
-      console.log("[v0] Raw API response:", JSON.stringify(data, null, 2))
 
       const savedReadStatus = await loadReadStatus()
+      const lastCheckedKey = 'last_announcement_check';
+      const lastChecked = await AsyncStorage.getItem(lastCheckedKey);
 
       let announcementsArray = data
       if (data && typeof data === "object" && !Array.isArray(data)) {
@@ -434,26 +774,32 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
         const rawImageUrl = item.image_url || item.announce_image || item.announce_imt
         let imageUrls: string[] = []
 
-        if (rawImageUrl && typeof rawImageUrl === "string") {
-          const trimmedUrl = rawImageUrl.trim()
+        if (rawImageUrl) {
+          if (Array.isArray(rawImageUrl)) {
+            imageUrls = rawImageUrl
+              .filter((url) => url && typeof url === "string" && url.trim() !== "")
+              .map((url) => url.trim())
+              .filter((url) => isValidUrl(url))
+          }
+          else if (typeof rawImageUrl === "string") {
+            const trimmedUrl = rawImageUrl.trim()
 
-          if (trimmedUrl.startsWith("[")) {
-            try {
-              const imageArray = JSON.parse(trimmedUrl)
-              if (Array.isArray(imageArray) && imageArray.length > 0) {
-                imageUrls = imageArray
-                  .filter((url) => typeof url === "string" && url.trim() !== "")
-                  .map((url) => url.trim())
-                  .filter((url) => isValidUrl(url))
-
-                console.log("[v0] Parsed image URLs from array:", imageUrls)
+            if (trimmedUrl.startsWith("[")) {
+              try {
+                const imageArray = JSON.parse(trimmedUrl)
+                if (Array.isArray(imageArray) && imageArray.length > 0) {
+                  imageUrls = imageArray
+                    .filter((url) => typeof url === "string" && url.trim() !== "")
+                    .map((url) => url.trim())
+                    .filter((url) => isValidUrl(url))
+                }
+              } catch (parseError) {
+                console.log("[v0] Failed to parse image URL as JSON array:", parseError)
               }
-            } catch (parseError) {
-              console.log("[v0] Failed to parse image URL as JSON array:", parseError)
+            } 
+            else if (trimmedUrl !== "" && isValidUrl(trimmedUrl)) {
+              imageUrls = [trimmedUrl]
             }
-          } else if (trimmedUrl !== "" && isValidUrl(trimmedUrl)) {
-            imageUrls = [trimmedUrl]
-            console.log("[v0] Using single image URL:", imageUrls)
           }
         }
 
@@ -490,17 +836,19 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
         }
       })
 
+      await AsyncStorage.setItem(lastCheckedKey, new Date().toISOString());
+
       return transformedNotifications;
     } catch (err: any) {
-      console.error("[v0] Fetch Error Details:", {
-        message: err.message,
-        stack: err.stack,
-      })
+      console.error("[v0] Fetch Error:", err.message);
       return [];
     }
   }
 
   const fetchNotifications = async () => {
+    if (!isMounted.current) return;
+    
+    setIsRefreshing(true);
     try {
       const announcements = await fetchAnnouncements();
       const triggered = await fetchTriggeredNotifications();
@@ -516,46 +864,174 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
         return timeB - timeA;
       });
 
-      console.log("[v0] Total notifications:", allNotifications.length);
-      setNotifications(allNotifications);
+      if (isMounted.current) {
+        setNotifications(allNotifications);
+      }
     } catch (error) {
       console.error("[v0] Error fetching notifications:", error);
-      Alert.alert("Connection Error", "Could not fetch notifications. Please try again.", [
-        { text: "OK" },
-      ]);
+      if (isMounted.current) {
+        Alert.alert("Connection Error", "Could not fetch notifications. Please try again.", [
+          { text: "OK" },
+        ]);
+      }
+    } finally {
+      if (isMounted.current) {
+        setIsRefreshing(false);
+      }
     }
   };
 
-  useEffect(() => {
-    const loadLastViewed = async () => {
-      const announceTime = await getLastViewedTime('announcement');
-      const feedTime = await getLastViewedTime('feed');
-      const waterTime = await getLastViewedTime('water');
+  // Set up notification response handler globally
+  const setupNotificationResponseHandler = () => {
+    // Handle when user taps on notification
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log('[Notification] User tapped notification:', response);
       
-      setLastViewedAnnouncementTime(announceTime);
-      setLastViewedFeedTime(feedTime);
-      setLastViewedWaterTime(waterTime);
+      const data = response.notification.request.content.data;
+      const notificationId = data.id;
       
-      const countKey = 'new_feed_water_count';
-      const count = await AsyncStorage.getItem(countKey);
-      setNewFeedWaterCount(count ? parseInt(count) : 0);
-    };
+      if (notificationId) {
+        // Find the notification in our list
+        const notification = notifications.find(n => n.id === notificationId);
+        if (notification) {
+          // Navigate to notification details
+          handleNotificationPress(notification);
+        } else {
+          // If not found, show alert and refresh
+          Alert.alert(
+            'Notification',
+            `You tapped on: ${data.title || 'Reminder'}`,
+            [{ text: 'OK' }]
+          );
+          fetchNotifications();
+        }
+      }
+    });
+  };
+
+  // Initialize notification system only once
+  const initializeNotifications = async () => {
+    if (isInitialized.current) return;
     
-    loadLastViewed();
+    isInitialized.current = true;
+    const permissionsGranted = await initializeNotificationSystem(userName);
+    
+    if (!permissionsGranted) {
+      Alert.alert(
+        'Notifications Disabled',
+        'Enable notifications to get reminders for feed/water schedules and announcements.',
+        [
+          { text: 'OK' },
+          {
+            text: 'Enable',
+            onPress: async () => {
+              // Open app settings on iOS
+              if (Platform.OS === 'ios') {
+                await Notifications.requestPermissionsAsync();
+                initializeNotifications();
+              }
+            }
+          }
+        ]
+      );
+      return;
+    }
+    
+    // Set up global notification handlers
+    setupNotificationResponseHandler();
+    
+    // Set up listener for received notifications
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      console.log('[Notification] Received in foreground/background:', notification);
+      
+      // Update local state when notification is received
+      fetchNotifications();
+      
+      // Trigger global state update
+      triggerGlobalNotification(notification);
+    });
+    
+    // Initial load
     fetchNotifications();
     
+    // Schedule all future feed/water notifications
+    await scheduleAllFutureFeedWaterNotifications();
+    
+    // Check every 5 minutes for immediate notifications
     checkIntervalRef.current = setInterval(() => {
       checkScheduledTimes();
-    }, 60000);
-
+    }, 300000) as unknown as NodeJS.Timeout; // 5 minutes
+    
+    // Also check every 30 minutes for rescheduling
+    const rescheduleInterval = setInterval(() => {
+      scheduleAllFutureFeedWaterNotifications();
+    }, 1800000); // 30 minutes
+    
+    // Store for cleanup
+    (checkIntervalRef as any).rescheduleInterval = rescheduleInterval;
+    
+    // Initial check
     checkScheduledTimes();
+  };
 
-    return () => {
-      if (checkIntervalRef.current) {
-        clearInterval(checkIntervalRef.current);
+  useEffect(() => {
+    isMounted.current = true;
+    
+    // Listen for app state changes
+    const appStateListener = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'active') {
+        // App came to foreground, refresh notifications
+        fetchNotifications();
+        
+        // Check for missed notifications
+        const missed = await checkScheduledTimes();
+        if (missed) {
+          Alert.alert(
+            'New Notifications',
+            'You have new feed/water schedule notifications.',
+            [{ text: 'View', onPress: () => {} }, { text: 'Later' }]
+          );
+        }
+      }
+    });
+    
+    const loadInitialState = async () => {
+      const countKey = 'new_feed_water_count';
+      const count = await AsyncStorage.getItem(countKey);
+      if (isMounted.current) {
+        setNewFeedWaterCount(count ? parseInt(count) : 0);
       }
     };
-  }, [userName]);
+    
+    loadInitialState();
+    initializeNotifications();
+
+    return () => {
+      isMounted.current = false;
+      isInitialized.current = false;
+      
+      appStateListener.remove();
+      
+      if (checkIntervalRef.current) {
+        clearInterval(checkIntervalRef.current);
+        checkIntervalRef.current = null;
+      }
+      
+      if ((checkIntervalRef as any).rescheduleInterval) {
+        clearInterval((checkIntervalRef as any).rescheduleInterval);
+      }
+      
+      if (notificationListener.current) {
+        notificationListener.current.remove();
+        notificationListener.current = null;
+      }
+      
+      if (responseListener.current) {
+        responseListener.current.remove();
+        responseListener.current = null;
+      }
+    };
+  }, []);
 
   const markAsRead = async (notificationId: string) => {
     const savedReadStatus = await loadReadStatus()
@@ -590,8 +1066,14 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       const currentCount = await AsyncStorage.getItem(countKey);
       const newCount = Math.max(0, (currentCount ? parseInt(currentCount) : 0) - 1);
       await AsyncStorage.setItem(countKey, newCount.toString());
-      setNewFeedWaterCount(newCount);
+      if (isMounted.current) {
+        setNewFeedWaterCount(newCount);
+      }
     }
+    
+    // Update badge count
+    const unreadCount = notifications.filter(n => !n.read && n.id !== notificationId).length;
+    await Notifications.setBadgeCountAsync(unreadCount);
   }
 
   const markAllAsRead = async () => {
@@ -623,11 +1105,15 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
     }
     
     await AsyncStorage.setItem('new_feed_water_count', '0');
-    setNewFeedWaterCount(0);
+    if (isMounted.current) {
+      setNewFeedWaterCount(0);
+    }
     
     await trackNotificationViewed('announcement');
     await trackNotificationViewed('feed');
     await trackNotificationViewed('water');
+    
+    await Notifications.setBadgeCountAsync(0);
     
     Alert.alert("Success", "All notifications marked as read")
   }
@@ -635,7 +1121,9 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
   const deleteNotification = async (notificationId: string) => {
     const notification = notifications.find(n => n.id === notificationId);
     if (notification && notification.type === 'reminder') {
-      console.log('[Notification] Removing triggered notification:', notificationId);
+      // Cancel any scheduled notifications
+      await cancelScheduledNotification(notificationId);
+      
       await AsyncStorage.removeItem(`triggered_${notificationId}`);
       
       if (notification.isNew) {
@@ -643,7 +1131,9 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
         const currentCount = await AsyncStorage.getItem(countKey);
         const newCount = Math.max(0, (currentCount ? parseInt(currentCount) : 0) - 1);
         await AsyncStorage.setItem(countKey, newCount.toString());
-        setNewFeedWaterCount(newCount);
+        if (isMounted.current) {
+          setNewFeedWaterCount(newCount);
+        }
       }
     }
     
@@ -652,11 +1142,14 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       setModalVisible(false)
       setSelectedNotification(null)
     }
+    
+    // Update badge count
+    const unreadCount = notifications.filter(n => !n.read && n.id !== notificationId).length;
+    await Notifications.setBadgeCountAsync(unreadCount);
   }
 
   const handleNotificationPress = async (notification: Notification) => {
     console.log("[v0] Notification pressed:", notification.title)
-    console.log("[v0] Image URLs:", notification.imageUrls)
 
     setImageError(false)
     setImageLoading(true)
@@ -672,7 +1165,6 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       isNew: false,
     })
     setModalVisible(true)
-    console.log("[v0] Modal should be visible now")
   }
 
   const getFilteredNotifications = () => {
@@ -742,13 +1234,11 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
 
   const getAbsoluteImageUrl = (imageUrl: string): string => {
     if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
-      console.log("[v0] Image URL is already absolute:", imageUrl)
       return imageUrl
     }
 
-    const baseUrl = "http://172.20.10.2:8000"
+    const baseUrl = "http://192.168.1.9:8000"
     const absoluteUrl = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : `${baseUrl}/${imageUrl}`
-    console.log("[v0] Converted relative URL to absolute:", imageUrl, "->", absoluteUrl)
     return absoluteUrl
   }
 
@@ -763,13 +1253,13 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
         <Text style={styles.headerTitle}>Notifications</Text>
         <View style={styles.headerButtons}>
           <TouchableOpacity 
-            style={styles.refreshButton} 
-            onPress={async () => {
-              await fetchNotifications();
-              Alert.alert('Success', 'Notifications refreshed!');
-            }}
+            style={[styles.refreshButton, isRefreshing && styles.refreshButtonDisabled]} 
+            onPress={fetchNotifications}
+            disabled={isRefreshing}
           >
-            <Text style={styles.refreshText}>Refresh</Text>
+            <Text style={styles.refreshText}>
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.markAllButton} onPress={markAllAsRead}>
             <Text style={styles.markAllText}>Mark All</Text>
@@ -828,18 +1318,17 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
       <View style={styles.content}>
         {filteredNotifications.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateIcon}>📢</Text>
-            <Text style={styles.emptyStateTitle}>No notifications</Text>
             <Text style={styles.emptyStateMessage}>
               {filter === "all" ? "You're all caught up!" : `No ${filter} notifications found.`}
             </Text>
             <TouchableOpacity 
               style={styles.refreshButtonLarge} 
-              onPress={async () => {
-                await fetchNotifications();
-              }}
+              onPress={fetchNotifications}
+              disabled={isRefreshing}
             >
-              <Text style={styles.refreshButtonText}>Refresh Notifications</Text>
+              <Text style={styles.refreshButtonText}>
+                {isRefreshing ? 'Refreshing...' : 'Refresh Notifications'}
+              </Text>
             </TouchableOpacity>
           </View>
         ) : (
@@ -908,7 +1397,6 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
         transparent={true}
         visible={modalVisible}
         onRequestClose={() => {
-          console.log("[v0] Modal close requested")
           setModalVisible(false)
         }}
       >
@@ -921,7 +1409,6 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
                   <TouchableOpacity
                     style={styles.closeButton}
                     onPress={() => {
-                      console.log("[v0] Close button pressed")
                       setModalVisible(false)
                     }}
                   >
@@ -1007,17 +1494,15 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
                                 resizeMode="contain"
                                 onError={(error) => {
                                   console.log("[v0] Image failed to load")
-                                  console.log("[v0] Error details:", JSON.stringify(error.nativeEvent))
-                                  console.log("[v0] Attempted URL:", getAbsoluteImageUrl(imageUrl))
                                   setImageError(true)
                                   setImageLoading(false)
                                 }}
                                 onLoad={() => {
-                                  console.log("[v0] Image loaded successfully:", getAbsoluteImageUrl(imageUrl))
+                                  console.log("[v0] Image loaded successfully")
                                   setImageLoading(false)
                                 }}
                                 onLoadStart={() => {
-                                  console.log("[v0] Image load started:", getAbsoluteImageUrl(imageUrl))
+                                  console.log("[v0] Image load started")
                                   setImageLoading(true)
                                 }}
                               />
@@ -1078,7 +1563,6 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
                   <TouchableOpacity
                     style={styles.closeModalButton}
                     onPress={() => {
-                      console.log("[v0] Close button pressed in footer")
                       setModalVisible(false)
                     }}
                   >
@@ -1158,6 +1642,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.2)",
     borderRadius: scale(6),
     marginRight: scale(8),
+  },
+  refreshButtonDisabled: {
+    backgroundColor: "rgba(255,255,255,0.1)",
   },
   refreshText: {
     color: "white",
@@ -1336,16 +1823,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: scale(40),
-  },
-  emptyStateIcon: {
-    fontSize: moderateScale(48),
-    marginBottom: verticalScale(16),
-  },
-  emptyStateTitle: {
-    fontSize: moderateScale(18),
-    fontWeight: "bold",
-    color: "#666",
-    marginBottom: verticalScale(8),
   },
   emptyStateMessage: {
     fontSize: moderateScale(14),
@@ -1668,4 +2145,4 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(16),
     fontWeight: "600",
   },
-})
+});

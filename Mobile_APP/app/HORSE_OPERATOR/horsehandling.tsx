@@ -27,7 +27,7 @@ interface HorseAssignment {
   kutsero_image?: string;
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
+const API_BASE_URL = "http://192.168.1.9:8000/api/horse_operator"
 
 const HorseHandlingScreen = () => {
   const router = useRouter();
