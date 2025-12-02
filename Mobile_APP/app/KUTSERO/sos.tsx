@@ -1,8 +1,12 @@
+import * as ImagePicker from "expo-image-picker"
+import * as Location from "expo-location"
 import { useRouter } from 'expo-router'
-import { useState, useEffect } from "react"
+import * as SecureStore from "expo-secure-store"
+import { useEffect, useState } from "react"
 import {
     Alert,
     Dimensions,
+    Image,
     Modal,
     ScrollView,
     StatusBar,
@@ -10,12 +14,8 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View,
-    Image
+    View
 } from "react-native"
-import * as Location from "expo-location"
-import * as ImagePicker from "expo-image-picker"
-import * as SecureStore from "expo-secure-store"
 
 const { width, height } = Dimensions.get("window")
 
@@ -171,7 +171,7 @@ export default function SOSEmergencyScreen({ onBack, kutseroId: propKutseroId }:
             console.log("[DEBUG] ⚠️ Pre-set kutseroProfileId to:", kutseroId)
             
             try {
-                const url = `http://192.168.31.58:8000/api/kutsero/profile/${kutseroId}/`
+                const url = `http://192.168.31.184:8000/api/kutsero/profile/${kutseroId}/`
                 console.log("[DEBUG] Fetching from URL:", url)
                 
                 // Create a timeout promise
@@ -486,7 +486,7 @@ export default function SOSEmergencyScreen({ onBack, kutseroId: propKutseroId }:
                 kutsero_profile: sosData.kutsero_profile
             })
 
-            const response = await fetch("http://192.168.31.58:8000/api/kutsero/sos/create/", {
+            const response = await fetch("http://192.168.31.184:8000/api/kutsero/sos/create/", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

@@ -278,6 +278,7 @@ const loadNotifications = useCallback(() => {
 
     if (passwords.new_password !== passwords.confirm_new_password) {
       setPasswordErrors({ confirm_new_password: "Passwords do not match" })
+      showAlert("Passwords do not match", "error")
       return
     }
 
@@ -302,17 +303,18 @@ const loadNotifications = useCallback(() => {
       }
 
       if (res.ok) {
-        //showAlert("Password updated successfully!")
+        showAlert("Password updated successfully!")
         setPasswords({ current_password: "", new_password: "", confirm_new_password: "" })
         return
       }
 
       if (data.errors) {
         setPasswordErrors(data.errors)
+        showAlert(data.error || "Failed to update password", "error")
         return
       }
 
-      //showAlert(data.error || "Failed to update password", "error")
+      showAlert(data.error || "Failed to update password", "error")
     } catch (err) {
       showAlert("Something went wrong. Please try again later.", "error")
     }
@@ -356,10 +358,11 @@ const loadNotifications = useCallback(() => {
       return
     }
 
-    // Validate phone: must start with 09 and be 11 digits - THIS IS LINE 265
+    // Validate phone: must start with 09 and be 11 digits
     const phoneRegex = /^09\d{9}$/
     if (!phoneRegex.test(phone.trim())) {
       setPhoneError("Phone number must start with 09 and be 11 digits long.")
+      showAlert("Phone number must start with 09 and be 11 digits long.", "error")
       return
     }
 
@@ -460,6 +463,7 @@ const loadNotifications = useCallback(() => {
         loadNotifications(),
         fetchUsers()
       ])
+      showAlert("Data refreshed successfully!")
     } catch (error) {
       showAlert("Failed to refresh data", "error")
     } finally {
@@ -546,6 +550,26 @@ const loadNotifications = useCallback(() => {
 
   return (
     <div className="flex min-h-screen bg-gray-100">
+      {/* Global Alert Message */}
+      {alert.show && (
+        <div
+          className={`fixed top-5 left-1/2 transform -translate-x-1/2 px-6 py-3.5 rounded-xl text-base font-semibold text-white shadow-lg z-50 text-center min-w-[250px] max-w-[500px] transition-all duration-300 ${
+            alert.type === "success" ? "bg-green-600" : "bg-red-600"
+          }`}
+          style={{
+            animation: "slideDown 0.3s ease-out",
+          }}
+        >
+          {alert.message}
+          <button
+            onClick={() => setAlert({ show: false, message: "", type: "" })}
+            className="ml-3 text-white hover:text-gray-200 bg-transparent border-none cursor-pointer"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <Sidebar />
       <div className="flex-1 flex flex-col">
         <div className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
@@ -1016,16 +1040,6 @@ const loadNotifications = useCallback(() => {
                           <Plus size={16} />
                         </button>
                       </div>
-                    </div>
-                  )}
-
-                  {alert.show && (
-                    <div
-                      className={`fixed top-5 left-1/2 transform -translate-x-1/2 px-6 py-3.5 rounded-xl text-base font-semibold text-white shadow-lg z-50 text-center min-w-[250px] max-w-[500px] transition-opacity duration-300 ${
-                        alert.type === "success" ? "bg-green-600" : "bg-red-600"
-                      }`}
-                    >
-                      {alert.message}
                     </div>
                   )}
 

@@ -1,17 +1,17 @@
 import { useRouter } from 'expo-router'
 import { useState } from "react"
 import {
-    Alert,
-    Dimensions,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-    ActivityIndicator,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native"
 
 const { width, height } = Dimensions.get("window")
@@ -42,7 +42,7 @@ export default function ForgotPasswordScreen() {
     setIsLoading(true)
 
     try {
-      const response = await fetch("http://192.168.31.58:8000/api/forgot-password/", {
+      const response = await fetch("http://192.168.31.184:8000/api/forgot-password/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
@@ -92,7 +92,7 @@ export default function ForgotPasswordScreen() {
     setIsLoading(true)
 
     try {
-      const response = await fetch("http://192.168.31.58:8000/api/reset-password/", {
+      const response = await fetch("http://192.168.31.184:8000/api/reset-password/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 

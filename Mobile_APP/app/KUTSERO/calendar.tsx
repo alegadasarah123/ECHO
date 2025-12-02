@@ -62,7 +62,7 @@ interface Event {
 }
 
 // API Base URL - UPDATE THIS TO YOUR IP ADDRESS
-const API_BASE_URL = "http://192.168.101.2:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
 
 export default function CalendarScreen() {
   const router = useRouter()

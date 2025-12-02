@@ -357,7 +357,7 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       
       const encodedUser = encodeURIComponent(userId);
       const response = await fetchWithTimeout(
-        `http://10.254.39.148:8000/api/horse_operator/feed-water-notifications/?op_id=${encodedUser}`,
+        `http://192.168.31.58:8000/api/horse_operator/feed-water-notifications/?op_id=${encodedUser}`,
         {
           method: 'GET',
           headers: {
@@ -449,7 +449,7 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       }
 
       const encodedUser = encodeURIComponent(userId)
-      const apiUrl = `http://10.254.39.148:8000/api/horse_operator/announcements/?user=${encodedUser}`
+      const apiUrl = `http://192.168.31.58:8000/api/horse_operator/announcements/?user=${encodedUser}`
 
       console.log("[v0] Fetching announcements from:", apiUrl)
 
@@ -627,7 +627,7 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       
       // Fetch feed records from your feed endpoint
       const response = await fetchWithTimeout(
-        `http://10.254.39.148:8000/api/horse_operator/get_recent_feed_records/?user_id=${encodeURIComponent(userId)}`,
+        `http://192.168.31.58:8000/api/horse_operator/get_recent_feed_records/?user_id=${encodeURIComponent(userId)}`,
         {
           method: 'GET',
           headers: {
@@ -1020,7 +1020,7 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       return imageUrl;
     }
 
-    const baseUrl = "http://10.254.39.148:8000";
+    const baseUrl = "http://192.168.31.58:8000";
     const absoluteUrl = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : `${baseUrl}/${imageUrl}`;
     console.log("[v0] Converted relative URL to absolute:", imageUrl, "->", absoluteUrl);
     return absoluteUrl;
