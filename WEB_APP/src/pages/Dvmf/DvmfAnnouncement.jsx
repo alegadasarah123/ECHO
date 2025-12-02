@@ -605,8 +605,8 @@ const DvmfAnnouncement = () => {
     }
   }
 
-  // HANDLE INDIVIDUAL NOTIFICATION CLICK
- const handleNotificationClick = async (notification) => {
+  // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
+const handleNotificationClick = async (notification) => {
   const notifId = notification?.notif_id || notification?.id; // fallback support
 
   if (!notifId) {
@@ -635,6 +635,35 @@ const DvmfAnnouncement = () => {
   }
 
   const message = (notification.message || "").toLowerCase();
+  const type = (notification.type || "").toLowerCase();
+
+  // Navigate for SOS emergency notifications
+  if (
+    type === "sos_emergency" ||
+    message.includes("sos") ||
+    message.includes("emergency") ||
+    message.includes("reported") ||
+    message.includes("urgent") ||
+    (message.includes("horse") && 
+     (message.includes("colic") || 
+      message.includes("injured") || 
+      message.includes("trauma")))
+  ) {
+    // Extract SOS ID from related_id if available
+    let sosId = null;
+    if (notification.related_id && notification.related_id.startsWith("sos_")) {
+      sosId = notification.related_id.replace("sos_", "");
+    }
+    
+    navigate("/DvmfDashboard", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        sosId: sosId, // Pass the specific SOS ID if available
+      },
+    });
+    return;
+  }
 
   // Navigate for account-related notifications
   if (
@@ -667,7 +696,7 @@ const DvmfAnnouncement = () => {
     return;
   }
 
-// Only navigate to CtuAnnouncement for comment-related notifications
+  // Only navigate to DvmfAnnouncement for comment-related notifications
   if (message.includes("comment")) {
     navigate("/DvmfAnnouncement", {
       state: {
@@ -677,8 +706,10 @@ const DvmfAnnouncement = () => {
     });
     return;
   }
-}
 
+  // Default fallback - stay on current page
+  console.log("Notification clicked but no specific action:", notification);
+}
 
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
