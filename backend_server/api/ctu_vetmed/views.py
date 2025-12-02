@@ -823,6 +823,10 @@ def get_vetnotifications(request):
                 # Create related_id using SOS request ID
                 related_id = f"sos_{sos['id']}"
                 
+                # Check if notification already exists (including read ones)
+                if related_id in existing_keys:
+                    continue
+                
                 # Construct notification message (without status)
                 user_name = sos.get("user_name", "A user")
                 emergency_type = sos.get("emergency_type", "an emergency")
@@ -1044,117 +1048,15 @@ def mark_notification_read(request, notif_id):
     Mark a specific notification as read.
     """
     try:
-        result = sr_client.table("notification").select("*").eq("id", notif_id).execute()
+        # Use notif_id column (primary key of notification table)
+        result = sr_client.table("notification").select("*").eq("notif_id", notif_id).execute()
 
         if not result.data:
             return Response({"error": "Notification not found"}, status=404)
 
         update_result = sr_client.table("notification").update({
             "notif_read": True
-        }).eq("id", notif_id).execute()
-
-        if update_result.data:
-            return Response({
-                "success": True,
-                "message": "Notification marked as read",
-                "notif_id": notif_id
-            })
-        else:
-            return Response({"error": "Failed to update notification"}, status=500)
-
-    except Exception as e:
-        print(f"Error marking notification as read: {e}")
-        return Response({"error": "Internal server error"}, status=500)
-
-
-# -------------------- MARK ALL NOTIFICATIONS AS READ --------------------
-@api_view(["POST"])
-def mark_all_notifications_read(request):
-    """
-    Mark all notifications as read.
-    """
-    try:
-        # Update all unread notifications
-        update_result = sr_client.table("notification").update({
-            "notif_read": True
-        }).eq("notif_read", False).execute()
-
-        return Response({
-            "success": True,
-            "message": "All notifications marked as read",
-            "updated_count": len(update_result.data) if update_result.data else 0
-        })
-    except Exception as e:
-        print(f"Error marking all notifications as read: {e}")
-        return Response({"error": "Internal server error"}, status=500)
-
-# -------------------- MARK NOTIFICATION AS READ --------------------
-@api_view(["POST"])
-def mark_notification_read(request, notif_id):
-    """
-    Mark a specific notification as read.
-    """
-    try:
-        result = sr_client.table("notification").select("*").eq("id", notif_id).execute()
-
-        if not result.data:
-            return Response({"error": "Notification not found"}, status=404)
-
-        update_result = sr_client.table("notification").update({
-            "notif_read": True
-        }).eq("id", notif_id).execute()
-
-        if update_result.data:
-            return Response({
-                "success": True,
-                "message": "Notification marked as read",
-                "notif_id": notif_id
-            })
-        else:
-            return Response({"error": "Failed to update notification"}, status=500)
-
-    except Exception as e:
-        print(f"Error marking notification as read: {e}")
-        return Response({"error": "Internal server error"}, status=500)
-
-
-# -------------------- MARK ALL NOTIFICATIONS AS READ --------------------
-@api_view(["POST"])
-def mark_all_notifications_read(request):
-    """
-    Mark all notifications as read.
-    """
-    try:
-        # Update all unread notifications
-        update_result = sr_client.table("notification").update({
-            "notif_read": True
-        }).eq("notif_read", False).execute()
-
-        return Response({
-            "success": True,
-            "message": "All notifications marked as read",
-            "updated_count": len(update_result.data) if update_result.data else 0
-        })
-    except Exception as e:
-        print(f"Error marking all notifications as read: {e}")
-        return Response({"error": "Internal server error"}, status=500)
-
-
-# -------------------- MARK NOTIFICATION AS READ --------------------
-@api_view(["POST"])
-def mark_notification_read(request, notif_id):
-    """
-    Mark a specific notification as read.
-    """
-    try:
-        result = sr_client.table("notification").select("*").eq("id", notif_id).execute()
-
-        if not result.data:
-            return Response({"error": "Notification not found"}, status=404)
-
-        update_result = sr_client.table("notification").update({
-            "notif_read": True
-        }).eq("id", notif_id).execute()
+        }).eq("notif_id", notif_id).execute()
 
         if update_result.data:
             return Response({
