@@ -17,7 +17,7 @@ import {
 
 const { width } = Dimensions.get("window")
 
-const API_BASE_URL = "http://192.168.31.184:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
 
 interface SearchUserProfile {
   id: string

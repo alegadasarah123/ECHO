@@ -37,7 +37,7 @@ type Horse = {
   horse_name: string;
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
+const API_BASE_URL = "http://192.168.1.9:8000/api/horse_operator"
 
 const FeedLogScreen = () => {
   const router = useRouter();

@@ -14,9 +14,12 @@ import {
   Modal,
   TextInput,
   Alert,
-  ActivityIndicator
+  ActivityIndicator,
+  Platform
 } from "react-native"
 import * as SecureStore from "expo-secure-store"
+import * as Notifications from "expo-notifications"
+import * as Device from 'expo-device'
 
 const { width, height } = Dimensions.get("window")
 
@@ -59,10 +62,22 @@ interface Event {
   title_event: string
   date: string
   time: string
+  notificationId?: string // Store notification ID for cancellation
 }
 
 // API Base URL - UPDATE THIS TO YOUR IP ADDRESS
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
+
+// Configure notifications with proper TypeScript types
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+})
 
 export default function CalendarScreen() {
   const router = useRouter()
@@ -76,6 +91,8 @@ export default function CalendarScreen() {
   const [hour, setHour] = useState("")
   const [minute, setMinute] = useState("")
   const [ampm, setAmPm] = useState<"AM" | "PM">("AM")
+  const [expoPushToken, setExpoPushToken] = useState<string>("")
+  const [notificationPermissions, setNotificationPermissions] = useState(false)
 
   const safeArea = getSafeAreaPadding()
 
@@ -84,10 +101,143 @@ export default function CalendarScreen() {
 
   useEffect(() => {
     initializeCalendar()
+    registerForPushNotifications()
   }, [])
 
   const initializeCalendar = async () => {
     await fetchEvents()
+  }
+
+  // Register for push notifications
+  const registerForPushNotifications = async () => {
+    if (!Device.isDevice) {
+      Alert.alert("Warning", "Must use physical device for Push Notifications")
+      return
+    }
+
+    const { status: existingStatus } = await Notifications.getPermissionsAsync()
+    let finalStatus = existingStatus
+
+    if (existingStatus !== "granted") {
+      const { status } = await Notifications.requestPermissionsAsync()
+      finalStatus = status
+    }
+
+    if (finalStatus !== "granted") {
+      Alert.alert("Warning", "Failed to get push token for push notification!")
+      setNotificationPermissions(false)
+      return
+    }
+
+    setNotificationPermissions(true)
+    
+    console.log("Notification permissions granted")
+  }
+
+  // Schedule a local notification for an event
+  const scheduleNotification = async (event: Event): Promise<string | null> => {
+    try {
+      if (!notificationPermissions) {
+        console.log("Notification permissions not granted")
+        return null
+      }
+
+      const eventDate = new Date(`${event.date} ${event.time}`)
+      
+      // If the event is in the past, don't schedule notification
+      if (eventDate <= new Date()) {
+        console.log("Event is in the past, not scheduling notification")
+        return null
+      }
+
+      // Calculate trigger time (5 minutes before event)
+      const triggerTime = new Date(eventDate.getTime() - 5 * 60 * 1000)
+      
+      // If trigger time is in the past, don't schedule
+      if (triggerTime <= new Date()) {
+        console.log("Notification trigger time is in the past")
+        return null
+      }
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "📅 Event Reminder",
+          body: `${event.title_event} is starting in 5 minutes!`,
+          data: { eventId: event.id },
+          sound: true,
+        },
+        trigger: {
+          type: 'date',
+          date: triggerTime,
+        } as Notifications.DateTriggerInput,
+      })
+
+      console.log("Notification scheduled with ID:", notificationId)
+      return notificationId
+    } catch (error) {
+      console.error("Error scheduling notification:", error)
+      return null
+    }
+  }
+
+  // Schedule notification for event date and time (exact time)
+  const scheduleExactTimeNotification = async (event: Event): Promise<string | null> => {
+    try {
+      if (!notificationPermissions) {
+        console.log("Notification permissions not granted")
+        return null
+      }
+
+      const eventDate = new Date(`${event.date} ${event.time}`)
+      
+      // If the event is in the past, don't schedule notification
+      if (eventDate <= new Date()) {
+        console.log("Event is in the past, not scheduling notification")
+        return null
+      }
+
+      const notificationId = await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "📅 Event Starting Now",
+          body: `${event.title_event} is starting now!`,
+          data: { eventId: event.id },
+          sound: true,
+        },
+        trigger: {
+          type: 'date',
+          date: eventDate,
+        } as Notifications.DateTriggerInput,
+      })
+
+      console.log("Exact time notification scheduled with ID:", notificationId)
+      return notificationId
+    } catch (error) {
+      console.error("Error scheduling exact time notification:", error)
+      return null
+    }
+  }
+
+  // Cancel a scheduled notification
+  const cancelNotification = async (notificationId: string) => {
+    try {
+      await Notifications.cancelScheduledNotificationAsync(notificationId)
+      console.log("Notification cancelled:", notificationId)
+    } catch (error) {
+      console.error("Error cancelling notification:", error)
+    }
+  }
+
+  // Schedule notifications for all future events
+  const scheduleAllFutureNotifications = async (eventsList: Event[]) => {
+    for (const event of eventsList) {
+      const eventDate = new Date(`${event.date} ${event.time}`)
+      if (eventDate > new Date()) {
+        // Schedule reminder notification (5 minutes before)
+        await scheduleNotification(event)
+        // Schedule exact time notification
+        await scheduleExactTimeNotification(event)
+      }
+    }
   }
 
   const getDaysInMonth = (date: Date): number => {
@@ -168,20 +318,26 @@ export default function CalendarScreen() {
           setEvents(formattedEvents)
           await saveEventsToSecureStorage(formattedEvents)
           console.log("Events loaded from API:", formattedEvents.length)
+          
+          // Schedule notifications for future events
+          await scheduleAllFutureNotifications(formattedEvents)
         } else {
           console.log("API response was not successful, loading local events.")
           const localEvents = await loadEventsFromSecureStorage()
           setEvents(localEvents)
+          await scheduleAllFutureNotifications(localEvents)
         }
       } else {
         console.error("API request failed with status:", response.status, response.statusText)
         const localEvents = await loadEventsFromSecureStorage()
         setEvents(localEvents)
+        await scheduleAllFutureNotifications(localEvents)
       }
     } catch (error) {
       console.error("Network or API error while fetching events:", error)
       const localEvents = await loadEventsFromSecureStorage()
       setEvents(localEvents)
+      await scheduleAllFutureNotifications(localEvents)
     } finally {
       setLoading(false)
     }
@@ -247,7 +403,11 @@ export default function CalendarScreen() {
       })
 
       if (response.ok) {
-        Alert.alert("Success", "Event created successfully!")
+        // Schedule notifications for the new event
+        await scheduleNotification(newEvent)
+        await scheduleExactTimeNotification(newEvent)
+
+        Alert.alert("Success", "Event created successfully! You will receive notifications 5 minutes before and at the event time.")
         setEventTitle("")
         setHour("")
         setMinute("")
@@ -262,6 +422,11 @@ export default function CalendarScreen() {
         const updatedEvents = [...events, newEvent]
         setEvents(updatedEvents)
         await saveEventsToSecureStorage(updatedEvents)
+        
+        // Schedule notifications for local event
+        await scheduleNotification(newEvent)
+        await scheduleExactTimeNotification(newEvent)
+        
         setShowAddEventModal(false)
       }
     } catch (error) {
@@ -270,6 +435,11 @@ export default function CalendarScreen() {
       const updatedEvents = [...events, newEvent]
       setEvents(updatedEvents)
       await saveEventsToSecureStorage(updatedEvents)
+      
+      // Schedule notifications for local event
+      await scheduleNotification(newEvent)
+      await scheduleExactTimeNotification(newEvent)
+      
       setShowAddEventModal(false)
     } finally {
       setLoading(false)
@@ -279,7 +449,7 @@ export default function CalendarScreen() {
   const deleteEvent = async (eventId: string): Promise<void> => {
     Alert.alert(
       "Delete Event",
-      "Are you sure you want to delete this event?",
+      "Are you sure you want to delete this event? This will also cancel any scheduled notifications.",
       [
         {
           text: "Cancel",
@@ -291,6 +461,20 @@ export default function CalendarScreen() {
           onPress: async () => {
             try {
               setLoading(true);
+              
+              // Cancel all scheduled notifications for this event
+              // We need to cancel both the reminder and exact time notifications
+              // Since we don't store the IDs, we'll cancel all and reschedule remaining events
+              const eventToDelete = events.find(event => event.id === eventId)
+              if (eventToDelete) {
+                // Cancel all notifications and reschedule remaining events
+                await Notifications.cancelAllScheduledNotificationsAsync()
+                
+                // Reschedule notifications for remaining events
+                const remainingEvents = events.filter(event => event.id !== eventId)
+                await scheduleAllFutureNotifications(remainingEvents)
+              }
+
               const response = await fetch(`${API_BASE_URL}/delete-calendar-event/${eventId}/`, {
                 method: "DELETE",
               });
@@ -387,6 +571,7 @@ export default function CalendarScreen() {
     return days
   }
 
+  // IMPROVED Dashboard/Home Icon Component
   const DashboardIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
       <View style={styles.dashboardGrid}>
@@ -462,14 +647,44 @@ export default function CalendarScreen() {
     </TouchableOpacity>
   )
 
+  // Add a notification settings button to the header
+  const openNotificationSettings = async () => {
+    Alert.alert(
+      "Notification Settings",
+      "Enable notifications to get reminders for your events. You'll receive notifications 5 minutes before each event and at the exact event time.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Enable Notifications",
+          onPress: async () => {
+            await registerForPushNotifications()
+            Alert.alert("Success", "Notifications enabled! You'll now receive reminders for your events.")
+          }
+        }
+      ]
+    )
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
 
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
+        <TouchableOpacity 
+          style={styles.notificationButton} 
+          onPress={openNotificationSettings}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.notificationButtonText}>🔔</Text>
+        </TouchableOpacity>
+        
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Calendar</Text>
         </View>
+        
         <TouchableOpacity style={styles.addButton} onPress={() => openAddEventModal()} activeOpacity={0.7}>
           <PlusIcon color="white" size={20} />
         </TouchableOpacity>
@@ -517,7 +732,6 @@ export default function CalendarScreen() {
           </View>
 
           <View style={styles.eventsSection}>
-            {/* REMOVED the section header with plus button */}
             <Text style={styles.sectionTitle}>Events for {getMonthName(currentMonth)}</Text>
 
             {loading ? (
@@ -646,6 +860,20 @@ export default function CalendarScreen() {
                     </View>
                   </View>
                 </View>
+
+                {!notificationPermissions && (
+                  <View style={styles.notificationWarning}>
+                    <Text style={styles.notificationWarningText}>
+                      🔔 Notifications are disabled. Enable them to get event reminders.
+                    </Text>
+                    <TouchableOpacity 
+                      style={styles.enableNotificationsButton}
+                      onPress={openNotificationSettings}
+                    >
+                      <Text style={styles.enableNotificationsText}>Enable Notifications</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </ScrollView>
 
               <View style={styles.modalButtons}>
@@ -726,6 +954,18 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.2)",
     justifyContent: "center",
     alignItems: "center",
+  },
+  notificationButton: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  notificationButtonText: {
+    fontSize: moderateScale(16),
+    color: "white",
   },
   contentContainer: {
     flex: 1,
@@ -846,7 +1086,6 @@ const styles = StyleSheet.create({
     borderRadius: scale(12),
     padding: scale(16),
   },
-  // REMOVED sectionHeader and addEventButton styles since they're no longer used
   tableContainer: {
     borderWidth: 1,
     borderColor: "#E0E0E0",
@@ -977,7 +1216,6 @@ const styles = StyleSheet.create({
     color: "#333",
     backgroundColor: "#FAFAFA",
   },
-  // New time input styles
   timeInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1032,6 +1270,31 @@ const styles = StyleSheet.create({
   },
   ampmTextActive: {
     color: "white",
+  },
+  notificationWarning: {
+    backgroundColor: '#FFF3CD',
+    padding: scale(12),
+    borderRadius: scale(8),
+    borderWidth: 1,
+    borderColor: '#FFEAA7',
+    marginTop: verticalScale(8),
+  },
+  notificationWarningText: {
+    fontSize: moderateScale(12),
+    color: '#856404',
+    marginBottom: verticalScale(8),
+  },
+  enableNotificationsButton: {
+    backgroundColor: '#C17A47',
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(6),
+    alignItems: 'center',
+  },
+  enableNotificationsText: {
+    color: 'white',
+    fontSize: moderateScale(12),
+    fontWeight: '600',
   },
   modalButtons: {
     flexDirection: "row",
@@ -1106,50 +1369,65 @@ const styles = StyleSheet.create({
     color: "#C17A47",
     fontWeight: "600",
   },
+  // IMPROVED Icon container for custom icons
   iconContainer: {
+    width: scale(16),
+    height: scale(16),
     justifyContent: "center",
     alignItems: "center",
   },
+  // IMPROVED Dashboard/Home Icon - Cleaner Design
   dashboardGrid: {
     width: scale(14),
     height: scale(14),
-    flexDirection: "row",
-    flexWrap: "wrap",
+    borderRadius: scale(3),
+    backgroundColor: 'transparent',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: scale(1),
   },
   gridSquare: {
     width: scale(5),
     height: scale(5),
-    margin: scale(1),
+    borderRadius: scale(1),
   },
   gridTopLeft: {
-    borderTopLeftRadius: scale(2),
+    backgroundColor: '#666',
   },
   gridTopRight: {
-    borderTopRightRadius: scale(2),
+    backgroundColor: '#666',
   },
   gridBottomLeft: {
-    borderBottomLeftRadius: scale(2),
+    backgroundColor: '#666',
   },
   gridBottomRight: {
-    borderBottomRightRadius: scale(2),
+    backgroundColor: '#666',
   },
   profileContainer: {
-    alignItems: "center",
+    width: scale(14),
+    height: scale(14),
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   profileHead: {
-    width: scale(10),
-    height: scale(10),
-    borderRadius: scale(5),
-    marginBottom: scale(2),
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
+    marginBottom: scale(1),
   },
   profileBody: {
-    width: scale(16),
-    height: scale(10),
-    borderRadius: scale(8),
+    width: scale(12),
+    height: scale(6),
+    borderRadius: scale(3),
+    borderTopLeftRadius: scale(6),
+    borderTopRightRadius: scale(6),
   },
   plusIcon: {
     justifyContent: "center",
     alignItems: "center",
+    position: 'relative',
   },
   plusHorizontal: {
     position: "absolute",
@@ -1164,9 +1442,9 @@ const styles = StyleSheet.create({
     borderRadius: scale(1),
   },
   fallbackIcon: {
-    width: scale(14),
-    height: scale(14),
+    width: scale(16),
+    height: scale(16),
     backgroundColor: "#E0E0E0",
-    borderRadius: scale(7),
+    borderRadius: scale(8),
   },
 })

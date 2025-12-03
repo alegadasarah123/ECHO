@@ -42,7 +42,7 @@ export default function ForgotPasswordScreen() {
     setIsLoading(true)
 
     try {
-      const response = await fetch("http://192.168.31.184:8000/api/forgot-password/", {
+      const response = await fetch("http://192.168.1.9:8000/api/forgot-password/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim().toLowerCase() }),
@@ -92,7 +92,7 @@ export default function ForgotPasswordScreen() {
     setIsLoading(true)
 
     try {
-      const response = await fetch("http://192.168.31.184:8000/api/reset-password/", {
+      const response = await fetch("http://192.168.1.9:8000/api/reset-password/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 

@@ -1,5 +1,3 @@
-// KUTSERO Help & Support Screen
-
 "use client"
 import { useState } from "react"
 import {
@@ -17,41 +15,35 @@ import {
 
 const { width, height } = Dimensions.get("window")
 
-// Enhanced responsive scaling functions with better mobile optimization
 const scale = (size: number) => {
   const scaleFactor = width / 375
   const scaledSize = size * scaleFactor
-  // Tighter bounds for mobile screens
   return Math.max(Math.min(scaledSize, size * 1.2), size * 0.8)
 }
 
 const verticalScale = (size: number) => {
   const scaleFactor = height / 812
   const scaledSize = size * scaleFactor
-  // Tighter bounds for mobile screens
   return Math.max(Math.min(scaledSize, size * 1.15), size * 0.85)
 }
 
 const moderateScale = (size: number, factor = 0.5) => {
   const scaledSize = size + (scale(size) - size) * factor
-  // Ensure text remains readable on all screen sizes
   return Math.max(Math.min(scaledSize, size * 1.1), size * 0.9)
 }
 
-// Mobile-optimized spacing
 const dynamicSpacing = (baseSize: number) => {
-  if (width < 350) return verticalScale(baseSize * 0.7) // Very small screens
-  if (width < 400) return verticalScale(baseSize * 0.85) // Small screens
-  if (width > 450) return verticalScale(baseSize * 1.05) // Large screens
-  return verticalScale(baseSize) // Standard screens
+  if (width < 350) return verticalScale(baseSize * 0.7)
+  if (width < 400) return verticalScale(baseSize * 0.85)
+  if (width > 450) return verticalScale(baseSize * 1.05)
+  return verticalScale(baseSize)
 }
 
-// Safe area calculations
 const getSafeAreaPadding = () => {
   const statusBarHeight = StatusBar.currentHeight || 0
   return {
     top: Math.max(statusBarHeight, 20),
-    bottom: height > 800 ? 34 : 20, // Account for home indicator on newer phones
+    bottom: height > 800 ? 34 : 20,
   }
 }
 
@@ -59,15 +51,15 @@ interface HelpSupportProps {
   onBack: () => void
 }
 
+const BackIcon = () => (
+  <View style={styles.backIconContainer}>
+    <View style={styles.backArrow} />
+  </View>
+)
+
 export default function HelpSupport({ onBack }: HelpSupportProps) {
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({})
   const safeArea = getSafeAreaPadding()
-
-  const BackIcon = () => (
-    <View style={styles.backIconContainer}>
-      <View style={styles.backArrow} />
-    </View>
-  )
 
   const toggleSection = (section: string) => {
     setExpandedSections(prev => ({
@@ -84,7 +76,6 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-      {/* Header */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
         <TouchableOpacity style={styles.backButton} onPress={onBack}>
           <BackIcon />
@@ -95,7 +86,6 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
         <View style={styles.headerRight} />
       </View>
 
-      {/* Content */}
       <View style={styles.contentContainer}>
         <ScrollView
           style={styles.scrollContent}
@@ -105,7 +95,6 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
             { paddingBottom: safeArea.bottom + dynamicSpacing(20) }
           ]}
         >
-          {/* About the App Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>About the App</Text>
             <Text style={styles.sectionText}>
@@ -114,7 +103,6 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
             </Text>
           </View>
 
-          {/* Need Assistance Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>📞 Need Assistance?</Text>
             <Text style={styles.sectionText}>
@@ -122,7 +110,6 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
             </Text>
           </View>
 
-          {/* Contact Information Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Contact Information</Text>
             <View style={styles.contactItem}>
@@ -133,7 +120,6 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
             </View>
           </View>
 
-          {/* Emergency Assistance Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>🚨 Emergency Assistance</Text>
             <Text style={styles.sectionText}>
@@ -142,24 +128,9 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
             </Text>
           </View>
 
-          {/* Common Questions Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Common Questions</Text>
-            
-            {/* Question 1 */}
-            <TouchableOpacity 
-              style={styles.questionItem}
-              onPress={() => toggleSection('question1')}
-            >
-              <Text style={styles.questionText}>• How do I add a horse profile?</Text>
-            </TouchableOpacity>
-            {expandedSections.question1 && (
-              <Text style={styles.answerText}>
-                Tap on the horse icon in the main menu and follow the instructions to register a new horse.
-              </Text>
-            )}
 
-            {/* Question 2 */}
             <TouchableOpacity 
               style={styles.questionItem}
               onPress={() => toggleSection('question2')}
@@ -172,7 +143,6 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
               </Text>
             )}
 
-            {/* Question 3 */}
             <TouchableOpacity 
               style={styles.questionItem}
               onPress={() => toggleSection('question3')}
@@ -185,7 +155,6 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
               </Text>
             )}
 
-            {/* Question 4 */}
             <TouchableOpacity 
               style={styles.questionItem}
               onPress={() => toggleSection('question4')}
@@ -199,7 +168,6 @@ export default function HelpSupport({ onBack }: HelpSupportProps) {
             )}
           </View>
 
-          {/* Feedback Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Feedback & Suggestions</Text>
             <Text style={styles.sectionText}>
@@ -302,16 +270,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     color: "#C17A47",
     textDecorationLine: "underline",
-  },
-  versionText: {
-    fontSize: moderateScale(14),
-    color: "#333",
-    fontWeight: "500",
-    marginBottom: verticalScale(4),
-  },
-  versionDate: {
-    fontSize: moderateScale(12),
-    color: "#999",
   },
   questionItem: {
     paddingVertical: verticalScale(8),

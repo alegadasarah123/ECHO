@@ -7,13 +7,16 @@ import {
   Alert,
   Dimensions,
   Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   SafeAreaView,
-  ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from "react-native"
 
@@ -58,7 +61,7 @@ export default function LoginScreen() {
 
       console.log("Attempting login for:", email.trim().toLowerCase())
 
-      const response = await fetch("http://192.168.31.184:8000/api/login_mobile/", {
+      const response = await fetch("http://192.168.1.9:8000/api/login_mobile/", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -132,36 +135,10 @@ export default function LoginScreen() {
         // Route based on user role - Check for exact database values
         if (userRole === "Kutsero") {
           console.log("✅ Routing to kutsero dashboard")
-
-          const statusMsg =
-            data.user_status === "pending"
-              ? "\n\nNote: Your account is pending approval but you can still use the app."
-              : ""
-
-          Alert.alert("Login Successful", `Welcome ${data.user?.email || "User"}!${statusMsg}`, [
-            {
-              text: "Continue",
-              onPress: () => {
-                router.replace("../KUTSERO/dashboard")
-              },
-            },
-          ])
+          router.replace("../KUTSERO/dashboard")
         } else if (userRole === "Horse Operator") {
           console.log("✅ Routing to horse operator home")
-
-          const statusMsg =
-            data.user_status === "pending"
-              ? "\n\nNote: Your account is pending approval but you can still use the app."
-              : ""
-
-          Alert.alert("Login Successful", `Welcome ${data.user?.email || "User"}!${statusMsg}`, [
-            {
-              text: "Continue",
-              onPress: () => {
-                router.replace("../HORSE_OPERATOR/home")
-              },
-            },
-          ])
+          router.replace("../HORSE_OPERATOR/home")
         } else {
           console.log("❌ Unrecognized user role:", userRole)
           Alert.alert("Error", `Unrecognized user role: ${userRole}. Please contact support.`)
@@ -219,95 +196,94 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#B8763E" />
-
-      <ScrollView
-        contentContainerStyle={styles.scrollContainer}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+      
+      <KeyboardAvoidingView 
+        style={styles.keyboardView}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
       >
-        <View style={styles.headerSection}>
-          <Image source={require("../../assets/images/echo.png")} style={styles.logo} resizeMode="contain" />
-        </View>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={styles.contentContainer}>
+            <View style={styles.headerSection}>
+              <Image source={require("../../assets/images/echo.png")} style={styles.logo} resizeMode="contain" />
+            </View>
 
-        <View style={styles.formCard}>
-          <Text style={styles.welcomeTitle}>Welcome Back</Text>
+            <View style={styles.formCard}>
+              <Text style={styles.welcomeTitle}>Welcome Back</Text>
 
-          {/* Email Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Username</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Enter your email"
-              placeholderTextColor="#999"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!isLoginLoading}
-            />
-          </View>
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Username</Text>
+                <TextInput
+                  style={styles.textInput}
+                  placeholder="Enter your email"
+                  placeholderTextColor="#999"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!isLoginLoading}
+                />
+              </View>
 
-          {/* Password Input */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
-            <View style={styles.passwordContainer}>
-              <TextInput
-                style={styles.passwordInput}
-                placeholder="Enter your password"
-                placeholderTextColor="#999"
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!isLoginLoading}
-              />
-              <TouchableOpacity style={styles.eyeIconContainer} onPress={togglePasswordVisibility}>
-                <View style={styles.eyeIcon}>
-                  {showPassword ? (
-                    <View style={styles.eyeOpen}>
-                      <View style={styles.eyeball} />
+              <View style={styles.inputContainer}>
+                <Text style={styles.label}>Password</Text>
+                <View style={styles.passwordContainer}>
+                  <TextInput
+                    style={styles.passwordInput}
+                    placeholder="Enter your password"
+                    placeholderTextColor="#999"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    editable={!isLoginLoading}
+                  />
+                  <TouchableOpacity style={styles.eyeIconContainer} onPress={togglePasswordVisibility}>
+                    <View style={styles.eyeIcon}>
+                      {showPassword ? (
+                        <View style={styles.eyeOpen}>
+                          <View style={styles.eyeball} />
+                        </View>
+                      ) : (
+                        <View style={styles.eyeClosed}>
+                          <View style={styles.eyeball} />
+                          <View style={styles.eyeLine} />
+                        </View>
+                      )}
                     </View>
-                  ) : (
-                    <View style={styles.eyeClosed}>
-                      <View style={styles.eyeball} />
-                      <View style={styles.eyeLine} />
-                    </View>
-                  )}
+                  </TouchableOpacity>
                 </View>
+              </View>
+
+              <TouchableOpacity 
+                style={styles.forgotPasswordButton} 
+                disabled={isLoginLoading}
+                onPress={handleForgotPassword}
+              >
+                <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
               </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.loginButton, isLoginLoading && styles.loginButtonDisabled]}
+                onPress={handleLogin}
+                disabled={isLoginLoading}
+              >
+                <Text style={styles.loginButtonText}>{isLoginLoading ? "Signing In..." : "Sign In"}</Text>
+              </TouchableOpacity>
+
+              <View style={styles.footerSection}>
+                <Text style={styles.footerText}>
+                  Don&#39;t have an account?{" "}
+                  <Text style={styles.signUpText} onPress={() => !isLoginLoading && router.push("/auth/signup")}>
+                    Sign Up
+                  </Text>
+                </Text>
+              </View>
             </View>
           </View>
-
-          {/* Forgot Password */}
-          <TouchableOpacity 
-            style={styles.forgotPasswordButton} 
-            disabled={isLoginLoading}
-            onPress={handleForgotPassword}
-          >
-            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.loginButton, isLoginLoading && styles.loginButtonDisabled]}
-            onPress={handleLogin}
-            disabled={isLoginLoading}
-          >
-            <Text style={styles.loginButtonText}>{isLoginLoading ? "Signing In..." : "Sign In"}</Text>
-          </TouchableOpacity>
-
-          {/* Footer Section */}
-          <View style={styles.footerSection}>
-            <Text style={styles.footerText}>
-              Don&#39;t have an account?{" "}
-              <Text style={styles.signUpText} onPress={() => !isLoginLoading && router.push("/auth/signup")}>
-                Sign Up
-              </Text>
-            </Text>
-          </View>
-        </View>
-      </ScrollView>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   )
 }
@@ -317,20 +293,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "#B8763E",
   },
-  scrollContainer: {
-    flexGrow: 1,
+  keyboardView: {
+    flex: 1,
+  },
+   contentContainer: {
+    flex: 1,
     paddingHorizontal: scale(20),
-    paddingTop: verticalScale(40),
+    paddingTop: verticalScale(15),
     paddingBottom: verticalScale(40),
+    justifyContent: "center",
   },
   headerSection: {
     alignItems: "center",
-    marginBottom: verticalScale(15),
+    marginBottom: verticalScale(10),
   },
   logo: {
     width: scale(250),
     height: scale(250),
-    marginBottom: verticalScale(5),
+    marginBottom: 0,
   },
   echoText: {
     fontSize: moderateScale(32),

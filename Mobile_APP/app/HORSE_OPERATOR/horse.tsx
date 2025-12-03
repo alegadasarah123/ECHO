@@ -88,7 +88,7 @@ interface UserData {
   user_role: string
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
+const API_BASE_URL = "http://192.168.1.9:8000/api/horse_operator"
 
 type HorseTab = 'alive' | 'deceased'
 
