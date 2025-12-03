@@ -27,7 +27,7 @@ interface HorseAssignment {
   kutsero_image?: string;
 }
 
-const API_BASE_URL = "http://192.168.1.9:8000/api/horse_operator"
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
 
 const HorseHandlingScreen = () => {
   const router = useRouter();
@@ -201,25 +201,36 @@ const HorseHandlingScreen = () => {
     }
   };
 
-  // Function to get proper image source
-  const getImageSource = (imageUrl: string | undefined) => {
-    if (!imageUrl) {
-      return { uri: 'https://via.placeholder.com/60x60/f0f0f0/999999?text=K' };
+  // Simplified version that expects backend to return full URLs
+  const getImageSourceSimple = (imageUrl: string | undefined) => {
+    console.log("🖼️ getImageSourceSimple called with:", imageUrl);
+    
+    if (!imageUrl || imageUrl.trim() === '') {
+      return { uri: 'https://via.placeholder.com/60x60/CD853F/ffffff?text=K' };
     }
     
-    // If it's already a full URL
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+    // If it's already a full URL, use it
+    if (imageUrl.startsWith('http')) {
       return { uri: imageUrl };
     }
     
-    // If it's a storage path, construct the full URL
-    if (imageUrl.includes('kutsero_images/') || imageUrl.includes('kutsero_op_profile/')) {
-      const baseUrl = API_BASE_URL.replace('/api/horse_operator', '');
-      return { uri: `${baseUrl}/storage/v1/object/public/${imageUrl}` };
-    }
+    // If it's a relative path, construct the full URL
+    // FIXED: Use the correct base URL
+    const supabaseUrl = "https://drgknejiqupegkyxfaab.supabase.co";
     
-    // Default fallback
-    return { uri: 'https://via.placeholder.com/60x60/f0f0f0/999999?text=K' };
+    // Check what type of image it is
+    if (imageUrl.includes('kutsero_op_profile')) {
+      // Horse operator profile image
+      const filename = imageUrl.split('/').pop() || imageUrl;
+      return { uri: `${supabaseUrl}/storage/v1/object/public/kutsero_op_profile/${filename}` };
+    } else if (imageUrl.includes('kutsero_images')) {
+      // Kutsero profile image
+      const filename = imageUrl.split('/').pop() || imageUrl;
+      return { uri: `${supabaseUrl}/storage/v1/object/public/kutsero_images/${filename}` };
+    } else {
+      // Generic - assume it's in kutsero_images
+      return { uri: `${supabaseUrl}/storage/v1/object/public/kutsero_images/${imageUrl}` };
+    }
   };
 
   const EmptyState = () => (
@@ -262,6 +273,8 @@ const HorseHandlingScreen = () => {
         ) : (
           assignments.map((assignment, index) => {
             const status = getStatusText(assignment);
+            // Use the simple version for better reliability
+            const imageSource = getImageSourceSimple(assignment.kutsero_image);
             
             return (
               <View key={assignment.assign_id} style={[
@@ -270,12 +283,9 @@ const HorseHandlingScreen = () => {
               ]}>
                 <View style={styles.cardHeader}>
                   <Image
-                    source={getImageSource(assignment.kutsero_image)}
+                    source={imageSource}
                     style={styles.cardProfileImage}
-                    onError={(e) => {
-                      console.log('Image load error:', e.nativeEvent.error);
-                      // Image will fallback to placeholder due to getImageSource logic
-                    }}
+                    defaultSource={{ uri: 'https://via.placeholder.com/60x60/CD853F/ffffff?text=K' }}
                   />
                   <View style={styles.cardContent}>
                     <Text style={styles.cardUserName}>
@@ -342,6 +352,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    marginTop: -25,
   },
   backButton: {
     marginRight: 20,

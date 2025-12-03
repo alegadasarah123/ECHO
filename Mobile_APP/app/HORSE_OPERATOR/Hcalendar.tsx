@@ -52,7 +52,7 @@ interface VetDetails {
 }
 
 // Configuration
-const API_BASE_URL = "http://192.168.1.9:8000/api/horse_operator"
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
 
 const { width, height } = Dimensions.get("window")
 
@@ -1607,7 +1607,7 @@ const CalendarScreen = () => {
                     <FontAwesome5 name="map-marker-alt" size={16} color="#CD853F" />
                   </View>
                   <View style={styles.infoContent}>
-                    <Text style={styles.infoLabel}>Clinic Location</Text>
+                    <Text style={styles.infoLabel}>Clinic Address</Text>
                     <Text style={styles.infoText}>
                       {vetDetails?.clinic_location || "Location not available"}
                     </Text>
@@ -1773,6 +1773,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 15,
     backgroundColor: "#CD853F",
+    marginTop: 5,
   },
   headerTitle: {
     fontSize: 24,

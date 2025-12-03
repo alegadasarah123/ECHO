@@ -1,32 +1,28 @@
-// HORSE OPERATOR Message Screen Component
-
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import {
-  View,
-  Text,
-  TextInput,
-  StyleSheet,
-  SafeAreaView,
-  ScrollView,
-  TouchableOpacity,
+  Dimensions,
   Image,
-  Alert,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  Dimensions,
+  ScrollView,
   StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  Alert,
+  ActivityIndicator,
   RefreshControl,
-  Keyboard,
 } from "react-native"
-import { useRouter, useFocusEffect, useLocalSearchParams } from "expo-router"
 import * as SecureStore from "expo-secure-store"
+import { createClient } from '@supabase/supabase-js'
 
 const { width, height } = Dimensions.get("window")
 
-// Responsive scaling functions
 const scale = (size: number) => {
   const scaleFactor = width / 375
   const scaledSize = size * scaleFactor
@@ -59,126 +55,83 @@ const getSafeAreaPadding = () => {
   }
 }
 
-// TypeScript interfaces
-interface ChatMessage {
-  id: string
-  name: string
-  avatar: string
-  message: string
-  time: string
-  unread: boolean
-  role?: string
-  email?: string
-  online?: boolean
-  unread_count?: number
-  profile_image?: string
-  last_sender_id?: string
-  is_own_message?: boolean
-  last_message_content?: string
-}
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
+
+const SUPABASE_URL = "https://drgknejiqupegkyxfaab.supabase.co"
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyZ2tuZWppcXVwZWdreXhmYWFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ5MDAxMTUsImV4cCI6MjA3MDQ3NjExNX0.KcIRm5t6z63X_KHGxDeU5ojwArVTasZWBzh01bD2nzo"
+
+const SUPABASE_ENABLED = false
+
+const supabase = SUPABASE_ENABLED ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null
 
 interface Message {
+  id?: string
+  user_id?: number
+  partner_id?: string
+  sender: string
+  preview: string
+  last_message?: string
+  timestamp: string
+  last_message_time?: string
+  unread: boolean
+  is_read?: boolean
+  avatar?: string
+  isAI?: boolean
+  role?: string
+  status?: string
+  unread_count?: number
+  profile_image?: string
+  partner_name?: string
+  email?: string
+  online?: boolean
+  is_own_message?: boolean
+  last_sender_id?: number
+}
+
+interface ChatMessage {
   id: string
   text: string
-  isOutgoing?: boolean
-  isUser?: boolean
+  isUser: boolean
   timestamp: string
-  isRead?: boolean
   date?: string
 }
 
 interface UserData {
   id: string
   email: string
-  profile?: any
+  profile?: {
+    op_id: string
+    op_fname?: string
+    op_lname?: string
+    op_mname?: string
+    op_phone_num?: string
+    op_email?: string
+    first_name?: string
+    last_name?: string
+    middle_name?: string
+    full_name?: string
+    [key: string]: any
+  }
   access_token: string
+  refresh_token?: string
   user_status?: string
+  user_role?: string
 }
 
 interface AvailableUser {
-  id: string
+  id: number
   name: string
-  email?: string
   role: string
-  profile_image?: string
-  avatar?: string
+  avatar: string
+  email: string
+  phone?: string
+  status: string
+  profile_image?: string | null
+  first_name?: string
+  last_name?: string
   online?: boolean
-  // Veterinarian specific fields
-  profile_picture?: string
-  vet_profile_image?: string
-  // Kutsero specific fields
-  kutsero_profile_image?: string
-  user_profile_image?: string
-  // Additional fields for comprehensive image handling
-  op_image?: string
-  kutsero_image?: string
-  vet_profile_photo?: string
-  ctu_profile_photo?: string
-  dvmf_profile_photo?: string
 }
 
-// TabButton Component
-const TabButton = ({ 
-  iconSource, 
-  label, 
-  onPress, 
-  isActive 
-}: { 
-  iconSource: any; 
-  label: string; 
-  onPress: () => void; 
-  isActive: boolean 
-}) => (
-  <TouchableOpacity style={styles.navItem} onPress={onPress}>
-    <View style={[styles.navIcon, isActive && styles.activeNavIcon]}>
-      <Image 
-        source={iconSource} 
-        style={{ 
-          width: scale(20), 
-          height: scale(20), 
-          tintColor: isActive ? '#fff' : '#666' 
-        }} 
-      /> 
-    </View>
-    <Text style={[styles.navLabel, isActive && styles.activeNavLabel]}>
-      {label}
-    </Text>
-  </TouchableOpacity>
-)
-
-const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
-
-// Function to generate temporary profile picture based on name and role
-const generateTemporaryProfile = (name: string, role: string = "user") => {
-  const colors = [
-    '#CD853F'
-  ]
-  
-  // Get consistent color based on name
-  const nameHash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
-  const colorIndex = nameHash % colors.length
-  const backgroundColor = colors[colorIndex]
-  
-  // Get initials
-  const getInitials = (name: string) => {
-    if (!name) return "?"
-    const nameParts = name.trim().split(" ")
-    if (nameParts.length === 1) {
-      return nameParts[0].charAt(0).toUpperCase()
-    }
-    return (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase()
-  }
-  
-  const initials = getInitials(name)
-  
-  return {
-    backgroundColor,
-    initials,
-    color: '#FFFFFF' // White text for better contrast
-  }
-}
-
-// Chat Interface Component (Matches Kutsero Style)
 const ChatInterface = ({
   isAIChat,
   messages,
@@ -192,7 +145,7 @@ const ChatInterface = ({
   isOnline,
 }: {
   isAIChat: boolean
-  messages: Message[]
+  messages: ChatMessage[]
   title: string
   onBack: () => void
   chatInput: string
@@ -203,27 +156,6 @@ const ChatInterface = ({
   isOnline?: boolean
 }) => {
   const scrollViewRef = useRef<ScrollView>(null)
-  const [keyboardOffset, setKeyboardOffset] = useState(0)
-
-  useEffect(() => {
-    const keyboardDidShowListener = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (e) => {
-        setKeyboardOffset(e.endCoordinates.height)
-      }
-    )
-    const keyboardDidHideListener = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => {
-        setKeyboardOffset(0)
-      }
-    )
-
-    return () => {
-      keyboardDidShowListener.remove()
-      keyboardDidHideListener.remove()
-    }
-  }, [])
 
   useEffect(() => {
     if (scrollViewRef.current) {
@@ -231,7 +163,7 @@ const ChatInterface = ({
         scrollViewRef.current?.scrollToEnd({ animated: true })
       }, 100)
     }
-  }, [messages, keyboardOffset])
+  }, [messages])
 
   const getDateLabel = (dateString: string) => {
     const messageDate = new Date(dateString)
@@ -249,7 +181,7 @@ const ChatInterface = ({
     return messageDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
   }
 
-  const shouldShowDateLabel = (currentMessage: Message, previousMessage: Message | undefined) => {
+  const shouldShowDateLabel = (currentMessage: ChatMessage, previousMessage: ChatMessage | undefined) => {
     if (!previousMessage) return true
     
     const currentDate = new Date(currentMessage.date || new Date().toISOString())
@@ -264,8 +196,8 @@ const ChatInterface = ({
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : -safeArea.bottom}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={0}
     >
       <StatusBar barStyle="light-content" backgroundColor="#CD853F" translucent={false} />
 
@@ -304,14 +236,9 @@ const ChatInterface = ({
       <ScrollView
         ref={scrollViewRef}
         style={styles.chatContainer}
-        contentContainerStyle={[
-          styles.chatContent,
-          { paddingBottom: keyboardOffset > 0 ? keyboardOffset + 80 : 20 }
-        ]}
+        contentContainerStyle={styles.chatContent}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        automaticallyAdjustContentInsets={false}
-        contentInsetAdjustmentBehavior="never"
       >
         {messages.map((message, index) => {
           const previousMessage = index > 0 ? messages[index - 1] : undefined
@@ -343,15 +270,7 @@ const ChatInterface = ({
         })}
       </ScrollView>
 
-      <View 
-        style={[
-          styles.chatInputContainer, 
-          { 
-            paddingBottom: Math.max(safeArea.bottom, 8),
-            marginBottom: keyboardOffset > 0 ? 0 : safeArea.bottom
-          }
-        ]}
-      >
+      <View style={[styles.chatInputContainer, { paddingBottom: Math.max(safeArea.bottom, 8) }]}>
         <View style={styles.inputWrapper}>
           <TextInput
             style={styles.chatInput}
@@ -381,34 +300,35 @@ const ChatInterface = ({
   )
 }
 
-// Main Message Screen Component
-const MessageScreen = () => {
-  const [searchText, setSearchText] = useState("")
+export default function MessageScreen() {
   const router = useRouter()
   const params = useLocalSearchParams()
-  const [activeTab, setActiveTab] = useState<"conversations" | "users">("conversations")
-  const [roleFilter, setRoleFilter] = useState("")
-  const [messages, setMessages] = useState<ChatMessage[]>([])
-  const [loading, setLoading] = useState(true)
-  const [userId, setUserId] = useState<string | null>(null)
-  const [isOperator, setIsOperator] = useState<boolean>(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const safeArea = getSafeAreaPadding()
 
-  const [showChat, setShowChat] = useState(false)
-  const [showAIChat, setShowAIChat] = useState(false)
-  const [currentContact, setCurrentContact] = useState<{
-    id: string
-    name: string
-    avatar: string
-    role: string
-    email?: string
-    online?: boolean
-  } | null>(null)
+  const [activeTab, setActiveTab] = useState<"conversations" | "users">("conversations")
+  const [searchQuery, setSearchQuery] = useState("")
+  const [roleFilter, setRoleFilter] = useState<string>("")
 
+  const [showAIChat, setShowAIChat] = useState(false)
+  const [showIndividualChat, setShowIndividualChat] = useState(false)
+  const [selectedContact, setSelectedContact] = useState<Message | AvailableUser | null>(null)
+  const [selectedUserId, setSelectedUserId] = useState<number | string | null>(null)
   const [chatInput, setChatInput] = useState("")
+
   const [userData, setUserData] = useState<UserData | null>(null)
-  const [aiChatMessages, setAiChatMessages] = useState<Message[]>([
+  const [userFirstName, setUserFirstName] = useState<string>("User")
+  const [isLoading, setIsLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  const [conversations, setConversations] = useState<Message[]>([])
+  const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([])
+
+  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set())
+  const [totalUnreadCount, setTotalUnreadCount] = useState(0)
+  const onlineChannelRef = useRef<any>(null)
+  const messagesSubscriptionRef = useRef<any>(null)
+
+  const [aiChatMessages, setAiChatMessages] = useState<ChatMessage[]>([
     {
       id: "1",
       text: "Hello! I'm your AI assistant. How can I help you with horse care today?",
@@ -417,261 +337,204 @@ const MessageScreen = () => {
       date: new Date().toISOString(),
     },
   ])
-  const [individualChatMessages, setIndividualChatMessages] = useState<Message[]>([])
-  const [availableUsers, setAvailableUsers] = useState<AvailableUser[]>([])
-  const [onlineUsers] = useState<Set<string>>(new Set())
+  const [individualChatMessages, setIndividualChatMessages] = useState<ChatMessage[]>([])
 
-  // Helper function for formatting message content
-  const formatMessageContent = (content: string, maxLength = 50): string => {
-    if (!content) return ""
-    return content.length > maxLength ? `${content.substring(0, maxLength)}...` : content
-  }
+  // Add flags to track state
+  const directChatProcessedRef = useRef(false)
+  const initialLoadCompleteRef = useRef(false)
+  // FIXED: Changed from NodeJS.Timeout to number for React Native
+  const loadMessagesTimeoutRef = useRef<number | null>(null)
+  const lastSelectedUserIdRef = useRef<number | string | null>(null)
 
-  // Utility function to format message timestamps
-  const formatMessageTimestamp = (timestamp: string): string => {
-    try {
-      const messageDate = new Date(timestamp)
-      return messageDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    } catch {
-      return timestamp
-    }
-  }
-
-  // Check if user is a horse operator
-  const isHorseOperator = async (userId: string): Promise<boolean> => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/get_horse_operator_profile/?user_id=${encodeURIComponent(userId)}`)
-      if (response.ok) {
-        const data = await response.json()
-        return !!data
-      }
-      return false
-    } catch {
-      return false
-    }
-  }
-
-  const loadUserId = useCallback(async () => {
-    try {
-      const userData = await SecureStore.getItemAsync("user_data")
-      if (userData) {
-        const parsed = JSON.parse(userData)
-        const id = parsed.user_id || parsed.id
-        
-        const unifiedUserData: UserData = {
-          id: id,
-          email: parsed.email,
-          profile: parsed.profile,
-          access_token: parsed.access_token,
-          user_status: parsed.user_status || "active",
-        }
-
-        setUserData(unifiedUserData)
-        setUserId(id)
-
-        const operatorStatus = await isHorseOperator(id)
-        setIsOperator(operatorStatus)
-        console.log(`User ${id} is ${operatorStatus ? "a" : "NOT a"} Horse Operator`)
-
-        return id
-      }
-    } catch (error) {
-      console.error("Error loading user data:", error)
-    }
-    return null
-  }, [])
-
-  const calculateTotalUnread = useCallback((convs: ChatMessage[]) => {
+  const calculateTotalUnread = useCallback((convs: Message[]) => {
     const total = convs.reduce((sum, conv) => sum + (conv.unread_count || 0), 0)
+    setTotalUnreadCount(total)
     console.log('📊 Total unread messages:', total)
     return total
   }, [])
 
-  // ENHANCED: Function to fetch user profile picture with multiple fallbacks
-  const fetchUserProfilePicture = async (userId: string, userRole: string): Promise<string | null> => {
-    try {
-      console.log(`🖼️ Fetching profile picture for user: ${userId}, role: ${userRole}`)
-      
-      // Try the unified profile endpoint first
-      const profileResponse = await fetch(`${API_BASE_URL}/get_user_profile_by_id/?user_id=${encodeURIComponent(userId)}`)
-      
-      if (profileResponse.ok) {
-        const profileData = await profileResponse.json()
-        console.log(`✅ Unified profile data for ${userId}:`, profileData)
-        
-        // Check if we got a valid profile (not an error)
-        if (profileData.error) {
-          console.log(`❌ Profile not found for ${userId}:`, profileData.error)
-          // Generate temporary profile
-          return "temporary"
-        }
-        
-        // Extract image from various possible fields
-        const imageFields = [
-          profileData.image,
-          profileData.profile_image,
-          profileData.avatar,
-          profileData.op_image,
-          profileData.kutsero_image,
-          profileData.vet_profile_photo,
-          profileData.ctu_profile_photo,
-          profileData.dvmf_profile_photo
-        ]
-        
-        for (const imageField of imageFields) {
-          if (imageField && typeof imageField === 'string' && imageField.trim() !== '') {
-            console.log(`✅ Found profile picture in field: ${imageField}`)
-            return imageField
-          }
-        }
-        
-        // No image found, use temporary
-        return "temporary"
-      } else if (profileResponse.status === 404) {
-        console.log(`❌ Profile not found (404) for ${userId}, using temporary profile`)
-        return "temporary"
-      }
-      
-      // Fallback to role-specific endpoints if unified fails
-      if (userRole === 'veterinarian' || userRole === 'vet') {
-        const vetResponse = await fetch(`${API_BASE_URL}/get_veterinarian_profile/?vet_id=${encodeURIComponent(userId)}`)
-        if (vetResponse.ok) {
-          const vetData = await vetResponse.json()
-          const vetImage = vetData.vet_profile_photo || vetData.profile_picture
-          if (vetImage) return vetImage
-        }
-      } else if (userRole === 'kutsero' || userRole === 'horse_operator') {
-        const kutseroResponse = await fetch(`${API_BASE_URL}/get_kutsero_profile/?user_id=${encodeURIComponent(userId)}`)
-        if (kutseroResponse.ok) {
-          const kutseroData = await kutseroResponse.json()
-          const kutseroImage = kutseroData.kutsero_profile_image || kutseroData.user_profile_image
-          if (kutseroImage) return kutseroImage
-        }
-      }
-      
-      console.log(`❌ No profile picture found for user ${userId}, will use temporary profile`)
-      return "temporary"
-    } catch (error) {
-      console.error(`Error fetching profile picture for ${userId}:`, error)
-      return "temporary"
+  const getInitials = (name: string) => {
+    if (!name) return "?"
+    const nameParts = name.trim().split(" ")
+    if (nameParts.length === 1) {
+      return nameParts[0].charAt(0).toUpperCase()
+    }
+    return (nameParts[0].charAt(0) + nameParts[nameParts.length - 1].charAt(0)).toUpperCase()
+  }
+
+  const getProfileImageSource = (email?: string, profileImage?: string | null, role?: string, name?: string) => {
+    const normalizedRole = role?.toLowerCase() || ''
+    
+    if (normalizedRole.includes('ctu')) {
+      return require("../../assets/images/CTU.jpg")
+    }
+    
+    if (normalizedRole.includes('dvmf')) {
+      return require("../../assets/images/DVMF.png")
+    }
+    
+    if (email?.toLowerCase().includes('ctu')) {
+      return require("../../assets/images/CTU.jpg")
+    }
+    if (email?.toLowerCase().includes('dvmf')) {
+      return require("../../assets/images/DVMF.png")
+    }
+    
+    if (profileImage) {
+      return { uri: profileImage }
+    }
+    
+    return null
+  }
+
+  const generateTemporaryProfile = (name: string, role: string = "user") => {
+    const colors = [
+      '#CD853F', '#8B4513', '#A0522D', '#D2691E', '#CD5C5C'
+    ]
+    
+    const nameHash = name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    const colorIndex = nameHash % colors.length
+    const backgroundColor = colors[colorIndex]
+    
+    const initials = getInitials(name)
+    
+    return {
+      backgroundColor,
+      initials,
+      color: '#FFFFFF'
     }
   }
 
-  // FIXED: Enhanced loadConversations function with proper "You:" prefix logic
-  const loadConversations = useCallback(async () => {
+  const loadUserData = useCallback(async () => {
     try {
-      setLoading(true)
-      let uid = userId
+      const storedUserData = await SecureStore.getItemAsync("user_data")
+      const storedAccessToken = await SecureStore.getItemAsync("access_token")
 
-      if (!uid) {
-        uid = await loadUserId()
-        if (!uid) {
-          console.log("No user logged in, redirecting to Login.")
-          router.replace("/auth/login")
-          return
+      if (storedUserData && storedAccessToken) {
+        const parsedUserData = JSON.parse(storedUserData)
+        
+        console.log("📋 Parsed user data:", JSON.stringify(parsedUserData, null, 2))
+
+        // Extract user_role from profile or user data
+        let userRole = parsedUserData.user_role || 
+                       parsedUserData.role || 
+                       parsedUserData.profile?.user_role || 
+                       parsedUserData.profile?.role ||
+                       "horse_operator"
+
+        const unifiedUserData: UserData = {
+          id: parsedUserData.id,
+          email: parsedUserData.email,
+          profile: parsedUserData.profile,
+          access_token: storedAccessToken,
+          user_status: parsedUserData.user_status || "pending",
+          user_role: userRole,
         }
+
+        setUserData(unifiedUserData)
+
+        // Extract first name from user profile
+        const firstName = parsedUserData.profile?.op_fname || 
+                          parsedUserData.profile?.first_name || 
+                          parsedUserData.email?.split('@')[0] || 
+                          "User"
+        setUserFirstName(firstName)
+
+      } else {
+        console.log("❌ No stored user data or access token found")
+        Alert.alert("Session Expired", "Please log in again to continue.", [
+          {
+            text: "OK",
+            onPress: () => router.replace("../../pages/auth/login"),
+          },
+        ])
       }
+    } catch (error) {
+      console.error("Error loading user data:", error)
+      Alert.alert("Error", "Failed to load user data. Please log in again.")
+    } finally {
+      setIsLoading(false)
+    }
+  }, [router])
 
-      const response = await fetch(`${API_BASE_URL}/conversations/?user_id=${encodeURIComponent(uid)}`)
+  const loadConversations = useCallback(async () => {
+    if (!userData?.id) return
 
-      if (!response.ok) {
-        throw new Error(`Failed to load conversations: ${response.status}`)
-      }
+    try {
+      console.log('📞 Loading conversations for user:', userData.id)
+      const response = await fetch(`${API_BASE_URL}/conversations/?user_id=${userData.id}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
 
-      const data = await response.json()
-      console.log("Loaded conversations from backend:", data)
-
-      let messagesList: ChatMessage[] = []
-
-      if (data.conversations && Array.isArray(data.conversations)) {
-        // Process conversations with enhanced profile picture handling and message display
-        messagesList = await Promise.all(
-          data.conversations.map(async (conv: any) => {
-            const partnerId = conv.partner_id
-            const partnerRole = conv.role || ""
-            const partnerName = conv.partner_name || conv.sender || "Unknown User"
+      if (response.ok) {
+        const data = await response.json()
+        console.log('📞 Conversations API response:', data)
+        if (data.conversations) {
+          const mappedConversations = data.conversations.map((conv: any, index: number) => {
             const lastSenderId = conv.last_sender_id
             const lastMessageContent = conv.last_message || conv.preview || ""
+            const isOwnMessage = lastSenderId === userData.id
             
-            console.log(`🔄 Processing conversation with: ${partnerName} (${partnerRole})`, {
-              lastSenderId: lastSenderId,
-              currentUserId: uid,
-              lastMessageContent: lastMessageContent,
-              existingProfileImage: conv.avatar || conv.profile_image,
-              partnerId: partnerId
-            })
-
-            // Check if the last message was sent by the current user
-            const isOwnMessage = lastSenderId === uid
-            
-            // FIXED: Format the message preview with proper "You:" prefix
             let messagePreview = lastMessageContent
             if (isOwnMessage && lastMessageContent) {
               messagePreview = `You: ${lastMessageContent}`
-            } else if (!isOwnMessage && lastMessageContent) {
-              // Keep the original message content for messages from others
-              messagePreview = lastMessageContent
-            }
-
-            // Always fetch fresh profile picture for conversations to ensure latest image
-            let profileImage = await fetchUserProfilePicture(partnerId, partnerRole)
-            
-            if (!profileImage) {
-              // If no profile picture found, use temporary profile
-              profileImage = "temporary"
-              console.log(`🔄 Using temporary profile for ${partnerName}`)
-            } else {
-              console.log(`✅ Using fetched profile picture for ${partnerName}: ${profileImage}`)
             }
 
             return {
-              id: partnerId,
-              name: partnerName,
-              avatar: profileImage,
-              message: formatMessageContent(messagePreview), // Use the properly formatted preview
-              time: formatMessageTimestamp(conv.last_message_time || conv.timestamp || new Date().toISOString()),
-              unread: conv.unread || !conv.is_read || false,
-              role: partnerRole,
-              email: conv.email || "",
-              online: onlineUsers.has(partnerId),
+              id: conv.id || `conv-${index}`,
+              partner_id: conv.partner_id,
+              user_id: conv.partner_id,
+              sender: conv.sender || conv.partner_name || conv.name || "Unknown User",
+              preview: messagePreview,
+              last_message: lastMessageContent,
+              timestamp:
+                conv.timestamp ||
+                (conv.last_message_time
+                  ? new Date(conv.last_message_time).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                  : ""),
+              last_message_time: conv.last_message_time,
+              unread: conv.unread !== undefined ? conv.unread : !conv.is_read,
+              is_read: conv.is_read,
+              avatar: conv.avatar || conv.partner_avatar || "👤",
+              role: conv.role || conv.partner_role || "",
+              status: conv.status || "",
               unread_count: conv.unread_count || (conv.is_read ? 0 : 1),
-              profile_image: profileImage,
-              last_sender_id: lastSenderId,
+              profile_image: conv.profile_image || conv.partner_profile_image || null,
+              email: conv.email || conv.partner_email || "",
+              online: onlineUsers.has(conv.partner_id?.toString() || ''),
               is_own_message: isOwnMessage,
-              last_message_content: lastMessageContent,
+              last_sender_id: lastSenderId,
             }
           })
-        )
-      } else if (Array.isArray(data)) {
-        messagesList = data
-      }
 
-      setMessages(messagesList)
-      calculateTotalUnread(messagesList)
-      console.log(`✅ Processed ${messagesList.length} conversations with fresh profile pictures`)
+          console.log('📞 Mapped conversations:', mappedConversations.length)
+          setConversations(mappedConversations)
+          calculateTotalUnread(mappedConversations)
+        }
+      } else {
+        console.error('❌ Failed to load conversations:', response.status)
+      }
     } catch (error) {
-      console.error("Error loading messages:", error)
-      Alert.alert("Error", "Failed to load conversations. Please check your connection.")
-      setMessages([])
-    } finally {
-      setLoading(false)
+      console.error("Error loading conversations:", error)
     }
-  }, [userId, router, loadUserId, onlineUsers, calculateTotalUnread])
+  }, [userData?.id, onlineUsers, calculateTotalUnread])
 
   const loadAvailableUsers = useCallback(async () => {
-    if (!userId) return
+    if (!userData?.id) return
 
     try {
-      let url = `${API_BASE_URL}/available_users/?user_id=${userId}`
-      if (searchText) {
-        url += `&search=${encodeURIComponent(searchText)}`
+      let url = `${API_BASE_URL}/available_users/?user_id=${userData.id}`
+      if (searchQuery) {
+        url += `&search=${encodeURIComponent(searchQuery)}`
       }
       if (roleFilter) {
-        url += `&role=${encodeURIComponent(roleFilter)}`
+        url += `&role=${roleFilter}`
       }
 
       console.log('🔍 Fetching users with URL:', url)
-      console.log('🔍 Role filter:', roleFilter)
 
       const response = await fetch(url, {
         method: "GET",
@@ -682,108 +545,79 @@ const MessageScreen = () => {
 
       if (response.ok) {
         const data = await response.json()
-        console.log('✅ API Response:', data)
-        console.log('👥 Number of users returned:', data.users?.length || 0)
+        console.log('✅ Users API response count:', data.users?.length || 0)
         
-        let users = data.users || []
-        
-        if (users.length > 0) {
-          console.log('📋 Sample user roles:', users.slice(0, 3).map((u: any) => u.role))
-          
-          // Process users with enhanced profile picture handling
-          const usersWithEnhancedProfiles = await Promise.all(
-            users.map(async (user: any) => {
-              const userRole = user.role?.toLowerCase()
-              const userId = user.id || user.user_id
-
-              console.log(`🔄 Processing user: ${user.name} (${userRole})`, {
-                existingProfileImage: user.profile_image || user.avatar,
-                userId: userId
-              })
-
-              // Always fetch fresh profile picture for users
-              let profileImage = await fetchUserProfilePicture(userId, userRole)
-              
-              if (!profileImage) {
-                // Handle CTU and DVMF profile pictures with local assets
-                if (userRole === 'ctu_vet' || userRole === 'ctu-vetmed' || userRole === 'ctu-admin' || userRole === 'ctu_veterinarian') {
-                  profileImage = 'CTU_LOGO'
-                } else if (userRole === 'dvmf' || userRole === 'dvmf-admin' || userRole === 'dvmf_user') {
-                  profileImage = 'DVMF_LOGO'
-                } else {
-                  profileImage = 'temporary'
-                }
-              }
-              
-              return {
-                ...user,
-                online: onlineUsers.has(userId.toString()),
-                profile_image: profileImage,
-                // Store all possible image fields for comprehensive handling
-                op_image: user.op_image,
-                kutsero_image: user.kutsero_image,
-                vet_profile_photo: user.vet_profile_photo,
-                ctu_profile_photo: user.ctu_profile_photo,
-                dvmf_profile_photo: user.dvmf_profile_photo
-              }
-            })
-          )
-          
-          setAvailableUsers(usersWithEnhancedProfiles)
-          console.log('✅ Enhanced users loaded with profile pictures')
-        } else {
-          setAvailableUsers([])
+        if (data.users && data.users.length > 0) {
+          const usersWithStatus = data.users.map((user: AvailableUser) => ({
+            ...user,
+            online: onlineUsers.has(user.id.toString()),
+          }))
+          setAvailableUsers(usersWithStatus)
         }
       } else {
         console.error('❌ API Error:', response.status, response.statusText)
-        setAvailableUsers([])
       }
     } catch (error) {
       console.error("Error loading available users:", error)
-      setAvailableUsers([])
     }
-  }, [userId, searchText, roleFilter, onlineUsers])
+  }, [userData?.id, searchQuery, roleFilter, onlineUsers])
 
-  const loadChatMessages = useCallback(async (otherUserId: string) => {
-    if (!userId || !otherUserId) return
+  const loadChatMessages = useCallback(async (otherUserId: number | string) => {
+    if (!userData?.id || !otherUserId) {
+      console.log('❌ Cannot load messages: missing user data or otherUserId')
+      return
+    }
 
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/get_messages/?user_id=${userId}&other_user_id=${otherUserId}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
+    // Clear any existing timeout
+    if (loadMessagesTimeoutRef.current) {
+      clearTimeout(loadMessagesTimeoutRef.current)
+    }
+
+    // Debounce the API call
+    loadMessagesTimeoutRef.current = setTimeout(async () => {
+      try {
+        console.log('💬 Loading messages for other user:', otherUserId, 'Type:', typeof otherUserId)
+        const response = await fetch(
+          `${API_BASE_URL}/get_messages/?user_id=${userData.id}&other_user_id=${otherUserId}`,
+          {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+            },
           },
-        },
-      )
+        )
 
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success && data.messages) {
-          const mappedMessages = data.messages.map((msg: any) => ({
-            ...msg,
-            date: msg.created_at || new Date().toISOString()
-          }))
-          setIndividualChatMessages(mappedMessages)
+        if (response.ok) {
+          const data = await response.json()
+          console.log('💬 Messages API response:', data.success ? `Success with ${data.messages?.length || 0} messages` : 'Failed')
+          if (data.success && data.messages) {
+            const mappedMessages = data.messages.map((msg: any) => ({
+              ...msg,
+              date: msg.created_at || new Date().toISOString()
+            }))
+            setIndividualChatMessages(mappedMessages)
+          }
+        } else {
+          console.error('❌ Failed to load messages:', response.status)
         }
+      } catch {
+        console.error("Error loading chat messages")
       }
-    } catch (error) {
-      console.error("Error loading chat messages:", error)
-    }
-  }, [userId])
+    }, 300) as unknown as number // Type assertion for setTimeout in React Native
+  }, [userData?.id])
 
-  const sendMessageToBackend = useCallback(async (receiverId: string, content: string) => {
-    if (!userId) return null
+  const sendMessageToBackend = useCallback(async (receiverId: number | string, content: string) => {
+    if (!userData?.id) return null
 
     try {
+      console.log('📤 Sending message to:', receiverId, 'Content:', content)
       const response = await fetch(`${API_BASE_URL}/send_message/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          sender_id: userId,
+          sender_id: userData.id,
           receiver_id: receiverId,
           content: content,
         }),
@@ -791,6 +625,7 @@ const MessageScreen = () => {
 
       if (response.ok) {
         const data = await response.json()
+        console.log('✅ Message sent successfully:', data.message?.id)
         return {
           ...data.message,
           date: data.message.created_at || new Date().toISOString()
@@ -805,165 +640,279 @@ const MessageScreen = () => {
       Alert.alert("Error", "Failed to send message. Check your connection.")
       return null
     }
-  }, [userId])
+  }, [userData?.id])
 
-  const deleteMessage = async (contactId: string, contactName: string) => {
+  const loadAIChatHistory = useCallback(async () => {
+    if (!userData?.access_token) return
+
     try {
-      const user = await loadUserId()
-      if (!user) {
-        console.log("No user logged in, cannot delete conversations.")
-        return
-      }
-
-      console.log(`🗑️ Deleting conversation - User: ${user}, Contact: ${contactId}`)
-
-      const response = await fetch(`${API_BASE_URL}/delete_conversation/`, {
-        method: "DELETE",
+      const response = await fetch(`${API_BASE_URL}/get_chat_history/`, {
+        method: "GET",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${userData.access_token}`,
         },
-        body: JSON.stringify({
-          user_id: user,
-          contact_id: contactId,
-        }),
       })
 
       if (response.ok) {
-        setMessages((prevMessages) => prevMessages.filter((msg) => msg.id !== contactId))
-        console.log(`✅ Deleted conversation with ${contactName} (ID: ${contactId})`)
+        const data = await response.json()
 
-        const result = await response.json()
-        Alert.alert(
-          "Success",
-          result.note || "Conversation deleted successfully. The other person can still see all messages.",
-        )
-      } else {
-        const error = await response.json()
-        Alert.alert("Error", error.error || "Failed to delete conversation.")
+        if (data.success && data.history && data.history.length > 0) {
+          const historyMessages: ChatMessage[] = []
+
+          data.history.forEach((item: any) => {
+            const messageDate = new Date()
+            historyMessages.push({
+              id: `${item.id}-prompt`,
+              text: item.prompt,
+              isUser: true,
+              timestamp: messageDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              date: messageDate.toISOString(),
+            })
+
+            historyMessages.push({
+              id: `${item.id}-answer`,
+              text: item.answer,
+              isUser: false,
+              timestamp: messageDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              date: messageDate.toISOString(),
+            })
+          })
+
+          setAiChatMessages(historyMessages)
+        } else {
+          setAiChatMessages([
+            {
+              id: "1",
+              text: "Hello! I'm your AI assistant. How can I help you with horse care today?",
+              isUser: false,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              date: new Date().toISOString(),
+            },
+          ])
+        }
       }
-    } catch (error) {
-      console.error("Error deleting message:", error)
-      Alert.alert("Error", "Failed to delete conversation. Please try again.")
+    } catch {
+      console.error("Error loading AI chat history")
     }
-  }
+  }, [userData?.access_token])
 
-  const handleLongPress = (contactId: string, contactName: string) => {
-    if (contactId === "ai_assistant") {
+  const setupOnlinePresence = useCallback(async () => {
+    if (!userData?.id || !SUPABASE_ENABLED || !supabase) {
+      console.log('⚠️ Supabase not enabled, skipping online presence setup')
       return
     }
 
-    Alert.alert(
-      "Delete Conversation",
-      `Do you want to delete your conversation with ${contactName}?\n\nNote: This will only hide it from your view. The other person can still see all messages.`,
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
+    console.log('🔄 Setting up online presence for:', userData.id)
+
+    if (onlineChannelRef.current) {
+      await supabase.removeChannel(onlineChannelRef.current)
+    }
+
+    onlineChannelRef.current = supabase.channel('online-users-mobile', {
+      config: {
+        presence: {
+          key: userData.id.toString(),
         },
+      },
+    })
+
+    onlineChannelRef.current
+      .on('presence', { event: 'sync' }, () => {
+        const state = onlineChannelRef.current.presenceState()
+        const onlineUserIds = new Set<string>()
+        
+        Object.keys(state).forEach(key => {
+          onlineUserIds.add(key)
+        })
+        
+        console.log('👥 Online users synced:', Array.from(onlineUserIds))
+        setOnlineUsers(onlineUserIds)
+      })
+      .on('presence', { event: 'join' }, ({ key }: { key: string }) => {
+        console.log('✅ User joined:', key)
+        setOnlineUsers(prev => new Set([...prev, key]))
+      })
+      .on('presence', { event: 'leave' }, ({ key }: { key: string }) => {
+        console.log('❌ User left:', key)
+        setOnlineUsers(prev => {
+          const newSet = new Set(prev)
+          newSet.delete(key)
+          return newSet
+        })
+      })
+      .subscribe(async (status: string) => {
+        if (status === 'SUBSCRIBED') {
+          await onlineChannelRef.current.track({
+            user_id: userData.id,
+            online_at: new Date().toISOString(),
+            last_seen: new Date().toISOString(),
+          })
+          console.log('✅ Presence tracking started for:', userData.id)
+        }
+      })
+  }, [userData?.id])
+
+  const setupMessageSubscription = useCallback(() => {
+    if (!userData?.id || !SUPABASE_ENABLED || !supabase) {
+      console.log('⚠️ Supabase not enabled, skipping message subscription')
+      return
+    }
+
+    console.log('🔄 Setting up message subscription for:', userData.id)
+
+    if (messagesSubscriptionRef.current) {
+      messagesSubscriptionRef.current.unsubscribe()
+    }
+
+    messagesSubscriptionRef.current = supabase
+      .channel('messages-realtime-mobile')
+      .on(
+        'postgres_changes',
         {
-          text: "Delete",
-          style: "destructive",
-          onPress: () => deleteMessage(contactId, contactName),
+          event: 'INSERT',
+          schema: 'public',
+          table: 'message',
         },
-      ],
+        async (payload) => {
+          const newMessage = payload.new
+          console.log('📨 New message received:', newMessage)
+          
+          const involvesCurrentUser = 
+            newMessage.user_id === userData.id || 
+            newMessage.receiver_id === userData.id
+          
+          if (involvesCurrentUser) {
+            console.log('✅ Message involves current user, reloading conversations')
+            await loadConversations()
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'message',
+        },
+        async (payload) => {
+          const updatedMessage = payload.new
+          
+          if (updatedMessage.is_read && updatedMessage.user_id === userData.id) {
+            console.log('✅ Message marked as read, reloading conversations')
+            await loadConversations()
+          }
+        }
+      )
+      .subscribe()
+
+    console.log('✅ Message subscription started')
+  }, [userData?.id, loadConversations])
+
+  const OnlineIndicator = ({ isOnline }: { isOnline: boolean }) => {
+    if (!isOnline) return null
+    
+    return (
+      <View style={styles.onlineIndicator}>
+        <View style={styles.onlineIndicatorDot} />
+      </View>
     )
   }
 
-  const handleRefresh = async () => {
-    setIsRefreshing(true)
-    await loadConversations()
-    await loadAvailableUsers()
-    setIsRefreshing(false)
+  const renderAvatarWithStatus = (item: Message | AvailableUser) => {
+    const name = "sender" in item ? item.sender : item.name
+    const email = item.email
+    const profileImage = item.profile_image
+    const role = item.role
+    const partnerId = "partner_id" in item ? item.partner_id : "id" in item ? item.id : null
+    
+    const isOnline = partnerId ? onlineUsers.has(partnerId.toString()) : false
+    
+    const imageSource = getProfileImageSource(email, profileImage, role, name)
+    
+    return (
+      <View style={styles.avatarWrapper}>
+        <View style={styles.avatarContainer}>
+          {imageSource ? (
+            <Image
+              source={imageSource}
+              style={styles.avatarImage}
+              resizeMode="cover"
+              onError={() => {
+                const tempProfile = generateTemporaryProfile(name, role)
+                return (
+                  <View style={[
+                    styles.initialsContainer,
+                    { backgroundColor: tempProfile.backgroundColor }
+                  ]}>
+                    <Text style={[styles.initialsText, { color: tempProfile.color }]}>
+                      {tempProfile.initials}
+                    </Text>
+                  </View>
+                )
+              }}
+            />
+          ) : (
+            (() => {
+              const tempProfile = generateTemporaryProfile(name, role)
+              return (
+                <View style={[
+                  styles.initialsContainer,
+                  { backgroundColor: tempProfile.backgroundColor }
+                ]}>
+                  <Text style={[styles.initialsText, { color: tempProfile.color }]}>
+                    {tempProfile.initials}
+                  </Text>
+                </View>
+              )
+            })()
+          )}
+        </View>
+        <OnlineIndicator isOnline={isOnline} />
+      </View>
+    )
   }
 
-  useEffect(() => {
-    const checkForDirectChat = async () => {
-      if (params.openChat === "true" && params.contactId) {
-        console.log("📨 Opening chat from Hcontact:", params.contactName)
-
-        const user = await loadUserId()
-        if (!user) {
-          router.replace("/auth/login")
-          return
-        }
-
-        setCurrentContact({
-          id: params.contactId as string,
-          name: params.contactName as string,
-          avatar: params.contactAvatar as string,
-          role: params.contactRole as string,
-        })
-        setShowChat(true)
-
-        await loadChatMessages(params.contactId as string)
-      }
-    }
-
-    checkForDirectChat()
-  }, [
-    params.openChat,
-    params.contactId,
-    params.contactName,
-    params.contactAvatar,
-    params.contactRole,
-    loadUserId,
-    router,
-    loadChatMessages,
-  ])
-
-  useEffect(() => {
-    if (!params.openChat) {
-      loadConversations()
-    }
-  }, [loadConversations, params.openChat])
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!params.openChat) {
-        loadConversations()
-      }
-    }, [loadConversations, params.openChat]),
-  )
-
-  useEffect(() => {
-    if (userId) {
-      if (activeTab === "users") {
-        loadAvailableUsers()
-      }
-    }
-  }, [searchText, roleFilter, activeTab, userId, loadAvailableUsers])
-
   const openChat = useCallback(
-    (contact: any) => {
-      let userId: string | undefined
+    (contact: Message | AvailableUser) => {
+      console.log('💬 Opening chat with contact:', contact)
+      
+      let userId: string | number | undefined
 
-      if (contact.partner_id) {
+      if ("partner_id" in contact && contact.partner_id) {
         userId = contact.partner_id
-      } else if (contact.user_id) {
+      } else if ("user_id" in contact && contact.user_id) {
         userId = contact.user_id
-      } else if (contact.id) {
+      } else if ("id" in contact && contact.id) {
         userId = contact.id
       }
 
-      if (!userId) {
+      if (!userId || userId === undefined) {
         Alert.alert("Error", "Unable to open chat. Invalid user ID.")
         return
       }
 
-      setCurrentContact({
-        id: userId,
-        name: contact.sender || contact.name || "Unknown User",
-        avatar: contact.avatar || contact.profile_image || "temporary",
-        role: contact.role || "",
-        email: contact.email || "",
-        online: contact.online || false,
-      })
-      setShowChat(true)
+      // Prevent opening same chat multiple times
+      if (lastSelectedUserIdRef.current === userId && showIndividualChat) {
+        console.log('⚠️ Chat already open for user:', userId)
+        return
+      }
+
+      console.log('💬 Setting up chat for user ID:', userId)
+      
+      setSelectedContact(contact)
+      setSelectedUserId(userId as any)
+      setShowIndividualChat(true)
       setChatInput("")
       setIndividualChatMessages([])
-      loadChatMessages(userId)
+      lastSelectedUserIdRef.current = userId
+      
+      // Load messages after a short delay to ensure state is updated
+      setTimeout(() => {
+        loadChatMessages(userId as any)
+      }, 100)
     },
-    [loadChatMessages],
+    [loadChatMessages, showIndividualChat],
   )
 
   const handleSendMessage = useCallback(
@@ -971,7 +920,7 @@ const MessageScreen = () => {
       if (!chatInput.trim()) return
 
       const currentDate = new Date()
-      const userMessage: Message = {
+      const userMessage: ChatMessage = {
         id: Date.now().toString(),
         text: chatInput.trim(),
         isUser: true,
@@ -1000,7 +949,7 @@ const MessageScreen = () => {
             const aiText = data.answer || data.reply || "Sorry, I couldn't understand that."
 
             const responseDate = new Date()
-            const responseMessage: Message = {
+            const responseMessage: ChatMessage = {
               id: (Date.now() + 1).toString(),
               text: aiText,
               isUser: false,
@@ -1011,7 +960,7 @@ const MessageScreen = () => {
             setAiChatMessages((prev) => [...prev, responseMessage])
           } else {
             const errorDate = new Date()
-            const errorMessage: Message = {
+            const errorMessage: ChatMessage = {
               id: (Date.now() + 1).toString(),
               text: "Sorry, I'm having trouble connecting to the server. Please try again later.",
               isUser: false,
@@ -1022,7 +971,7 @@ const MessageScreen = () => {
           }
         } catch {
           const errorDate = new Date()
-          const errorMessage: Message = {
+          const errorMessage: ChatMessage = {
             id: (Date.now() + 1).toString(),
             text: "Sorry, I'm having trouble connecting. Please check your internet connection.",
             isUser: false,
@@ -1032,18 +981,18 @@ const MessageScreen = () => {
           setAiChatMessages((prev) => [...prev, errorMessage])
         }
       } else {
-        if (!currentContact?.id) {
-          console.error("❌ No currentContact ID:", currentContact?.id)
+        if (!selectedUserId) {
+          console.error("❌ No selectedUserId:", selectedUserId)
           Alert.alert("Error", "Cannot send message. Invalid recipient.")
           return
         }
 
-        console.log("📤 Sending message to:", currentContact.id)
+        console.log("📤 Sending message to:", selectedUserId)
 
         setIndividualChatMessages((prev) => [...prev, userMessage])
         setChatInput("")
 
-        const sentMessage = await sendMessageToBackend(currentContact.id, userMessage.text)
+        const sentMessage = await sendMessageToBackend(selectedUserId, userMessage.text)
 
         if (!sentMessage) {
           console.error("❌ Failed to send message")
@@ -1056,535 +1005,626 @@ const MessageScreen = () => {
         }
       }
     },
-    [chatInput, currentContact, userData, sendMessageToBackend],
+    [chatInput, selectedUserId, userData, sendMessageToBackend],
   )
 
-  const handleBackFromChat = useCallback(() => {
-    setShowChat(false)
-    setCurrentContact(null)
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    await loadConversations()
+    await loadAvailableUsers()
+    setIsRefreshing(false)
+  }
+
+  // Fixed version of checkForDirectChat
+  const checkForDirectChat = useCallback(() => {
+    // Prevent multiple executions
+    if (directChatProcessedRef.current) {
+      console.log("⏭️ Direct chat already processed, skipping")
+      return
+    }
+
+    console.log("🔍 Checking params for direct chat:", {
+      openChat: params.openChat,
+      contactId: params.contactId,
+      contactName: params.contactName,
+      userId: params.userId,
+    })
+
+    if (params.openChat === "true" && params.contactId) {
+      console.log("✅ Direct chat params detected!")
+      console.log("📨 Opening chat from profile:", params.contactName)
+      console.log("📨 Contact ID:", params.contactId, "Type:", typeof params.contactId)
+
+      // Mark as processed immediately to prevent re-execution
+      directChatProcessedRef.current = true
+
+      // Parse contact ID
+      const contactIdValue = params.contactId as string
+      const contactIdNum = parseInt(contactIdValue)
+      
+      if (isNaN(contactIdNum)) {
+        console.error("❌ Invalid contact ID:", contactIdValue)
+        return
+      }
+
+      console.log("📨 Parsed contact ID:", contactIdNum)
+
+      // Create contact object
+      const contact: AvailableUser = {
+        id: contactIdNum,
+        name: params.contactName as string || "Unknown User",
+        avatar: (params.contactAvatar as string) || "https://via.placeholder.com/150",
+        role: (params.contactRole as string) || "user",
+        email: "",
+        phone: "",
+        status: "active",
+        profile_image: (params.contactAvatar as string) || undefined,
+      }
+
+      console.log("📨 Setting up chat for contact:", contact)
+
+      // Set state to open chat
+      setSelectedContact(contact)
+      setSelectedUserId(contactIdNum)
+      setShowIndividualChat(true)
+      setChatInput("")
+      setIndividualChatMessages([])
+      lastSelectedUserIdRef.current = contactIdNum
+      
+      console.log("✅ Chat state set successfully!")
+      
+      // Load messages after a delay to ensure state is updated
+      setTimeout(() => {
+        console.log("📨 Loading messages for contact:", contactIdNum)
+        loadChatMessages(contactIdNum)
+      }, 500)
+    } else {
+      console.log("ℹ️ No direct chat params detected")
+      if (!params.openChat) console.log("   - openChat missing or not 'true'")
+      if (!params.contactId) console.log("   - contactId missing")
+      
+      // Mark as processed to prevent future checks
+      directChatProcessedRef.current = true
+    }
+  }, [params, loadChatMessages])
+
+  // Load user data on mount
+  useEffect(() => {
+    loadUserData()
+  }, [loadUserData])
+
+  // Setup and initial data loading
+  useEffect(() => {
+    if (userData && !initialLoadCompleteRef.current) {
+      console.log("🚀 Initial load starting for user:", userData.id)
+      initialLoadCompleteRef.current = true
+      
+      // Setup Supabase if enabled
+      if (SUPABASE_ENABLED && supabase) {
+        setupOnlinePresence()
+        setupMessageSubscription()
+      }
+      
+      // Load conversations and users
+      loadConversations()
+      loadAvailableUsers()
+      
+      // Check for direct chat AFTER loading is done
+      setTimeout(() => {
+        checkForDirectChat()
+      }, 1000) // 1 second delay to ensure everything is loaded
+    }
+
+    // Cleanup function
+    return () => {
+      if (loadMessagesTimeoutRef.current) {
+        clearTimeout(loadMessagesTimeoutRef.current)
+      }
+      if (supabase && onlineChannelRef.current) {
+        supabase.removeChannel(onlineChannelRef.current)
+      }
+      if (supabase && messagesSubscriptionRef.current) {
+        messagesSubscriptionRef.current.unsubscribe()
+      }
+    }
+  }, [userData, setupOnlinePresence, setupMessageSubscription, loadConversations, loadAvailableUsers, checkForDirectChat])
+
+  // Update conversations and users when online status changes
+  useEffect(() => {
+    if (userData && onlineUsers.size > 0) {
+      console.log('🔄 Updating conversations/users based on online status')
+      loadConversations()
+      loadAvailableUsers()
+    }
+  }, [userData, onlineUsers, loadConversations, loadAvailableUsers])
+
+  // Load available users when filters change
+  useEffect(() => {
+    if (userData && activeTab === "users") {
+      console.log('🔄 Loading available users with filters')
+      loadAvailableUsers()
+    }
+  }, [searchQuery, roleFilter, activeTab, userData, loadAvailableUsers])
+
+  // Focus effect for refreshing data
+  useFocusEffect(
+    useCallback(() => {
+      if (userData) {
+        console.log('🔄 Focus effect triggered')
+        
+        // Reset direct chat flag when navigating back to main screen
+        if (!showIndividualChat && !showAIChat) {
+          directChatProcessedRef.current = false
+        }
+        
+        // Only refresh if not in a chat view
+        if (!showIndividualChat && !showAIChat) {
+          loadConversations()
+          loadAvailableUsers()
+        }
+      }
+    }, [userData, showIndividualChat, showAIChat, loadConversations, loadAvailableUsers]),
+  )
+
+  // Debug state changes
+  useEffect(() => {
+    console.log("📊 State Update:", {
+      showIndividualChat,
+      showAIChat,
+      selectedContact: selectedContact ? ("sender" in selectedContact ? selectedContact.sender : selectedContact.name) : null,
+      selectedUserId,
+      messagesCount: individualChatMessages.length,
+      directChatProcessed: directChatProcessedRef.current,
+    })
+  }, [showIndividualChat, showAIChat, selectedContact, selectedUserId, individualChatMessages])
+
+  const handleBackFromAI = useCallback(() => setShowAIChat(false), [])
+  const handleBackFromIndividual = useCallback(() => {
+    console.log('🔙 Back from individual chat')
+    setShowIndividualChat(false)
+    setSelectedContact(null)
+    setSelectedUserId(null)
+    setIndividualChatMessages([])
+    lastSelectedUserIdRef.current = null
+    // Reset direct chat flag when leaving individual chat
+    directChatProcessedRef.current = false
     loadConversations()
   }, [loadConversations])
 
-  const handleBackFromAI = useCallback(() => setShowAIChat(false), [])
+  const handleNavigateToProfile = useCallback(() => {
+    if (!selectedContact || !selectedUserId) {
+      console.log("❌ No contact selected for profile navigation")
+      return
+    }
 
+    console.log("🔍 Navigating to profile:", selectedUserId)
+
+    router.push({
+      pathname: "../HORSE_OPERATOR/Hallprofile",
+      params: {
+        userId: String(selectedUserId),
+        userName: "sender" in selectedContact ? selectedContact.sender : selectedContact.name,
+      },
+    })
+  }, [selectedContact, selectedUserId, router])
+
+  const handleShowAIChat = useCallback(async () => {
+    console.log('🤖 Opening AI chat')
+    await loadAIChatHistory()
+    setShowAIChat(true)
+  }, [loadAIChatHistory])
+
+  const handleChatInputChange = useCallback((text: string) => setChatInput(text), [])
   const handleAISendMessage = useCallback(() => handleSendMessage(true), [handleSendMessage])
   const handleIndividualSendMessage = useCallback(() => handleSendMessage(false), [handleSendMessage])
 
-  const handleChatInputChange = useCallback((text: string) => setChatInput(text), [])
+  const filteredConversations = useMemo(() => {
+    if (!searchQuery) return conversations
 
-  const handleShowAIChat = useCallback(() => {
-    if (isOperator) {
-      setShowAIChat(true)
-    } else {
-      Alert.alert("Access Denied", "AI Assistant is only available for Horse Operators.", [{ text: "OK" }])
-    }
-  }, [isOperator])
-
-  const handleNavigateToProfile = useCallback(() => {
-    if (!currentContact) return
-
-    if (currentContact.role === "veterinarian" || currentContact.role === "ctu_vet") {
-      router.push({
-        pathname: "../HORSE_OPERATOR/Hvetprofile",
-        params: {
-          vetId: currentContact.id,
-          vetAvatar: currentContact.avatar,
-        },
-      })
-    } else {
-      router.push({
-        pathname: "../HORSE_OPERATOR/Hallprofile",
-        params: {
-          userId: currentContact.id,
-          userName: currentContact.name,
-          userAvatar: currentContact.avatar,
-        },
-      })
-    }
-  }, [currentContact, router])
-
-  const filteredConversations = messages.filter(
-    (message) =>
-      message.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      message.message.toLowerCase().includes(searchText.toLowerCase()) ||
-      (message.role && message.role.toLowerCase().includes(searchText.toLowerCase())),
-  )
-
-  const filteredUsers = availableUsers.filter(
-    (user) =>
-      user.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      (user.role && user.role.toLowerCase().includes(searchText.toLowerCase())),
-  )
-
-  // ENHANCED: Function to get profile picture with comprehensive handling including temporary profiles
-  const getProfilePicture = (user: AvailableUser | ChatMessage) => {
-    const userRole = user.role?.toLowerCase()
-    const userName = user.name || 'Unknown User'
-    
-    // Collect all possible image fields
-    const possibleImages = [
-      user.profile_image,
-      user.avatar,
-      (user as AvailableUser).op_image,
-      (user as AvailableUser).kutsero_image,
-      (user as AvailableUser).vet_profile_photo,
-      (user as AvailableUser).ctu_profile_photo,
-      (user as AvailableUser).dvmf_profile_photo
-    ]
-    
-    console.log(`🖼️ Processing profile picture for: ${userName}`, {
-      role: userRole,
-      possibleImages: possibleImages.filter(img => img),
-      hasProfileImage: !!user.profile_image
-    })
-    
-    // Handle CTU role - use CTU logo
-    if (userRole === 'ctu_vet' || userRole === 'ctu-vetmed' || userRole === 'ctu-admin' || userRole === 'ctu_veterinarian') {
-      return { type: 'local' as const, source: require("../../assets/images/CTU.jpg") }
-    }
-    
-    // DVMF role - use DVMF logo  
-    if (userRole === 'dvmf' || userRole === 'dvmf-admin' || userRole === 'dvmf_user') {
-      return { type: 'local' as const, source: require("../../assets/images/DVMF.png") }
-    }
-    
-    // Check all possible image sources
-    for (const image of possibleImages) {
-      if (!image) continue
-      
-      // Handle temporary profile indicator
-      if (image === 'temporary') {
-        // Generate temporary profile based on name and role
-        const tempProfile = generateTemporaryProfile(userName, userRole)
-        return {
-          type: 'temporary' as const,
-          backgroundColor: tempProfile.backgroundColor,
-          initials: tempProfile.initials,
-          color: tempProfile.color
-        }
-      }
-      
-      // Handle local asset references
-      if (image === 'CTU_LOGO') {
-        return { type: 'local' as const, source: require("../../assets/images/CTU.jpg") }
-      }
-      if (image === 'DVMF_LOGO') {
-        return { type: 'local' as const, source: require("../../assets/images/DVMF.png") }
-      }
-      
-      // Handle URL images
-      if (typeof image === 'string' && (image.startsWith('http') || image.startsWith('file:'))) {
-        try {
-          return { type: 'uri' as const, uri: image }
-        } catch {
-          console.log('❌ Invalid image URL:', image)
-          continue
-        }
-      }
-      
-      // Handle base64 images
-      if (typeof image === 'string' && image.startsWith('data:image')) {
-        return { type: 'uri' as const, uri: image }
-      }
-    }
-    
-    // No valid image found - generate temporary profile
-    console.log(`🔄 Generating temporary profile for: ${userName}`)
-    const tempProfile = generateTemporaryProfile(userName, userRole)
-    return {
-      type: 'temporary' as const,
-      backgroundColor: tempProfile.backgroundColor,
-      initials: tempProfile.initials,
-      color: tempProfile.color
-    }
-  }
-
-  // FIXED: Enhanced function to handle profile pictures for both conversations and users
-  const renderAvatarWithStatus = (item: any, isConversation: boolean = false) => {
-    const name = item.sender || item.name || item.partner_name || 'Unknown User'
-    const role = item.role || ''
-    const isOnline = item.online || false
-    
-    console.log(`🖼️ Rendering avatar for: ${name}`, {
-      role: role,
-      isConversation: isConversation,
-      profile_image: item.profile_image,
-      avatar: item.avatar
-    })
-    
-    // Get profile picture using the enhanced logic
-    const profilePicture = getProfilePicture(item)
-
-    return (
-      <View style={styles.avatarWrapper}>
-        <View style={styles.avatarContainer}>
-          {profilePicture.type === 'temporary' ? (
-            <View style={[
-              styles.initialsContainer,
-              { backgroundColor: profilePicture.backgroundColor }
-            ]}>
-              <Text style={[styles.initialsText, { color: profilePicture.color }]}>
-                {profilePicture.initials}
-              </Text>
-            </View>
-          ) : profilePicture.type === 'uri' ? (
-            <Image
-              source={{ uri: profilePicture.uri }}
-              style={styles.avatarImage}
-              resizeMode="cover"
-              onError={() => {
-                console.log('❌ Image failed to load, falling back to temporary profile')
-                // Generate temporary profile as fallback
-                const tempProfile = generateTemporaryProfile(name, role)
-                return (
-                  <View style={[
-                    styles.initialsContainer,
-                    { backgroundColor: tempProfile.backgroundColor }
-                  ]}>
-                    <Text style={[styles.initialsText, { color: tempProfile.color }]}>
-                      {tempProfile.initials}
-                    </Text>
-                  </View>
-                )
-              }}
-            />
-          ) : profilePicture.type === 'local' ? (
-            <Image
-              source={profilePicture.source}
-              style={styles.avatarImage}
-              resizeMode="cover"
-            />
-          ) : (
-            // Final fallback - generate temporary profile
-            (() => {
-              const tempProfile = generateTemporaryProfile(name, role)
-              return (
-                <View style={[
-                  styles.initialsContainer,
-                  { backgroundColor: tempProfile.backgroundColor }
-                ]}>
-                  <Text style={[styles.initialsText, { color: tempProfile.color }]}>
-                    {tempProfile.initials}
-                  </Text>
-                </View>
-              )
-            })()
-          )}
-        </View>
-        {isOnline && (
-          <View style={styles.onlineIndicator}>
-            <View style={styles.onlineIndicatorDot} />
-          </View>
-        )}
-      </View>
+    return conversations.filter(
+      (conv) =>
+        conv.sender.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        conv.preview.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (conv.role && conv.role.toLowerCase().includes(searchQuery.toLowerCase())),
     )
-  }
+  }, [conversations, searchQuery])
 
-  // UPDATED: Function to render conversation item with new display format including "You:" prefix
-  const renderConversationItem = (message: ChatMessage) => {
-    const isOwnLastMessage = message.is_own_message
-    
+  if (isLoading) {
     return (
-      <TouchableOpacity
-        key={message.id}
-        style={styles.messageItem}
-        onPress={() => openChat(message)}
-        onLongPress={() => handleLongPress(message.id, message.name)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.messageLeft}>
-          {renderAvatarWithStatus(message, true)}
-        </View>
-        <View style={styles.messageContent}>
-          <View style={styles.messageHeader}>
-            <View style={styles.nameWithStatus}>
-              <Text style={styles.senderName}>{message.name}</Text>
-              {message.online && (
-                <Text style={styles.onlineText}>● Online</Text>
-              )}
-            </View>
-            <Text style={styles.timestamp}>
-              {message.time}
-            </Text>
-          </View>
-          
-          {/* UPDATED: Display role first, then message preview */}
-          <Text style={styles.roleText}>{message.role?.replace("_", " ") || "User"}</Text>
-          
-          <Text 
-            style={[
-              styles.messagePreview, 
-              isOwnLastMessage && styles.ownMessagePreview
-            ]} 
-            numberOfLines={1}
-          >
-            {message.message}
-          </Text>
-        </View>
-        {(message.unread) && (
-          <View style={styles.unreadBadge}>
-            <Text style={styles.unreadBadgeText}>{message.unread_count || 1}</Text>
-          </View>
-        )}
-      </TouchableOpacity>
+      <View style={[styles.container, styles.loadingContainer]}>
+        <StatusBar barStyle="light-content" backgroundColor="#CD853F" translucent={false} />
+        <ActivityIndicator size="large" color="white" />
+        <Text style={styles.loadingText}>Loading messages...</Text>
+      </View>
     )
   }
 
   if (showAIChat) {
+    console.log("🎨 Rendering AI Chat")
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <ChatInterface
-          isAIChat={true}
-          messages={aiChatMessages}
-          title="EchoCare AI"
-          onBack={handleBackFromAI}
-          chatInput={chatInput}
-          onChatInputChange={handleChatInputChange}
-          onSendMessage={handleAISendMessage}
-          safeArea={safeArea}
-          isOnline={true}
-        />
-      </SafeAreaView>
+      <ChatInterface
+        isAIChat={true}
+        messages={aiChatMessages}
+        title="EchoCare AI"
+        onBack={handleBackFromAI}
+        chatInput={chatInput}
+        onChatInputChange={handleChatInputChange}
+        onSendMessage={handleAISendMessage}
+        safeArea={safeArea}
+        isOnline={true}
+      />
     )
   }
 
-  if (showChat && currentContact) {
+  if (showIndividualChat && selectedContact) {
+    const contactName = "sender" in selectedContact ? selectedContact.sender : selectedContact.name
+    const partnerId = "partner_id" in selectedContact ? selectedContact.partner_id : "id" in selectedContact ? selectedContact.id : null
+    
+    const isContactOnline = partnerId ? onlineUsers.has(partnerId.toString()) : false
+    
+    console.log("🎨 Rendering Individual Chat with:", contactName, "Online:", isContactOnline)
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <ChatInterface
-          isAIChat={false}
-          messages={individualChatMessages}
-          title={currentContact.name}
-          onBack={handleBackFromChat}
-          chatInput={chatInput}
-          onChatInputChange={handleChatInputChange}
-          onSendMessage={handleIndividualSendMessage}
-          safeArea={safeArea}
-          onHeaderPress={handleNavigateToProfile}
-          isOnline={currentContact.online}
-        />
-      </SafeAreaView>
+      <ChatInterface
+        isAIChat={false}
+        messages={individualChatMessages}
+        title={contactName}
+        onBack={handleBackFromIndividual}
+        chatInput={chatInput}
+        onChatInputChange={handleChatInputChange}
+        onSendMessage={handleIndividualSendMessage}
+        safeArea={safeArea}
+        onHeaderPress={handleNavigateToProfile}
+        isOnline={isContactOnline}
+      />
     )
   }
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      <StatusBar barStyle="light-content" backgroundColor="#CD853F" translucent={false} />
-      <View style={styles.container}>
-        <View style={[styles.header, { paddingTop: safeArea.top }]}>
-          <View style={styles.headerCenter}>
-            <Text style={styles.mainHeaderTitle}>Messages</Text>
-          </View>
-        </View>
+  console.log("🎨 Rendering Main Messages Screen")
 
-        <View style={styles.searchContainer}>
-          <View style={styles.searchWrapper}>
-            <TextInput
-              style={styles.searchInput}
-              value={searchText}
-              onChangeText={setSearchText}
-              placeholder={activeTab === "conversations" ? "Search conversations..." : "Search users..."}
-              placeholderTextColor="#999"
+  const DashboardIcon = ({ color }: { color: string }) => (
+    <View style={styles.iconContainer}>
+      <View style={styles.dashboardGrid}>
+        <View style={[styles.gridSquare, styles.gridTopLeft, { backgroundColor: color }]} />
+        <View style={[styles.gridSquare, styles.gridTopRight, { backgroundColor: color }]} />
+        <View style={[styles.gridSquare, styles.gridBottomLeft, { backgroundColor: color }]} />
+        <View style={[styles.gridSquare, styles.gridBottomRight, { backgroundColor: color }]} />
+      </View>
+    </View>
+  )
+
+  const ProfileIcon = ({ color }: { color: string }) => (
+    <View style={styles.iconContainer}>
+      <View style={styles.profileContainer}>
+        <View style={[styles.profileHead, { backgroundColor: color }]} />
+        <View style={[styles.profileBody, { backgroundColor: color }]} />
+      </View>
+    </View>
+  )
+
+  const TabButtonWithBadge = ({
+    iconSource,
+    label,
+    tabKey,
+    isActive,
+    onPress,
+    badgeCount,
+  }: {
+    iconSource: any
+    label: string
+    tabKey: string
+    isActive: boolean
+    onPress?: () => void
+    badgeCount?: number
+  }) => (
+    <TouchableOpacity
+      style={styles.tabButton}
+      onPress={() => {
+        if (onPress) {
+          onPress()
+        } else {
+          if (tabKey === "home") {
+            router.push("../HORSE_OPERATOR/home")
+          } else if (tabKey === "horse") {
+            router.push("../HORSE_OPERATOR/horse")
+          } else if (tabKey === "calendar") {
+            router.push("../HORSE_OPERATOR/Hcalendar")
+          } else if (tabKey === "history") {
+            router.push("../HORSE_OPERATOR/Hhistory")
+          } else if (tabKey === "profile") {
+            router.push("../HORSE_OPERATOR/profile")
+          }
+        }
+      }}
+    >
+      <View style={styles.tabButtonContent}>
+        <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
+          {iconSource ? (
+            <Image
+              source={iconSource}
+              style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
+              resizeMode="contain"
             />
-            {searchText.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchText("")} style={styles.clearButton}>
-                <Text style={styles.clearButtonText}>✕</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+          ) : tabKey === "home" ? (
+            <DashboardIcon color={isActive ? "white" : "#666"} />
+          ) : tabKey === "profile" ? (
+            <ProfileIcon color={isActive ? "white" : "#666"} />
+          ) : (
+            <View style={styles.fallbackIcon} />
+          )}
         </View>
-
-        <View style={styles.tabSwitcher}>
-          <TouchableOpacity
-            style={[styles.tabSwitcherButton, activeTab === "conversations" && styles.activeTabSwitcher]}
-            onPress={() => setActiveTab("conversations")}
-          >
-            <Text style={[styles.tabSwitcherText, activeTab === "conversations" && styles.activeTabSwitcherText]}>
-              Conversations
+        {badgeCount !== undefined && badgeCount > 0 && (
+          <View style={styles.tabBadgeIcon}>
+            <Text style={styles.tabBadgeIconText}>
+              {badgeCount > 9 ? '9+' : badgeCount}
             </Text>
-            {messages.filter((c) => c.unread).length > 0 && (
-              <View style={styles.tabBadge}>
-                <Text style={styles.tabBadgeText}>{messages.filter((c) => c.unread).length}</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.tabSwitcherButton, activeTab === "users" && styles.activeTabSwitcher]}
-            onPress={() => setActiveTab("users")}
-          >
-            <Text style={[styles.tabSwitcherText, activeTab === "users" && styles.activeTabSwitcherText]}>All Users</Text>
-          </TouchableOpacity>
-        </View>
-
-        {activeTab === "users" && (
-          <View style={styles.filterContainer}>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-              <TouchableOpacity
-                style={[styles.filterChip, roleFilter === "" && styles.activeFilterChip]}
-                onPress={() => setRoleFilter("")}
-              >
-                <Text style={[styles.filterChipText, roleFilter === "" && styles.activeFilterChipText]}>All</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterChip, roleFilter === "kutsero" && styles.activeFilterChip]}
-                onPress={() => setRoleFilter("kutsero")}
-              >
-                <Text style={[styles.filterChipText, roleFilter === "kutsero" && styles.activeFilterChipText]}>
-                  Kutsero
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterChip, roleFilter === "Kutsero President" && styles.activeFilterChip]}
-                onPress={() => setRoleFilter("Kutsero President")}
-              >
-                <Text style={[styles.filterChipText, roleFilter === "Kutsero President" && styles.activeFilterChipText]}>
-                  Kutsero President
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterChip, roleFilter === "Vet" && styles.activeFilterChip]}
-                onPress={() => setRoleFilter("Vet")}
-              >
-                <Text style={[styles.filterChipText, roleFilter === "Vet" && styles.activeFilterChipText]}>
-                  Veterinarian
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterChip, roleFilter === "ctu_vet" && styles.activeFilterChip]}
-                onPress={() => setRoleFilter("ctu_vet")}
-              >
-                <Text style={[styles.filterChipText, roleFilter === "ctu_vet" && styles.activeFilterChipText]}>
-                  CTU Vet
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterChip, roleFilter === "Dvmf" && styles.activeFilterChip]}
-                onPress={() => setRoleFilter("Dvmf")}
-              >
-                <Text style={[styles.filterChipText, roleFilter === "Dvmf" && styles.activeFilterChipText]}>
-                  DVMF
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.filterChip, roleFilter === "horse_operator" && styles.activeFilterChip]}
-                onPress={() => setRoleFilter("horse_operator")}
-              >
-                <Text style={[styles.filterChipText, roleFilter === "horse_operator" && styles.activeFilterChipText]}>
-                  Horse Operator
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
           </View>
         )}
+      </View>
+      <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
+    </TouchableOpacity>
+  )
 
-        <ScrollView
-          style={styles.content}
-          showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={["#CD853F"]} />}
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#CD853F" translucent={false} />
+
+      <View style={[styles.header, { paddingTop: safeArea.top }]}>
+        <View style={styles.headerLeft} />
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>Messages</Text>
+        </View>
+        <View style={styles.headerRight}>
+          <Text style={styles.userName}>{userFirstName}</Text>
+        </View>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <View style={styles.searchWrapper}>
+          <TextInput
+            style={styles.searchInput}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder={activeTab === "conversations" ? "Search conversations..." : "Search users..."}
+            placeholderTextColor="#999"
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")} style={styles.clearButton}>
+              <Text style={styles.clearButtonText}>✕</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      <View style={styles.tabSwitcher}>
+        <TouchableOpacity
+          style={[styles.tabSwitcherButton, activeTab === "conversations" && styles.activeTabSwitcher]}
+          onPress={() => setActiveTab("conversations")}
         >
-          {loading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#CD853F" />
-              <Text style={styles.loadingText}>Loading conversations...</Text>
+          <Text style={[styles.tabSwitcherText, activeTab === "conversations" && styles.activeTabSwitcherText]}>
+            Conversations
+          </Text>
+          {conversations.filter((c) => c.unread).length > 0 && (
+            <View style={styles.tabBadge}>
+              <Text style={styles.tabBadgeText}>{conversations.filter((c) => c.unread).length}</Text>
             </View>
-          ) : activeTab === "conversations" ? (
-            filteredConversations.length > 0 ? (
-              filteredConversations.map(renderConversationItem)
-            ) : (
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>No conversations yet</Text>
-                <Text style={styles.emptyStateSubtext}>Start a conversation from the Users tab</Text>
-              </View>
-            )
-          ) : filteredUsers.length > 0 ? (
-            filteredUsers.map((user) => (
-              <TouchableOpacity key={user.id} style={styles.userItem} onPress={() => openChat(user)} activeOpacity={0.7}>
+          )}
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabSwitcherButton, activeTab === "users" && styles.activeTabSwitcher]}
+          onPress={() => setActiveTab("users")}
+        >
+          <Text style={[styles.tabSwitcherText, activeTab === "users" && styles.activeTabSwitcherText]}>All Users</Text>
+        </TouchableOpacity>
+      </View>
+
+      {activeTab === "users" && (
+        <View style={styles.filterContainer}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "" && styles.activeFilterChipText]}>All</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "kutsero" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("kutsero")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "kutsero" && styles.activeFilterChipText]}>
+                Kutsero
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "horse_operator" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("horse_operator")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "horse_operator" && styles.activeFilterChipText]}>
+                Horse Operator
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "Kutsero President" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("Kutsero President")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "Kutsero President" && styles.activeFilterChipText]}>
+                Kutsero President
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "Vet" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("Vet")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "Vet" && styles.activeFilterChipText]}>
+                Veterinarian
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "ctu_vet" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("ctu_vet")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "ctu_vet" && styles.activeFilterChipText]}>
+                CTU Vet
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.filterChip, roleFilter === "Dvmf" && styles.activeFilterChip]}
+              onPress={() => setRoleFilter("Dvmf")}
+            >
+              <Text style={[styles.filterChipText, roleFilter === "Dvmf" && styles.activeFilterChipText]}>
+                DVMF
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </View>
+      )}
+
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={["#CD853F"]} />}
+      >
+        {activeTab === "conversations" ? (
+          filteredConversations.length > 0 ? (
+            filteredConversations.map((message) => (
+              <TouchableOpacity
+                key={message.id}
+                style={styles.messageItem}
+                onPress={() => openChat(message)}
+                activeOpacity={0.7}
+              >
                 <View style={styles.messageLeft}>
-                  {renderAvatarWithStatus(user, false)}
+                  {renderAvatarWithStatus(message)}
                 </View>
                 <View style={styles.messageContent}>
-                  <View style={styles.nameWithStatus}>
-                    <Text style={styles.senderName}>{user.name}</Text>
-                    {user.online && (
-                      <Text style={styles.onlineText}>● Online</Text>
-                    )}
+                  <View style={styles.messageHeader}>
+                    <View style={styles.nameWithStatus}>
+                      <Text style={styles.senderName}>{message.sender}</Text>
+                      {message.online && (
+                        <Text style={styles.onlineText}>● Online</Text>
+                      )}
+                    </View>
+                    <Text style={styles.timestamp}>
+                      {message.timestamp ||
+                        (message.last_message_time
+                          ? new Date(message.last_message_time).toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })
+                          : "")}
+                    </Text>
                   </View>
-                  {user.email && <Text style={styles.userEmail}>{user.email}</Text>}
-                  <View style={styles.userInfoRow}>
-                    <Text style={styles.roleText}>{user.role?.replace("_", " ") || "User"}</Text>
+                  <Text style={styles.messagePreview} numberOfLines={1}>
+                    {message.preview || message.last_message || ""}
+                  </Text>
+                  {message.role && <Text style={styles.roleText}>{message.role.replace("_", " ")}</Text>}
+                </View>
+                {(message.unread || !message.is_read) && (
+                  <View style={styles.unreadBadge}>
+                    <Text style={styles.unreadBadgeText}>{message.unread_count || 1}</Text>
                   </View>
-                </View>
-                <View style={styles.chatIconContainer}>
-                  <Text style={styles.chatIcon}>💬</Text>
-                </View>
+                )}
               </TouchableOpacity>
             ))
           ) : (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>No users found</Text>
-              <Text style={styles.emptyStateSubtext}>Try adjusting your search or filter</Text>
+              <Text style={styles.emptyStateText}>No conversations yet</Text>
+              <Text style={styles.emptyStateSubtext}>Start a conversation from the Users tab</Text>
             </View>
-          )}
-        </ScrollView>
-
-        {isOperator && (
-          <TouchableOpacity
-            style={[styles.floatingAI, { bottom: dynamicSpacing(80) + safeArea.bottom }]}
-            onPress={handleShowAIChat}
-            activeOpacity={0.8}
-          >
-            <View style={styles.aiCircle}>
-              <Text style={styles.aiText}>AI</Text>
-            </View>
-          </TouchableOpacity>
+          )
+        ) : availableUsers.length > 0 ? (
+          availableUsers.map((user) => (
+            <TouchableOpacity key={user.id} style={styles.userItem} onPress={() => openChat(user)} activeOpacity={0.7}>
+              <View style={styles.messageLeft}>
+                {renderAvatarWithStatus(user)}
+              </View>
+              <View style={styles.messageContent}>
+                <View style={styles.nameWithStatus}>
+                  <Text style={styles.senderName}>{user.name}</Text>
+                  {user.online && (
+                    <Text style={styles.onlineText}>● Online</Text>
+                  )}
+                </View>
+                {user.phone && <Text style={styles.userEmail}>{user.phone}</Text>}
+                <View style={styles.userInfoRow}>
+                  <Text style={styles.roleText}>{user.role.replace("_", " ")}</Text>
+                </View>
+              </View>
+              <View style={styles.chatIconContainer}>
+                <Text style={styles.chatIcon}>💬</Text>
+              </View>
+            </TouchableOpacity>
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyStateText}>No users found</Text>
+            <Text style={styles.emptyStateSubtext}>Try adjusting your search or filter</Text>
+          </View>
         )}
+      </ScrollView>
 
-        {/* Bottom Navigation */}
-        <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
-          <TabButton 
-            iconSource={require("../../assets/images/home.png")} 
-            label="Home" 
-            isActive={false}
-            onPress={() => router.push("/HORSE_OPERATOR/home" as any)} 
-          />
-          <TabButton
-            iconSource={require("../../assets/images/horse.png")}
-            label="Horses"
-            isActive={false}
-            onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}
-          />
-          <TabButton
-            iconSource={require("../../assets/images/chat.png")}
-            label="Chat"
-            isActive={true}
-            onPress={() => router.push("../HORSE_OPERATOR/Hmessage" as any)}
-          />
-          <TabButton
-            iconSource={require("../../assets/images/calendar.png")}
-            label="Calendar"
-            isActive={false}
-            onPress={() => router.push("../HORSE_OPERATOR/Hcalendar" as any)}
-          />
-          <TabButton
-            iconSource={require("../../assets/images/profile.png")}
-            label="Profile"
-            isActive={false}
-            onPress={() => router.push("../HORSE_OPERATOR/profile" as any)}
-          />
+      <TouchableOpacity
+        style={[styles.floatingAI, { bottom: dynamicSpacing(80) + safeArea.bottom }]}
+        onPress={handleShowAIChat}
+        activeOpacity={0.8}
+      >
+        <View style={styles.aiCircle}>
+          <Text style={styles.aiText}>AI</Text>
         </View>
+      </TouchableOpacity>
+
+      <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
+        <TabButtonWithBadge
+          iconSource={require("../../assets/images/home.png")} 
+          label="Home" 
+          tabKey="home"
+          isActive={false}
+          onPress={() => router.push("../HORSE_OPERATOR/home")} 
+        />
+        <TabButtonWithBadge
+          iconSource={require("../../assets/images/horse.png")}
+          label="Horse"
+          tabKey="horse"
+          isActive={false}
+        />
+        <TabButtonWithBadge 
+          iconSource={require("../../assets/images/chat.png")} 
+          label="Chat" 
+          tabKey="chat" 
+          isActive={true}
+          badgeCount={totalUnreadCount}
+        />
+        <TabButtonWithBadge
+          iconSource={require("../../assets/images/calendar.png")}
+          label="Calendar"
+          tabKey="calendar"
+          isActive={false}
+        />
+        <TabButtonWithBadge 
+          iconSource={null} 
+          label="Profile" 
+          tabKey="profile" 
+          isActive={false} 
+        />
       </View>
-    </SafeAreaView>
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#F5F5F5",
-  },
   container: {
     flex: 1,
     backgroundColor: "#F5F5F5",
+  },
+  loadingContainer: {
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#CD853F",
+  },
+  loadingText: {
+    color: "white",
+    fontSize: moderateScale(16),
+    fontWeight: "500",
+    marginTop: verticalScale(10),
   },
   header: {
     backgroundColor: "#CD853F",
@@ -1593,6 +1633,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(16),
     paddingBottom: dynamicSpacing(12),
     minHeight: verticalScale(50),
+    marginTop: dynamicSpacing(10),
   },
   headerLeft: {
     width: scale(60),
@@ -1621,7 +1662,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "white",
     textAlign: "center",
-    marginTop: verticalScale(12),
   },
   headerSubtitle: {
     fontSize: moderateScale(10),
@@ -1631,20 +1671,18 @@ const styles = StyleSheet.create({
   },
   headerRight: {
     alignItems: "flex-end",
-    width: scale(60),
+    width: scale(80),
     justifyContent: "center",
-  },
-  searchIconButton: {
-    width: scale(32),
-    height: scale(32),
-    backgroundColor: "rgba(255,255,255,0.2)",
-    borderRadius: scale(16),
-    justifyContent: "center",
-    alignItems: "center",
   },
   userName: {
     fontSize: moderateScale(12),
     color: "white",
+    fontWeight: "500",
+    textAlign: "right",
+  },
+  statusText: {
+    fontSize: moderateScale(10),
+    color: "#FFE082",
     fontWeight: "500",
   },
   aiStatusIndicator: {
@@ -1803,14 +1841,12 @@ const styles = StyleSheet.create({
     width: scale(48),
     height: scale(48),
     borderRadius: scale(24),
-    backgroundColor: "#CD853F",
     justifyContent: "center",
     alignItems: "center",
   },
   initialsText: {
     fontSize: moderateScale(18),
     fontWeight: "600",
-    color: "white",
   },
   onlineIndicator: {
     position: 'absolute',
@@ -1869,16 +1905,12 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(13),
     color: "#666",
     lineHeight: moderateScale(18),
-    marginTop: verticalScale(2),
-  },
-  ownMessagePreview: {
-    color: "#CD853F",
-    fontWeight: "500",
   },
   roleText: {
     fontSize: moderateScale(11),
     color: "#999",
     textTransform: "capitalize",
+    marginTop: verticalScale(2),
   },
   userEmail: {
     fontSize: moderateScale(12),
@@ -1927,17 +1959,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(13),
     color: "#999",
     textAlign: "center",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    paddingVertical: verticalScale(50),
-  },
-  loadingText: {
-    fontSize: moderateScale(14),
-    color: "#666",
-    marginTop: verticalScale(10),
   },
   chatContainer: {
     flex: 1,
@@ -2031,7 +2052,6 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flex: 1,
     marginRight: scale(8),
-    backgroundColor: "transparent",
   },
   chatInput: {
     borderWidth: 1,
@@ -2044,8 +2064,7 @@ const styles = StyleSheet.create({
     maxHeight: verticalScale(120),
     minHeight: verticalScale(44),
     color: "#333333",
-    backgroundColor: "#FFFFFF",
-    textAlignVertical: 'center',
+    backgroundColor: "#F8F9FA",
   },
   sendButton: {
     backgroundColor: "#CD853F",
@@ -2100,13 +2119,16 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-around",
   },
-  navItem: {
+  tabButton: {
     flex: 1,
     alignItems: "center",
     paddingVertical: verticalScale(4),
     paddingHorizontal: scale(2),
   },
-  navIcon: {
+  tabButtonContent: {
+    position: 'relative',
+  },
+  tabIcon: {
     width: scale(28),
     height: scale(28),
     borderRadius: scale(14),
@@ -2114,25 +2136,99 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: verticalScale(2),
   },
-  activeNavIcon: {
+  activeTabIcon: {
     backgroundColor: "#CD853F",
   },
-  navLabel: {
+  tabIconImage: {
+    width: scale(16),
+    height: scale(16),
+  },
+  fallbackIcon: {
+    width: scale(14),
+    height: scale(14),
+    backgroundColor: "#666",
+    borderRadius: scale(2),
+  },
+  tabLabel: {
     fontSize: moderateScale(9),
     color: "#666",
     textAlign: "center",
   },
-  activeNavLabel: {
+  activeTabLabel: {
     color: "#CD853F",
     fontWeight: "600",
   },
-  mainHeaderTitle: {
-    fontSize: moderateScale(16),
-    fontWeight: "600",
-    color: "white",
-    textAlign: "center",
-    marginTop: verticalScale(12),
+  tabBadgeIcon: {
+    position: 'absolute',
+    top: -scale(4),
+    right: -scale(8),
+    backgroundColor: '#FF5252',
+    borderRadius: scale(10),
+    minWidth: scale(18),
+    height: scale(18),
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: scale(4),
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  tabBadgeIconText: {
+    color: 'white',
+    fontSize: moderateScale(9),
+    fontWeight: 'bold',
+  },
+  iconContainer: {
+    width: scale(14),
+    height: scale(14),
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  dashboardGrid: {
+    width: scale(14),
+    height: scale(14),
+    position: "relative",
+  },
+  gridSquare: {
+    width: scale(5),
+    height: scale(5),
+    position: "absolute",
+  },
+  gridTopLeft: {
+    top: 0,
+    left: 0,
+  },
+  gridTopRight: {
+    top: 0,
+    right: 0,
+  },
+  gridBottomLeft: {
+    bottom: 0,
+    left: 0,
+  },
+  gridBottomRight: {
+    bottom: 0,
+    right: 0,
+  },
+  profileContainer: {
+    width: scale(14),
+    height: scale(14),
+    position: "relative",
+    alignItems: "center",
+  },
+  profileHead: {
+    width: scale(5),
+    height: scale(5),
+    borderRadius: scale(2.5),
+    position: "absolute",
+    top: 0,
+  },
+  profileBody: {
+    width: scale(10),
+    height: scale(7),
+    borderTopLeftRadius: scale(5),
+    borderTopRightRadius: scale(5),
+    position: "absolute",
+    bottom: 0,
   },
 })
-
-export default MessageScreen

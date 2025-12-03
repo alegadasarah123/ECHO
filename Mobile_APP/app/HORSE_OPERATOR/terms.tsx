@@ -350,6 +350,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(16),
     paddingBottom: dynamicSpacing(12),
     minHeight: verticalScale(60),
+    marginTop: 16,
   },
   backButton: {
     padding: scale(8),

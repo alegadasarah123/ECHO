@@ -1,7 +1,6 @@
-// HORSE_OPERATOR Horse Screen - Complete Updated Code with Alive/Deceased Tabs
-"use client"
+// HORSE_OPERATOR Horse Screen
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import {
   View,
   Text,
@@ -13,10 +12,13 @@ import {
   Dimensions,
   StatusBar,
   TextInput,
+  Platform,
 } from "react-native"
 import { useRouter, useFocusEffect } from "expo-router"
 import { FontAwesome5 } from "@expo/vector-icons"
 import * as SecureStore from "expo-secure-store"
+import * as Notifications from "expo-notifications"
+import * as Device from "expo-device"
 
 const { width, height } = Dimensions.get("window")
 
@@ -88,7 +90,7 @@ interface UserData {
   user_role: string
 }
 
-const API_BASE_URL = "http://192.168.1.9:8000/api/horse_operator"
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
 
 type HorseTab = 'alive' | 'deceased'
 
@@ -101,10 +103,167 @@ const HorseScreen = () => {
   const [searchText, setSearchText] = useState("")
   const [activeHorseTab, setActiveHorseTab] = useState<HorseTab>('alive')
   
+  // Track if notification has been scheduled to prevent duplicates
+  const notificationScheduledRef = useRef<boolean>(false)
+  // Track last scheduled count to avoid unnecessary rescheduling
+  const lastScheduledCountRef = useRef<number>(0)
+  // Track if we're currently scheduling to prevent race conditions
+  const isSchedulingRef = useRef<boolean>(false)
+  
+  // Refs for notification listeners
+  const notificationListener = useRef<Notifications.EventSubscription | null>(null)
+  const responseListener = useRef<Notifications.EventSubscription | null>(null)
+  
   // Current active tab - using string type to allow comparison with all tab keys
   const activeTab: string = "horses"
 
   const safeArea = getSafeAreaPadding()
+
+  // Configure notification handler with all required properties
+  useEffect(() => {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    })
+
+    return () => {
+      // Clean up notification listeners
+      if (notificationListener.current) {
+        notificationListener.current.remove()
+      }
+      if (responseListener.current) {
+        responseListener.current.remove()
+      }
+    }
+  }, [])
+
+  // Setup notification channel for Android
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('daily-health-check', {
+        name: 'Daily Health Check',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#CD853F',
+        sound: 'default',
+      })
+    }
+  }, [])
+
+  // Register for push notifications and set up listeners
+  useEffect(() => {
+    registerForPushNotificationsAsync()
+
+    // Listen for notifications
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      console.log("📬 Notification received:", notification)
+    })
+
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log("👆 Notification response:", response)
+      // Handle notification tap if needed
+    })
+
+    return () => {
+      // Clean up notification listeners
+      if (notificationListener.current) {
+        notificationListener.current.remove()
+      }
+      if (responseListener.current) {
+        responseListener.current.remove()
+      }
+    }
+  }, [])
+
+  // Schedule daily health check notification at 8:03 AM
+  const scheduleDailyHealthCheck = useCallback(async (aliveHorsesCount: number) => {
+    // Prevent multiple concurrent scheduling attempts
+    if (isSchedulingRef.current) {
+      console.log("⏳ Scheduling already in progress, skipping...")
+      return
+    }
+
+    // Check if we already have a notification scheduled with the same count
+    if (notificationScheduledRef.current && lastScheduledCountRef.current === aliveHorsesCount) {
+      console.log("✅ Notification already scheduled with same count:", aliveHorsesCount)
+      return
+    }
+
+    isSchedulingRef.current = true
+    
+    try {
+      console.log(`📅 Attempting to schedule notification for ${aliveHorsesCount} alive horses`)
+      
+      // Check existing scheduled notifications first
+      const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync()
+      const existingHealthCheck = scheduledNotifications.find(
+        notification => notification.content.title === "🐎 Daily Health Check"
+      )
+      
+      if (existingHealthCheck) {
+        console.log("✅ Health check notification already exists, checking count...")
+        
+        // Extract count from existing notification body
+        const bodyMatch = existingHealthCheck.content.body?.match(/(\d+)/)
+        const existingCount = bodyMatch ? parseInt(bodyMatch[1]) : 0
+        
+        if (existingCount === aliveHorsesCount) {
+          console.log("✅ Existing notification has same count, no need to reschedule")
+          notificationScheduledRef.current = true
+          lastScheduledCountRef.current = aliveHorsesCount
+          isSchedulingRef.current = false
+          return
+        }
+        
+        // Cancel the outdated notification
+        await Notifications.cancelScheduledNotificationAsync(existingHealthCheck.identifier)
+        console.log("🔄 Cancelled outdated health check notification")
+      }
+
+      // Only schedule if there are alive horses
+      if (aliveHorsesCount > 0) {
+        // Schedule notification for 8:03 AM daily
+        const notificationId = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "🐎 Daily Health Check",
+            body: `Remember to check the health status of your ${aliveHorsesCount} ${aliveHorsesCount === 1 ? 'horse' : 'horses'} today.`,
+            sound: true,
+            priority: Notifications.AndroidNotificationPriority.HIGH,
+            vibrate: [0, 250, 250, 250],
+            data: { 
+              screen: 'horses',
+              type: 'daily_health_check',
+              timestamp: Date.now()
+            },
+          },
+          trigger: {
+            hour: 8,
+            minute: 3,
+            repeats: true,
+            channelId: 'daily-health-check',
+          },
+        })
+
+        console.log(`✅ Daily health check scheduled for ${aliveHorsesCount} alive horses at 8:03 AM, ID: ${notificationId}`)
+        notificationScheduledRef.current = true
+        lastScheduledCountRef.current = aliveHorsesCount
+      } else {
+        console.log("ℹ️ No alive horses, skipping daily health check notification")
+        notificationScheduledRef.current = false
+        lastScheduledCountRef.current = 0
+      }
+    } catch (error) {
+      console.error("❌ Error scheduling notification:", error)
+      notificationScheduledRef.current = false
+    } finally {
+      isSchedulingRef.current = false
+    }
+  }, [])
 
   const loadUserId = async () => {
     try {
@@ -186,13 +345,25 @@ const HorseScreen = () => {
         console.log("✅ Raw response data:", data)
         console.log("📊 Number of horses received:", Array.isArray(data) ? data.length : "Not array")
 
-        setHorses(Array.isArray(data) ? data : [])
+        const horsesArray = Array.isArray(data) ? data : []
+        setHorses(horsesArray)
+
+        // Count alive horses (excluding deceased)
+        const aliveHorsesCount = horsesArray.filter((horse: Horse) => 
+          horse.horse_status !== 'Deceased'
+        ).length
+
+        console.log(`🐎 Total horses: ${horsesArray.length}, Alive: ${aliveHorsesCount}`)
+
+        // Schedule daily health check notification with only alive horses count
+        // This is the ONLY place we should call scheduleDailyHealthCheck from
+        scheduleDailyHealthCheck(aliveHorsesCount)
       } catch (error: any) {
         console.error("❌ Error loading horses:", error)
         Alert.alert("Error", error.message || "Unable to load horses")
       }
     },
-    [userId],
+    [userId, scheduleDailyHealthCheck],
   )
 
   // Filter horses based on active tab
@@ -247,13 +418,23 @@ const HorseScreen = () => {
               if (response.ok) {
                 console.log("✅ Horse marked as deceased successfully")
                 // Update local state to reflect the status change
-                setHorses((prev) => 
-                  prev.map((h) => 
-                    h.horse_id === horseId 
-                      ? { ...h, horse_status: "Deceased" }
-                      : h
-                  )
+                const updatedHorses = horses.map((h) => 
+                  h.horse_id === horseId 
+                    ? { ...h, horse_status: "Deceased" }
+                    : h
                 )
+                setHorses(updatedHorses)
+                
+                // Recalculate alive horses count
+                const newAliveCount = updatedHorses.filter(h => h.horse_status !== 'Deceased').length
+                
+                // Reset notification tracking since count changed
+                notificationScheduledRef.current = false
+                lastScheduledCountRef.current = 0
+                
+                // Schedule new notification with updated count
+                scheduleDailyHealthCheck(newAliveCount)
+                
                 Alert.alert("Success", `${horseName} has been marked as deceased`)
               } else {
                 console.log("❌ Mark as deceased failed:", data)
@@ -283,6 +464,12 @@ const HorseScreen = () => {
         }
       }
       initializeScreen()
+      
+      // Cleanup function to reset tracking when screen loses focus
+      return () => {
+        // We don't reset here to maintain scheduled notification state
+        // Only reset when horse status actually changes
+      }
     }, [userId, fetchHorses, fetchUserProfile]),
   )
 
@@ -438,6 +625,12 @@ const HorseScreen = () => {
           {/* Page Title */}
           <View style={styles.titleSection}>
             <Text style={styles.pageTitle}>My Horses</Text>
+            <Text style={styles.pageSubtitle}>
+              {activeHorseTab === 'alive' 
+                ? `${aliveHorsesCount} active ${aliveHorsesCount === 1 ? 'horse' : 'horses'}`
+                : `${deceasedHorsesCount} deceased ${deceasedHorsesCount === 1 ? 'horse' : 'horses'}`
+              }
+            </Text>
           </View>
 
           {/* Horse Status Tabs */}
@@ -652,6 +845,39 @@ const HorseScreen = () => {
   )
 }
 
+// Register for push notifications
+async function registerForPushNotificationsAsync() {
+  let token
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('daily-health-check', {
+      name: 'Daily Health Check',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#CD853F',
+    })
+  }
+
+  if (Device.isDevice) {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync()
+    let finalStatus = existingStatus
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync()
+      finalStatus = status
+    }
+    if (finalStatus !== 'granted') {
+      console.log('Failed to get push token for push notification!')
+      return
+    }
+    token = (await Notifications.getExpoPushTokenAsync()).data
+    console.log('Expo push token:', token)
+  } else {
+    console.log('Must use physical device for Push Notifications')
+  }
+
+  return token
+}
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -696,6 +922,16 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.2)",
     justifyContent: "center",
     alignItems: "center",
+  },
+  testNotificationButton: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: scale(10),
+    position: 'relative',
   },
 
   // Content Styles

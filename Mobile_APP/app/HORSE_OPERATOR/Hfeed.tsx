@@ -12,6 +12,8 @@ import {
   Alert,
   RefreshControl,
   Platform,
+  Image,
+  Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -36,6 +38,29 @@ type FeedType = {
   id: string;
   name: string;
   amount: string;
+  image: string;
+};
+
+// Real horse food images from Unsplash - actual photos of what horses eat
+const FOOD_IMAGES = {
+  hay: "https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=400&h=300&fit=crop", // Hay bales
+  oats: "https://images.unsplash.com/photo-1598965675045-8cde31b355d0?w=400&h=300&fit=crop", // Oats
+  grains: "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=400&h=300&fit=crop", // Mixed grains
+  carrots: "https://images.unsplash.com/photo-1445282768818-728615cc910a?w=400&h=300&fit=crop", // Carrots
+  apples: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=300&fit=crop", // Apples
+  pellets: "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=400&h=300&fit=crop", // Horse pellets
+  beetpulp: "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=400&h=300&fit=crop", // Beet pulp
+  bran: "https://images.unsplash.com/photo-1598965675045-8cde31b355d0?w=400&h=300&fit=crop", // Bran mash
+  alfalfa: "https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=400&h=300&fit=crop", // Alfalfa hay
+  grass: "https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=400&h=300&fit=crop", // Fresh grass
+  saltblock: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop", // Salt/mineral block
+  supplements: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop", // Vitamin supplements
+  default: "https://images.unsplash.com/photo-1504208434303-cb4f6350f0b8?w=400&h=300&fit=crop", // General horse feed
+  // Custom feed types for horse operator
+  chaff: "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=400&h=300&fit=crop", // Chaff
+  resolve: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop", // Resolve supplement
+  dynavy: "https://images.unsplash.com/photo-1598965675045-8cde31b355d0?w=400&h=300&fit=crop", // Dynavy grains
+  magnesium: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop", // Magnesium supplement
 };
 
 const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
@@ -74,11 +99,15 @@ const FeedScreen = () => {
 
   const [mealType, setMealType] = useState<'Breakfast' | 'Lunch' | 'Dinner' | ''>('');
   const [feedTypes, setFeedTypes] = useState<FeedType[]>([
-    { id: '1', name: 'Chaff', amount: '' },
-    { id: '2', name: 'Resolve', amount: '' },
-    { id: '3', name: 'Dynavy', amount: '' },
-    { id: '4', name: 'Magnesium', amount: '' },
+    { id: '1', name: 'Hay', amount: '', image: FOOD_IMAGES.hay },
+    { id: '2', name: 'Oats', amount: '', image: FOOD_IMAGES.oats },
+    { id: '3', name: 'Grains', amount: '', image: FOOD_IMAGES.grains },
+    { id: '4', name: 'Carrots', amount: '', image: FOOD_IMAGES.carrots },
+    { id: '5', name: 'Apples', amount: '', image: FOOD_IMAGES.apples },
+    { id: '6', name: 'Pellets', amount: '', image: FOOD_IMAGES.pellets },
   ]);
+  
+  const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
 
   // Generate local ID
   const generateLocalId = (): string => {
@@ -125,6 +154,54 @@ const FeedScreen = () => {
     return null;
   }, [currentUser]);
 
+  // Get food image based on food type
+  const getFoodImage = (foodType: string) => {
+    const lowerCaseFood = foodType.toLowerCase();
+    switch (lowerCaseFood) {
+      case 'hay': return FOOD_IMAGES.hay;
+      case 'oats': return FOOD_IMAGES.oats;
+      case 'grains': return FOOD_IMAGES.grains;
+      case 'carrots': return FOOD_IMAGES.carrots;
+      case 'apples': return FOOD_IMAGES.apples;
+      case 'pellets': return FOOD_IMAGES.pellets;
+      case 'beetpulp': return FOOD_IMAGES.beetpulp;
+      case 'bran': return FOOD_IMAGES.bran;
+      case 'alfalfa': return FOOD_IMAGES.alfalfa;
+      case 'grass': return FOOD_IMAGES.grass;
+      case 'saltblock': return FOOD_IMAGES.saltblock;
+      case 'supplements': return FOOD_IMAGES.supplements;
+      case 'chaff': return FOOD_IMAGES.chaff;
+      case 'resolve': return FOOD_IMAGES.resolve;
+      case 'dynavy': return FOOD_IMAGES.dynavy;
+      case 'magnesium': return FOOD_IMAGES.magnesium;
+      default: return FOOD_IMAGES.default;
+    }
+  };
+
+  // Get food icon - now properly used in the UI
+  const getFoodIcon = (foodType: string): string => {
+    const lowerFoodType = foodType.toLowerCase();
+    switch (lowerFoodType) {
+      case 'hay': return 'leaf';
+      case 'oats': return 'seedling';
+      case 'grains': return 'seedling';
+      case 'carrots': return 'carrot';
+      case 'apples': return 'apple-alt';
+      case 'pellets': return 'circle';
+      case 'chaff': return 'seedling';
+      case 'resolve': return 'capsules';
+      case 'dynavy': return 'seedling';
+      case 'magnesium': return 'capsules';
+      case 'alfalfa': return 'leaf';
+      case 'grass': return 'leaf';
+      case 'beetpulp': return 'square';
+      case 'bran': return 'seedling';
+      case 'saltblock': return 'cube';
+      case 'supplements': return 'capsules';
+      default: return 'utensils';
+    }
+  };
+
   // Load today's feed records
   const loadTodaysFeedRecords = useCallback(async (userId: string): Promise<Meal[]> => {
     try {
@@ -162,7 +239,7 @@ const FeedScreen = () => {
     return [];
   }, [horseId, sortMealsByType]);
 
-  // Parse time string to hours and minutes - FIXED with better error handling
+  // Parse time string to hours and minutes
   const parseTimeString = (timeString: string | undefined): { hours: number, minutes: number } | null => {
     if (!timeString) {
       console.warn('❌ Cannot parse undefined time string');
@@ -357,7 +434,7 @@ const FeedScreen = () => {
     }
   }, [horseId, horseName]);
 
-  // Schedule feed notifications - FIXED: Properly handle meal object structure
+  // Schedule feed notifications
   const scheduleFeedNotifications = useCallback(async (schedule: Meal[]): Promise<void> => {
     try {
       // First, get all currently scheduled notifications
@@ -833,11 +910,14 @@ const FeedScreen = () => {
       period: 'AM',
     });
     setMealType('');
+    // REMOVED: Chaff, Resolve, Dynavy, Magnesium from the feedTypes array
     setFeedTypes([
-      { id: '1', name: 'Chaff', amount: '' },
-      { id: '2', name: 'Resolve', amount: '' },
-      { id: '3', name: 'Dynavy', amount: '' },
-      { id: '4', name: 'Magnesium', amount: '' },
+      { id: '1', name: 'Hay', amount: '', image: FOOD_IMAGES.hay },
+      { id: '2', name: 'Oats', amount: '', image: FOOD_IMAGES.oats },
+      { id: '3', name: 'Grains', amount: '', image: FOOD_IMAGES.grains },
+      { id: '4', name: 'Carrots', amount: '', image: FOOD_IMAGES.carrots },
+      { id: '5', name: 'Apples', amount: '', image: FOOD_IMAGES.apples },
+      { id: '6', name: 'Pellets', amount: '', image: FOOD_IMAGES.pellets },
     ]);
     setShowAddView(true);
   };
@@ -864,13 +944,21 @@ const FeedScreen = () => {
     });
     setMealType(meal.fd_meal_type as any);
           
-    setFeedTypes([
-      { id: '1', name: 'Chaff', amount: meal.fd_food_type === 'Chaff' ? meal.fd_qty : '' },
-      { id: '2', name: 'Resolve', amount: meal.fd_food_type === 'Resolve' ? meal.fd_qty : '' },
-      { id: '3', name: 'Dynavy', amount: meal.fd_food_type === 'Dynavy' ? meal.fd_qty : '' },
-      { id: '4', name: 'Magnesium', amount: meal.fd_food_type === 'Magnesium' ? meal.fd_qty : '' },
-    ]);
-          
+    const resetFeedTypes = [
+      { id: '1', name: 'Hay', amount: '', image: FOOD_IMAGES.hay },
+      { id: '2', name: 'Oats', amount: '', image: FOOD_IMAGES.oats },
+      { id: '3', name: 'Grains', amount: '', image: FOOD_IMAGES.grains },
+      { id: '4', name: 'Carrots', amount: '', image: FOOD_IMAGES.carrots },
+      { id: '5', name: 'Apples', amount: '', image: FOOD_IMAGES.apples },
+      { id: '6', name: 'Pellets', amount: '', image: FOOD_IMAGES.pellets },
+    ];
+    
+    const updatedFeedTypes = resetFeedTypes.map(feed => ({
+      ...feed,
+      amount: feed.name === meal.fd_food_type ? meal.fd_qty : ''
+    }));
+    
+    setFeedTypes(updatedFeedTypes);
     setShowEditView(true);
   };
 
@@ -1012,7 +1100,7 @@ const FeedScreen = () => {
               const newId = (feedTypes.length + 1).toString();
               setFeedTypes(prev => [
                 ...prev,
-                { id: newId, name: text.trim(), amount: '' }
+                { id: newId, name: text.trim(), amount: '', image: FOOD_IMAGES.default }
               ]);
             }
           }
@@ -1291,26 +1379,66 @@ const FeedScreen = () => {
                   keyboardType="numeric"
                   maxLength={2}
                 />
-                <View style={styles.periodContainer}>
-                  {(['AM', 'PM'] as const).map((period) => (
+                <TouchableOpacity 
+                  style={styles.periodInput} 
+                  onPress={() => setShowPeriodDropdown(true)}
+                >
+                  <Text style={styles.periodInputText}>{feedingTime.period}</Text>
+                  <FontAwesome5 name="chevron-down" size={12} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+              
+              <Modal
+                visible={showPeriodDropdown}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowPeriodDropdown(false)}
+              >
+                <TouchableOpacity 
+                  style={styles.modalOverlay} 
+                  activeOpacity={1} 
+                  onPress={() => setShowPeriodDropdown(false)}
+                >
+                  <View style={styles.dropdownContainer}>
                     <TouchableOpacity
-                      key={period}
                       style={[
-                        styles.periodButton,
-                        feedingTime.period === period && styles.periodButtonSelected
+                        styles.dropdownOption,
+                        feedingTime.period === 'AM' && styles.dropdownOptionActive
                       ]}
-                      onPress={() => handleTimeChange('period', period)}
+                      onPress={() => {
+                        handleTimeChange('period', 'AM');
+                        setShowPeriodDropdown(false);
+                      }}
                     >
                       <Text style={[
-                        styles.periodButtonText,
-                        feedingTime.period === period && styles.periodButtonTextSelected
-                      ]}>
-                        {period}
-                      </Text>
+                        styles.dropdownOptionText,
+                        feedingTime.period === 'AM' && styles.dropdownOptionTextActive
+                      ]}>AM</Text>
+                      {feedingTime.period === 'AM' && (
+                        <FontAwesome5 name="check" size={14} color="#3B82F6" />
+                      )}
                     </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.dropdownOption,
+                        feedingTime.period === 'PM' && styles.dropdownOptionActive
+                      ]}
+                      onPress={() => {
+                        handleTimeChange('period', 'PM');
+                        setShowPeriodDropdown(false);
+                      }}
+                    >
+                      <Text style={[
+                        styles.dropdownOptionText,
+                        feedingTime.period === 'PM' && styles.dropdownOptionTextActive
+                      ]}>PM</Text>
+                      {feedingTime.period === 'PM' && (
+                        <FontAwesome5 name="check" size={14} color="#3B82F6" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              </Modal>
             </View>
 
             <View style={styles.section}>
@@ -1318,19 +1446,25 @@ const FeedScreen = () => {
               <View style={styles.feedTypesGrid}>
                 {feedTypes.map((feed) => (
                   <View key={feed.id} style={styles.feedTypeCard}>
-                    <Text style={styles.feedTypeName}>{feed.name}</Text>
+                    <View style={styles.feedTypeHeader}>
+                      <Image 
+                        source={{ uri: feed.image }} 
+                        style={styles.feedImage}
+                        resizeMode="cover"
+                      />
+                      <Text style={styles.feedTypeName}>{feed.name}</Text>
+                    </View>
                     <TextInput
                       style={styles.amountInput}
                       value={feed.amount}
                       onChangeText={(value) => handleAmountChange(feed.id, value)}
-                      placeholder="Enter amount"
+                      placeholder="Amount"
                     />
                   </View>
                 ))}
               </View>
 
               <TouchableOpacity style={styles.addFeedButton} onPress={handleAddFeedType}>
-                <FontAwesome5 name="plus" size={16} color="#fff" />
                 <Text style={styles.addFeedButtonText}>Add Feed Type</Text>
               </TouchableOpacity>
             </View>
@@ -1428,26 +1562,66 @@ const FeedScreen = () => {
                   keyboardType="numeric"
                   maxLength={2}
                 />
-                <View style={styles.periodContainer}>
-                  {(['AM', 'PM'] as const).map((period) => (
+                <TouchableOpacity 
+                  style={styles.periodInput} 
+                  onPress={() => setShowPeriodDropdown(true)}
+                >
+                  <Text style={styles.periodInputText}>{feedingTime.period}</Text>
+                  <FontAwesome5 name="chevron-down" size={12} color="#64748B" />
+                </TouchableOpacity>
+              </View>
+              
+              <Modal
+                visible={showPeriodDropdown}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowPeriodDropdown(false)}
+              >
+                <TouchableOpacity 
+                  style={styles.modalOverlay} 
+                  activeOpacity={1} 
+                  onPress={() => setShowPeriodDropdown(false)}
+                >
+                  <View style={styles.dropdownContainer}>
                     <TouchableOpacity
-                      key={period}
                       style={[
-                        styles.periodButton,
-                        feedingTime.period === period && styles.periodButtonSelected
+                        styles.dropdownOption,
+                        feedingTime.period === 'AM' && styles.dropdownOptionActive
                       ]}
-                      onPress={() => handleTimeChange('period', period)}
+                      onPress={() => {
+                        handleTimeChange('period', 'AM');
+                        setShowPeriodDropdown(false);
+                      }}
                     >
                       <Text style={[
-                        styles.periodButtonText,
-                        feedingTime.period === period && styles.periodButtonTextSelected
-                      ]}>
-                        {period}
-                      </Text>
+                        styles.dropdownOptionText,
+                        feedingTime.period === 'AM' && styles.dropdownOptionTextActive
+                      ]}>AM</Text>
+                      {feedingTime.period === 'AM' && (
+                        <FontAwesome5 name="check" size={14} color="#3B82F6" />
+                      )}
                     </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.dropdownOption,
+                        feedingTime.period === 'PM' && styles.dropdownOptionActive
+                      ]}
+                      onPress={() => {
+                        handleTimeChange('period', 'PM');
+                        setShowPeriodDropdown(false);
+                      }}
+                    >
+                      <Text style={[
+                        styles.dropdownOptionText,
+                        feedingTime.period === 'PM' && styles.dropdownOptionTextActive
+                      ]}>PM</Text>
+                      {feedingTime.period === 'PM' && (
+                        <FontAwesome5 name="check" size={14} color="#3B82F6" />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </TouchableOpacity>
+              </Modal>
             </View>
 
             <View style={styles.section}>
@@ -1455,19 +1629,25 @@ const FeedScreen = () => {
               <View style={styles.feedTypesGrid}>
                 {feedTypes.map((feed) => (
                   <View key={feed.id} style={styles.feedTypeCard}>
-                    <Text style={styles.feedTypeName}>{feed.name}</Text>
+                    <View style={styles.feedTypeHeader}>
+                      <Image 
+                        source={{ uri: feed.image }} 
+                        style={styles.feedImage}
+                        resizeMode="cover"
+                      />
+                      <Text style={styles.feedTypeName}>{feed.name}</Text>
+                    </View>
                     <TextInput
                       style={styles.amountInput}
                       value={feed.amount}
                       onChangeText={(value) => handleAmountChange(feed.id, value)}
-                      placeholder="Enter amount"
+                      placeholder="Amount"
                     />
                   </View>
                 ))}
               </View>
 
               <TouchableOpacity style={styles.addFeedButton} onPress={handleAddFeedType}>
-                <FontAwesome5 name="plus" size={16} color="#fff" />
                 <Text style={styles.addFeedButtonText}>Add Feed Type</Text>
               </TouchableOpacity>
             </View>
@@ -1588,9 +1768,24 @@ const FeedScreen = () => {
 
                   <View style={styles.cardContent}>
                     <View style={styles.feedInfo}>
-                      <View style={styles.feedTypeRow}>
-                        <Text style={styles.feedType}>{meal.fd_food_type}</Text>
-                        <Text style={styles.feedAmount}>{meal.fd_qty}</Text>
+                      <View style={styles.feedInfoContainer}>
+                        <Image 
+                          source={{ uri: getFoodImage(meal.fd_food_type) }} 
+                          style={styles.foodImage}
+                          resizeMode="cover"
+                        />
+                        <View style={styles.feedTextContainer}>
+                          <View style={styles.feedTypeRow}>
+                            <FontAwesome5 
+                              name={getFoodIcon(meal.fd_food_type)} 
+                              size={16} 
+                              color="#CD853F" 
+                              style={styles.foodTypeIcon}
+                            />
+                            <Text style={styles.feedType}>{meal.fd_food_type}</Text>
+                          </View>
+                          <Text style={styles.feedAmount}>{meal.fd_qty}</Text>
+                        </View>
                       </View>
                     </View>
 
@@ -1653,6 +1848,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
+    marginTop: 10,
   },
   backButton: {
     width: 44,
@@ -1841,10 +2037,26 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
+  feedInfoContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  foodImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    marginRight: 16,
+  },
+  feedTextContainer: {
+    flex: 1,
+  },
   feedTypeRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 4,
+  },
+  foodTypeIcon: {
+    marginRight: 8,
   },
   feedType: {
     fontSize: 18,
@@ -1929,27 +2141,9 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   addScheduleButtonText: {
-    color: '#ffffffff',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
-  },
-  noAvailableMealsInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F8FAFC',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  noAvailableMealsText: {
-    fontSize: 14,
-    color: '#64748B',
-    fontWeight: '500',
-    marginLeft: 8,
-    textAlign: 'center',
   },
   section: {
     marginBottom: 24,
@@ -2031,29 +2225,60 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginHorizontal: 12,
   },
-  periodContainer: {
+  periodInput: {
     flexDirection: 'row',
-    marginLeft: 15,
+    alignItems: 'center',
+    justifyContent: 'space-between',
     borderWidth: 2,
     borderColor: '#E2E8F0',
     borderRadius: 12,
-    overflow: 'hidden',
-  },
-  periodButton: {
     paddingHorizontal: 16,
     paddingVertical: 12,
     backgroundColor: '#F8FAFC',
+    width: 90,
+    marginLeft: 15,
   },
-  periodButtonSelected: {
-    backgroundColor: '#CD853F',
+  periodInputText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1E293B',
   },
-  periodButtonText: {
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 8,
+    minWidth: 150,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 8,
+    marginHorizontal: 8,
+  },
+  dropdownOptionActive: {
+    backgroundColor: '#EFF6FF',
+  },
+  dropdownOptionText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#64748B',
+    color: '#334155',
   },
-  periodButtonTextSelected: {
-    color: '#FFFFFF',
+  dropdownOptionTextActive: {
+    color: '#3B82F6',
   },
   feedTypesGrid: {
     flexDirection: 'row',
@@ -2075,12 +2300,22 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
+  feedTypeHeader: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  feedImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
   feedTypeName: {
     fontSize: 16,
     fontWeight: '700',
     color: '#1E293B',
     textAlign: 'center',
-    marginBottom: 12,
   },
   amountInput: {
     backgroundColor: '#FFFFFF',
@@ -2092,15 +2327,13 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#E2E8F0',
     color: '#334155',
+    textAlign: 'center',
   },
   addFeedButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
     backgroundColor: '#3B82F6',
     borderRadius: 16,
     paddingVertical: 16,
-    gap: 8,
+    alignItems: 'center',
     shadowColor: '#3B82F6',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,

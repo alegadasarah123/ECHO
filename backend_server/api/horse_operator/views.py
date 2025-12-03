@@ -869,7 +869,7 @@ def mark_meal_fed(request):
             "log_time": fd_time,
             "log_food": fd_food_type,
             "log_amount": fd_qty,
-            "log_status": "Fed",
+            "log_status": "Completed",
             "log_action": "Completed",
             "user_id": user_id,
             "horse_id": horse_id,
@@ -1395,7 +1395,7 @@ def get_all_kut_pres(request):
 def get_veterinarians(request):
     """
     Fetch only APPROVED REGULAR veterinarians (excluding CTU veterinarians)
-    UPDATED: Now correctly fetches vet_exp_yr from vet_profile table
+    Now with enhanced filtering to ensure proper data retrieval
     """
     try:
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -1410,7 +1410,7 @@ def get_veterinarians(request):
             
             # Query vet_profile for approved vets only - INCLUDING vet_exp_yr
             data = supabase.table("vet_profile").select(
-                "vet_id, vet_fname, vet_lname, vet_email, vet_phone_num, vet_specialization, vet_profile_photo, vet_exp_yr"  # ✅ Added vet_exp_yr
+                "vet_id, vet_fname, vet_lname, vet_email, vet_phone_num, vet_specialization, vet_profile_photo, vet_exp_yr"
             ).in_("vet_id", approved_vet_ids).execute()
             
             logger.info(f"Fetched {len(data.data) if data.data else 0} approved veterinarians from vet_profile")
@@ -1428,10 +1428,10 @@ def get_veterinarians(request):
                         avatar_url = vet_photo
                     elif vet_photo.startswith("vet_images/") or vet_photo.startswith("profile_photos/"):
                         avatar_url = f"{SUPABASE_URL}/storage/v1/object/public/{vet_photo}"
-                    elif vet_photo:
+                    else:
                         avatar_url = f"{SUPABASE_URL}/storage/v1/object/public/vet_images/{vet_photo}"
                 
-                # ✅ CORRECTLY FETCHING YEARS OF EXPERIENCE
+                # Get years of experience
                 vet_exp_yr = vet.get("vet_exp_yr", 0)
                 
                 vet_data = {
@@ -1442,19 +1442,16 @@ def get_veterinarians(request):
                     "phone": vet.get("vet_phone_num"),
                     "specialization": vet.get("vet_specialization"),
                     "avatar": avatar_url,
-                    "vet_type": "regular",  # Tag for frontend
-                    "vet_exp_yr": vet_exp_yr  # ✅ Now correctly included
+                    "vet_type": "regular",
+                    "vet_exp_yr": vet_exp_yr
                 }
                 
                 all_vets.append(vet_data)
         
-        # ========== EXCLUDED CTU VETERINARIANS ==========
-        # We're no longer including CTU vets in this endpoint
-        
         # Sort all vets alphabetically by last name, then first name
         all_vets.sort(key=lambda x: (x.get("last_name", ""), x.get("first_name", "")))
         
-        logger.info(f"Returning {len(all_vets)} regular veterinarians (CTU vets excluded)")
+        logger.info(f"Returning {len(all_vets)} regular veterinarians")
         return Response(all_vets, status=status.HTTP_200_OK)
         
     except Exception as e:
@@ -1489,10 +1486,39 @@ def get_vet_profile(request):
 
 # ------------------------------------------------ VET SCHEDULE API ------------------------------------------------
 
+def format_time_from_db(time_value):
+    """
+    Helper function to format time from database to consistent string format
+    """
+    if not time_value:
+        return ""
+    
+    if isinstance(time_value, str):
+        # Already a string, just clean it up
+        time_str = time_value.strip()
+        # Remove microseconds if present
+        if '.' in time_str:
+            time_str = time_str.split('.')[0]
+        return time_str
+    
+    elif hasattr(time_value, 'strftime'):
+        # It's a datetime or time object
+        if hasattr(time_value, 'hour'):
+            # time object
+            return time_value.strftime('%H:%M:%S')
+        else:
+            # datetime object
+            return time_value.strftime('%H:%M:%S')
+    
+    # Fallback to string conversion
+    return str(time_value)
+
+
 @api_view(['GET'])
 def get_vet_base_schedule(request):
     """
-    Get veterinarian's base schedule (days and times they're available)
+    Get veterinarian's base schedule (weekly recurring availability)
+    Now properly formatted for display
     """
     vet_id = request.GET.get("vet_id")
     
@@ -1500,12 +1526,14 @@ def get_vet_base_schedule(request):
         return Response({"error": "vet_id is required"}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
-        logger.info(f"Fetching base schedule for vet: {vet_id}")
+        logger.info(f"📅 Fetching base schedule for vet: {vet_id}")
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
         # Query vet_schedule table for the veterinarian's base schedule
         data = supabase.table("vet_schedule").select(
             "sched_id, vet_id, day_of_week, start_time, end_time, slot_duration, is_available, created_at"
-        ).eq("vet_id", vet_id).eq("is_available", True).order("day_of_week", desc=False).execute()
+        ).eq("vet_id", vet_id).order("day_of_week", desc=False).execute()
         
         if not data.data:
             logger.info(f"No base schedule found for vet {vet_id}")
@@ -1515,30 +1543,49 @@ def get_vet_base_schedule(request):
                 "message": "No regular schedule set"
             }, status=status.HTTP_200_OK)
         
-        # Format the schedule data
+        # Format the schedule data for display
         formatted_schedules = []
         for schedule in data.data:
+            start_time = schedule.get("start_time")
+            end_time = schedule.get("end_time")
+            
+            # Format times to 12-hour format
+            start_time_formatted = format_time_to_12_hour(start_time)
+            end_time_formatted = format_time_to_12_hour(end_time) if end_time else ""
+            
+            # Format time range for display
+            time_range = f"{start_time_formatted} - {end_time_formatted}" if end_time else start_time_formatted
+            
+            # Capitalize day name
+            day_of_week = schedule.get("day_of_week", "").capitalize()
+            
             formatted_schedules.append({
                 "sched_id": str(schedule.get("sched_id")),
                 "vet_id": str(schedule.get("vet_id")),
-                "day_of_week": schedule.get("day_of_week", ""),
-                "start_time": str(schedule.get("start_time")),
-                "end_time": str(schedule.get("end_time")),
+                "day_of_week": day_of_week,
+                "formatted_day": day_of_week,  # For display
+                "start_time": start_time,
+                "end_time": end_time,
+                "start_time_formatted": start_time_formatted,
+                "end_time_formatted": end_time_formatted,
+                "time_range": time_range,  # Formatted time range
+                "time_display": f"{day_of_week} {time_range}",  # Full display format
                 "slot_duration": schedule.get("slot_duration", 30),
                 "is_available": schedule.get("is_available", True),
                 "created_at": schedule.get("created_at")
             })
         
-        logger.info(f"Returning {len(formatted_schedules)} base schedule items for vet {vet_id}")
+        logger.info(f"✅ Returning {len(formatted_schedules)} base schedule items for vet {vet_id}")
         
         return Response({
             "vet_id": vet_id,
             "schedules": formatted_schedules,
-            "total_schedules": len(formatted_schedules)
+            "total_schedules": len(formatted_schedules),
+            "has_schedule": len(formatted_schedules) > 0
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
-        logger.error(f"Error fetching vet base schedule: {e}", exc_info=True)
+        logger.error(f"❌ Error fetching vet base schedule: {e}", exc_info=True)
         return Response({
             "error": "Failed to fetch veterinarian schedule",
             "detail": str(e)
@@ -1687,9 +1734,8 @@ def get_available_months_with_rolling_window(available_dates, current_date=None)
 @api_view(['GET'])
 def get_vet_schedule(request):
     """
-    Get veterinarian schedule by vet_id - UPDATED WITH TWO-MONTH ROLLING WINDOW
-    Returns available time slots with properly formatted times and filters out past schedules
-    Now only returns schedules for current month and next month
+    Get veterinarian schedule by vet_id - CORRECTED VERSION
+    Now properly fetches from appointment_slot table
     """
     vet_id = request.GET.get("vet_id")
     if not vet_id:
@@ -1708,10 +1754,11 @@ def get_vet_schedule(request):
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
-        # Step 1: Get the vet's schedule IDs from vet_schedule table
+        # DIRECT QUERY: Get available appointment slots for this vet
+        # First, get all schedule IDs for this vet from vet_schedule
         vet_schedules = service_client.table("vet_schedule").select(
-            "sched_id, day_of_week, start_time, end_time"
-        ).eq("vet_id", vet_id).eq("is_available", True).execute()
+            "sched_id"
+        ).eq("vet_id", vet_id).execute()
         
         if not vet_schedules.data:
             logger.warning(f"No vet_schedule found for vet_id: {vet_id}")
@@ -1720,7 +1767,7 @@ def get_vet_schedule(request):
         schedule_ids = [schedule["sched_id"] for schedule in vet_schedules.data]
         logger.info(f"Found {len(schedule_ids)} schedule IDs for vet {vet_id}")
         
-        # Step 2: Query the appointment_slot table for available slots linked to this vet's schedules
+        # Get available appointment slots
         data = service_client.table("appointment_slot").select(
             "slot_id, sched_id, slot_date, start_time, end_time, is_booked, created_at"
         ).in_("sched_id", schedule_ids).eq("is_booked", False).gte("slot_date", today).order(
@@ -1733,30 +1780,11 @@ def get_vet_schedule(request):
             logger.warning(f"No available appointment slots found for vet {vet_id}")
             return Response([], status=status.HTTP_200_OK)
         
-        # NEW: Filter for two-month rolling window
-        current_date = now.date()
-        filtered_data = []
-        for schedule_item in data.data:
-            slot_date = schedule_item.get("slot_date")
-            if slot_date:
-                try:
-                    slot_date_obj = datetime.strptime(str(slot_date), '%Y-%m-%d').date()
-                    # Calculate month difference
-                    month_diff = (slot_date_obj.year - current_date.year) * 12 + (slot_date_obj.month - current_date.month)
-                    # Include only current month (0) and next month (1)
-                    if month_diff >= 0 and month_diff <= 1:
-                        filtered_data.append(schedule_item)
-                except:
-                    # If date parsing fails, include it (fallback)
-                    filtered_data.append(schedule_item)
-        
-        logger.info(f"After two-month filtering: {len(filtered_data)} records")
-        
         # Transform and filter data
         formatted_schedule = []
         filtered_count = 0
         
-        for schedule_item in filtered_data:
+        for schedule_item in data.data:
             try:
                 slot_date = schedule_item.get("slot_date")
                 start_time = schedule_item.get("start_time")
@@ -4521,11 +4549,33 @@ def can_reschedule_appointment(appointment):
 
 # ----------------------------------------- HORSE HANDLER -----------------------------------------
 
+def format_image_url(image_path, folder='kutsero_images'):
+    """
+    Helper function to format image URLs consistently
+    """
+    if not image_path:
+        return None
+    
+    # If already a full URL, return as-is
+    if image_path.startswith('http://') or image_path.startswith('https://'):
+        return image_path
+    
+    # If it's a path like 'kutsero_images/filename.jpg'
+    if '/' in image_path:
+        # Remove any leading slash
+        clean_path = image_path.lstrip('/')
+        return f"{SUPABASE_URL}/storage/v1/object/public/{clean_path}"
+    
+    # If it's just a filename
+    return f"{SUPABASE_URL}/storage/v1/object/public/{folder}/{image_path}"
+
+
 @api_view(['GET'])
 def get_horse_assignments(request):
     """
     Get horse assignments for horses owned by a specific operator
     Optional: Filter by specific horse_id if provided
+    FIXED: Now properly returns kutsero image URLs
     """
     user_id = request.GET.get("user_id")
     horse_id = request.GET.get("horse_id")  # Optional parameter
@@ -4534,8 +4584,10 @@ def get_horse_assignments(request):
         return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
     
     try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
         # First, get the horse IDs owned by this operator
-        horses_query = supabase.table("horse_profile").select("horse_id").eq("op_id", user_id).execute()
+        horses_query = service_client.table("horse_profile").select("horse_id").eq("op_id", user_id).execute()
         
         if not horses_query.data:
             logger.info(f"No horses found for operator {user_id}")
@@ -4555,17 +4607,19 @@ def get_horse_assignments(request):
             logger.info(f"Filtering assignments for specific horse: {horse_id}")
         
         # Get assignments for these horses
-        assignments_data = supabase.table("horse_assignment").select("*").in_("horse_id", horse_ids).order("date_start", desc=True).execute()
+        assignments_data = service_client.table("horse_assignment").select("*").in_("horse_id", horse_ids).order("date_start", desc=True).execute()
         
         assignments = []
         for assignment in assignments_data.data:
             # Get kutsero info using the correct field names from kutsero_profile table
-            kutsero_data = supabase.table("kutsero_profile").select(
-                "kutsero_fname, kutsero_mname, kutsero_lname"
+            kutsero_data = service_client.table("kutsero_profile").select(
+                "kutsero_fname, kutsero_mname, kutsero_lname, kutsero_image"
             ).eq("kutsero_id", assignment["kutsero_id"]).execute()
             
             kutsero_name = ""
-            if kutsero_data.data:
+            kutsero_image = None
+            
+            if kutsero_data.data and len(kutsero_data.data) > 0:
                 kutsero = kutsero_data.data[0]
                 fname = kutsero.get('kutsero_fname', '')
                 mname = kutsero.get('kutsero_mname', '')
@@ -4576,9 +4630,19 @@ def get_horse_assignments(request):
                     kutsero_name = f"{fname} {mname} {lname}".strip()
                 else:
                     kutsero_name = f"{fname} {lname}".strip()
+                
+                # Get kutsero image and construct full URL if needed
+                kutsero_image = kutsero.get('kutsero_image')
+                if kutsero_image:
+                    if not (kutsero_image.startswith('http://') or kutsero_image.startswith('https://')):
+                        # Construct full URL for storage
+                        if kutsero_image.startswith('kutsero_images/'):
+                            kutsero_image = f"{SUPABASE_URL}/storage/v1/object/public/{kutsero_image}"
+                        else:
+                            kutsero_image = f"{SUPABASE_URL}/storage/v1/object/public/kutsero_images/{kutsero_image}"
             
             # Get horse info
-            horse_data = supabase.table("horse_profile").select("horse_name").eq("horse_id", assignment["horse_id"]).execute()
+            horse_data = service_client.table("horse_profile").select("horse_name").eq("horse_id", assignment["horse_id"]).execute()
             horse_name = "Unknown Horse"
             if horse_data.data:
                 horse_name = horse_data.data[0].get("horse_name", "Unknown Horse")
@@ -4594,18 +4658,15 @@ def get_horse_assignments(request):
                 "updated_at": assignment["updated_at"],
                 "kutsero_name": kutsero_name,
                 "horse_name": horse_name,
-                "kutsero_image": None  # No image field in kutsero_profile table
+                "kutsero_image": kutsero_image  # Now properly formatted URL
             })
         
         logger.info(f"Returning {len(assignments)} assignments for {'specific horse' if horse_id else 'all horses'}")
         return Response(assignments, status=status.HTTP_200_OK)
         
     except Exception as e:
-        logger.error(f"Error fetching horse assignments: {e}")
+        logger.error(f"Error fetching horse assignments: {e}", exc_info=True)
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-
-
 
 
 
@@ -7978,14 +8039,15 @@ def get_user_profile(request, user_id):
     This is the primary profile endpoint - use this instead of role-specific endpoints
     
     Supports all user types:
-    - Horse Operators (kutsero_profile)
+    - Horse Operators (horse_op_profile)
+    - Kutseros (kutsero_profile)
     - Veterinarians (vet_profile)
     - CTU Veterinarians (ctu_vet_profile)
     - DVMF Users (dvmf_user_profile)
     - Kutsero Presidents (kutsero_pres_profile)
     """
     try:
-        logger.info(f"Fetching profile for user_id: {user_id}")
+        logger.info(f"Fetching unified profile for user_id: {user_id}")
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
@@ -7993,33 +8055,96 @@ def get_user_profile(request, user_id):
         user_data = None
         user_type = None
         
-        # Check kutsero_profile
+        # Check horse_op_profile
         try:
-            kutsero = service_client.table("kutsero_profile").select("*").eq("kutsero_id", user_id).execute()
-            if kutsero.data and len(kutsero.data) > 0:
-                profile = kutsero.data[0]
-                logger.info(f"Found kutsero profile: {profile}")
+            horse_op = service_client.table("horse_op_profile").select("*").eq("op_id", user_id).execute()
+            if horse_op.data and len(horse_op.data) > 0:
+                profile = horse_op.data[0]
+                logger.info(f"Found horse operator profile: {profile}")
+                
+                # Build full address
+                address_parts = []
+                if profile.get("op_house_add"):
+                    address_parts.append(profile["op_house_add"])
+                if profile.get("op_brgy"):
+                    address_parts.append(f"Brgy. {profile['op_brgy']}")
+                if profile.get("op_municipality") or profile.get("op_city"):
+                    address_parts.append(profile.get("op_municipality") or profile.get("op_city"))
+                if profile.get("op_province"):
+                    address_parts.append(profile["op_province"])
+                if profile.get("op_zipcode"):
+                    address_parts.append(profile["op_zipcode"])
+                
+                full_address = ", ".join(address_parts) if address_parts else None
+                
                 user_data = {
-                    "id": profile.get("kutsero_id"),
-                    "email": profile.get("kutsero_email"),
-                    "role": "Kutsero",
-                    "status": profile.get("status", "active"),
+                    "id": profile.get("op_id"),
+                    "email": profile.get("op_email"),
+                    "role": "Horse Operator",
+                    "status": "active",
                     "profile": {
-                        "fname": profile.get("kutsero_fname"),
-                        "mname": profile.get("kutsero_mname"),
-                        "lname": profile.get("kutsero_lname"),
-                        "username": profile.get("kutsero_username"),
-                        "email": profile.get("kutsero_email"),
-                        "phone": profile.get("kutsero_phone_num"),
-                        "city": profile.get("kutsero_city"),
-                        "province": profile.get("kutsero_province"),
-                        "profile_image": profile.get("kutsero_image")
+                        "fname": profile.get("op_fname"),
+                        "mname": profile.get("op_mname"),
+                        "lname": profile.get("op_lname"),
+                        "username": profile.get("op_username"),
+                        "email": profile.get("op_email"),
+                        "phone": profile.get("op_phone_num"),
+                        "city": profile.get("op_city"),
+                        "province": profile.get("op_province"),
+                        "address": full_address,
+                        "profile_image": profile.get("op_image")
                     }
                 }
-                user_type = "kutsero"
-                logger.info(f"Kutsero profile - city: {profile.get('kutsero_city')}, province: {profile.get('kutsero_province')}, image: {profile.get('kutsero_image')}")
+                user_type = "horse_operator"
+                logger.info(f"Horse operator profile - city: {profile.get('op_city')}, province: {profile.get('op_province')}, address: {full_address}")
         except Exception as e:
-            logger.error(f"Error checking kutsero: {e}")
+            logger.error(f"Error checking horse operator: {e}")
+        
+        # Check kutsero_profile
+        if not user_data:
+            try:
+                kutsero = service_client.table("kutsero_profile").select("*").eq("kutsero_id", user_id).execute()
+                if kutsero.data and len(kutsero.data) > 0:
+                    profile = kutsero.data[0]
+                    logger.info(f"Found kutsero profile: {profile}")
+                    
+                    # Build full address
+                    address_parts = []
+                    if profile.get("kutsero_house_add"):
+                        address_parts.append(profile["kutsero_house_add"])
+                    if profile.get("kutsero_brgy"):
+                        address_parts.append(f"Brgy. {profile['kutsero_brgy']}")
+                    if profile.get("kutsero_municipality") or profile.get("kutsero_city"):
+                        address_parts.append(profile.get("kutsero_municipality") or profile.get("kutsero_city"))
+                    if profile.get("kutsero_province"):
+                        address_parts.append(profile["kutsero_province"])
+                    if profile.get("kutsero_zipcode"):
+                        address_parts.append(profile["kutsero_zipcode"])
+                    
+                    full_address = ", ".join(address_parts) if address_parts else None
+                    
+                    user_data = {
+                        "id": profile.get("kutsero_id"),
+                        "email": profile.get("kutsero_email"),
+                        "role": "Kutsero",
+                        "status": "active",
+                        "profile": {
+                            "fname": profile.get("kutsero_fname"),
+                            "mname": profile.get("kutsero_mname"),
+                            "lname": profile.get("kutsero_lname"),
+                            "username": profile.get("kutsero_username"),
+                            "email": profile.get("kutsero_email"),
+                            "phone": profile.get("kutsero_phone_num"),
+                            "city": profile.get("kutsero_city"),
+                            "province": profile.get("kutsero_province"),
+                            "address": full_address,
+                            "profile_image": profile.get("kutsero_image")
+                        }
+                    }
+                    user_type = "kutsero"
+                    logger.info(f"Kutsero profile - city: {profile.get('kutsero_city')}, province: {profile.get('kutsero_province')}, address: {full_address}")
+            except Exception as e:
+                logger.error(f"Error checking kutsero: {e}")
         
         # Check vet_profile
         if not user_data:
@@ -8028,11 +8153,65 @@ def get_user_profile(request, user_id):
                 if vet.data and len(vet.data) > 0:
                     profile = vet.data[0]
                     logger.info(f"Found vet profile: {profile}")
+                    
+                    # Build clinic address for veterinarians
+                    clinic_address_parts = []
+                    
+                    # Check if there's a specific clinic address
+                    has_clinic_address = False
+                    
+                    if profile.get("vet_clinic_name"):
+                        clinic_address_parts.append(profile["vet_clinic_name"])
+                        has_clinic_address = True
+                    
+                    if profile.get("vet_clinic_street"):
+                        clinic_address_parts.append(profile["vet_clinic_street"])
+                        has_clinic_address = True
+                    
+                    if profile.get("vet_clinic_brgy"):
+                        clinic_address_parts.append(f"Brgy. {profile['vet_clinic_brgy']}")
+                        has_clinic_address = True
+                    
+                    if profile.get("vet_clinic_city"):
+                        clinic_address_parts.append(profile["vet_clinic_city"])
+                        has_clinic_address = True
+                    
+                    if profile.get("vet_clinic_province"):
+                        clinic_address_parts.append(profile["vet_clinic_province"])
+                        has_clinic_address = True
+                    
+                    if profile.get("vet_clinic_zipcode"):
+                        clinic_address_parts.append(profile["vet_clinic_zipcode"])
+                        has_clinic_address = True
+                    
+                    # If no clinic address found, use personal address
+                    if not has_clinic_address:
+                        logger.info("No clinic address found, using personal address")
+                        if profile.get("vet_street"):
+                            clinic_address_parts.append(profile["vet_street"])
+                        if profile.get("vet_brgy"):
+                            clinic_address_parts.append(f"Brgy. {profile['vet_brgy']}")
+                        if profile.get("vet_city"):
+                            clinic_address_parts.append(profile["vet_city"])
+                        if profile.get("vet_province"):
+                            clinic_address_parts.append(profile["vet_province"])
+                        if profile.get("vet_zipcode"):
+                            clinic_address_parts.append(profile["vet_zipcode"])
+                    
+                    clinic_address = ", ".join(clinic_address_parts) if clinic_address_parts else None
+                    
+                    # Get individual clinic address components for frontend display
+                    clinic_street = profile.get("vet_clinic_street")
+                    clinic_barangay = profile.get("vet_clinic_brgy")
+                    clinic_city = profile.get("vet_clinic_city")
+                    clinic_province = profile.get("vet_clinic_province")
+                    clinic_zipcode = profile.get("vet_clinic_zipcode")
+                    
                     user_data = {
                         "id": profile.get("vet_id"),
                         "email": profile.get("vet_email"),
                         "role": "Veterinarian",
-                        "status": profile.get("status", "active"),
+                        "status": "active",
                         "profile": {
                             "fname": profile.get("vet_fname"),
                             "mname": profile.get("vet_mname"),
@@ -8040,44 +8219,22 @@ def get_user_profile(request, user_id):
                             "username": profile.get("vet_username"),
                             "email": profile.get("vet_email"),
                             "phone": profile.get("vet_phone_num"),
-                            "city": profile.get("vet_city"),
-                            "province": profile.get("vet_province"),
-                            "profile_image": profile.get("vet_profile_photo")
+                            "address": clinic_address, 
+                            "clinic_street": clinic_street,
+                            "clinic_barangay": clinic_barangay,
+                            "clinic_city": clinic_city,
+                            "clinic_province": clinic_province,
+                            "clinic_zipcode": clinic_zipcode,
+                            "profile_image": profile.get("vet_profile_photo"),
+                            "specialization": profile.get("vet_specialization"),
+                            "experience_years": profile.get("vet_exp_yr")
                         }
                     }
-                    user_type = "vet"
-                    logger.info(f"Vet profile - city: {profile.get('vet_city')}, province: {profile.get('vet_province')}, image: {profile.get('vet_profile_photo')}")
+                    user_type = "veterinarian"
+                    logger.info(f"Vet profile - clinic street: {clinic_street}, barangay: {clinic_barangay}, city: {clinic_city}, province: {clinic_province}, zipcode: {clinic_zipcode}")
+                    logger.info(f"Full clinic address: {clinic_address}")
             except Exception as e:
                 logger.error(f"Error checking vet: {e}")
-        
-        # Check horse_op_profile
-        if not user_data:
-            try:
-                op = service_client.table("horse_op_profile").select("*").eq("op_id", user_id).execute()
-                if op.data and len(op.data) > 0:
-                    profile = op.data[0]
-                    logger.info(f"Found horse operator profile: {profile}")
-                    user_data = {
-                        "id": profile.get("op_id"),
-                        "email": profile.get("op_email"),
-                        "role": "Horse Operator",
-                        "status": profile.get("status", "active"),
-                        "profile": {
-                            "fname": profile.get("op_fname"),
-                            "mname": profile.get("op_mname"),
-                            "lname": profile.get("op_lname"),
-                            "username": profile.get("op_username"),
-                            "email": profile.get("op_email"),
-                            "phone": profile.get("op_phone_num"),
-                            "city": profile.get("op_city"),
-                            "province": profile.get("op_province"),
-                            "profile_image": profile.get("op_image")
-                        }
-                    }
-                    user_type = "operator"
-                    logger.info(f"Horse operator profile - city: {profile.get('op_city')}, province: {profile.get('op_province')}, image: {profile.get('op_image')}")
-            except Exception as e:
-                logger.error(f"Error checking horse operator: {e}")
         
         # Check ctu_vet_profile
         if not user_data:
@@ -8090,21 +8247,35 @@ def get_user_profile(request, user_id):
                     # Get the role from the profile, default to "Ctu-Vetmed" if not specified
                     ctu_role = profile.get("ctu_role", "Ctu-Vetmed")
                     
+                    # Build address for CTU vets
+                    address_parts = []
+                    if profile.get("ctu_address"):
+                        address_parts.append(profile["ctu_address"])
+                    if profile.get("ctu_city"):
+                        address_parts.append(profile["ctu_city"])
+                    if profile.get("ctu_province"):
+                        address_parts.append(profile["ctu_province"])
+                    
+                    full_address = ", ".join(address_parts) if address_parts else None
+                    
                     user_data = {
                         "id": profile.get("ctu_id"),
                         "email": profile.get("ctu_email"),
-                        "role": ctu_role,  # Use the role from the database
-                        "status": profile.get("status", "active"),
+                        "role": ctu_role,
+                        "status": "active",
                         "profile": {
                             "fname": profile.get("ctu_fname"),
                             "lname": profile.get("ctu_lname"),
                             "email": profile.get("ctu_email"),
                             "phone": profile.get("ctu_phonenum"),
+                            "city": profile.get("ctu_city"),
+                            "province": profile.get("ctu_province"),
+                            "address": full_address,
                             "profile_image": None
                         }
                     }
                     user_type = "ctu_vet"
-                    logger.info(f"CTU vet profile - role: {ctu_role}, city: {profile.get('ctu_city')}, province: {profile.get('ctu_province')}, image: {profile.get('ctu_profile_photo')}")
+                    logger.info(f"CTU vet profile - role: {ctu_role}, address: {full_address}")
             except Exception as e:
                 logger.error(f"Error checking CTU vet: {e}")
         
@@ -8119,21 +8290,35 @@ def get_user_profile(request, user_id):
                     # Get the role from the profile, default to "Dvmf" if not specified
                     dvmf_role = profile.get("dvmf_role", "Dvmf")
                     
+                    # Build address for DVMF users
+                    address_parts = []
+                    if profile.get("dvmf_address"):
+                        address_parts.append(profile["dvmf_address"])
+                    if profile.get("dvmf_city"):
+                        address_parts.append(profile["dvmf_city"])
+                    if profile.get("dvmf_province"):
+                        address_parts.append(profile["dvmf_province"])
+                    
+                    full_address = ", ".join(address_parts) if address_parts else None
+                    
                     user_data = {
                         "id": profile.get("dvmf_id"),
                         "email": profile.get("dvmf_email"),
-                        "role": dvmf_role,  # Use the role from the database
-                        "status": profile.get("status", "active"),
+                        "role": dvmf_role,
+                        "status": "active",
                         "profile": {
                             "fname": profile.get("dvmf_fname"),
                             "lname": profile.get("dvmf_lname"),
                             "email": profile.get("dvmf_email"),
                             "phone": profile.get("dvmf_phonenum"),
+                            "city": profile.get("dvmf_city"),
+                            "province": profile.get("dvmf_province"),
+                            "address": full_address,
                             "profile_image": None
                         }
                     }
                     user_type = "dvmf_user"
-                    logger.info(f"DVMF user profile - role: {dvmf_role}, city: {profile.get('dvmf_city')}, province: {profile.get('dvmf_province')}, image: {profile.get('dvmf_profile_photo')}")
+                    logger.info(f"DVMF user profile - role: {dvmf_role}, address: {full_address}")
             except Exception as e:
                 logger.error(f"Error checking DVMF user: {e}")
         
@@ -8144,41 +8329,56 @@ def get_user_profile(request, user_id):
                 if kpres.data and len(kpres.data) > 0:
                     profile = kpres.data[0]
                     logger.info(f"Found Kutsero President profile: {profile}")
+                    
+                    # Build address for Kutsero President
+                    address_parts = []
+                    if profile.get("pres_address"):
+                        address_parts.append(profile["pres_address"])
+                    if profile.get("pres_city"):
+                        address_parts.append(profile["pres_city"])
+                    if profile.get("pres_province"):
+                        address_parts.append(profile["pres_province"])
+                    
+                    full_address = ", ".join(address_parts) if address_parts else None
+                    
                     user_data = {
                         "id": profile.get("user_id"),
                         "email": profile.get("pres_email"),
                         "role": "Kutsero President",
-                        "status": profile.get("status", "active"),
+                        "status": "active",
                         "profile": {
                             "fname": profile.get("pres_fname"),
                             "lname": profile.get("pres_lname"), 
                             "email": profile.get("pres_email"),
-                            "phone": profile.get("pres_phonenum")
-                            
+                            "phone": profile.get("pres_phonenum"),
+                            "city": profile.get("pres_city"),
+                            "province": profile.get("pres_province"),
+                            "address": full_address,
+                            "profile_image": None
                         }
                     }
                     user_type = "kutsero_president"
-                    logger.info(f"Kutsero President profile - email: {profile.get('pres_email')}, phone: {profile.get('pres_phonenum')}")
+                    logger.info(f"Kutsero President profile - address: {full_address}")
             except Exception as e:
                 logger.error(f"Error checking Kutsero President: {e}")
         
         if user_data:
-            logger.info(f"Successfully found user: {user_type}")
-            logger.info(f"Profile image URL: {user_data['profile'].get('profile_image')}")
+            logger.info(f"✅ Successfully found user: {user_type}")
+            logger.info(f"✅ Profile data: {user_data}")
             return Response({
                 'success': True,
                 'user': user_data,
                 'user_type': user_type
             }, status=status.HTTP_200_OK)
         else:
-            logger.warning(f"User not found: {user_id}")
+            logger.warning(f"❌ User not found: {user_id}")
             return Response({
                 'success': False,
                 'error': 'User not found'
             }, status=status.HTTP_404_NOT_FOUND)
             
     except Exception as e:
-        logger.error(f"Error fetching user profile: {e}")
+        logger.error(f"❌ Error fetching user profile: {e}")
         logger.error(traceback.format_exc())
         return Response({
             'success': False,
@@ -8429,9 +8629,9 @@ def feed_water_notifications(request):
 
         # Fetch feed schedules (ignore horse status)
         feeds = (supabase.table('feed_detail')
-                 .select('*')
-                 .eq('op_id', operator_uuid)
-                 .execute().data or [])
+                .select('*')
+                .eq('op_id', operator_uuid)
+                .execute().data or [])
         if horse_id:
             feeds = [f for f in feeds if f.get('horse_id') == horse_id]
 
@@ -8455,9 +8655,9 @@ def feed_water_notifications(request):
 
         # Fetch water schedules (ignore horse status)
         waters = (supabase.table('water_detail')
-                  .select('*')
-                  .eq('op_id', operator_uuid)
-                  .execute().data or [])
+                .select('*')
+                .eq('op_id', operator_uuid)
+                .execute().data or [])
         if horse_id:
             waters = [w for w in waters if w.get('horse_id') == horse_id]
 
@@ -8533,9 +8733,9 @@ def check_current_schedules(request):
 
         # Check feed schedules (ignore horse status)
         feeds = (supabase.table('feed_detail')
-                 .select('*')
-                 .eq('op_id', operator_uuid)
-                 .execute().data or [])
+                .select('*')
+                .eq('op_id', operator_uuid)
+                .execute().data or [])
         for feed in feeds:
             if feed.get('fd_time') in [current_time, prev_minute]:
                 horse_name = horse_map.get(feed.get('horse_id'), 'Unknown Horse')
@@ -8553,9 +8753,9 @@ def check_current_schedules(request):
 
         # Check water schedules (ignore horse status)
         waters = (supabase.table('water_detail')
-                  .select('*')
-                  .eq('op_id', operator_uuid)
-                  .execute().data or [])
+                .select('*')
+                .eq('op_id', operator_uuid)
+                .execute().data or [])
         for water in waters:
             if water.get('water_time') in [current_time, prev_minute]:
                 horse_name = horse_map.get(water.get('horse_id'), 'Unknown Horse')
@@ -8585,11 +8785,5 @@ def check_current_schedules(request):
             'success': False,
             'message': f'Error checking schedules: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-
-# ------------------------------------------------ NOTIF ------------------------------------------------
-
-
 
 

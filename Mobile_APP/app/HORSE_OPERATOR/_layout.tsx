@@ -10,8 +10,8 @@ export default function OperatorLayout() {
       <Stack.Screen name="addhorse" options={{ title: 'Add Horse' }} />
       <Stack.Screen name="Hallprofile" options={{ title: 'All Profile' }} />
       <Stack.Screen name="Hbook" options={{ title: 'Horse Book' }} />
+      <Stack.Screen name="Hbook2" options={{ title: 'Horse Book' }} />
       <Stack.Screen name="Hcalendar" options={{ title: 'Horse Calendar' }} />
-      <Stack.Screen name="Hcontact" options={{ title: 'Horse Contact' }} />
       <Stack.Screen name="helpsupp" options={{ title: 'Help & Support' }} />
       <Stack.Screen name="Hfeed" options={{ title: 'Horse Feed' }} />
       <Stack.Screen name="Hfeedlog" options={{ title: 'Horse Feed Log' }} />
@@ -24,14 +24,13 @@ export default function OperatorLayout() {
       <Stack.Screen name="Hsos" options={{ title: 'Horse SOS' }} />
       <Stack.Screen name="Hvetprofile" options={{ title: 'Horse Vet Profile' }} />
       <Stack.Screen name="medical" options={{ title: 'Medical' }} />
-      <Stack.Screen name="medicalhis" options={{ title: 'Medical History' }} />
-      <Stack.Screen name="notif" options={{ title: 'Notifications' }} />
+      <Stack.Screen name="medicalrec" options={{ title: 'Medical Record' }} />
       <Stack.Screen name="profile" options={{ title: 'Profile' }} />
       <Stack.Screen name="profileinfo" options={{ title: 'Profile Info' }} />
       <Stack.Screen name="resched" options={{ title: 'Reschedule' }} />
       <Stack.Screen name="terms" options={{ title: 'Terms' }} />
       <Stack.Screen name="treatment" options={{ title: 'Treatment Log' }} />
-      <Stack.Screen name="vaccine" options={{ title: 'Vaccine' }} />
+      <Stack.Screen name="water" options={{ title: 'Water' }} />
       <Stack.Screen name="waterlog" options={{ title: 'Water Log' }} />
     </Stack>
   )

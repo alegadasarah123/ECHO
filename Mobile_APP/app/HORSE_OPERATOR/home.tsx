@@ -155,6 +155,7 @@ interface Comment {
   reply_count?: number
   has_replies?: boolean
   is_reply?: boolean
+  announcement_id?: string
 }
 
 interface Announcement {
@@ -216,8 +217,6 @@ export default function HorseOperatorHome() {
   const [showImageModal, setShowImageModal] = useState(false)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
   const [lastViewedAnnouncementTime, setLastViewedAnnouncementTime] = useState<string | null>(null)
-  const [lastViewedCommentTime, setLastViewedCommentTime] = useState<{ [key: string]: string }>({})
-  const [lastViewedReplyTime, setLastViewedReplyTime] = useState<{ [key: string]: string }>({})
 
   const router = useRouter()
   const [activeTab] = useState("home")
@@ -272,44 +271,7 @@ export default function HorseOperatorHome() {
     }
   }, [requestNotificationPermissions]);
 
-  // Schedule comment notification
-  const scheduleCommentNotification = useCallback(async (announcement: Announcement, commentAuthor: string, commentText: string) => {
-    try {
-      const hasPermission = await requestNotificationPermissions();
-      if (!hasPermission) {
-        console.log('No notification permission, skipping comment notification');
-        return;
-      }
-
-      // Don't send notification if the current user is the one who commented
-      if (userData && commentAuthor === userFirstName) {
-        console.log('Skipping notification for own comment');
-        return;
-      }
-
-      // Schedule notification immediately
-      await Notifications.scheduleNotificationAsync({
-        content: {
-          title: "💬 New Comment",
-          body: `${commentAuthor} commented on "${announcement.title}"`,
-          data: { 
-            type: 'comment',
-            announcementId: announcement.id,
-            commentAuthor: commentAuthor,
-            screen: 'home'
-          },
-          sound: 'default',
-        },
-        trigger: null, // Show immediately
-      });
-
-      console.log('✅ Scheduled comment notification from:', commentAuthor);
-    } catch (error) {
-      console.error('Error scheduling comment notification:', error);
-    }
-  }, [requestNotificationPermissions, userData, userFirstName]);
-
-  // Schedule reply notification
+  // Schedule reply notification - ONLY for replies to MY comments
   const scheduleReplyNotification = useCallback(async (parentComment: Comment, replyAuthor: string, replyText: string) => {
     try {
       const hasPermission = await requestNotificationPermissions();
@@ -324,9 +286,9 @@ export default function HorseOperatorHome() {
         return;
       }
 
-      // Don't send notification if replying to own comment
-      if (parentComment.user_id === userData?.id) {
-        console.log('Skipping notification for reply to own comment');
+      // Don't send notification if the parent comment is not from the current user
+      if (parentComment.user_id !== userData?.id) {
+        console.log('Skipping notification - replying to someone else\'s comment');
         return;
       }
 
@@ -346,7 +308,7 @@ export default function HorseOperatorHome() {
         trigger: null, // Show immediately
       });
 
-      console.log('✅ Scheduled reply notification from:', replyAuthor, 'to:', parentComment.user);
+      console.log('✅ Scheduled reply notification from:', replyAuthor, 'to my comment');
     } catch (error) {
       console.error('Error scheduling reply notification:', error);
     }
@@ -381,7 +343,7 @@ export default function HorseOperatorHome() {
     }
   }, [lastViewedAnnouncementTime, scheduleAnnouncementNotification]);
 
-  // Check for new comments and send notifications
+  // Check for new comments - NO NOTIFICATIONS FOR COMMENTS
   const checkForNewComments = useCallback(async (announcementId: string, newComments: Comment[]) => {
     try {
       const lastViewedKey = `lastViewedCommentTime_${announcementId}`;
@@ -392,10 +354,6 @@ export default function HorseOperatorHome() {
         // First time viewing comments for this announcement, set current time
         const now = new Date().toISOString();
         await AsyncStorage.setItem(lastViewedKey, now);
-        setLastViewedCommentTime(prev => ({
-          ...prev,
-          [announcementId]: now
-        }));
         return;
       }
 
@@ -405,29 +363,17 @@ export default function HorseOperatorHome() {
         return commentDate > lastViewed;
       });
 
-      // Schedule notifications for new comments
-      for (const comment of newCommentsList) {
-        const announcement = announcements.find(a => a.id === announcementId);
-        if (announcement && comment.user_id !== userData?.id) {
-          await scheduleCommentNotification(announcement, comment.user, comment.text);
-        }
-      }
-
-      // Update last viewed time
+      // Update last viewed time (no notifications for comments)
       if (newCommentsList.length > 0) {
         const now = new Date().toISOString();
         await AsyncStorage.setItem(lastViewedKey, now);
-        setLastViewedCommentTime(prev => ({
-          ...prev,
-          [announcementId]: now
-        }));
       }
     } catch (error) {
       console.error('Error checking for new comments:', error);
     }
-  }, [announcements, userData, scheduleCommentNotification]);
+  }, []);
 
-  // Check for new replies and send notifications
+  // Check for new replies and send notifications ONLY if replying to MY comments
   const checkForNewReplies = useCallback(async (commentId: string, newReplies: Comment[]) => {
     try {
       const lastViewedKey = `lastViewedReplyTime_${commentId}`;
@@ -438,10 +384,6 @@ export default function HorseOperatorHome() {
         // First time viewing replies for this comment, set current time
         const now = new Date().toISOString();
         await AsyncStorage.setItem(lastViewedKey, now);
-        setLastViewedReplyTime(prev => ({
-          ...prev,
-          [commentId]: now
-        }));
         return;
       }
 
@@ -451,12 +393,15 @@ export default function HorseOperatorHome() {
         return replyDate > lastViewed;
       });
 
-      // Schedule notifications for new replies
+      // Schedule notifications ONLY for replies to my comments
       for (const reply of newRepliesList) {
         const parentComment = Object.values(comments).flat().find(c => c.id === commentId) || 
                              Object.values(replies).flat().find(r => r.id === commentId);
         if (parentComment && reply.user_id !== userData?.id) {
-          await scheduleReplyNotification(parentComment, reply.user, reply.text);
+          // Only send notification if the parent comment is mine
+          if (parentComment.user_id === userData?.id) {
+            await scheduleReplyNotification(parentComment, reply.user, reply.text);
+          }
         }
       }
 
@@ -464,31 +409,11 @@ export default function HorseOperatorHome() {
       if (newRepliesList.length > 0) {
         const now = new Date().toISOString();
         await AsyncStorage.setItem(lastViewedKey, now);
-        setLastViewedReplyTime(prev => ({
-          ...prev,
-          [commentId]: now
-        }));
       }
     } catch (error) {
       console.error('Error checking for new replies:', error);
     }
   }, [comments, replies, userData, scheduleReplyNotification]);
-
-  // Helper function to check if a comment is new
-  const isNewComment = useCallback((comment: Comment, announcementId: string): boolean => {
-    if (!lastViewedCommentTime[announcementId]) return true
-    const commentDate = new Date(comment.comment_date)
-    const lastViewedDate = new Date(lastViewedCommentTime[announcementId])
-    return commentDate > lastViewedDate
-  }, [lastViewedCommentTime])
-
-  // Helper function to check if a reply is new
-  const isNewReply = useCallback((reply: Comment, commentId: string): boolean => {
-    if (!lastViewedReplyTime[commentId]) return true
-    const replyDate = new Date(reply.comment_date)
-    const lastViewedDate = new Date(lastViewedReplyTime[commentId])
-    return replyDate > lastViewedDate
-  }, [lastViewedReplyTime])
 
   // Helper function to format any name to first + last name only
   const formatNameToFirstLast = (fullName: string): string => {
@@ -989,7 +914,7 @@ export default function HorseOperatorHome() {
             [commentId]: formattedReplies,
           }))
 
-          // Check for new replies and send notifications
+          // Check for new replies and send notifications (only for replies to my comments)
           await checkForNewReplies(commentId, formattedReplies)
         }
       }
@@ -1006,7 +931,7 @@ export default function HorseOperatorHome() {
       const storedAccessToken = await SecureStore.getItemAsync("access_token")
       if (!storedAccessToken) throw new Error("No access token found")
       
-      console.log("🔍 Fetching comments for announcement:", announcementId)
+      console.log("🔍 Fetching ALL comments and replies for announcement:", announcementId)
       
       const response = await fetch(
         `${API_BASE_URL}/get_announcement_comments/?announcement_id=${encodeURIComponent(announcementId)}`,
@@ -1023,51 +948,44 @@ export default function HorseOperatorHome() {
         const data = await response.json()
         console.log("📥 Raw API response:", JSON.stringify(data, null, 2))
         
-        if (data?.comments) {
-          console.log("📥 Total comments received:", data.comments.length)
+        if (data?.comments || data?.replies) {
+          console.log("📥 Comments received:", data.comments?.length || 0)
+          console.log("📥 Replies map keys:", Object.keys(data.replies || {}))
           
-          // Separate parent comments and replies properly
+          // Process parent comments
           const parentComments: Comment[] = []
-          const repliesMap: { [key: string]: Comment[] } = {}
+          const repliesMap: { [key: string]: Comment[] } = data.replies || {}
           
-          data.comments.forEach((comment: any) => {
-            const formattedComment: Comment = {
-              id: comment.id,
-              text: comment.comment_text || comment.text || "",
-              comment_text: comment.comment_text,
-              user: comment.user_name || comment.user_profile?.full_name || "Unknown User",
-              user_id: comment.user_id,
-              user_role: comment.user_role,
-              user_profile: comment.user_profile,
-              time: formatDate(comment.comment_date),
-              formatted_date: formatDate(comment.comment_date),
-              comment_date: comment.comment_date,
-              parent_comment_id: comment.parent_comment_id,
-              reply_level: comment.reply_level || 0,
-              reply_count: comment.reply_count || 0,
-              has_replies: (comment.reply_count && comment.reply_count > 0) || false
-            }
-            
-            // Check if parent_comment_id exists AND is not null
-            if (comment.parent_comment_id && comment.parent_comment_id !== null) {
-              // This is a reply - add to replies map
-              const parentId = String(comment.parent_comment_id)
-              if (!repliesMap[parentId]) {
-                repliesMap[parentId] = []
+          if (data.comments && Array.isArray(data.comments)) {
+            data.comments.forEach((comment: any) => {
+              // Only add as parent if it doesn't have a parent_comment_id or reply_level is 0
+              if (!comment.parent_comment_id || comment.reply_level === 0) {
+                const formattedComment: Comment = {
+                  id: comment.id,
+                  text: comment.comment_text || comment.text || "",
+                  comment_text: comment.comment_text,
+                  user: comment.user_name || comment.user_profile?.full_name || "Unknown User",
+                  user_id: comment.user_id,
+                  user_role: comment.user_role,
+                  user_profile: comment.user_profile,
+                  time: formatDate(comment.comment_date),
+                  formatted_date: formatDate(comment.comment_date),
+                  comment_date: comment.comment_date,
+                  parent_comment_id: comment.parent_comment_id,
+                  reply_level: comment.reply_level || 0,
+                  reply_count: comment.reply_count || 0,
+                  has_replies: (comment.reply_count && comment.reply_count > 0) || false,
+                  announcement_id: comment.announcement_id
+                }
+                
+                parentComments.push(formattedComment)
+                console.log(`📌 Added parent comment:`, formattedComment.text)
               }
-              repliesMap[parentId].push(formattedComment)
-              console.log(`📌 Added reply to parent ${parentId}:`, formattedComment.text)
-            } else {
-              // This is a parent comment
-              parentComments.push(formattedComment)
-              console.log(`📌 Added parent comment:`, formattedComment.text)
-            }
-          })
+            })
+          }
           
-          console.log(`✅ Separated into ${parentComments.length} parent comments`)
+          console.log(`✅ Processed ${parentComments.length} parent comments`)
           console.log(`✅ Replies map has ${Object.keys(repliesMap).length} parent IDs with replies`)
-          console.log(`✅ Replies map keys:`, Object.keys(repliesMap))
-          console.log(`✅ Replies map content:`, JSON.stringify(repliesMap, null, 2))
           
           // Set the state with properly separated data
           setComments((prev) => ({
@@ -1081,7 +999,7 @@ export default function HorseOperatorHome() {
             ...repliesMap,
           }))
 
-          // Check for new comments and send notifications
+          // Check for new comments (NO NOTIFICATIONS)
           await checkForNewComments(announcementId, parentComments)
         }
       } else {
@@ -1126,7 +1044,8 @@ export default function HorseOperatorHome() {
           if (data?.comment) {
             const newComment: Comment = {
               id: data.comment.id,
-              text: data.comment.comment_text,
+              text: data.comment.text || data.comment.comment_text,
+              comment_text: data.comment.comment_text,
               user: data.comment.user_name || userFirstName,
               user_id: userData.id,
               user_role: userData.user_role,
@@ -1137,7 +1056,8 @@ export default function HorseOperatorHome() {
               parent_comment_id: null,
               reply_level: 0,
               reply_count: 0,
-              has_replies: false
+              has_replies: false,
+              announcement_id: announcementId
             }
             
             setComments((prev) => ({
@@ -1156,12 +1076,6 @@ export default function HorseOperatorHome() {
                   : announcement
               )
             )
-
-            // Send notification for new comment
-            const announcement = announcements.find(a => a.id === announcementId)
-            if (announcement) {
-              await scheduleCommentNotification(announcement, userFirstName, commentText.trim())
-            }
           }
         } else if (response.status === 404) {
           Alert.alert("Error", "User profile not found. Please try again.")
@@ -1176,7 +1090,7 @@ export default function HorseOperatorHome() {
         setSubmittingComment(false)
       }
     },
-    [userData, userFirstName, announcements, scheduleCommentNotification],
+    [userData, userFirstName],
   )
 
   const addReply = useCallback(
@@ -1186,7 +1100,6 @@ export default function HorseOperatorHome() {
         return
       }
       
-      // Log what we're sending
       console.log("📤 Sending reply:", {
         commentId,
         replyText: replyText.trim(),
@@ -1198,18 +1111,18 @@ export default function HorseOperatorHome() {
         const storedAccessToken = await SecureStore.getItemAsync("access_token")
         if (!storedAccessToken) throw new Error("No access token found")
         
-        // Get parent comment to determine reply level
+        // Get parent comment
         const parentComment = selectedAnnouncementId ? 
           comments[selectedAnnouncementId]?.find(c => c.id === commentId) || 
           Object.values(replies).flat().find(r => r.id === commentId) : null
         
         const replyLevel = parentComment ? (parentComment.reply_level || 0) + 1 : 1
         
-        // Prepare payload with reply_text (not comment_text)
+        // Prepare payload
         const payload = {
           user_id: userData.id,
           comment_id: commentId,
-          reply_text: replyText.trim(),  // Backend expects "reply_text"
+          reply_text: replyText.trim(),
           parent_comment_id: commentId,
           reply_level: replyLevel
         }
@@ -1225,7 +1138,6 @@ export default function HorseOperatorHome() {
           body: JSON.stringify(payload),
         })
         
-        // Log the response
         const responseText = await response.text()
         console.log("📥 Raw response:", responseText)
         
@@ -1234,7 +1146,6 @@ export default function HorseOperatorHome() {
           console.log("📥 Parsed response data:", JSON.stringify(data, null, 2))
           
           if (data?.reply) {
-            // Log what we got back
             console.log("✅ Reply from backend:", {
               id: data.reply.id,
               text: data.reply.text,
@@ -1242,10 +1153,10 @@ export default function HorseOperatorHome() {
               all_keys: Object.keys(data.reply)
             })
             
-            // Create new reply with EXPLICIT text field
             const newReply: Comment = {
               id: data.reply.id,
-              text: data.reply.text || data.reply.comment_text || replyText.trim(), // Triple fallback
+              text: data.reply.text || data.reply.comment_text || replyText.trim(),
+              comment_text: data.reply.comment_text || replyText.trim(),
               user: data.reply.user || userFirstName,
               user_id: userData.id,
               user_role: userData.user_role,
@@ -1257,7 +1168,8 @@ export default function HorseOperatorHome() {
               reply_level: replyLevel,
               reply_count: 0,
               has_replies: false,
-              is_reply: true
+              is_reply: true,
+              announcement_id: selectedAnnouncementId
             }
             
             console.log("✅ Formatted reply for display:", JSON.stringify(newReply, null, 2))
@@ -1291,11 +1203,6 @@ export default function HorseOperatorHome() {
             })
             
             Alert.alert("Success", "Reply posted!")
-
-            // Send notification for new reply
-            if (parentComment) {
-              await scheduleReplyNotification(parentComment, userFirstName, replyText.trim())
-            }
           } else {
             console.error("❌ No reply data in response")
             Alert.alert("Error", "Failed to post reply - no data returned")
@@ -1312,10 +1219,9 @@ export default function HorseOperatorHome() {
         setSubmittingComment(false)
       }
     },
-    [userData, userFirstName, selectedAnnouncementId, comments, replies, scheduleReplyNotification],
+    [userData, userFirstName, selectedAnnouncementId, comments, replies],
   )
 
-  // Updated toggleReplies function - only fetches when user explicitly expands
   const toggleReplies = (commentId: string) => {
     const newExpanded = new Set(expandedReplies)
     if (newExpanded.has(commentId)) {
@@ -1337,41 +1243,28 @@ export default function HorseOperatorHome() {
     setExpandedReplies(newExpanded)
   }
 
-  // Function to handle opening comment modal - reset expanded replies and update last viewed time
   const handleOpenCommentModal = async (announcementId: string) => {
     setReplies({})
-    setExpandedReplies(new Set()) // Start with no expanded replies
+    setExpandedReplies(new Set())
     setReplyingTo(null)
     setNewComment("")
     setSelectedAnnouncementId(String(announcementId))
     setShowCommentModal(true)
     
-    // Update last viewed comment time for this announcement
     const now = new Date().toISOString();
     const lastViewedKey = `lastViewedCommentTime_${announcementId}`;
     await AsyncStorage.setItem(lastViewedKey, now);
-    setLastViewedCommentTime(prev => ({
-      ...prev,
-      [announcementId]: now
-    }));
     
     setTimeout(() => {
       fetchComments(String(announcementId))
     }, 100)
   }
 
-  // Function to handle viewing replies and update last viewed time
   const handleViewReplies = async (commentId: string) => {
-    // Update last viewed reply time for this comment
     const now = new Date().toISOString();
     const lastViewedKey = `lastViewedReplyTime_${commentId}`;
     await AsyncStorage.setItem(lastViewedKey, now);
-    setLastViewedReplyTime(prev => ({
-      ...prev,
-      [commentId]: now
-    }));
     
-    // Toggle replies display
     toggleReplies(commentId);
   }
 
@@ -1540,7 +1433,6 @@ export default function HorseOperatorHome() {
     </TouchableOpacity>
   )
 
-  // Fixed comment rendering function to ensure all text is properly wrapped
   const renderCommentItem = (comment: Comment) => {
     const displayName = getDisplayName(comment)
     const userInitials = getUserInitials(comment)
@@ -1551,14 +1443,15 @@ export default function HorseOperatorHome() {
       hour: 'numeric',
       minute: '2-digit'
     })
-    const isNew = isNewComment(comment, selectedAnnouncementId)
+
+    // Get replies for this comment (check both direct replies and repliesMap from API)
+    const commentReplies = replies[comment.id] || []
 
     return (
       <View key={comment.id}>
         {/* Main Comment */}
         <View style={styles.commentItem}>
           <View style={styles.commentAvatarContainer}>
-            {/* CTU role gets CTU logo, DVMF role gets DVMF logo */}
             {profilePicture ? (
               <Image
                 source={profilePicture}
@@ -1573,20 +1466,12 @@ export default function HorseOperatorHome() {
             )}
           </View>
           <View style={styles.commentContentContainer}>
-            <View style={[
-              styles.commentBubble,
-              isNew && styles.newCommentBubble
-            ]}>
+            <View style={styles.commentBubble}>
               <View style={styles.commentHeader}>
                 <View style={styles.commentHeaderLeft}>
                   <Text style={styles.commentUserName}>
                     {displayName}
                   </Text>
-                  {isNew && (
-                    <View style={styles.newBadge}>
-                      <Text style={styles.newBadgeText}>NEW</Text>
-                    </View>
-                  )}
                 </View>
                 <Text style={styles.commentTime}>
                   {commentTime}
@@ -1627,8 +1512,8 @@ export default function HorseOperatorHome() {
                 <ActivityIndicator size="small" color="#C17A47" />
                 <Text style={styles.loadingRepliesText}>Loading replies...</Text>
               </View>
-            ) : replies[comment.id] && replies[comment.id].length > 0 ? (
-              replies[comment.id].map((reply) => {
+            ) : commentReplies.length > 0 ? (
+              commentReplies.map((reply) => {
                 const replyDisplayName = getDisplayName(reply)
                 const replyInitials = getUserInitials(reply)
                 const replyProfilePicture = getCommentProfilePicture(reply)
@@ -1638,12 +1523,10 @@ export default function HorseOperatorHome() {
                   hour: 'numeric',
                   minute: '2-digit'
                 })
-                const isReplyNew = isNewReply(reply, comment.id)
 
                 return (
                   <View key={reply.id} style={styles.replyItem}>
                     <View style={styles.replyAvatarContainer}>
-                      {/* CTU role gets CTU logo, DVMF role gets DVMF logo */}
                       {replyProfilePicture ? (
                         <Image
                           source={replyProfilePicture}
@@ -1658,26 +1541,17 @@ export default function HorseOperatorHome() {
                       )}
                     </View>
                     <View style={styles.replyContentContainer}>
-                      <View style={[
-                        styles.replyBubble,
-                        isReplyNew && styles.newCommentBubble
-                      ]}>
+                      <View style={styles.replyBubble}>
                         <View style={styles.commentHeader}>
                           <View style={styles.commentHeaderLeft}>
                             <Text style={styles.commentUserName}>
                               {replyDisplayName}
                             </Text>
-                            {isReplyNew && (
-                              <View style={styles.newBadge}>
-                                <Text style={styles.newBadgeText}>NEW</Text>
-                              </View>
-                            )}
                           </View>
                           <Text style={styles.commentTime}>
                             {replyTime}
                           </Text>
                         </View>
-                        {/* Display the reply text */}
                         <Text style={styles.commentText}>
                           {reply.text || reply.comment_text || "No text"}
                         </Text>
@@ -1738,12 +1612,12 @@ export default function HorseOperatorHome() {
                 const now = new Date().toISOString()
                 setLastViewedAnnouncementTime(now)
                 AsyncStorage.setItem("lastViewedAnnouncementTime", now)
-                router.push("/HORSE_OPERATOR/Hnotif" as any)
+                router.push("/HORSE_OPERATOR/Hnotif")
               }}
             >
               <Image source={require("../../assets/images/notification.png")} style={[styles.headerIconImage, { tintColor: "white" }]} resizeMode="contain" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.sosButton} onPress={() => router.push("/HORSE_OPERATOR/Hsos" as any)}>
+            <TouchableOpacity style={styles.sosButton} onPress={() => router.push("/HORSE_OPERATOR/Hsos")}>
               <Image source={require("../../assets/images/sos2.png")} style={styles.sosIcon} resizeMode="contain" />
             </TouchableOpacity>
           </View>
@@ -1859,7 +1733,7 @@ export default function HorseOperatorHome() {
               <Text style={styles.sectionTitle}>
                 My Horses {horses.length > 0 && `(${currentHorseIndex + 1}/${horses.length})`}
               </Text>
-              <TouchableOpacity onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}>
+              <TouchableOpacity onPress={() => router.push("../HORSE_OPERATOR/horse")}>
                 <Text style={styles.viewAllButton}>View All</Text>
               </TouchableOpacity>
             </View>
@@ -1953,7 +1827,7 @@ export default function HorseOperatorHome() {
                 <Text style={styles.noHorseText}>No horses registered yet</Text>
                 <TouchableOpacity
                   style={styles.addHorseButton}
-                  onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}
+                  onPress={() => router.push("../HORSE_OPERATOR/horse")}
                 >
                   <Text style={styles.addHorseButtonText}>Add Horse</Text>
                 </TouchableOpacity>
@@ -1978,8 +1852,6 @@ export default function HorseOperatorHome() {
                   announcement.author, 
                   announcement.user_profile_image
                 )
-                const isNewAnnouncement = !lastViewedAnnouncementTime || 
-                  new Date(announcement.date || announcement.created_at || "") > new Date(lastViewedAnnouncementTime)
                 
                 return (
                   <View
@@ -2004,11 +1876,6 @@ export default function HorseOperatorHome() {
                       <View style={styles.postHeaderContent}>
                         <View style={styles.postTitleRow}>
                           <Text style={styles.postTitle}>{announcement.author}</Text>
-                          {isNewAnnouncement && (
-                            <View style={styles.newAnnouncementBadge}>
-                              <Text style={styles.newAnnouncementBadgeText}>NEW</Text>
-                            </View>
-                          )}
                         </View>
                         <Text style={styles.postTime}>{formatDate(announcement.date)}</Text>
                       </View>
@@ -2070,33 +1937,33 @@ export default function HorseOperatorHome() {
             label="Horses"
             tabKey="horses"
             isActive={activeTab === "horses"}
-            onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}
+            onPress={() => router.push("../HORSE_OPERATOR/horse")}
           />
           <TabButton
             iconSource={require("../../assets/images/chat.png")}
             label="Chat"
             tabKey="messages"
             isActive={activeTab === "messages"}
-            onPress={() => router.push("../HORSE_OPERATOR/Hmessage" as any)}
+            onPress={() => router.push("../HORSE_OPERATOR/Hmessage")}
           />
           <TabButton
             iconSource={require("../../assets/images/calendar.png")}
             label="Calendar"
             tabKey="bookings"
             isActive={activeTab === "bookings"}
-            onPress={() => router.push("../HORSE_OPERATOR/Hcalendar" as any)}
+            onPress={() => router.push("../HORSE_OPERATOR/Hcalendar")}
           />
           <TabButton
             iconSource={require("../../assets/images/profile.png")}
             label="Profile"
             tabKey="profile"
             isActive={activeTab === "profile"}
-            onPress={() => router.push("../HORSE_OPERATOR/profile" as any)}
+            onPress={() => router.push("../HORSE_OPERATOR/profile")}
           />
         </View>
       </View>
       
-      {/* Facebook-style Comment Modal - Fixed to not auto-expand replies */}
+      {/* Facebook-style Comment Modal */}
       <Modal
         visible={showCommentModal}
         animationType="slide"
@@ -2154,9 +2021,7 @@ export default function HorseOperatorHome() {
                     <Text style={styles.loadingCommentsText}>Loading comments...</Text>
                   </View>
                 ) : selectedAnnouncementComments.length > 0 ? (
-                  selectedAnnouncementComments
-                    .filter((comment) => !comment.parent_comment_id)
-                    .map(renderCommentItem)
+                  selectedAnnouncementComments.map(renderCommentItem)
                 ) : (
                   <View style={styles.noCommentsContainer}>
                     <Text style={styles.noCommentsText}>No comments yet. Be the first to comment!</Text>
@@ -2285,13 +2150,14 @@ const styles = StyleSheet.create({
   header: { 
     backgroundColor: "#C17A47", 
     paddingHorizontal: scale(16), 
-    paddingBottom: dynamicSpacing(16) 
+    paddingBottom: dynamicSpacing(16),
   },
   headerTop: { 
     flexDirection: "row", 
     justifyContent: "space-between", 
     alignItems: "flex-start", 
-    marginBottom: verticalScale(16) 
+    marginBottom: verticalScale(16),
+    marginTop: verticalScale(8),
   },
   welcomeSection: { 
     flex: 1 
@@ -2709,17 +2575,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(13), 
     color: "#8E8E93" 
   },
-  newAnnouncementBadge: {
-    backgroundColor: "#FF4444",
-    paddingHorizontal: scale(6),
-    paddingVertical: scale(2),
-    borderRadius: scale(8),
-  },
-  newAnnouncementBadgeText: {
-    color: "white",
-    fontSize: moderateScale(10),
-    fontWeight: "bold",
-  },
   postImageContainer: { 
     width: "100%", 
     height: verticalScale(200), 
@@ -2915,10 +2770,6 @@ const styles = StyleSheet.create({
     borderRadius: scale(18),
     paddingHorizontal: scale(12),
     paddingVertical: scale(8),
-  },
-  newCommentBubble: {
-    borderLeftWidth: 3,
-    borderLeftColor: "#C17A47",
   },
   commentHeader: {
     flexDirection: 'row',
@@ -3131,17 +2982,6 @@ const styles = StyleSheet.create({
   headerIconImage: { 
     width: scale(18), 
     height: scale(18) 
-  },
-  newBadge: {
-    backgroundColor: "#FF4444",
-    paddingHorizontal: scale(4),
-    paddingVertical: scale(1),
-    borderRadius: scale(4),
-  },
-  newBadgeText: {
-    color: "white",
-    fontSize: moderateScale(8),
-    fontWeight: "bold",
   },
   // Full Screen Image Modal Styles
   imageModalOverlay: {

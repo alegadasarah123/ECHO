@@ -83,7 +83,7 @@ interface ChangePasswordData {
   confirmPassword: string;
 }
 
-const API_BASE_URL = "http://192.168.1.9:8000/api/horse_operator";
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator";
 
 const ProfileInfoScreen = () => {
   const router = useRouter();
@@ -994,6 +994,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     backgroundColor: '#CD853F',
     paddingTop: Platform.OS === 'ios' ? 50 : 16,
+    marginTop: 16,
   },
   backButton: {
     padding: 8,
