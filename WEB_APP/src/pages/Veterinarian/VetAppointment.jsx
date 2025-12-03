@@ -1,17 +1,4 @@
-import {
-  AlertCircle,
-  Bell,
-  Calendar as CalendarIcon,
-  CheckCircle,
-  ChevronLeft, ChevronRight,
-  Clock,
-  Eye,
-  Filter,
-  Grid,
-  RefreshCw,
-  Search,
-  X
-} from 'lucide-react';
+import {AlertCircle,Bell,Calendar as CalendarIcon,CheckCircle,ChevronLeft, ChevronRight,Clock,Eye,Filter,Grid,RefreshCw,Search,X} from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from "react-router-dom";
 
@@ -32,13 +19,81 @@ const VetAppointmentRequest = () => {
   const [notifications, setNotifications] = useState([]);
   const [notificationCount, setNotificationCount] = useState(0);
   const [statusFilter, setStatusFilter] = useState("all");
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [filterType, setFilterType] = useState("name"); // 'name' or 'date'
+  const [dateFilter, setDateFilter] = useState("");
   
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const navigate = useNavigate();
+
+  // Helper function to normalize dates to YYYY-MM-DD format
+  const formatDateForComparison = (dateString) => {
+    if (!dateString) return '';
+    
+    // If it's already in YYYY-MM-DD format, return as is
+    if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return dateString;
+    }
+    
+    // Remove any time portion
+    const datePart = dateString.split('T')[0].split(' ')[0];
+    
+    // Check for different date formats
+    // Format 1: YYYY-MM-DD
+    if (datePart.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return datePart;
+    }
+    
+    // Format 2: DD/MM/YYYY or MM/DD/YYYY
+    if (datePart.match(/^\d{1,2}\/\d{1,2}\/\d{4}$/)) {
+      const parts = datePart.split('/');
+      // Try to determine if it's DD/MM or MM/DD
+      if (parseInt(parts[0]) > 12) {
+        // First part > 12, likely DD/MM/YYYY
+        const [day, month, year] = parts;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      } else {
+        // Likely MM/DD/YYYY
+        const [month, day, year] = parts;
+        return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+      }
+    }
+    
+    // Try parsing as Date object as fallback
+    const date = new Date(dateString);
+    if (!isNaN(date.getTime())) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    
+    return dateString;
+  };
+
+  // Helper function for displaying dates
+  const formatDateForDisplay = (dateString) => {
+    if (!dateString) return 'N/A';
+    
+    const normalizedDate = formatDateForComparison(dateString);
+    if (!normalizedDate) return dateString;
+    
+    try {
+      // Parse the normalized date
+      const date = new Date(normalizedDate + 'T00:00:00');
+      
+      // Format to a more readable format
+      return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      return dateString;
+    }
+  };
 
   // ---------------- FETCH NOTIFICATIONS ----------------
   const fetchNotifications = async () => {
@@ -63,10 +118,9 @@ const VetAppointmentRequest = () => {
 
   // ---------------- REFRESH FUNCTION ----------------
   const refreshDashboardData = async () => {
-    console.log("Refreshing appointment requests data...");
     await Promise.all([
       fetchAppointments(),
-      fetchNotifications() // Also refresh notifications
+      fetchNotifications()
     ]);
   };
 
@@ -79,13 +133,13 @@ const VetAppointmentRequest = () => {
   useEffect(() => {
     fetchAppointments();
     fetchVetProfile();
-    fetchNotifications(); // Fetch notifications on component mount
+    fetchNotifications();
   }, []);
 
   // Reset to first page when filters or search changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, searchTerm]);
+  }, [statusFilter, searchTerm, dateFilter, filterType]);
 
   const fetchAppointments = async () => {
     setLoading(true);
@@ -111,7 +165,9 @@ const VetAppointmentRequest = () => {
           type: app.app_service,
           notes: app.app_complain,
           horseId: app.horse_id || null,
-          operatorId: app.operator_id || null,
+          // Now includes "approved", "Follow-up", AND "Completed"
+          status: app.app_status,
+          followup_of: app.followup_of || null,
         }));
         setAppointments(mappedAppointments);
       } else {
@@ -149,7 +205,6 @@ const VetAppointmentRequest = () => {
       };
     }
 
-    // Check if there's a valid profile photo
     if (vetProfile.vet_profile_photo && 
         vetProfile.vet_profile_photo.trim() !== '' && 
         !vetProfile.vet_profile_photo.includes('default') &&
@@ -160,7 +215,6 @@ const VetAppointmentRequest = () => {
       };
     }
 
-    // Fallback to initials
     const firstInitial = vetProfile.vet_fname?.[0] || '';
     const lastInitial = vetProfile.vet_lname?.[0] || '';
     return {
@@ -172,12 +226,22 @@ const VetAppointmentRequest = () => {
   // ---------------- HANDLE NOTIFICATION MODAL CLOSE ----------------
   const handleNotificationModalClose = () => {
     setIsNotificationModalOpen(false);
-    // Refresh notifications to get updated read status
     fetchNotifications();
   };
 
-  // Function to determine status based on date
+  // Function to determine status based on date AND backend status
   const getAppointmentStatus = (appointment) => {
+    // If it's a backend Completed status, return Completed
+    if (appointment.status === "Completed") {
+      return { status: "Completed", color: "bg-green-100 text-green-800" };
+    }
+    
+    // If it's a backend Follow-up status, return Follow-up
+    if (appointment.status === "Follow-up") {
+      return { status: "Follow-up", color: "bg-purple-100 text-purple-800" };
+    }
+    
+    // For "approved" appointments, calculate based on date
     const today = new Date();
     const appointmentDate = new Date(appointment.date);
     
@@ -189,7 +253,7 @@ const VetAppointmentRequest = () => {
     
     if (diffDays === 0) return { status: "Today", color: "bg-blue-100 text-blue-800" };
     if (diffDays === 1) return { status: "Tomorrow", color: "bg-purple-100 text-purple-800" };
-    if (diffDays < 0) return { status: "Completed", color: "bg-green-100 text-green-800" };
+    if (diffDays < 0) return { status: "Past Due", color: "bg-red-100 text-red-800" };
     if (diffDays > 1 && diffDays <= 7) return { status: "This Week", color: "bg-amber-100 text-amber-800" };
     return { status: "Upcoming", color: "bg-gray-100 text-gray-800" };
   };
@@ -208,15 +272,42 @@ const VetAppointmentRequest = () => {
     navigate("/VetScheduleCalendar");
   };
 
-  // Filter logic for search and status
+  // Filter logic for search, status, and follow-up
   const filteredAppointments = appointments.filter((appointment) => {
-    const matchesSearch = appointment.petName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          appointment.ownerName.toLowerCase().includes(searchTerm.toLowerCase());
-    
     const statusInfo = getAppointmentStatus(appointment);
-    const matchesStatus = statusFilter === "all" || statusInfo.status === statusFilter;
     
-    return matchesSearch && matchesStatus;
+    // Apply status filter - now includes "Completed"
+    if (statusFilter !== "all") {
+      if (statusFilter === "Follow-up") {
+        if (appointment.status !== "Follow-up") return false;
+      } else if (statusFilter === "Completed") {
+        if (appointment.status !== "Completed") return false;
+      } else {
+        // For date-based filters (Today, Tomorrow, This Week, etc.)
+        if (appointment.status !== "approved" || statusInfo.status !== statusFilter) {
+          return false;
+        }
+      }
+    }
+    
+    // Apply name search filter
+    if (filterType === "name" && searchTerm) {
+      const matchesSearch = appointment.petName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                            appointment.ownerName.toLowerCase().includes(searchTerm.toLowerCase());
+      if (!matchesSearch) return false;
+    }
+    
+    // Apply date filter
+    if (filterType === "date" && dateFilter) {
+      const normalizedAppointmentDate = formatDateForComparison(appointment.date);
+      const normalizedFilterDate = formatDateForComparison(dateFilter);
+      
+      if (normalizedAppointmentDate !== normalizedFilterDate) {
+        return false;
+      }
+    }
+    
+    return true;
   });
 
   // Pagination logic
@@ -245,14 +336,16 @@ const VetAppointmentRequest = () => {
     pageNumbers.push(i);
   }
 
-  // Status filter options - NO FOLLOW-UP OPTION
+  // Status filter options - UPDATED TO INCLUDE COMPLETED
   const statusOptions = [
     { value: "all", label: "All Appointments" },
     { value: "Today", label: "Today" },
     { value: "Tomorrow", label: "Tomorrow" },
     { value: "This Week", label: "This Week" },
+    { value: "Past Due", label: "Past Due" },
     { value: "Upcoming", label: "Upcoming" },
-    { value: "Completed", label: "Completed" }
+    { value: "Completed", label: "Completed" },
+    { value: "Follow-up", label: "Follow-up" }
   ];
 
   // Fixed Skeleton loading component
@@ -293,7 +386,7 @@ const VetAppointmentRequest = () => {
         {/* Top Bar */}
         <div className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold text-gray-800">Upcoming Appointments</h1>
+            <h1 className="text-2xl font-bold text-gray-800">Appointments</h1>
             <div className="flex items-center space-x-4">
               <button 
                 onClick={handleRefresh}
@@ -328,7 +421,6 @@ const VetAppointmentRequest = () => {
                       alt="Profile" 
                       className="w-full h-full object-cover"
                       onError={(e) => {
-                        console.error('Profile image failed to load:', profileDisplay.content);
                         e.target.style.display = 'none';
                       }}
                     />
@@ -346,23 +438,66 @@ const VetAppointmentRequest = () => {
         {/* Search, Filter and Schedule Button Container */}
         <div className="flex flex-col gap-4 mx-6 my-4">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            {/* Search */}
-            <div
-              className={`relative w-[350px] max-w-full flex items-center bg-white rounded-xl shadow-md overflow-hidden transition-transform duration-200 ${
-                searchFocus ? "scale-105 shadow-xl" : "shadow"
-              }`}
-            >
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 transition-all duration-200" />
-              <input
-                type="text"
-                placeholder="Search horse name or owner name..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                onFocus={() => setSearchFocus(true)}
-                onBlur={() => setSearchFocus(false)}
-                className="w-full pl-12 pr-4 py-3 border-none outline-none text-sm text-gray-900 bg-transparent placeholder-gray-400"
-              />
+            {/* Search and Filter Type */}
+            <div className="flex flex-col sm:flex-row gap-4">
+              {/* Filter Type Selection */}
+              <div className="flex items-center space-x-2">
+                <select
+                  value={filterType}
+                  onChange={(e) => {
+                    setFilterType(e.target.value);
+                    if (e.target.value === "name") {
+                      setDateFilter("");
+                    } else {
+                      setSearchTerm("");
+                    }
+                  }}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                >
+                  <option value="name">Search by Name</option>
+                  <option value="date">Filter by Date</option>
+                </select>
+              </div>
+
+              {/* Dynamic Search/Filter Input */}
+              {filterType === "name" ? (
+                <div
+                  className={`relative w-[350px] max-w-full flex items-center bg-white rounded-xl shadow-md overflow-hidden transition-transform duration-200 ${
+                    searchFocus ? "scale-105 shadow-xl" : "shadow"
+                  }`}
+                >
+                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 transition-all duration-200" />
+                  <input
+                    type="text"
+                    placeholder="Search horse name or owner name..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    onFocus={() => setSearchFocus(true)}
+                    onBlur={() => setSearchFocus(false)}
+                    className="w-full pl-12 pr-4 py-3 border-none outline-none text-sm text-gray-900 bg-transparent placeholder-gray-400"
+                  />
+                </div>
+              ) : (
+                <div className="relative w-[350px] max-w-full flex items-center bg-white rounded-xl shadow-md overflow-hidden">
+                  <CalendarIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="date"
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className="w-full pl-12 pr-10 py-3 border-none outline-none text-sm text-gray-900 bg-transparent"
+                  />
+                  {dateFilter && (
+                    <button
+                      onClick={() => setDateFilter("")}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
+            
             {/* Schedule Button aligned to the right */}
             <button 
               onClick={handleViewSchedule}
@@ -413,13 +548,17 @@ const VetAppointmentRequest = () => {
             </div>
             
             {/* Clear filter button (show only when a filter is active) */}
-            {statusFilter !== "all" && (
+            {(statusFilter !== "all" || searchTerm || dateFilter) && (
               <button
-                onClick={() => setStatusFilter("all")}
+                onClick={() => {
+                  setStatusFilter("all");
+                  setSearchTerm("");
+                  setDateFilter("");
+                }}
                 className="cursor-pointer flex items-center text-sm text-gray-500 hover:text-gray-700"
               >
                 <X className="w-4 h-4 mr-1" />
-                Clear filter
+                Clear all filters
               </button>
             )}
           </div>
@@ -451,9 +590,9 @@ const VetAppointmentRequest = () => {
                         <CalendarIcon className="w-12 h-12 text-gray-400 mb-3 mx-auto" />
                         <p className="text-lg font-medium">No matching appointments found</p>
                         <p className="text-sm mt-1">
-                          {statusFilter !== "all" 
-                            ? `Try changing your filter or search terms` 
-                            : `Try adjusting your search terms`}
+                          {statusFilter !== "all" || searchTerm || dateFilter
+                            ? `Try changing your filter or search terms`
+                            : `No appointments available`}
                         </p>
                       </td>
                     </tr>
@@ -465,15 +604,26 @@ const VetAppointmentRequest = () => {
                         <tr key={appointment.id} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-4 text-center">
                             <div className="flex flex-col items-center justify-center">
-                              <div className="font-medium text-gray-900">{appointment.date}</div>
+                              <div className="font-medium text-gray-900">
+                                {formatDateForDisplay(appointment.date)}
+                              </div>
                               <div className="text-gray-500 text-sm mt-1 flex items-center">
                                 <Clock className="w-3 h-3 mr-1" />
                                 {appointment.time}
                               </div>
+                              {appointment.followup_of && (
+                                <div className="mt-1 text-xs text-amber-600 flex items-center">
+                                  <span className="w-2 h-2 bg-amber-500 rounded-full mr-1"></span>
+                                  Follow-up Appointment
+                                </div>
+                              )}
                             </div>
                           </td>                      
                           <td className="px-4 py-4 text-center">
                             <div className="text-medium text-gray-900">{appointment.ownerName}</div>
+                            {appointment.ownerPhone && (
+                              <div className="text-sm text-gray-500">{appointment.ownerPhone}</div>
+                            )}
                           </td>
                           <td className="px-4 py-4 text-medium text-gray-900 text-center">
                             {appointment.petName}
@@ -482,10 +632,14 @@ const VetAppointmentRequest = () => {
                             {appointment.type}
                           </td>
                           <td className="px-4 py-4 text-center">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusInfo.color}`}>
-                              {statusInfo.status === "Today" && <AlertCircle className="w-3 h-3 mr-1" />}
-                              {statusInfo.status === "Completed" && <CheckCircle className="w-3 h-3 mr-1" />}
-                              {statusInfo.status}
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              statusInfo.color
+                            }`}>
+                              {appointment.status === "Follow-up" && <RefreshCw className="w-3 h-3 mr-1" />}
+                              {appointment.status === "Completed" && <CheckCircle className="w-3 h-3 mr-1" />}
+                              {appointment.status === "approved" && statusInfo.status === "Today" && <AlertCircle className="w-3 h-3 mr-1" />}
+                              {appointment.status === "approved" && statusInfo.status === "Completed" && <CheckCircle className="w-3 h-3 mr-1" />}
+                              {appointment.status === "approved" ? statusInfo.status : appointment.status}
                             </span>
                           </td>
                           <td className="px-4 py-4 text-center">

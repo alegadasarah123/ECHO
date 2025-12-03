@@ -11,13 +11,13 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
   const [isEditing, setIsEditing] = useState(false);
 
   const daysOfWeek = [
-    { id: 'Monday', label: 'Monday' },
-    { id: 'Tuesday', label: 'Tuesday' },
-    { id: 'Wednesday', label: 'Wednesday' },
-    { id: 'Thursday', label: 'Thursday' },
-    { id: 'Friday', label: 'Friday' },
-    { id: 'Saturday', label: 'Saturday' },
-    { id: 'Sunday', label: 'Sunday' }
+    { id: 'Monday', label: 'Monday', order: 1 },
+    { id: 'Tuesday', label: 'Tuesday', order: 2 },
+    { id: 'Wednesday', label: 'Wednesday', order: 3 },
+    { id: 'Thursday', label: 'Thursday', order: 4 },
+    { id: 'Friday', label: 'Friday', order: 5 },
+    { id: 'Saturday', label: 'Saturday', order: 6 },
+    { id: 'Sunday', label: 'Sunday', order: 7 }
   ];
 
   const weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
@@ -52,6 +52,25 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
     endPeriod: 'PM',
     duration: 60
   });
+
+  // Helper function to get day order
+  const getDayOrder = (day) => {
+    const dayMap = {
+      'Monday': 1,
+      'Tuesday': 2,
+      'Wednesday': 3,
+      'Thursday': 4,
+      'Friday': 5,
+      'Saturday': 6,
+      'Sunday': 7
+    };
+    return dayMap[day] || 0;
+  };
+
+  // Sort days array in Monday-Sunday order
+  const sortDaysInOrder = (days) => {
+    return [...days].sort((a, b) => getDayOrder(a) - getDayOrder(b));
+  };
 
   // Fetch existing schedules when modal opens
   useEffect(() => {
@@ -128,7 +147,8 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
         setExistingSchedules(data.schedules || []);
         
         if (data.schedules && data.schedules.length > 0) {
-          const days = data.schedules.map(s => s.day_of_week);
+          // Sort days in Monday-Sunday order
+          const days = sortDaysInOrder(data.schedules.map(s => s.day_of_week));
           const firstSchedule = data.schedules[0];
           
           console.log("📅 First schedule data:", firstSchedule);
@@ -181,9 +201,11 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
     
     setSchedule(prev => ({
       ...prev,
-      days: prev.days.includes(dayId) 
-        ? prev.days.filter(id => id !== dayId)
-        : [...prev.days, dayId]
+      days: sortDaysInOrder(
+        prev.days.includes(dayId) 
+          ? prev.days.filter(id => id !== dayId)
+          : [...prev.days, dayId]
+      )
     }));
   };
 
@@ -196,13 +218,13 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
       // Remove all weekdays
       setSchedule(prev => ({
         ...prev,
-        days: prev.days.filter(day => !weekdays.includes(day))
+        days: sortDaysInOrder(prev.days.filter(day => !weekdays.includes(day)))
       }));
     } else {
       // Add all weekdays, keep any existing weekend days
       setSchedule(prev => ({
         ...prev,
-        days: [...new Set([...prev.days, ...weekdays])]
+        days: sortDaysInOrder([...new Set([...prev.days, ...weekdays])])
       }));
     }
   };
@@ -432,7 +454,7 @@ const ScheduleModal = ({ isOpen, onClose, onSave }) => {
                       Current Schedule
                     </h5>
                     <p className="text-sm text-blue-700">
-                      <strong>Days:</strong> {schedule.days.map(day => day).join(', ')}
+                      <strong>Days:</strong> {schedule.days.join(', ')}
                     </p>
                     <p className="text-sm text-blue-700">
                       <strong>Time:</strong> {schedule.startHour}:{schedule.startMinute} {schedule.startPeriod} - {schedule.endHour}:{schedule.endMinute} {schedule.endPeriod}
