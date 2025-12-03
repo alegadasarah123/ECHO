@@ -91,7 +91,7 @@ interface UserData {
 }
 
 // Backend API configuration
-const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
 
 // Helper function to fix image URLs - IMPORTANT FIX
 const cleanImageUrl = (url: string | undefined): string => {
@@ -503,6 +503,15 @@ export default function HorseSelectionScreen() {
       Alert.alert(
         "Horse Unavailable",
         "This horse is deceased and cannot be selected. Please select a different horse.",
+      )
+      return
+    }
+
+    // NEW CHECK: Prevent selection of sick horses
+    if (horse.healthStatus === "Sick") {
+      Alert.alert(
+        "Horse Requires Medical Care",
+        "This horse is sick and needs medical attention. Please select a healthy horse for work.",
       )
       return
     }
@@ -934,8 +943,10 @@ export default function HorseSelectionScreen() {
               // Determine horse statuses with proper type handling
               const isAlive = horse.alive !== false
               const isDeceased = !isAlive || horse.healthStatus === "Deceased"
+              const isSick = isAlive && horse.healthStatus === "Sick" // NEW: Check if horse is sick
               const isAssignedToOther = horse.assignmentStatus === "assigned" && selectedHorse?.id !== horse.id
               const isCurrentlySelected = selectedHorse?.id === horse.id
+              const isSelectable = !isDeceased && !isSick && !isAssignedToOther // NEW: Sick horses are not selectable
 
               return (
                 <TouchableOpacity
@@ -943,17 +954,19 @@ export default function HorseSelectionScreen() {
                   style={[
                     styles.horseItem,
                     isCurrentlySelected && styles.selectedHorseItem,
-                    isAssignedToOther && styles.unavailableHorseItem,
+                    !isSelectable && styles.unavailableHorseItem, // Updated: includes sick horses
+                    isSick && styles.sickHorseItem, // NEW: Specific style for sick horses
                     isDeceased && styles.deceasedHorseItem,
                   ]}
-                  onPress={() => !isDeceased && handleHorseSelection(horse)}
-                  activeOpacity={isDeceased ? 1 : 0.7}
-                  disabled={isAssigning || isDeceased}
+                  onPress={() => isSelectable && handleHorseSelection(horse)}
+                  activeOpacity={isSelectable ? 0.7 : 1}
+                  disabled={isAssigning || !isSelectable}
                 >
                   <TouchableOpacity
                     style={[
                       styles.horseAvatar,
-                      isDeceased && styles.deceasedAvatar
+                      isDeceased && styles.deceasedAvatar,
+                      isSick && styles.sickAvatar, // NEW: Style for sick horse avatar
                     ]}
                     onPress={() => {
                       if (horse.image) {
@@ -973,13 +986,19 @@ export default function HorseSelectionScreen() {
                         <Text style={styles.deceasedOverlayText}>✝</Text>
                       </View>
                     )}
+                    {isSick && !isDeceased && ( // NEW: Overlay for sick horses
+                      <View style={styles.sickOverlay}>
+                        <Text style={styles.sickOverlayText}>⚠</Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                   <View style={styles.horseInfo}>
                     <View style={styles.horseHeader}>
                       <Text style={[
                         styles.horseName,
-                        isAssignedToOther && styles.unavailableText,
-                        isDeceased && styles.deceasedText
+                        !isSelectable && styles.unavailableText,
+                        isDeceased && styles.deceasedText,
+                        isSick && styles.sickText, // NEW: Style for sick horse name
                       ]}>
                         {horse.name}
                       </Text>
@@ -988,12 +1007,17 @@ export default function HorseSelectionScreen() {
                           <Text style={styles.deceasedBadgeText}>Deceased</Text>
                         </View>
                       )}
-                      {isAssignedToOther && !isDeceased && (
+                      {isSick && !isDeceased && ( // NEW: Sick badge
+                        <View style={styles.sickBadge}>
+                          <Text style={styles.sickBadgeText}>Sick</Text>
+                        </View>
+                      )}
+                      {isAssignedToOther && !isDeceased && !isSick && (
                         <View style={styles.assignedBadge}>
                           <Text style={styles.assignedBadgeText}>Assigned</Text>
                         </View>
                       )}
-                      {isCurrentlySelected && !isDeceased && (
+                      {isCurrentlySelected && isSelectable && (
                         <View style={styles.currentBadge}>
                           <Text style={styles.currentBadgeText}>Current</Text>
                         </View>
@@ -1001,15 +1025,17 @@ export default function HorseSelectionScreen() {
                     </View>
                     <Text style={[
                       styles.horseBreed,
-                      isAssignedToOther && styles.unavailableText,
-                      isDeceased && styles.deceasedText
+                      !isSelectable && styles.unavailableText,
+                      isDeceased && styles.deceasedText,
+                      isSick && styles.sickText, // NEW: Style for sick horse breed
                     ]}>
                       {horse.breed} • {horse.age} years old
                     </Text>
                     <Text style={[
                       styles.horseOperator,
-                      isAssignedToOther && styles.unavailableText,
-                      isDeceased && styles.deceasedText
+                      !isSelectable && styles.unavailableText,
+                      isDeceased && styles.deceasedText,
+                      isSick && styles.sickText, // NEW: Style for sick horse owner
                     ]}>
                       Owner: {getOwnerName(horse)}
                     </Text>
@@ -1036,27 +1062,42 @@ export default function HorseSelectionScreen() {
                       ]}>
                         {horse.healthStatus}
                       </Text>
-                      {!isDeceased && (
+                      {!isDeceased && !isSick && ( // NEW: Don't show status for sick horses
                         <>
                           <Text style={styles.horseSeparator}>•</Text>
-                          <Text style={[styles.horseStatus, isAssignedToOther && styles.unavailableText]}>
+                          <Text style={[styles.horseStatus, !isSelectable && styles.unavailableText]}>
                             {horse.status}
+                          </Text>
+                        </>
+                      )}
+                      {isSick && ( // NEW: Show medical care message for sick horses
+                        <>
+                          <Text style={styles.horseSeparator}>•</Text>
+                          <Text style={styles.sickStatusText}>
+                            Needs Medical Care
                           </Text>
                         </>
                       )}
                     </View>
                     <Text style={[
                       styles.horseCheckup,
-                      isAssignedToOther && styles.unavailableText,
-                      isDeceased && styles.deceasedText
+                      !isSelectable && styles.unavailableText,
+                      isDeceased && styles.deceasedText,
+                      isSick && styles.sickText, // NEW: Style for sick horse checkup
                     ]}>
-                      {isDeceased ? "Deceased" : `Last checkup: ${horse.lastCheckup}`}
+                      {isDeceased ? "Deceased" : 
+                       isSick ? "Requires medical attention" : // NEW: Different message for sick horses
+                       `Last checkup: ${horse.lastCheckup}`}
                     </Text>
                   </View>
                   <View style={styles.selectIndicator}>
                     {isDeceased ? (
                       <View style={styles.deceasedIndicator}>
                         <Text style={styles.deceasedIndicatorText}>✝</Text>
+                      </View>
+                    ) : isSick ? ( // NEW: Indicator for sick horses
+                      <View style={styles.sickIndicator}>
+                        <Text style={styles.sickIndicatorText}>⚠</Text>
                       </View>
                     ) : isCurrentlySelected ? (
                       <View style={styles.selectedIndicator}>
@@ -1450,6 +1491,11 @@ const styles = StyleSheet.create({
     backgroundColor: "#F0F0F0",
     opacity: 0.7,
   },
+  sickHorseItem: { // NEW: Style for sick horses
+    backgroundColor: "#FFF5F5",
+    borderColor: "#FFCDD2",
+    opacity: 0.8,
+  },
   deceasedHorseItem: {
     backgroundColor: "#F5F5F5",
     borderColor: "#E0E0E0",
@@ -1469,6 +1515,9 @@ const styles = StyleSheet.create({
   deceasedAvatar: {
     backgroundColor: "#E0E0E0",
   },
+  sickAvatar: { // NEW: Style for sick horse avatar
+    backgroundColor: "#FFEBEE",
+  },
   deceasedOverlay: {
     position: "absolute",
     width: "100%",
@@ -1479,6 +1528,19 @@ const styles = StyleSheet.create({
   },
   deceasedOverlayText: {
     color: "white",
+    fontSize: moderateScale(24),
+    fontWeight: "bold",
+  },
+  sickOverlay: { // NEW: Overlay for sick horses
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(244, 67, 54, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sickOverlayText: {
+    color: "#F44336",
     fontSize: moderateScale(24),
     fontWeight: "bold",
   },
@@ -1500,6 +1562,10 @@ const styles = StyleSheet.create({
   },
   unavailableText: {
     color: "#999",
+  },
+  sickText: { // NEW: Style for sick horse text
+    color: "#F44336",
+    fontStyle: "italic",
   },
   deceasedText: {
     color: "#999",
@@ -1544,6 +1610,19 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontFamily: "System",
   },
+  sickBadge: { // NEW: Badge for sick horses
+    backgroundColor: "#F44336",
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(3),
+    borderRadius: scale(12),
+    marginLeft: scale(8),
+  },
+  sickBadgeText: {
+    color: "white",
+    fontSize: moderateScale(9),
+    fontWeight: "600",
+    fontFamily: "System",
+  },
   horseBreed: {
     fontSize: moderateScale(13),
     color: "#666",
@@ -1581,6 +1660,12 @@ const styles = StyleSheet.create({
   horseStatus: {
     fontSize: moderateScale(12),
     color: "#666",
+    fontFamily: "System",
+  },
+  sickStatusText: { // NEW: Text for sick horse status
+    fontSize: moderateScale(11),
+    color: "#F44336",
+    fontWeight: "500",
     fontFamily: "System",
   },
   horseCheckup: {
@@ -1628,6 +1713,20 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   deceasedIndicatorText: {
+    color: "white",
+    fontSize: moderateScale(16),
+    fontWeight: "bold",
+    fontFamily: "System",
+  },
+  sickIndicator: { // NEW: Indicator for sick horses
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#F44336",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sickIndicatorText: {
     color: "white",
     fontSize: moderateScale(16),
     fontWeight: "bold",

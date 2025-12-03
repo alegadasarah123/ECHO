@@ -5,7 +5,7 @@ import { Alert, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput
 import FeedLogPage from './FeedLogPage';
 import WaterLogPage from './waterlogpage';
 
-const API_BASE_URL = 'http://192.168.1.9:8000/api/kutsero';
+const API_BASE_URL = 'http://192.168.31.58:8000/api/kutsero';
 
 interface FeedLog {
   log_id: string;
