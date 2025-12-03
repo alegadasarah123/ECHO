@@ -159,9 +159,11 @@ const ChatInterface = ({
 
   useEffect(() => {
     if (scrollViewRef.current) {
-      setTimeout(() => {
+      const timer = setTimeout(() => {
         scrollViewRef.current?.scrollToEnd({ animated: true })
       }, 100)
+      
+      return () => clearTimeout(timer)
     }
   }, [messages])
 
@@ -342,9 +344,9 @@ export default function MessageScreen() {
   // Add flags to track state
   const directChatProcessedRef = useRef(false)
   const initialLoadCompleteRef = useRef(false)
-  // FIXED: Changed from NodeJS.Timeout to number for React Native
   const loadMessagesTimeoutRef = useRef<number | null>(null)
   const lastSelectedUserIdRef = useRef<number | string | null>(null)
+  const paramsProcessedRef = useRef(false)
 
   const calculateTotalUnread = useCallback((convs: Message[]) => {
     const total = convs.reduce((sum, conv) => sum + (conv.unread_count || 0), 0)
@@ -573,7 +575,7 @@ export default function MessageScreen() {
       clearTimeout(loadMessagesTimeoutRef.current)
     }
 
-    // Debounce the API call
+    // Use setTimeout with number type for React Native
     loadMessagesTimeoutRef.current = setTimeout(async () => {
       try {
         console.log('💬 Loading messages for other user:', otherUserId, 'Type:', typeof otherUserId)
@@ -600,10 +602,12 @@ export default function MessageScreen() {
         } else {
           console.error('❌ Failed to load messages:', response.status)
         }
-      } catch {
-        console.error("Error loading chat messages")
+      } catch (error) {
+        console.error("Error loading chat messages:", error)
+      } finally {
+        loadMessagesTimeoutRef.current = null
       }
-    }, 300) as unknown as number // Type assertion for setTimeout in React Native
+    }, 300) as unknown as number
   }, [userData?.id])
 
   const sendMessageToBackend = useCallback(async (receiverId: number | string, content: string) => {
@@ -907,6 +911,9 @@ export default function MessageScreen() {
       setIndividualChatMessages([])
       lastSelectedUserIdRef.current = userId
       
+      // Reset params processed flag when opening a new chat
+      paramsProcessedRef.current = false
+      
       // Load messages after a short delay to ensure state is updated
       setTimeout(() => {
         loadChatMessages(userId as any)
@@ -1017,26 +1024,25 @@ export default function MessageScreen() {
 
   // Fixed version of checkForDirectChat
   const checkForDirectChat = useCallback(() => {
-    // Prevent multiple executions
-    if (directChatProcessedRef.current) {
-      console.log("⏭️ Direct chat already processed, skipping")
-      return
+    // Prevent multiple executions using a ref
+    if (paramsProcessedRef.current) {
+      console.log("⏭️ Params already processed, skipping")
+      return false
     }
 
     console.log("🔍 Checking params for direct chat:", {
       openChat: params.openChat,
       contactId: params.contactId,
       contactName: params.contactName,
-      userId: params.userId,
     })
 
-    if (params.openChat === "true" && params.contactId) {
+    if (params.openChat === "true" && params.contactId && !showIndividualChat) {
       console.log("✅ Direct chat params detected!")
       console.log("📨 Opening chat from profile:", params.contactName)
       console.log("📨 Contact ID:", params.contactId, "Type:", typeof params.contactId)
 
-      // Mark as processed immediately to prevent re-execution
-      directChatProcessedRef.current = true
+      // Mark as processed immediately
+      paramsProcessedRef.current = true
 
       // Parse contact ID
       const contactIdValue = params.contactId as string
@@ -1044,7 +1050,7 @@ export default function MessageScreen() {
       
       if (isNaN(contactIdNum)) {
         console.error("❌ Invalid contact ID:", contactIdValue)
-        return
+        return false
       }
 
       console.log("📨 Parsed contact ID:", contactIdNum)
@@ -1078,15 +1084,21 @@ export default function MessageScreen() {
         console.log("📨 Loading messages for contact:", contactIdNum)
         loadChatMessages(contactIdNum)
       }, 500)
+      
+      return true
     } else {
-      console.log("ℹ️ No direct chat params detected")
+      console.log("ℹ️ No direct chat params detected or chat already open")
       if (!params.openChat) console.log("   - openChat missing or not 'true'")
       if (!params.contactId) console.log("   - contactId missing")
+      if (showIndividualChat) console.log("   - chat already open")
       
-      // Mark as processed to prevent future checks
-      directChatProcessedRef.current = true
+      // Only mark as processed if we're not supposed to open a chat
+      if (!params.openChat) {
+        paramsProcessedRef.current = true
+      }
+      return false
     }
-  }, [params, loadChatMessages])
+  }, [params, showIndividualChat, loadChatMessages])
 
   // Load user data on mount
   useEffect(() => {
@@ -1109,10 +1121,8 @@ export default function MessageScreen() {
       loadConversations()
       loadAvailableUsers()
       
-      // Check for direct chat AFTER loading is done
-      setTimeout(() => {
-        checkForDirectChat()
-      }, 1000) // 1 second delay to ensure everything is loaded
+      // Reset params processed flag on initial load
+      paramsProcessedRef.current = false
     }
 
     // Cleanup function
@@ -1127,7 +1137,15 @@ export default function MessageScreen() {
         messagesSubscriptionRef.current.unsubscribe()
       }
     }
-  }, [userData, setupOnlinePresence, setupMessageSubscription, loadConversations, loadAvailableUsers, checkForDirectChat])
+  }, [userData, setupOnlinePresence, setupMessageSubscription, loadConversations, loadAvailableUsers])
+
+  // Check for direct chat ONLY when user data is loaded and not already in a chat
+  useEffect(() => {
+    if (userData && !showIndividualChat && !showAIChat && !paramsProcessedRef.current) {
+      console.log("🔄 Checking for direct chat on mount/update")
+      checkForDirectChat()
+    }
+  }, [userData, showIndividualChat, showAIChat, checkForDirectChat])
 
   // Update conversations and users when online status changes
   useEffect(() => {
@@ -1154,6 +1172,7 @@ export default function MessageScreen() {
         
         // Reset direct chat flag when navigating back to main screen
         if (!showIndividualChat && !showAIChat) {
+          paramsProcessedRef.current = false
           directChatProcessedRef.current = false
         }
         
@@ -1175,6 +1194,7 @@ export default function MessageScreen() {
       selectedUserId,
       messagesCount: individualChatMessages.length,
       directChatProcessed: directChatProcessedRef.current,
+      paramsProcessed: paramsProcessedRef.current,
     })
   }, [showIndividualChat, showAIChat, selectedContact, selectedUserId, individualChatMessages])
 
@@ -1186,8 +1206,9 @@ export default function MessageScreen() {
     setSelectedUserId(null)
     setIndividualChatMessages([])
     lastSelectedUserIdRef.current = null
-    // Reset direct chat flag when leaving individual chat
+    // Reset flags when leaving individual chat
     directChatProcessedRef.current = false
+    paramsProcessedRef.current = false
     loadConversations()
   }, [loadConversations])
 
