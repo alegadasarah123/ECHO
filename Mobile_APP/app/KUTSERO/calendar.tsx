@@ -66,7 +66,7 @@ interface Event {
 }
 
 // API Base URL - UPDATE THIS TO YOUR IP ADDRESS
-const API_BASE_URL = "http://192.168.1.9:8000/api/kutsero"
+const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
 
 // Configure notifications with proper TypeScript types
 Notifications.setNotificationHandler({
@@ -407,7 +407,7 @@ export default function CalendarScreen() {
         await scheduleNotification(newEvent)
         await scheduleExactTimeNotification(newEvent)
 
-        Alert.alert("Success", "Event created successfully! You will receive notifications 5 minutes before and at the event time.")
+        Alert.alert("Success", "Event created successfully! You will be notified when the event starts.")
         setEventTitle("")
         setHour("")
         setMinute("")
