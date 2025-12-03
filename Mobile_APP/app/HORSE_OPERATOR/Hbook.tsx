@@ -1,4 +1,4 @@
-// Fixed Hbook.tsx - Resolved infinite loading/loop issue
+// HORSE_OPERATOR/Hbook.tsx
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
@@ -14,6 +14,7 @@ import {
   TextInput,
   Platform,
   KeyboardAvoidingView,
+  Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -24,10 +25,12 @@ interface Horse {
   horse_name: string;
   horse_breed: string;
   horse_age: number;
+  horse_status: string; // Added status field
 }
 
 interface ScheduleSlot {
   sched_id: string;
+  slot_id: string;
   vet_id: string;
   sched_date: string;
   start_time: string;
@@ -36,12 +39,25 @@ interface ScheduleSlot {
   is_available: boolean;
 }
 
-// const API_BASE_URL = "http://10.160.169.148:8000/api/horse_operator";
-// const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator"
+interface VetService {
+  service_id: string;
+  service_name: string;
+  description: string;
+  vet_id: string;
+}
 
-// Available services with icons
-const services = [
+interface VetProfile {
+  vet_id: string;
+  vet_name: string;
+  vet_avatar: string;
+  vet_specialization: string;
+  vet_exp_yr: number;
+}
+
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
+
+// Default services with icons
+const defaultServices = [
   { name: 'General Consultation', icon: 'stethoscope' },
   { name: 'Vaccination', icon: 'syringe' },
   { name: 'Dental Care', icon: 'tooth' },
@@ -110,9 +126,62 @@ const isScheduleSlotInPast = (scheduleDate: string, startTime: string): boolean 
   }
 };
 
-// Utility function to check if two dates are the same day
-const isSameDay = (date1: Date, date2: Date): boolean => {
-  return date1.toISOString().split('T')[0] === date2.toISOString().split('T')[0];
+// Calendar component helper functions
+const getDaysInMonth = (year: number, month: number) => {
+  return new Date(year, month + 1, 0).getDate();
+};
+
+const getFirstDayOfMonth = (year: number, month: number) => {
+  return new Date(year, month, 1).getDay();
+};
+
+const formatMonthYear = (date: Date) => {
+  return date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+};
+
+const formatDateForDisplay = (date: Date) => {
+  return date.toLocaleDateString('en-US', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric'
+  });
+};
+
+// FIXED: Properly convert database date string to local Date object without timezone issues
+const parseDatabaseDate = (dateString: string): Date => {
+  try {
+    // Split the date string (assuming format YYYY-MM-DD)
+    const [year, month, day] = dateString.split('-').map(Number);
+    // Create date in local timezone (not UTC)
+    return new Date(year, month - 1, day);
+  } catch (error) {
+    console.error('Error parsing database date:', error);
+    return new Date(dateString);
+  }
+};
+
+// FIXED: Format date to YYYY-MM-DD string for comparison
+const formatDateToDatabaseString = (date: Date): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+// UPDATED: Function to check if a date is within the two-month rolling window
+const isDateInTwoMonthWindow = (date: Date, currentDate: Date = new Date()): boolean => {
+  const dateYear = date.getFullYear();
+  const dateMonth = date.getMonth();
+  
+  const currentYear = currentDate.getFullYear();
+  const currentMonth = currentDate.getMonth();
+  
+  // Calculate month difference
+  const monthDiff = (dateYear - currentYear) * 12 + (dateMonth - currentMonth);
+  
+  // Include if it's current month (0) or next month (1)
+  return monthDiff >= 0 && monthDiff <= 1;
 };
 
 const Hbook = () => {
@@ -120,7 +189,10 @@ const Hbook = () => {
   const [vetSchedule, setVetSchedule] = useState<ScheduleSlot[]>([]);
   const [availableDateObjects, setAvailableDateObjects] = useState<Date[]>([]);
   const [availableTimesForDate, setAvailableTimesForDate] = useState<ScheduleSlot[]>([]);
+  const [availableServices, setAvailableServices] = useState<VetService[]>([]);
+  const [vetProfile, setVetProfile] = useState<VetProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingServices, setLoadingServices] = useState(false);
   const [isBookingAppointment, setIsBookingAppointment] = useState(false);
   
   // Form states
@@ -129,10 +201,14 @@ const Hbook = () => {
   const [selectedService, setSelectedService] = useState('General Consultation');
   const [showServiceDropdown, setShowServiceDropdown] = useState(false);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<ScheduleSlot | null>(null);
   const [appointmentNotes, setAppointmentNotes] = useState('');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
+  // Calendar state
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [availableDatesSet, setAvailableDatesSet] = useState<Set<string>>(new Set());
 
   const router = useRouter();
   const params = useLocalSearchParams();
@@ -144,9 +220,8 @@ const Hbook = () => {
   const vetSpecialization = params.vetSpecialization as string;
   const vetExperience = params.vetExperience as string;
 
-  // FIXED: Update available times when date changes - Stable function with no dependencies that change
+  // ✅ FIXED: Removed unnecessary vetId dependency
   const updateAvailableTimesForDate = useCallback((dateString: string, scheduleData?: ScheduleSlot[]) => {
-    // Use the provided scheduleData or fall back to current vetSchedule
     const dataToUse = scheduleData || vetSchedule;
     const timesForDate = dataToUse.filter((item: ScheduleSlot) => 
       item.sched_date === dateString && 
@@ -159,15 +234,14 @@ const Hbook = () => {
     
     // Clear selected time slot if it's no longer available
     setSelectedTimeSlot(prevSelected => {
-      if (prevSelected && !timesForDate.some(item => item.sched_id === prevSelected.sched_id)) {
+      if (prevSelected && !timesForDate.some(item => item.slot_id === prevSelected.slot_id)) {
         return null;
       }
       return prevSelected;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // FIXED: Empty dependency array since we're using the callback parameter
+  }, [vetSchedule]);
 
-  // FIXED: Get current user ID - Stable function that doesn't cause re-renders
+  // Get current user ID
   const getCurrentUserId = useCallback(async (): Promise<string | null> => {
     try {
       const storedUser = await SecureStore.getItemAsync("user_data");
@@ -188,7 +262,7 @@ const Hbook = () => {
     }
   }, [router]);
 
-  // FIXED: Stable function for fetching horses
+  // ✅ UPDATED: Stable function for fetching horses - now excludes deceased horses
   const fetchHorses = useCallback(async (userId: string) => {
     try {
       console.log("Fetching horses for user_id:", userId);
@@ -202,21 +276,127 @@ const Hbook = () => {
       }
 
       const data = await response.json();
-      setAvailableHorses(Array.isArray(data) ? data : []);
+      
+      // ✅ FILTER OUT DECEASED HORSES - only include horses that are not deceased
+      const activeHorses = Array.isArray(data) 
+        ? data.filter((horse: Horse) => horse.horse_status !== 'Deceased')
+        : [];
+      
+      setAvailableHorses(activeHorses);
+      console.log(`Loaded ${activeHorses.length} active horses (excluding deceased)`);
     } catch (error: any) {
       console.error("Error loading horses:", error);
       Alert.alert("Error", error.message || "Unable to load horses");
     }
-  }, []); // FIXED: Empty dependency array
+  }, []);
 
-  // FIXED: Stable function for fetching schedule
-  const fetchVetSchedule = useCallback(async () => {
-    if (!vetId) return;
+  // Stable function for fetching vet services
+  const fetchVetServices = useCallback((vetIdParam: string) => async () => {
+    if (!vetIdParam) return;
     
     try {
-      console.log("Fetching schedule for vet_id:", vetId);
+      setLoadingServices(true);
+      console.log("Fetching services for vet_id:", vetIdParam);
       
-      const url = `${API_BASE_URL}/get_vet_schedule/?vet_id=${encodeURIComponent(vetId)}`;
+      const url = `${API_BASE_URL}/get_vet_services/?vet_id=${encodeURIComponent(vetIdParam)}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch services: ${response.status}`);
+      }
+
+      const servicesData = await response.json();
+      console.log("Vet services data:", servicesData);
+      
+      // If we have custom services, use them. Otherwise, use the default services with icons.
+      if (servicesData && servicesData.length > 0) {
+        setAvailableServices(servicesData);
+        setSelectedService(servicesData[0].service_name);
+      } else {
+        // Use the default services with icons as fallback
+        const defaultServicesWithIcons = defaultServices.map(service => ({
+          service_id: service.name,
+          service_name: service.name,
+          description: service.name,
+          vet_id: vetIdParam,
+          icon: service.icon
+        }));
+        setAvailableServices(defaultServicesWithIcons);
+      }
+      
+    } catch (error) {
+      console.error("Error fetching vet services:", error);
+      // Fallback to default services
+      const defaultServicesWithIcons = defaultServices.map(service => ({
+        service_id: service.name,
+        service_name: service.name,
+        description: service.name,
+        vet_id: vetIdParam,
+        icon: service.icon
+      }));
+      setAvailableServices(defaultServicesWithIcons);
+    } finally {
+      setLoadingServices(false);
+    }
+  }, []);
+
+  // Function to fetch actual vet profile data including years of experience
+  const fetchVetProfile = useCallback((vetIdParam: string) => async () => {
+    if (!vetIdParam) return;
+    
+    try {
+      console.log("Fetching vet profile for vet_id:", vetIdParam);
+      
+      const url = `${API_BASE_URL}/get_vet_profile/?vet_id=${encodeURIComponent(vetIdParam)}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch vet profile: ${response.status}`);
+      }
+
+      const vetData = await response.json();
+      console.log("Vet profile data:", vetData);
+      
+      if (vetData && vetData.length > 0) {
+        const profile = vetData[0];
+        setVetProfile({
+          vet_id: vetIdParam,
+          vet_name: `${profile.vet_fname || ''} ${profile.vet_lname || ''}`.trim(),
+          vet_avatar: profile.vet_profile_photo || '',
+          vet_specialization: profile.vet_specialization || 'General Veterinarian',
+          vet_exp_yr: profile.vet_exp_yr || 0
+        });
+      } else {
+        setVetProfile({
+          vet_id: vetIdParam,
+          vet_name: vetName,
+          vet_avatar: vetAvatar,
+          vet_specialization: vetSpecialization,
+          vet_exp_yr: parseInt(vetExperience) || 0
+        });
+      }
+      
+    } catch (error) {
+      console.error("Error fetching vet profile:", error);
+      // Fallback to params data
+      setVetProfile({
+        vet_id: vetIdParam,
+        vet_name: vetName,
+        vet_avatar: vetAvatar,
+        vet_specialization: vetSpecialization,
+        vet_exp_yr: parseInt(vetExperience) || 0
+      });
+    }
+  }, [vetName, vetAvatar, vetSpecialization, vetExperience]);
+
+  // Stable function for fetching schedule
+  const fetchVetSchedule = useCallback((vetIdParam: string) => async () => {
+    if (!vetIdParam) return;
+    
+    try {
+      console.log("Fetching schedule for vet_id:", vetIdParam);
+      
+      const url = `${API_BASE_URL}/get_vet_schedule/?vet_id=${encodeURIComponent(vetIdParam)}`;
       const response = await fetch(url);
       
       if (!response.ok) {
@@ -226,7 +406,7 @@ const Hbook = () => {
       const scheduleData = await response.json();
       console.log("Vet schedule data:", scheduleData);
       
-      // Transform and filter the data
+      // Transform and filter the data - ✅ FIXED: Ensure slot_id is included
       const transformedSchedule = scheduleData
         .map((item: any) => {
           const formattedStartTime = formatTimeTo12Hour(item.start_time);
@@ -235,6 +415,7 @@ const Hbook = () => {
           
           return {
             sched_id: item.sched_id,
+            slot_id: item.slot_id || item.sched_id,
             vet_id: item.vet_id,
             sched_date: item.sched_date,
             start_time: item.start_time,
@@ -254,15 +435,25 @@ const Hbook = () => {
       
       const uniqueDates = [...new Set(transformedSchedule.map((item: ScheduleSlot) => item.sched_date))];
       
-      // Convert date strings to Date objects for DateTimePicker
-      const dateObjects = (uniqueDates as string[]).map((dateString: string) => new Date(dateString));
+      // FIXED: Use parseDatabaseDate to avoid timezone issues
+      const dateObjects = (uniqueDates as string[]).map((dateString: string) => parseDatabaseDate(dateString));
       setAvailableDateObjects(dateObjects);
       
+      // Create a Set of available dates for quick lookup (using the same format)
+      const availableDates = new Set(uniqueDates as string[]);
+      setAvailableDatesSet(availableDates);
+      
       if (uniqueDates.length > 0) {
-        const firstDate = new Date(uniqueDates[0] as string);
+        // FIXED: Use parseDatabaseDate for the first date as well
+        const firstDate = parseDatabaseDate(uniqueDates[0] as string);
         setSelectedDate(firstDate);
-        // Call updateAvailableTimesForDate with the new schedule data directly
-        updateAvailableTimesForDate(uniqueDates[0] as string, transformedSchedule);
+        // Update available times for the first date
+        const timesForDate = transformedSchedule.filter((item: ScheduleSlot) => 
+          item.sched_date === uniqueDates[0] && 
+          item.is_available === true &&
+          !isScheduleSlotInPast(item.sched_date, item.start_time)
+        );
+        setAvailableTimesForDate(timesForDate);
       } else if (uniqueDates.length === 0) {
         Alert.alert(
           'No Available Appointments', 
@@ -275,15 +466,15 @@ const Hbook = () => {
       console.error("Error fetching vet schedule:", error);
       Alert.alert("Error", "Unable to load veterinarian schedule");
     }
-  }, [vetId, updateAvailableTimesForDate, router]);
+  }, [router]);
 
-  // FIXED: Main useEffect with proper dependency management to prevent infinite loops
+  // ✅ FIXED: Main useEffect with proper dependency management
   useEffect(() => {
     let isMounted = true;
-    let hasLoaded = false; // CRITICAL: Prevent multiple simultaneous loads
+    let hasLoaded = false;
 
     const loadData = async () => {
-      if (hasLoaded || !isMounted) return; // CRITICAL: Exit if already loading/loaded
+      if (hasLoaded || !isMounted) return;
       hasLoaded = true;
       
       console.log('Starting data load...');
@@ -298,10 +489,12 @@ const Hbook = () => {
         // Set the user ID in state
         setCurrentUserId(userId);
         
-        // Fetch horses and schedule in parallel
+        // Fetch horses and vet data in parallel
         await Promise.all([
-          fetchHorses(userId),
-          fetchVetSchedule()
+          fetchHorses(userId), // ✅ This now excludes deceased horses
+          fetchVetSchedule(vetId)(),
+          fetchVetServices(vetId)(),
+          fetchVetProfile(vetId)()
         ]);
       } catch (error) {
         console.error('Error loading data:', error);
@@ -315,208 +508,208 @@ const Hbook = () => {
 
     loadData();
 
-    // Cleanup function to prevent state updates if component unmounts
+    // Cleanup function
     return () => {
       isMounted = false;
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vetId]); // FIXED: Only vetId as dependency since it comes from params and is stable
+  }, [vetId, fetchHorses, fetchVetSchedule, fetchVetServices, fetchVetProfile, getCurrentUserId]);
 
   // Separate useEffect for updating times when vetSchedule changes
   useEffect(() => {
     if (selectedDate && vetSchedule.length > 0) {
-      updateAvailableTimesForDate(selectedDate.toISOString().split('T')[0], vetSchedule);
+      // FIXED: Use formatDateToDatabaseString to ensure proper comparison
+      updateAvailableTimesForDate(formatDateToDatabaseString(selectedDate), vetSchedule);
     }
   }, [vetSchedule, selectedDate, updateAvailableTimesForDate]);
 
-  // Format date for display
-  const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
-      weekday: 'long',
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
+  // FIXED: Calendar navigation functions - now allows unlimited navigation
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    setCurrentMonth(prev => {
+      const newMonth = new Date(prev);
+      if (direction === 'prev') {
+        newMonth.setMonth(prev.getMonth() - 1);
+      } else {
+        newMonth.setMonth(prev.getMonth() + 1);
+      }
+      return newMonth;
     });
   };
 
-  // Custom date picker for Android with only available dates
-  const renderCustomDatePicker = () => {
-    if (availableDateObjects.length > 0) {
-      return (
-        <View style={styles.customDatePickerContainer}>
-          <Text style={styles.datePickerLabel}>Available Dates:</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.dateScrollContainer}>
-            {availableDateObjects.sort((a, b) => a.getTime() - b.getTime()).map((dateObj, index) => {
-              const isSelected = selectedDate && isSameDay(dateObj, selectedDate);
-              
-              return (
-                <TouchableOpacity
-                  key={index}
-                  style={[
-                    styles.dateOption,
-                    isSelected && styles.dateOptionSelected
-                  ]}
-                  onPress={() => {
-                    setSelectedDate(dateObj);
-                    updateAvailableTimesForDate(dateObj.toISOString().split('T')[0], vetSchedule);
-                  }}
-                  disabled={isBookingAppointment}
-                >
-                  <Text style={[
-                    styles.dateOptionDay,
-                    isSelected && styles.dateOptionDaySelected
-                  ]}>
-                    {dateObj.getDate()}
-                  </Text>
-                  <Text style={[
-                    styles.dateOptionMonth,
-                    isSelected && styles.dateOptionMonthSelected
-                  ]}>
-                    {dateObj.toLocaleDateString('en-US', { month: 'short' })}
-                  </Text>
-                  <Text style={[
-                    styles.dateOptionWeekday,
-                    isSelected && styles.dateOptionWeekdaySelected
-                  ]}>
-                    {dateObj.toLocaleDateString('en-US', { weekday: 'short' })}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-      );
-    }
-    return null;
+  // UPDATED: Check if a date is available AND within the two-month window
+  const isDateAvailable = (date: Date) => {
+    const dateString = formatDateToDatabaseString(date);
+    const isInTwoMonthWindow = isDateInTwoMonthWindow(date);
+    return availableDatesSet.has(dateString) && isInTwoMonthWindow;
   };
 
-  // Handle time selection
+  // Check if a date is today
+  const isToday = (date: Date) => {
+    const today = new Date();
+    return date.toDateString() === today.toDateString();
+  };
+
+  // Check if a date is selected
+  const isDateSelected = (date: Date) => {
+    return selectedDate ? date.toDateString() === selectedDate.toDateString() : false;
+  };
+
+  // FIXED: Handle date selection with proper date string conversion
+  const handleDateSelect = (date: Date) => {
+    const dateString = formatDateToDatabaseString(date);
+    if (isDateAvailable(date)) {
+      setSelectedDate(date);
+      updateAvailableTimesForDate(dateString, vetSchedule);
+      setShowCalendarModal(false);
+    }
+  };
+
+  // FIXED: Render calendar component with single month display
+  const renderCalendar = () => {
+    return (
+      <View style={styles.calendarContainer}>
+        {/* Calendar Header */}
+        <View style={styles.calendarHeader}>
+          <TouchableOpacity 
+            style={styles.calendarNavButton}
+            onPress={() => navigateMonth('prev')}
+            disabled={isBookingAppointment}
+          >
+            <FontAwesome5 name="chevron-left" size={16} color="#CD853F" />
+          </TouchableOpacity>
+          
+          <Text style={styles.calendarMonthText}>
+            {formatMonthYear(currentMonth)}
+          </Text>
+          
+          <TouchableOpacity 
+            style={styles.calendarNavButton}
+            onPress={() => navigateMonth('next')}
+            disabled={isBookingAppointment}
+          >
+            <FontAwesome5 name="chevron-right" size={16} color="#CD853F" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Calendar Grid for current month */}
+        <View style={styles.calendarContent}>
+          {renderSingleMonth(currentMonth)}
+        </View>
+        
+        {/* Calendar legend */}
+        <View style={styles.calendarLegend}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendColor, styles.legendAvailable]} />
+            <Text style={styles.legendText}>Available</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendColor, styles.legendSelected]} />
+            <Text style={styles.legendText}>Selected</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendColor, styles.legendToday]} />
+            <Text style={styles.legendText}>Today</Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
+  // Render a single month calendar
+  const renderSingleMonth = (monthDate: Date) => {
+    const year = monthDate.getFullYear();
+    const month = monthDate.getMonth();
+    const daysInMonth = getDaysInMonth(year, month);
+    const firstDayOfMonth = getFirstDayOfMonth(year, month);
+    
+    const days = [];
+    
+    // Add empty cells for days before the first day of the month
+    for (let i = 0; i < firstDayOfMonth; i++) {
+      days.push(<View key={`empty-${month}-${i}`} style={styles.calendarDayEmpty} />);
+    }
+    
+    // Add cells for each day of the month
+    for (let day = 1; day <= daysInMonth; day++) {
+      const date = new Date(year, month, day);
+      const available = isDateAvailable(date);
+      const today = isToday(date);
+      const selected = isDateSelected(date);
+      
+      days.push(
+        <TouchableOpacity
+          key={`day-${month}-${day}`}
+          style={[
+            styles.calendarDay,
+            today && styles.calendarDayToday,
+            selected && styles.calendarDaySelected,
+            !available && !today && styles.calendarDayDisabled
+          ]}
+          onPress={() => available && handleDateSelect(date)}
+          disabled={!available || isBookingAppointment}
+        >
+          <Text style={[
+            styles.calendarDayText,
+            today && styles.calendarDayTextToday,
+            selected && styles.calendarDayTextSelected,
+            !available && !today && styles.calendarDayTextDisabled
+          ]}>
+            {day}
+          </Text>
+          {available && (
+            <View style={[
+              styles.availableIndicator,
+              selected && styles.availableIndicatorSelected,
+              today && styles.availableIndicatorToday
+            ]} />
+          )}
+        </TouchableOpacity>
+      );
+    }
+    
+    return (
+      <View style={styles.singleMonthContainer}>
+        {/* Day headers */}
+        <View style={styles.calendarDaysHeader}>
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+            <Text key={day} style={styles.calendarDayHeaderText}>
+              {day}
+            </Text>
+          ))}
+        </View>
+        
+        {/* Calendar grid */}
+        <View style={styles.calendarGrid}>
+          {days}
+        </View>
+      </View>
+    );
+  };
+
+  // ✅ FIXED: Handle time selection with proper slot_id
   const handleTimeSelection = (timeSlot: ScheduleSlot) => {
     if (!selectedDate) return;
     
-    const dateString = selectedDate.toISOString().split('T')[0];
+    // FIXED: Use formatDateToDatabaseString for consistent comparison
+    const dateString = formatDateToDatabaseString(selectedDate);
     
     const isValidSlot = vetSchedule.find((item: ScheduleSlot) => 
-      item.sched_id === timeSlot.sched_id &&
+      item.slot_id === timeSlot.slot_id &&
       item.sched_date === dateString && 
       item.is_available === true &&
       !isScheduleSlotInPast(item.sched_date, item.start_time)
     );
     
     if (isValidSlot) {
+      // ✅ FIXED: Only set the selected time slot, don't modify the array
       setSelectedTimeSlot(timeSlot);
       console.log("Selected time slot:", timeSlot);
     } else {
       Alert.alert('Error', 'This time slot is no longer available or has passed.');
-      fetchVetSchedule();
+      fetchVetSchedule(vetId)();
     }
   };
 
-  // Confirm appointment booking
-  const confirmAppointment = async () => {
-    if (selectedHorse === 'Select a horse') {
-      Alert.alert('Validation Error', 'Please select a horse for the appointment.');
-      return;
-    }
-    if (!selectedTimeSlot) {
-      Alert.alert('Validation Error', 'Please select an available time slot.');
-      return;
-    }
-    if (!selectedDate) {
-      Alert.alert('Validation Error', 'Please select a date.');
-      return;
-    }
-
-    if (isScheduleSlotInPast(selectedTimeSlot.sched_date, selectedTimeSlot.start_time)) {
-      Alert.alert('Error', 'The selected time slot has passed. Please select a current or future time slot.');
-      fetchVetSchedule();
-      return;
-    }
-
-    const userId = currentUserId || await getCurrentUserId();
-    if (!userId) {
-      Alert.alert('Authentication Error', 'Unable to identify user. Please try logging in again.');
-      return;
-    }
-
-    setIsBookingAppointment(true);
-    
-    try {
-      const selectedHorseData = availableHorses.find(horse => horse.horse_name === selectedHorse);
-      if (!selectedHorseData) {
-        throw new Error('Selected horse not found');
-      }
-
-      const bookingData = {
-        user_id: userId,
-        vet_id: vetId,
-        horse_id: selectedHorseData.horse_id,
-        date: selectedDate.toISOString().split('T')[0],
-        time: selectedTimeSlot.time_display,
-        service: selectedService,
-        notes: appointmentNotes,
-        sched_id: selectedTimeSlot.sched_id
-      };
-
-      console.log('Booking appointment with data:', bookingData);
-      
-      const url = `${API_BASE_URL}/book_appointment/`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(bookingData),
-      });
-
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        const responseText = await response.text();
-        console.log('Server returned non-JSON response:', responseText.substring(0, 500));
-        throw new Error(`Server returned ${contentType || 'unknown content type'} instead of JSON`);
-      }
-
-      const result = await response.json();
-
-      if (response.ok) {
-        Alert.alert(
-          'Booking Confirmed',
-          `Your appointment has been scheduled successfully!\n\nVeterinarian: ${vetName}\nHorse: ${selectedHorse}\nDate: ${formatDate(selectedDate)}\nTime: ${selectedTimeSlot.time_display}\nService: ${selectedService}`,
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                // Navigate to Calendar page instead of going back
-                router.push('/HORSE_OPERATOR/Hcalendar');
-                // Alternative: If you want to replace the current page entirely, use:
-                // router.replace('/HORSE_OPERATOR/Hcalendar');
-              }
-            }
-          ]
-        );
-      } else {
-        throw new Error(result.error || result.message || 'Failed to book appointment');
-      }
-    } catch (error) {
-      console.error('Error booking appointment:', error);
-      let errorMessage = 'Failed to book appointment. Please try again.';
-      
-      if (error instanceof Error) {
-        if (error.message.includes('This time slot has been booked by another user')) {
-          errorMessage = 'This time slot was just booked by another user. Please select a different time.';
-          fetchVetSchedule();
-        } else {
-          errorMessage = error.message;
-        }
-      }
-      
-      Alert.alert('Booking Error', errorMessage);
-    } finally {
-      setIsBookingAppointment(false);
-    }
-  };
-
-  // Enhanced time slots rendering with better design
+  // ✅ FIXED: Enhanced time slots rendering with proper unique keys and selection logic
   const renderTimeSlots = () => {
     if (availableTimesForDate.length === 0) {
       return (
@@ -527,7 +720,7 @@ const Hbook = () => {
           </Text>
           <Text style={styles.noTimeSlotsText}>
             {selectedDate 
-              ? `No available time slots for ${formatDate(selectedDate)}`
+              ? `No available time slots for ${formatDateForDisplay(selectedDate)}`
               : 'Please select a date to view available time slots'
             }
           </Text>
@@ -556,7 +749,7 @@ const Hbook = () => {
     return (
       <View style={styles.timeSlotsContainer}>
         {Object.entries(groupedTimes).map(([period, slots]: [string, any]) => (
-          <View key={period} style={styles.timePeriodSection}>
+          <View key={`period-${period}-${slots[0]?.slot_id}`} style={styles.timePeriodSection}>
             <View style={styles.timePeriodHeader}>
               <FontAwesome5 
                 name={periodIcons[period as keyof typeof periodIcons]} 
@@ -567,39 +760,214 @@ const Hbook = () => {
               <View style={styles.timePeriodLine} />
             </View>
             <View style={styles.timeSlots}>
-              {slots.map((scheduleItem: ScheduleSlot) => (
-                <TouchableOpacity
-                  key={scheduleItem.sched_id}
-                  style={[
-                    styles.timeSlot,
-                    selectedTimeSlot?.sched_id === scheduleItem.sched_id && styles.timeSlotSelected
-                  ]}
-                  onPress={() => handleTimeSelection(scheduleItem)}
-                  disabled={isBookingAppointment}
-                  activeOpacity={0.8}
-                >
-                  <View style={styles.timeSlotContent}>
-                    <FontAwesome5 
-                      name="clock" 
-                      size={14} 
-                      color={selectedTimeSlot?.sched_id === scheduleItem.sched_id ? '#fff' : '#CD853F'} 
-                    />
-                    <Text style={[
-                      styles.timeSlotText,
-                      selectedTimeSlot?.sched_id === scheduleItem.sched_id && styles.timeSlotTextSelected
-                    ]}>
-                      {scheduleItem.time_display}
-                    </Text>
-                  </View>
-                  {selectedTimeSlot?.sched_id === scheduleItem.sched_id && (
-                    <FontAwesome5 name="check" size={12} color="#fff" />
-                  )}
-                </TouchableOpacity>
-              ))}
+              {slots.map((scheduleItem: ScheduleSlot) => {
+                // ✅ FIXED: Proper selection logic using slot_id
+                const isSelected = selectedTimeSlot?.slot_id === scheduleItem.slot_id;
+                
+                return (
+                  <TouchableOpacity
+                    key={`time-${scheduleItem.slot_id}-${scheduleItem.start_time}`}
+                    style={[
+                      styles.timeSlot,
+                      isSelected && styles.timeSlotSelected
+                    ]}
+                    onPress={() => handleTimeSelection(scheduleItem)}
+                    disabled={isBookingAppointment}
+                    activeOpacity={0.8}
+                  >
+                    <View style={styles.timeSlotContent}>
+                      <Text style={[
+                        styles.timeSlotText,
+                        isSelected && styles.timeSlotTextSelected
+                      ]}>
+                        {scheduleItem.time_display}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
         ))}
       </View>
+    );
+  };
+
+  // ✅ FIXED: Confirm appointment booking with slot_id
+  const confirmAppointment = async () => {
+    if (selectedHorse === 'Select a horse') {
+      Alert.alert('Validation Error', 'Please select a horse for the appointment.');
+      return;
+    }
+    if (!selectedTimeSlot) {
+      Alert.alert('Validation Error', 'Please select an available time slot.');
+      return;
+    }
+    if (!selectedDate) {
+      Alert.alert('Validation Error', 'Please select a date.');
+      return;
+    }
+
+    // FIXED: Use formatDateToDatabaseString for consistent date checking
+    const selectedDateString = formatDateToDatabaseString(selectedDate);
+    if (isScheduleSlotInPast(selectedDateString, selectedTimeSlot.start_time)) {
+      Alert.alert('Error', 'The selected time slot has passed. Please select a current or future time slot.');
+      fetchVetSchedule(vetId)();
+      return;
+    }
+
+    const userId = currentUserId || await getCurrentUserId();
+    if (!userId) {
+      Alert.alert('Authentication Error', 'Unable to identify user. Please try logging in again.');
+      return;
+    }
+
+    setIsBookingAppointment(true);
+    
+    try {
+      const selectedHorseData = availableHorses.find(horse => horse.horse_name === selectedHorse);
+      if (!selectedHorseData) {
+        throw new Error('Selected horse not found');
+      }
+
+      // ✅ FIXED: Use slot_id instead of sched_id and formatDateToDatabaseString for date
+      const bookingData = {
+        user_id: userId,
+        vet_id: vetId,
+        horse_id: selectedHorseData.horse_id,
+        date: formatDateToDatabaseString(selectedDate),
+        time: selectedTimeSlot.time_display,
+        service: selectedService,
+        notes: appointmentNotes,
+        slot_id: selectedTimeSlot.slot_id // ✅ CRITICAL FIX: Changed from sched_id to slot_id
+      };
+
+      console.log('Booking appointment with data:', bookingData);
+      
+      const url = `${API_BASE_URL}/book_appointment/`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(bookingData),
+      });
+
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const responseText = await response.text();
+        console.log('Server returned non-JSON response:', responseText.substring(0, 500));
+        throw new Error(`Server returned ${contentType || 'unknown content type'} instead of JSON`);
+      }
+
+      const result = await response.json();
+
+      if (response.ok) {
+        Alert.alert(
+          'Booking Confirmed',
+          `Your appointment has been scheduled successfully!\n\nVeterinarian: ${vetProfile?.vet_name || vetName}\nHorse: ${selectedHorse}\nDate: ${formatDateForDisplay(selectedDate)}\nTime: ${selectedTimeSlot.time_display}\nService: ${selectedService}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                router.push('/HORSE_OPERATOR/Hcalendar');
+              }
+            }
+          ]
+        );
+      } else {
+        throw new Error(result.error || result.message || 'Failed to book appointment');
+      }
+    } catch (error) {
+      console.error('Error booking appointment:', error);
+      let errorMessage = 'Failed to book appointment. Please try again.';
+      
+      if (error instanceof Error) {
+        if (error.message.includes('This time slot has been booked by another user')) {
+          errorMessage = 'This time slot was just booked by another user. Please select a different time.';
+          fetchVetSchedule(vetId)();
+        } else {
+          errorMessage = error.message;
+        }
+      }
+      
+      Alert.alert('Booking Error', errorMessage);
+    } finally {
+      setIsBookingAppointment(false);
+    }
+  };
+
+  // ✅ UPDATED: Render horse dropdown with deceased horses excluded
+  const renderHorseDropdown = () => {
+    if (availableHorses.length === 0) {
+      return (
+        <View style={styles.noHorsesContainer}>
+          <FontAwesome5 name="horse" size={24} color="#CD853F" />
+          <Text style={styles.noHorsesText}>No active horses available</Text>
+          <TouchableOpacity
+            style={styles.addHorseButton}
+            onPress={() => router.push('/HORSE_OPERATOR/addhorse')}
+            disabled={isBookingAppointment}
+          >
+            <FontAwesome5 name="plus" size={14} color="#fff" />
+            <Text style={styles.addHorseButtonText}>Add Horse</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    return (
+      <>
+        <TouchableOpacity
+          style={[styles.dropdown, showHorseDropdown && styles.dropdownActive]}
+          onPress={() => setShowHorseDropdown(!showHorseDropdown)}
+          disabled={isBookingAppointment}
+        >
+          <Text style={[
+            styles.dropdownText,
+            selectedHorse === 'Select a horse' && styles.dropdownPlaceholder
+          ]}>
+            {selectedHorse}
+          </Text>
+          <FontAwesome5 
+            name={showHorseDropdown ? "chevron-up" : "chevron-down"} 
+            size={16} 
+            color="#666" 
+          />
+        </TouchableOpacity>
+
+        {/* Horse Dropdown Options */}
+        {showHorseDropdown && availableHorses.length > 0 && (
+          <View style={styles.dropdownOptions}>
+            <ScrollView
+              style={styles.dropdownScrollView}
+              nestedScrollEnabled={true}
+              showsVerticalScrollIndicator={true}
+            >
+              {availableHorses.map((horse) => (
+                <TouchableOpacity
+                  key={`horse-${horse.horse_id}-${horse.horse_name}`}
+                  style={styles.dropdownOption}
+                  onPress={() => {
+                    setSelectedHorse(horse.horse_name);
+                    setShowHorseDropdown(false);
+                  }}
+                  disabled={isBookingAppointment}
+                >
+                  <View style={styles.dropdownOptionContent}>
+                    <View style={styles.dropdownOptionDetails}>
+                      <Text style={styles.dropdownOptionText}>{horse.horse_name}</Text>
+                      <Text style={styles.dropdownOptionSubtext}>
+                        {horse.horse_breed} • {horse.horse_age} years old
+                      </Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      </>
     );
   };
 
@@ -640,111 +1008,58 @@ const Hbook = () => {
           </TouchableOpacity>
           <View style={styles.headerTitleContainer}>
             <Text style={styles.headerTitle}>Book Appointment</Text>
-            <Text style={styles.headerSubtitle}>Schedule with {vetName}</Text>
+            <Text style={styles.headerSubtitle}>Schedule with {vetProfile?.vet_name || vetName}</Text>
           </View>
           <View style={styles.headerSpacer} />
         </View>
 
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-          {/* Enhanced Veterinarian Info */}
+          {/* Veterinarian Info Card */}
           <View style={styles.vetInfoCard}>
             <View style={styles.vetInfo}>
               <View style={styles.vetImageContainer}>
-                <Image
-                  source={{ uri: vetAvatar }}
-                  style={styles.vetImage}
-                />
+                {vetProfile?.vet_avatar || vetAvatar ? (
+                  <Image
+                    source={{ uri: vetProfile?.vet_avatar || vetAvatar }}
+                    style={styles.vetImage}
+                  />
+                ) : (
+                  <View style={styles.vetImagePlaceholder}>
+                    <FontAwesome5 name="user-md" size={24} color="#CD853F" />
+                  </View>
+                )}
                 <View style={styles.vetStatusBadge}>
                   <FontAwesome5 name="check" size={8} color="#fff" />
                 </View>
               </View>
               <View style={styles.vetDetails}>
-                <Text style={styles.vetName}>{vetName}</Text>
+                <Text style={styles.vetName}>{vetProfile?.vet_name || vetName}</Text>
                 <View style={styles.vetSpecializationContainer}>
                   <FontAwesome5 name="user-md" size={12} color="#CD853F" />
-                  <Text style={styles.vetSpecialization}>{vetSpecialization}</Text>
+                  <Text style={styles.vetSpecialization}>
+                    {vetProfile?.vet_specialization || vetSpecialization}
+                  </Text>
                 </View>
                 <View style={styles.vetExperienceContainer}>
                   <FontAwesome5 name="award" size={12} color="#666" />
-                  <Text style={styles.vetExperience}>{vetExperience} years of experience</Text>
+                  <Text style={styles.vetExperience}>
+                    {vetProfile ? `${vetProfile.vet_exp_yr} years of experience` : 
+                    `${parseInt(vetExperience) || 0} years of experience`}
+                  </Text>
                 </View>
               </View>
             </View>
           </View>
 
-          {/* Enhanced Form Container */}
+          {/* Form Container */}
           <View style={styles.formContainer}>
-            {/* Select Horse */}
+            {/* Select Horse - ✅ UPDATED: Now excludes deceased horses */}
             <View style={styles.formGroup}>
               <View style={styles.formLabelContainer}>
                 <FontAwesome5 name="horse" size={16} color="#CD853F" />
                 <Text style={styles.formLabel}>Select Horse</Text>
               </View>
-              {availableHorses.length > 0 ? (
-                <TouchableOpacity
-                  style={[styles.dropdown, showHorseDropdown && styles.dropdownActive]}
-                  onPress={() => setShowHorseDropdown(!showHorseDropdown)}
-                  disabled={isBookingAppointment}
-                >
-                  <Text style={[
-                    styles.dropdownText,
-                    selectedHorse === 'Select a horse' && styles.dropdownPlaceholder
-                  ]}>
-                    {selectedHorse}
-                  </Text>
-                  <FontAwesome5 
-                    name={showHorseDropdown ? "chevron-up" : "chevron-down"} 
-                    size={16} 
-                    color="#666" 
-                  />
-                </TouchableOpacity>
-              ) : (
-                <View style={styles.noHorsesContainer}>
-                  <FontAwesome5 name="horse" size={24} color="#CD853F" />
-                  <Text style={styles.noHorsesText}>No horses available</Text>
-                  <TouchableOpacity
-                    style={styles.addHorseButton}
-                    onPress={() => router.push('/HORSE_OPERATOR/addhorse')}
-                    disabled={isBookingAppointment}
-                  >
-                    <FontAwesome5 name="plus" size={14} color="#fff" />
-                    <Text style={styles.addHorseButtonText}>Add Horse</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-              
-              {/* Fixed Horse Dropdown Options */}
-              {showHorseDropdown && availableHorses.length > 0 && (
-                <View style={styles.dropdownOptions}>
-                  <ScrollView
-                    style={styles.dropdownScrollView}
-                    nestedScrollEnabled={true}
-                    showsVerticalScrollIndicator={true}
-                  >
-                    {availableHorses.map((horse) => (
-                      <TouchableOpacity
-                        key={horse.horse_id}
-                        style={styles.dropdownOption}
-                        onPress={() => {
-                          setSelectedHorse(horse.horse_name);
-                          setShowHorseDropdown(false);
-                        }}
-                        disabled={isBookingAppointment}
-                      >
-                        <View style={styles.dropdownOptionContent}>
-                          <FontAwesome5 name="horse" size={16} color="#CD853F" />
-                          <View style={styles.dropdownOptionDetails}>
-                            <Text style={styles.dropdownOptionText}>{horse.horse_name}</Text>
-                            <Text style={styles.dropdownOptionSubtext}>
-                              {horse.horse_breed} • {horse.horse_age} years old
-                            </Text>
-                          </View>
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
+              {renderHorseDropdown()}
             </View>
 
             {/* Select Service */}
@@ -752,18 +1067,16 @@ const Hbook = () => {
               <View style={styles.formLabelContainer}>
                 <FontAwesome5 name="stethoscope" size={16} color="#CD853F" />
                 <Text style={styles.formLabel}>Select Service</Text>
+                {loadingServices && (
+                  <ActivityIndicator size="small" color="#CD853F" style={{ marginLeft: 8 }} />
+                )}
               </View>
               <TouchableOpacity
                 style={[styles.dropdown, showServiceDropdown && styles.dropdownActive]}
                 onPress={() => setShowServiceDropdown(!showServiceDropdown)}
-                disabled={isBookingAppointment}
+                disabled={isBookingAppointment || loadingServices}
               >
                 <View style={styles.dropdownContentWithIcon}>
-                  <FontAwesome5 
-                    name={services.find(s => s.name === selectedService)?.icon || 'stethoscope'} 
-                    size={16} 
-                    color="#CD853F" 
-                  />
                   <Text style={styles.dropdownText}>{selectedService}</Text>
                 </View>
                 <FontAwesome5 
@@ -774,49 +1087,53 @@ const Hbook = () => {
               </TouchableOpacity>
 
               {/* Service Dropdown Options */}
-              {showServiceDropdown && (
+              {showServiceDropdown && availableServices.length > 0 && (
                 <View style={styles.dropdownOptions}>
                   <ScrollView
                     style={styles.dropdownScrollView}
                     nestedScrollEnabled={true}
                     showsVerticalScrollIndicator={true}
                   >
-                    {services.map((serviceItem) => (
+                    {availableServices.map((serviceItem) => (
                       <TouchableOpacity
-                        key={serviceItem.name}
+                        key={`service-${serviceItem.service_id}-${serviceItem.service_name}`}
                         style={styles.dropdownOption}
                         onPress={() => {
-                          setSelectedService(serviceItem.name);
+                          setSelectedService(serviceItem.service_name);
                           setShowServiceDropdown(false);
                         }}
                         disabled={isBookingAppointment}
                       >
                         <View style={styles.dropdownOptionContent}>
-                          <FontAwesome5 name={serviceItem.icon} size={16} color="#CD853F" />
-                          <Text style={styles.dropdownOptionText}>{serviceItem.name}</Text>
+                          <View style={styles.dropdownOptionDetails}>
+                            <Text style={styles.dropdownOptionText}>{serviceItem.service_name}</Text>
+                            {serviceItem.description && serviceItem.description !== serviceItem.service_name && (
+                              <Text style={styles.dropdownOptionSubtext}>
+                                {serviceItem.description}
+                              </Text>
+                            )}
+                          </View>
                         </View>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>
                 </View>
               )}
+
+              {availableServices.length === 0 && !loadingServices && (
+                <Text style={styles.noServicesText}>
+                  No services available for this veterinarian
+                </Text>
+              )}
             </View>
 
-            {/* Enhanced Choose Date */}
+            {/* Enhanced Choose Date with Calendar */}
             <View style={styles.formGroup}>
               <View style={styles.formLabelContainer}>
                 <FontAwesome5 name="calendar-alt" size={16} color="#CD853F" />
                 <Text style={styles.formLabel}>Choose Available Date</Text>
-                {availableDateObjects.length > 0 && (
-                  <View style={styles.availabilityBadge}>
-                    <Text style={styles.availabilityBadgeText}>
-                      {availableDateObjects.length}
-                    </Text>
-                  </View>
-                )}
               </View>
 
-              {/* Show different UI based on platform and available dates */}
               {availableDateObjects.length === 0 ? (
                 <View style={styles.noAvailableDatesContainer}>
                   <FontAwesome5 name="calendar-times" size={40} color="#CD853F" style={{ opacity: 0.5 }} />
@@ -825,37 +1142,24 @@ const Hbook = () => {
                     This veterinarian currently has no available appointment dates.
                   </Text>
                 </View>
-              ) : Platform.OS === 'android' ? (
-                // Android: Show custom date picker with only available dates
-                renderCustomDatePicker()
               ) : (
-                // iOS: Show button + modal with restricted DateTimePicker
                 <>
+                  {/* Date Selection Button */}
                   <TouchableOpacity
                     style={styles.datePickerButton}
-                    onPress={() => setShowDatePicker(true)}
+                    onPress={() => setShowCalendarModal(true)}
                     disabled={isBookingAppointment}
                   >
                     <View style={styles.datePickerContent}>
-                      <FontAwesome5 name="calendar-alt" size={18} color="#CD853F" />
                       <Text style={[
                         styles.datePickerText,
                         !selectedDate && styles.datePickerPlaceholder
                       ]}>
-                        {selectedDate ? formatDate(selectedDate) : 'Select an available date'}
+                        {selectedDate ? formatDateForDisplay(selectedDate) : 'Select an available date'}
                       </Text>
                     </View>
                     <FontAwesome5 name="chevron-down" size={16} color="#666" />
                   </TouchableOpacity>
-                  
-                  {/* Show available dates preview for iOS */}
-                  <View style={styles.availableDatesPreview}>
-                    <Text style={styles.availableDatesPreviewText}>
-                      Available: {availableDateObjects.map(date => 
-                        date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                      ).join(', ')}
-                    </Text>
-                  </View>
                 </>
               )}
             </View>
@@ -865,11 +1169,6 @@ const Hbook = () => {
               <View style={styles.formLabelContainer}>
                 <FontAwesome5 name="clock" size={16} color="#CD853F" />
                 <Text style={styles.formLabel}>Choose Available Time</Text>
-                {selectedTimeSlot && (
-                  <View style={styles.selectedTimeBadge}>
-                    <FontAwesome5 name="check" size={10} color="#fff" />
-                  </View>
-                )}
               </View>
               {renderTimeSlots()}
             </View>
@@ -878,7 +1177,7 @@ const Hbook = () => {
             <View style={styles.formGroup}>
               <View style={styles.formLabelContainer}>
                 <FontAwesome5 name="sticky-note" size={16} color="#CD853F" />
-                <Text style={styles.formLabel}>Chief Complain</Text>
+                <Text style={styles.formLabel}>Chief Complaint</Text>
               </View>
               <View style={styles.notesInputContainer}>
                 <TextInput
@@ -922,92 +1221,45 @@ const Hbook = () => {
           </View>
         </ScrollView>
 
-        {/* Enhanced iOS Date Picker Modal */}
-        {Platform.OS === 'ios' && showDatePicker && availableDateObjects.length > 0 && (
-          <View style={styles.datePickerModal}>
-            <View style={styles.datePickerContainer}>
-              <View style={styles.datePickerHeader}>
-                <TouchableOpacity
-                  style={styles.datePickerCancelButton}
-                  onPress={() => setShowDatePicker(false)}
-                >
-                  <Text style={styles.datePickerButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <View style={styles.datePickerTitleContainer}>
-                  <FontAwesome5 name="calendar-alt" size={16} color="#CD853F" />
-                  <Text style={styles.datePickerTitle}>Select Available Date</Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.datePickerDoneButton}
-                  onPress={() => setShowDatePicker(false)}
-                >
-                  <Text style={[styles.datePickerButtonText, styles.datePickerDoneText]}>Done</Text>
-                </TouchableOpacity>
-              </View>
-              
-              {/* Show available dates info */}
-              <View style={styles.availableDatesInfo}>
-                <Text style={styles.availableDatesText}>
-                  {availableDateObjects.length} available date{availableDateObjects.length !== 1 ? 's' : ''}
-                </Text>
-                <Text style={styles.availableDatesSubText}>
-                  Only dates with appointments can be selected
-                </Text>
-              </View>
-              
-              {/* Custom date selector for iOS */}
-              <ScrollView style={styles.iosDateSelector}>
-                {availableDateObjects.sort((a, b) => a.getTime() - b.getTime()).map((dateObj, index) => {
-                  const isSelected = selectedDate && isSameDay(dateObj, selectedDate);
-                  
-                  return (
-                    <TouchableOpacity
-                      key={index}
-                      style={[
-                        styles.iosDateOption,
-                        isSelected && styles.iosDateOptionSelected
-                      ]}
-                      onPress={() => {
-                        setSelectedDate(dateObj);
-                        updateAvailableTimesForDate(dateObj.toISOString().split('T')[0], vetSchedule);
-                      }}
-                    >
-                      <View style={styles.iosDateOptionContent}>
-                        <View style={styles.iosDateOptionLeft}>
-                          <Text style={[
-                            styles.iosDateOptionDay,
-                            isSelected && styles.iosDateOptionDaySelected
-                          ]}>
-                            {dateObj.toLocaleDateString('en-US', { weekday: 'long' })}
-                          </Text>
-                          <Text style={[
-                            styles.iosDateOptionDate,
-                            isSelected && styles.iosDateOptionDateSelected
-                          ]}>
-                            {dateObj.toLocaleDateString('en-US', { 
-                              month: 'long', 
-                              day: 'numeric',
-                              year: 'numeric'
-                            })}
-                          </Text>
-                        </View>
-                        {isSelected && (
-                          <FontAwesome5 name="check-circle" size={20} color="#CD853F" />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+        {/* Calendar Modal */}
+        <Modal
+          visible={showCalendarModal}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowCalendarModal(false)}
+        >
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select Available Date</Text>
+              <TouchableOpacity
+                style={styles.modalCloseButton}
+                onPress={() => setShowCalendarModal(false)}
+              >
+                <FontAwesome5 name="times" size={20} color="#666" />
+              </TouchableOpacity>
             </View>
-          </View>
-        )}
+            
+            <View style={styles.modalContent}>
+              {renderCalendar()}
+              
+              {/* Selected Date Info */}
+              {selectedDate && (
+                <View style={styles.selectedDateInfo}>
+                  <Text style={styles.selectedDateLabel}>Selected Date:</Text>
+                  <Text style={styles.selectedDateText}>
+                    {formatDateForDisplay(selectedDate)}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </SafeAreaView>
+        </Modal>
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
 };
 
-// Enhanced styles with new date picker components
+// Enhanced styles with calendar components
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1020,10 +1272,11 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     backgroundColor: '#CD853F',
     elevation: 4,
-    shadowColor: '#000',
+    shadowColor: '#CD853F',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    marginTop: 5,
   },
   backButton: {
     width: 40,
@@ -1076,6 +1329,7 @@ const styles = StyleSheet.create({
     color: '#666',
     fontWeight: '500',
   },
+  // Veterinarian Info Card
   vetInfoCard: {
     margin: 20,
     backgroundColor: '#fff',
@@ -1099,6 +1353,14 @@ const styles = StyleSheet.create({
     height: 70,
     borderRadius: 35,
     backgroundColor: '#f0f0f0',
+  },
+  vetImagePlaceholder: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#FFF8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   vetStatusBadge: {
     position: 'absolute',
@@ -1143,6 +1405,7 @@ const styles = StyleSheet.create({
     color: '#666',
     marginLeft: 6,
   },
+  // Form Container
   formContainer: {
     paddingHorizontal: 20,
     paddingBottom: 30,
@@ -1162,28 +1425,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     flex: 1,
   },
-  availabilityBadge: {
-    backgroundColor: '#4CAF50',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    minWidth: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  availabilityBadgeText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  selectedTimeBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#4CAF50',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  // Dropdown Styles (Consistent for all dropdowns)
   dropdown: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1198,6 +1440,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
+    minHeight: 56,
   },
   dropdownActive: {
     borderColor: '#CD853F',
@@ -1257,6 +1500,7 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 2,
   },
+  // Horse Selection
   noHorsesContainer: {
     alignItems: 'center',
     padding: 24,
@@ -1286,6 +1530,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 6,
   },
+  // Services
+  noServicesText: {
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 8,
+    padding: 8,
+  },
   // No Available Dates Styles
   noAvailableDatesContainer: {
     alignItems: 'center',
@@ -1309,69 +1562,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-  // Custom Date Picker Styles (Android)
-  customDatePickerContainer: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-  },
-  datePickerLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 12,
-  },
-  dateScrollContainer: {
-    paddingVertical: 4,
-  },
-  dateOption: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginRight: 12,
-    borderWidth: 2,
-    borderColor: '#e0e0e0',
-    borderRadius: 12,
-    backgroundColor: '#f9f9f9',
-    minWidth: 70,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dateOptionSelected: {
-    borderColor: '#CD853F',
-    backgroundColor: '#CD853F',
-  },
-  dateOptionDay: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 2,
-  },
-  dateOptionDaySelected: {
-    color: '#fff',
-  },
-  dateOptionMonth: {
-    fontSize: 12,
-    color: '#666',
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  dateOptionMonthSelected: {
-    color: 'rgba(255,255,255,0.9)',
-  },
-  dateOptionWeekday: {
-    fontSize: 10,
-    color: '#999',
-    fontWeight: '500',
-  },
-  dateOptionWeekdaySelected: {
-    color: 'rgba(255,255,255,0.8)',
-  },
-  // iOS Date Picker Styles
+  // Date Picker Button
   datePickerButton: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1402,33 +1593,12 @@ const styles = StyleSheet.create({
     color: '#999',
     fontWeight: 'normal',
   },
-  availableDatesPreview: {
-    marginTop: 8,
-    padding: 12,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
-  },
-  availableDatesPreviewText: {
-    fontSize: 13,
-    color: '#666',
-    textAlign: 'center',
-  },
-  datePickerModal: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  datePickerContainer: {
+  // Modal Styles
+  modalContainer: {
+    flex: 1,
     backgroundColor: '#fff',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '70%',
   },
-  datePickerHeader: {
+  modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -1437,84 +1607,183 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
-  datePickerCancelButton: {
-    padding: 4,
-  },
-  datePickerDoneButton: {
-    padding: 4,
-  },
-  datePickerTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  datePickerTitle: {
+  modalTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#333',
-    marginLeft: 8,
   },
-  datePickerButtonText: {
-    fontSize: 16,
-    color: '#CD853F',
+  modalCloseButton: {
+    padding: 4,
   },
-  datePickerDoneText: {
-    fontWeight: '600',
+  modalContent: {
+    flex: 1,
+    padding: 20,
   },
-  availableDatesInfo: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    backgroundColor: '#f8f9fa',
-  },
-  availableDatesText: {
-    fontSize: 16,
-    color: '#333',
-    textAlign: 'center',
-    fontWeight: '600',
-  },
-  availableDatesSubText: {
-    fontSize: 13,
-    color: '#666',
-    textAlign: 'center',
-    marginTop: 4,
-  },
-  iosDateSelector: {
-    maxHeight: 300,
-    paddingBottom: Platform.OS === 'ios' ? 20 : 0,
-  },
-  iosDateOption: {
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  iosDateOptionSelected: {
-    backgroundColor: '#f8f9fa',
-  },
-  iosDateOptionContent: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  iosDateOptionLeft: {
+  // FIXED: Calendar Content
+  calendarContent: {
     flex: 1,
   },
-  iosDateOptionDay: {
+  // Calendar Styles
+  calendarContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+    flex: 1,
+  },
+  calendarHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  calendarNavButton: {
+    width: 40,
+    height: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    backgroundColor: '#f8f9fa',
+  },
+  calendarMonthText: {
     fontSize: 18,
     fontWeight: '600',
     color: '#333',
-    marginBottom: 4,
   },
-  iosDateOptionDaySelected: {
-    color: '#CD853F',
+  calendarDaysHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
   },
-  iosDateOptionDate: {
-    fontSize: 14,
+  calendarDayHeaderText: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: '600',
     color: '#666',
   },
-  iosDateOptionDateSelected: {
-    color: '#CD853F',
+  calendarGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 10,
+  },
+  calendarDayEmpty: {
+    width: '14.28%',
+    aspectRatio: 1,
+    padding: 4,
+  },
+  calendarDay: {
+    width: '14.28%',
+    aspectRatio: 1,
+    padding: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+  },
+  calendarDayToday: {
+    backgroundColor: '#0074D9',
+    marginTop: 4,
+  },
+  calendarDaySelected: {
+    backgroundColor: '#CD853F',
+    marginTop: 4,
+  },
+  calendarDayDisabled: {
+    opacity: 0.3,
+  },
+  calendarDayText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#333',
+    textAlign: 'center',
+  },
+  calendarDayTextToday: {
+    color: '#ffffffff', 
+    fontWeight: 'bold',
+  },
+  calendarDayTextSelected: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  calendarDayTextDisabled: {
+    color: '#ccc',
+  },
+  availableIndicator: {
+    position: 'absolute',
+    bottom: 5,
+    width: 20,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#00FF00',
+  },
+  availableIndicatorSelected: {
+    backgroundColor: '#00FF00',
+  },
+  availableIndicatorToday: {
+    backgroundColor: '#FFFFFF', 
+  },
+  calendarLegend: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    marginBottom: 16,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  legendColor: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 6,
+  },
+  legendAvailable: {
+    backgroundColor: '#00FF00',
+  },
+  legendSelected: {
+    backgroundColor: '#CD853F',
+  },
+  legendToday: {
+    backgroundColor: '#0074D9', 
+  },
+  legendText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  calendarInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f8f9fa',
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  calendarInfoText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 8,
+    flex: 1,
+  },
+  selectedDateInfo: {
+    backgroundColor: '#f8f9fa',
+    padding: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  selectedDateLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 4,
+  },
+  selectedDateText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    textAlign: 'center',
   },
   timeSlotsContainer: {
     backgroundColor: '#fff',
@@ -1573,7 +1842,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   timeSlotText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     color: '#333',
     marginLeft: 8,
@@ -1606,6 +1875,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+  // Notes Input
   notesInputContainer: {
     position: 'relative',
   },
@@ -1626,6 +1896,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 2,
   },
+  // Confirm Button
   confirmButton: {
     backgroundColor: '#CD853F',
     paddingVertical: 16,
@@ -1654,6 +1925,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
     marginLeft: 8,
+  },
+  // FIXED: Removed duplicate calendar styles
+  singleMonthContainer: {
+    marginBottom: 10,
+  },
+  noCalendarData: {
+    alignItems: 'center',
+    padding: 40,
+    justifyContent: 'center',
+  },
+  noCalendarDataText: {
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 12,
   },
 });
 

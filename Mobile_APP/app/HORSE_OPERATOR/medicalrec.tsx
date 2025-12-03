@@ -62,7 +62,7 @@ interface MedicalRecordDetails {
   };
 }
 
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator";
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const MedicalRecordScreen: React.FC = () => {
@@ -437,7 +437,7 @@ const MedicalRecordScreen: React.FC = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#ffffffff',
   },
   header: {
     flexDirection: 'row',
@@ -447,6 +447,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingTop: 50,
     backgroundColor: '#CD853F',
+    marginTop: -20,
   },
   backButton: {
     padding: 5,

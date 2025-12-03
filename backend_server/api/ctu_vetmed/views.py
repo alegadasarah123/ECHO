@@ -793,7 +793,7 @@ def get_vetnotifications(request):
 
             dt_ph = datetime.fromisoformat(created_at) if created_at else datetime.now()
             notifications_to_insert.append({
-                "user_id": user_id,
+                "id": user_id,  # FIXED: This should be 'id' (foreign key to users), not 'user_id'
                 "notif_message": message,
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
@@ -802,6 +802,67 @@ def get_vetnotifications(request):
                 "related_id": related_id
             })
             existing_keys.add(related_id)
+
+        # ---------------- SOS EMERGENCY REQUESTS ----------------
+        try:
+            # Fetch SOS requests with pending status
+            sos_res = sr_client.table("sos_requests") \
+                .select("id, user_name, emergency_type, horse_status, description, location_text, created_at, user_id, status") \
+                .eq("status", "pending") \
+                .execute()
+
+            for sos in (sos_res.data or []):
+                if sos.get("status", "").lower() != "pending":
+                    continue
+
+                # Get user_id from SOS request or related user
+                user_id = sos.get("user_id")
+                if not user_id:
+                    continue
+
+                # Create related_id using SOS request ID
+                related_id = f"sos_{sos['id']}"
+                
+                # Check if notification already exists (including read ones)
+                if related_id in existing_keys:
+                    continue
+                
+                # Construct notification message (without status)
+                user_name = sos.get("user_name", "A user")
+                emergency_type = sos.get("emergency_type", "an emergency")
+                horse_status = sos.get("horse_status", "")
+                location = sos.get("location_text", "")
+                
+                # Build descriptive message
+                description = sos.get("description", "")
+                if description:
+                    # Truncate description if too long
+                    if len(description) > 50:
+                        description = f"{description[:47]}..."
+                
+                # Create the notification message without mentioning status
+                message_parts = [f"{user_name} reported {emergency_type}"]
+                
+                if horse_status:
+                    message_parts.append(f"Horse: {horse_status}")
+                
+                if location:
+                    message_parts.append(f"Location: {location}")
+                
+                if description:
+                    message_parts.append(f"Details: {description}")
+                
+                message = ". ".join(message_parts) + "."
+                
+                add_notification(
+                    user_id,
+                    message,
+                    "sos_emergency",
+                    related_id,
+                    sos.get("created_at")
+                )
+        except Exception as e:
+            print(f"Error in SOS request notifications: {e}")
 
         # ---------------- VET REGISTRATION / APPROVAL / DECLINE ----------------
         try:
@@ -876,62 +937,62 @@ def get_vetnotifications(request):
                 if related_id in existing_keys:
                     continue
 
-                # Get announcement owner
-                announcement_res = sr_client.table("announcement") \
-                    .select("user_id") \
-                    .eq("announce_id", ann_id) \
-                    .maybe_single() \
-                    .execute()
-                
-                # FIX: Check if response and data exist
-                if not announcement_res or not announcement_res.data:
-                    continue
+                # Correct PK column: announce_id
+                try:
+                    # Debug logging to see what we're looking for
+                    print(f"Looking for announcement ID: {ann_id}")
                     
-                post_owner_id = announcement_res.data.get("user_id")
+                    announcement_res = sr_client.table("announcement") \
+                        .select("user_id") \
+                        .eq("announce_id", ann_id) \
+                        .maybe_single() \
+                        .execute()
+                    
+                    # FIXED: Check if the response object exists and has data attribute
+                    if not announcement_res:
+                        print(f"No response object for announcement {ann_id}")
+                        continue
+                    
+                    if not hasattr(announcement_res, 'data'):
+                        print(f"Response object has no data attribute for announcement {ann_id}")
+                        continue
+                    
+                    post_owner_id = announcement_res.data.get("user_id") if announcement_res.data else None
+                    print(f"Found post owner ID: {post_owner_id} for announcement {ann_id}")
+                    
+                except Exception as ann_error:
+                    print(f"Error fetching announcement {ann_id}: {ann_error}")
+                    continue
+
                 if not post_owner_id or post_owner_id == commenter_id:
                     continue
 
-                # Fetch commenter name with proper null checks
+                # Fetch commenter name
                 commenter_name = None
-                
-                # Check kutsero_profile
-                kutsero_res = sr_client.table("kutsero_profile") \
-                    .select("kutsero_fname,kutsero_lname") \
-                    .eq("kutsero_id", commenter_id) \
-                    .maybe_single() \
-                    .execute()
-                
-                if kutsero_res and kutsero_res.data:
-                    commenter_name = f"{kutsero_res.data.get('kutsero_fname', '')} {kutsero_res.data.get('kutsero_lname', '')}".strip()
-                
-                # If not found in kutsero, check horse_op_profile
-                if not commenter_name:
-                    op_res = sr_client.table("horse_op_profile") \
-                        .select("op_fname,op_lname") \
-                        .eq("op_id", commenter_id) \
-                        .maybe_single() \
-                        .execute()
-                    
-                    if op_res and op_res.data:
-                        commenter_name = f"{op_res.data.get('op_fname', '')} {op_res.data.get('op_lname', '')}".strip()
-
-                # If still not found, check vet_profile
-                if not commenter_name:
-                    vet_res = sr_client.table("vet_profile") \
-                        .select("vet_fname,vet_lname") \
-                        .eq("vet_id", commenter_id) \
-                        .maybe_single() \
-                        .execute()
-                    
-                    if vet_res and vet_res.data:
-                        commenter_name = f"{vet_res.data.get('vet_fname', '')} {vet_res.data.get('vet_lname', '')}".strip()
+                try:
+                    kutsero_res = sr_client.table("kutsero_profile").select("kutsero_fname,kutsero_lname") \
+                        .eq("kutsero_id", commenter_id).maybe_single().execute()
+                    if kutsero_res and kutsero_res.data:
+                        commenter_name = f"{kutsero_res.data.get('kutsero_fname', '')} {kutsero_res.data.get('kutsero_lname', '')}".strip()
+                    else:
+                        op_res = sr_client.table("horse_op_profile").select("op_fname,op_lname") \
+                            .eq("op_id", commenter_id).maybe_single().execute()
+                        if op_res and op_res.data:
+                            commenter_name = f"{op_res.data.get('op_fname', '')} {op_res.data.get('op_lname', '')}".strip()
+                except Exception as name_error:
+                    print(f"Error fetching commenter name {commenter_id}: {name_error}")
+                    continue
 
                 if not commenter_name:
-                    commenter_name = "Unknown User"
+                    continue
+
+                comment_text = comment.get('comment_text', '')
+                if len(comment_text) > 50:
+                    comment_text = f"{comment_text[:47]}..."
 
                 add_notification(
                     post_owner_id,
-                    f"{commenter_name} commented: '{comment.get('comment_text', '')[:50]}...'",
+                    f"{commenter_name} commented: '{comment_text}'",
                     "comment",
                     related_id,
                     comment.get("comment_date")
@@ -942,15 +1003,16 @@ def get_vetnotifications(request):
         # ---------------- BULK INSERT (DEDUPED) ----------------
         if notifications_to_insert:
             try:
-                # FIX: Verify the table structure matches our insert
-                print(f"Attempting to insert {len(notifications_to_insert)} notifications")
                 result = sr_client.table("notification").insert(notifications_to_insert).execute()
-                print(f"Successfully inserted {len(notifications_to_insert)} new notifications")
+                print(f"Inserted {len(notifications_to_insert)} new notifications")
+                if hasattr(result, 'error') and result.error:
+                    print(f"Insert error details: {result.error}")
             except Exception as e:
                 print(f"Error inserting notifications: {e}")
 
         # ---------------- FETCH ALL VALID NOTIFICATIONS ----------------
-        valid_types = ["medrec_request", "approved", "declined", "pending", "comment"]
+        # Add "sos_emergency" to valid notification types
+        valid_types = ["medrec_request", "approved", "declined", "pending", "comment", "sos_emergency"]
         all_notifs_res = (
             sr_client.table("notification")
             .select("*")
@@ -963,7 +1025,7 @@ def get_vetnotifications(request):
 
         notifications = [
             {
-                "id": row.get("id"),
+                "id": row.get("notif_id"),  # FIXED: Use notif_id as the notification ID
                 "message": row.get("notif_message"),
                 "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
                 "read": row.get("notif_read", False),
@@ -986,14 +1048,15 @@ def mark_notification_read(request, notif_id):
     Mark a specific notification as read.
     """
     try:
-        result = sr_client.table("notification").select("*").eq("id", notif_id).execute()
+        # Use notif_id column (primary key of notification table)
+        result = sr_client.table("notification").select("*").eq("notif_id", notif_id).execute()
 
         if not result.data:
             return Response({"error": "Notification not found"}, status=404)
 
         update_result = sr_client.table("notification").update({
             "notif_read": True
-        }).eq("id", notif_id).execute()
+        }).eq("notif_id", notif_id).execute()
 
         if update_result.data:
             return Response({
@@ -1029,6 +1092,7 @@ def mark_all_notifications_read(request):
     except Exception as e:
         print(f"Error marking all notifications as read: {e}")
         return Response({"error": "Internal server error"}, status=500)
+
 
 
 # -------------------- GET VET,KUTSERO, HORSE OPERATOR PROFILE IN DIRECRORY --------------------

@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
-import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Alert, SafeAreaView, TextInput } from "react-native";
 import { FontAwesome5 } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
+import { useEffect, useState } from "react";
+import { Alert, SafeAreaView, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import FeedLogPage from './FeedLogPage';
 import WaterLogPage from './waterlogpage';
 

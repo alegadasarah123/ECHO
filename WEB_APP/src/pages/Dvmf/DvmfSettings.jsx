@@ -102,8 +102,8 @@ const DvmfSettings = () => {
     }
   };
 
-  // HANDLE INDIVIDUAL NOTIFICATION CLICK
- const handleNotificationClick = async (notification) => {
+ // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
+const handleNotificationClick = async (notification) => {
   const notifId = notification?.notif_id || notification?.id; // fallback support
 
   if (!notifId) {
@@ -122,7 +122,7 @@ const DvmfSettings = () => {
   // Mark as read in backend (only if valid ID)
   if (notifId) {
     try {
-      await fetch(`http://localhost:8000/api/dvmf/mark_notification_read/${notifId}/`, {
+      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
         method: "POST",
         credentials: "include",
       });
@@ -132,6 +132,35 @@ const DvmfSettings = () => {
   }
 
   const message = (notification.message || "").toLowerCase();
+  const type = (notification.type || "").toLowerCase();
+
+  // Navigate for SOS emergency notifications
+  if (
+    type === "sos_emergency" ||
+    message.includes("sos") ||
+    message.includes("emergency") ||
+    message.includes("reported") ||
+    message.includes("urgent") ||
+    (message.includes("horse") && 
+     (message.includes("colic") || 
+      message.includes("injured") || 
+      message.includes("trauma")))
+  ) {
+    // Extract SOS ID from related_id if available
+    let sosId = null;
+    if (notification.related_id && notification.related_id.startsWith("sos_")) {
+      sosId = notification.related_id.replace("sos_", "");
+    }
+    
+    navigate("/DvmfDashboard", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        sosId: sosId, // Pass the specific SOS ID if available
+      },
+    });
+    return;
+  }
 
   // Navigate for account-related notifications
   if (
@@ -164,7 +193,7 @@ const DvmfSettings = () => {
     return;
   }
 
-// Only navigate to CtuAnnouncement for comment-related notifications
+  // Only navigate to DvmfAnnouncement for comment-related notifications
   if (message.includes("comment")) {
     navigate("/DvmfAnnouncement", {
       state: {
@@ -174,6 +203,9 @@ const DvmfSettings = () => {
     });
     return;
   }
+
+  // Default fallback - stay on current page
+  console.log("Notification clicked but no specific action:", notification);
 }
 
   // Handle notifications update from modal
@@ -221,16 +253,16 @@ const DvmfSettings = () => {
       const data = await res.json()
 
       if (res.ok) {
-       
+        showAlert("Profile saved successfully!")
         setEditing(false)
         setProfileExists(true)
       } else if (data.errors) {
         setErrors(data.errors)
       } else {
-        
+        showAlert(data.error || "Failed to save profile", "error")
       }
     } catch (error) {
-      
+      showAlert("Something went wrong. Please try again.", "error")
     }
   }
 
@@ -255,7 +287,7 @@ const DvmfSettings = () => {
       const data = await res.json()
 
       if (res.ok) {
-       
+        showAlert("Profile updated successfully!")
         setEditing(false)
       } else if (data.errors) {
         setErrors(data.errors)
@@ -278,6 +310,7 @@ const DvmfSettings = () => {
 
     if (passwords.new_password !== passwords.confirm_new_password) {
       setPasswordErrors({ confirm_new_password: "Passwords do not match" })
+      showAlert("Passwords do not match", "error")
       return
     }
 
@@ -302,17 +335,18 @@ const DvmfSettings = () => {
       }
 
       if (res.ok) {
-        //showAlert("Password updated successfully!")
+        showAlert("Password updated successfully!")
         setPasswords({ current_password: "", new_password: "", confirm_new_password: "" })
         return
       }
 
       if (data.errors) {
         setPasswordErrors(data.errors)
+        showAlert(data.error || "Failed to update password", "error")
         return
       }
 
-      //showAlert(data.error || "Failed to update password", "error")
+      showAlert(data.error || "Failed to update password", "error")
     } catch (err) {
       showAlert("Something went wrong. Please try again later.", "error")
     }
@@ -356,10 +390,11 @@ const DvmfSettings = () => {
       return
     }
 
-    // Validate phone: must start with 09 and be 11 digits - THIS IS LINE 265
+    // Validate phone: must start with 09 and be 11 digits
     const phoneRegex = /^09\d{9}$/
     if (!phoneRegex.test(phone.trim())) {
       setPhoneError("Phone number must start with 09 and be 11 digits long.")
+      showAlert("Phone number must start with 09 and be 11 digits long.", "error")
       return
     }
 
@@ -456,6 +491,7 @@ const DvmfSettings = () => {
         loadNotifications(),
         fetchUsers()
       ])
+      showAlert("Data refreshed successfully!")
     } catch (error) {
       showAlert("Failed to refresh data", "error")
     } finally {
@@ -542,6 +578,26 @@ const DvmfSettings = () => {
 
   return (
     <div className="flex min-h-screen bg-gray-100">
+      {/* Global Alert Message */}
+      {alert.show && (
+        <div
+          className={`fixed top-5 left-1/2 transform -translate-x-1/2 px-6 py-3.5 rounded-xl text-base font-semibold text-white shadow-lg z-50 text-center min-w-[250px] max-w-[500px] transition-all duration-300 ${
+            alert.type === "success" ? "bg-green-600" : "bg-red-600"
+          }`}
+          style={{
+            animation: "slideDown 0.3s ease-out",
+          }}
+        >
+          {alert.message}
+          <button
+            onClick={() => setAlert({ show: false, message: "", type: "" })}
+            className="ml-3 text-white hover:text-gray-200 bg-transparent border-none cursor-pointer"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <Sidebar />
       <div className="flex-1 font-sans flex flex-col h-screen overflow-hidden">
         <div className="flex items-center bg-white p-5 border-b border-gray-200 shadow-md sticky top-0 z-10 justify-between">
@@ -1011,16 +1067,6 @@ const DvmfSettings = () => {
                     </div>
                   )}
 
-                  {alert.show && (
-                    <div
-                      className={`fixed top-5 left-1/2 transform -translate-x-1/2 px-6 py-3.5 rounded-xl text-base font-semibold text-white shadow-lg z-50 text-center min-w-[250px] max-w-[500px] transition-opacity duration-300 ${
-                        alert.type === "success" ? "bg-green-600" : "bg-red-600"
-                      }`}
-                    >
-                      {alert.message}
-                    </div>
-                  )}
-
                   {activeUserTab === "existing" && (
                     <div className="py-4">
                       {profiles.filter((p) => {
@@ -1146,6 +1192,6 @@ const DvmfSettings = () => {
       </div>
     </div>
   )
-}
+} 
 
 export default DvmfSettings

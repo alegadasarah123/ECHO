@@ -407,7 +407,7 @@ export default function CalendarScreen() {
         await scheduleNotification(newEvent)
         await scheduleExactTimeNotification(newEvent)
 
-        Alert.alert("Success", "Event created successfully! You will receive notifications 5 minutes before and at the event time.")
+        Alert.alert("Success", "Event created successfully! You will be notified when the event starts.")
         setEventTitle("")
         setHour("")
         setMinute("")
@@ -523,54 +523,65 @@ export default function CalendarScreen() {
   }
 
   const renderCalendarDays = () => {
-    const daysInMonth = getDaysInMonth(currentMonth)
-    const firstDay = getFirstDayOfMonth(currentMonth)
-    const days = []
-
-    for (let i = 0; i < firstDay; i++) {
+  const daysInMonth = getDaysInMonth(currentMonth)
+  const firstDay = getFirstDayOfMonth(currentMonth)
+  const days = []
+  
+  // Always show 6 weeks (42 cells) for consistent layout
+  const totalCells = 42
+  
+  for (let cellIndex = 0; cellIndex < totalCells; cellIndex++) {
+    // Calculate which day of the month this cell represents
+    const dayOfMonth = cellIndex - firstDay + 1
+    
+    if (cellIndex < firstDay || dayOfMonth > daysInMonth) {
+      // Empty cell (before first day or after last day of month)
       days.push(
-        <View key={`empty-${i}`} style={styles.calendarDay}>
-          <Text style={styles.emptyDayText}></Text>
-        </View>,
+        <View key={`empty-${cellIndex}`} style={styles.calendarDayCell}>
+          <Text style={styles.emptyDayText}> </Text>
+        </View>
       )
-    }
-
-    for (let day = 1; day <= daysInMonth; day++) {
-      const hasEventToday = hasEvent(day)
-      const isTodayDate = isToday(day)
-
+    } else {
+      // Day cell with actual date
+      const hasEventToday = hasEvent(dayOfMonth)
+      const isTodayDate = isToday(dayOfMonth)
+      
       days.push(
         <TouchableOpacity
-          key={day}
-          style={styles.calendarDay}
+          key={`day-${dayOfMonth}`}
+          style={styles.calendarDayCell}
           activeOpacity={0.7}
-          onPress={() => openAddEventModal(day)}
+          onPress={() => openAddEventModal(dayOfMonth)}
         >
           <View
             style={[
-              styles.dayContainer,
-              hasEventToday && styles.eventDay,
-              isTodayDate && styles.todayDay,
-              hasEventToday && isTodayDate && styles.eventTodayDay,
+              styles.dayNumberContainer,
+              hasEventToday && styles.dayWithEvent,
+              isTodayDate && styles.todayContainer,
             ]}
           >
             <Text
               style={[
-                styles.dayText,
-                hasEventToday && styles.eventDayText,
-                isTodayDate && styles.todayDayText,
-                hasEventToday && isTodayDate && styles.eventTodayDayText,
+                styles.dayNumber,
+                hasEventToday && styles.dayWithEventText,
+                isTodayDate && styles.todayText,
               ]}
             >
-              {day}
+              {dayOfMonth}
             </Text>
           </View>
-        </TouchableOpacity>,
+          {hasEventToday && (
+            <View style={styles.eventIndicator} />
+          )}
+        </TouchableOpacity>
       )
     }
-    return days
   }
+  
+  return days
+}
 
+  // IMPROVED Dashboard/Home Icon Component
   const DashboardIcon = ({ color }: { color: string }) => (
     <View style={styles.iconContainer}>
       <View style={styles.dashboardGrid}>
@@ -720,7 +731,7 @@ export default function CalendarScreen() {
             </View>
 
             <View style={styles.dayHeaders}>
-              {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+              {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
                 <View key={day} style={styles.dayHeader}>
                   <Text style={styles.dayHeaderText}>{day}</Text>
                 </View>
@@ -982,6 +993,11 @@ const styles = StyleSheet.create({
     marginTop: dynamicSpacing(16),
     borderRadius: scale(12),
     padding: scale(16),
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   sectionTitle: {
     fontSize: moderateScale(18),
@@ -995,17 +1011,18 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: verticalScale(16),
+    paddingHorizontal: scale(8),
   },
   monthNavButton: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
     backgroundColor: "#F5F5F5",
     justifyContent: "center",
     alignItems: "center",
   },
   monthNavText: {
-    fontSize: moderateScale(18),
+    fontSize: moderateScale(20),
     color: "#666",
     fontWeight: "bold",
   },
@@ -1013,15 +1030,20 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(18),
     fontWeight: "600",
     color: "#333",
+    textAlign: "center",
   },
   dayHeaders: {
     flexDirection: "row",
     marginBottom: verticalScale(8),
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+    paddingBottom: verticalScale(8),
   },
-  dayHeader: {
+   dayHeader: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: verticalScale(8),
+    justifyContent: "center",
+    minWidth: 0, // This is important for flex items to shrink properly
   },
   dayHeaderText: {
     fontSize: moderateScale(12),
@@ -1032,58 +1054,69 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     flexWrap: "wrap",
   },
-  calendarDay: {
+  calendarDayCell: {
     width: `${100 / 7}%`,
     aspectRatio: 1,
-    justifyContent: "center",
+    justifyContent: "flex-start",
     alignItems: "center",
-    paddingVertical: verticalScale(2),
+    paddingVertical: verticalScale(4),
   },
-  dayContainer: {
+  emptyDay: {
     width: scale(32),
     height: scale(32),
-    borderRadius: scale(16),
     justifyContent: "center",
     alignItems: "center",
-  },
-  eventDay: {
-    backgroundColor: "#C17A47",
-  },
-  todayDay: {
-    backgroundColor: "#4ECDC4",
-  },
-  eventTodayDay: {
-    backgroundColor: "#C17A47",
-    borderWidth: 2,
-    borderColor: "#4ECDC4",
-  },
-  dayText: {
-    fontSize: moderateScale(14),
-    color: "#333",
-    fontWeight: "500",
-  },
-  eventDayText: {
-    color: "white",
-    fontWeight: "600",
-  },
-  todayDayText: {
-    color: "white",
-    fontWeight: "600",
-  },
-  eventTodayDayText: {
-    color: "white",
-    fontWeight: "700",
   },
   emptyDayText: {
     fontSize: moderateScale(14),
     color: "transparent",
   },
+  dayNumberContainer: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: verticalScale(2),
+  },
+  dayNumber: {
+    fontSize: moderateScale(14),
+    color: "#333",
+    fontWeight: "500",
+  },
+  dayWithEvent: {
+    backgroundColor: "#C17A47",
+  },
+  dayWithEventText: {
+    color: "white",
+    fontWeight: "600",
+  },
+  todayContainer: {
+    backgroundColor: "#4ECDC4",
+  },
+  todayText: {
+    color: "white",
+    fontWeight: "600",
+  },
+  eventIndicator: {
+    width: scale(4),
+    height: scale(4),
+    borderRadius: scale(2),
+    backgroundColor: "#C17A47",
+    marginTop: verticalScale(2),
+  },
   eventsSection: {
     backgroundColor: "white",
     marginHorizontal: scale(16),
     marginTop: dynamicSpacing(16),
+    marginBottom: dynamicSpacing(16),
     borderRadius: scale(12),
     padding: scale(16),
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   tableContainer: {
     borderWidth: 1,
@@ -1095,10 +1128,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     backgroundColor: "#F5F5F5",
     paddingVertical: verticalScale(12),
-    paddingHorizontal: scale(16),
+    paddingHorizontal: scale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
   },
   tableHeaderText: {
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(11),
     fontWeight: "600",
     color: "#666",
     textAlign: "left",
@@ -1106,13 +1141,13 @@ const styles = StyleSheet.create({
   tableRow: {
     flexDirection: "row",
     paddingVertical: verticalScale(12),
-    paddingHorizontal: scale(16),
-    borderTopWidth: 1,
-    borderTopColor: "#E0E0E0",
+    paddingHorizontal: scale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
     alignItems: 'center',
   },
   tableCellText: {
-    fontSize: moderateScale(12),
+    fontSize: moderateScale(11),
     color: "#333",
     textAlign: "left",
   },
@@ -1126,17 +1161,18 @@ const styles = StyleSheet.create({
   },
   deleteButtonText: {
     color: 'white',
-    fontSize: moderateScale(14),
+    fontSize: moderateScale(16),
     fontWeight: 'bold',
   },
   noEventsContainer: {
     alignItems: "center",
-    paddingVertical: verticalScale(24),
+    paddingVertical: verticalScale(32),
   },
   noEventsText: {
     fontSize: moderateScale(14),
     color: "#666",
     marginBottom: verticalScale(12),
+    textAlign: "center",
   },
   addFirstEventButton: {
     flexDirection: "row",
@@ -1369,49 +1405,62 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   iconContainer: {
+    width: scale(16),
+    height: scale(16),
     justifyContent: "center",
     alignItems: "center",
   },
   dashboardGrid: {
     width: scale(14),
     height: scale(14),
-    flexDirection: "row",
-    flexWrap: "wrap",
+    borderRadius: scale(3),
+    backgroundColor: 'transparent',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: scale(1),
   },
   gridSquare: {
     width: scale(5),
     height: scale(5),
-    margin: scale(1),
+    borderRadius: scale(1),
   },
   gridTopLeft: {
-    borderTopLeftRadius: scale(2),
+    backgroundColor: '#666',
   },
   gridTopRight: {
-    borderTopRightRadius: scale(2),
+    backgroundColor: '#666',
   },
   gridBottomLeft: {
-    borderBottomLeftRadius: scale(2),
+    backgroundColor: '#666',
   },
   gridBottomRight: {
-    borderBottomRightRadius: scale(2),
+    backgroundColor: '#666',
   },
   profileContainer: {
-    alignItems: "center",
+    width: scale(14),
+    height: scale(14),
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   profileHead: {
-    width: scale(10),
-    height: scale(10),
-    borderRadius: scale(5),
-    marginBottom: scale(2),
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
+    marginBottom: scale(1),
   },
   profileBody: {
-    width: scale(16),
-    height: scale(10),
-    borderRadius: scale(8),
+    width: scale(12),
+    height: scale(6),
+    borderRadius: scale(3),
+    borderTopLeftRadius: scale(6),
+    borderTopRightRadius: scale(6),
   },
   plusIcon: {
     justifyContent: "center",
     alignItems: "center",
+    position: 'relative',
   },
   plusHorizontal: {
     position: "absolute",
@@ -1426,9 +1475,9 @@ const styles = StyleSheet.create({
     borderRadius: scale(1),
   },
   fallbackIcon: {
-    width: scale(14),
-    height: scale(14),
+    width: scale(16),
+    height: scale(16),
     backgroundColor: "#E0E0E0",
-    borderRadius: scale(7),
+    borderRadius: scale(8),
   },
 })

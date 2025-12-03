@@ -1,8 +1,6 @@
-"use client"
+// HORSE_OPERATOR Horse Screen
 
-// HORSE_OPERATOR Horse Screen - Complete Updated Code with Health Status
-
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useRef } from "react"
 import {
   View,
   Text,
@@ -14,10 +12,13 @@ import {
   Dimensions,
   StatusBar,
   TextInput,
+  Platform,
 } from "react-native"
 import { useRouter, useFocusEffect } from "expo-router"
 import { FontAwesome5 } from "@expo/vector-icons"
 import * as SecureStore from "expo-secure-store"
+import * as Notifications from "expo-notifications"
+import * as Device from "expo-device"
 
 const { width, height } = Dimensions.get("window")
 
@@ -89,19 +90,180 @@ interface UserData {
   user_role: string
 }
 
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator"
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
+
+type HorseTab = 'alive' | 'deceased'
 
 const HorseScreen = () => {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState("horse")
   const [horses, setHorses] = useState<Horse[]>([])
   const [userId, setUserId] = useState<string | null>(null)
   const [userData, setUserData] = useState<UserData | null>(null)
   const [userFirstName, setUserFirstName] = useState<string | null>(null)
   const [searchText, setSearchText] = useState("")
-  const [notificationCount] = useState(0)
+  const [activeHorseTab, setActiveHorseTab] = useState<HorseTab>('alive')
+  
+  // Track if notification has been scheduled to prevent duplicates
+  const notificationScheduledRef = useRef<boolean>(false)
+  // Track last scheduled count to avoid unnecessary rescheduling
+  const lastScheduledCountRef = useRef<number>(0)
+  // Track if we're currently scheduling to prevent race conditions
+  const isSchedulingRef = useRef<boolean>(false)
+  
+  // Refs for notification listeners
+  const notificationListener = useRef<Notifications.EventSubscription | null>(null)
+  const responseListener = useRef<Notifications.EventSubscription | null>(null)
+  
+  // Current active tab - using string type to allow comparison with all tab keys
+  const activeTab: string = "horses"
 
   const safeArea = getSafeAreaPadding()
+
+  // Configure notification handler with all required properties
+  useEffect(() => {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    })
+
+    return () => {
+      // Clean up notification listeners
+      if (notificationListener.current) {
+        notificationListener.current.remove()
+      }
+      if (responseListener.current) {
+        responseListener.current.remove()
+      }
+    }
+  }, [])
+
+  // Setup notification channel for Android
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      Notifications.setNotificationChannelAsync('daily-health-check', {
+        name: 'Daily Health Check',
+        importance: Notifications.AndroidImportance.HIGH,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#CD853F',
+        sound: 'default',
+      })
+    }
+  }, [])
+
+  // Register for push notifications and set up listeners
+  useEffect(() => {
+    registerForPushNotificationsAsync()
+
+    // Listen for notifications
+    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
+      console.log("📬 Notification received:", notification)
+    })
+
+    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
+      console.log("👆 Notification response:", response)
+      // Handle notification tap if needed
+    })
+
+    return () => {
+      // Clean up notification listeners
+      if (notificationListener.current) {
+        notificationListener.current.remove()
+      }
+      if (responseListener.current) {
+        responseListener.current.remove()
+      }
+    }
+  }, [])
+
+  // Schedule daily health check notification at 8:03 AM
+  const scheduleDailyHealthCheck = useCallback(async (aliveHorsesCount: number) => {
+    // Prevent multiple concurrent scheduling attempts
+    if (isSchedulingRef.current) {
+      console.log("⏳ Scheduling already in progress, skipping...")
+      return
+    }
+
+    // Check if we already have a notification scheduled with the same count
+    if (notificationScheduledRef.current && lastScheduledCountRef.current === aliveHorsesCount) {
+      console.log("✅ Notification already scheduled with same count:", aliveHorsesCount)
+      return
+    }
+
+    isSchedulingRef.current = true
+    
+    try {
+      console.log(`📅 Attempting to schedule notification for ${aliveHorsesCount} alive horses`)
+      
+      // Check existing scheduled notifications first
+      const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync()
+      const existingHealthCheck = scheduledNotifications.find(
+        notification => notification.content.title === "🐎 Daily Health Check"
+      )
+      
+      if (existingHealthCheck) {
+        console.log("✅ Health check notification already exists, checking count...")
+        
+        // Extract count from existing notification body
+        const bodyMatch = existingHealthCheck.content.body?.match(/(\d+)/)
+        const existingCount = bodyMatch ? parseInt(bodyMatch[1]) : 0
+        
+        if (existingCount === aliveHorsesCount) {
+          console.log("✅ Existing notification has same count, no need to reschedule")
+          notificationScheduledRef.current = true
+          lastScheduledCountRef.current = aliveHorsesCount
+          isSchedulingRef.current = false
+          return
+        }
+        
+        // Cancel the outdated notification
+        await Notifications.cancelScheduledNotificationAsync(existingHealthCheck.identifier)
+        console.log("🔄 Cancelled outdated health check notification")
+      }
+
+      // Only schedule if there are alive horses
+      if (aliveHorsesCount > 0) {
+        // Schedule notification for 8:03 AM daily
+        const notificationId = await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "🐎 Daily Health Check",
+            body: `Remember to check the health status of your ${aliveHorsesCount} ${aliveHorsesCount === 1 ? 'horse' : 'horses'} today.`,
+            sound: true,
+            priority: Notifications.AndroidNotificationPriority.HIGH,
+            vibrate: [0, 250, 250, 250],
+            data: { 
+              screen: 'horses',
+              type: 'daily_health_check',
+              timestamp: Date.now()
+            },
+          },
+          trigger: {
+            hour: 8,
+            minute: 3,
+            repeats: true,
+            channelId: 'daily-health-check',
+          },
+        })
+
+        console.log(`✅ Daily health check scheduled for ${aliveHorsesCount} alive horses at 8:03 AM, ID: ${notificationId}`)
+        notificationScheduledRef.current = true
+        lastScheduledCountRef.current = aliveHorsesCount
+      } else {
+        console.log("ℹ️ No alive horses, skipping daily health check notification")
+        notificationScheduledRef.current = false
+        lastScheduledCountRef.current = 0
+      }
+    } catch (error) {
+      console.error("❌ Error scheduling notification:", error)
+      notificationScheduledRef.current = false
+    } finally {
+      isSchedulingRef.current = false
+    }
+  }, [])
 
   const loadUserId = async () => {
     try {
@@ -183,16 +345,39 @@ const HorseScreen = () => {
         console.log("✅ Raw response data:", data)
         console.log("📊 Number of horses received:", Array.isArray(data) ? data.length : "Not array")
 
-        setHorses(Array.isArray(data) ? data : [])
+        const horsesArray = Array.isArray(data) ? data : []
+        setHorses(horsesArray)
+
+        // Count alive horses (excluding deceased)
+        const aliveHorsesCount = horsesArray.filter((horse: Horse) => 
+          horse.horse_status !== 'Deceased'
+        ).length
+
+        console.log(`🐎 Total horses: ${horsesArray.length}, Alive: ${aliveHorsesCount}`)
+
+        // Schedule daily health check notification with only alive horses count
+        // This is the ONLY place we should call scheduleDailyHealthCheck from
+        scheduleDailyHealthCheck(aliveHorsesCount)
       } catch (error: any) {
         console.error("❌ Error loading horses:", error)
         Alert.alert("Error", error.message || "Unable to load horses")
       }
     },
-    [userId],
+    [userId, scheduleDailyHealthCheck],
   )
 
-  const sortedHorses = [...horses].sort((a, b) => {
+  // Filter horses based on active tab
+  const filteredHorsesByTab = horses.filter(horse => {
+    const isDeceased = horse.horse_status === 'Deceased'
+    if (activeHorseTab === 'alive') {
+      return !isDeceased
+    } else {
+      return isDeceased
+    }
+  })
+
+  // Sort and search filtered horses
+  const sortedHorses = [...filteredHorsesByTab].sort((a, b) => {
     const nameA = a.horse_name.toLowerCase()
     const nameB = b.horse_name.toLowerCase()
     return nameA.localeCompare(nameB)
@@ -202,35 +387,67 @@ const HorseScreen = () => {
     horse.horse_name.toLowerCase().includes(searchText.toLowerCase()),
   )
 
-  const deleteHorse = async (horseId: string, horseName: string) => {
-    Alert.alert("Delete Horse", `Are you sure you want to delete ${horseName}?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            console.log("🗑️ Deleting horse:", horseId)
-            const response = await fetch(`${API_BASE_URL}/delete_horse/${horseId}/`, {
-              method: "DELETE",
-            })
-            const data = await response.json()
+  // Count horses for each tab
+  const aliveHorsesCount = horses.filter(horse => horse.horse_status !== 'Deceased').length
+  const deceasedHorsesCount = horses.filter(horse => horse.horse_status === 'Deceased').length
 
-            if (response.ok) {
-              console.log("✅ Horse deleted successfully")
-              setHorses((prev) => prev.filter((h) => h.horse_id !== horseId))
-              Alert.alert("Success", "Horse deleted successfully")
-            } else {
-              console.log("❌ Delete failed:", data)
-              Alert.alert("Error", data.error || "Failed to delete horse")
+  const markHorseDeceased = async (horseId: string, horseName: string) => {
+    Alert.alert(
+      "Mark Horse as Deceased", 
+      `Are you sure you want to mark ${horseName} as deceased? This action cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Mark as Deceased",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              console.log("🕊️ Marking horse as deceased:", horseId)
+              const response = await fetch(`${API_BASE_URL}/mark_horse_deceased/${horseId}/`, {
+                method: "PUT",
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  user_id: userId
+                })
+              })
+              
+              const data = await response.json()
+
+              if (response.ok) {
+                console.log("✅ Horse marked as deceased successfully")
+                // Update local state to reflect the status change
+                const updatedHorses = horses.map((h) => 
+                  h.horse_id === horseId 
+                    ? { ...h, horse_status: "Deceased" }
+                    : h
+                )
+                setHorses(updatedHorses)
+                
+                // Recalculate alive horses count
+                const newAliveCount = updatedHorses.filter(h => h.horse_status !== 'Deceased').length
+                
+                // Reset notification tracking since count changed
+                notificationScheduledRef.current = false
+                lastScheduledCountRef.current = 0
+                
+                // Schedule new notification with updated count
+                scheduleDailyHealthCheck(newAliveCount)
+                
+                Alert.alert("Success", `${horseName} has been marked as deceased`)
+              } else {
+                console.log("❌ Mark as deceased failed:", data)
+                Alert.alert("Error", data.error || "Failed to mark horse as deceased")
+              }
+            } catch (error) {
+              console.error("❌ Error marking horse as deceased:", error)
+              Alert.alert("Error", "Failed to mark horse as deceased")
             }
-          } catch (error) {
-            console.error("❌ Error deleting horse:", error)
-            Alert.alert("Error", "Failed to delete horse")
-          }
+          },
         },
-      },
-    ])
+      ]
+    )
   }
 
   useFocusEffect(
@@ -247,14 +464,32 @@ const HorseScreen = () => {
         }
       }
       initializeScreen()
+      
+      // Cleanup function to reset tracking when screen loses focus
+      return () => {
+        // We don't reset here to maintain scheduled notification state
+        // Only reset when horse status actually changes
+      }
     }, [userId, fetchHorses, fetchUserProfile]),
   )
 
   const handleFeed = (horseName: string, horseId: string) => {
+    // Check if horse is deceased before allowing feed
+    const horse = horses.find(h => h.horse_id === horseId)
+    if (horse?.horse_status === 'Deceased') {
+      Alert.alert("Cannot Feed", `${horseName} is deceased and cannot be fed.`)
+      return
+    }
     router.push({ pathname: "/HORSE_OPERATOR/Hfeed", params: { horseName, horseId } })
   }
 
   const handleWater = (horseName: string, horseId: string) => {
+    // Check if horse is deceased before allowing water
+    const horse = horses.find(h => h.horse_id === horseId)
+    if (horse?.horse_status === 'Deceased') {
+      Alert.alert("Cannot Water", `${horseName} is deceased and cannot be watered.`)
+      return
+    }
     router.push({ pathname: "/HORSE_OPERATOR/water", params: { horseName, horseId } })
   }
 
@@ -265,113 +500,91 @@ const HorseScreen = () => {
     })
   }
 
-  // Dashboard/Home Icon Component
-  const DashboardIcon = ({ color }: { color: string }) => (
-    <View style={styles.iconContainer}>
-      <View style={styles.dashboardGrid}>
-        <View style={[styles.gridSquare, styles.gridTopLeft, { backgroundColor: color }]} />
-        <View style={[styles.gridSquare, styles.gridTopRight, { backgroundColor: color }]} />
-        <View style={[styles.gridSquare, styles.gridBottomLeft, { backgroundColor: color }]} />
-        <View style={[styles.gridSquare, styles.gridBottomRight, { backgroundColor: color }]} />
-      </View>
-    </View>
-  )
-
-  // Profile Icon Component
-  const ProfileIcon = ({ color }: { color: string }) => (
-    <View style={styles.iconContainer}>
-      <View style={styles.profileContainer}>
-        <View style={[styles.profileHead, { backgroundColor: color }]} />
-        <View style={[styles.profileBody, { backgroundColor: color }]} />
-      </View>
-    </View>
-  )
-
-  // TabButton Component
-  interface TabButtonProps {
-    iconName: string
+  const TabButton = ({
+    iconSource,
+    label,
+    tabKey,
+    isActive,
+    onPress,
+  }: {
+    iconSource: any
     label: string
     tabKey: string
     isActive: boolean
     onPress?: () => void
-  }
-
-  const TabButton = ({ iconName, label, tabKey, isActive, onPress }: TabButtonProps) => {
-    const handlePress = () => {
-      if (onPress) {
-        onPress()
-      } else {
-        setActiveTab(tabKey)
-        const routes: { [key: string]: string } = {
-          home: "/HORSE_OPERATOR/home",
-          horses: "/HORSE_OPERATOR/horse",
-          messages: "/HORSE_OPERATOR/Hmessage",
-          bookings: "/HORSE_OPERATOR/Hcalendar",
-          profile: "/HORSE_OPERATOR/profile",
-        }
-        router.push(routes[tabKey] as any)
-      }
-    }
-
-    const renderIcon = () => {
-      if (iconName === "home") {
-        return <DashboardIcon color={isActive ? "white" : "#666"} />
-      } else if (iconName === "user") {
-        return <ProfileIcon color={isActive ? "white" : "#666"} />
-      } else {
-        return <FontAwesome5 name={iconName} size={scale(16)} color={isActive ? "white" : "#666"} />
-      }
-    }
-
-    return (
-      <TouchableOpacity style={styles.tabButton} onPress={handlePress}>
-        <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>{renderIcon()}</View>
-        <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
-      </TouchableOpacity>
-    )
-  }
-
-  const EmptyState = () => (
-    <View style={styles.emptyState}>
-      <View style={styles.emptyIconContainer}>
-        <FontAwesome5 name="horse" size={scale(64)} color="#CD853F" />
+  }) => (
+    <TouchableOpacity style={styles.tabButton} onPress={onPress}>
+      <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
+        {iconSource ? (
+          <Image
+            source={iconSource}
+            style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
+            resizeMode="contain"
+          />
+        ) : (
+          <View style={styles.fallbackIcon} />
+        )}
       </View>
-      <Text style={styles.emptyStateTitle}>No Horses Yet</Text>
-      <Text style={styles.emptyStateText}>
-        Start building your stable by adding your first horse. Track their health, feeding schedules, and care routines
-        all in one place.
-      </Text>
-      <TouchableOpacity
-        style={styles.emptyStateButton}
-        onPress={() => router.push("/HORSE_OPERATOR/addhorse")}
-        activeOpacity={0.7}
-      >
-        <FontAwesome5 name="plus" size={scale(16)} color="#FFFFFF" style={{ marginRight: scale(8) }} />
-        <Text style={styles.emptyStateButtonText}>Add Your First Horse</Text>
-      </TouchableOpacity>
-    </View>
+      <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
+    </TouchableOpacity>
   )
 
-  const handleLogout = () => {
-    Alert.alert("Log Out", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Log Out",
-        style: "destructive",
-        onPress: async () => {
-          await SecureStore.deleteItemAsync("access_token")
-          await SecureStore.deleteItemAsync("user_data")
-          router.replace("/auth/login" as any)
-        },
-      },
-    ])
-  }
+  const HorseTabButton = ({
+    label,
+    count,
+    isActive,
+    onPress,
+    type,
+  }: {
+    label: string
+    count: number
+    isActive: boolean
+    onPress: () => void
+    type: HorseTab
+  }) => (
+    <TouchableOpacity
+      style={[styles.horseTabButton, isActive && styles.activeHorseTabButton]}
+      onPress={onPress}
+    >
+      <Text style={[styles.horseTabLabel, isActive && styles.activeHorseTabLabel]}>
+        {label}
+      </Text>
+      <View style={[styles.horseTabCount, isActive && styles.activeHorseTabCount]}>
+        <Text style={[styles.horseTabCountText, isActive && styles.activeHorseTabCountText]}>
+          {count}
+        </Text>
+      </View>
+    </TouchableOpacity>
+  )
 
-  const MenuIcon = ({ color }: { color: string }) => (
-    <View style={styles.iconContainer}>
-      <View style={[styles.menuBar, { backgroundColor: color }]} />
-      <View style={[styles.menuBar, { backgroundColor: color, marginTop: scale(3) }]} />
-      <View style={[styles.menuBar, { backgroundColor: color, marginTop: scale(3) }]} />
+  const EmptyState = ({ isDeceasedTab = false }: { isDeceasedTab?: boolean }) => (
+    <View style={styles.emptyState}>
+      <View style={styles.emptyIconContainer}>
+        <FontAwesome5 
+          name={isDeceasedTab ? "skull" : "horse"} 
+          size={scale(64)} 
+          color={isDeceasedTab ? "#6C757D" : "#CD853F"} 
+        />
+      </View>
+      <Text style={styles.emptyStateTitle}>
+        {isDeceasedTab ? "No Deceased Horses" : "No Horses Yet"}
+      </Text>
+      <Text style={styles.emptyStateText}>
+        {isDeceasedTab 
+          ? "There are no deceased horses in your records."
+          : "Start building your stable by adding your first horse. Track their health, and feeding schedules all in one place."
+        }
+      </Text>
+      {!isDeceasedTab && (
+        <TouchableOpacity
+          style={styles.emptyStateButton}
+          onPress={() => router.push("/HORSE_OPERATOR/addhorse")}
+          activeOpacity={0.7}
+        >
+          <FontAwesome5 name="plus" size={scale(16)} color="#FFFFFF" style={{ marginRight: scale(8) }} />
+          <Text style={styles.emptyStateButtonText}>Add Your First Horse</Text>
+        </TouchableOpacity>
+      )}
     </View>
   )
 
@@ -385,22 +598,6 @@ const HorseScreen = () => {
           <View style={styles.welcomeSection}>
             <Text style={styles.welcomeText}>Welcome,</Text>
             <Text style={styles.userName}>{userFirstName}</Text>
-          </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.headerButton} onPress={() => router.push("/HORSE_OPERATOR/Hnotif" as any)}>
-              <FontAwesome5 name="bell" size={scale(18)} color="white" />
-              {notificationCount > 0 && (
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>{notificationCount > 99 ? "99+" : notificationCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.sosButton} onPress={() => router.push("/HORSE_OPERATOR/Hsos" as any)}>
-              <Image source={require("../../assets/images/sos.png")} style={styles.sosIcon} resizeMode="contain" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
-              <MenuIcon color="white" />
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -429,19 +626,52 @@ const HorseScreen = () => {
           <View style={styles.titleSection}>
             <Text style={styles.pageTitle}>My Horses</Text>
             <Text style={styles.pageSubtitle}>
-              {filteredHorses.length} {filteredHorses.length === 1 ? "Horse" : "Horses"} in your stable
+              {activeHorseTab === 'alive' 
+                ? `${aliveHorsesCount} active ${aliveHorsesCount === 1 ? 'horse' : 'horses'}`
+                : `${deceasedHorsesCount} deceased ${deceasedHorsesCount === 1 ? 'horse' : 'horses'}`
+              }
             </Text>
+          </View>
+
+          {/* Horse Status Tabs */}
+          <View style={styles.horseTabsContainer}>
+            <HorseTabButton
+              label="Active Horses"
+              count={aliveHorsesCount}
+              isActive={activeHorseTab === 'alive'}
+              onPress={() => setActiveHorseTab('alive')}
+              type="alive"
+            />
+            <HorseTabButton
+              label="Deceased Horses"
+              count={deceasedHorsesCount}
+              isActive={activeHorseTab === 'deceased'}
+              onPress={() => setActiveHorseTab('deceased')}
+              type="deceased"
+            />
           </View>
 
           <View style={styles.content}>
             {filteredHorses.length === 0 ? (
-              <EmptyState />
+              <EmptyState isDeceasedTab={activeHorseTab === 'deceased'} />
             ) : (
               filteredHorses.map((horse, index) => (
                 <View
                   key={horse.horse_id}
-                  style={[styles.horseCard, { marginTop: index === 0 ? 0 : dynamicSpacing(16) }]}
+                  style={[
+                    styles.horseCard, 
+                    { 
+                      marginTop: index === 0 ? 0 : dynamicSpacing(16),
+                      opacity: horse.horse_status === 'Deceased' ? 0.7 : 1
+                    }
+                  ]}
                 >
+                  {horse.horse_status === 'Deceased' && (
+                    <View style={styles.deceasedOverlay}>
+                      <Text style={styles.deceasedText}>Deceased</Text>
+                    </View>
+                  )}
+                  
                   <TouchableOpacity
                     style={styles.horseCardContent}
                     onPress={() => handleHorseProfile(horse)}
@@ -449,7 +679,10 @@ const HorseScreen = () => {
                   >
                     <View style={styles.horseHeader}>
                       <View style={styles.horseImageContainer}>
-                        <View style={styles.horseAvatarWrapper}>
+                        <View style={[
+                          styles.horseAvatarWrapper,
+                          horse.horse_status === 'Deceased' && styles.deceasedAvatar
+                        ]}>
                           <Image
                             source={
                               horse.horse_image && !horse.horse_image.startsWith("file:///")
@@ -484,6 +717,7 @@ const HorseScreen = () => {
                                 horse.horse_status === 'Healthy' ? '#28A745' : 
                                 horse.horse_status === 'Sick' ? '#DC3545' : 
                                 horse.horse_status === 'Under Treatment' ? '#FFC107' : 
+                                horse.horse_status === 'Deceased' ? '#6C757D' :
                                 '#6C757D'
                               } 
                             />
@@ -493,6 +727,7 @@ const HorseScreen = () => {
                                 color: horse.horse_status === 'Healthy' ? '#28A745' : 
                                        horse.horse_status === 'Sick' ? '#DC3545' : 
                                        horse.horse_status === 'Under Treatment' ? '#FFC107' : 
+                                       horse.horse_status === 'Deceased' ? '#6C757D' :
                                        '#6C757D',
                                 fontWeight: '600'
                               }
@@ -503,44 +738,52 @@ const HorseScreen = () => {
                         </View>
                       </View>
 
-                      <TouchableOpacity
-                        style={styles.deleteButton}
-                        onPress={() => deleteHorse(horse.horse_id, horse.horse_name)}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                      >
-                        <FontAwesome5 name="trash-alt" size={scale(16)} color="#DC3545" />
-                      </TouchableOpacity>
+                      {activeHorseTab === 'alive' && (
+                        <TouchableOpacity
+                          style={styles.deceasedButton}
+                          onPress={() => markHorseDeceased(horse.horse_id, horse.horse_name)}
+                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                          <FontAwesome5 name="skull" size={scale(16)} color="#6C757D" />
+                        </TouchableOpacity>
+                      )}
                     </View>
 
                     <View style={styles.divider} />
 
-                    <View style={styles.actionSection}>
-                      <View style={styles.actionButtons}>
-                        <TouchableOpacity
-                          style={[styles.actionButton, styles.feedButton]}
-                          onPress={(e) => {
-                            e.stopPropagation()
-                            handleFeed(horse.horse_name, horse.horse_id)
-                          }}
-                          activeOpacity={0.8}
-                        >
-                          <FontAwesome5 name="pagelines" size={scale(16)} color="#28A745" />
-                          <Text style={[styles.actionButtonText, styles.feedButtonText]}>Feed</Text>
-                        </TouchableOpacity>
+                    {activeHorseTab === 'alive' && (
+                      <View style={styles.actionSection}>
+                        <View style={styles.actionButtons}>
+                          <TouchableOpacity
+                            style={[styles.actionButton, styles.feedButton]}
+                            onPress={(e) => {
+                              e.stopPropagation()
+                              handleFeed(horse.horse_name, horse.horse_id)
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <FontAwesome5 name="pagelines" size={scale(16)} color="#28A745" />
+                            <Text style={[styles.actionButtonText, styles.feedButtonText]}>
+                              Feed
+                            </Text>
+                          </TouchableOpacity>
 
-                        <TouchableOpacity
-                          style={[styles.actionButton, styles.waterButton]}
-                          onPress={(e) => {
-                            e.stopPropagation()
-                            handleWater(horse.horse_name, horse.horse_id)
-                          }}
-                          activeOpacity={0.8}
-                        >
-                          <FontAwesome5 name="tint" size={scale(16)} color="#007BFF" />
-                          <Text style={[styles.actionButtonText, styles.waterButtonText]}>Water</Text>
-                        </TouchableOpacity>
+                          <TouchableOpacity
+                            style={[styles.actionButton, styles.waterButton]}
+                            onPress={(e) => {
+                              e.stopPropagation()
+                              handleWater(horse.horse_name, horse.horse_id)
+                            }}
+                            activeOpacity={0.8}
+                          >
+                            <FontAwesome5 name="tint" size={scale(16)} color="#007BFF" />
+                            <Text style={[styles.actionButtonText, styles.waterButtonText]}>
+                              Water
+                            </Text>
+                          </TouchableOpacity>
+                        </View>
                       </View>
-                    </View>
+                    )}
                   </TouchableOpacity>
                 </View>
               ))
@@ -550,7 +793,7 @@ const HorseScreen = () => {
       </View>
 
       {/* Floating Add Button */}
-      {horses.length > 0 && (
+      {activeHorseTab === 'alive' && (
         <TouchableOpacity
           style={styles.addButton}
           onPress={() => router.push("/HORSE_OPERATOR/addhorse")}
@@ -562,14 +805,77 @@ const HorseScreen = () => {
 
       {/* Bottom Navigation */}
       <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
-        <TabButton iconName="home" label="Home" tabKey="home" isActive={activeTab === "home"} />
-        <TabButton iconName="horse" label="Horses" tabKey="horses" isActive={activeTab === "horse"} />
-        <TabButton iconName="comment-dots" label="Chat" tabKey="messages" isActive={activeTab === "message"} />
-        <TabButton iconName="calendar-alt" label="Calendar" tabKey="bookings" isActive={activeTab === "calendar"} />
-        <TabButton iconName="user" label="Profile" tabKey="profile" isActive={activeTab === "profile"} />
+        <TabButton 
+          iconSource={require("../../assets/images/home.png")} 
+          label="Home" 
+          tabKey="home" 
+          isActive={activeTab === "home"}
+          onPress={() => router.push("/HORSE_OPERATOR/home" as any)} 
+        />
+        <TabButton
+          iconSource={require("../../assets/images/horse.png")}
+          label="Horses"
+          tabKey="horses"
+          isActive={activeTab === "horses"}
+          onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}
+        />
+        <TabButton
+          iconSource={require("../../assets/images/chat.png")}
+          label="Chat"
+          tabKey="messages"
+          isActive={activeTab === "messages"}
+          onPress={() => router.push("../HORSE_OPERATOR/Hmessage" as any)}
+        />
+        <TabButton
+          iconSource={require("../../assets/images/calendar.png")}
+          label="Calendar"
+          tabKey="bookings"
+          isActive={activeTab === "bookings"}
+          onPress={() => router.push("../HORSE_OPERATOR/Hcalendar" as any)}
+        />
+        <TabButton
+          iconSource={require("../../assets/images/profile.png")}
+          label="Profile"
+          tabKey="profile"
+          isActive={activeTab === "profile"}
+          onPress={() => router.push("../HORSE_OPERATOR/profile" as any)}
+        />
       </View>
     </View>
   )
+}
+
+// Register for push notifications
+async function registerForPushNotificationsAsync() {
+  let token
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('daily-health-check', {
+      name: 'Daily Health Check',
+      importance: Notifications.AndroidImportance.HIGH,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#CD853F',
+    })
+  }
+
+  if (Device.isDevice) {
+    const { status: existingStatus } = await Notifications.getPermissionsAsync()
+    let finalStatus = existingStatus
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync()
+      finalStatus = status
+    }
+    if (finalStatus !== 'granted') {
+      console.log('Failed to get push token for push notification!')
+      return
+    }
+    token = (await Notifications.getExpoPushTokenAsync()).data
+    console.log('Expo push token:', token)
+  } else {
+    console.log('Must use physical device for Push Notifications')
+  }
+
+  return token
 }
 
 const styles = StyleSheet.create({
@@ -604,17 +910,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "white",
   },
-  userEmail: {
-    fontSize: moderateScale(12),
-    color: "rgba(255, 255, 255, 0.8)",
-    marginTop: verticalScale(2),
-  },
-  statusText: {
-    fontSize: moderateScale(11),
-    color: "rgba(255, 255, 255, 0.7)",
-    marginTop: verticalScale(4),
-    fontStyle: "italic",
-  },
   headerActions: {
     flexDirection: "row",
     alignItems: "center",
@@ -627,6 +922,16 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.2)",
     justifyContent: "center",
     alignItems: "center",
+  },
+  testNotificationButton: {
+    width: scale(36),
+    height: scale(36),
+    borderRadius: scale(18),
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginLeft: scale(10),
+    position: 'relative',
   },
 
   // Content Styles
@@ -656,6 +961,66 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     marginTop: verticalScale(4),
   },
+
+  // Horse Tabs Styles
+  horseTabsContainer: {
+    flexDirection: "row",
+    marginHorizontal: scale(16),
+    marginVertical: dynamicSpacing(12),
+    backgroundColor: "#FFFFFF",
+    borderRadius: scale(12),
+    padding: scale(4),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#F1F3F4",
+  },
+  horseTabButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(12),
+    borderRadius: scale(8),
+    backgroundColor: "transparent",
+  },
+  activeHorseTabButton: {
+    backgroundColor: "#CD853F",
+  },
+  horseTabLabel: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "#6C757D",
+    marginRight: scale(6),
+  },
+  activeHorseTabLabel: {
+    color: "#FFFFFF",
+  },
+  horseTabCount: {
+    backgroundColor: "#E9ECEF",
+    borderRadius: scale(12),
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(2),
+    minWidth: scale(24),
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  activeHorseTabCount: {
+    backgroundColor: "rgba(255,255,255,0.3)",
+  },
+  horseTabCountText: {
+    fontSize: moderateScale(12),
+    fontWeight: "700",
+    color: "#6C757D",
+  },
+  activeHorseTabCountText: {
+    color: "#FFFFFF",
+  },
+
   content: {
     paddingHorizontal: scale(16),
     paddingTop: dynamicSpacing(8),
@@ -725,6 +1090,7 @@ const styles = StyleSheet.create({
     elevation: 4,
     borderWidth: 1,
     borderColor: "#F1F3F4",
+    position: 'relative',
   },
   horseCardContent: {
     padding: scale(14),
@@ -748,6 +1114,10 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     justifyContent: "center",
     alignItems: "center",
+  },
+  deceasedAvatar: {
+    borderColor: "#6C757D",
+    backgroundColor: "#F8F9FA",
   },
   horseImage: {
     width: scale(96),
@@ -781,16 +1151,33 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
 
-  // Delete Button
-  deleteButton: {
+  // Deceased Button
+  deceasedButton: {
     width: scale(40),
     height: scale(40),
     borderRadius: scale(20),
-    backgroundColor: "#FFF5F5",
+    backgroundColor: "#F8F9FA",
     justifyContent: "center",
     alignItems: "center",
     borderWidth: 1,
-    borderColor: "#FED7D7",
+    borderColor: "#E9ECEF",
+  },
+
+  // Deceased Overlay
+  deceasedOverlay: {
+    position: 'absolute',
+    top: scale(10),
+    right: scale(10),
+    backgroundColor: 'rgba(108, 117, 125, 0.9)',
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(6),
+    borderRadius: scale(20),
+    zIndex: 10,
+  },
+  deceasedText: {
+    color: 'white',
+    fontSize: moderateScale(12),
+    fontWeight: '600',
   },
 
   // Divider
@@ -867,11 +1254,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-around",
   },
-  tabButton: {
-    flex: 1,
-    alignItems: "center",
-    paddingVertical: verticalScale(4),
-    paddingHorizontal: scale(2),
+  tabButton: { 
+    flex: 1, 
+    alignItems: "center", 
+    paddingVertical: verticalScale(4), 
+    paddingHorizontal: scale(2) 
   },
   tabIcon: {
     width: scale(28),
@@ -883,6 +1270,16 @@ const styles = StyleSheet.create({
   },
   activeTabIcon: {
     backgroundColor: "#CD853F",
+  },
+  tabIconImage: { 
+    width: scale(16), 
+    height: scale(16) 
+  },
+  fallbackIcon: { 
+    width: scale(14), 
+    height: scale(14), 
+    backgroundColor: "#666", 
+    borderRadius: scale(2) 
   },
   tabLabel: {
     fontSize: moderateScale(9),
@@ -902,52 +1299,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     position: "relative",
   },
-  dashboardGrid: {
-    width: scale(14),
-    height: scale(14),
-    position: "relative",
-  },
-  gridSquare: {
-    width: scale(5),
-    height: scale(5),
-    position: "absolute",
-  },
-  gridTopLeft: {
-    top: 0,
-    left: 0,
-  },
-  gridTopRight: {
-    top: 0,
-    right: 0,
-  },
-  gridBottomLeft: {
-    bottom: 0,
-    left: 0,
-  },
-  gridBottomRight: {
-    bottom: 0,
-    right: 0,
-  },
-  profileContainer: {
-    width: scale(14),
-    height: scale(14),
-    position: "relative",
-    alignItems: "center",
-  },
-  profileHead: {
-    width: scale(5),
-    height: scale(5),
-    borderRadius: scale(2.5),
-    position: "absolute",
-    top: 0,
-  },
-  profileBody: {
+  menuBar: {
     width: scale(10),
-    height: scale(7),
-    borderTopLeftRadius: scale(5),
-    borderTopRightRadius: scale(5),
-    position: "absolute",
-    bottom: 0,
+    height: scale(1.5),
   },
   searchContainer: {
     flexDirection: "row",
@@ -996,9 +1350,9 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(9),
     fontWeight: "bold",
   },
-  menuBar: {
-    width: scale(10),
-    height: scale(1.5),
+  headerIconImage: { 
+    width: scale(18), 
+    height: scale(18) 
   },
 })
 

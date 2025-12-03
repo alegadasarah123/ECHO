@@ -1,8 +1,10 @@
+// Horse Operator Profile Screen
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
+  StyleSheet, 
   SafeAreaView,
   ScrollView,
   TouchableOpacity,
@@ -10,10 +12,46 @@ import {
   Alert,
   ActivityIndicator,
   Platform,
+  Dimensions,
+  StatusBar,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
+
+const { width, height } = Dimensions.get("window");
+
+const scale = (size: number) => {
+  const scaleFactor = width / 375;
+  const scaledSize = size * scaleFactor;
+  return Math.max(Math.min(scaledSize, size * 1.2), size * 0.8);
+};
+
+const verticalScale = (size: number) => {
+  const scaleFactor = height / 812;
+  const scaledSize = size * scaleFactor;
+  return Math.max(Math.min(scaledSize, size * 1.15), size * 0.85);
+};
+
+const moderateScale = (size: number, factor = 0.5) => {
+  const scaledSize = size + (scale(size) - size) * factor;
+  return Math.max(Math.min(scaledSize, size * 1.1), size * 0.9);
+};
+
+const dynamicSpacing = (baseSize: number) => {
+  if (width < 350) return verticalScale(baseSize * 0.7);
+  if (width < 400) return verticalScale(baseSize * 0.85);
+  if (width > 450) return verticalScale(baseSize * 1.05);
+  return verticalScale(baseSize);
+};
+
+const getSafeAreaPadding = () => {
+  const statusBarHeight = StatusBar.currentHeight || 0;
+  return {
+    top: Math.max(statusBarHeight, 20),
+    bottom: height > 800 ? 34 : 20,
+  };
+};
 
 // User data interface matching your database schema
 interface UserData {
@@ -38,20 +76,65 @@ interface UserData {
   role?: string;
 }
 
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator";
+
+const TabButton = ({
+  iconSource,
+  label,
+  tabKey,
+  isActive,
+  onPress,
+}: {
+  iconSource: any;
+  label: string;
+  tabKey: string;
+  isActive: boolean;
+  onPress?: () => void;
+}) => (
+  <TouchableOpacity style={styles.tabButton} onPress={onPress}>
+    <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
+      {iconSource ? (
+        <Image
+          source={iconSource}
+          style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
+          resizeMode="contain"
+        />
+      ) : (
+        <View style={styles.fallbackIcon} />
+      )}
+    </View>
+    <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
+  </TouchableOpacity>
+);
 
 const Profile = () => {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('profile');
+  const activeTab: string = 'profile'; // Current active tab
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | undefined>(undefined);
+  const [imageError, setImageError] = useState(false);
+  const safeArea = getSafeAreaPadding();
   
   // Initialize userData state
   const [userData, setUserData] = useState<UserData>({
     firstName: 'User',
-    profileImage: 'https://via.placeholder.com/100x100/f0f0f0/999999?text=Profile',
+    profileImage: '',
   });
+
+  // Generate a fallback profile image URL based on user's name
+  const getFallbackImageUrl = (name: string) => {
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=CD853F&color=fff&size=100&bold=true&font-size=0.5`;
+  };
+
+  // Get the actual image URL to use
+  const getProfileImageUrl = () => {
+    if (imageError || !userData.profileImage) {
+      const displayName = getDisplayName();
+      return getFallbackImageUrl(displayName);
+    }
+    return userData.profileImage;
+  };
 
   // Load user ID from secure storage
   const loadUserId = async (): Promise<string | undefined> => {
@@ -77,6 +160,7 @@ const Profile = () => {
     try {
       setLoading(true);
       setError(null);
+      setImageError(false);
 
       // Get user ID
       let uid = userId;
@@ -127,7 +211,7 @@ const Profile = () => {
         routeTo: data.op_routeto || '',
         email: data.op_email || '',
         facebook: data.op_fb || '',
-        profileImage: data.op_image || 'https://via.placeholder.com/100x100/f0f0f0/999999?text=Profile',
+        profileImage: data.op_image || '',
         role: 'horse_operator'
       };
 
@@ -226,8 +310,9 @@ const Profile = () => {
           // Clear user state
           setUserData({
             firstName: 'User',
-            profileImage: 'https://via.placeholder.com/100x100/f0f0f0/999999?text=Profile',
+            profileImage: '',
           });
+          setImageError(false);
           
           // Navigate to login screen
           router.replace('/auth/login');
@@ -262,11 +347,33 @@ const Profile = () => {
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Profile Header */}
         <View style={styles.profileHeader}>
-          <Image
-            source={{ uri: userData.profileImage }}
-            style={styles.profileImage}
-          />
+          <View style={styles.profileImageContainer}>
+            <Image
+              source={{ uri: getProfileImageUrl() }}
+              style={styles.profileImage}
+              onError={() => {
+                console.log("Image failed to load, using fallback");
+                setImageError(true);
+              }}
+            />
+            {!userData.profileImage || imageError ? (
+              <View style={styles.fallbackInitialsContainer}>
+                <Text style={styles.fallbackInitialsText}>
+                  {getDisplayName()
+                    .split(' ')
+                    .map(word => word[0])
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2)}
+                </Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={styles.userName}>{getDisplayName()}</Text>
+          <View style={styles.roleContainer}>
+            <FontAwesome5 name="horse" size={12} color="#fff" />
+            <Text style={styles.roleText}>Horse Operator</Text>
+          </View>
         </View>
 
         {/* Error Message */}
@@ -305,78 +412,49 @@ const Profile = () => {
           ))}
         </View>
 
-        {/* App Version */}
+        {/* Version Info */}
         <View style={styles.versionContainer}>
-          <Text style={styles.versionText}>Version 1.0.0</Text>
+          <Text style={styles.versionText}>App Version 1.0.0</Text>
         </View>
       </ScrollView>
 
       {/* Bottom Navigation */}
-      <View style={styles.bottomNav}>
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === 'home' && styles.activeNavItem]}
-          onPress={() => {
-            setActiveTab('home');
-            router.push('../HORSE_OPERATOR/home');
-          }}
-        >
-          <FontAwesome5
-            name="home"
-            size={24}
-            color={activeTab === 'home' ? '#CD853F' : '#000'}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === 'horse' && styles.activeNavItem]}
-          onPress={() => {
-            setActiveTab('horse');
-            router.push('../HORSE_OPERATOR/horse');
-          }}
-        >
-          <FontAwesome5
-            name="horse"
-            size={24}
-            color={activeTab === 'horse' ? '#CD853F' : '#000'}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === 'message' && styles.activeNavItem]}
-          onPress={() => {
-            setActiveTab('message');
-            router.push('../HORSE_OPERATOR/Hmessage');
-          }}
-        >
-          <FontAwesome5
-            name="comment-dots"
-            size={24}
-            color={activeTab === 'message' ? '#CD853F' : '#000'}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === 'calendar' && styles.activeNavItem]}
-          onPress={() => {
-            setActiveTab('calendar');
-            router.push('../HORSE_OPERATOR/Hcalendar');
-          }}
-        >
-          <FontAwesome5
-            name="calendar-alt"
-            size={24}
-            color={activeTab === 'calendar' ? '#CD853F' : '#000'}
-          />
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.navItem, activeTab === 'profile' && styles.activeNavItem]}
-          onPress={() => {
-            setActiveTab('profile');
-          }}
-        >
-          <FontAwesome5
-            name="user"
-            size={24}
-            color={activeTab === 'profile' ? '#CD853F' : '#000'}
-          />
-        </TouchableOpacity>
+      <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
+        <TabButton 
+          iconSource={require("../../assets/images/home.png")} 
+          label="Home" 
+          tabKey="home" 
+          isActive={activeTab === "home"}
+          onPress={() => router.push("/HORSE_OPERATOR/home" as any)} 
+        />
+        <TabButton
+          iconSource={require("../../assets/images/horse.png")}
+          label="Horses"
+          tabKey="horses"
+          isActive={activeTab === "horses"}
+          onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}
+        />
+        <TabButton
+          iconSource={require("../../assets/images/chat.png")}
+          label="Chat"
+          tabKey="messages"
+          isActive={activeTab === "messages"}
+          onPress={() => router.push("../HORSE_OPERATOR/Hmessage" as any)}
+        />
+        <TabButton
+          iconSource={require("../../assets/images/calendar.png")}
+          label="Calendar"
+          tabKey="bookings"
+          isActive={activeTab === "bookings"}
+          onPress={() => router.push("../HORSE_OPERATOR/Hcalendar" as any)}
+        />
+        <TabButton
+          iconSource={require("../../assets/images/profile.png")}
+          label="Profile"
+          tabKey="profile"
+          isActive={activeTab === "profile"}
+          onPress={() => router.push("../HORSE_OPERATOR/profile" as any)}
+        />
       </View>
     </SafeAreaView>
   );
@@ -409,6 +487,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
+  profileImageContainer: {
+    position: 'relative',
+  },
   profileImage: {
     width: 120,
     height: 120,
@@ -423,17 +504,30 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
+  fallbackInitialsContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#CD853F',
+    borderRadius: 60,
+    borderWidth: 4,
+    borderColor: '#fff',
+  },
+  fallbackInitialsText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
   userName: {
     fontSize: 26,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 5,
-  },
-  userEmail: {
-    fontSize: 14,
-    color: '#fff',
-    opacity: 0.9,
-    marginBottom: 10,
+    textAlign: 'center',
   },
   roleContainer: {
     flexDirection: 'row',
@@ -489,7 +583,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
-    paddingBottom: 100,
+    marginBottom: 20,
   },
   menuItem: {
     flexDirection: 'row',
@@ -525,32 +619,59 @@ const styles = StyleSheet.create({
   versionContainer: {
     alignItems: 'center',
     paddingVertical: 20,
-    marginBottom: 20,
+    marginBottom: 100,
   },
   versionText: {
     fontSize: 12,
     color: '#999',
   },
-  bottomNav: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: 10,
-    backgroundColor: '#fff',
+  // Bottom Tab Navigation - Matching Horse Screen
+  tabBar: {
+    flexDirection: "row",
+    backgroundColor: "white",
+    paddingVertical: dynamicSpacing(8),
+    paddingHorizontal: scale(8),
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 5,
+    borderTopColor: "#E0E0E0",
+    minHeight: verticalScale(60),
+    alignItems: "center",
+    justifyContent: "space-around",
   },
-  navItem: {
-    alignItems: 'center',
-    padding: 10,
-    borderRadius: 20,
+  tabButton: {
+    flex: 1,
+    alignItems: "center",
+    paddingVertical: verticalScale(4),
+    paddingHorizontal: scale(2),
   },
-  activeNavItem: {
-    backgroundColor: '#FEF3E2',
+  tabIcon: {
+    width: scale(28),
+    height: scale(28),
+    borderRadius: scale(14),
+    justifyContent: "center",
+    alignItems: "center",
+    marginBottom: verticalScale(2),
+  },
+  activeTabIcon: {
+    backgroundColor: "#CD853F",
+  },
+  tabIconImage: {
+    width: scale(16),
+    height: scale(16),
+  },
+  fallbackIcon: {
+    width: scale(14),
+    height: scale(14),
+    backgroundColor: "#666",
+    borderRadius: scale(2),
+  },
+  tabLabel: {
+    fontSize: moderateScale(9),
+    color: "#666",
+    textAlign: "center",
+  },
+  activeTabLabel: {
+    color: "#CD853F",
+    fontWeight: "600",
   },
 });
 

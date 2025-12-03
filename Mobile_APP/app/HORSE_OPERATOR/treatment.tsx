@@ -20,7 +20,7 @@ interface Treatment {
   treatment_outcome?: string;
 }
 
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator";
 
 const TreatmentListScreen: React.FC = () => {
   const router = useRouter();
@@ -248,6 +248,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingTop: 50,
     backgroundColor: '#CD853F',
+    marginTop: -20,
   },
   backButton: {
     padding: 5,

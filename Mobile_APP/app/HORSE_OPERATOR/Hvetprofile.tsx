@@ -1,681 +1,1363 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  SafeAreaView, 
-  ScrollView, 
-  TouchableOpacity, 
-  Image, 
-  Alert,
+"use client"
+
+import { useState, useEffect, useRef, useCallback } from "react"
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
   ActivityIndicator,
-  RefreshControl
-} from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { FontAwesome5 } from '@expo/vector-icons';
+  StatusBar,
+  Dimensions,
+  Platform,
+  Alert,
+  Modal,
+  TouchableWithoutFeedback,
+} from "react-native"
+import { useRouter, useLocalSearchParams } from "expo-router"
+import { FontAwesome5 } from "@expo/vector-icons"
+import * as SecureStore from "expo-secure-store"
 
-interface VetProfile {
-  vet_id: string;
-  vet_fname: string;
-  vet_mname?: string;
-  vet_lname: string;
-  vet_dob: string;
-  vet_sex: string;
-  vet_phone_num: string;
-  
-  // Personal address fields
-  vet_street?: string;
-  vet_brgy: string;
-  vet_city: string;
-  vet_province: string;
-  vet_zipcode: string;
-  
-  // Clinic address fields
-  vet_address_is_clinic?: boolean;
-  vet_clinic_street?: string;
-  vet_clinic_brgy?: string;
-  vet_clinic_city?: string;
-  vet_clinic_province?: string;
-  vet_clinic_zipcode?: string;
-  
-  vet_email: string;
-  vet_license_num: string;
-  vet_exp_yr: number;
-  vet_specialization?: string;
-  vet_org?: string;
-  vet_profile_photo?: string;
-  vet_documents?: string;
-  created_at?: string;
+const { width, height } = Dimensions.get("window")
+
+const scale = (size: number) => {
+  const scaleFactor = width / 375
+  return Math.max(Math.min(size * scaleFactor, size * 1.2), size * 0.8)
 }
 
-interface VetScheduleItem {
-  sched_id: string;
-  vet_id: string;
-  sched_date: string;
-  start_time: string;
-  end_time: string;
-  sched_time: string;
-  time_display: string;
-  is_available: boolean;
+const verticalScale = (size: number) => {
+  const scaleFactor = height / 812
+  return Math.max(Math.min(size * scaleFactor, size * 1.15), size * 0.85)
 }
 
-type ScheduleResponse = VetScheduleItem[];
+const moderateScale = (size: number, factor = 0.5) => {
+  return size + (scale(size) - size) * factor
+}
 
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator";
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
 
-const Hvetprofile = () => {
-  const [vetProfile, setVetProfile] = useState<VetProfile | null>(null);
-  const [scheduleData, setScheduleData] = useState<ScheduleResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  
-  const router = useRouter();
-  const params = useLocalSearchParams();
-  const vetId = params.vetId as string;
-  const vetAvatar = params.vetAvatar as string;
-  const userId = params.userId as string;
+interface UserProfile {
+  id: string
+  email: string
+  role: string
+  status: string
+  profile: {
+    fname: string
+    mname?: string
+    lname: string
+    username?: string
+    email: string
+    phone?: string
+    city?: string
+    province?: string
+    address?: string  // General address field for all users
+    clinic_address?: string  // Specific clinic address for veterinarians
+    profile_image?: string
+    specialization?: string
+    experience_years?: string
+  }
+}
 
-  const fetchVetProfile = useCallback(async () => {
-    try {
-      if (!vetId) {
-        Alert.alert('Error', 'Veterinarian ID is required');
-        return;
-      }
+interface VetSchedule {
+  sched_id: string
+  vet_id: string
+  day_of_week: string
+  start_time: string
+  end_time: string
+  slot_duration: number
+  is_available: boolean
+  created_at: string
+}
 
-      console.log('Fetching profile for vetId:', vetId);
-      const response = await fetch(`${API_BASE_URL}/get_vet_profile/?vet_id=${encodeURIComponent(vetId)}`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch vet profile: ${response.status}`);
-      }
+interface Contact {
+  id: string
+  name: string
+  avatar: string
+  role: string
+}
 
-      const data = await response.json();
-      console.log('Profile data received:', data);
-      
-      if (data && data.length > 0) {
-        setVetProfile(data[0]);
-      } else {
-        throw new Error('Veterinarian profile not found');
-      }
-    } catch (error) {
-      console.error('Error fetching vet profile:', error);
-      Alert.alert('Error', 'Failed to load veterinarian profile');
-    }
-  }, [vetId]);
+interface Post {
+  id: string
+  title: string
+  content: string
+  author: string
+  author_role: string
+  created_at: string
+  formatted_date: string
+  image_url?: string
+  is_announcement: boolean
+  category?: string
+}
 
-  const fetchVetSchedule = useCallback(async () => {
-    try {
-      if (!vetId) return;
+export default function UnifiedProfileView() {
+  const router = useRouter()
+  const params = useLocalSearchParams()
 
-      const response = await fetch(`${API_BASE_URL}/get_vet_schedule/?vet_id=${encodeURIComponent(vetId)}`);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch schedule: ${response.status}`);
-      }
+  const [loading, setLoading] = useState(true)
+  const [scheduleLoading, setScheduleLoading] = useState(false)
+  const [postsLoading, setPostsLoading] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<string>("")
+  const [profileData, setProfileData] = useState<UserProfile | null>(null)
+  const [vetSchedules, setVetSchedules] = useState<VetSchedule[]>([])
+  const [userPosts, setUserPosts] = useState<Post[]>([])
+  const [expandedPosts, setExpandedPosts] = useState<{ [key: string]: boolean }>({})
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [imageModalVisible, setImageModalVisible] = useState(false)
 
-      const data = await response.json();
-      setScheduleData(data);
-    } catch (error) {
-      console.error('Error fetching schedule:', error);
-      setScheduleData([]);
-    }
-  }, [vetId]);
+  const hasLoadedProfile = useRef(false)
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
-    try {
-      await Promise.all([fetchVetProfile(), fetchVetSchedule()]);
-    } finally {
-      setLoading(false);
-    }
-  }, [fetchVetProfile, fetchVetSchedule]);
-
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadData();
-    setRefreshing(false);
-  }, [loadData]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const formatDate = (dateString: string) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-      });
-    } catch {
-      return dateString;
-    }
-  };
-
-  const formatPersonalAddress = (profile: VetProfile) => {
-    const parts = [];
-    if (profile.vet_street) parts.push(profile.vet_street);
-    parts.push(profile.vet_brgy);
-    parts.push(profile.vet_city);
-    parts.push(profile.vet_province);
-    parts.push(profile.vet_zipcode);
-    return parts.filter(Boolean).join(', ');
-  };
-
-  const formatClinicAddress = (profile: VetProfile) => {
-    if (!profile.vet_clinic_brgy && !profile.vet_clinic_city) {
-      return null;
+  // Function to get profile picture based on user role
+  const getProfilePicture = (userData: UserProfile | null) => {
+    if (!userData) return null
+    
+    const userRole = userData.role?.toLowerCase()
+    
+    // CTU role - use CTU logo
+    if (userRole === 'ctu_veterinarian' || userRole === 'ctu-vetmed' || userRole === 'ctu-admin') {
+      return require("../../assets/images/CTU.jpg")
     }
     
-    const parts = [];
-    if (profile.vet_clinic_street) parts.push(profile.vet_clinic_street);
-    if (profile.vet_clinic_brgy) parts.push(profile.vet_clinic_brgy);
-    if (profile.vet_clinic_city) parts.push(profile.vet_clinic_city);
-    if (profile.vet_clinic_province) parts.push(profile.vet_clinic_province);
-    if (profile.vet_clinic_zipcode) parts.push(profile.vet_clinic_zipcode);
-    return parts.filter(Boolean).join(', ');
-  };
+    // DVMF role - use DVMF logo  
+    if (userRole === 'dvmf' || userRole === 'dvmf-admin') {
+      return require("../../assets/images/DVMF.png")
+    }
+    
+    // For other users, use their profile image if available
+    if (userData.profile?.profile_image) {
+      return { uri: userData.profile.profile_image }
+    }
+    
+    // Fallback to initials avatar
+    return null
+  }
 
-  const calculateAge = (dobString: string) => {
+  const fetchVetBaseSchedule = useCallback(async (vetId: string) => {
     try {
-      const dob = new Date(dobString);
-      const today = new Date();
-      let age = today.getFullYear() - dob.getFullYear();
-      const monthDiff = today.getMonth() - dob.getMonth();
-      
-      if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) {
-        age--;
-      }
-      return age;
-    } catch {
-      return 'N/A';
-    }
-  };
+        setScheduleLoading(true)
+        const storedAccessToken = await SecureStore.getItemAsync("access_token")
 
-  const formatTimeDisplay = (item: VetScheduleItem) => {
-    if (item.time_display) return item.time_display;
-    if (item.start_time && item.end_time) {
-      return `${item.start_time} - ${item.end_time}`;
+        if (!storedAccessToken) {
+            throw new Error("No access token found")
+        }
+
+        console.log("📅 Fetching vet base schedule for vet:", vetId)
+
+        const scheduleResponse = await fetch(`${API_BASE_URL}/get_vet_base_schedule/?vet_id=${vetId}`, {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${storedAccessToken}`,
+                "Content-Type": "application/json",
+            },
+        })
+
+        console.log("📊 Schedule response status:", scheduleResponse.status)
+
+        if (scheduleResponse.ok) {
+            const scheduleData = await scheduleResponse.json()
+            console.log("✅ Vet base schedule loaded:", scheduleData)
+            
+            // Handle the response format correctly
+            if (scheduleData.schedules && Array.isArray(scheduleData.schedules)) {
+                setVetSchedules(scheduleData.schedules)
+                console.log(`📋 Loaded ${scheduleData.schedules.length} schedule items`)
+            } else {
+                console.log("📭 No schedule data available or empty array")
+                setVetSchedules([])
+            }
+        } else {
+            console.log("⚠️ Failed to fetch schedule data, status:", scheduleResponse.status)
+            setVetSchedules([])
+        }
+    } catch (error) {
+        console.error("❌ Error fetching vet base schedule:", error)
+        setVetSchedules([])
+    } finally {
+        setScheduleLoading(false)
     }
-    return item.sched_time || item.start_time || 'Time not available';
-  };
+}, [])
+
+  const fetchUserPosts = useCallback(async (userId: string) => {
+    try {
+      setPostsLoading(true)
+      const storedAccessToken = await SecureStore.getItemAsync("access_token")
+
+      if (!storedAccessToken) {
+        throw new Error("No access token found")
+      }
+
+      console.log("📝 Fetching posts for user:", userId)
+
+      const response = await fetch(`${API_BASE_URL}/get_user_posts/${userId}/`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${storedAccessToken}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+      console.log("📊 Posts response status:", response.status)
+
+      if (response.ok) {
+        const postsData = await response.json()
+        console.log("✅ Posts loaded:", postsData)
+        
+        // Handle different response formats
+        if (postsData.posts && Array.isArray(postsData.posts)) {
+          setUserPosts(postsData.posts)
+        } else if (Array.isArray(postsData)) {
+          setUserPosts(postsData)
+        } else {
+          console.log("⚠️ Unexpected posts data format:", postsData)
+          setUserPosts([])
+        }
+      } else {
+        console.log("⚠️ No posts data available, status:", response.status)
+        setUserPosts([])
+      }
+    } catch (error) {
+      console.error("❌ Error fetching user posts:", error)
+      setUserPosts([])
+    } finally {
+      setPostsLoading(false)
+    }
+  }, [])
+
+  const fetchUserProfile = useCallback(
+    async (userId: string) => {
+      try {
+        setLoading(true)
+        const storedAccessToken = await SecureStore.getItemAsync("access_token")
+
+        if (!storedAccessToken) {
+          throw new Error("No access token found")
+        }
+
+        console.log("🔍 Fetching unified profile for user:", userId)
+
+        const response = await fetch(`${API_BASE_URL}/get_user_profile/${userId}/`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${storedAccessToken}`,
+            "Content-Type": "application/json",
+          },
+        })
+
+        console.log("📊 Profile response status:", response.status)
+
+        if (response.ok) {
+          const result = await response.json()
+          console.log("📋 Profile response data:", result)
+          
+          if (result.success && result.user) {
+            const userData = result.user
+            console.log("✅ Profile loaded from unified API:", userData)
+            console.log("User role:", userData.role)
+            console.log("User profile data:", userData.profile)
+            console.log("Address field:", userData.profile?.address)
+            console.log("Clinic address field:", userData.profile?.clinic_address)
+            setProfileData(userData)
+
+            // If user is a regular veterinarian, fetch their base schedule
+            const isRegularVet = userData.role === "Veterinarian" || userData.role === "veterinarian"
+            if (isRegularVet) {
+              console.log("🩺 User is a veterinarian, fetching schedule...")
+              await fetchVetBaseSchedule(userData.id)
+            } else {
+              console.log("👤 User is not a veterinarian, role:", userData.role)
+            }
+
+            // If user is CTU or DVMF, fetch their posts
+            const isCTUorDVMF = userData.role?.toLowerCase().includes('ctu') || 
+                               userData.role?.toLowerCase().includes('dvmf')
+            if (isCTUorDVMF) {
+              console.log("🏢 User is CTU/DVMF, fetching posts...")
+              await fetchUserPosts(userData.id)
+            } else {
+              console.log("👤 User is not CTU/DVMF, role:", userData.role)
+            }
+          } else {
+            throw new Error(result.error || "Failed to fetch user profile")
+          }
+        } else {
+          const errorData = await response.json()
+          throw new Error(errorData.error || "Failed to fetch user profile")
+        }
+      } catch (error) {
+        console.error("❌ Error fetching user profile:", error)
+        Alert.alert("Error", "Failed to load user profile")
+        router.back()
+      } finally {
+        setLoading(false)
+      }
+    },
+    [router, fetchVetBaseSchedule, fetchUserPosts],
+  )
+
+  useEffect(() => {
+    loadCurrentUser()
+  }, [])
+
+  useEffect(() => {
+    if (hasLoadedProfile.current) return
+
+    const loadProfile = async () => {
+      if (params.userData) {
+        try {
+          const userData = typeof params.userData === "string" ? JSON.parse(params.userData) : params.userData
+
+          console.log("📦 Using passed userData:", userData)
+          await fetchUserProfile(userData.user_id || userData.id)
+          hasLoadedProfile.current = true
+        } catch (error) {
+          console.error("❌ Error parsing user data:", error)
+          Alert.alert("Error", "Failed to load user profile")
+          router.back()
+        }
+      } else if (params.userId) {
+        console.log("🆔 Fetching profile for userId:", params.userId)
+        await fetchUserProfile(params.userId as string)
+        hasLoadedProfile.current = true
+      } else {
+        console.error("❌ No user data or userId provided")
+        Alert.alert("Error", "No user data provided")
+        router.back()
+      }
+    }
+
+    loadProfile()
+  }, [params.userData, params.userId, fetchUserProfile, router])
+
+  const loadCurrentUser = async () => {
+    try {
+      const storedUserData = await SecureStore.getItemAsync("user_data")
+      if (storedUserData) {
+        const parsedUserData = JSON.parse(storedUserData)
+        setCurrentUserId(parsedUserData.id)
+        console.log("👤 Current user ID:", parsedUserData.id)
+      }
+    } catch (error) {
+      console.error("❌ Error loading current user:", error)
+    }
+  }
+
+  const getUserRoleBadgeColor = (role: string) => {
+    switch (role?.toLowerCase()) {
+      case "horse operator":
+        return { bg: "#E3F2FD", text: "#CD853F" }
+      case "kutsero":
+        return { bg: "#E3F2FD", text: "#CD853F" }
+      case "veterinarian":
+        return { bg: "#F3E5F5", text: "#10B981" }
+      case "ctu_veterinarian":
+      case "ctu-vetmed":
+        return { bg: "#FCE4EC", text: "#c2181eff" }
+      case "ctu-admin":
+        return { bg: "#FCE4EC", text: "#c2181eff" }
+      case "dvmf":
+        return { bg: "#FCE4EC", text: "#c2181eff" }
+      case "dvmf-admin":
+        return { bg: "#FCE4EC", text: "#c2181eff" }
+      case "kutsero president":
+        return { bg: "#E3F2FD", text: "#CD853F" }
+      default:
+        return { bg: "#F5F5F5", text: "#666" }
+    }
+  }
+
+  const formatRoleLabel = (role: string) => {
+    const roleMap: { [key: string]: string } = {
+      "horse operator": "Horse Operator",
+      "kutsero": "Kutsero",
+      "veterinarian": "Veterinarian",
+      "ctu_veterinarian": "CTU Veterinarian",
+      "ctu-vetmed": "CTU Veterinarian",
+      "dvmf": "DVMF",
+      "kutsero president": "Kutsero President",
+    }
+    return roleMap[role?.toLowerCase()] || role
+  }
+
+  const handleSendMessage = async () => {
+    try {
+      if (!currentUserId) {
+        router.replace("/auth/login")
+        return
+      }
+
+      if (!profileData) {
+        Alert.alert("Error", "Profile data not available")
+        return
+      }
+
+      const fullName = `${profileData.profile.fname} ${profileData.profile.lname}`.trim()
+
+      const contact: Contact = {
+        id: profileData.id,
+        name: fullName,
+        avatar: profileData.profile.profile_image || "",
+        role: profileData.role,
+      }
+
+      console.log("📱 Opening chat with:", contact.name)
+
+      router.push({
+        pathname: "/HORSE_OPERATOR/Hmessage",
+        params: {
+          openChat: "true",
+          contactId: contact.id,
+          contactName: contact.name,
+          contactAvatar: contact.avatar,
+          contactRole: contact.role,
+          userId: currentUserId,
+        },
+      })
+    } catch (error) {
+      console.error("Error opening chat:", error)
+      Alert.alert("Error", "Failed to open chat.")
+    }
+  }
 
   const handleBookAppointment = () => {
-    if (!vetProfile) {
-      Alert.alert('Error', 'Veterinarian profile not loaded');
-      return;
-    }
+    if (!profileData) return
 
-    const hasAvailableSchedule = scheduleData && scheduleData.length > 0;
-    const transformedScheduleData = scheduleData?.map(item => ({
-      ...item,
-      timeDisplay: item.time_display || `${item.start_time} - ${item.end_time}`,
-      startTime: item.start_time,
-      endTime: item.end_time,
-      originalSchedTime: item.sched_time
-    }));
+    const fullName = `${profileData.profile.fname} ${profileData.profile.lname}`.trim()
+
+    console.log("📅 Booking appointment with:", fullName)
 
     router.push({
-      pathname: '../HORSE_OPERATOR/Hbook',
+      pathname: "../HORSE_OPERATOR/Hbook",
       params: {
-        vetId: vetId,
-        vetName: `Dr. ${vetProfile.vet_fname} ${vetProfile.vet_mname ? `${vetProfile.vet_mname} ` : ''}${vetProfile.vet_lname}`,
-        vetAvatar: vetAvatar,
-        userId: userId,
-        vetSpecialization: vetProfile.vet_specialization || 'Veterinarian',
-        vetExperience: vetProfile.vet_exp_yr.toString(),
-        hasSchedule: hasAvailableSchedule ? 'true' : 'false',
-        scheduleData: JSON.stringify(transformedScheduleData)
-      }
-    });
-  };
+        vetId: profileData.id,
+        vetName: fullName,
+        vetAvatar: profileData.profile.profile_image || "",
+        vetSpecialization: profileData.profile.specialization || "General Practice",
+        vetExperience: profileData.profile.experience_years || "5",
+      },
+    })
+  }
 
-  const handleCall = () => {
-    if (vetProfile?.vet_phone_num) {
-      Alert.alert(
-        'Call Veterinarian',
-        `Do you want to call Dr. ${vetProfile.vet_fname} ${vetProfile.vet_lname}?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Call',
-            onPress: () => {
-              Alert.alert('Calling', `Calling ${vetProfile.vet_phone_num}...`);
-            }
-          }
-        ]
-      );
+  const handleBack = () => {
+    console.log("⬅️ Going back")
+    router.back()
+  }
+
+  const togglePostExpansion = (postId: string) => {
+    setExpandedPosts(prev => ({
+      ...prev,
+      [postId]: !prev[postId]
+    }))
+  }
+
+  const handleImagePress = (imageUrl: string) => {
+    setSelectedImage(imageUrl)
+    setImageModalVisible(true)
+  }
+
+  const closeImageModal = () => {
+    setImageModalVisible(false)
+    setSelectedImage(null)
+  }
+
+  const formatTimeTo12Hour = (time24: string) => {
+    try {
+      if (!time24) return time24
+      
+      const timeParts = time24.split(':')
+      if (timeParts.length < 2) return time24
+      
+      let hours = parseInt(timeParts[0])
+      const minutes = timeParts[1]
+      
+      const period = hours >= 12 ? 'PM' : 'AM'
+      hours = hours % 12 || 12
+      
+      return `${hours}:${minutes} ${period}`
+    } catch {
+      return time24
     }
-  };
+  }
 
-  const renderScheduleItems = () => {
-    if (!scheduleData || scheduleData.length === 0) {
-      return (
-        <View style={styles.noScheduleContainer}>
-          <FontAwesome5 name="calendar-times" size={24} color="#ccc" />
-          <Text style={styles.noScheduleText}>No available schedule at the moment</Text>
-          <Text style={styles.noScheduleSubtext}>
-            Please check back later or contact the veterinarian directly
-          </Text>
-        </View>
-      );
-    }
-
-    const groupedSchedule = scheduleData.reduce((groups: { [key: string]: VetScheduleItem[] }, item: VetScheduleItem) => {
-      const date = item.sched_date;
-      if (!groups[date]) groups[date] = [];
-      groups[date].push(item);
-      return groups;
-    }, {});
-
-    const formatDisplayDate = (dateString: string) => {
-      try {
-        const date = new Date(dateString);
-        return date.toLocaleDateString('en-US', { 
-          weekday: 'long', 
-          year: 'numeric', 
-          month: 'long', 
-          day: 'numeric' 
-        });
-      } catch {
-        return dateString;
-      }
-    };
+  const renderPostItem = (post: Post) => {
+    const isExpanded = expandedPosts[post.id]
+    const contentLength = post.content.length
+    const shouldTruncate = contentLength > 150
+    const displayContent = shouldTruncate && !isExpanded 
+      ? post.content.substring(0, 150) + '...' 
+      : post.content
 
     return (
-      <View style={styles.scheduleContainer}>
-        {Object.entries(groupedSchedule)
-          .sort(([dateA], [dateB]) => new Date(dateA).getTime() - new Date(dateB).getTime())
-          .map(([date, timeSlots]) => (
-            <View key={date} style={styles.scheduleItem}>
-              <View style={styles.scheduleIconContainer}>
-                <FontAwesome5 name="calendar-day" size={18} color="#CD853F" />
-              </View>
-              <View style={styles.scheduleContent}>
-                <Text style={styles.scheduleDateText}>{formatDisplayDate(date)}</Text>
-                
-                <View style={styles.scheduleTimeContainer}>
-                  <FontAwesome5 name="clock" size={14} color="#666" style={styles.clockIcon} />
-                  <Text style={styles.scheduleTimeText}>
-                    {timeSlots.length === 1 
-                      ? formatTimeDisplay(timeSlots[0])
-                      : `${timeSlots.length} time slots available`
-                    }
-                  </Text>
-                </View>
-                
-                {timeSlots.length > 1 && (
-                  <View style={styles.slotsContainer}>
-                    <Text style={styles.slotsText}>Available times:</Text>
-                    <View style={styles.timeSlots}>
-                      {timeSlots.slice(0, 4).map((slot: VetScheduleItem) => (
-                        <View key={slot.sched_id} style={styles.timeSlot}>
-                          <Text style={styles.timeSlotText}>{formatTimeDisplay(slot)}</Text>
-                        </View>
-                      ))}
-                      {timeSlots.length > 4 && (
-                        <View style={styles.timeSlot}>
-                          <Text style={styles.timeSlotText}>+{timeSlots.length - 4} more</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                )}
-                
-                <View style={styles.availabilityBadge}>
-                  <FontAwesome5 name="check-circle" size={12} color="#2d5e2d" />
-                  <Text style={styles.availabilityText}>Available</Text>
-                </View>
-              </View>
+      <View key={post.id} style={styles.postItem}>
+        <View style={styles.postHeader}>
+          <Text style={styles.postTitle}>{post.title}</Text>
+          {post.is_announcement && (
+            <View style={styles.announcementBadge}>
+              <FontAwesome5 name="bullhorn" size={scale(10)} color="white" />
+              <Text style={styles.announcementBadgeText}>Announcement</Text>
             </View>
-          ))}
+          )}
+        </View>
         
-        <View style={styles.scheduleSummary}>
-          <View style={styles.summaryHeader}>
-            <FontAwesome5 name="info-circle" size={16} color="#CD853F" />
-            <Text style={styles.summaryHeaderText}>Schedule Summary</Text>
-          </View>
-          
-          <View style={styles.summaryStats}>
-            <View style={styles.summaryItem}>
-              <FontAwesome5 name="calendar-check" size={14} color="#2d5e2d" />
-              <Text style={styles.summaryText}>
-                {Object.keys(groupedSchedule).length} available {Object.keys(groupedSchedule).length === 1 ? 'date' : 'dates'}
-              </Text>
+        <Text style={styles.postContent} numberOfLines={isExpanded ? undefined : 3}>
+          {displayContent}
+        </Text>
+        
+        {shouldTruncate && (
+          <TouchableOpacity 
+            style={styles.seeMoreButton}
+            onPress={() => togglePostExpansion(post.id)}
+          >
+            <Text style={styles.seeMoreText}>
+              {isExpanded ? 'See Less' : 'See More'}
+            </Text>
+          </TouchableOpacity>
+        )}
+        
+        {post.image_url && (
+          <TouchableOpacity 
+            onPress={() => handleImagePress(post.image_url!)}
+            activeOpacity={0.8}
+          >
+            <Image 
+              source={{ uri: post.image_url }} 
+              style={styles.postImage}
+              resizeMode="cover"
+            />
+            <View style={styles.imageOverlay}>
+              <FontAwesome5 name="expand" size={scale(16)} color="white" />
             </View>
-            
-            <View style={styles.summaryItem}>
-              <FontAwesome5 name="clock" size={14} color="#CD853F" />
-              <Text style={styles.summaryText}>{scheduleData.length} total time slots</Text>
+          </TouchableOpacity>
+        )}
+        
+        <View style={styles.postFooter}>
+          <Text style={styles.postDate}>{post.formatted_date}</Text>
+          {post.category && (
+            <View style={styles.categoryBadge}>
+              <Text style={styles.categoryText}>{post.category}</Text>
             </View>
-          </View>
-          
-          <Text style={styles.summaryNote}>
-            Tap &quot;Book Appointment&quot; to select specific time slots
-          </Text>
+          )}
         </View>
       </View>
-    );
-  };
+    )
+  }
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <FontAwesome5 name="arrow-left" size={20} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Veterinarian Profile</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#CD853F" />
-          <Text style={styles.loadingText}>Loading profile...</Text>
-        </View>
-      </SafeAreaView>
-    );
+      <View style={styles.loadingContainer}>
+        <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
+        <ActivityIndicator size="large" color="#C17A47" />
+        <Text style={styles.loadingText}>Loading profile...</Text>
+      </View>
+    )
   }
 
-  if (!vetProfile) {
+  if (!profileData) {
     return (
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-            <FontAwesome5 name="arrow-left" size={20} color="#fff" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>Veterinarian Profile</Text>
-          <View style={styles.headerSpacer} />
-        </View>
-        <View style={styles.errorContainer}>
-          <FontAwesome5 name="user-md" size={50} color="#ccc" />
-          <Text style={styles.errorText}>Profile not found</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={loadData}>
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
+      <View style={styles.errorContainer}>
+        <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
+        <FontAwesome5 name="user-slash" size={scale(64)} color="#CCC" />
+        <Text style={styles.errorText}>Profile not found</Text>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+          <Text style={styles.backButtonText}>Go Back</Text>
+        </TouchableOpacity>
+      </View>
+    )
   }
 
-  const profileImageUri = vetProfile.vet_profile_photo || vetAvatar;
-  const clinicAddress = formatClinicAddress(vetProfile);
+  const roleColors = getUserRoleBadgeColor(profileData.role)
+  const isOwnProfile = currentUserId === profileData.id
+  const fullName = `${profileData.profile.fname} ${profileData.profile.lname}`.trim()
+  const phoneNumber = profileData.profile.phone
+  
+  // Get the appropriate address display
+  const isRegularVet = profileData.role === "Veterinarian" || profileData.role === "veterinarian"
+  const city = profileData.profile.city
+  const province = profileData.profile.province
+  const address = profileData.profile.address // General address field
+  const clinicAddress = profileData.profile.clinic_address // Specific clinic address for vets
+  
+  // Determine what address to display
+  let displayAddress = clinicAddress || address || (city && province ? `${city}, ${province}` : city || province)
+  
+  // Get profile picture based on role
+  const profilePicture = getProfilePicture(profileData)
+  
+  // Check user types
+  const isCTUorDVMF = profileData.role?.toLowerCase().includes('ctu') || 
+                     profileData.role?.toLowerCase().includes('dvmf')
+
+  console.log("👤 Profile Analysis:", {
+    role: profileData.role,
+    isRegularVet,
+    isCTUorDVMF,
+    hasSchedules: vetSchedules.length > 0,
+    hasPosts: userPosts.length > 0,
+    address: address,
+    clinicAddress: clinicAddress,
+    displayAddress: displayAddress
+  })
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
+
+      {/* Full Screen Image Modal */}
+      <Modal
+        visible={imageModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeImageModal}
+      >
+        <View style={styles.imageModalContainer}>
+          <TouchableWithoutFeedback onPress={closeImageModal}>
+            <View style={styles.imageModalBackground}>
+              {selectedImage && (
+                <Image 
+                  source={{ uri: selectedImage }} 
+                  style={styles.fullScreenImage}
+                  resizeMode="contain"
+                />
+              )}
+              <TouchableOpacity 
+                style={styles.closeImageButton}
+                onPress={closeImageModal}
+              >
+                <FontAwesome5 name="times" size={scale(20)} color="white" />
+              </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </Modal>
+
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <FontAwesome5 name="arrow-left" size={20} color="#fff" />
+        <TouchableOpacity style={styles.backIconButton} onPress={handleBack}>
+          <FontAwesome5 name="arrow-left" size={scale(20)} color="white" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Veterinarian Profile</Text>
+        <Text style={styles.headerTitle}>Profile</Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView 
-        style={styles.container}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={['#CD853F']} />
-        }
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Profile Header */}
-        <View style={styles.profileHeader}>
-          <Image source={{ uri: profileImageUri }} style={styles.profileImage} />
-          <Text style={styles.profileName}>
-            Dr. {vetProfile.vet_fname} {vetProfile.vet_mname ? `${vetProfile.vet_mname} ` : ''}{vetProfile.vet_lname}
-          </Text>
-          <Text style={styles.profileSpecialization}>
-            {vetProfile.vet_specialization || 'Veterinarian'}
-          </Text>
-          <Text style={styles.profileExperience}>
-            {vetProfile.vet_exp_yr} years of experience
-          </Text>
-          {vetProfile.vet_org && (
-            <View style={styles.orgBadge}>
-              <FontAwesome5 name="building" size={12} color="#CD853F" />
-              <Text style={styles.orgText}>{vetProfile.vet_org}</Text>
-            </View>
-          )}
-        </View>
-
-        {/* Contact Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Contact Information</Text>
-          
-          <View style={styles.infoRow}>
-            <FontAwesome5 name="envelope" size={16} color="#CD853F" style={styles.icon} />
-            <Text style={styles.infoText}>{vetProfile.vet_email}</Text>
-          </View>
-          
-          <View style={styles.infoRow}>
-            <FontAwesome5 name="phone" size={16} color="#CD853F" style={styles.icon} />
-            <Text style={styles.infoText}>{vetProfile.vet_phone_num}</Text>
-          </View>
-        </View>
-
-        {/* Address Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            {vetProfile.vet_address_is_clinic ? 'Clinic Address' : 'Personal Address'}
-          </Text>
-          
-          <View style={styles.infoRow}>
-            <FontAwesome5 name="map-marker-alt" size={16} color="#CD853F" style={styles.icon} />
-            <Text style={styles.infoText}>{formatPersonalAddress(vetProfile)}</Text>
-          </View>
-
-          {!vetProfile.vet_address_is_clinic && clinicAddress && (
-            <>
-              <Text style={[styles.sectionTitle, { marginTop: 15 }]}>Clinic Address</Text>
-              <View style={styles.infoRow}>
-                <FontAwesome5 name="clinic-medical" size={16} color="#CD853F" style={styles.icon} />
-                <Text style={styles.infoText}>{clinicAddress}</Text>
+        {/* Profile Header Card */}
+        <View style={styles.profileHeaderCard}>
+          <View style={styles.avatarContainer}>
+            {profilePicture ? (
+              <Image 
+                source={profilePicture} 
+                style={styles.avatar} 
+                resizeMode="cover" 
+              />
+            ) : (
+              <View style={styles.avatarFallback}>
+                <Text style={styles.avatarFallbackText}>
+                  {profileData.profile.fname?.[0] || ""}
+                  {profileData.profile.lname?.[0] || ""}
+                </Text>
               </View>
-            </>
-          )}
-        </View>
+            )}
+          </View>
 
-        {/* Professional Information */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Professional Information</Text>
-          
-          <View style={styles.infoRow}>
-            <FontAwesome5 name="birthday-cake" size={16} color="#CD853F" style={styles.icon} />
-            <Text style={styles.infoText}>
-              {formatDate(vetProfile.vet_dob)} ({calculateAge(vetProfile.vet_dob)} years old)
+          <Text style={styles.fullName}>{fullName}</Text>
+
+          <View style={[styles.roleBadge, { backgroundColor: roleColors.bg }]}>
+            <Text style={[styles.roleBadgeText, { color: roleColors.text }]}>
+              {formatRoleLabel(profileData.role)}
             </Text>
           </View>
-          
-          <View style={styles.infoRow}>
-            <FontAwesome5 name="venus-mars" size={16} color="#CD853F" style={styles.icon} />
-            <Text style={styles.infoText}>{vetProfile.vet_sex}</Text>
+
+          {!isOwnProfile && (
+            <TouchableOpacity style={styles.messageButton} onPress={handleSendMessage} activeOpacity={0.7}>
+              <FontAwesome5 name="comment-dots" size={scale(16)} color="white" />
+              <Text style={styles.messageButtonText}>Send Message</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.infoCard}>
+          <View style={styles.infoCardHeader}>
+            <FontAwesome5 name="info-circle" size={scale(18)} color="#C17A47" />
+            <Text style={styles.infoCardTitle}>Contact Information</Text>
           </View>
 
-          <View style={styles.infoRow}>
-            <FontAwesome5 name="id-card" size={16} color="#CD853F" style={styles.icon} />
-            <Text style={styles.infoText}>License: {vetProfile.vet_license_num}</Text>
-          </View>
+          <View style={styles.detailsContent}>
+            {profileData.profile.email && (
+              <View style={styles.contactItem}>
+                <View style={styles.iconContainer}>
+                  <FontAwesome5 name="envelope" size={scale(14)} color="#C17A47" />
+                </View>
+                <View style={styles.contactTextContainer}>
+                  <Text style={styles.contactLabel}>Email</Text>
+                  <Text style={styles.contactText}>{profileData.profile.email}</Text>
+                </View>
+              </View>
+            )}
 
-          <View style={styles.infoRow}>
-            <FontAwesome5 name="graduation-cap" size={16} color="#CD853F" style={styles.icon} />
-            <Text style={styles.infoText}>Experience: {vetProfile.vet_exp_yr} years</Text>
+            {phoneNumber && (
+              <View style={styles.contactItem}>
+                <View style={styles.iconContainer}>
+                  <FontAwesome5 name="phone" size={scale(14)} color="#C17A47" />
+                </View>
+                <View style={styles.contactTextContainer}>
+                  <Text style={styles.contactLabel}>Phone</Text>
+                  <Text style={styles.contactText}>{phoneNumber}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Address Display - Shows clinic address for vets, regular address for others */}
+            {displayAddress && (
+              <View style={styles.contactItem}>
+                <View style={styles.iconContainer}>
+                  <FontAwesome5 
+                    name={isRegularVet ? "clinic-medical" : "map-marker-alt"} 
+                    size={scale(14)} 
+                    color={isRegularVet ? "#10B981" : "#C17A47"} 
+                  />
+                </View>
+                <View style={styles.contactTextContainer}>
+                  <Text style={[styles.contactLabel, { color: isRegularVet ? "#10B981" : "#999" }]}>
+                    {isRegularVet ? "Clinic Address" : "Address"}
+                  </Text>
+                  <Text style={styles.contactText}>{displayAddress}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Veterinarian Specialization */}
+            {isRegularVet && profileData.profile.specialization && (
+              <View style={styles.contactItem}>
+                <View style={styles.iconContainer}>
+                  <FontAwesome5 name="stethoscope" size={scale(14)} color="#10B981" />
+                </View>
+                <View style={styles.contactTextContainer}>
+                  <Text style={[styles.contactLabel, { color: "#10B981" }]}>Specialization</Text>
+                  <Text style={styles.contactText}>{profileData.profile.specialization}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Veterinarian Experience */}
+            {isRegularVet && profileData.profile.experience_years && (
+              <View style={styles.contactItem}>
+                <View style={styles.iconContainer}>
+                  <FontAwesome5 name="briefcase" size={scale(14)} color="#10B981" />
+                </View>
+                <View style={styles.contactTextContainer}>
+                  <Text style={[styles.contactLabel, { color: "#10B981" }]}>Experience</Text>
+                  <Text style={styles.contactText}>{profileData.profile.experience_years} years</Text>
+                </View>
+              </View>
+            )}
+
+            {!profileData.profile.email && !phoneNumber && !displayAddress && (
+              <View style={styles.noContactInfo}>
+                <FontAwesome5 name="info-circle" size={scale(16)} color="#999" />
+                <Text style={styles.noContactInfoText}>No contact information available</Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* Available Schedule */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Available Schedule</Text>
-          {renderScheduleItems()}
-        </View>
+        {/* Veterinarian Schedule Information - Only show for regular veterinarians */}
+        {isRegularVet && (
+          <View style={styles.infoCard}>
+            <View style={styles.infoCardHeader}>
+              <FontAwesome5 name="calendar-alt" size={scale(18)} color="#10B981" />
+              <Text style={styles.infoCardTitle}>Schedule</Text>
+            </View>
 
-        {/* Action Buttons */}
-        <View style={styles.actionButtons}>
-          <TouchableOpacity style={styles.bookButton} onPress={handleBookAppointment}>
-            <FontAwesome5 name="calendar-plus" size={18} color="#fff" style={styles.buttonIcon} />
-            <Text style={styles.buttonText}>Book Appointment</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={styles.callButton} onPress={handleCall}>
-            <FontAwesome5 name="phone" size={18} color="#CD853F" style={styles.buttonIcon} />
-            <Text style={styles.callButtonText}>Call Now</Text>
-          </TouchableOpacity>
-        </View>
+            {scheduleLoading ? (
+              <View style={styles.scheduleLoadingContainer}>
+                <ActivityIndicator size="small" color="#10B981" />
+                <Text style={styles.scheduleLoadingText}>Loading schedule...</Text>
+              </View>
+            ) : vetSchedules.length > 0 ? (
+              <View style={styles.regularScheduleContainer}>
+                <Text style={styles.scheduleDescription}>
+                  This veterinarian is regularly available on:
+                </Text>
+                
+                <View style={styles.scheduleDaysContainer}>
+                  {vetSchedules.map((schedule, index) => (
+                    <View key={schedule.sched_id || index} style={styles.scheduleDayItem}>
+                      <Text style={styles.dayNameText}>
+                        {schedule.day_of_week}
+                      </Text>
+                      <Text style={styles.scheduleTimeText}>
+                        {formatTimeTo12Hour(schedule.start_time)} - {formatTimeTo12Hour(schedule.end_time)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
 
-        <View style={styles.bottomPadding} />
+                {/* Book Appointment Button */}
+                {!isOwnProfile && (
+                  <TouchableOpacity
+                    style={styles.bookAppointmentButton}
+                    onPress={handleBookAppointment}
+                    activeOpacity={0.7}
+                  >
+                    <FontAwesome5 name="calendar-plus" size={scale(16)} color="white" />
+                    <Text style={styles.bookAppointmentText}>Book an Appointment</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              <View style={styles.noScheduleContainer}>
+                <FontAwesome5 name="calendar-times" size={scale(32)} color="#CCC" />
+                <Text style={styles.noScheduleText}>No regular schedule set</Text>
+                <Text style={styles.noScheduleSubtext}>
+                  This veterinarian hasn&#39;t set their weekly availability yet
+                </Text>
+                
+                {/* Book Appointment Button (even without schedule) */}
+                {!isOwnProfile && (
+                  <TouchableOpacity
+                    style={[styles.bookAppointmentButton, styles.bookButtonWithoutSchedule]}
+                    onPress={handleBookAppointment}
+                    activeOpacity={0.7}
+                  >
+                    <FontAwesome5 name="calendar-plus" size={scale(16)} color="white" />
+                    <Text style={styles.bookAppointmentText}>Request Appointment</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Posts/Announcements Card - Only show for CTU and DVMF users */}
+        {isCTUorDVMF && (
+          <View style={styles.infoCard}>
+            <View style={styles.infoCardHeader}>
+              <FontAwesome5 name="newspaper" size={scale(18)} color="#C17A47" />
+              <Text style={styles.infoCardTitle}>
+                {profileData.role?.toLowerCase().includes('ctu') ? 'CTU Announcements' : 'DVMF Announcements'}
+              </Text>
+            </View>
+
+            {postsLoading ? (
+              <View style={styles.postsLoadingContainer}>
+                <ActivityIndicator size="small" color="#C17A47" />
+                <Text style={styles.postsLoadingText}>Loading announcements...</Text>
+              </View>
+            ) : userPosts.length > 0 ? (
+              <View style={styles.postsContainer}>
+                {userPosts.slice(0, 3).map(renderPostItem)}
+                
+                {userPosts.length > 3 && (
+                  <TouchableOpacity style={styles.viewAllPostsButton}>
+                    <Text style={styles.viewAllPostsText}>View All Announcements</Text>
+                    <FontAwesome5 name="arrow-right" size={scale(12)} color="#C17A47" />
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : (
+              <View style={styles.noPostsContainer}>
+                <FontAwesome5 name="newspaper" size={scale(32)} color="#CCC" />
+                <Text style={styles.noPostsText}>
+                  No announcements posted yet
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Own Profile Note */}
+        {isOwnProfile && (
+          <View style={styles.ownProfileNote}>
+            <FontAwesome5 name="info-circle" size={scale(14)} color="#666" />
+            <Text style={styles.ownProfileNoteText}>This is your profile. To edit, go to Profile tab.</Text>
+          </View>
+        )}
       </ScrollView>
-    </SafeAreaView>
-  );
-};
+    </View>
+  )
+}
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#CD853F' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: '#CD853F'
+  container: {
+    flex: 1,
+    backgroundColor: "#F5F5F5",
   },
-  backButton: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { flex: 1, fontSize: 20, fontWeight: 'bold', color: '#fff', textAlign: 'center' },
-  headerSpacer: { width: 40 },
-  container: { flex: 1, backgroundColor: '#fff', borderTopLeftRadius: 30, borderTopRightRadius: 30 },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F5F5F5",
   },
-  loadingText: { marginTop: 10, fontSize: 16, color: '#666' },
+  loadingText: {
+    marginTop: verticalScale(16),
+    fontSize: moderateScale(16),
+    color: "#666",
+    fontWeight: "500",
+  },
   errorContainer: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 30,
-    borderTopRightRadius: 30
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F5F5F5",
+    paddingHorizontal: scale(32),
   },
-  errorText: { fontSize: 16, color: '#666', marginTop: 10, marginBottom: 20 },
-  retryButton: { backgroundColor: '#CD853F', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-  retryButtonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  profileHeader: { alignItems: 'center', paddingTop: 30, paddingHorizontal: 20, paddingBottom: 20 },
-  profileImage: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#f0f0f0', marginBottom: 15 },
-  profileName: { fontSize: 24, fontWeight: 'bold', color: '#333', textAlign: 'center', marginBottom: 5 },
-  profileSpecialization: { fontSize: 16, color: '#CD853F', fontWeight: '600', marginBottom: 5 },
-  profileExperience: { fontSize: 14, color: '#666', marginBottom: 10 },
-  orgBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff3e0',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    marginTop: 8
+  errorText: {
+    fontSize: moderateScale(18),
+    color: "#666",
+    marginTop: verticalScale(16),
+    marginBottom: verticalScale(24),
+    textAlign: "center",
   },
-  orgText: { fontSize: 13, color: '#CD853F', fontWeight: '500', marginLeft: 6 },
-  section: { paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#CD853F', marginBottom: 15 },
-  infoRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
-  icon: { marginRight: 12, marginTop: 2, width: 20 },
-  infoText: { flex: 1, fontSize: 16, color: '#333', lineHeight: 22 },
-  scheduleContainer: { marginTop: 5 },
+  backButton: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(32),
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(8),
+  },
+  backButtonText: {
+    color: "white",
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+  },
+  header: {
+    backgroundColor: "#C17A47",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(16),
+    paddingTop: Platform.OS === "ios" ? verticalScale(50) : verticalScale(16),
+  },
+  backIconButton: {
+    width: scale(40),
+    height: scale(40),
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  headerTitle: {
+    fontSize: moderateScale(20),
+    fontWeight: "bold",
+    color: "white",
+    flex: 1,
+    textAlign: "center",
+  },
+  headerSpacer: {
+    width: scale(40),
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: verticalScale(32),
+  },
+  profileHeaderCard: {
+    backgroundColor: "white",
+    alignItems: "center",
+    paddingVertical: verticalScale(32),
+    paddingHorizontal: scale(24),
+    marginBottom: verticalScale(16),
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
+  avatarContainer: {
+    marginBottom: verticalScale(16),
+  },
+  avatar: {
+    width: scale(120),
+    height: scale(120),
+    borderRadius: scale(60),
+    borderWidth: 4,
+    borderColor: "#000000ff",
+    overflow: "hidden",
+  },
+  avatarFallback: {
+    width: scale(120),
+    height: scale(120),
+    borderRadius: scale(60),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 4,
+    borderColor: "#A66A3E",
+  },
+  avatarFallbackText: {
+    fontSize: moderateScale(48),
+    fontWeight: "bold",
+    color: "white",
+  },
+  fullName: {
+    fontSize: moderateScale(24),
+    fontWeight: "bold",
+    color: "#333",
+    marginBottom: verticalScale(8),
+    textAlign: "center",
+  },
+  roleBadge: {
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(6),
+    borderRadius: scale(20),
+    marginBottom: verticalScale(12),
+  },
+  roleBadgeText: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+  },
+  messageButton: {
+    width: "90%",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(12),
+    borderRadius: scale(25),
+    gap: scale(8),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    marginTop: verticalScale(10),
+  },
+  messageButtonText: {
+    color: "white",
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+  },
+  infoCard: {
+    backgroundColor: "white",
+    marginHorizontal: scale(16),
+    marginBottom: verticalScale(16),
+    borderRadius: scale(12),
+    padding: scale(16),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  infoCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: verticalScale(16),
+    paddingBottom: verticalScale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+    gap: scale(8),
+  },
+  infoCardTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: "600",
+    color: "#333",
+  },
+  detailsContent: {
+    paddingVertical: verticalScale(8),
+  },
+  contactItem: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    marginBottom: verticalScale(16),
+    gap: scale(12),
+  },
+  iconContainer: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#F5F5F5",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  contactTextContainer: {
+    flex: 1,
+  },
+  contactLabel: {
+    fontSize: moderateScale(12),
+    color: "#999",
+    marginBottom: verticalScale(2),
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  contactText: {
+    fontSize: moderateScale(14),
+    color: "#333",
+    lineHeight: moderateScale(20),
+  },
+  noContactInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: verticalScale(20),
+    gap: scale(8),
+  },
+  noContactInfoText: {
+    fontSize: moderateScale(14),
+    color: "#999",
+    fontStyle: "italic",
+  },
+  ownProfileNote: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFF3E0",
+    marginHorizontal: scale(16),
+    padding: scale(16),
+    borderRadius: scale(12),
+    gap: scale(12),
+  },
+  ownProfileNoteText: {
+    flex: 1,
+    fontSize: moderateScale(13),
+    color: "#666",
+    lineHeight: moderateScale(18),
+  },
+  scheduleLoadingContainer: {
+    paddingVertical: verticalScale(20),
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  scheduleLoadingText: {
+    marginTop: verticalScale(8),
+    fontSize: moderateScale(14),
+    color: "#666",
+  },
+  
+  // Regular Schedule Styles
+  regularScheduleContainer: {
+    paddingVertical: verticalScale(8),
+  },
+  scheduleDaysContainer: {
+    gap: verticalScale(8),
+  },
+  scheduleDayItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: verticalScale(10),
+    paddingHorizontal: scale(12),
+    backgroundColor: "#F0F9FF",
+    borderRadius: scale(8),
+    borderLeftWidth: 3,
+    borderLeftColor: "#10B981",
+  },
+  dayNameText: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "#333",
+  },
+  scheduleTimeText: {
+    fontSize: moderateScale(13),
+    color: "#666",
+    fontWeight: "500",
+  },
+  scheduleDescription: {
+    fontSize: moderateScale(14),
+    color: "#666",
+    marginBottom: verticalScale(12),
+    lineHeight: moderateScale(20),
+  },
+  
+  // Book Appointment Button
+  bookAppointmentButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#10B981",
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(14),
+    borderRadius: scale(12),
+    marginTop: verticalScale(16),
+    gap: scale(10),
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  bookAppointmentText: {
+    color: "white",
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+  },
+  
   noScheduleContainer: {
-    alignItems: 'center',
-    paddingVertical: 40,
-    paddingHorizontal: 20,
-    backgroundColor: '#f9f9f9',
-    borderRadius: 12,
-    marginTop: 8
+    paddingVertical: verticalScale(32),
+    alignItems: "center",
+    justifyContent: "center",
   },
   noScheduleText: {
-    fontSize: 16,
-    color: '#666',
-    marginTop: 12,
-    marginBottom: 8,
-    textAlign: 'center',
-    fontWeight: '500'
+    marginTop: verticalScale(12),
+    fontSize: moderateScale(14),
+    color: "#999",
+    textAlign: "center",
   },
-  noScheduleSubtext: { fontSize: 14, color: '#999', textAlign: 'center', lineHeight: 20 },
-  scheduleItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    backgroundColor: '#fafafa',
-    borderRadius: 8,
+  noScheduleSubtext: {
+    fontSize: moderateScale(13),
+    color: "#999",
+    textAlign: "center",
+    marginTop: verticalScale(4),
+    marginBottom: verticalScale(8),
+  },
+  bookButtonWithoutSchedule: {
+    backgroundColor: "#6B7280",
+  },
+  
+  // Posts/Announcements Styles
+  postsLoadingContainer: {
+    paddingVertical: verticalScale(20),
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  postsLoadingText: {
+    marginTop: verticalScale(8),
+    fontSize: moderateScale(14),
+    color: "#666",
+  },
+  postsContainer: {
+    paddingVertical: verticalScale(8),
+  },
+  postItem: {
+    backgroundColor: "#F9F9F9",
+    borderRadius: scale(8),
+    padding: scale(12),
+    marginBottom: verticalScale(8),
     borderLeftWidth: 3,
-    borderLeftColor: '#CD853F'
+    borderLeftColor: "#C17A47",
   },
-  scheduleIconContainer: { marginRight: 15, marginTop: 2, alignItems: 'center', justifyContent: 'center', width: 24 },
-  scheduleContent: { flex: 1 },
-  scheduleDateText: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 6 },
-  scheduleTimeContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  clockIcon: { marginRight: 6 },
-  scheduleTimeText: { fontSize: 14, color: '#666' },
-  slotsContainer: { marginBottom: 8 },
-  slotsText: { fontSize: 13, color: '#888', marginBottom: 6, fontStyle: 'italic' },
-  timeSlots: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  timeSlot: {
-    backgroundColor: '#e8f5e8',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#c8e6c9'
+  postHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: verticalScale(8),
   },
-  timeSlotText: { fontSize: 11, color: '#2d5e2d', fontWeight: '500' },
-  availabilityBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  postTitle: {
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+    color: "#333",
+    flex: 1,
+    marginRight: scale(8),
+  },
+  announcementBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(4),
+    borderRadius: scale(4),
+    gap: scale(4),
+  },
+  announcementBadgeText: {
+    fontSize: moderateScale(10),
+    color: "white",
+    fontWeight: "600",
+  },
+  postContent: {
+    fontSize: moderateScale(14),
+    color: "#666",
+    lineHeight: moderateScale(20),
+    marginBottom: verticalScale(4),
+  },
+  seeMoreButton: {
     alignSelf: 'flex-start',
-    backgroundColor: '#f0f8f0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginTop: 4
+    marginBottom: verticalScale(8),
   },
-  availabilityText: { fontSize: 12, color: '#2d5e2d', fontWeight: '500', marginLeft: 4 },
-  scheduleSummary: {
-    backgroundColor: '#f8f8f8',
-    borderRadius: 12,
-    padding: 16,
-    marginTop: 16,
-    borderWidth: 1,
-    borderColor: '#e0e0e0'
+  seeMoreText: {
+    fontSize: moderateScale(12),
+    color: "#C17A47",
+    fontWeight: "600",
   },
-  summaryHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  summaryHeaderText: { fontSize: 16, fontWeight: '600', color: '#CD853F', marginLeft: 8 },
-  summaryStats: { marginBottom: 12 },
-  summaryItem: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  summaryText: { fontSize: 14, fontWeight: '500', color: '#333', marginLeft: 8 },
-  summaryNote: { fontSize: 12, color: '#666', fontStyle: 'italic', textAlign: 'center', marginTop: 4 },
-  actionButtons: { flexDirection: 'row', paddingHorizontal: 20, paddingTop: 20, gap: 15 },
-  bookButton: {
-    flex: 1,
-    backgroundColor: '#CD853F',
-    flexDirection: 'row',
-    alignItems: 'center',
+  postImage: {
+    width: "100%",
+    height: verticalScale(120),
+    borderRadius: scale(6),
+    marginBottom: verticalScale(8),
+  },
+  imageOverlay: {
+    position: 'absolute',
+    top: scale(8),
+    right: scale(8),
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
     justifyContent: 'center',
-    paddingVertical: 15,
-    borderRadius: 10
-  },
-  callButton: {
-    flex: 1,
-    backgroundColor: '#fff',
-    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 15,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#CD853F'
   },
-  buttonIcon: { marginRight: 8 },
-  buttonText: { fontSize: 16, fontWeight: '600', color: '#fff' },
-  callButtonText: { fontSize: 16, fontWeight: '600', color: '#CD853F' },
-  bottomPadding: { height: 20 }
-});
-
-export default Hvetprofile;
+  postFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  postDate: {
+    fontSize: moderateScale(12),
+    color: "#999",
+  },
+  categoryBadge: {
+    backgroundColor: "#E3F2FD",
+    paddingHorizontal: scale(8),
+    paddingVertical: verticalScale(2),
+    borderRadius: scale(4),
+  },
+  categoryText: {
+    fontSize: moderateScale(10),
+    color: "#1976D2",
+    fontWeight: "500",
+  },
+  viewAllPostsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: verticalScale(12),
+    paddingHorizontal: scale(16),
+    backgroundColor: "#FFF3E0",
+    borderRadius: scale(8),
+    marginTop: verticalScale(8),
+    gap: scale(8),
+  },
+  viewAllPostsText: {
+    fontSize: moderateScale(14),
+    color: "#C17A47",
+    fontWeight: "600",
+  },
+  noPostsContainer: {
+    paddingVertical: verticalScale(32),
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  noPostsText: {
+    marginTop: verticalScale(12),
+    fontSize: moderateScale(14),
+    color: "#999",
+    textAlign: "center",
+  },
+  
+  // Image Modal Styles
+  imageModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageModalBackground: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenImage: {
+    width: '95%',
+    height: '80%',
+  },
+  closeImageButton: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? verticalScale(50) : verticalScale(20),
+    right: scale(20),
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+})

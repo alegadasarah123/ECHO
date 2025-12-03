@@ -1,23 +1,23 @@
 "use client"
 
-import { useRouter, useLocalSearchParams } from "expo-router"
+import { useLocalSearchParams, useRouter } from "expo-router"
+import * as SecureStore from "expo-secure-store"
 import { useEffect, useState } from "react"
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
   ActivityIndicator,
-  TextInput,
-  StatusBar,
   Dimensions,
+  FlatList,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native"
-import * as SecureStore from "expo-secure-store"
 
 const { width } = Dimensions.get("window")
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "http://1192.168.31.58:8000/api/kutsero"
 
 interface SearchUserProfile {
   id: string

@@ -1,8 +1,14 @@
+// KUTSERO PROFILE SCREEN
+
 "use client"
+import { FontAwesome } from '@expo/vector-icons'
 import { useFocusEffect } from "@react-navigation/native"
+import * as ImagePicker from "expo-image-picker"
 import { useRouter } from "expo-router"
+import * as SecureStore from "expo-secure-store"
 import React, { useEffect, useState } from "react"
 import {
+  ActivityIndicator,
   Alert,
   Dimensions,
   Image,
@@ -13,11 +19,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  ActivityIndicator,
 } from "react-native"
-import * as SecureStore from "expo-secure-store"
-import * as ImagePicker from "expo-image-picker"
-import { FontAwesome } from '@expo/vector-icons'
 // Import the separate components
 import HelpSupport from "./help"
 import TermsPolicies from "./terms"

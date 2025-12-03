@@ -1,3 +1,5 @@
+// HORSE_OPERATOR Water Log Screen
+
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -35,8 +37,7 @@ type Horse = {
   horse_name: string;
 };
 
-// const API_BASE_URL = "http://10.160.169.148:8000/api/horse_operator";
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator"
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
 
 const WaterLogScreen = () => {
   const router = useRouter();
@@ -100,7 +101,7 @@ const WaterLogScreen = () => {
     }
   }, []);
 
-  // Load water logs from backend
+  // Load water logs from backend - UPDATED TO HANDLE ALL LOGS
   const loadWaterLogs = useCallback(async (userId: string): Promise<void> => {
     try {
       console.log("Fetching water logs for user:", userId);
@@ -109,8 +110,19 @@ const WaterLogScreen = () => {
       if (response.ok) {
         const data = await response.json();
         console.log("Water logs loaded:", data.length);
-        setWaterLogs(data);
-        setFilteredLogs(data);
+        
+        // Debug: Log the raw data
+        console.log("Raw water logs data:", data);
+        
+        // Ensure we have an array and transform if needed
+        let logsData = data;
+        if (!Array.isArray(data)) {
+          console.warn("Water logs response is not an array:", typeof data);
+          logsData = [];
+        }
+        
+        setWaterLogs(logsData);
+        setFilteredLogs(logsData);
       } else {
         const errorData = await response.json();
         console.error("Failed to load water logs:", errorData);
@@ -503,7 +515,6 @@ const WaterLogScreen = () => {
             <ScrollView 
               style={styles.modalContent} 
               showsVerticalScrollIndicator={false}
-            //   scrollEnabled={!showHorseDropdown}
             >
               <View style={styles.filterSection}>
                 <View style={styles.filterSectionHeader}>
@@ -806,10 +817,11 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     backgroundColor: '#3B82F6',
     elevation: 4,
-    shadowColor: '#000',
+    shadowColor: '#3B82F6',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
+    marginTop: 0,
   },
   backButton: {
     width: 44,

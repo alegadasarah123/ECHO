@@ -1,7 +1,11 @@
 "use client"
+
 import { useFocusEffect, useRouter } from "expo-router"
+import * as SecureStore from "expo-secure-store"
 import { useCallback, useEffect, useState } from "react"
 import {
+  ActivityIndicator,
+  Alert,
   Dimensions,
   Image,
   ScrollView,
@@ -11,10 +15,7 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Alert,
-  ActivityIndicator,
 } from "react-native"
-import * as SecureStore from "expo-secure-store"
 import FeedPage from "./feedpage"
 import NotificationsPage from "./notifications"
 import SOSEmergencyScreen from "./sos"
@@ -120,6 +121,8 @@ interface CareActivity {
   horseName: string
   notes?: string
   completed: boolean
+  markedAsFed?: boolean // Specific for feed activities
+  markedAsGiven?: boolean // Specific for water activities
 }
 
 // Backend API configuration
@@ -226,16 +229,19 @@ export default function HorseCareScreen() {
     }
   }
 
-  // Load care activities for the selected horse
+  // Load care activities for the selected horse - ONLY show completed ones
   const loadCareActivities = async () => {
     try {
       const storedActivities = await SecureStore.getItemAsync("careActivities")
       if (storedActivities) {
         const activities: CareActivity[] = JSON.parse(storedActivities)
-        // Remove duplicates and filter for current horse
+        // Filter for current horse AND completed activities only
         const cleanActivities = Array.isArray(activities)
           ? removeDuplicateActivities(activities)
-              .filter((activity) => activity.horseId === selectedHorse.id)
+              .filter((activity) => 
+                activity.horseId === selectedHorse.id && 
+                activity.completed === true
+              )
               .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
               .slice(0, 10)
           : []
@@ -266,17 +272,30 @@ export default function HorseCareScreen() {
     }
   }
 
-  // Save care activity (synced with dashboard)
-  const saveCareActivity = async (type: "feed" | "water", notes?: string) => {
+  // Save care activity (synced with dashboard) - only when marked as complete
+  const saveCareActivity = async (
+    type: "feed" | "water", 
+    notes?: string, 
+    completed: boolean = false,
+    markedAsFed?: boolean,
+    markedAsGiven?: boolean
+  ) => {
+    // Only save if the activity is marked as completed
+    if (!completed) {
+      return
+    }
+
     try {
       const activity: CareActivity = {
-        id: generateUniqueId(), // Use the new unique ID generator
+        id: generateUniqueId(),
         type: type,
         timestamp: new Date().toISOString(),
         horseId: selectedHorse.id,
         horseName: selectedHorse.name,
         notes: notes,
         completed: true,
+        markedAsFed: markedAsFed,
+        markedAsGiven: markedAsGiven
       }
 
       // Load existing activities
@@ -292,12 +311,14 @@ export default function HorseCareScreen() {
       // Save back to storage
       await SecureStore.setItemAsync("careActivities", JSON.stringify(activities))
 
-      // Update local state
-      const horseActivities = activities.filter((act) => act.horseId === selectedHorse.id).slice(0, 10)
+      // Update local state - only show completed activities
+      const horseActivities = activities
+        .filter((act) => act.horseId === selectedHorse.id && act.completed === true)
+        .slice(0, 10)
 
       setRecentActivities(horseActivities)
 
-      console.log(`${type} activity saved for ${selectedHorse.name}`)
+      console.log(`${type} activity saved for ${selectedHorse.name}`, { completed, markedAsFed, markedAsGiven })
     } catch (error) {
       console.error("Error saving care activity:", error)
     }
@@ -396,9 +417,6 @@ export default function HorseCareScreen() {
 
     setFeedType("feed")
     setShowFeedPage(true)
-
-    // Save activity when feed is initiated
-    await saveCareActivity("feed", "Feed session initiated")
   }
 
   const handleWaterPress = async () => {
@@ -409,9 +427,6 @@ export default function HorseCareScreen() {
 
     setFeedType("water")
     setShowFeedPage(true)
-
-    // Save activity when water is provided
-    await saveCareActivity("water", "Water session initiated")
   }
 
   const handleLogout = () => {
@@ -468,6 +483,18 @@ export default function HorseCareScreen() {
       default:
         return "📝"
     }
+  }
+
+  // Get activity status text
+  const getActivityStatusText = (activity: CareActivity) => {
+    if (activity.type === "feed" && activity.markedAsFed) {
+      return "Marked as fed"
+    } else if (activity.type === "water" && activity.markedAsGiven) {
+      return "Marked as given"
+    } else if (activity.completed) {
+      return "Completed"
+    }
+    return ""
   }
 
   // Load data on focus and mount
@@ -552,7 +579,7 @@ export default function HorseCareScreen() {
             <Text style={styles.welcomeText}>Welcome,</Text>
             <Text style={styles.userName}>{currentUser}</Text>
           </View>
-           <View style={styles.headerActions}>
+          <View style={styles.headerActions}>
             <TouchableOpacity style={styles.headerButton} onPress={() => setShowNotifications(true)}>
               <Image
                 source={require("../../assets/images/notification.png")}
@@ -629,7 +656,6 @@ export default function HorseCareScreen() {
                     {selectedHorse.healthStatus}
                   </Text>
                 </View>
-                <Text style={styles.checkupText}>Next check-up: {selectedHorse.nextCheckup || "Not scheduled"}</Text>
               </View>
             </View>
 
@@ -665,41 +691,8 @@ export default function HorseCareScreen() {
             )}
           </View>
 
-          {/* Recent Care Activities Section */}
-          <View style={styles.activitiesSection}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Recent Care Activities</Text>
-              <TouchableOpacity onPress={loadCareActivities}>
-                <Text style={styles.refreshText}>Refresh</Text>
-              </TouchableOpacity>
-            </View>
-
-            {recentActivities && Array.isArray(recentActivities) && recentActivities.length > 0 ? (
-              recentActivities.map((activity, index) => (
-                <View key={`activity-${activity.id}-${index}`} style={styles.activityItem}>
-                  <View style={styles.activityIcon}>
-                    <Text style={styles.activityEmoji}>{getActivityIcon(activity.type)}</Text>
-                  </View>
-                  <View style={styles.activityContent}>
-                    <Text style={styles.activityTitle}>
-                      {activity.type.charAt(0).toUpperCase() + activity.type.slice(1)} - Completed
-                    </Text>
-                    <Text style={styles.activityHorse}>{activity.horseName}</Text>
-                    <Text style={styles.activityTime}>{formatActivityTime(activity.timestamp)}</Text>
-                    {activity.notes && <Text style={styles.activityNotes}>{activity.notes}</Text>}
-                  </View>
-                </View>
-              ))
-            ) : (
-              <View style={styles.noActivitiesContainer}>
-                <Text style={styles.noActivitiesText}>
-                  {selectedHorse.id === "default"
-                    ? "Select a horse to see care activities"
-                    : "No care activities recorded yet"}
-                </Text>
-              </View>
-            )}
-          </View>
+          {/* REMOVED: Recent Care Activities Section */}
+          
         </ScrollView>
 
         {/* Bottom Tab Navigation */}
@@ -923,10 +916,6 @@ const styles = StyleSheet.create({
     color: "#4CAF50",
     fontWeight: "500",
   },
-  checkupText: {
-    fontSize: moderateScale(12),
-    color: "#666",
-  },
   actionButtonsContainer: {
     flexDirection: "row",
     gap: scale(10),
@@ -989,72 +978,7 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     fontWeight: "600",
   },
-  activitiesSection: {
-    backgroundColor: "white",
-    marginHorizontal: scale(16),
-    marginTop: dynamicSpacing(16),
-    borderRadius: scale(12),
-    padding: scale(16),
-  },
-  sectionTitle: {
-    fontSize: moderateScale(16),
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: verticalScale(12),
-  },
-  activityItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    paddingVertical: verticalScale(8),
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
-  },
-  activityIcon: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
-    backgroundColor: "#E8F5E8",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: scale(12),
-  },
-  activityEmoji: {
-    fontSize: moderateScale(16),
-  },
-  activityContent: {
-    flex: 1,
-  },
-  activityTitle: {
-    fontSize: moderateScale(13),
-    fontWeight: "500",
-    color: "#333",
-    marginBottom: verticalScale(2),
-  },
-  activityHorse: {
-    fontSize: moderateScale(11),
-    color: "#666",
-    marginBottom: verticalScale(1),
-  },
-  activityTime: {
-    fontSize: moderateScale(11),
-    color: "#999",
-    marginBottom: verticalScale(2),
-  },
-  activityNotes: {
-    fontSize: moderateScale(10),
-    color: "#777",
-    fontStyle: "italic",
-  },
-  noActivitiesContainer: {
-    padding: scale(20),
-    alignItems: "center",
-  },
-  noActivitiesText: {
-    fontSize: moderateScale(12),
-    color: "#999",
-    textAlign: "center",
-    fontStyle: "italic",
-  },
+  // REMOVED: activitiesSection and all related activity styles
   tabBar: {
     flexDirection: "row",
     backgroundColor: "white",

@@ -319,7 +319,6 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
   // Water states
   const [waterSchedule, setWaterSchedule] = useState<WaterSchedule[]>([]);
   const [waterLogs, setWaterLogs] = useState<WaterLog[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState('Morning');
   const [waterAmount, setWaterAmount] = useState('');
   const [editingWater, setEditingWater] = useState<WaterSchedule | null>(null);
   
@@ -332,7 +331,54 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
   const [saving, setSaving] = useState(false);
   const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
 
-  const periods = ['Morning', 'Afternoon', 'Evening'];
+  const getPeriodIcon = (period: string): string => {
+    switch (period) {
+      case 'Morning': return 'sun';
+      case 'Afternoon': return 'cloud-sun';
+      case 'Evening': return 'moon';
+      default: return 'tint';
+    }
+  };
+
+  const getPeriodColor = (period: string): string => {
+    switch (period) {
+      case 'Morning': return '#F59E0B';
+      case 'Afternoon': return '#3B82F6';
+      case 'Evening': return '#6366F1';
+      default: return '#06B6D4';
+    }
+  };
+
+  const getFoodImage = (foodType: string) => {
+    const lowerCaseFood = foodType.toLowerCase();
+    switch (lowerCaseFood) {
+      case 'hay': return FOOD_IMAGES.hay;
+      case 'oats': return FOOD_IMAGES.oats;
+      case 'grains': return FOOD_IMAGES.grains;
+      case 'carrots': return FOOD_IMAGES.carrots;
+      case 'apples': return FOOD_IMAGES.apples;
+      case 'pellets': return FOOD_IMAGES.pellets;
+      case 'beetpulp': return FOOD_IMAGES.beetpulp;
+      case 'bran': return FOOD_IMAGES.bran;
+      case 'alfalfa': return FOOD_IMAGES.alfalfa;
+      case 'grass': return FOOD_IMAGES.grass;
+      case 'saltblock': return FOOD_IMAGES.saltblock;
+      case 'supplements': return FOOD_IMAGES.supplements;
+      default: return FOOD_IMAGES.default;
+    }
+  };
+
+  const getFoodIcon = (foodType: string) => {
+    switch (foodType.toLowerCase()) {
+      case 'hay': return 'leaf';
+      case 'oats': return 'seedling';
+      case 'grains': return 'wheat';
+      case 'carrots': return 'carrot';
+      case 'apples': return 'apple-alt';
+      case 'pellets': return 'circle';
+      default: return 'utensils';
+    }
+  };
 
   useEffect(() => {
     console.log('FeedPage loaded with feedType:', feedType);
@@ -415,52 +461,16 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
     }
   };
 
-  const getPeriodIcon = (period: string): string => {
-    switch (period) {
-      case 'Morning': return 'sun';
-      case 'Afternoon': return 'cloud-sun';
-      case 'Evening': return 'moon';
-      default: return 'tint';
-    }
-  };
-
-  const getPeriodColor = (period: string): string => {
-    switch (period) {
-      case 'Morning': return '#F59E0B';
-      case 'Afternoon': return '#3B82F6';
-      case 'Evening': return '#6366F1';
-      default: return '#06B6D4';
-    }
-  };
-
-  const getFoodImage = (foodType: string) => {
-    const lowerCaseFood = foodType.toLowerCase();
-    switch (lowerCaseFood) {
-      case 'hay': return FOOD_IMAGES.hay;
-      case 'oats': return FOOD_IMAGES.oats;
-      case 'grains': return FOOD_IMAGES.grains;
-      case 'carrots': return FOOD_IMAGES.carrots;
-      case 'apples': return FOOD_IMAGES.apples;
-      case 'pellets': return FOOD_IMAGES.pellets;
-      case 'beetpulp': return FOOD_IMAGES.beetpulp;
-      case 'bran': return FOOD_IMAGES.bran;
-      case 'alfalfa': return FOOD_IMAGES.alfalfa;
-      case 'grass': return FOOD_IMAGES.grass;
-      case 'saltblock': return FOOD_IMAGES.saltblock;
-      case 'supplements': return FOOD_IMAGES.supplements;
-      default: return FOOD_IMAGES.default;
-    }
-  };
-
-  const getFoodIcon = (foodType: string) => {
-    switch (foodType.toLowerCase()) {
-      case 'hay': return 'leaf';
-      case 'oats': return 'seedling';
-      case 'grains': return 'wheat';
-      case 'carrots': return 'carrot';
-      case 'apples': return 'apple-alt';
-      case 'pellets': return 'circle';
-      default: return 'utensils';
+  // Function to determine period based on time (for water schedule)
+  const getPeriodFromTime = (hour: string, period: string): string => {
+    const hour24 = convertTo24Hour(hour, period);
+    
+    if (hour24 >= 5 && hour24 < 12) {
+      return 'Morning';
+    } else if (hour24 >= 12 && hour24 < 17) {
+      return 'Afternoon';
+    } else {
+      return 'Evening';
     }
   };
 
@@ -483,7 +493,6 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
       } catch (error) {
         setFeedingTime({ hour: '6', minute: '00', period: 'AM' });
       }
-      setSelectedPeriod(water.water_period);
       setWaterAmount(water.water_amount);
     } else {
       const meal = item as MealSchedule;
@@ -527,7 +536,6 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
     if (isWater) {
       setEditingWater(null);
       setFeedingTime({ hour: '6', minute: '00', period: 'AM' });
-      setSelectedPeriod('Morning');
       setWaterAmount('');
     } else {
       setEditingMeal(null);
@@ -614,8 +622,11 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
       let result;
       
       if (isWater) {
+        // Calculate period based on time
+        const period = getPeriodFromTime(feedingTime.hour, feedingTime.period);
+        
         const waterData = {
-          water_period: selectedPeriod,
+          water_period: period,
           water_amount: waterAmount.trim(),
           water_time: updatedTime,
           kutsero_id: userId,
@@ -856,46 +867,15 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
             </View>
 
             {isWater ? (
-              <>
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Period</Text>
-                  <View style={styles.periodContainer}>
-                    {periods.map((period) => (
-                      <TouchableOpacity
-                        key={period}
-                        style={[
-                          styles.periodButton,
-                          selectedPeriod === period && styles.periodButtonActive,
-                          { borderColor: getPeriodColor(period) }
-                        ]}
-                        onPress={() => setSelectedPeriod(period)}
-                      >
-                        <FontAwesome5 
-                          name={getPeriodIcon(period)} 
-                          size={18} 
-                          color={selectedPeriod === period ? '#fff' : getPeriodColor(period)} 
-                        />
-                        <Text style={[
-                          styles.periodButtonText,
-                          selectedPeriod === period && styles.periodButtonTextActive
-                        ]}>
-                          {period}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Water Amount</Text>
-                  <TextInput 
-                    style={styles.amountInputFull} 
-                    value={waterAmount} 
-                    onChangeText={setWaterAmount} 
-                    placeholder="Enter water amount (e.g., 5 liters)" 
-                  />
-                </View>
-              </>
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Water Amount</Text>
+                <TextInput 
+                  style={styles.amountInputFull} 
+                  value={waterAmount} 
+                  onChangeText={setWaterAmount} 
+                  placeholder="Enter water amount (e.g., 5 liters)" 
+                />
+              </View>
             ) : (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Feed Types & Amounts</Text>
@@ -1145,11 +1125,6 @@ const styles = StyleSheet.create({
   dropdownOptionActive: { backgroundColor: '#EFF6FF' },
   dropdownOptionText: { fontSize: 16, fontWeight: '600', color: '#334155' },
   dropdownOptionTextActive: { color: '#3B82F6' },
-  periodContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
-  periodButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC', borderRadius: 16, paddingVertical: 14, borderWidth: 2, gap: 8 },
-  periodButtonActive: { backgroundColor: '#06B6D4', borderColor: '#06B6D4' },
-  periodButtonText: { fontSize: 14, fontWeight: '600', color: '#334155' },
-  periodButtonTextActive: { color: '#fff' },
   amountInputFull: { backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, fontWeight: '500', borderWidth: 2, borderColor: '#E2E8F0', color: '#334155' },
   feedTypesGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 20 },
   feedTypeCard: { width: '48%', backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 2, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },

@@ -34,7 +34,7 @@ interface Horse {
   image: string | null;
 }
 
-const API_URL = "http://192.168.101.2:8000/api/horse_operator";
+const API_URL = "http://10.254.39.148:8000/api/horse_operator";
 
 const AddHorseScreen = () => {
   const router = useRouter();

@@ -1,24 +1,24 @@
 "use client"
 
-import { useRouter, useLocalSearchParams } from "expo-router"
-import { useEffect, useState, useRef } from "react"
+import { FontAwesome5 } from "@expo/vector-icons"
+import { useLocalSearchParams, useRouter } from "expo-router"
+import * as SecureStore from "expo-secure-store"
+import { useEffect, useRef, useState } from "react"
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Image,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
-  StatusBar,
-  Modal,
   Dimensions,
   FlatList,
+  Image,
+  Modal,
   Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native"
-import * as SecureStore from "expo-secure-store"
-import { FontAwesome5 } from "@expo/vector-icons"
 
 const { width, height } = Dimensions.get("window")
 
@@ -562,37 +562,8 @@ export default function UserProfileScreen() {
             </Text>
           </View>
 
-          <View style={styles.statusBadge}>
-            <View
-              style={[
-                styles.statusDot,
-                {
-                  backgroundColor:
-                    profileData.status === "approved" || profileData.status === "active"
-                      ? "#4CAF50"
-                      : profileData.status === "pending"
-                        ? "#FF9800"
-                        : "#999",
-                },
-              ]}
-            />
-            <Text
-              style={[
-                styles.statusText,
-                {
-                  color:
-                    profileData.status === "approved" || profileData.status === "active"
-                      ? "#4CAF50"
-                      : profileData.status === "pending"
-                        ? "#FF9800"
-                        : "#999",
-                },
-              ]}
-            >
-              {profileData.status}
-            </Text>
-          </View>
-
+          {/* REMOVED: Status badge section */}
+          
           {/* ✅ MESSAGE BUTTON - Only show if not viewing own profile */}
           {!isOwnProfile && (
             <TouchableOpacity style={styles.messageButton} onPress={handleMessagePress} activeOpacity={0.7}>
@@ -793,9 +764,7 @@ export default function UserProfileScreen() {
   )
 }
 
-// ... (all your existing styles remain the same)
 const styles = StyleSheet.create({
-  // ... copy all your existing styles here
   container: { flex: 1, backgroundColor: "#F5F5F5" },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F5F5F5" },
   loadingText: { marginTop: verticalScale(16), fontSize: moderateScale(16), color: "#666", fontWeight: "500" },
@@ -817,9 +786,7 @@ const styles = StyleSheet.create({
   fullName: { fontSize: moderateScale(24), fontWeight: "bold", color: "#333", marginBottom: verticalScale(8), textAlign: "center" },
   roleBadge: { paddingHorizontal: scale(16), paddingVertical: verticalScale(6), borderRadius: scale(20), marginBottom: verticalScale(6) },
   roleBadgeText: { fontSize: moderateScale(14), fontWeight: "600" },
-  statusBadge: { flexDirection: "row", alignItems: "center", paddingHorizontal: scale(10), paddingVertical: verticalScale(3), borderRadius: scale(10), backgroundColor: "#F0F2F5", marginBottom: verticalScale(12) },
-  statusDot: { width: scale(7), height: scale(7), borderRadius: scale(3.5), marginRight: scale(5) },
-  statusText: { fontSize: moderateScale(11), fontWeight: "600", textTransform: "capitalize" },
+  // REMOVED: statusBadge, statusDot, and statusText styles
   messageButton: { width: "90%", flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#C17A47", paddingHorizontal: scale(20), paddingVertical: verticalScale(12), borderRadius: scale(25), gap: scale(8), shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3, marginTop: verticalScale(10) },
   messageButtonText: { color: "white", fontSize: moderateScale(14), fontWeight: "600" },
   infoCard: { backgroundColor: "white", marginHorizontal: scale(16), marginBottom: verticalScale(16), borderRadius: scale(12), padding: scale(16), shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },

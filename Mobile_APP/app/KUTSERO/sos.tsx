@@ -1,8 +1,12 @@
+import * as ImagePicker from "expo-image-picker"
+import * as Location from "expo-location"
 import { useRouter } from 'expo-router'
-import { useState, useEffect } from "react"
+import * as SecureStore from "expo-secure-store"
+import { useEffect, useState } from "react"
 import {
     Alert,
     Dimensions,
+    Image,
     Modal,
     ScrollView,
     StatusBar,
@@ -10,12 +14,8 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    View,
-    Image
+    View
 } from "react-native"
-import * as Location from "expo-location"
-import * as ImagePicker from "expo-image-picker"
-import * as SecureStore from "expo-secure-store"
 
 const { width, height } = Dimensions.get("window")
 

@@ -36,7 +36,7 @@ interface Horse {
   conditionColor?: string;
 }
 
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator"
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
 
 const HorseProfileScreen = () => {
   const router = useRouter();
@@ -1198,7 +1198,7 @@ const HorseProfileScreen = () => {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
+    backgroundColor: '#ffffffff',
   },
   container: {
     flex: 1,
@@ -1240,11 +1240,12 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#E9ECEF',
-    shadowColor: '#000',
+    shadowColor: '#ffffffff',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
+    marginTop: 10,
   },
   headerBackButton: {
     width: 40,

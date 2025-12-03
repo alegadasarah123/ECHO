@@ -1,22 +1,21 @@
 "use client"
 
-import { useRouter } from "expo-router"
-import { useState, useEffect, useCallback } from "react"
+import { useFocusEffect, useRouter } from "expo-router"
+import * as SecureStore from "expo-secure-store"
+import { useCallback, useEffect, useState } from "react"
 import {
+  ActivityIndicator,
+  Alert,
   Dimensions,
   Image,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
-  ActivityIndicator,
-  Alert,
-  Modal,
 } from "react-native"
-import * as SecureStore from "expo-secure-store"
-import { useFocusEffect } from "expo-router"
 
 const { width, height } = Dimensions.get("window")
 

@@ -147,75 +147,111 @@ function DvmfHealthReport() {
     }
   };
 
-  // HANDLE INDIVIDUAL NOTIFICATION CLICK
-  const handleNotificationClick = async (notification) => {
-    const notifId = notification?.notif_id || notification?.id;
+ // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
+const handleNotificationClick = async (notification) => {
+  const notifId = notification?.notif_id || notification?.id; // fallback support
 
-    if (!notifId) {
-      console.warn("Notification ID is missing:", notification);
-    }
+  if (!notifId) {
+    console.warn("Notification ID is missing:", notification);
+  }
 
-    setNotifications((prev) =>
-      prev.map((notif) =>
-        notif.notif_id === notifId || notif.id === notifId
-          ? { ...notif, read: true }
-          : notif
-      )
-    );
+  // Mark as read in frontend immediately
+  setNotifications((prev) =>
+    prev.map((notif) =>
+      notif.notif_id === notifId || notif.id === notifId
+        ? { ...notif, read: true }
+        : notif
+    )
+  );
 
-    if (notifId) {
-      try {
-        await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
-          method: "POST",
-          credentials: "include",
-        });
-      } catch (err) {
-        console.error("Error marking notification as read:", err);
-      }
-    }
-
-    const message = (notification.message || "").toLowerCase();
-
-    if (
-      message.includes("new registration") ||
-      message.includes("new veterinarian approved") ||
-      message.includes("veterinarian approved") ||
-      message.includes("veterinarian declined") ||
-      message.includes("veterinarian registered") ||
-      message.includes("veterinarian pending")
-    ) {
-      navigate("/DvmfAccountApproval", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
+  // Mark as read in backend (only if valid ID)
+  if (notifId) {
+    try {
+      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+        method: "POST",
+        credentials: "include",
       });
-      return;
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
     }
+  }
 
-    if (
-      message.includes("pending medical record access") ||
-      message.includes("requested access")
-    ) {
-      navigate("/DvmfAccessRequest", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  const message = (notification.message || "").toLowerCase();
+  const type = (notification.type || "").toLowerCase();
 
-    if (message.includes("comment")) {
-      navigate("/DvmfAnnouncement", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
+  // Navigate for SOS emergency notifications
+  if (
+    type === "sos_emergency" ||
+    message.includes("sos") ||
+    message.includes("emergency") ||
+    message.includes("reported") ||
+    message.includes("urgent") ||
+    (message.includes("horse") && 
+     (message.includes("colic") || 
+      message.includes("injured") || 
+      message.includes("trauma")))
+  ) {
+    // Extract SOS ID from related_id if available
+    let sosId = null;
+    if (notification.related_id && notification.related_id.startsWith("sos_")) {
+      sosId = notification.related_id.replace("sos_", "");
     }
-  };
+    
+    navigate("/DvmfDashboard", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        sosId: sosId, // Pass the specific SOS ID if available
+      },
+    });
+    return;
+  }
+
+  // Navigate for account-related notifications
+  if (
+    message.includes("new registration") ||
+    message.includes("new veterinarian approved") ||
+    message.includes("veterinarian approved") ||
+    message.includes("veterinarian declined") ||
+    message.includes("veterinarian registered") ||
+    message.includes("veterinarian pending")
+  ) {
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  if (
+    message.includes("pending medical record access") ||
+    message.includes("requested access")
+  ) {
+    navigate("/DvmfAccessRequest", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  // Only navigate to DvmfAnnouncement for comment-related notifications
+  if (message.includes("comment")) {
+    navigate("/DvmfAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  // Default fallback - stay on current page
+  console.log("Notification clicked but no specific action:", notification);
+}
 
   // Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -1065,209 +1101,319 @@ function DvmfHealthReport() {
                   </div>
 
                   {/* Line Chart - FIXED: Proper alignment of month labels with data points */}
-<div className="w-full">
-  <div className="min-w-[700px]">
-    <div className="relative h-80 mt-4">
-      {/* Y-axis title */}
-      <div className="absolute left-0 top-1/2 transform -translate-y-1/2 -translate-x-15 -rotate-90 text-xs font-medium text-gray-600 whitespace-nowrap">
-        Total Number of Health Status
-      </div>
+                  <div className="w-full">
+                    <div className="min-w-[700px]">
+                      <div className="relative h-80 mt-4">
+                        {/* Y-axis title */}
+                        <div className="absolute left-0 top-1/2 transform -translate-y-1/2 -translate-x-15 -rotate-90 text-xs font-medium text-gray-600 whitespace-nowrap">
+                          Total Number of Health Status
+                        </div>
 
-      {/* Y-axis labels with proper spacing */}
-      <div className="absolute left-8 top-0 bottom-0 w-8">
-        {yAxisSteps.map((value) => {
-          const positionFromTop = 300 - (value / yAxisMax) * 300
-          return (
-            <div
-              key={value}
-              className="text-right pr-1 text-xs text-gray-500 absolute"
-              style={{
-                top: `${positionFromTop}px`,
-                transform: 'translateY(-50%)',
-                width: '100%'
-              }}
-            >
-              {value}
-            </div>
-          )
-        })}
-      </div>
+                        {/* Y-axis labels with proper spacing */}
+                        <div className="absolute left-8 top-0 bottom-0 w-8">
+                          {yAxisSteps.map((value) => {
+                            const positionFromTop = 300 - (value / yAxisMax) * 300
+                            return (
+                              <div
+                                key={value}
+                                className="text-right pr-1 text-xs text-gray-500 absolute"
+                                style={{
+                                  top: `${positionFromTop}px`,
+                                  transform: 'translateY(-50%)',
+                                  width: '100%'
+                                }}
+                              >
+                                {value}
+                              </div>
+                            )
+                          })}
+                        </div>
 
-      {/* Chart area - Consistent 300px height */}
-      <div className="ml-16 pl-2 h-[300px] flex items-end justify-start gap-6 px-0 border-b border-l border-gray-300 relative">
-        {monthlyData.length > 0 && (
-          <>
-            <svg
-              width="100%"
-              height="100%"
-              className="absolute top-0 left-0"
-              style={{ marginLeft: "20px", width: "500px", height: "300px" }}
-            >
-              {/* Grid lines for better readability */}
-              {yAxisSteps.map((value) => {
-                const y = 300 - (value / yAxisMax) * 300
-                return (
-                  <line
-                    key={value}
-                    x1="0"
-                    y1={y}
-                    x2="500"
-                    y2={y}
-                    stroke="#e5e7eb"
-                    strokeWidth="1"
-                    strokeDasharray="2,2"
-                  />
-                )
-              })}
+                        {/* Chart area - Consistent 300px height */}
+                        <div className="ml-16 pl-2 h-[300px] flex items-end justify-start gap-6 px-0 border-b border-l border-gray-300 relative">
+                          {monthlyData.length > 0 && (
+                            <>
+                              <svg
+                                width="100%"
+                                height="100%"
+                                className="absolute top-0 left-0"
+                                style={{ marginLeft: "20px", width: "500px", height: "300px" }}
+                              >
+                                {/* Grid lines for better readability */}
+                                {yAxisSteps.map((value) => {
+                                  const y = 300 - (value / yAxisMax) * 300
+                                  return (
+                                    <line
+                                      key={value}
+                                      x1="0"
+                                      y1={y}
+                                      x2="500"
+                                      y2={y}
+                                      stroke="#e5e7eb"
+                                      strokeWidth="1"
+                                      strokeDasharray="2,2"
+                                    />
+                                  )
+                                })}
 
-              {/* Chart lines */}
-              <polyline
-                fill="none"
-                stroke="#28a745"
-                strokeWidth="2"
-                points={monthlyData
-                  .map((month, index) => {
-                    const x = index * (500 / Math.max(1, monthlyData.length - 1))
-                    const y = 300 - ((month.healthy || 0) / yAxisMax) * 300
-                    return `${x},${y}`
-                  })
-                  .join(" ")}
-              />
-              
-              <polyline
-                fill="none"
-                stroke="#fd7e14"
-                strokeWidth="2"
-                points={monthlyData
-                  .map((month, index) => {
-                    const x = index * (500 / Math.max(1, monthlyData.length - 1))
-                    const y = 300 - ((month.sick || 0) / yAxisMax) * 300
-                    return `${x},${y}`
-                  })
-                  .join(" ")}
-              />
-              
-              <polyline
-                fill="none"
-                stroke="#dc3545"
-                strokeWidth="2"
-                points={monthlyData
-                  .map((month, index) => {
-                    const x = index * (500 / Math.max(1, monthlyData.length - 1))
-                    const y = 300 - ((month.deceased || 0) / yAxisMax) * 300
-                    return `${x},${y}`
-                  })
-                  .join(" ")}
-              />
+                                {/* Chart lines */}
+                                <polyline
+                                  fill="none"
+                                  stroke="#28a745"
+                                  strokeWidth="2"
+                                  points={monthlyData
+                                    .map((month, index) => {
+                                      const x = index * (500 / Math.max(1, monthlyData.length - 1))
+                                      const y = 300 - ((month.healthy || 0) / yAxisMax) * 300
+                                      return `${x},${y}`
+                                    })
+                                    .join(" ")}
+                                />
+                                
+                                <polyline
+                                  fill="none"
+                                  stroke="#fd7e14"
+                                  strokeWidth="2"
+                                  points={monthlyData
+                                    .map((month, index) => {
+                                      const x = index * (500 / Math.max(1, monthlyData.length - 1))
+                                      const y = 300 - ((month.sick || 0) / yAxisMax) * 300
+                                      return `${x},${y}`
+                                    })
+                                    .join(" ")}
+                                />
+                                
+                                <polyline
+                                  fill="none"
+                                  stroke="#dc3545"
+                                  strokeWidth="2"
+                                  points={monthlyData
+                                    .map((month, index) => {
+                                      const x = index * (500 / Math.max(1, monthlyData.length - 1))
+                                      const y = 300 - ((month.deceased || 0) / yAxisMax) * 300
+                                      return `${x},${y}`
+                                    })
+                                    .join(" ")}
+                                />
 
-              {/* Data points */}
-              {monthlyData.map((month, index) => {
-                const x = index * (500 / Math.max(1, monthlyData.length - 1))
-                return (
-                  <g key={index}>
-                    <circle
-                      cx={x}
-                      cy={300 - ((month.healthy || 0) / yAxisMax) * 300}
-                      r="4"
-                      fill="#28a745"
-                      stroke="#ffffff"
-                      strokeWidth="1.5"
-                    />
-                    <circle
-                      cx={x}
-                      cy={300 - ((month.sick || 0) / yAxisMax) * 300}
-                      r="4"
-                      fill="#fd7e14"
-                      stroke="#ffffff"
-                      strokeWidth="1.5"
-                    />
-                    <circle
-                      cx={x}
-                      cy={300 - ((month.deceased || 0) / yAxisMax) * 300}
-                      r="4"
-                      fill="#dc3545"
-                      stroke="#ffffff"
-                      strokeWidth="1.5"
-                    />
-                  </g>
-                )
-              })}
+                                {/* Data points */}
+                                {monthlyData.map((month, index) => {
+                                  const x = index * (500 / Math.max(1, monthlyData.length - 1))
+                                  return (
+                                    <g key={index}>
+                                      <circle
+                                        cx={x}
+                                        cy={300 - ((month.healthy || 0) / yAxisMax) * 300}
+                                        r="4"
+                                        fill="#28a745"
+                                        stroke="#ffffff"
+                                        strokeWidth="1.5"
+                                      />
+                                      <circle
+                                        cx={x}
+                                        cy={300 - ((month.sick || 0) / yAxisMax) * 300}
+                                        r="4"
+                                        fill="#fd7e14"
+                                        stroke="#ffffff"
+                                        strokeWidth="1.5"
+                                      />
+                                      <circle
+                                        cx={x}
+                                        cy={300 - ((month.deceased || 0) / yAxisMax) * 300}
+                                        r="4"
+                                        fill="#dc3545"
+                                        stroke="#ffffff"
+                                        strokeWidth="1.5"
+                                      />
+                                    </g>
+                                  )
+                                })}
 
-              {/* Zero baseline */}
-              <line
-                x1="0"
-                y1="300"
-                x2="500"
-                y2="300"
-                stroke="#6b7280"
-                strokeWidth="2"
-                opacity="0.8"
-              />
-            </svg>
+                                {/* Zero baseline */}
+                                <line
+                                  x1="0"
+                                  y1="300"
+                                  x2="500"
+                                  y2="300"
+                                  stroke="#6b7280"
+                                  strokeWidth="2"
+                                  opacity="0.8"
+                                />
+                              </svg>
 
-            {/* Month labels - FIXED: Proper alignment with data points */}
-            <div 
-              className="absolute -bottom-8 left-0 right-0 flex justify-between" 
-              style={{ 
-                marginLeft: "20px", 
-                width: "500px",
-                paddingLeft: "0px",
-                paddingRight: "0px"
-              }}
-            >
-              {monthlyData.map((monthData, index) => {
-                // Calculate exact X position to match SVG data points
-                const totalWidth = 500
-                const pointSpacing = totalWidth / Math.max(1, monthlyData.length - 1)
-                const xPosition = index * pointSpacing
-                
-                return (
-                  <div 
-                    key={index} 
-                    className="flex flex-col items-center absolute"
-                    style={{ 
-                      left: `${xPosition}px`,
-                      transform: "translateX(-50%)"
-                    }}
-                  >
-                    <div className="text-xs text-gray-600 font-medium text-center whitespace-nowrap">
-                      {String(monthData.month).substring(0, 3)}
+                              {/* Month labels - FIXED: Proper alignment with data points */}
+                              <div 
+                                className="absolute -bottom-8 left-0 right-0 flex justify-between" 
+                                style={{ 
+                                  marginLeft: "20px", 
+                                  width: "500px",
+                                  paddingLeft: "0px",
+                                  paddingRight: "0px"
+                                }}
+                              >
+                                {monthlyData.map((monthData, index) => {
+                                  // Calculate exact X position to match SVG data points
+                                  const totalWidth = 500
+                                  const pointSpacing = totalWidth / Math.max(1, monthlyData.length - 1)
+                                  const xPosition = index * pointSpacing
+                                  
+                                  return (
+                                    <div 
+                                      key={index} 
+                                      className="flex flex-col items-center absolute"
+                                      style={{ 
+                                        left: `${xPosition}px`,
+                                        transform: "translateX(-50%)"
+                                      }}
+                                    >
+                                      <div className="text-xs text-gray-600 font-medium text-center whitespace-nowrap">
+                                        {String(monthData.month).substring(0, 3)}
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </>
+                          )}
+                          
+                          {/* X-axis title */}
+                          <div className="absolute -bottom-20 left-1/2 transform -translate-x-1/2 text-xs font-medium text-gray-600">
+                            Months
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Add the monthly data table below the chart */}
+                      {monthlyData.length > 0 && (
+                        <div className="mt-20 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                          <div className="px-6 py-4 border-b border-gray-200">
+                            <h3 className="text-lg font-semibold text-gray-900">Monthly Health Status Data</h3>
+                            <p className="text-sm text-gray-500 mt-1">Detailed breakdown of health status by month</p>
+                          </div>
+                          
+                          <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-gray-200">
+                              <thead className="bg-gray-50">
+                                <tr>
+                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Month
+                                  </th>
+                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Total
+                                  </th>
+                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Healthy
+                                  </th>
+                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Sick
+                                  </th>
+                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Deceased
+                                  </th>
+                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                                    Healthy %
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody className="bg-white divide-y divide-gray-200">
+                                {monthlyData.map((month, index) => {
+                                  const healthyPercentage = month.total ? ((month.healthy / month.total) * 100).toFixed(1) : "0.0";
+                                  return (
+                                    <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                        {month.month}
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-semibold">
+                                        {month.total}
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                          {month.healthy}
+                                        </span>
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                                          {month.sick}
+                                        </span>
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                          {month.deceased}
+                                        </span>
+                                      </td>
+                                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-medium">
+                                        {healthyPercentage}%
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                                
+                                {/* Summary row */}
+                                {monthlyData.length > 1 && (
+                                  <tr className="bg-gray-100 border-t border-gray-300">
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                                      Total
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                                      {monthlyData.reduce((sum, month) => sum + month.total, 0)}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-700">
+                                      {monthlyData.reduce((sum, month) => sum + month.healthy, 0)}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-orange-700">
+                                      {monthlyData.reduce((sum, month) => sum + month.sick, 0)}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-700">
+                                      {monthlyData.reduce((sum, month) => sum + month.deceased, 0)}
+                                    </td>
+                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                                      {(() => {
+                                        const totalHorses = monthlyData.reduce((sum, month) => sum + month.total, 0);
+                                        const totalHealthy = monthlyData.reduce((sum, month) => sum + month.healthy, 0);
+                                        return totalHorses ? ((totalHealthy / totalHorses) * 100).toFixed(1) : "0.0";
+                                      })()}%
+                                    </td>
+                                  </tr>
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                          
+                          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
+                            <div className="flex justify-between items-center">
+                              <div>
+                                Showing {monthlyData.length} month{monthlyData.length !== 1 ? 's' : ''} of data
+                                {dateFrom && dateTo && (
+                                  <span className="ml-2">(Filtered: {dateFrom} to {dateTo})</span>
+                                )}
+                              </div>
+                             
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {monthlyData.length === 0 && !isLoading && (
+                        <div className="text-center text-gray-500 py-12 bg-gray-50 rounded-lg mt-8">
+                          <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                          <p className="text-lg font-medium text-gray-600 mb-2">No Data Available</p>
+                          <p className="text-sm text-gray-500 max-w-md mx-auto">
+                            {dateFrom || dateTo
+                              ? "No data found for the selected date range. Try adjusting your filters."
+                              : "No health data available in the system."}
+                          </p>
+                          {(dateFrom || dateTo) && (
+                            <button
+                              onClick={handleClearFilters}
+                              className="mt-4 bg-[#0F3D5A] text-white px-4 py-2 rounded-md text-sm hover:bg-[#0C3148] transition-colors"
+                            >
+                              Clear Date Filters
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
-                )
-              })}
-            </div>
-          </>
-        )}
-        
-        {/* X-axis title */}
-        <div className="absolute -bottom-20 left-1/2 transform -translate-x-1/2 text-xs font-medium text-gray-600">
-          Months
-        </div>
-      </div>
-    </div>
-
-    {monthlyData.length === 0 && !isLoading && (
-      <div className="text-center text-gray-500 py-12 bg-gray-50 rounded-lg mt-8">
-        <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-        <p className="text-lg font-medium text-gray-600 mb-2">No Data Available</p>
-        <p className="text-sm text-gray-500 max-w-md mx-auto">
-          {dateFrom || dateTo
-            ? "No data found for the selected date range. Try adjusting your filters."
-            : "No health data available in the system."}
-        </p>
-        {(dateFrom || dateTo) && (
-          <button
-            onClick={handleClearFilters}
-            className="mt-4 bg-red-700 text-white px-4 py-2 rounded-md text-sm hover:bg-red-800 transition-colors"
-          >
-            Clear Date Filters
-          </button>
-        )}
-      </div>
-    )}
-  </div>
-</div>
                 </>
               )}
             </div>

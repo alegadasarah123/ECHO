@@ -18,16 +18,15 @@ import {
   Platform,
   Dimensions,
   StatusBar,
-  KeyboardAvoidingView,
+  KeyboardAvoidingView, 
   Keyboard,
   FlatList,
 } from "react-native"
 import { useRouter, useFocusEffect } from "expo-router"
 import { FontAwesome5 } from "@expo/vector-icons"
 import * as SecureStore from "expo-secure-store"
-import * as Notifications from "expo-notifications"
-import * as Device from "expo-device"
-import Constants from "expo-constants"
+import AsyncStorage from "@react-native-async-storage/async-storage"
+import * as Notifications from 'expo-notifications'
 
 const { width, height } = Dimensions.get("window")
 
@@ -64,13 +63,14 @@ const getSafeAreaPadding = () => {
 }
 
 const CARD_WIDTH = width - scale(64)
-const API_BASE_URL = "http://192.168.101.2:8000/api/horse_operator"
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
 
+// Configure notifications handler with proper NotificationBehavior type
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
-    shouldSetBadge: true,
+    shouldSetBadge: false,
     shouldShowBanner: true,
     shouldShowList: true,
   }),
@@ -135,24 +135,27 @@ interface Horse {
 interface Comment {
   id: string
   text: string
+  comment_text?: string
   user: string
   user_id: string
   user_role: string
   user_profile?: {
-    full_name: string
-    first_name: string
+    full_name?: string
+    first_name?: string
     middle_name?: string
-    last_name: string
+    last_name?: string
     email?: string
     image?: string | null
   }
   time: string
   formatted_date: string
   comment_date: string
-  parent_comment_id?: string
+  parent_comment_id?: string | null
   reply_level?: number
   reply_count?: number
   has_replies?: boolean
+  is_reply?: boolean
+  announcement_id?: string
 }
 
 interface Announcement {
@@ -161,6 +164,7 @@ interface Announcement {
   title: string
   content: string
   date: string
+  created_at?: string
   image?: string | string[]
   author: string
   user_id: string
@@ -190,7 +194,6 @@ export default function HorseOperatorHome() {
   const [currentHorseIndex, setCurrentHorseIndex] = useState(0)
   const [loadingHorses, setLoadingHorses] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
-  const [notificationCount, setNotificationCount] = useState(0)
   const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [loadingAnnouncements, setLoadingAnnouncements] = useState(true)
   const [comments, setComments] = useState<{ [key: string]: Comment[] }>({})
@@ -205,134 +208,273 @@ export default function HorseOperatorHome() {
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false)
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState("")
-  const [editingComment, setEditingComment] = useState<string | null>(null)
-  const [editText, setEditText] = useState("")
   const [expandedReplies, setExpandedReplies] = useState<Set<string>>(new Set())
   const [loadingReplies, setLoadingReplies] = useState<{ [key: string]: boolean }>({})
-  const [expandedNestedReplies, setExpandedNestedReplies] = useState<Set<string>>(new Set())
   const [searchResults, setSearchResults] = useState<UserProfile[]>([])
   const [showSearchDropdown, setShowSearchDropdown] = useState(false)
   const [loadingSearchResults, setLoadingSearchResults] = useState(false)
   const [searchMode, setSearchMode] = useState<"name" | "role" | null>(null)
+  const [showImageModal, setShowImageModal] = useState(false)
+  const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [lastViewedAnnouncementTime, setLastViewedAnnouncementTime] = useState<string | null>(null)
 
   const router = useRouter()
   const [activeTab] = useState("home")
-  const notificationListener = useRef<Notifications.Subscription | null>(null)
-  const responseListener = useRef<Notifications.Subscription | null>(null)
   const safeArea = getSafeAreaPadding()
   const flatListRef = useRef<FlatList>(null)
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // NEW: Function to get user profile using the unified endpoint
-  const getUserProfile = useCallback(async (userId: string) => {
+  // Request notification permissions
+  const requestNotificationPermissions = useCallback(async () => {
     try {
-      const storedAccessToken = await SecureStore.getItemAsync("access_token")
-      if (!storedAccessToken) throw new Error("No access token found")
-      
-      const response = await fetch(`${API_BASE_URL}/get_user_profile/${encodeURIComponent(userId)}/`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${storedAccessToken}`,
-          "Content-Type": "application/json",
-        },
-      })
-      
-      if (response.ok) {
-        const data = await response.json()
-        if (data.success && data.user) {
-          return data.user
-        }
-      }
-      return null
-    } catch (error) {
-      console.error("Error fetching user profile:", error)
-      return null
-    }
-  }, [])
-
-  // UPDATED: Enhanced fetchUserProfile function using the new endpoint
-  const fetchUserProfile = useCallback(async (uid: string) => {
-    try {
-      const userProfile = await getUserProfile(uid)
-      if (userProfile) {
-        // Extract first name from the profile data
-        const firstName = userProfile.profile?.fname || 
-                         userProfile.profile?.first_name || 
-                         userProfile.profile?.op_fname ||
-                         userData?.profile?.op_fname || 
-                         "User"
-        setUserFirstName(firstName)
-        
-        // Update user data with the complete profile
-        setUserData(prev => prev ? {
-          ...prev,
-          profile: {
-            ...prev.profile,
-            ...userProfile.profile
-          }
-        } : prev)
+      const { status } = await Notifications.requestPermissionsAsync();
+      if (status === 'granted') {
+        console.log('Notification permissions granted');
+        return true;
       } else {
-        // Fallback to old method if new endpoint fails
-        const url = `${API_BASE_URL}/get_horse_operator_profile/?user_id=${encodeURIComponent(uid)}`
-        const response = await fetch(url)
-        if (response.ok) {
-          const data = await response.json()
-          const firstName = data?.op_fname || userData?.profile?.op_fname || "User"
-          setUserFirstName(firstName)
+        console.log('Notification permissions denied');
+        return false;
+      }
+    } catch (error) {
+      console.error('Error requesting notification permissions:', error);
+      return false;
+    }
+  }, []);
+
+  // Schedule announcement notification
+  const scheduleAnnouncementNotification = useCallback(async (announcement: Announcement) => {
+    try {
+      const hasPermission = await requestNotificationPermissions();
+      if (!hasPermission) {
+        console.log('No notification permission, skipping announcement notification');
+        return;
+      }
+
+      // Schedule notification immediately
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "📢 New Announcement",
+          body: `${announcement.title}`,
+          data: { 
+            type: 'announcement',
+            announcementId: announcement.id,
+            screen: 'home'
+          },
+          sound: 'default',
+        },
+        trigger: null, // Show immediately
+      });
+
+      console.log('✅ Scheduled announcement notification:', announcement.title);
+    } catch (error) {
+      console.error('Error scheduling announcement notification:', error);
+    }
+  }, [requestNotificationPermissions]);
+
+  // Schedule reply notification - ONLY for replies to MY comments
+  const scheduleReplyNotification = useCallback(async (parentComment: Comment, replyAuthor: string, replyText: string) => {
+    try {
+      const hasPermission = await requestNotificationPermissions();
+      if (!hasPermission) {
+        console.log('No notification permission, skipping reply notification');
+        return;
+      }
+
+      // Don't send notification if the current user is the one who replied
+      if (userData && replyAuthor === userFirstName) {
+        console.log('Skipping notification for own reply');
+        return;
+      }
+
+      // Don't send notification if the parent comment is not from the current user
+      if (parentComment.user_id !== userData?.id) {
+        console.log('Skipping notification - replying to someone else\'s comment');
+        return;
+      }
+
+      // Schedule notification immediately
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: "↩️ New Reply",
+          body: `${replyAuthor} replied to your comment`,
+          data: { 
+            type: 'reply',
+            commentId: parentComment.id,
+            replyAuthor: replyAuthor,
+            screen: 'home'
+          },
+          sound: 'default',
+        },
+        trigger: null, // Show immediately
+      });
+
+      console.log('✅ Scheduled reply notification from:', replyAuthor, 'to my comment');
+    } catch (error) {
+      console.error('Error scheduling reply notification:', error);
+    }
+  }, [requestNotificationPermissions, userData, userFirstName]);
+
+  // Check for new announcements and send notifications
+  const checkForNewAnnouncements = useCallback(async (newAnnouncements: Announcement[]) => {
+    try {
+      if (!lastViewedAnnouncementTime) return;
+
+      const lastViewed = new Date(lastViewedAnnouncementTime);
+      
+      // Find announcements that are newer than last viewed time
+      const newAnnouncementsList = newAnnouncements.filter(announcement => {
+        const announcementDate = new Date(announcement.date || announcement.created_at || "");
+        return announcementDate > lastViewed;
+      });
+
+      // Schedule notifications for new announcements
+      for (const announcement of newAnnouncementsList) {
+        await scheduleAnnouncementNotification(announcement);
+      }
+
+      // Update last viewed time
+      if (newAnnouncementsList.length > 0) {
+        const now = new Date().toISOString();
+        setLastViewedAnnouncementTime(now);
+        await AsyncStorage.setItem("lastViewedAnnouncementTime", now);
+      }
+    } catch (error) {
+      console.error('Error checking for new announcements:', error);
+    }
+  }, [lastViewedAnnouncementTime, scheduleAnnouncementNotification]);
+
+  // Check for new comments - NO NOTIFICATIONS FOR COMMENTS
+  const checkForNewComments = useCallback(async (announcementId: string, newComments: Comment[]) => {
+    try {
+      const lastViewedKey = `lastViewedCommentTime_${announcementId}`;
+      const storedLastViewed = await AsyncStorage.getItem(lastViewedKey);
+      const lastViewed = storedLastViewed ? new Date(storedLastViewed) : null;
+
+      if (!lastViewed) {
+        // First time viewing comments for this announcement, set current time
+        const now = new Date().toISOString();
+        await AsyncStorage.setItem(lastViewedKey, now);
+        return;
+      }
+
+      // Find comments that are newer than last viewed time
+      const newCommentsList = newComments.filter(comment => {
+        const commentDate = new Date(comment.comment_date);
+        return commentDate > lastViewed;
+      });
+
+      // Update last viewed time (no notifications for comments)
+      if (newCommentsList.length > 0) {
+        const now = new Date().toISOString();
+        await AsyncStorage.setItem(lastViewedKey, now);
+      }
+    } catch (error) {
+      console.error('Error checking for new comments:', error);
+    }
+  }, []);
+
+  // Check for new replies and send notifications ONLY if replying to MY comments
+  const checkForNewReplies = useCallback(async (commentId: string, newReplies: Comment[]) => {
+    try {
+      const lastViewedKey = `lastViewedReplyTime_${commentId}`;
+      const storedLastViewed = await AsyncStorage.getItem(lastViewedKey);
+      const lastViewed = storedLastViewed ? new Date(storedLastViewed) : null;
+
+      if (!lastViewed) {
+        // First time viewing replies for this comment, set current time
+        const now = new Date().toISOString();
+        await AsyncStorage.setItem(lastViewedKey, now);
+        return;
+      }
+
+      // Find replies that are newer than last viewed time
+      const newRepliesList = newReplies.filter(reply => {
+        const replyDate = new Date(reply.comment_date);
+        return replyDate > lastViewed;
+      });
+
+      // Schedule notifications ONLY for replies to my comments
+      for (const reply of newRepliesList) {
+        const parentComment = Object.values(comments).flat().find(c => c.id === commentId) || 
+                             Object.values(replies).flat().find(r => r.id === commentId);
+        if (parentComment && reply.user_id !== userData?.id) {
+          // Only send notification if the parent comment is mine
+          if (parentComment.user_id === userData?.id) {
+            await scheduleReplyNotification(parentComment, reply.user, reply.text);
+          }
         }
       }
-    } catch (error: any) {
-      console.error("Error loading user profile:", error)
-      setUserFirstName(userData?.profile?.op_fname || "User")
-    }
-  }, [userData?.profile?.op_fname, getUserProfile])
 
+      // Update last viewed time
+      if (newRepliesList.length > 0) {
+        const now = new Date().toISOString();
+        await AsyncStorage.setItem(lastViewedKey, now);
+      }
+    } catch (error) {
+      console.error('Error checking for new replies:', error);
+    }
+  }, [comments, replies, userData, scheduleReplyNotification]);
+
+  // Helper function to format any name to first + last name only
+  const formatNameToFirstLast = (fullName: string): string => {
+    if (!fullName) return "Unknown User"
+    
+    const nameParts = fullName.split(' ').filter(part => part.trim() !== '')
+    
+    if (nameParts.length === 0) return "Unknown User"
+    if (nameParts.length === 1) return nameParts[0]
+    
+    // Return first and last name only
+    return `${nameParts[0]} ${nameParts[nameParts.length - 1]}`
+  }
+
+  // Update the getDisplayName function to show only first and last names
   const getDisplayName = (comment: Comment): string => {
     if (comment.user && comment.user !== "Unknown User") {
-      return comment.user
+      return formatNameToFirstLast(comment.user)
     }
+    
     if (comment.user_profile) {
-      const { first_name, last_name } = comment.user_profile
+      const { first_name, last_name, full_name } = comment.user_profile
+      
+      // If we have separate first and last names, use them directly
       if (first_name && last_name) {
         return `${first_name} ${last_name}`
       }
+      
+      // If we have a full name, format it to first + last
+      if (full_name) {
+        return formatNameToFirstLast(full_name)
+      }
+      
+      // Fallbacks
+      if (first_name) return first_name
+      if (last_name) return last_name
     }
+    
     return "Anonymous User"
   }
 
+  // Update getUserInitials to use only first and last name
   const getUserInitials = (comment: Comment): string => {
     const name = getDisplayName(comment)
-    const parts = name.split(" ")
-    if (parts.length >= 2) {
-      return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase()
+    const parts = name.split(' ')
+    
+    // Always use first character of first name
+    if (parts.length >= 1) {
+      const firstInitial = parts[0][0]
+      
+      // Use last character of the last part (last name)
+      if (parts.length >= 2) {
+        const lastInitial = parts[parts.length - 1][0]
+        return `${firstInitial}${lastInitial}`.toUpperCase()
+      }
+      
+      // If only one name part, use first two characters
+      return name.substring(0, 2).toUpperCase()
     }
-    return name.substring(0, 2).toUpperCase()
-  }
-
-  const getRoleBadgeColor = (role: string) => {
-    switch (role) {
-      case "horse_operator":
-        return { bg: "#E3F2FD", text: "#CD853F" }
-      case "kutsero":
-        return { bg: "#E8F5E9", text: "#388E3C" }
-      case "veterinarian":
-        return { bg: "#F3E5F5", text: "#388E3C" }
-      default:
-        return { bg: "#F5F5F5", text: "#666" }
-    }
-  }
-
-  const getRoleLabel = (role: string) => {
-    switch (role) {
-      case "horse_operator":
-        return "Operator"
-      case "kutsero":
-        return "Kutsero"
-      case "veterinarian":
-        return "Vet"
-      default:
-        return "User"
-    }
+    
+    return "AU" // Anonymous User
   }
 
   const getUserRoleBadgeColor = (role: string) => {
@@ -340,15 +482,21 @@ export default function HorseOperatorHome() {
       case "horse_operator":
         return { bg: "#E3F2FD", text: "#CD853F" }
       case "kutsero":
-        return { bg: "#E8F5E9", text: "#CD853F" }
+        return { bg: "#E3F2FD", text: "#CD853F" }
       case "veterinarian":
-        return { bg: "#F3E5F5", text: "#10B981" }
+        return { bg: "#E3F2FD", text: "#388E3C" }
       case "ctu_veterinarian":
-        return { bg: "#FFF3E0", text: "#10B981" }
+        return { bg: "#FCE4EC", text: "#c2181eff" }
+      case "ctu-vetmed":
+        return { bg: "#FCE4EC", text: "#c2181eff" }
+      case "ctu-admin":
+        return { bg: "#FCE4EC", text: "#c2181eff" }
       case "dvmf":
-        return { bg: "#FCE4EC", text: "#C2185B" }
+        return { bg: "#FCE4EC", text: "#c2181eff" }
+      case "dvmf-admin":
+        return { bg: "#FCE4EC", text: "#c2181eff" }
       case "kutsero_president":
-        return { bg: "#F1F8E9", text: "#CD853F" }
+        return { bg: "#E3F2FD", text: "#CD853F" }
       default:
         return { bg: "#F5F5F5", text: "#666" }
     }
@@ -389,36 +537,66 @@ export default function HorseOperatorHome() {
       .join(" ")
   }
 
-  // ✅ UPDATED: Helper function to get profile picture for announcement
-  const getAnnouncementProfilePicture = (
-    userName: string | undefined, 
-    userProfileImage: string | null | undefined, 
-    isCtuUser: boolean = false, 
-    isDvmfUser: boolean = false
-  ) => {
-    // ✅ Priority 1: Check for CTU/DVMF logo flags from backend
-    if (userProfileImage === "CTU_LOGO" || isCtuUser) {
+  // Get profile picture for comments - CTU role gets CTU logo, DVMF role gets DVMF logo
+  const getCommentProfilePicture = (comment: Comment) => {
+    const userRole = comment.user_role?.toLowerCase()
+    
+    // CTU role - use CTU logo
+    if (userRole === 'ctu_veterinarian' || userRole === 'ctu-vetmed' || userRole === 'ctu-admin') {
       return require("../../assets/images/CTU.jpg")
-    } else if (userProfileImage === "DVMF_LOGO" || isDvmfUser) {
+    }
+    
+    // DVMF role - use DVMF logo  
+    if (userRole === 'dvmf' || userRole === 'dvmf-admin') {
       return require("../../assets/images/DVMF.png")
     }
     
-    // ✅ Priority 2: Check if userProfileImage is a valid URL
+    // For other users, use their profile image if available
+    if (comment.user_profile?.image) {
+      return { uri: comment.user_profile.image }
+    }
+    
+    // Fallback to initials avatar
+    return null
+  }
+
+  const getAnnouncementProfilePicture = (
+    userName: string | undefined, 
+    userProfileImage: string | null | undefined
+  ) => {
+    if (userProfileImage === "CTU_LOGO") {
+      return require("../../assets/images/CTU.jpg")
+    } else if (userProfileImage === "DVMF_LOGO") {
+      return require("../../assets/images/DVMF.png")
+    }
+    
     if (userProfileImage && (userProfileImage.startsWith('http://') || userProfileImage.startsWith('https://'))) {
       return { uri: userProfileImage }
     }
     
-    // ✅ Priority 3: Fallback to name-based detection (for backward compatibility)
     if (userName) {
       const nameLower = userName.toLowerCase()
-      if (nameLower.includes("ctu") || (nameLower.includes("vet") && nameLower.includes("ctu"))) {
+      if (nameLower.includes("ctu")) {
         return require("../../assets/images/CTU.jpg")
-      } else if (nameLower.includes("dvmf")) {
+      } 
+      else if (nameLower.includes("dvmf")) {
         return require("../../assets/images/DVMF.png")
       }
     }
     
     return null
+  }
+
+  // Function to open image in full screen
+  const openImageFullScreen = (imageUrl: string) => {
+    setSelectedImage(imageUrl)
+    setShowImageModal(true)
+  }
+
+  // Function to close image modal
+  const closeImageModal = () => {
+    setShowImageModal(false)
+    setSelectedImage(null)
   }
 
   useEffect(() => {
@@ -450,83 +628,9 @@ export default function HorseOperatorHome() {
     return height * 0.2
   }
 
-  async function registerForPushNotificationsAsync() {
-    let token
-    if (Device.isDevice) {
-      const { status: existingStatus } = await Notifications.getPermissionsAsync()
-      let finalStatus = existingStatus
-      if (existingStatus !== "granted") {
-        const { status } = await Notifications.requestPermissionsAsync()
-        finalStatus = status
-      }
-      if (finalStatus !== "granted") {
-        Alert.alert("Permission Required", "Push notifications permission is required.")
-        return
-      }
-      try {
-        token = (
-          await Notifications.getExpoPushTokenAsync({
-            projectId: Constants.expoConfig?.extra?.eas?.projectId || "your-project-id",
-          })
-        ).data
-      } catch (error) {
-        console.error("Error getting push token:", error)
-      }
-    }
-    if (Platform.OS === "android") {
-      Notifications.setNotificationChannelAsync("default", {
-        name: "default",
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#FF231F7C",
-      })
-    }
-    return token
-  }
-
-  const savePushToken = async (userId: string, pushToken: string) => {
-    try {
-      const storedAccessToken = await SecureStore.getItemAsync("access_token")
-      await fetch(`${API_BASE_URL}/save_push_token/`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${storedAccessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          user_id: userId,
-          push_token: pushToken,
-          device_type: Platform.OS,
-        }),
-      })
-    } catch (error) {
-      console.error("Error saving push token:", error)
-    }
-  }
-
   const validateAuthToken = async (token: string): Promise<boolean> => {
     return token.length > 0
   }
-
-  const fetchNotificationCount = useCallback(async (userId: string) => {
-    try {
-      const storedAccessToken = await SecureStore.getItemAsync("access_token")
-      if (!storedAccessToken) return
-      const response = await fetch(`${API_BASE_URL}/get_notification_count/?user_id=${encodeURIComponent(userId)}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${storedAccessToken}`,
-          "Content-Type": "application/json",
-        },
-      })
-      if (response.ok) {
-        const data = await response.json()
-        setNotificationCount(data.notification_count || 0)
-      }
-    } catch (error) {
-      console.error("Error fetching notification count:", error)
-    }
-  }, [])
 
   const fetchAnnouncements = useCallback(async () => {
     try {
@@ -554,13 +658,24 @@ export default function HorseOperatorHome() {
           title: announcement.announce_title || announcement.title || "Untitled",
           content: announcement.announce_content || announcement.content || "",
           date: announcement.announce_date || announcement.date || announcement.created_at || "",
+          created_at: announcement.created_at || announcement.announce_date || announcement.date || "",
           image: announcement.image_url || announcement.announce_img || null,
-          author: announcement.user_name || "CTU Announcement",
+          author: announcement.user_name || announcement.announce_title || "Announcement",
           user_id: announcement.user_id || "",
           comment_count: announcement.comment_count || 0,
           user_profile_image: announcement.user_profile_image || null,
         }))
+        
         setAnnouncements(formattedAnnouncements)
+        
+        // Check for new announcements and send notifications
+        await checkForNewAnnouncements(formattedAnnouncements)
+        
+        // Load last viewed announcement time if not already loaded
+        if (lastViewedAnnouncementTime === null) {
+          const lastViewed = await AsyncStorage.getItem("lastViewedAnnouncementTime")
+          setLastViewedAnnouncementTime(lastViewed)
+        }
       } else {
         setAnnouncements([])
       }
@@ -570,7 +685,7 @@ export default function HorseOperatorHome() {
     } finally {
       setLoadingAnnouncements(false)
     }
-  }, [])
+  }, [lastViewedAnnouncementTime, checkForNewAnnouncements])
 
   const searchUsersByName = useCallback(async (query: string) => {
     try {
@@ -664,12 +779,9 @@ export default function HorseOperatorHome() {
       setSearchMode(null)
     }
   }
-  
 
-  // UPDATED: Enhanced search function to use get_user_profile
   const handleUserSelect = async (user: UserProfile) => {
     try {
-      // Fetch complete user profile using the unified endpoint
       const completeProfile = await getUserProfile(user.user_id || user.id)
       
       router.push({
@@ -686,7 +798,6 @@ export default function HorseOperatorHome() {
       setSearchMode(null)
     } catch (error) {
       console.error("Error fetching complete user profile:", error)
-      // Fallback to original data if fetch fails
       router.push({
         pathname: "../HORSE_OPERATOR/Hallprofile",
         params: {
@@ -702,25 +813,109 @@ export default function HorseOperatorHome() {
     }
   }
 
-  const fetchReplies = useCallback(async (commentId: string) => {
+  const getUserProfile = useCallback(async (userId: string) => {
     try {
-      setLoadingReplies((prev) => ({ ...prev, [commentId]: true }))
       const storedAccessToken = await SecureStore.getItemAsync("access_token")
       if (!storedAccessToken) throw new Error("No access token found")
-      const response = await fetch(`${API_BASE_URL}/get_comment_replies/?comment_id=${encodeURIComponent(commentId)}`, {
+      
+      const response = await fetch(`${API_BASE_URL}/get_user_profile/${encodeURIComponent(userId)}/`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${storedAccessToken}`,
           "Content-Type": "application/json",
         },
       })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.user) {
+          return data.user
+        }
+      }
+      return null
+    } catch (error) {
+      console.error("Error fetching user profile:", error)
+      return null
+    }
+  }, [])
+
+  const fetchUserProfile = useCallback(async (uid: string) => {
+    try {
+      const userProfile = await getUserProfile(uid)
+      if (userProfile) {
+        const firstName = userProfile.profile?.fname || 
+                         userProfile.profile?.first_name || 
+                         userProfile.profile?.op_fname ||
+                         userData?.profile?.op_fname || 
+                         "User"
+        setUserFirstName(firstName)
+        
+        setUserData(prev => prev ? {
+          ...prev,
+          profile: {
+            ...prev.profile,
+            ...userProfile.profile
+          }
+        } : prev)
+      } else {
+        const url = `${API_BASE_URL}/get_horse_operator_profile/?user_id=${encodeURIComponent(uid)}`
+        const response = await fetch(url)
+        if (response.ok) {
+          const data = await response.json()
+          const firstName = data?.op_fname || userData?.profile?.op_fname || "User"
+          setUserFirstName(firstName)
+        }
+      }
+    } catch (error: any) {
+      console.error("Error loading user profile:", error)
+      setUserFirstName(userData?.profile?.op_fname || "User")
+    }
+  }, [userData?.profile?.op_fname, getUserProfile])
+
+  const fetchReplies = useCallback(async (commentId: string) => {
+    try {
+      setLoadingReplies((prev) => ({ ...prev, [commentId]: true }))
+      const storedAccessToken = await SecureStore.getItemAsync("access_token")
+      if (!storedAccessToken) throw new Error("No access token found")
+      
+      const response = await fetch(
+        `${API_BASE_URL}/get_comment_replies/?comment_id=${encodeURIComponent(commentId)}`,
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${storedAccessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+      
       if (response.ok) {
         const data = await response.json()
         if (data?.replies) {
+          const formattedReplies: Comment[] = data.replies.map((reply: any) => ({
+            id: reply.id,
+            text: reply.comment_text || reply.text || reply.reply_text || "",
+            comment_text: reply.comment_text || reply.reply_text,
+            user: reply.user_name || reply.user_profile?.full_name || "Unknown User",
+            user_id: reply.user_id,
+            user_role: reply.user_role,
+            user_profile: reply.user_profile,
+            time: formatDate(reply.comment_date),
+            formatted_date: formatDate(reply.comment_date),
+            comment_date: reply.comment_date,
+            parent_comment_id: reply.parent_comment_id,
+            reply_level: reply.reply_level || 0,
+            reply_count: reply.reply_count || 0,
+            has_replies: (reply.reply_count && reply.reply_count > 0) || false
+          }))
+          
           setReplies((prev) => ({
             ...prev,
-            [commentId]: data.replies,
+            [commentId]: formattedReplies,
           }))
+
+          // Check for new replies and send notifications (only for replies to my comments)
+          await checkForNewReplies(commentId, formattedReplies)
         }
       }
     } catch (error: any) {
@@ -728,13 +923,16 @@ export default function HorseOperatorHome() {
     } finally {
       setLoadingReplies((prev) => ({ ...prev, [commentId]: false }))
     }
-  }, [])
+  }, [checkForNewReplies])
 
   const fetchComments = useCallback(async (announcementId: string) => {
     try {
       setLoadingComments(true)
       const storedAccessToken = await SecureStore.getItemAsync("access_token")
       if (!storedAccessToken) throw new Error("No access token found")
+      
+      console.log("🔍 Fetching ALL comments and replies for announcement:", announcementId)
+      
       const response = await fetch(
         `${API_BASE_URL}/get_announcement_comments/?announcement_id=${encodeURIComponent(announcementId)}`,
         {
@@ -745,55 +943,87 @@ export default function HorseOperatorHome() {
           },
         },
       )
+      
       if (response.ok) {
         const data = await response.json()
-        if (data?.comments) {
+        console.log("📥 Raw API response:", JSON.stringify(data, null, 2))
+        
+        if (data?.comments || data?.replies) {
+          console.log("📥 Comments received:", data.comments?.length || 0)
+          console.log("📥 Replies map keys:", Object.keys(data.replies || {}))
+          
+          // Process parent comments
           const parentComments: Comment[] = []
-          const repliesMap: { [key: string]: Comment[] } = {}
-          data.comments.forEach((comment: Comment) => {
-            if (comment.parent_comment_id) {
-              if (!repliesMap[comment.parent_comment_id]) {
-                repliesMap[comment.parent_comment_id] = []
+          const repliesMap: { [key: string]: Comment[] } = data.replies || {}
+          
+          if (data.comments && Array.isArray(data.comments)) {
+            data.comments.forEach((comment: any) => {
+              // Only add as parent if it doesn't have a parent_comment_id or reply_level is 0
+              if (!comment.parent_comment_id || comment.reply_level === 0) {
+                const formattedComment: Comment = {
+                  id: comment.id,
+                  text: comment.comment_text || comment.text || "",
+                  comment_text: comment.comment_text,
+                  user: comment.user_name || comment.user_profile?.full_name || "Unknown User",
+                  user_id: comment.user_id,
+                  user_role: comment.user_role,
+                  user_profile: comment.user_profile,
+                  time: formatDate(comment.comment_date),
+                  formatted_date: formatDate(comment.comment_date),
+                  comment_date: comment.comment_date,
+                  parent_comment_id: comment.parent_comment_id,
+                  reply_level: comment.reply_level || 0,
+                  reply_count: comment.reply_count || 0,
+                  has_replies: (comment.reply_count && comment.reply_count > 0) || false,
+                  announcement_id: comment.announcement_id
+                }
+                
+                parentComments.push(formattedComment)
+                console.log(`📌 Added parent comment:`, formattedComment.text)
               }
-              repliesMap[comment.parent_comment_id].push(comment)
-            } else {
-              parentComments.push(comment)
-            }
-          })
+            })
+          }
+          
+          console.log(`✅ Processed ${parentComments.length} parent comments`)
+          console.log(`✅ Replies map has ${Object.keys(repliesMap).length} parent IDs with replies`)
+          
+          // Set the state with properly separated data
           setComments((prev) => ({
             ...prev,
             [announcementId]: parentComments,
           }))
+          
+          // Set replies directly from the API response
           setReplies((prev) => ({
             ...prev,
             ...repliesMap,
           }))
-          const commentIdsWithReplies = Object.keys(repliesMap)
-          if (commentIdsWithReplies.length > 0) {
-            setExpandedReplies((prev) => {
-              const newExpanded = new Set(prev)
-              commentIdsWithReplies.forEach((commentId) => {
-                newExpanded.add(commentId)
-              })
-              return newExpanded
-            })
-          }
+
+          // Check for new comments (NO NOTIFICATIONS)
+          await checkForNewComments(announcementId, parentComments)
         }
+      } else {
+        console.error("❌ Failed to fetch comments, status:", response.status)
       }
     } catch (error: any) {
-      console.error("Error fetching comments:", error)
+      console.error("❌ Error fetching comments:", error)
     } finally {
       setLoadingComments(false)
     }
-  }, [])
+  }, [checkForNewComments])
 
   const addComment = useCallback(
     async (announcementId: string, commentText: string) => {
-      if (!userData?.id) return
+      if (!userData?.id || !commentText.trim()) {
+        Alert.alert("Error", "Please enter a comment")
+        return
+      }
+      
       try {
         setSubmittingComment(true)
         const storedAccessToken = await SecureStore.getItemAsync("access_token")
         if (!storedAccessToken) throw new Error("No access token found")
+        
         const response = await fetch(`${API_BASE_URL}/add_comment/`, {
           method: "POST",
           headers: {
@@ -804,75 +1034,166 @@ export default function HorseOperatorHome() {
             user_id: userData.id,
             announcement_id: announcementId,
             comment_text: commentText.trim(),
+            parent_comment_id: null,
+            reply_level: 0
           }),
         })
+        
         if (response.ok) {
           const data = await response.json()
           if (data?.comment) {
+            const newComment: Comment = {
+              id: data.comment.id,
+              text: data.comment.text || data.comment.comment_text,
+              comment_text: data.comment.comment_text,
+              user: data.comment.user_name || userFirstName,
+              user_id: userData.id,
+              user_role: userData.user_role,
+              user_profile: userData.profile,
+              time: formatDate(data.comment.comment_date),
+              formatted_date: formatDate(data.comment.comment_date),
+              comment_date: data.comment.comment_date,
+              parent_comment_id: null,
+              reply_level: 0,
+              reply_count: 0,
+              has_replies: false,
+              announcement_id: announcementId
+            }
+            
             setComments((prev) => ({
               ...prev,
-              [announcementId]: [data.comment, ...(prev[announcementId] || [])],
+              [announcementId]: [newComment, ...(prev[announcementId] || [])],
             }))
-            setAnnouncements((prev) =>
-              prev.map((ann) =>
-                ann.id === announcementId ? { ...ann, comment_count: (ann.comment_count || 0) + 1 } : ann,
-              ),
-            )
+            
             setNewComment("")
             Alert.alert("Success", "Comment posted!")
+            
+            // Update announcement comment count
+            setAnnouncements((prev) =>
+              prev.map((announcement) =>
+                announcement.id === announcementId
+                  ? { ...announcement, comment_count: (announcement.comment_count || 0) + 1 }
+                  : announcement
+              )
+            )
           }
+        } else if (response.status === 404) {
+          Alert.alert("Error", "User profile not found. Please try again.")
+        } else {
+          const errorData = await response.json()
+          Alert.alert("Error", errorData.error || "Failed to post comment")
         }
       } catch (error: any) {
         console.error("Error adding comment:", error)
-        Alert.alert("Error", "Failed to post comment")
+        Alert.alert("Error", "Failed to post comment. Please try again.")
       } finally {
         setSubmittingComment(false)
       }
     },
-    [userData],
+    [userData, userFirstName],
   )
 
   const addReply = useCallback(
     async (commentId: string, replyText: string) => {
-      if (!userData?.id) return
+      if (!userData?.id || !replyText.trim()) {
+        Alert.alert("Error", "Please enter a reply")
+        return
+      }
+      
+      console.log("📤 Sending reply:", {
+        commentId,
+        replyText: replyText.trim(),
+        textLength: replyText.trim().length
+      })
+      
       try {
         setSubmittingComment(true)
         const storedAccessToken = await SecureStore.getItemAsync("access_token")
         if (!storedAccessToken) throw new Error("No access token found")
+        
+        // Get parent comment
+        const parentComment = selectedAnnouncementId ? 
+          comments[selectedAnnouncementId]?.find(c => c.id === commentId) || 
+          Object.values(replies).flat().find(r => r.id === commentId) : null
+        
+        const replyLevel = parentComment ? (parentComment.reply_level || 0) + 1 : 1
+        
+        // Prepare payload
+        const payload = {
+          user_id: userData.id,
+          comment_id: commentId,
+          reply_text: replyText.trim(),
+          parent_comment_id: commentId,
+          reply_level: replyLevel
+        }
+        
+        console.log("📤 Request payload:", JSON.stringify(payload, null, 2))
+        
         const response = await fetch(`${API_BASE_URL}/add_comment_reply/`, {
           method: "POST",
           headers: {
             Authorization: `Bearer ${storedAccessToken}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            user_id: userData.id,
-            comment_id: commentId,
-            reply_text: replyText.trim(),
-          }),
+          body: JSON.stringify(payload),
         })
-        const contentType = response.headers.get("content-type")
-        if (!contentType || !contentType.includes("application/json")) {
-          const textResponse = await response.text()
-          console.error(`Server returned non-JSON response:`, textResponse.substring(0, 200))
-          Alert.alert("Error", "Server error occurred. Please check your connection and try again.")
-          return
-        }
-        const data = await response.json()
+        
+        const responseText = await response.text()
+        console.log("📥 Raw response:", responseText)
+        
         if (response.ok) {
+          const data = JSON.parse(responseText)
+          console.log("📥 Parsed response data:", JSON.stringify(data, null, 2))
+          
           if (data?.reply) {
+            console.log("✅ Reply from backend:", {
+              id: data.reply.id,
+              text: data.reply.text,
+              comment_text: data.reply.comment_text,
+              all_keys: Object.keys(data.reply)
+            })
+            
+            const newReply: Comment = {
+              id: data.reply.id,
+              text: data.reply.text || data.reply.comment_text || replyText.trim(),
+              comment_text: data.reply.comment_text || replyText.trim(),
+              user: data.reply.user || userFirstName,
+              user_id: userData.id,
+              user_role: userData.user_role,
+              user_profile: userData.profile,
+              time: formatDate(data.reply.comment_date),
+              formatted_date: formatDate(data.reply.comment_date),
+              comment_date: data.reply.comment_date,
+              parent_comment_id: commentId,
+              reply_level: replyLevel,
+              reply_count: 0,
+              has_replies: false,
+              is_reply: true,
+              announcement_id: selectedAnnouncementId
+            }
+            
+            console.log("✅ Formatted reply for display:", JSON.stringify(newReply, null, 2))
+            
+            // Add to replies
             setReplies((prev) => ({
               ...prev,
-              [commentId]: [data.reply, ...(prev[commentId] || [])],
+              [commentId]: [newReply, ...(prev[commentId] || [])],
             }))
+            
+            // Update reply count in parent comment
             const announcementId = selectedAnnouncementId
             setComments((prev) => ({
               ...prev,
               [announcementId]:
                 prev[announcementId]?.map((c) =>
-                  c.id === commentId ? { ...c, reply_count: (c.reply_count || 0) + 1, has_replies: true } : c,
+                  c.id === commentId ? { 
+                    ...c, 
+                    reply_count: (c.reply_count || 0) + 1, 
+                    has_replies: true 
+                  } : c,
                 ) || [],
             }))
+            
             setReplyText("")
             setReplyingTo(null)
             setExpandedReplies((prev) => {
@@ -880,115 +1201,25 @@ export default function HorseOperatorHome() {
               newExpanded.add(commentId)
               return newExpanded
             })
+            
             Alert.alert("Success", "Reply posted!")
+          } else {
+            console.error("❌ No reply data in response")
+            Alert.alert("Error", "Failed to post reply - no data returned")
           }
         } else {
-          Alert.alert("Error", data.error || "Failed to post reply")
+          const errorData = JSON.parse(responseText)
+          console.error("❌ Error response:", errorData)
+          Alert.alert("Error", errorData.error || "Failed to post reply")
         }
       } catch (error: any) {
-        console.error("Error adding reply:", error)
-        if (error.message.includes("JSON Parse error")) {
-          Alert.alert("Server Error", "The server returned an invalid response.")
-        } else if (error.message.includes("Network request failed")) {
-          Alert.alert("Network Error", "Please check your internet connection and server status.")
-        } else {
-          Alert.alert("Error", error.message || "Failed to post reply")
-        }
+        console.error("❌ Error adding reply:", error)
+        Alert.alert("Error", "Failed to post reply. Please try again.")
       } finally {
         setSubmittingComment(false)
       }
     },
-    [userData, selectedAnnouncementId],
-  )
-
-  const updateComment = useCallback(
-    async (commentId: string, newText: string) => {
-      if (!userData?.id) return
-      try {
-        setSubmittingComment(true)
-        const storedAccessToken = await SecureStore.getItemAsync("access_token")
-        if (!storedAccessToken) throw new Error("No access token found")
-        const response = await fetch(`${API_BASE_URL}/update_comment/${commentId}/`, {
-          method: "PUT",
-          headers: {
-            Authorization: `Bearer ${storedAccessToken}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            user_id: userData.id,
-            comment_text: newText.trim(),
-          }),
-        })
-        if (response.ok) {
-          const data = await response.json()
-          if (data?.comment) {
-            const announcementId = selectedAnnouncementId
-            setComments((prev) => ({
-              ...prev,
-              [announcementId]:
-                prev[announcementId]?.map((c) => (c.id === commentId ? { ...c, text: newText.trim() } : c)) || [],
-            }))
-            setEditingComment(null)
-            setEditText("")
-            Alert.alert("Success", "Comment updated!")
-          }
-        }
-      } catch (error: any) {
-        console.error("Error updating comment:", error)
-        Alert.alert("Error", "Failed to update comment")
-      } finally {
-        setSubmittingComment(false)
-      }
-    },
-    [userData, selectedAnnouncementId],
-  )
-
-  const deleteComment = useCallback(
-    async (commentId: string) => {
-      if (!userData?.id) return
-      Alert.alert("Delete Comment", "Are you sure you want to delete this comment?", [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const storedAccessToken = await SecureStore.getItemAsync("access_token")
-              if (!storedAccessToken) throw new Error("No access token found")
-              const response = await fetch(`${API_BASE_URL}/delete_comment/${commentId}/`, {
-                method: "DELETE",
-                headers: {
-                  Authorization: `Bearer ${storedAccessToken}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  user_id: userData.id,
-                }),
-              })
-              if (response.ok) {
-                const announcementId = selectedAnnouncementId
-                setComments((prev) => ({
-                  ...prev,
-                  [announcementId]: prev[announcementId]?.filter((c) => c.id !== commentId) || [],
-                }))
-                setAnnouncements((prev) =>
-                  prev.map((ann) =>
-                    ann.id === announcementId
-                      ? { ...ann, comment_count: Math.max(0, (ann.comment_count || 0) - 1) }
-                      : ann,
-                  ),
-                )
-                Alert.alert("Success", "Comment deleted!")
-              }
-            } catch (error: any) {
-              console.error("Error deleting comment:", error)
-              Alert.alert("Error", "Failed to delete comment")
-            }
-          },
-        },
-      ])
-    },
-    [userData, selectedAnnouncementId],
+    [userData, userFirstName, selectedAnnouncementId, comments, replies],
   )
 
   const toggleReplies = (commentId: string) => {
@@ -997,38 +1228,45 @@ export default function HorseOperatorHome() {
       newExpanded.delete(commentId)
     } else {
       newExpanded.add(commentId)
-      fetchReplies(commentId)
+      // Only fetch if we don't have replies cached
+      const comment = comments[selectedAnnouncementId]?.find(c => c.id === commentId)
+      const hasReplies = comment && (comment.has_replies || (comment.reply_count || 0) > 0)
+      const repliesNotLoaded = !replies[commentId] || replies[commentId].length === 0
+      
+      if (hasReplies && repliesNotLoaded) {
+        console.log(`🔄 Fetching replies for comment ${commentId}`)
+        fetchReplies(commentId)
+      } else {
+        console.log(`✅ Replies already loaded for comment ${commentId}, showing cached data`)
+      }
     }
     setExpandedReplies(newExpanded)
   }
 
-  const toggleNestedReplies = (replyId: string) => {
-    const newExpanded = new Set(expandedNestedReplies)
-    if (newExpanded.has(replyId)) {
-      newExpanded.delete(replyId)
-    } else {
-      newExpanded.add(replyId)
-      fetchReplies(replyId)
-    }
-    setExpandedNestedReplies(newExpanded)
+  const handleOpenCommentModal = async (announcementId: string) => {
+    setReplies({})
+    setExpandedReplies(new Set())
+    setReplyingTo(null)
+    setNewComment("")
+    setSelectedAnnouncementId(String(announcementId))
+    setShowCommentModal(true)
+    
+    const now = new Date().toISOString();
+    const lastViewedKey = `lastViewedCommentTime_${announcementId}`;
+    await AsyncStorage.setItem(lastViewedKey, now);
+    
+    setTimeout(() => {
+      fetchComments(String(announcementId))
+    }, 100)
   }
 
-  useEffect(() => {
-    if (selectedAnnouncementId && comments[selectedAnnouncementId]) {
-      const commentsWithReplies = comments[selectedAnnouncementId].filter(
-        (c: Comment) => c.has_replies || (c.reply_count && c.reply_count > 0),
-      )
-      if (commentsWithReplies.length > 0) {
-        setExpandedReplies((prev) => {
-          const newExpanded = new Set(prev)
-          commentsWithReplies.forEach((comment: Comment) => {
-            newExpanded.add(comment.id)
-          })
-          return newExpanded
-        })
-      }
-    }
-  }, [selectedAnnouncementId, comments])
+  const handleViewReplies = async (commentId: string) => {
+    const now = new Date().toISOString();
+    const lastViewedKey = `lastViewedReplyTime_${commentId}`;
+    await AsyncStorage.setItem(lastViewedKey, now);
+    
+    toggleReplies(commentId);
+  }
 
   const fetchAllHorses = useCallback(async (userId: string) => {
     try {
@@ -1060,7 +1298,6 @@ export default function HorseOperatorHome() {
     }
   }, [])
 
-  // UPDATED: Enhanced loadUserData function
   const loadUserData = useCallback(async () => {
     try {
       const storedUserData = await SecureStore.getItemAsync("user_data")
@@ -1080,48 +1317,20 @@ export default function HorseOperatorHome() {
         }
         setUserData(unifiedUserData)
         
-        // Use the enhanced fetchUserProfile
         await fetchUserProfile(parsedUserData.id)
         await fetchAllHorses(parsedUserData.id)
         await fetchAnnouncements()
-        await fetchNotificationCount(parsedUserData.id)
       }
     } catch (error) {
       console.error("Error loading user data:", error)
     }
-  }, [fetchAllHorses, fetchAnnouncements, fetchNotificationCount, fetchUserProfile])
+  }, [fetchAllHorses, fetchAnnouncements, fetchUserProfile])
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true)
     await loadUserData()
     setRefreshing(false)
   }, [loadUserData])
-
-  useEffect(() => {
-    const setupNotifications = async () => {
-      const token = await registerForPushNotificationsAsync()
-      if (token && userData?.id) {
-        await savePushToken(userData.id, token)
-      }
-    }
-    setupNotifications()
-    notificationListener.current = Notifications.addNotificationReceivedListener((notification) => {
-      if (userData?.id) {
-        fetchNotificationCount(userData.id)
-        if (notification.request.content.data?.type === "announcement") {
-          fetchAnnouncements()
-        }
-      }
-    })
-    responseListener.current = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data
-      if (data.type === "announcement") router.push("/HORSE_OPERATOR/home?scrollTo=announcements" as any)
-    })
-    return () => {
-      notificationListener.current?.remove()
-      responseListener.current?.remove()
-    }
-  }, [userData, router, fetchNotificationCount, fetchAnnouncements])
 
   useEffect(() => {
     loadUserData()
@@ -1140,21 +1349,6 @@ export default function HorseOperatorHome() {
       }
     }
   }, [])
-
-  const handleLogout = () => {
-    Alert.alert("Log Out", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Log Out",
-        style: "destructive",
-        onPress: async () => {
-          await SecureStore.deleteItemAsync("access_token")
-          await SecureStore.deleteItemAsync("user_data")
-          router.replace("/auth/login" as any)
-        },
-      },
-    ])
-  }
 
   const handleHorseProfile = (horse: Horse) => {
     router.push({
@@ -1210,22 +1404,14 @@ export default function HorseOperatorHome() {
     }
   }
 
-  const MenuIcon = ({ color }: { color: string }) => (
-    <View style={styles.iconContainer}>
-      <View style={[styles.menuBar, { backgroundColor: color }]} />
-      <View style={[styles.menuBar, { backgroundColor: color, marginTop: scale(3) }]} />
-      <View style={[styles.menuBar, { backgroundColor: color, marginTop: scale(3) }]} />
-    </View>
-  )
-
   const TabButton = ({
-    iconName,
+    iconSource,
     label,
     tabKey,
     isActive,
     onPress,
   }: {
-    iconName: string
+    iconSource: any
     label: string
     tabKey: string
     isActive: boolean
@@ -1233,11 +1419,168 @@ export default function HorseOperatorHome() {
   }) => (
     <TouchableOpacity style={styles.tabButton} onPress={onPress}>
       <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
-        <FontAwesome5 name={iconName} size={scale(16)} color={isActive ? "white" : "#666"} />
+        {iconSource ? (
+          <Image
+            source={iconSource}
+            style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
+            resizeMode="contain"
+          />
+        ) : (
+          <View style={styles.fallbackIcon} />
+        )}
       </View>
       <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
     </TouchableOpacity>
   )
+
+  const renderCommentItem = (comment: Comment) => {
+    const displayName = getDisplayName(comment)
+    const userInitials = getUserInitials(comment)
+    const profilePicture = getCommentProfilePicture(comment)
+    const commentTime = new Date(comment.comment_date).toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    })
+
+    // Get replies for this comment (check both direct replies and repliesMap from API)
+    const commentReplies = replies[comment.id] || []
+
+    return (
+      <View key={comment.id}>
+        {/* Main Comment */}
+        <View style={styles.commentItem}>
+          <View style={styles.commentAvatarContainer}>
+            {profilePicture ? (
+              <Image
+                source={profilePicture}
+                style={styles.commentAvatar}
+              />
+            ) : (
+              <View style={styles.commentAvatar}>
+                <Text style={styles.commentAvatarText}>
+                  {userInitials}
+                </Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.commentContentContainer}>
+            <View style={styles.commentBubble}>
+              <View style={styles.commentHeader}>
+                <View style={styles.commentHeaderLeft}>
+                  <Text style={styles.commentUserName}>
+                    {displayName}
+                  </Text>
+                </View>
+                <Text style={styles.commentTime}>
+                  {commentTime}
+                </Text>
+              </View>
+              <Text style={styles.commentText}>{comment.text}</Text>
+            </View>
+            <View style={styles.commentActions}>
+              <TouchableOpacity 
+                style={styles.commentActionButton}
+                onPress={() => {
+                  setReplyingTo(comment.id)
+                  setReplyText("")
+                }}
+              >
+                <Text style={styles.commentActionText}>Reply</Text>
+              </TouchableOpacity>
+              {(comment.reply_count && comment.reply_count > 0) && (
+                <TouchableOpacity
+                  onPress={() => handleViewReplies(comment.id)}
+                  style={styles.viewRepliesButton}
+                >
+                  <Text style={styles.viewRepliesText}>
+                    {expandedReplies.has(comment.id) ? "Hide" : "View"} {comment.reply_count}{" "}
+                    {comment.reply_count === 1 ? "reply" : "replies"}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+
+        {/* Replies - Only show if user expanded */}
+        {expandedReplies.has(comment.id) && (
+          <View style={styles.repliesContainer}>
+            {loadingReplies[comment.id] ? (
+              <View style={styles.loadingRepliesContainer}>
+                <ActivityIndicator size="small" color="#C17A47" />
+                <Text style={styles.loadingRepliesText}>Loading replies...</Text>
+              </View>
+            ) : commentReplies.length > 0 ? (
+              commentReplies.map((reply) => {
+                const replyDisplayName = getDisplayName(reply)
+                const replyInitials = getUserInitials(reply)
+                const replyProfilePicture = getCommentProfilePicture(reply)
+                const replyTime = new Date(reply.comment_date).toLocaleDateString('en-US', { 
+                  month: 'short', 
+                  day: 'numeric',
+                  hour: 'numeric',
+                  minute: '2-digit'
+                })
+
+                return (
+                  <View key={reply.id} style={styles.replyItem}>
+                    <View style={styles.replyAvatarContainer}>
+                      {replyProfilePicture ? (
+                        <Image
+                          source={replyProfilePicture}
+                          style={styles.replyAvatar}
+                        />
+                      ) : (
+                        <View style={styles.replyAvatar}>
+                          <Text style={styles.commentAvatarText}>
+                            {replyInitials}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <View style={styles.replyContentContainer}>
+                      <View style={styles.replyBubble}>
+                        <View style={styles.commentHeader}>
+                          <View style={styles.commentHeaderLeft}>
+                            <Text style={styles.commentUserName}>
+                              {replyDisplayName}
+                            </Text>
+                          </View>
+                          <Text style={styles.commentTime}>
+                            {replyTime}
+                          </Text>
+                        </View>
+                        <Text style={styles.commentText}>
+                          {reply.text || reply.comment_text || "No text"}
+                        </Text>
+                      </View>
+                      <View style={styles.commentActions}>
+                        <TouchableOpacity 
+                          style={styles.commentActionButton}
+                          onPress={() => {
+                            setReplyingTo(reply.id)
+                            setReplyText("")
+                          }}
+                        >
+                          <Text style={styles.commentActionText}>Reply</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                )
+              })
+            ) : (
+              <View style={styles.noRepliesContainer}>
+                <Text style={styles.noRepliesText}>No replies yet.</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </View>
+    )
+  }
 
   if (loadingHorses && horses.length === 0) {
     return (
@@ -1252,224 +1595,6 @@ export default function HorseOperatorHome() {
   const selectedAnnouncementComments = selectedAnnouncementId ? comments[selectedAnnouncementId] || [] : []
   const commentCount = selectedAnnouncementComments.length
 
-  const renderComment = (comment: Comment, isReply = false) => {
-    const displayName = getDisplayName(comment)
-    const initials = getUserInitials(comment)
-    const roleColors = getRoleBadgeColor(comment.user_role)
-    const isOwnComment = userData?.id === comment.user_id
-    const isEditing = editingComment === comment.id
-    const hasReplies = comment.has_replies || (comment.reply_count && comment.reply_count > 0)
-    const showReplies = expandedReplies.has(comment.id)
-    const commentReplies = replies[comment.id] || []
-    const showNestedReplies = expandedNestedReplies.has(comment.id)
-    const nestedReplies = replies[comment.id] || []
-
-    return (
-      <View key={comment.id} style={[styles.commentItem, isReply && styles.replyItem]}>
-        <View style={styles.commentRow}>
-          <View style={styles.commentAvatar}>
-            {comment.user_profile?.image ? (
-              <Image
-                source={{ uri: comment.user_profile.image }}
-                style={styles.commentAvatarImage}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={styles.commentAvatarFallback}>
-                <Text style={styles.commentAvatarText}>{initials}</Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.commentContent}>
-            <View style={styles.commentHeader}>
-              <Text style={styles.commentUser}>{displayName}</Text>
-              <View style={[styles.roleBadge, { backgroundColor: roleColors.bg }]}>
-                <Text style={[styles.roleBadgeText, { color: roleColors.text }]}>
-                  {getRoleLabel(comment.user_role)}
-                </Text>
-              </View>
-            </View>
-            <Text style={styles.commentTime}>{comment.time}</Text>
-            {isEditing ? (
-              <View style={styles.editContainer}>
-                <TextInput
-                  style={styles.editInput}
-                  value={editText}
-                  onChangeText={setEditText}
-                  multiline
-                  autoFocus
-                  placeholder="Edit your comment..."
-                  placeholderTextColor="#65676B"
-                />
-                <View style={styles.editActions}>
-                  <TouchableOpacity
-                    style={styles.editCancelButton}
-                    onPress={() => {
-                      setEditingComment(null)
-                      setEditText("")
-                    }}
-                  >
-                    <Text style={styles.editCancelText}>Cancel</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.editSaveButton, { opacity: editText.trim() ? 1 : 0.5 }]}
-                    onPress={() => updateComment(comment.id, editText)}
-                    disabled={!editText.trim() || submittingComment}
-                  >
-                    {submittingComment ? (
-                      <ActivityIndicator size="small" color="white" />
-                    ) : (
-                      <Text style={styles.editSaveText}>Save</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ) : (
-              <>
-                <Text style={styles.commentText}>{comment.text}</Text>
-                <View style={styles.commentActions}>
-                  {!isReply && (
-                    <TouchableOpacity
-                      style={styles.replyButton}
-                      onPress={() => {
-                        setReplyingTo(comment.id)
-                        setReplyText("")
-                      }}
-                    >
-                      <FontAwesome5 name="reply" size={scale(12)} color="#65676B" />
-                      <Text style={styles.replyButtonText}>Reply</Text>
-                    </TouchableOpacity>
-                  )}
-                  {isOwnComment && (
-                    <>
-                      <TouchableOpacity
-                        style={styles.editButton}
-                        onPress={() => {
-                          setEditingComment(comment.id)
-                          setEditText(comment.text)
-                        }}
-                      >
-                        <FontAwesome5 name="edit" size={scale(12)} color="#65676B" />
-                        <Text style={styles.editButtonText}>Edit</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.deleteButton} onPress={() => deleteComment(comment.id)}>
-                        <FontAwesome5 name="trash" size={scale(12)} color="#E74C3C" />
-                        <Text style={styles.deleteButtonText}>Delete</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
-                </View>
-                {replyingTo === comment.id && (
-                  <View style={styles.replyInputContainer}>
-                    <TextInput
-                      style={styles.replyInput}
-                      value={replyText}
-                      onChangeText={setReplyText}
-                      placeholder={`Reply to ${displayName}...`}
-                      placeholderTextColor="#65676B"
-                      multiline
-                      autoFocus
-                    />
-                    <View style={styles.replyInputActions}>
-                      <TouchableOpacity
-                        style={styles.replyCancelButton}
-                        onPress={() => {
-                          setReplyingTo(null)
-                          setReplyText("")
-                        }}
-                      >
-                        <Text style={styles.replyCancelText}>Cancel</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[styles.replySubmitButton, { opacity: replyText.trim() ? 1 : 0.5 }]}
-                        onPress={() => addReply(comment.id, replyText)}
-                        disabled={!replyText.trim() || submittingComment}
-                      >
-                        {submittingComment ? (
-                          <ActivityIndicator size="small" color="white" />
-                        ) : (
-                          <Text style={styles.replySubmitText}>Reply</Text>
-                        )}
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                )}
-                {!isReply && hasReplies && (
-                  <View style={styles.viewRepliesButtonContainer}>
-                    <TouchableOpacity style={styles.viewRepliesButton} onPress={() => toggleReplies(comment.id)}>
-                      {loadingReplies[comment.id] ? (
-                        <ActivityIndicator size="small" color="#C17A47" />
-                      ) : (
-                        <View style={styles.viewRepliesContent}>
-                          <FontAwesome5
-                            name={showReplies ? "chevron-up" : "chevron-down"}
-                            size={scale(12)}
-                            color="#C17A47"
-                          />
-                          <Text style={styles.viewRepliesText}>
-                            {showReplies ? "Hide" : "View"} {comment.reply_count || 0}{" "}
-                            {(comment.reply_count || 0) === 1 ? "reply" : "replies"}
-                          </Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {!isReply && showReplies && (
-                  <View style={styles.repliesContainer}>
-                    {commentReplies.length > 0 ? (
-                      commentReplies.map((reply) => (
-                        <React.Fragment key={reply.id}>{renderComment(reply, true)}</React.Fragment>
-                      ))
-                    ) : (
-                      <View style={styles.noRepliesContainer}>
-                        <Text style={styles.noRepliesText}>No replies yet</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-                {isReply && hasReplies && (
-                  <View style={styles.viewRepliesButtonContainer}>
-                    <TouchableOpacity style={styles.viewRepliesButton} onPress={() => toggleNestedReplies(comment.id)}>
-                      {loadingReplies[comment.id] ? (
-                        <ActivityIndicator size="small" color="#C17A47" />
-                      ) : (
-                        <View style={styles.viewRepliesContent}>
-                          <FontAwesome5
-                            name={showNestedReplies ? "chevron-up" : "chevron-down"}
-                            size={scale(12)}
-                            color="#C17A47"
-                          />
-                          <Text style={styles.viewRepliesText}>
-                            {showNestedReplies ? "Hide" : "View"} {comment.reply_count || 0}{" "}
-                            {(comment.reply_count || 0) === 1 ? "reply" : "replies"}
-                          </Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                )}
-                {isReply && showNestedReplies && (
-                  <View style={styles.nestedRepliesContainer}>
-                    {nestedReplies.length > 0 ? (
-                      nestedReplies.map((nestedReply) => (
-                        <React.Fragment key={nestedReply.id}>{renderComment(nestedReply, true)}</React.Fragment>
-                      ))
-                    ) : (
-                      <View style={styles.noRepliesContainer}>
-                        <Text style={styles.noRepliesText}>No replies yet</Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </>
-            )}
-          </View>
-        </View>
-      </View>
-    )
-  }
-
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
@@ -1481,19 +1606,19 @@ export default function HorseOperatorHome() {
             <Text style={styles.userName}>{userFirstName}</Text>
           </View>
           <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.headerButton} onPress={() => router.push("/HORSE_OPERATOR/Hnotif" as any)}>
-              <FontAwesome5 name="bell" size={scale(18)} color="white" />
-              {notificationCount > 0 && (
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>{notificationCount > 99 ? "99+" : notificationCount}</Text>
-                </View>
-              )}
+            <TouchableOpacity 
+              style={styles.headerButton} 
+              onPress={() => {
+                const now = new Date().toISOString()
+                setLastViewedAnnouncementTime(now)
+                AsyncStorage.setItem("lastViewedAnnouncementTime", now)
+                router.push("/HORSE_OPERATOR/Hnotif")
+              }}
+            >
+              <Image source={require("../../assets/images/notification.png")} style={[styles.headerIconImage, { tintColor: "white" }]} resizeMode="contain" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.sosButton} onPress={() => router.push("/HORSE_OPERATOR/Hsos" as any)}>
+            <TouchableOpacity style={styles.sosButton} onPress={() => router.push("/HORSE_OPERATOR/Hsos")}>
               <Image source={require("../../assets/images/sos2.png")} style={styles.sosIcon} resizeMode="contain" />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton} onPress={handleLogout}>
-              <MenuIcon color="white" />
             </TouchableOpacity>
           </View>
         </View>
@@ -1608,7 +1733,7 @@ export default function HorseOperatorHome() {
               <Text style={styles.sectionTitle}>
                 My Horses {horses.length > 0 && `(${currentHorseIndex + 1}/${horses.length})`}
               </Text>
-              <TouchableOpacity onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}>
+              <TouchableOpacity onPress={() => router.push("../HORSE_OPERATOR/horse")}>
                 <Text style={styles.viewAllButton}>View All</Text>
               </TouchableOpacity>
             </View>
@@ -1638,15 +1763,17 @@ export default function HorseOperatorHome() {
                               <Text style={styles.horseValue}>{item.horse_name}</Text>
                             </Text>
                             <View style={styles.healthRow}>
-                              <Text style={styles.horseBreedText}></Text>
-                              <Text style={styles.horseLabel}>Breed: </Text>
-                              <Text style={styles.horseValue}>{item.horse_breed}</Text>
+                              <Text style={styles.horseBreedText}>
+                                <Text style={styles.horseLabel}>Breed: </Text>
+                                <Text style={styles.horseValue}>{item.horse_breed}</Text>
+                              </Text>
                             </View>
                             <View style={styles.healthRow}>
-                              <Text style={styles.horseAgeText}></Text>
-                              <Text style={styles.horseLabel}>Age: </Text>
-                              <Text style={styles.horseValue}>
-                                {item.horse_dob ? calculateAge(item.horse_dob) : item.horse_age} years
+                              <Text style={styles.horseAgeText}>
+                                <Text style={styles.horseLabel}>Age: </Text>
+                                <Text style={styles.horseValue}>
+                                  {item.horse_dob ? calculateAge(item.horse_dob) : item.horse_age} years
+                                </Text>
                               </Text>
                             </View>
                             <View style={styles.healthRow}>
@@ -1700,7 +1827,7 @@ export default function HorseOperatorHome() {
                 <Text style={styles.noHorseText}>No horses registered yet</Text>
                 <TouchableOpacity
                   style={styles.addHorseButton}
-                  onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}
+                  onPress={() => router.push("../HORSE_OPERATOR/horse")}
                 >
                   <Text style={styles.addHorseButtonText}>Add Horse</Text>
                 </TouchableOpacity>
@@ -1725,7 +1852,6 @@ export default function HorseOperatorHome() {
                   announcement.author, 
                   announcement.user_profile_image
                 )
-                const userProfileImage = announcement.user_profile_image
                 
                 return (
                   <View
@@ -1734,13 +1860,7 @@ export default function HorseOperatorHome() {
                   >
                     <View style={styles.postHeader}>
                       <View style={styles.postIconContainer}>
-                        {userProfileImage ? (
-                          <Image 
-                            source={{ uri: userProfileImage }} 
-                            style={{ width: scale(40), height: scale(40), borderRadius: scale(20) }}
-                            resizeMode="cover"
-                          />
-                        ) : profilePicture ? (
+                        {profilePicture ? (
                           <Image 
                             source={profilePicture} 
                             style={{ width: scale(40), height: scale(40), borderRadius: scale(20) }}
@@ -1754,14 +1874,23 @@ export default function HorseOperatorHome() {
                         )}
                       </View>
                       <View style={styles.postHeaderContent}>
-                        <Text style={styles.postTitle}>{announcement.author}</Text>
+                        <View style={styles.postTitleRow}>
+                          <Text style={styles.postTitle}>{announcement.author}</Text>
+                        </View>
                         <Text style={styles.postTime}>{formatDate(announcement.date)}</Text>
                       </View>
                     </View>
                     {imageUrl && (
-                      <View style={styles.postImageContainer}>
+                      <TouchableOpacity 
+                        style={styles.postImageContainer}
+                        onPress={() => openImageFullScreen(imageUrl)}
+                        activeOpacity={0.8}
+                      >
                         <Image source={{ uri: imageUrl }} style={styles.postImage} resizeMode="cover" />
-                      </View>
+                        <View style={styles.imageOverlay}>
+                          <FontAwesome5 name="expand" size={scale(24)} color="white" />
+                        </View>
+                      </TouchableOpacity>
                     )}
                     <View style={styles.postContent}>
                       <Text style={styles.postDescription}>{text}</Text>
@@ -1781,17 +1910,7 @@ export default function HorseOperatorHome() {
                         style={styles.commentButton}
                         onPress={() => {
                           if (announcement.id) {
-                            setReplies({})
-                            setExpandedReplies(new Set())
-                            setExpandedNestedReplies(new Set())
-                            setReplyingTo(null)
-                            setEditingComment(null)
-                            setNewComment("")
-                            setSelectedAnnouncementId(String(announcement.id))
-                            setShowCommentModal(true)
-                            setTimeout(() => {
-                              fetchComments(String(announcement.id))
-                            }, 100)
+                            handleOpenCommentModal(String(announcement.id))
                           }
                         }}
                       >
@@ -1812,38 +1931,39 @@ export default function HorseOperatorHome() {
         </ScrollView>
         
         <View style={[styles.tabBar, { paddingBottom: safeArea.bottom }]}>
-          <TabButton iconName="home" label="Home" tabKey="home" isActive={activeTab === "home"} />
+          <TabButton iconSource={require("../../assets/images/home.png")} label="Home" tabKey="home" isActive={activeTab === "home"} />
           <TabButton
-            iconName="horse"
+            iconSource={require("../../assets/images/horse.png")}
             label="Horses"
             tabKey="horses"
             isActive={activeTab === "horses"}
-            onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}
+            onPress={() => router.push("../HORSE_OPERATOR/horse")}
           />
           <TabButton
-            iconName="comment-dots"
+            iconSource={require("../../assets/images/chat.png")}
             label="Chat"
             tabKey="messages"
             isActive={activeTab === "messages"}
-            onPress={() => router.push("../HORSE_OPERATOR/Hmessage" as any)}
+            onPress={() => router.push("../HORSE_OPERATOR/Hmessage")}
           />
           <TabButton
-            iconName="calendar-alt"
+            iconSource={require("../../assets/images/calendar.png")}
             label="Calendar"
             tabKey="bookings"
             isActive={activeTab === "bookings"}
-            onPress={() => router.push("../HORSE_OPERATOR/Hcalendar" as any)}
+            onPress={() => router.push("../HORSE_OPERATOR/Hcalendar")}
           />
           <TabButton
-            iconName="user"
+            iconSource={require("../../assets/images/profile.png")}
             label="Profile"
             tabKey="profile"
             isActive={activeTab === "profile"}
-            onPress={() => router.push("../HORSE_OPERATOR/profile" as any)}
+            onPress={() => router.push("../HORSE_OPERATOR/profile")}
           />
         </View>
       </View>
       
+      {/* Facebook-style Comment Modal */}
       <Modal
         visible={showCommentModal}
         animationType="slide"
@@ -1852,7 +1972,7 @@ export default function HorseOperatorHome() {
           setShowCommentModal(false)
           setSelectedAnnouncementId("")
           setReplyingTo(null)
-          setEditingComment(null)
+          setReplyText("")
         }}
       >
         <View style={styles.modalOverlay}>
@@ -1869,47 +1989,31 @@ export default function HorseOperatorHome() {
                 },
               ]}
             >
+              {/* Modal Header */}
               <View style={styles.modalHeader}>
-                <View style={styles.modalHeaderLeft}>
-                  <FontAwesome5 name="comments" size={scale(20)} color="#C17A47" />
-                  <Text style={styles.modalTitle}>Comments ({commentCount})</Text>
+                <View style={styles.modalHeaderContent}>
+                  <Text style={styles.modalTitle}>Comments</Text>
+                  <Text style={styles.commentCountText}>{commentCount} comments</Text>
                 </View>
-                <View style={styles.modalHeaderRight}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setReplies({})
-                      setExpandedReplies(new Set())
-                      setExpandedNestedReplies(new Set())
-                      setComments((prev) => ({
-                        ...prev,
-                        [selectedAnnouncementId]: [],
-                      }))
-                      fetchComments(selectedAnnouncementId)
-                    }}
-                    style={styles.refreshButton}
-                  >
-                    <FontAwesome5 name="sync-alt" size={scale(16)} color="#C17A47" />
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setShowCommentModal(false)
-                      setSelectedAnnouncementId("")
-                      setReplyingTo(null)
-                      setEditingComment(null)
-                      setReplies({})
-                      setExpandedReplies(new Set())
-                      setExpandedNestedReplies(new Set())
-                    }}
-                    style={styles.closeButtonContainer}
-                  >
-                    <Text style={styles.closeButton}>✕</Text>
-                  </TouchableOpacity>
-                </View>
+                <TouchableOpacity
+                  onPress={() => {
+                    setShowCommentModal(false)
+                    setSelectedAnnouncementId("")
+                    setReplyingTo(null)
+                    setReplyText("")
+                  }}
+                  style={styles.closeButtonContainer}
+                >
+                  <Text style={styles.closeButton}>✕</Text>
+                </TouchableOpacity>
               </View>
+
+              {/* Comments List */}
               <ScrollView
                 style={styles.commentsContainer}
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={true}
+                contentContainerStyle={styles.commentsContentContainer}
               >
                 {loadingComments ? (
                   <View style={styles.loadingCommentsContainer}>
@@ -1917,73 +2021,111 @@ export default function HorseOperatorHome() {
                     <Text style={styles.loadingCommentsText}>Loading comments...</Text>
                   </View>
                 ) : selectedAnnouncementComments.length > 0 ? (
-                  selectedAnnouncementComments.map((comment) => (
-                    <React.Fragment key={comment.id}>{renderComment(comment)}</React.Fragment>
-                  ))
+                  selectedAnnouncementComments.map(renderCommentItem)
                 ) : (
                   <View style={styles.noCommentsContainer}>
-                    <FontAwesome5 name="comment-slash" size={scale(48)} color="#DDD" />
                     <Text style={styles.noCommentsText}>No comments yet. Be the first to comment!</Text>
                   </View>
                 )}
               </ScrollView>
+
+              {/* Comment Input - Fixed at bottom */}
               <View style={styles.commentInputContainer}>
-                <View style={styles.commentInputRow}>
-                  <View style={styles.currentUserAvatar}>
-                    <View style={styles.currentUserAvatarFallback}>
-                      <FontAwesome5 name="user" size={scale(16)} color="white" />
-                    </View>
-                  </View>
-                  <View style={styles.inputButtonWrapper}>
-                    <View style={styles.commentInputWrapper}>
-                      <TextInput
-                        style={styles.commentInput}
-                        value={newComment}
-                        onChangeText={setNewComment}
-                        placeholder="Write a comment..."
-                        placeholderTextColor="#65676B"
-                        multiline={true}
-                        maxLength={500}
-                        editable={!submittingComment}
-                        autoCorrect={true}
-                        autoCapitalize="sentences"
-                        returnKeyType="default"
-                        blurOnSubmit={false}
-                        textAlignVertical="center"
-                        selectionColor="#C17A47"
-                      />
+                {replyingTo && (
+                  <View style={styles.replyingToContainer}>
+                    <View style={styles.replyingToContent}>
+                      <Text style={styles.replyingToLabel}>Replying to </Text>
+                      <Text style={styles.replyingToName}>
+                        {getDisplayName(selectedAnnouncementComments.find((c) => c.id === replyingTo)!)}
+                      </Text>
                     </View>
                     <TouchableOpacity
-                      style={[
-                        styles.submitButton,
-                        {
-                          opacity: newComment.trim() && !submittingComment ? 1 : 0.5,
-                          backgroundColor: newComment.trim() && !submittingComment ? "#C17A47" : "#E4E6EA",
-                        },
-                      ]}
-                      onPress={() => addComment(selectedAnnouncementId, newComment)}
-                      disabled={!newComment.trim() || submittingComment}
+                      onPress={() => {
+                        setReplyingTo(null)
+                        setReplyText("")
+                      }}
+                      style={styles.cancelReplyButton}
                     >
-                      {submittingComment ? (
-                        <ActivityIndicator size="small" color="white" />
-                      ) : (
-                        <FontAwesome5
-                          name="paper-plane"
-                          size={scale(16)}
-                          color={newComment.trim() && !submittingComment ? "white" : "#65676B"}
-                        />
-                      )}
+                      <Text style={styles.cancelReplyText}>✕</Text>
                     </TouchableOpacity>
                   </View>
-                </View>
-                <View style={styles.characterCountContainer}>
-                  <Text style={[styles.characterCount, { color: newComment.length > 450 ? "#FF3B30" : "#8E8E93" }]}>
-                    {newComment.length}/500
-                  </Text>
+                )}
+                
+                <View style={styles.inputContainer}>
+                  {userData?.profile?.image ? (
+                    <Image source={{ uri: userData.profile.image }} style={styles.currentUserAvatar} />
+                  ) : (
+                    <View style={styles.currentUserAvatar}>
+                      <Text style={styles.currentUserAvatarText}>{userFirstName.charAt(0).toUpperCase()}</Text>
+                    </View>
+                  )}
+                  
+                  <View style={styles.textInputContainer}>
+                    <TextInput
+                      style={styles.commentInput}
+                      value={replyingTo ? replyText : newComment}
+                      onChangeText={replyingTo ? setReplyText : setNewComment}
+                      placeholder={replyingTo ? "Write a reply..." : "Write a comment..."}
+                      placeholderTextColor="#65676B"
+                      multiline={true}
+                      maxLength={500}
+                      editable={!submittingComment}
+                      autoCorrect={true}
+                      autoCapitalize="sentences"
+                    />
+                  </View>
+                  
+                  <TouchableOpacity
+                    style={[
+                      styles.submitButton,
+                      {
+                        opacity: (replyingTo ? replyText : newComment).trim() && !submittingComment ? 1 : 0.5,
+                      },
+                    ]}
+                    onPress={() => {
+                      if (replyingTo) {
+                        addReply(replyingTo, replyText)
+                      } else {
+                        addComment(selectedAnnouncementId, newComment)
+                      }
+                    }}
+                    disabled={!(replyingTo ? replyText : newComment).trim() || submittingComment}
+                  >
+                    {submittingComment ? (
+                      <ActivityIndicator size="small" color="white" />
+                    ) : (
+                      <Text style={styles.submitButtonText}>Post</Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
               </View>
             </View>
           </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* Full Screen Image Modal */}
+      <Modal
+        visible={showImageModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeImageModal}
+      >
+        <View style={styles.imageModalOverlay}>
+          <StatusBar backgroundColor="rgba(0,0,0,0.9)" barStyle="light-content" />
+          <TouchableOpacity 
+            style={styles.imageModalCloseButton}
+            onPress={closeImageModal}
+          >
+            <Text style={styles.imageModalCloseText}>✕</Text>
+          </TouchableOpacity>
+          {selectedImage && (
+            <Image 
+              source={{ uri: selectedImage }} 
+              style={styles.fullScreenImage}
+              resizeMode="contain"
+            />
+          )}
         </View>
       </Modal>
     </View>
@@ -1991,170 +2133,882 @@ export default function HorseOperatorHome() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#C17A47" },
-  loadingContainer: { justifyContent: "center", alignItems: "center" },
-  loadingText: { color: "white", fontSize: moderateScale(16), fontWeight: "500", marginTop: verticalScale(10) },
-  header: { backgroundColor: "#C17A47", paddingHorizontal: scale(16), paddingBottom: dynamicSpacing(16) },
-  headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: verticalScale(16) },
-  welcomeSection: { flex: 1 },
-  welcomeText: { fontSize: moderateScale(14), color: "white", fontWeight: "400", marginBottom: verticalScale(2) },
-  userName: { fontSize: moderateScale(20), fontWeight: "bold", color: "white" },
-  headerActions: { flexDirection: "row", alignItems: "center", gap: scale(10) },
-  headerButton: { width: scale(32), height: scale(32), borderRadius: scale(16), backgroundColor: "rgba(255,255,255,0.2)", justifyContent: "center", alignItems: "center", position: "relative" },
-  notificationBadge: { position: "absolute", top: scale(-2), right: scale(-2), backgroundColor: "#FF4444", borderRadius: scale(8), paddingHorizontal: scale(4), paddingVertical: scale(1), minWidth: scale(16), alignItems: "center", justifyContent: "center" },
-  notificationBadgeText: { color: "white", fontSize: moderateScale(9), fontWeight: "bold" },
-  sosButton: { width: scale(32), height: scale(32), borderRadius: scale(16), backgroundColor: "#FF4444", justifyContent: "center", alignItems: "center" },
-  sosIcon: { width: scale(20), height: scale(20) },
-  searchContainer: { flexDirection: "row", alignItems: "center", backgroundColor: "white", borderRadius: scale(20), paddingHorizontal: scale(12), height: verticalScale(40), minHeight: 40 },
-  searchIcon: { marginRight: scale(8) },
-  searchInput: { flex: 1, fontSize: moderateScale(14), color: "#333", paddingVertical: 0 },
-  clearSearchButton: { padding: scale(4), marginLeft: scale(4) },
-  searchDropdownOverlay: { position: 'absolute', left: scale(16), right: scale(16), backgroundColor: "white", borderRadius: scale(12), maxHeight: height * 0.5, shadowColor: "#000", shadowOffset: { width: 0, height: scale(4) }, shadowOpacity: 0.15, shadowRadius: scale(8), elevation: 10, zIndex: 9999, overflow: 'hidden', },
-  searchDropdownHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: scale(16), paddingVertical: verticalScale(12), borderBottomWidth: 1, borderBottomColor: "#F0F0F0" },
-  searchDropdownTitle: { fontSize: moderateScale(14), fontWeight: "600", color: "#333" },
-  searchDropdownCount: { fontSize: moderateScale(12), color: "#666" },
-  dropdownList: { maxHeight: height * 0.4, },
-  dropdownItem: { paddingHorizontal: scale(12), paddingVertical: verticalScale(12), borderBottomWidth: 1, borderBottomColor: "#F0F0F0" },
-  dropdownItemContent: { flexDirection: "row", alignItems: "center", gap: scale(12) },
-  dropdownUserImage: { width: scale(40), height: scale(40), borderRadius: scale(20) },
-  dropdownUserImageFallback: { width: scale(40), height: scale(40), borderRadius: scale(20), backgroundColor: "#C17A47", justifyContent: "center", alignItems: "center" },
-  dropdownUserImageText: { color: "white", fontSize: moderateScale(12), fontWeight: "bold" },
-  dropdownUserInfo: { flex: 1 },
-  dropdownUserName: { fontSize: moderateScale(14), fontWeight: "600", color: "#333", marginBottom: verticalScale(2) },
-  dropdownUserEmail: { fontSize: moderateScale(12), color: "#666", marginBottom: verticalScale(4) },
-  dropdownBadgesRow: { flexDirection: "row", alignItems: "center", gap: scale(6), flexWrap: "wrap" },
-  dropdownRoleBadge: { paddingHorizontal: scale(8), paddingVertical: scale(2), borderRadius: scale(12) },
-  dropdownRoleBadgeText: { fontSize: moderateScale(10), fontWeight: "600" },
-  dropdownLoadingContainer: { paddingVertical: verticalScale(20), alignItems: "center", gap: scale(8) },
-  dropdownLoadingText: { fontSize: moderateScale(12), color: "#666" },
-  dropdownEmptyContainer: { paddingVertical: verticalScale(40), alignItems: "center" },
-  dropdownEmptyText: { fontSize: moderateScale(14), color: "#999", marginTop: verticalScale(12), fontWeight: "500" },
-  dropdownEmptyHint: { fontSize: moderateScale(12), color: "#BBB", marginTop: verticalScale(6), textAlign: "center", paddingHorizontal: scale(20) },
-  contentContainer: { flex: 1, backgroundColor: "#F5F5F5" },
-  scrollContent: { flex: 1 },
-  scrollContentContainer: { paddingBottom: verticalScale(100) },
-  horseSection: { backgroundColor: "white", marginHorizontal: scale(16), marginTop: dynamicSpacing(16), borderRadius: scale(12), padding: scale(16) },
-  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: verticalScale(12) },
-  sectionTitle: { fontSize: moderateScale(16), fontWeight: "600", color: "#333" },
-  viewAllButton: { fontSize: moderateScale(12), color: "#C17A47", fontWeight: "600" },
-  horseCardContainer: { width: CARD_WIDTH },
-  horseCard: { flexDirection: "row", alignItems: "flex-start", marginBottom: verticalScale(12), width: "100%" },
-  horseImageContainer: { marginRight: scale(12) },
-  horseImage: { width: scale(96), height: scale(96), borderRadius: scale(8), backgroundColor: "#f0f0f0" },
-  horseInfo: { flex: 1 },
-  horseNameText: { fontSize: moderateScale(14), marginBottom: verticalScale(4) },
-  horseBreedText: { fontSize: moderateScale(14), marginBottom: verticalScale(4) },
-  horseAgeText: { fontSize: moderateScale(14), marginBottom: verticalScale(4) },
-  horseLabel: { color: "#666", fontWeight: "400" },
-  horseValue: { color: "#333", fontWeight: "600" },
-  healthRow: { flexDirection: "row", alignItems: "center", fontSize: moderateScale(14), marginBottom: verticalScale(4) },
-  healthDot: { width: scale(6), height: scale(6), borderRadius: scale(3), marginLeft: scale(4), marginRight: scale(6) },
-  healthText: { fontSize: moderateScale(12), fontWeight: "500" },
-  paginationContainer: { flexDirection: "row", justifyContent: "center", alignItems: "center", paddingVertical: verticalScale(12), gap: scale(8) },
-  paginationDot: { width: scale(8), height: scale(8), borderRadius: scale(4), backgroundColor: "#D1D5DB" },
-  paginationDotActive: { width: scale(24), backgroundColor: "#C17A47", borderRadius: scale(4) },
-  viewProfileButton: { backgroundColor: "#C17A47", paddingHorizontal: scale(16), paddingVertical: verticalScale(10), borderRadius: scale(8), alignItems: "center", marginTop: verticalScale(8), minHeight: 40 },
-  viewProfileButtonText: { color: "white", fontSize: moderateScale(12), fontWeight: "600" },
-  noHorseContainer: { alignItems: "center", paddingVertical: verticalScale(20) },
-  noHorseText: { fontSize: moderateScale(14), color: "#666", marginBottom: verticalScale(12), textAlign: "center" },
-  addHorseButton: { backgroundColor: "#C17A47", paddingHorizontal: scale(20), paddingVertical: verticalScale(10), borderRadius: scale(8) },
-  addHorseButtonText: { color: "white", fontSize: moderateScale(12), fontWeight: "600" },
-  activitiesSection: { backgroundColor: "white", marginHorizontal: scale(16), marginTop: dynamicSpacing(16), borderRadius: scale(12), padding: scale(16) },
-  noAnnouncementsContainer: { padding: scale(20), alignItems: "center" },
-  noAnnouncementsText: { fontSize: moderateScale(14), color: "#999", textAlign: "center" },
-  facebookPostCard: { backgroundColor: "#FFFFFF", borderRadius: scale(12), shadowColor: "#000", shadowOffset: { width: 0, height: scale(2) }, shadowOpacity: 0.1, shadowRadius: scale(4), elevation: 3, overflow: "hidden" },
-  postCardMargin: { marginBottom: scale(16) },
-  postHeader: { flexDirection: "row", alignItems: "center", padding: scale(16), paddingBottom: scale(12) },
-  postIconContainer: { width: scale(40), height: scale(40), borderRadius: scale(20), backgroundColor: "#E3F2FD", justifyContent: "center", alignItems: "center", marginRight: scale(12), overflow: "hidden" },
-  announcementIcon: { width: scale(16), height: scale(12), position: "relative" },
-  megaphoneBody: { width: scale(8), height: scale(8), backgroundColor: "#2196F3", borderRadius: scale(2), position: "absolute", left: 0, top: scale(2) },
-  megaphoneCone: { width: 0, height: 0, borderTopWidth: scale(6), borderBottomWidth: scale(6), borderLeftWidth: scale(8), borderTopColor: "transparent", borderBottomColor: "transparent", borderLeftColor: "#2196F3", position: "absolute", right: 0, top: 0 },
-  postHeaderContent: { flex: 1 },
-  postTitle: { fontSize: moderateScale(16), fontWeight: "600", color: "#1C1C1E", marginBottom: scale(2) },
-  postTime: { fontSize: moderateScale(13), color: "#8E8E93" },
-  postImageContainer: { width: "100%", height: verticalScale(200), backgroundColor: "#F0F0F0", overflow: "hidden" },
-  postImage: { width: "100%", height: "100%" },
-  postContent: { paddingHorizontal: scale(16), paddingTop: scale(12), paddingBottom: scale(16) },
-  postDescription: { fontSize: moderateScale(15), color: "#1C1C1E", lineHeight: moderateScale(22) },
-  seeMoreButton: { marginTop: verticalScale(8), alignSelf: "flex-start" },
-  seeMoreText: { color: "#C17A47", fontSize: moderateScale(14), fontWeight: "500" },
-  postActions: { borderTopWidth: 1, borderTopColor: "#F2F2F7", paddingHorizontal: scale(16), paddingVertical: scale(12) },
-  commentButton: { flexDirection: "row", alignItems: "center", paddingVertical: scale(8) },
-  commentCount: { fontSize: moderateScale(14), color: "#8E8E93", fontWeight: "500" },
-  tabBar: { flexDirection: "row", backgroundColor: "white", paddingVertical: dynamicSpacing(8), paddingHorizontal: scale(8), borderTopWidth: 1, borderTopColor: "#E0E0E0", minHeight: verticalScale(60), alignItems: "center", justifyContent: "space-around" },
-  tabButton: { flex: 1, alignItems: "center", paddingVertical: verticalScale(4), paddingHorizontal: scale(2) },
-  tabIcon: { width: scale(28), height: scale(28), borderRadius: scale(14), justifyContent: "center", alignItems: "center", marginBottom: verticalScale(2) },
-  activeTabIcon: { backgroundColor: "#C17A47" },
-  tabLabel: { fontSize: moderateScale(9), color: "#666", textAlign: "center" },
-  activeTabLabel: { color: "#C17A47", fontWeight: "600" },
-  iconContainer: { width: scale(14), height: scale(14), justifyContent: "center", alignItems: "center", position: "relative" },
-  menuBar: { width: scale(10), height: scale(1.5) },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)" },
-  keyboardAvoidingView: { flex: 1, justifyContent: "flex-end" },
-  modalContainer: { backgroundColor: "white", borderTopLeftRadius: scale(20), borderTopRightRadius: scale(20), paddingTop: verticalScale(20), maxHeight: height * 0.9 },
-  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: scale(20), paddingBottom: verticalScale(16), borderBottomWidth: 1, borderBottomColor: "#E0E0E0" },
-  modalHeaderLeft: { flexDirection: "row", alignItems: "center", gap: scale(10) },
-  modalHeaderRight: { flexDirection: "row", alignItems: "center", gap: scale(10) },
-  refreshButton: { width: scale(32), height: scale(32), borderRadius: scale(16), backgroundColor: "#F5F5F5", justifyContent: "center", alignItems: "center" },
-  modalTitle: { fontSize: moderateScale(18), fontWeight: "600", color: "#333" },
-  closeButtonContainer: { width: scale(32), height: scale(32), borderRadius: scale(16), backgroundColor: "#F5F5F5", justifyContent: "center", alignItems: "center" },
-  closeButton: { fontSize: moderateScale(20), color: "#666", fontWeight: "bold" },
-  commentsContainer: { flex: 1, paddingHorizontal: scale(20), maxHeight: height * 0.5 },
-  commentItem: { paddingVertical: verticalScale(12), borderBottomWidth: 1, borderBottomColor: "#F0F0F0" },
-  replyItem: { marginLeft: scale(40), borderLeftWidth: 2, borderLeftColor: "#E0E0E0", paddingLeft: scale(12) },
-  commentRow: { flexDirection: "row", alignItems: "flex-start", gap: scale(12) },
-  commentAvatar: { width: scale(40), height: scale(40), borderRadius: scale(20), overflow: "hidden", borderWidth: 2, borderColor: "#FFE0B2" },
-  commentAvatarImage: { width: "100%", height: "100%" },
-  commentAvatarFallback: { width: "100%", height: "100%", backgroundColor: "#C17A47", justifyContent: "center", alignItems: "center" },
-  commentAvatarText: { color: "white", fontSize: moderateScale(14), fontWeight: "bold" },
-  commentContent: { flex: 1, backgroundColor: "#F8F8F8", borderRadius: scale(12), padding: scale(12) },
-  commentHeader: { flexDirection: "row", alignItems: "center", marginBottom: verticalScale(4), flexWrap: "wrap", gap: scale(6) },
-  commentUser: { fontSize: moderateScale(14), fontWeight: "600", color: "#333" },
-  roleBadge: { paddingHorizontal: scale(8), paddingVertical: scale(2), borderRadius: scale(12) },
-  roleBadgeText: { fontSize: moderateScale(10), fontWeight: "600" },
-  commentTime: { fontSize: moderateScale(11), color: "#999", marginBottom: verticalScale(6) },
-  commentText: { fontSize: moderateScale(13), color: "#666", lineHeight: moderateScale(18) },
-  commentActions: { flexDirection: "row", alignItems: "center", marginTop: verticalScale(8), gap: scale(16) },
-  replyButton: { flexDirection: "row", alignItems: "center", gap: scale(4) },
-  replyButtonText: { fontSize: moderateScale(12), color: "#65676B", fontWeight: "500" },
-  editButton: { flexDirection: "row", alignItems: "center", gap: scale(4) },
-  editButtonText: { fontSize: moderateScale(12), color: "#65676B", fontWeight: "500" },
-  deleteButton: { flexDirection: "row", alignItems: "center", gap: scale(4) },
-  deleteButtonText: { fontSize: moderateScale(12), color: "#E74C3C", fontWeight: "500" },
-  editContainer: { marginTop: verticalScale(8) },
-  editInput: { backgroundColor: "white", borderRadius: scale(8), padding: scale(12), fontSize: moderateScale(13), color: "#333", borderWidth: 1, borderColor: "#E0E0E0", minHeight: verticalScale(60), textAlignVertical: "top" },
-  editActions: { flexDirection: "row", justifyContent: "flex-end", gap: scale(8), marginTop: verticalScale(8) },
-  editCancelButton: { paddingHorizontal: scale(16), paddingVertical: verticalScale(8), borderRadius: scale(6), backgroundColor: "#F0F0F0" },
-  editCancelText: { fontSize: moderateScale(12), color: "#666", fontWeight: "600" },
-  editSaveButton: { paddingHorizontal: scale(16), paddingVertical: verticalScale(8), borderRadius: scale(6), backgroundColor: "#C17A47" },
-  editSaveText: { fontSize: moderateScale(12), color: "white", fontWeight: "600" },
-  replyInputContainer: { marginTop: verticalScale(8), backgroundColor: "white", borderRadius: scale(8), padding: scale(12), borderWidth: 1, borderColor: "#E0E0E0" },
-  replyInput: { fontSize: moderateScale(13), color: "#333", minHeight: verticalScale(40), textAlignVertical: "top" },
-  replyInputActions: { flexDirection: "row", justifyContent: "flex-end", gap: scale(8), marginTop: verticalScale(8) },
-  replyCancelButton: { paddingHorizontal: scale(16), paddingVertical: verticalScale(6), borderRadius: scale(6), backgroundColor: "#F0F0F0" },
-  replyCancelText: { fontSize: moderateScale(12), color: "#666", fontWeight: "600" },
-  replySubmitButton: { paddingHorizontal: scale(16), paddingVertical: verticalScale(6), borderRadius: scale(6), backgroundColor: "#C17A47" },
-  replySubmitText: { fontSize: moderateScale(12), color: "white", fontWeight: "600" },
-  viewRepliesButtonContainer: { marginTop: verticalScale(8) },
-  viewRepliesButton: { flexDirection: "row", alignItems: "center", paddingVertical: verticalScale(6) },
-  viewRepliesContent: { flexDirection: "row", alignItems: "center", gap: scale(6) },
-  viewRepliesText: { fontSize: moderateScale(12), color: "#C17A47", fontWeight: "500" },
-  repliesContainer: { marginTop: verticalScale(12) },
-  nestedRepliesContainer: { marginTop: verticalScale(12), marginLeft: scale(16) },
-  noRepliesContainer: { padding: scale(12), alignItems: "center" },
-  noRepliesText: { fontSize: moderateScale(12), color: "#999", fontStyle: "italic" },
-  loadingCommentsContainer: { padding: scale(20), alignItems: "center", flexDirection: "row", justifyContent: "center", gap: scale(10) },
-  loadingCommentsText: { fontSize: moderateScale(12), color: "#666" },
-  noCommentsContainer: { padding: scale(40), alignItems: "center", justifyContent: "center" },
-  noCommentsText: { fontSize: moderateScale(14), color: "#999", textAlign: "center", marginTop: verticalScale(12) },
-  commentInputContainer: { borderTopWidth: 1, borderTopColor: "#E4E6EA", backgroundColor: "#FFFFFF", paddingHorizontal: scale(12), paddingTop: scale(12), paddingBottom: scale(12) },
-  commentInputRow: { flexDirection: "row", alignItems: "flex-end", gap: scale(12) },
-  currentUserAvatar: { width: scale(40), height: scale(40), borderRadius: scale(20), overflow: "hidden", borderWidth: 2, borderColor: "#FFE0B2" },
-  currentUserAvatarFallback: { width: "100%", height: "100%", backgroundColor: "#C17A47", justifyContent: "center", alignItems: "center" },
-  inputButtonWrapper: { flex: 1, flexDirection: "row", alignItems: "flex-end", gap: scale(8) },
-  commentInputWrapper: { flex: 1, backgroundColor: "#F0F2F5", borderRadius: scale(20), minHeight: scale(40), maxHeight: verticalScale(100), justifyContent: "center", paddingHorizontal: scale(14), paddingVertical: scale(10) },
-  commentInput: { fontSize: moderateScale(14), color: "#1C1E21", lineHeight: moderateScale(18), paddingVertical: 0, paddingHorizontal: 0, margin: 0, backgroundColor: "transparent", textAlignVertical: "center" },
-  submitButton: { width: scale(40), height: scale(40), borderRadius: scale(20), justifyContent: "center", alignItems: "center", shadowColor: "#000", shadowOffset: { width: 0, height: scale(2) }, shadowOpacity: 0.1, shadowRadius: scale(4), elevation: 3 },
-  characterCountContainer: { marginTop: verticalScale(6), alignItems: "flex-end", paddingRight: scale(4) },
-  characterCount: { fontSize: moderateScale(11) },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#C17A47" 
+  },
+  loadingContainer: { 
+    justifyContent: "center", 
+    alignItems: "center" 
+  },
+  loadingText: { 
+    color: "white", 
+    fontSize: moderateScale(16), 
+    fontWeight: "500", 
+    marginTop: verticalScale(10) 
+  },
+  header: { 
+    backgroundColor: "#C17A47", 
+    paddingHorizontal: scale(16), 
+    paddingBottom: dynamicSpacing(16),
+  },
+  headerTop: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "flex-start", 
+    marginBottom: verticalScale(16),
+    marginTop: verticalScale(8),
+  },
+  welcomeSection: { 
+    flex: 1 
+  },
+  welcomeText: { 
+    fontSize: moderateScale(14), 
+    color: "white", 
+    fontWeight: "400", 
+    marginBottom: verticalScale(2) 
+  },
+  userName: { 
+    fontSize: moderateScale(20), 
+    fontWeight: "bold", 
+    color: "white" 
+  },
+  headerActions: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    gap: scale(10) 
+  },
+  headerButton: { 
+    width: scale(32), 
+    height: scale(32), 
+    borderRadius: scale(16), 
+    backgroundColor: "rgba(255,255,255,0.2)", 
+    justifyContent: "center", 
+    alignItems: "center", 
+    position: "relative" 
+  },
+  sosButton: { 
+    width: scale(32), 
+    height: scale(32), 
+    borderRadius: scale(16), 
+    backgroundColor: "#FF4444", 
+    justifyContent: "center", 
+    alignItems: "center" 
+  },
+  sosIcon: { 
+    width: scale(20), 
+    height: scale(20) 
+  },
+  searchContainer: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    backgroundColor: "white", 
+    borderRadius: scale(20), 
+    paddingHorizontal: scale(12), 
+    height: verticalScale(40), 
+    minHeight: 40 
+  },
+  searchIcon: { 
+    marginRight: scale(8) 
+  },
+  searchInput: { 
+    flex: 1, 
+    fontSize: moderateScale(14), 
+    color: "#333", 
+    paddingVertical: 0 
+  },
+  clearSearchButton: { 
+    padding: scale(4), 
+    marginLeft: scale(4) 
+  },
+  searchDropdownOverlay: { 
+    position: 'absolute', 
+    left: scale(16), 
+    right: scale(16), 
+    backgroundColor: "white", 
+    borderRadius: scale(12), 
+    maxHeight: height * 0.5, 
+    shadowColor: "#000", 
+    shadowOffset: { width: 0, height: scale(4) }, 
+    shadowOpacity: 0.15, 
+    shadowRadius: scale(8), 
+    elevation: 10, 
+    zIndex: 9999, 
+    overflow: 'hidden', 
+  },
+  searchDropdownHeader: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+    paddingHorizontal: scale(16), 
+    paddingVertical: verticalScale(12), 
+    borderBottomWidth: 1, 
+    borderBottomColor: "#F0F0F0" 
+  },
+  searchDropdownTitle: { 
+    fontSize: moderateScale(14), 
+    fontWeight: "600", 
+    color: "#333" 
+  },
+  searchDropdownCount: { 
+    fontSize: moderateScale(12), 
+    color: "#666" 
+  },
+  dropdownList: { 
+    maxHeight: height * 0.4, 
+  },
+  dropdownItem: { 
+    paddingHorizontal: scale(12), 
+    paddingVertical: verticalScale(12), 
+    borderBottomWidth: 1, 
+    borderBottomColor: "#F0F0F0" 
+  },
+  dropdownItemContent: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    gap: scale(12) 
+  },
+  dropdownUserImage: { 
+    width: scale(40), 
+    height: scale(40), 
+    borderRadius: scale(20) 
+  },
+  dropdownUserImageFallback: { 
+    width: scale(40), 
+    height: scale(40), 
+    borderRadius: scale(20), 
+    backgroundColor: "#C17A47", 
+    justifyContent: "center", 
+    alignItems: "center" 
+  },
+  dropdownUserImageText: { 
+    color: "white", 
+    fontSize: moderateScale(12), 
+    fontWeight: "bold" 
+  },
+  dropdownUserInfo: { 
+    flex: 1 
+  },
+  dropdownUserName: { 
+    fontSize: moderateScale(14), 
+    fontWeight: "600", 
+    color: "#333", 
+    marginBottom: verticalScale(2) 
+  },
+  dropdownUserEmail: { 
+    fontSize: moderateScale(12), 
+    color: "#666", 
+    marginBottom: verticalScale(4) 
+  },
+  dropdownBadgesRow: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    gap: scale(6), 
+    flexWrap: "wrap" 
+  },
+  dropdownRoleBadge: { 
+    paddingHorizontal: scale(8), 
+    paddingVertical: scale(2), 
+    borderRadius: scale(12) 
+  },
+  dropdownRoleBadgeText: { 
+    fontSize: moderateScale(10), 
+    fontWeight: "600" 
+  },
+  dropdownLoadingContainer: { 
+    paddingVertical: verticalScale(20), 
+    alignItems: "center", 
+    gap: scale(8) 
+  },
+  dropdownLoadingText: { 
+    fontSize: moderateScale(12), 
+    color: "#666" 
+  },
+  dropdownEmptyContainer: { 
+    paddingVertical: verticalScale(40), 
+    alignItems: "center" 
+  },
+  dropdownEmptyText: { 
+    fontSize: moderateScale(14), 
+    color: "#999", 
+    marginTop: verticalScale(12), 
+    fontWeight: "500" 
+  },
+  dropdownEmptyHint: { 
+    fontSize: moderateScale(12), 
+    color: "#BBB", 
+    marginTop: verticalScale(6), 
+    textAlign: "center", 
+    paddingHorizontal: scale(20) 
+  },
+  contentContainer: { 
+    flex: 1, 
+    backgroundColor: "#F5F5F5" 
+  },
+  scrollContent: { 
+    flex: 1 
+  },
+  scrollContentContainer: { 
+    paddingBottom: verticalScale(100) 
+  },
+  horseSection: { 
+    backgroundColor: "white", 
+    marginHorizontal: scale(16), 
+    marginTop: dynamicSpacing(16), 
+    borderRadius: scale(12), 
+    padding: scale(16) 
+  },
+  sectionHeader: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+    marginBottom: verticalScale(12) 
+  },
+  sectionTitle: { 
+    fontSize: moderateScale(16), 
+    fontWeight: "600", 
+    color: "#333" 
+  },
+  viewAllButton: { 
+    fontSize: moderateScale(12), 
+    color: "#C17A47", 
+    fontWeight: "600" 
+  },
+  horseCardContainer: { 
+    width: CARD_WIDTH 
+  },
+  horseCard: { 
+    flexDirection: "row", 
+    alignItems: "flex-start", 
+    marginBottom: verticalScale(12), 
+    width: "100%" 
+  },
+  horseImageContainer: { 
+    marginRight: scale(12) 
+  },
+  horseImage: { 
+    width: scale(96), 
+    height: scale(96), 
+    borderRadius: scale(8), 
+    backgroundColor: "#f0f0f0" 
+  },
+  horseInfo: { 
+    flex: 1 
+  },
+  horseNameText: { 
+    fontSize: moderateScale(14), 
+    marginBottom: verticalScale(4) 
+  },
+  horseBreedText: { 
+    fontSize: moderateScale(14), 
+    marginBottom: verticalScale(4) 
+  },
+  horseAgeText: { 
+    fontSize: moderateScale(14), 
+    marginBottom: verticalScale(4) 
+  },
+  horseLabel: { 
+    color: "#666", 
+    fontWeight: "400" 
+  },
+  horseValue: { 
+    color: "#333", 
+    fontWeight: "600" 
+  },
+  healthRow: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    fontSize: moderateScale(14), 
+    marginBottom: verticalScale(4) 
+  },
+  healthDot: { 
+    width: scale(6), 
+    height: scale(6), 
+    borderRadius: scale(3), 
+    marginLeft: scale(4), 
+    marginRight: scale(6) 
+  },
+  healthText: { 
+    fontSize: moderateScale(12), 
+    fontWeight: "500" 
+  },
+  paginationContainer: { 
+    flexDirection: "row", 
+    justifyContent: "center", 
+    alignItems: "center", 
+    paddingVertical: verticalScale(12), 
+    gap: scale(8) 
+  },
+  paginationDot: { 
+    width: scale(8), 
+    height: scale(8), 
+    borderRadius: scale(4), 
+    backgroundColor: "#D1D5DB" 
+  },
+  paginationDotActive: { 
+    width: scale(24), 
+    backgroundColor: "#C17A47", 
+    borderRadius: scale(4) 
+  },
+  viewProfileButton: { 
+    backgroundColor: "#C17A47", 
+    paddingHorizontal: scale(16), 
+    paddingVertical: verticalScale(10), 
+    borderRadius: scale(8), 
+    alignItems: "center", 
+    marginTop: verticalScale(8), 
+    minHeight: 40 
+  },
+  viewProfileButtonText: { 
+    color: "white", 
+    fontSize: moderateScale(12), 
+    fontWeight: "600" 
+  },
+  noHorseContainer: { 
+    alignItems: "center", 
+    paddingVertical: verticalScale(20) 
+  },
+  noHorseText: { 
+    fontSize: moderateScale(14), 
+    color: "#666", 
+    marginBottom: verticalScale(12), 
+    textAlign: "center" 
+  },
+  addHorseButton: { 
+    backgroundColor: "#C17A47", 
+    paddingHorizontal: scale(20), 
+    paddingVertical: verticalScale(10), 
+    borderRadius: scale(8) 
+  },
+  addHorseButtonText: { 
+    color: "white", 
+    fontSize: moderateScale(12), 
+    fontWeight: "600" 
+  },
+  activitiesSection: { 
+    backgroundColor: "white", 
+    marginHorizontal: scale(16), 
+    marginTop: dynamicSpacing(16), 
+    borderRadius: scale(12), 
+    padding: scale(16) 
+  },
+  noAnnouncementsContainer: { 
+    padding: scale(20), 
+    alignItems: "center" 
+  },
+  noAnnouncementsText: { 
+    fontSize: moderateScale(14), 
+    color: "#999", 
+    textAlign: "center" 
+  },
+  facebookPostCard: { 
+    backgroundColor: "#FFFFFF", 
+    borderRadius: scale(12), 
+    shadowColor: "#000", 
+    shadowOffset: { width: 0, height: scale(2) }, 
+    shadowOpacity: 0.1, 
+    shadowRadius: scale(4), 
+    elevation: 3, 
+    overflow: "hidden" 
+  },
+  postCardMargin: { 
+    marginBottom: scale(16) 
+  },
+  postHeader: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    padding: scale(16), 
+    paddingBottom: scale(12) 
+  },
+  postIconContainer: { 
+    width: scale(40), 
+    height: scale(40), 
+    borderRadius: scale(20), 
+    backgroundColor: "#E3F2FD", 
+    justifyContent: "center", 
+    alignItems: "center", 
+    marginRight: scale(12), 
+    overflow: "hidden" 
+  },
+  announcementIcon: { 
+    width: scale(16), 
+    height: scale(12), 
+    position: "relative" 
+  },
+  megaphoneBody: { 
+    width: scale(8), 
+    height: scale(8), 
+    backgroundColor: "#2196F3", 
+    borderRadius: scale(2), 
+    position: "absolute", 
+    left: 0, 
+    top: scale(2) 
+  },
+  megaphoneCone: { 
+    width: 0, 
+    height: 0, 
+    borderTopWidth: scale(6), 
+    borderBottomWidth: scale(6), 
+    borderLeftWidth: scale(8), 
+    borderTopColor: "transparent", 
+    borderBottomColor: "transparent", 
+    borderLeftColor: "#2196F3", 
+    position: "absolute", 
+    right: 0, 
+    top: 0 
+  },
+  postHeaderContent: { 
+    flex: 1 
+  },
+  postTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: scale(2),
+  },
+  postTitle: { 
+    fontSize: moderateScale(16), 
+    fontWeight: "600", 
+    color: "#1C1C1E", 
+    marginRight: scale(8),
+  },
+  postTime: { 
+    fontSize: moderateScale(13), 
+    color: "#8E8E93" 
+  },
+  postImageContainer: { 
+    width: "100%", 
+    height: verticalScale(200), 
+    backgroundColor: "#F0F0F0", 
+    overflow: "hidden", 
+    position: "relative" 
+  },
+  postImage: { 
+    width: "100%", 
+    height: "100%" 
+  },
+  imageOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+    opacity: 0,
+  },
+  postContent: { 
+    paddingHorizontal: scale(16), 
+    paddingTop: scale(12), 
+    paddingBottom: scale(16) 
+  },
+  postDescription: { 
+    fontSize: moderateScale(15), 
+    color: "#1C1C1E", 
+    lineHeight: moderateScale(22) 
+  },
+  seeMoreButton: { 
+    marginTop: verticalScale(8), 
+    alignSelf: "flex-start" 
+  },
+  seeMoreText: { 
+    color: "#C17A47", 
+    fontSize: moderateScale(14), 
+    fontWeight: "500" 
+  },
+  postActions: { 
+    borderTopWidth: 1, 
+    borderTopColor: "#F2F2F7", 
+    paddingHorizontal: scale(16), 
+    paddingVertical: scale(12) 
+  },
+  commentButton: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    paddingVertical: scale(8) 
+  },
+  commentCount: { 
+    fontSize: moderateScale(14), 
+    color: "#8E8E93", 
+    fontWeight: "500" 
+  },
+  tabBar: { 
+    flexDirection: "row", 
+    backgroundColor: "white", 
+    paddingVertical: dynamicSpacing(8), 
+    paddingHorizontal: scale(8), 
+    borderTopWidth: 1, 
+    borderTopColor: "#E0E0E0", 
+    minHeight: verticalScale(60), 
+    alignItems: "center", 
+    justifyContent: "space-around" 
+  },
+  tabButton: { 
+    flex: 1, 
+    alignItems: "center", 
+    paddingVertical: verticalScale(4), 
+    paddingHorizontal: scale(2) 
+  },
+  tabIcon: { 
+    width: scale(28), 
+    height: scale(28), 
+    borderRadius: scale(14), 
+    justifyContent: "center", 
+    alignItems: "center", 
+    marginBottom: verticalScale(2) 
+  },
+  activeTabIcon: { 
+    backgroundColor: "#C17A47" 
+  },
+  tabIconImage: { 
+    width: scale(16), 
+    height: scale(16) 
+  },
+  fallbackIcon: { 
+    width: scale(14), 
+    height: scale(14), 
+    backgroundColor: "#666", 
+    borderRadius: scale(2) 
+  },
+  tabLabel: { 
+    fontSize: moderateScale(9), 
+    color: "#666", 
+    textAlign: "center" 
+  },
+  activeTabLabel: { 
+    color: "#C17A47", 
+    fontWeight: "600" 
+  },
+  iconContainer: { 
+    width: scale(14), 
+    height: scale(14), 
+    justifyContent: "center", 
+    alignItems: "center", 
+    position: "relative" 
+  },
+  menuBar: { 
+    width: scale(10), 
+    height: scale(1.5) 
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+  },
+  keyboardAvoidingView: {
+    flex: 1,
+    justifyContent: "flex-end",
+  },
+  modalContainer: {
+    backgroundColor: "white",
+    borderTopLeftRadius: scale(12),
+    borderTopRightRadius: scale(12),
+    maxHeight: height * 0.9,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(12),
+    borderBottomWidth: 1,
+    borderBottomColor: "#E4E6EA",
+  },
+  modalHeaderContent: {
+    flex: 1,
+  },
+  modalTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: "700",
+    color: "#1C1E21",
+  },
+  commentCountText: {
+    fontSize: moderateScale(13),
+    color: "#65676B",
+    marginTop: scale(2),
+  },
+  closeButtonContainer: {
+    padding: scale(4),
+  },
+  closeButton: {
+    fontSize: moderateScale(20),
+    color: "#65676B",
+    fontWeight: "300",
+  },
+  commentsContainer: {
+    flex: 1,
+  },
+  commentsContentContainer: {
+    paddingVertical: scale(8),
+  },
+  commentItem: {
+    flexDirection: "row",
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(8),
+  },
+  commentAvatarContainer: {
+    marginRight: scale(8),
+  },
+  commentAvatar: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  commentAvatarText: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "white",
+  },
+  commentContentContainer: {
+    flex: 1,
+  },
+  commentBubble: {
+    backgroundColor: "#F0F2F5",
+    borderRadius: scale(18),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: scale(4),
+  },
+  commentHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  commentUserName: {
+    fontSize: moderateScale(13),
+    fontWeight: "600",
+    color: "#1C1E21",
+    marginRight: scale(6),
+  },
+  commentTime: {
+    fontSize: moderateScale(11),
+    color: "#65676B",
+    marginLeft: scale(8),
+  },
+  commentText: {
+    fontSize: moderateScale(14),
+    color: "#1C1E21",
+    lineHeight: moderateScale(18),
+  },
+  commentActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: scale(4),
+    paddingLeft: scale(4),
+  },
+  commentActionButton: {
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+  },
+  commentActionText: {
+    fontSize: moderateScale(12),
+    color: "#65676B",
+    fontWeight: "600",
+  },
+  repliesContainer: {
+    marginLeft: scale(40),
+    marginTop: scale(4),
+  },
+  replyItem: {
+    flexDirection: "row",
+    paddingVertical: scale(6),
+  },
+  replyAvatarContainer: {
+    marginRight: scale(8),
+  },
+  replyAvatar: {
+    width: scale(28),
+    height: scale(28),
+    borderRadius: scale(14),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  replyContentContainer: {
+    flex: 1,
+  },
+  replyBubble: {
+    backgroundColor: "#F0F2F5",
+    borderRadius: scale(18),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
+  },
+  loadingRepliesContainer: {
+    padding: scale(12),
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: scale(8),
+  },
+  loadingRepliesText: {
+    fontSize: moderateScale(12),
+    color: "#666",
+  },
+  noRepliesContainer: {
+    padding: scale(12),
+    alignItems: "center",
+  },
+  noRepliesText: {
+    fontSize: moderateScale(12),
+    color: "#999",
+  },
+  commentInputContainer: {
+    borderTopWidth: 1,
+    borderTopColor: "#E4E6EA",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(12),
+  },
+  replyingToContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: "#F0F2F5",
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
+    borderRadius: scale(8),
+    marginBottom: scale(8),
+  },
+  replyingToContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  replyingToLabel: {
+    fontSize: moderateScale(12),
+    color: "#65676B",
+    fontWeight: "400",
+  },
+  replyingToName: {
+    fontSize: moderateScale(12),
+    color: "#1C1E21",
+    fontWeight: "600",
+  },
+  cancelReplyButton: {
+    padding: scale(4),
+  },
+  cancelReplyText: {
+    fontSize: moderateScale(16),
+    color: "#65676B",
+    fontWeight: "300",
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: scale(8),
+  },
+  currentUserAvatar: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+    overflow: "hidden",
+  },
+  currentUserAvatarText: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "white",
+  },
+  textInputContainer: {
+    flex: 1,
+    backgroundColor: "#F0F2F5",
+    borderRadius: scale(20),
+    minHeight: scale(36),
+    maxHeight: verticalScale(100),
+    paddingHorizontal: scale(12),
+    paddingVertical: scale(8),
+  },
+  commentInput: {
+    fontSize: moderateScale(14),
+    color: "#1C1E21",
+    lineHeight: moderateScale(18),
+    padding: 0,
+    margin: 0,
+  },
+  submitButton: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(16),
+    paddingVertical: scale(8),
+    borderRadius: scale(18),
+    minWidth: scale(50),
+    height: scale(36),
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  submitButtonText: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "white",
+  },
+  loadingCommentsContainer: {
+    padding: scale(20),
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: scale(10),
+  },
+  loadingCommentsText: {
+    fontSize: moderateScale(12),
+    color: "#666",
+  },
+  noCommentsContainer: {
+    padding: scale(40),
+    alignItems: "center",
+  },
+  noCommentsText: {
+    fontSize: moderateScale(14),
+    color: "#999",
+    textAlign: "center",
+  },
+  viewRepliesButton: {
+    paddingVertical: verticalScale(2),
+  },
+  viewRepliesText: {
+    fontSize: moderateScale(12),
+    color: "#65676B",
+    fontWeight: "600",
+  },
+  headerIconImage: { 
+    width: scale(18), 
+    height: scale(18) 
+  },
+  // Full Screen Image Modal Styles
+  imageModalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.9)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageModalCloseButton: {
+    position: "absolute",
+    top: Platform.OS === "ios" ? 50 : 30,
+    right: scale(20),
+    zIndex: 10,
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  imageModalCloseText: {
+    color: "white",
+    fontSize: moderateScale(20),
+    fontWeight: "bold",
+  },
+  fullScreenImage: {
+    width: width,
+    height: height,
+  },
 })
