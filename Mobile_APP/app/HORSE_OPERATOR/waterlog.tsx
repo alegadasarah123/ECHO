@@ -37,7 +37,7 @@ type Horse = {
   horse_name: string;
 };
 
-const API_BASE_URL = "http://192.168.1.9:8000/api/horse_operator"
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
 
 const WaterLogScreen = () => {
   const router = useRouter();
@@ -817,10 +817,11 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     backgroundColor: '#3B82F6',
     elevation: 4,
-    shadowColor: '#000',
+    shadowColor: '#3B82F6',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
+    marginTop: 0,
   },
   backButton: {
     width: 44,

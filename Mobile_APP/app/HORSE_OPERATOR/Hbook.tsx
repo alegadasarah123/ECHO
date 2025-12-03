@@ -54,7 +54,7 @@ interface VetProfile {
   vet_exp_yr: number;
 }
 
-const API_BASE_URL = "http://192.168.1.9:8000/api/horse_operator"
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
 
 // Default services with icons
 const defaultServices = [
@@ -1272,10 +1272,11 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     backgroundColor: '#CD853F',
     elevation: 4,
-    shadowColor: '#000',
+    shadowColor: '#CD853F',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
+    marginTop: 5,
   },
   backButton: {
     width: 40,

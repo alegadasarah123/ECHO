@@ -25,7 +25,7 @@ interface Horse {
   horse_name: string;
   horse_breed: string;
   horse_age: number;
-  horse_status: string; // Added status field
+  horse_status: string;
 }
 
 interface ScheduleSlot {
@@ -66,7 +66,7 @@ interface Veterinarian {
   vet_exp_yr?: number;
 }
 
-const API_BASE_URL = "http://192.168.1.9:8000/api/horse_operator"
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
 
 // Default services with icons
 const defaultServices = [
@@ -160,12 +160,10 @@ const formatDateForDisplay = (date: Date) => {
   });
 };
 
-// FIXED: Properly convert database date string to local Date object without timezone issues
+// Properly convert database date string to local Date object without timezone issues
 const parseDatabaseDate = (dateString: string): Date => {
   try {
-    // Split the date string (assuming format YYYY-MM-DD)
     const [year, month, day] = dateString.split('-').map(Number);
-    // Create date in local timezone (not UTC)
     return new Date(year, month - 1, day);
   } catch (error) {
     console.error('Error parsing database date:', error);
@@ -173,7 +171,7 @@ const parseDatabaseDate = (dateString: string): Date => {
   }
 };
 
-// FIXED: Format date to YYYY-MM-DD string for comparison
+// Format date to YYYY-MM-DD string for comparison
 const formatDateToDatabaseString = (date: Date): string => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -181,7 +179,7 @@ const formatDateToDatabaseString = (date: Date): string => {
   return `${year}-${month}-${day}`;
 };
 
-// UPDATED: Function to check if a date is within the two-month rolling window
+// Function to check if a date is within the two-month rolling window
 const isDateInTwoMonthWindow = (date: Date, currentDate: Date = new Date()): boolean => {
   const dateYear = date.getFullYear();
   const dateMonth = date.getMonth();
@@ -189,10 +187,8 @@ const isDateInTwoMonthWindow = (date: Date, currentDate: Date = new Date()): boo
   const currentYear = currentDate.getFullYear();
   const currentMonth = currentDate.getMonth();
   
-  // Calculate month difference
   const monthDiff = (dateYear - currentYear) * 12 + (dateMonth - currentMonth);
   
-  // Include if it's current month (0) or next month (1)
   return monthDiff >= 0 && monthDiff <= 1;
 };
 
@@ -207,6 +203,8 @@ const Hbook2 = () => {
   const [loading, setLoading] = useState(true);
   const [loadingServices, setLoadingServices] = useState(false);
   const [loadingVeterinarians, setLoadingVeterinarians] = useState(false);
+  const [loadingVetProfile, setLoadingVetProfile] = useState(false);
+  const [loadingVetSchedule, setLoadingVetSchedule] = useState(false);
   const [isBookingAppointment, setIsBookingAppointment] = useState(false);
   
   // Form states
@@ -240,7 +238,6 @@ const Hbook2 = () => {
     console.log(`Available times for ${dateString}:`, timesForDate);
     setAvailableTimesForDate(timesForDate);
     
-    // Clear selected time slot if it's no longer available
     setSelectedTimeSlot(prevSelected => {
       if (prevSelected && !timesForDate.some(item => item.slot_id === prevSelected.slot_id)) {
         return null;
@@ -270,14 +267,17 @@ const Hbook2 = () => {
     }
   }, [router]);
 
-  // Function to fetch only regular veterinarians (excluding CTU vets) with years of experience
+  // Function to fetch only regular veterinarians
   const fetchVeterinarians = useCallback(async () => {
     try {
       setLoadingVeterinarians(true);
-      console.log("Fetching regular veterinarians (excluding CTU vets)...");
+      console.log("Fetching regular veterinarians...");
       
       const url = `${API_BASE_URL}/get_veterinarians/`;
+      console.log("Fetching from URL:", url);
+      
       const response = await fetch(url);
+      console.log("Response status:", response.status);
 
       if (!response.ok) {
         throw new Error(`Failed to fetch veterinarians: ${response.status}`);
@@ -286,7 +286,7 @@ const Hbook2 = () => {
       const vetsData = await response.json();
       console.log("All veterinarians data:", vetsData);
       
-      // Filter to only include regular veterinarians (vet_type === 'regular')
+      // Filter to only include regular veterinarians
       const regularVets = vetsData.filter((vet: Veterinarian) => vet.vet_type === 'regular');
       console.log("Regular veterinarians only:", regularVets);
       
@@ -294,13 +294,13 @@ const Hbook2 = () => {
       
     } catch (error) {
       console.error("Error fetching veterinarians:", error);
-      Alert.alert("Error", "Unable to load veterinarians");
+      Alert.alert("Error", "Unable to load veterinarians. Please check your connection.");
     } finally {
       setLoadingVeterinarians(false);
     }
   }, []);
 
-  // ✅ UPDATED: Stable function for fetching horses - now excludes deceased horses
+  // ✅ Stable function for fetching horses - excludes deceased horses
   const fetchHorses = useCallback(async (userId: string) => {
     try {
       console.log("Fetching horses for user_id:", userId);
@@ -315,7 +315,6 @@ const Hbook2 = () => {
 
       const data = await response.json();
       
-      // ✅ FILTER OUT DECEASED HORSES - only include horses that are not deceased
       const activeHorses = Array.isArray(data) 
         ? data.filter((horse: Horse) => horse.horse_status !== 'Deceased')
         : [];
@@ -328,7 +327,7 @@ const Hbook2 = () => {
     }
   }, []);
 
-  // Stable function for fetching vet services
+  // ✅ IMPROVED: Function to fetch vet services with better error handling
   const fetchVetServices = useCallback(async (vetId: string) => {
     if (!vetId) return;
     
@@ -337,16 +336,18 @@ const Hbook2 = () => {
       console.log("Fetching services for vet_id:", vetId);
       
       const url = `${API_BASE_URL}/get_vet_services/?vet_id=${encodeURIComponent(vetId)}`;
+      console.log("Services URL:", url);
+      
       const response = await fetch(url);
 
       if (!response.ok) {
+        console.error(`Failed to fetch services: ${response.status}`);
         throw new Error(`Failed to fetch services: ${response.status}`);
       }
 
       const servicesData = await response.json();
       console.log("Vet services data:", servicesData);
       
-      // If we have custom services, use them. Otherwise, use the default services with icons.
       if (servicesData && servicesData.length > 0) {
         setAvailableServices(servicesData);
         setSelectedService(servicesData[0].service_name);
@@ -373,22 +374,32 @@ const Hbook2 = () => {
         icon: service.icon
       }));
       setAvailableServices(defaultServicesWithIcons);
+      
+      Alert.alert(
+        'Service Information Unavailable',
+        'Using default services. Some features may be limited.',
+        [{ text: 'OK' }]
+      );
     } finally {
       setLoadingServices(false);
     }
   }, []);
 
-  // Function to fetch actual vet profile data including years of experience
+  // ✅ IMPROVED: Function to fetch vet profile with better error handling
   const fetchVetProfile = useCallback(async (vetId: string) => {
     if (!vetId) return;
     
     try {
+      setLoadingVetProfile(true);
       console.log("Fetching vet profile for vet_id:", vetId);
       
       const url = `${API_BASE_URL}/get_vet_profile/?vet_id=${encodeURIComponent(vetId)}`;
+      console.log("Profile URL:", url);
+      
       const response = await fetch(url);
 
       if (!response.ok) {
+        console.error(`Failed to fetch vet profile: ${response.status}`);
         throw new Error(`Failed to fetch vet profile: ${response.status}`);
       }
 
@@ -404,6 +415,17 @@ const Hbook2 = () => {
           vet_specialization: profile.vet_specialization || 'General Veterinarian',
           vet_exp_yr: profile.vet_exp_yr || 0
         });
+      } else {
+        // Fallback to selected veterinarian data
+        if (selectedVeterinarian) {
+          setVetProfile({
+            vet_id: selectedVeterinarian.id,
+            vet_name: `${selectedVeterinarian.first_name} ${selectedVeterinarian.last_name}`,
+            vet_avatar: selectedVeterinarian.avatar || '',
+            vet_specialization: selectedVeterinarian.specialization || 'General Veterinarian',
+            vet_exp_yr: selectedVeterinarian.vet_exp_yr || 0
+          });
+        }
       }
       
     } catch (error) {
@@ -418,27 +440,52 @@ const Hbook2 = () => {
           vet_exp_yr: selectedVeterinarian.vet_exp_yr || 0
         });
       }
+      
+      Alert.alert(
+        'Profile Information Unavailable',
+        'Some veterinarian details may not be displayed.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setLoadingVetProfile(false);
     }
   }, [selectedVeterinarian]);
 
-  // Stable function for fetching schedule
+  // ✅ IMPROVED: Stable function for fetching schedule with better error handling
   const fetchVetSchedule = useCallback(async (vetId: string) => {
-    if (!vetId) return;
+  if (!vetId) return;
+  
+  try {
+    setLoadingVetSchedule(true);
+    console.log("🔍 Fetching schedule for vet_id:", vetId);
     
-    try {
-      console.log("Fetching schedule for vet_id:", vetId);
+    const url = `${API_BASE_URL}/get_vet_schedule/?vet_id=${encodeURIComponent(vetId)}`;
+    console.log("📡 Schedule URL:", url);
+    
+    const response = await fetch(url);
+    console.log("📊 Response status:", response.status);
+    
+    if (!response.ok) {
+      console.error(`❌ Failed to fetch schedule: ${response.status}`);
+      const errorText = await response.text();
+      console.error("❌ Error response:", errorText);
+      throw new Error(`Failed to fetch schedule: ${response.status}`);
+    }
+    
+    const scheduleData = await response.json();
+    console.log("✅ Vet schedule data received:", scheduleData);
+    console.log("📅 Number of schedule items:", scheduleData.length);
+    
+    if (!scheduleData || scheduleData.length === 0) {
+      console.log("⚠️ No schedule data returned from backend");
+      setVetSchedule([]);
+      setAvailableDateObjects([]);
+      setAvailableTimesForDate([]);
+      setAvailableDatesSet(new Set());
+      return;
+    }
       
-      const url = `${API_BASE_URL}/get_vet_schedule/?vet_id=${encodeURIComponent(vetId)}`;
-      const response = await fetch(url);
-      
-      if (!response.ok) {
-        throw new Error(`Failed to fetch schedule: ${response.status}`);
-      }
-      
-      const scheduleData = await response.json();
-      console.log("Vet schedule data:", scheduleData);
-      
-      // Transform and filter the data - ✅ FIXED: Ensure slot_id is included
+      // Transform and filter the data
       const transformedSchedule = scheduleData
         .map((item: any) => {
           const formattedStartTime = formatTimeTo12Hour(item.start_time);
@@ -446,16 +493,16 @@ const Hbook2 = () => {
           const timeDisplay = formatTimeRange(item.start_time, item.end_time);
           
           return {
-            sched_id: item.sched_id,
+            sched_id: item.sched_id || item.slot_id,
             slot_id: item.slot_id || item.sched_id,
-            vet_id: item.vet_id,
-            sched_date: item.sched_date,
+            vet_id: item.vet_id || vetId,
+            sched_date: item.sched_date || item.slot_date,
             start_time: item.start_time,
             end_time: item.end_time,
             start_time_formatted: formattedStartTime,
             end_time_formatted: formattedEndTime,
             time_display: timeDisplay,
-            is_available: item.is_available
+            is_available: item.is_available !== false && item.is_booked !== true
           };
         })
         .filter((item: ScheduleSlot) => {
@@ -467,16 +514,15 @@ const Hbook2 = () => {
       
       const uniqueDates = [...new Set(transformedSchedule.map((item: ScheduleSlot) => item.sched_date))];
       
-      // FIXED: Use parseDatabaseDate to avoid timezone issues
+      // Use parseDatabaseDate to avoid timezone issues
       const dateObjects = (uniqueDates as string[]).map((dateString: string) => parseDatabaseDate(dateString));
       setAvailableDateObjects(dateObjects);
       
-      // Create a Set of available dates for quick lookup (using the same format)
+      // Create a Set of available dates for quick lookup
       const availableDates = new Set(uniqueDates as string[]);
       setAvailableDatesSet(availableDates);
       
       if (uniqueDates.length > 0) {
-        // FIXED: Use parseDatabaseDate for the first date as well
         const firstDate = parseDatabaseDate(uniqueDates[0] as string);
         setSelectedDate(firstDate);
         // Update available times for the first date
@@ -486,17 +532,21 @@ const Hbook2 = () => {
           !isScheduleSlotInPast(item.sched_date, item.start_time)
         );
         setAvailableTimesForDate(timesForDate);
-      } else if (uniqueDates.length === 0) {
-        Alert.alert(
-          'No Available Appointments', 
-          'This veterinarian has no available appointment slots at the moment. Please try again later or select a different veterinarian.',
-          [{ text: 'OK' }]
-        );
+        console.log(`Set selected date to ${firstDate} with ${timesForDate.length} time slots`);
+      } else {
+        console.log("No unique dates found after filtering");
+        setSelectedDate(null);
+        setAvailableTimesForDate([]);
       }
       
     } catch (error) {
       console.error("Error fetching vet schedule:", error);
-      Alert.alert("Error", "Unable to load veterinarian schedule");
+      Alert.alert("Error", "Unable to load veterinarian schedule. Please try again.");
+      setVetSchedule([]);
+      setAvailableDateObjects([]);
+      setAvailableTimesForDate([]);
+    } finally {
+      setLoadingVetSchedule(false);
     }
   }, []);
 
@@ -510,11 +560,13 @@ const Hbook2 = () => {
     setAvailableDateObjects([]);
     setAvailableTimesForDate([]);
     setAvailableServices([]);
+    setVetProfile(null);
     setSelectedDate(null);
     setSelectedTimeSlot(null);
     setSelectedService('General Consultation');
     
     // Fetch data for selected veterinarian
+    console.log("Selected veterinarian:", vet);
     fetchVetServices(vet.id);
     fetchVetProfile(vet.id);
     fetchVetSchedule(vet.id);
@@ -543,15 +595,16 @@ const Hbook2 = () => {
         
         // Fetch horses and veterinarians in parallel
         await Promise.all([
-          fetchHorses(userId), // ✅ This now excludes deceased horses
+          fetchHorses(userId),
           fetchVeterinarians()
         ]);
       } catch (error) {
         console.error('Error loading data:', error);
+        Alert.alert('Error', 'Failed to load initial data. Please try again.');
       } finally {
         if (isMounted) {
           setLoading(false);
-          console.log('Data load complete, setting loading to false');
+          console.log('Data load complete');
         }
       }
     };
@@ -567,12 +620,11 @@ const Hbook2 = () => {
   // Separate useEffect for updating times when vetSchedule changes
   useEffect(() => {
     if (selectedDate && vetSchedule.length > 0) {
-      // FIXED: Use formatDateToDatabaseString to ensure proper comparison
       updateAvailableTimesForDate(formatDateToDatabaseString(selectedDate), vetSchedule);
     }
   }, [vetSchedule, selectedDate, updateAvailableTimesForDate]);
 
-  // FIXED: Calendar navigation functions - now allows unlimited navigation
+  // Calendar navigation functions
   const navigateMonth = (direction: 'prev' | 'next') => {
     setCurrentMonth(prev => {
       const newMonth = new Date(prev);
@@ -585,7 +637,7 @@ const Hbook2 = () => {
     });
   };
 
-  // UPDATED: Check if a date is available AND within the two-month window
+  // Check if a date is available AND within the two-month window
   const isDateAvailable = (date: Date) => {
     const dateString = formatDateToDatabaseString(date);
     const isInTwoMonthWindow = isDateInTwoMonthWindow(date);
@@ -603,7 +655,7 @@ const Hbook2 = () => {
     return selectedDate ? date.toDateString() === selectedDate.toDateString() : false;
   };
 
-  // FIXED: Handle date selection with proper date string conversion
+  // Handle date selection with proper date string conversion
   const handleDateSelect = (date: Date) => {
     const dateString = formatDateToDatabaseString(date);
     if (isDateAvailable(date)) {
@@ -613,7 +665,7 @@ const Hbook2 = () => {
     }
   };
 
-  // FIXED: Render calendar component with single month display
+  // Render calendar component with single month display
   const renderCalendar = () => {
     return (
       <View style={styles.calendarContainer}>
@@ -735,11 +787,10 @@ const Hbook2 = () => {
     );
   };
 
-  // ✅ FIXED: Handle time selection with proper slot_id
+  // ✅ Handle time selection with proper slot_id
   const handleTimeSelection = (timeSlot: ScheduleSlot) => {
     if (!selectedDate) return;
     
-    // FIXED: Use formatDateToDatabaseString for consistent comparison
     const dateString = formatDateToDatabaseString(selectedDate);
     
     const isValidSlot = vetSchedule.find((item: ScheduleSlot) => 
@@ -750,7 +801,6 @@ const Hbook2 = () => {
     );
     
     if (isValidSlot) {
-      // ✅ FIXED: Only set the selected time slot, don't modify the array
       setSelectedTimeSlot(timeSlot);
       console.log("Selected time slot:", timeSlot);
     } else {
@@ -761,8 +811,17 @@ const Hbook2 = () => {
     }
   };
 
-  // ✅ FIXED: Enhanced time slots rendering with proper unique keys and selection logic
+  // ✅ Enhanced time slots rendering with proper unique keys and selection logic
   const renderTimeSlots = () => {
+    if (loadingVetSchedule) {
+      return (
+        <View style={styles.noTimeSlotsContainer}>
+          <ActivityIndicator size="large" color="#CD853F" />
+          <Text style={styles.noTimeSlotsTitle}>Loading time slots...</Text>
+        </View>
+      );
+    }
+
     if (availableTimesForDate.length === 0) {
       return (
         <View style={styles.noTimeSlotsContainer}>
@@ -813,7 +872,6 @@ const Hbook2 = () => {
             </View>
             <View style={styles.timeSlots}>
               {slots.map((scheduleItem: ScheduleSlot) => {
-                // ✅ FIXED: Proper selection logic using slot_id
                 const isSelected = selectedTimeSlot?.slot_id === scheduleItem.slot_id;
                 
                 return (
@@ -845,7 +903,7 @@ const Hbook2 = () => {
     );
   };
 
-  // ✅ FIXED: Confirm appointment booking with slot_id
+  // ✅ Confirm appointment booking with slot_id
   const confirmAppointment = async () => {
     if (!selectedVeterinarian) {
       Alert.alert('Validation Error', 'Please select a veterinarian for the appointment.');
@@ -864,7 +922,6 @@ const Hbook2 = () => {
       return;
     }
 
-    // FIXED: Use formatDateToDatabaseString for consistent date checking
     const selectedDateString = formatDateToDatabaseString(selectedDate);
     if (isScheduleSlotInPast(selectedDateString, selectedTimeSlot.start_time)) {
       Alert.alert('Error', 'The selected time slot has passed. Please select a current or future time slot.');
@@ -888,7 +945,6 @@ const Hbook2 = () => {
         throw new Error('Selected horse not found');
       }
 
-      // ✅ FIXED: Use slot_id instead of sched_id and formatDateToDatabaseString for date
       const bookingData = {
         user_id: userId,
         vet_id: selectedVeterinarian.id,
@@ -897,7 +953,7 @@ const Hbook2 = () => {
         time: selectedTimeSlot.time_display,
         service: selectedService,
         notes: appointmentNotes,
-        slot_id: selectedTimeSlot.slot_id // ✅ CRITICAL FIX: Changed from sched_id to slot_id
+        slot_id: selectedTimeSlot.slot_id
       };
 
       console.log('Booking appointment with data:', bookingData);
@@ -957,7 +1013,7 @@ const Hbook2 = () => {
     }
   };
 
-  // ✅ UPDATED: Render horse dropdown with deceased horses excluded
+  // ✅ Render horse dropdown with deceased horses excluded
   const renderHorseDropdown = () => {
     if (availableHorses.length === 0) {
       return (
@@ -1197,10 +1253,13 @@ const Hbook2 = () => {
                         </Text>
                       </View>
                     </View>
+                    {loadingVetProfile && (
+                      <ActivityIndicator size="small" color="#CD853F" style={{ marginLeft: 10 }} />
+                    )}
                   </View>
                 </View>
 
-                {/* Select Horse - ✅ UPDATED: Now excludes deceased horses */}
+                {/* Select Horse */}
                 <View style={styles.formGroup}>
                   <View style={styles.formLabelContainer}>
                     <FontAwesome5 name="horse" size={16} color="#CD853F" />
@@ -1279,9 +1338,12 @@ const Hbook2 = () => {
                   <View style={styles.formLabelContainer}>
                     <FontAwesome5 name="calendar-alt" size={16} color="#CD853F" />
                     <Text style={styles.formLabel}>Choose Available Date</Text>
+                    {loadingVetSchedule && (
+                      <ActivityIndicator size="small" color="#CD853F" style={{ marginLeft: 8 }} />
+                    )}
                   </View>
 
-                  {availableDateObjects.length === 0 ? (
+                  {availableDateObjects.length === 0 && !loadingVetSchedule ? (
                     <View style={styles.noAvailableDatesContainer}>
                       <FontAwesome5 name="calendar-times" size={40} color="#CD853F" style={{ opacity: 0.5 }} />
                       <Text style={styles.noAvailableDatesTitle}>No Available Dates</Text>
@@ -1295,7 +1357,7 @@ const Hbook2 = () => {
                       <TouchableOpacity
                         style={styles.datePickerButton}
                         onPress={() => setShowCalendarModal(true)}
-                        disabled={isBookingAppointment}
+                        disabled={isBookingAppointment || loadingVetSchedule}
                       >
                         <View style={styles.datePickerContent}>
                           <Text style={[
@@ -1432,7 +1494,7 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     backgroundColor: '#CD853F',
     elevation: 4,
-    shadowColor: '#000',
+    shadowColor: '#CD853F',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
@@ -1509,7 +1571,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     flex: 1,
   },
-  // Dropdown Styles (Consistent for all dropdowns)
+  // Dropdown Styles
   dropdown: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1648,6 +1710,7 @@ const styles = StyleSheet.create({
   vetInfo: {
     flexDirection: 'row',
     padding: 20,
+    alignItems: 'center',
   },
   vetImageContainer: {
     position: 'relative',
@@ -1829,7 +1892,7 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
   },
-  // FIXED: Calendar Content
+  // Calendar Content
   calendarContent: {
     flex: 1,
   },
@@ -2136,7 +2199,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     marginLeft: 8,
   },
-  // FIXED: Removed duplicate calendar styles
+  // Removed duplicate calendar styles
   singleMonthContainer: {
     marginBottom: 10,
   },

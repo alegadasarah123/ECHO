@@ -31,7 +31,7 @@ type WaterSchedule = {
   user_type?: string;
 };
 
-const API_BASE_URL = "http://192.168.1.9:8000/api/horse_operator";
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator";
 
 // Configure notifications handler with proper NotificationBehavior type
 Notifications.setNotificationHandler({
@@ -1563,7 +1563,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
+    paddingHorizontal: 15,
     paddingVertical: 18,
     backgroundColor: '#3B82F6',
     elevation: 4,

@@ -76,7 +76,7 @@ interface UserData {
   role?: string;
 }
 
-const API_BASE_URL = "http://192.168.101.6:8000/api/horse_operator";
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator";
 
 const TabButton = ({
   iconSource,
@@ -113,13 +113,28 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | undefined>(undefined);
+  const [imageError, setImageError] = useState(false);
   const safeArea = getSafeAreaPadding();
   
   // Initialize userData state
   const [userData, setUserData] = useState<UserData>({
     firstName: 'User',
-    profileImage: 'https://via.placeholder.com/100x100/f0f0f0/999999?text=Profile',
+    profileImage: '',
   });
+
+  // Generate a fallback profile image URL based on user's name
+  const getFallbackImageUrl = (name: string) => {
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=CD853F&color=fff&size=100&bold=true&font-size=0.5`;
+  };
+
+  // Get the actual image URL to use
+  const getProfileImageUrl = () => {
+    if (imageError || !userData.profileImage) {
+      const displayName = getDisplayName();
+      return getFallbackImageUrl(displayName);
+    }
+    return userData.profileImage;
+  };
 
   // Load user ID from secure storage
   const loadUserId = async (): Promise<string | undefined> => {
@@ -145,6 +160,7 @@ const Profile = () => {
     try {
       setLoading(true);
       setError(null);
+      setImageError(false);
 
       // Get user ID
       let uid = userId;
@@ -195,7 +211,7 @@ const Profile = () => {
         routeTo: data.op_routeto || '',
         email: data.op_email || '',
         facebook: data.op_fb || '',
-        profileImage: data.op_image || 'https://via.placeholder.com/100x100/f0f0f0/999999?text=Profile',
+        profileImage: data.op_image || '',
         role: 'horse_operator'
       };
 
@@ -294,8 +310,9 @@ const Profile = () => {
           // Clear user state
           setUserData({
             firstName: 'User',
-            profileImage: 'https://via.placeholder.com/100x100/f0f0f0/999999?text=Profile',
+            profileImage: '',
           });
+          setImageError(false);
           
           // Navigate to login screen
           router.replace('/auth/login');
@@ -330,11 +347,33 @@ const Profile = () => {
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Profile Header */}
         <View style={styles.profileHeader}>
-          <Image
-            source={{ uri: userData.profileImage }}
-            style={styles.profileImage}
-          />
+          <View style={styles.profileImageContainer}>
+            <Image
+              source={{ uri: getProfileImageUrl() }}
+              style={styles.profileImage}
+              onError={() => {
+                console.log("Image failed to load, using fallback");
+                setImageError(true);
+              }}
+            />
+            {!userData.profileImage || imageError ? (
+              <View style={styles.fallbackInitialsContainer}>
+                <Text style={styles.fallbackInitialsText}>
+                  {getDisplayName()
+                    .split(' ')
+                    .map(word => word[0])
+                    .join('')
+                    .toUpperCase()
+                    .slice(0, 2)}
+                </Text>
+              </View>
+            ) : null}
+          </View>
           <Text style={styles.userName}>{getDisplayName()}</Text>
+          <View style={styles.roleContainer}>
+            <FontAwesome5 name="horse" size={12} color="#fff" />
+            <Text style={styles.roleText}>Horse Operator</Text>
+          </View>
         </View>
 
         {/* Error Message */}
@@ -371,6 +410,11 @@ const Profile = () => {
               <FontAwesome5 name="chevron-right" size={16} color="#ccc" />
             </TouchableOpacity>
           ))}
+        </View>
+
+        {/* Version Info */}
+        <View style={styles.versionContainer}>
+          <Text style={styles.versionText}>App Version 1.0.0</Text>
         </View>
       </ScrollView>
 
@@ -443,6 +487,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: Platform.OS === 'ios' ? 60 : 40,
   },
+  profileImageContainer: {
+    position: 'relative',
+  },
   profileImage: {
     width: 120,
     height: 120,
@@ -457,17 +504,30 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
+  fallbackInitialsContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#CD853F',
+    borderRadius: 60,
+    borderWidth: 4,
+    borderColor: '#fff',
+  },
+  fallbackInitialsText: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
   userName: {
     fontSize: 26,
     fontWeight: 'bold',
     color: '#fff',
     marginBottom: 5,
-  },
-  userEmail: {
-    fontSize: 14,
-    color: '#fff',
-    opacity: 0.9,
-    marginBottom: 10,
+    textAlign: 'center',
   },
   roleContainer: {
     flexDirection: 'row',

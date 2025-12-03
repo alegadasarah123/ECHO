@@ -54,6 +54,8 @@ interface UserProfile {
     phone?: string
     city?: string
     province?: string
+    address?: string  // Added address field
+    clinic_address?: string
     profile_image?: string
   }
 }
@@ -133,50 +135,48 @@ export default function UnifiedProfileView() {
 
   const fetchVetBaseSchedule = useCallback(async (vetId: string) => {
     try {
-      setScheduleLoading(true)
-      const storedAccessToken = await SecureStore.getItemAsync("access_token")
+        setScheduleLoading(true)
+        const storedAccessToken = await SecureStore.getItemAsync("access_token")
 
-      if (!storedAccessToken) {
-        throw new Error("No access token found")
-      }
-
-      console.log("📅 Fetching vet base schedule for vet:", vetId)
-
-      // FIXED: Use consistent endpoint format with trailing slash
-      const scheduleResponse = await fetch(`${API_BASE_URL}/get_vet_base_schedule/?vet_id=${vetId}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${storedAccessToken}`,
-          "Content-Type": "application/json",
-        },
-      })
-
-      console.log("📊 Schedule response status:", scheduleResponse.status)
-
-      if (scheduleResponse.ok) {
-        const scheduleData = await scheduleResponse.json()
-        console.log("✅ Vet base schedule loaded:", scheduleData)
-        
-        // Handle different response formats
-        if (scheduleData.schedules && Array.isArray(scheduleData.schedules)) {
-          setVetSchedules(scheduleData.schedules)
-        } else if (Array.isArray(scheduleData)) {
-          setVetSchedules(scheduleData)
-        } else {
-          console.log("⚠️ Unexpected schedule data format:", scheduleData)
-          setVetSchedules([])
+        if (!storedAccessToken) {
+            throw new Error("No access token found")
         }
-      } else {
-        console.log("⚠️ No base schedule data available, status:", scheduleResponse.status)
-        setVetSchedules([])
-      }
+
+        console.log("📅 Fetching vet base schedule for vet:", vetId)
+
+        const scheduleResponse = await fetch(`${API_BASE_URL}/get_vet_base_schedule/?vet_id=${vetId}`, {
+            method: "GET",
+            headers: {
+                Authorization: `Bearer ${storedAccessToken}`,
+                "Content-Type": "application/json",
+            },
+        })
+
+        console.log("📊 Schedule response status:", scheduleResponse.status)
+
+        if (scheduleResponse.ok) {
+            const scheduleData = await scheduleResponse.json()
+            console.log("✅ Vet base schedule loaded:", scheduleData)
+            
+            // Handle the response format correctly
+            if (scheduleData.schedules && Array.isArray(scheduleData.schedules)) {
+                setVetSchedules(scheduleData.schedules)
+                console.log(`📋 Loaded ${scheduleData.schedules.length} schedule items`)
+            } else {
+                console.log("📭 No schedule data available or empty array")
+                setVetSchedules([])
+            }
+        } else {
+            console.log("⚠️ Failed to fetch schedule data, status:", scheduleResponse.status)
+            setVetSchedules([])
+        }
     } catch (error) {
-      console.error("❌ Error fetching vet base schedule:", error)
-      setVetSchedules([])
+        console.error("❌ Error fetching vet base schedule:", error)
+        setVetSchedules([])
     } finally {
-      setScheduleLoading(false)
+        setScheduleLoading(false)
     }
-  }, [])
+}, [])
 
   const fetchUserPosts = useCallback(async (userId: string) => {
     try {
@@ -254,6 +254,9 @@ export default function UnifiedProfileView() {
             const userData = result.user
             console.log("✅ Profile loaded from unified API:", userData)
             console.log("User role:", userData.role)
+            console.log("User profile data:", userData.profile)
+            console.log("Address:", userData.profile?.address)
+            console.log("Clinic address:", userData.profile?.clinic_address)
             setProfileData(userData)
 
             // If user is a regular veterinarian, fetch their base schedule
@@ -476,29 +479,6 @@ export default function UnifiedProfileView() {
     }
   }
 
-  const formatTimeRange = (startTime: string, endTime: string) => {
-    try {
-      const formattedStart = formatTimeTo12Hour(startTime)
-      const formattedEnd = formatTimeTo12Hour(endTime)
-      return `${formattedStart} - ${formattedEnd}`
-    } catch {
-      return `${startTime} - ${endTime}`
-    }
-  }
-
-  const getDayName = (dayOfWeek: string) => {
-    const days: { [key: string]: string } = {
-      'monday': 'Monday',
-      'tuesday': 'Tuesday', 
-      'wednesday': 'Wednesday',
-      'thursday': 'Thursday',
-      'friday': 'Friday',
-      'saturday': 'Saturday',
-      'sunday': 'Sunday'
-    }
-    return days[dayOfWeek.toLowerCase()] || dayOfWeek
-  }
-
   const renderPostItem = (post: Post) => {
     const isExpanded = expandedPosts[post.id]
     const contentLength = post.content.length
@@ -591,7 +571,8 @@ export default function UnifiedProfileView() {
   const phoneNumber = profileData.profile.phone
   const city = profileData.profile.city
   const province = profileData.profile.province
-  const fullAddress = city && province ? `${city}, ${province}` : city || province || null
+  const address = profileData.profile.address  // Get the full address
+  const clinicAddress = profileData.profile.clinic_address
   
   // Get profile picture based on role
   const profilePicture = getProfilePicture(profileData)
@@ -606,7 +587,9 @@ export default function UnifiedProfileView() {
     isRegularVet,
     isCTUorDVMF,
     hasSchedules: vetSchedules.length > 0,
-    hasPosts: userPosts.length > 0
+    hasPosts: userPosts.length > 0,
+    address: address,
+    clinicAddress: clinicAddress
   })
 
   return (
@@ -720,19 +703,61 @@ export default function UnifiedProfileView() {
               </View>
             )}
 
-            {fullAddress && (
+            {/* Display full address if available (for Kutsero and other users) */}
+            {address && !isRegularVet && (
               <View style={styles.contactItem}>
                 <View style={styles.iconContainer}>
                   <FontAwesome5 name="map-marker-alt" size={scale(14)} color="#C17A47" />
                 </View>
                 <View style={styles.contactTextContainer}>
                   <Text style={styles.contactLabel}>Address</Text>
-                  <Text style={styles.contactText}>{fullAddress}</Text>
+                  <Text style={styles.contactText}>{address}</Text>
                 </View>
               </View>
             )}
 
-            {!profileData.profile.email && !phoneNumber && !fullAddress && (
+            {/* Clinic Address (for veterinarians) */}
+            {clinicAddress && isRegularVet && (
+              <View style={styles.contactItem}>
+                <View style={styles.iconContainer}>
+                  <FontAwesome5 name="clinic-medical" size={scale(14)} color="#10B981" />
+                </View>
+                <View style={styles.contactTextContainer}>
+                  <Text style={[styles.contactLabel, { color: "#10B981" }]}>Clinic Address</Text>
+                  <Text style={[styles.contactText, { color: "#333" }]}>{clinicAddress}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Regular Address for veterinarians without clinic address */}
+            {address && isRegularVet && !clinicAddress && (
+              <View style={styles.contactItem}>
+                <View style={styles.iconContainer}>
+                  <FontAwesome5 name="map-marker-alt" size={scale(14)} color="#C17A47" />
+                </View>
+                <View style={styles.contactTextContainer}>
+                  <Text style={styles.contactLabel}>Address</Text>
+                  <Text style={styles.contactText}>{address}</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Fallback to city/province if no address field */}
+            {(city || province) && !address && !clinicAddress && (
+              <View style={styles.contactItem}>
+                <View style={styles.iconContainer}>
+                  <FontAwesome5 name="map-marker-alt" size={scale(14)} color="#C17A47" />
+                </View>
+                <View style={styles.contactTextContainer}>
+                  <Text style={styles.contactLabel}>Address</Text>
+                  <Text style={styles.contactText}>
+                    {city && province ? `${city}, ${province}` : city || province}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            {!profileData.profile.email && !phoneNumber && !address && !clinicAddress && !city && !province && (
               <View style={styles.noContactInfo}>
                 <FontAwesome5 name="info-circle" size={scale(16)} color="#999" />
                 <Text style={styles.noContactInfoText}>No contact information available</Text>
@@ -748,7 +773,7 @@ export default function UnifiedProfileView() {
             <View style={styles.infoCard}>
               <View style={styles.infoCardHeader}>
                 <FontAwesome5 name="calendar-alt" size={scale(18)} color="#10B981" />
-                <Text style={styles.infoCardTitle}>Available Every</Text>
+                <Text style={styles.infoCardTitle}>Schedule</Text>
               </View>
 
               {scheduleLoading ? (
@@ -758,21 +783,19 @@ export default function UnifiedProfileView() {
                 </View>
               ) : vetSchedules.length > 0 ? (
                 <View style={styles.regularScheduleContainer}>
+                  <Text style={styles.scheduleDescription}>
+                    This veterinarian is regularly available on:
+                  </Text>
+                  
                   <View style={styles.scheduleDaysContainer}>
                     {vetSchedules.map((schedule, index) => (
                       <View key={schedule.sched_id || index} style={styles.scheduleDayItem}>
-                        <View style={styles.dayHeader}>
-                          <FontAwesome5 name="calendar-day" size={scale(14)} color="#10B981" />
-                          <Text style={styles.dayName}>
-                            {getDayName(schedule.day_of_week)}
-                          </Text>
-                        </View>
-                        <View style={styles.timeContainer}>
-                          <FontAwesome5 name="clock" size={scale(12)} color="#666" />
-                          <Text style={styles.timeText}>
-                            {formatTimeRange(schedule.start_time, schedule.end_time)}
-                          </Text>
-                        </View>
+                        <Text style={styles.dayNameText}>
+                          {schedule.day_of_week}
+                        </Text>
+                        <Text style={styles.scheduleTimeText}>
+                          {formatTimeTo12Hour(schedule.start_time)} - {formatTimeTo12Hour(schedule.end_time)}
+                        </Text>
                       </View>
                     ))}
                   </View>
@@ -793,6 +816,21 @@ export default function UnifiedProfileView() {
                 <View style={styles.noScheduleContainer}>
                   <FontAwesome5 name="calendar-times" size={scale(32)} color="#CCC" />
                   <Text style={styles.noScheduleText}>No regular schedule set</Text>
+                  <Text style={styles.noScheduleSubtext}>
+                    This veterinarian hasn&#39;t set their weekly availability yet
+                  </Text>
+                  
+                  {/* Book Appointment Button (even without schedule) */}
+                  {!isOwnProfile && (
+                    <TouchableOpacity
+                      style={[styles.bookAppointmentButton, styles.bookButtonWithoutSchedule]}
+                      onPress={handleBookAppointment}
+                      activeOpacity={0.7}
+                    >
+                      <FontAwesome5 name="calendar-plus" size={scale(16)} color="white" />
+                      <Text style={styles.bookAppointmentText}>Request Appointment</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               )}
             </View>
@@ -1102,33 +1140,39 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: verticalScale(12),
+    paddingVertical: verticalScale(10),
     paddingHorizontal: scale(12),
     backgroundColor: "#F0F9FF",
     borderRadius: scale(8),
     borderLeftWidth: 3,
     borderLeftColor: "#10B981",
   },
-  dayHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: scale(8),
-    flex: 1,
-  },
-  dayName: {
+  dayNameText: {
     fontSize: moderateScale(14),
     fontWeight: "600",
     color: "#333",
   },
-  timeContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: scale(6),
-  },
-  timeText: {
-    fontSize: moderateScale(12),
+  scheduleTimeText: {
+    fontSize: moderateScale(13),
     color: "#666",
     fontWeight: "500",
+  },
+  scheduleDescription: {
+    fontSize: moderateScale(14),
+    color: "#666",
+    marginBottom: verticalScale(12),
+    lineHeight: moderateScale(20),
+  },
+  scheduleNoteContainer: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    backgroundColor: "#F0F9FF",
+    padding: scale(12),
+    borderRadius: scale(8),
+    marginTop: verticalScale(12),
+    gap: scale(8),
+    borderLeftWidth: 3,
+    borderLeftColor: "#10B981",
   },
   scheduleNote: {
     fontSize: moderateScale(12),
@@ -1329,5 +1373,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  bookButtonWithoutSchedule: {
+    marginTop: verticalScale(16),
+    backgroundColor: "#6B7280",
+  },
+  noScheduleSubtext: {
+    fontSize: moderateScale(13),
+    color: "#999",
+    textAlign: "center",
+    marginTop: verticalScale(4),
+    marginBottom: verticalScale(8),
   },
 })

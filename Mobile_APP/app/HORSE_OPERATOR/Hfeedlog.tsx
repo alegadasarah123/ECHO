@@ -37,7 +37,7 @@ type Horse = {
   horse_name: string;
 }
 
-const API_BASE_URL = "http://192.168.1.9:8000/api/horse_operator"
+const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
 
 const FeedLogScreen = () => {
   const router = useRouter();
@@ -925,6 +925,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,
+    marginTop: 16,
   },
   backButton: {
     width: 44,

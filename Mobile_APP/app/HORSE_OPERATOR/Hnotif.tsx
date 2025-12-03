@@ -1,6 +1,6 @@
 // HORSE_OPERATOR/Hnotif.tsx
 
-import { useEffect, useState, useRef, useCallback } from "react"
+import { useEffect, useState, useRef, useCallback, useMemo } from "react"
 import {
   Alert,
   Dimensions,
@@ -12,9 +12,9 @@ import {
   View,
   Modal,
   Image,
-  Platform,
   RefreshControl,
 } from "react-native"
+import { useRouter } from "expo-router"
 import * as SecureStore from "expo-secure-store"
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
@@ -25,9 +25,9 @@ const { width, height } = Dimensions.get("window")
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+    shouldShowBanner: false,
     shouldShowList: true,
   }),
 });
@@ -74,22 +74,31 @@ const isValidUrl = (urlString: string): boolean => {
   }
 }
 
-// Custom fetch with timeout
-const fetchWithTimeout = async (url: string, options: RequestInit & { timeout?: number } = {}) => {
-  const { timeout = 10000, ...fetchOptions } = options;
-  
+// Custom fetch with error handling
+const fetchWithTimeout = async (url: string, options: RequestInit = {}) => {
   const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
+  const id = setTimeout(() => controller.abort(), 10000); // 10 second timeout
   
   try {
     const response = await fetch(url, {
-      ...fetchOptions,
+      ...options,
       signal: controller.signal
     });
     clearTimeout(id);
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    
+    const contentType = response.headers.get('content-type');
+    if (!contentType || !contentType.includes('application/json')) {
+      throw new Error(`Expected JSON but got ${contentType}`);
+    }
+    
     return response;
-  } catch (error) {
+  } catch (error: any) {
     clearTimeout(id);
+    console.error(`[Fetch] Error for ${url}:`, error.message);
     throw error;
   }
 };
@@ -99,7 +108,7 @@ interface Notification {
   title: string
   message: string
   time: string
-  type: "health" | "reminder" | "system" | "activity" | "appointment" | "feed"
+  type: "health" | "reminder" | "system" | "activity" | "appointment" | "feed" | "water"
   priority: "high" | "medium" | "low"
   read: boolean
   imageUrls?: string[]
@@ -116,10 +125,13 @@ interface Notification {
     completed_at?: string
     fed_by?: string
   }
-}
-
-interface NotificationsPageProps {
-  onBack: () => void
+  waterData?: {
+    quantity?: string
+    time?: string
+    completed_at?: string
+    given_by?: string
+    notes?: string
+  }
 }
 
 async function trackNotificationViewed(type: 'feed' | 'water' | 'announcement'): Promise<void> {
@@ -133,100 +145,95 @@ async function trackNotificationViewed(type: 'feed' | 'water' | 'announcement'):
   }
 }
 
-// Get push token
-async function registerForPushNotificationsAsync(): Promise<string | undefined> {
-  let token;
-
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF231F7C',
-    });
-  }
-
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-  
-  if (finalStatus !== 'granted') {
-    alert('Failed to get push token for push notification!');
-    return;
-  }
-  
-  try {
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: 'cf3222dd-533d-43ff-8a4f-43661b38e862',
-    });
-    token = tokenData.data;
-  } catch (error) {
-    console.error('Error getting push token:', error);
-  }
-
-  return token;
-}
-
-// Send local notification
-async function sendLocalNotification(title: string, body: string, data?: any) {
-  try {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: title,
-        body: body,
-        data: data || {},
-        sound: 'default',
-        priority: Notifications.AndroidNotificationPriority.MAX,
-        vibrate: [0, 250, 250, 250],
-        badge: 1,
-      },
-      trigger: null,
-    });
-    console.log('[Notification] Local notification sent with sound');
-  } catch (error) {
-    console.error('[Notification] Error sending notification:', error);
-  }
-}
-
-export default function NotificationsPage({ onBack }: NotificationsPageProps) {
+export default function NotificationsPage() {
+  const router = useRouter()
   const safeArea = getSafeAreaPadding()
 
   const [notifications, setNotifications] = useState<Notification[]>([])
-  const [filter, setFilter] = useState<"all" | "unread" | "health" | "reminders" | "feed">("all")
+  const [filter, setFilter] = useState<"all" | "unread" | "health" | "reminders" | "system">("all")
   const [selectedNotification, setSelectedNotification] = useState<Notification | null>(null)
   const [modalVisible, setModalVisible] = useState(false)
   const [imageError, setImageError] = useState(false)
-  const [imageLoading, setImageLoading] = useState(false)
+  const [imageLoading, setImageLoading] = useState(true)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [newReminderCount, setNewReminderCount] = useState(0)
+  const [initialLoadDone, setInitialLoadDone] = useState(false)
 
-  const notificationListener = useRef<Notifications.EventSubscription | null>(null);
-  const responseListener = useRef<Notifications.EventSubscription | null>(null);
   const isMountedRef = useRef(true);
-  const lastFetchTimeRef = useRef<number>(0);
   const fetchInProgressRef = useRef(false);
 
   // Get user ID from SecureStore
   const getValidUserId = useCallback(async () => {
     try {
-      const userId = await SecureStore.getItemAsync("user_id");
-      if (!userId || userId === "undefined" || userId === "null") {
-        console.warn("[Notification] Invalid user ID:", userId);
+      // First try to get from user_data
+      const userDataString = await SecureStore.getItemAsync("user_data");
+      console.log("[Notification] Raw user_data from SecureStore:", userDataString);
+      
+      if (userDataString) {
+        try {
+          const userData = JSON.parse(userDataString);
+          const id = userData.user_id || userData.id;
+          
+          if (id && id !== "null" && id !== "undefined" && id !== "NULL") {
+            const cleanId = id.replace(/['"]/g, '').trim();
+            
+            // Check if it's a valid UUID
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (uuidRegex.test(cleanId)) {
+              console.log("[Notification] Valid UUID found in user_data:", cleanId);
+              return cleanId;
+            }
+            
+            // If it's not a UUID but has some value, still try to use it
+            if (cleanId.length > 0) {
+              console.log("[Notification] Using non-UUID user ID from user_data:", cleanId);
+              return cleanId;
+            }
+          }
+        } catch (e) {
+          console.error("[Notification] Error parsing user_data:", e);
+        }
+      }
+      
+      // Fall back to user_id
+      const storedUserId = await SecureStore.getItemAsync("user_id");
+      console.log("[Notification] Raw user_id from SecureStore:", storedUserId);
+      
+      if (!storedUserId || storedUserId === "undefined" || storedUserId === "null" || storedUserId === "NULL") {
+        console.warn("[Notification] Invalid user ID in SecureStore:", storedUserId);
+        
+        // Try alternative storage location
+        const altUserId = await AsyncStorage.getItem("user_id");
+        console.log("[Notification] Trying AsyncStorage, found:", altUserId);
+        
+        if (altUserId && altUserId !== "null" && altUserId !== "undefined") {
+          const cleanId = altUserId.replace(/['"]/g, '').trim();
+          console.log("[Notification] Using user ID from AsyncStorage:", cleanId);
+          return cleanId;
+        }
+        
+        console.warn("[Notification] No valid user ID found in any storage");
         return null;
       }
       
+      // Clean the ID - remove quotes and trim
+      const cleanUserId = storedUserId.replace(/['"]/g, '').trim();
+      
       // Validate UUID format
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      if (uuidRegex.test(userId)) {
-        console.log("[Notification] Using user ID from SecureStore:", userId);
-        return userId;
+      if (uuidRegex.test(cleanUserId)) {
+        console.log("[Notification] Valid UUID found:", cleanUserId);
+        return cleanUserId;
       }
       
-      console.warn("[Notification] Invalid UUID format:", userId);
+      // If it's not a UUID but has some value, still try to use it
+      if (cleanUserId.length > 0) {
+        console.log("[Notification] Using non-UUID user ID:", cleanUserId);
+        return cleanUserId;
+      }
+      
+      console.warn("[Notification] No valid user ID available");
       return null;
     } catch (error) {
       console.error("[Notification] Error getting user ID:", error);
@@ -234,7 +241,29 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
     }
   }, []);
 
-  const mapAnnouncementType = (title: string, content: string): Notification["type"] => {
+  // Load read status
+  const loadReadStatus = useCallback(async () => {
+    try {
+      const readStatusString = await SecureStore.getItemAsync("notification_read_status")
+      if (readStatusString) {
+        return JSON.parse(readStatusString)
+      }
+    } catch (error) {
+      console.error("Error loading read status:", error)
+    }
+    return {}
+  }, []);
+
+  // Save read status
+  const saveReadStatus = useCallback(async (readStatus: { [key: string]: boolean }) => {
+    try {
+      await SecureStore.setItemAsync("notification_read_status", JSON.stringify(readStatus))
+    } catch (error) {
+      console.error("Error saving read status:", error)
+    }
+  }, []);
+
+  const mapAnnouncementType = useCallback((title: string, content: string): Notification["type"] => {
     const lowerTitle = title.toLowerCase()
     const lowerContent = content.toLowerCase()
 
@@ -273,10 +302,18 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       return "activity"
     }
 
-    return "system"
-  }
+    if (lowerTitle.includes("water") || lowerContent.includes("water")) {
+      return "water"
+    }
 
-  const mapPriority = (title: string, content: string): Notification["priority"] => {
+    if (lowerTitle.includes("feed") || lowerContent.includes("feed") || lowerContent.includes("food")) {
+      return "feed"
+    }
+
+    return "system"
+  }, []);
+
+  const mapPriority = useCallback((title: string, content: string): Notification["priority"] => {
     const lowerTitle = title.toLowerCase()
     const lowerContent = content.toLowerCase()
 
@@ -316,28 +353,9 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
     }
 
     return "medium"
-  }
+  }, []);
 
-  const loadReadStatus = async () => {
-    try {
-      const readStatusString = await SecureStore.getItemAsync("notification_read_status")
-      if (readStatusString) {
-        return JSON.parse(readStatusString)
-      }
-    } catch (error) {
-      console.error("Error loading read status:", error)
-    }
-    return {}
-  }
-
-  const saveReadStatus = async (readStatus: { [key: string]: boolean }) => {
-    try {
-      await SecureStore.setItemAsync("notification_read_status", JSON.stringify(readStatus))
-    } catch (error) {
-      console.error("Error saving read status:", error)
-    }
-  }
-
+  // Fetch triggered notifications (reminders/scheduled tasks)
   const fetchTriggeredNotifications = useCallback(async () => {
     if (fetchInProgressRef.current) {
       console.log('[Notification] Fetch already in progress, skipping');
@@ -356,83 +374,86 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       console.log('[Notification] Fetching triggered notifications for user:', userId);
       
       const encodedUser = encodeURIComponent(userId);
-      const response = await fetchWithTimeout(
-        `http://192.168.1.9:8000/api/horse_operator/feed-water-notifications/?op_id=${encodedUser}`,
-        {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          timeout: 10000, // 10 second timeout
+      
+      try {
+        const response = await fetchWithTimeout(
+          `http://192.168.101.6:8000/api/horse_operator/check_current_schedules/?op_id=${encodedUser}`,
+          {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+        
+        if (!response.ok) {
+          console.error('[Notification] Failed to fetch scheduled notifications, status:', response.status);
+          return [];
         }
-      );
-      
-      if (!response.ok) {
-        console.error('[Notification] Failed to fetch feed/water notifications, status:', response.status);
-        return [];
-      }
-      
-      const data = await response.json();
-      console.log('[Notification] Fetched feed/water notifications:', data);
-      
-      if (!data.success || !data.data) {
-        return [];
-      }
-      
-      const savedReadStatus = await loadReadStatus();
-      const allKeys = await AsyncStorage.getAllKeys();
-      const triggeredKeys = allKeys.filter(key => key.startsWith('triggered_'));
-      const triggeredIds = new Set(triggeredKeys.map(key => key.replace('triggered_', '')));
-      
-      console.log('[Notification] Triggered IDs from storage:', Array.from(triggeredIds));
-      
-      const triggeredNotifications: Notification[] = [];
-      
-      for (const notif of data.data) {
-        if (triggeredIds.has(notif.id)) {
-          const triggerData = await AsyncStorage.getItem(`triggered_${notif.id}`);
-          let displayTime = notif.timestamp;
-          let timestamp = notif.timestamp;
-          let isNew = false;
+        
+        const data = await response.json();
+        console.log('[Notification] Fetched scheduled notifications:', data);
+        
+        if (!data.success || !data.data) {
+          console.log('[Notification] No scheduled notifications returned from API');
+          return [];
+        }
+        
+        const savedReadStatus = await loadReadStatus();
+        const nowDate = new Date();
+        const displayTime = nowDate.toLocaleDateString("en-US", {
+          year: "numeric",
+          month: "short",
+          day: "numeric",
+        }) + " at " + nowDate.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        
+        const triggeredNotifications: Notification[] = [];
+        
+        for (const schedule of data.data) {
+          const notifId = schedule.id || `schedule-${Date.now()}-${Math.random()}`;
+          const triggeredKey = `triggered_${notifId}`;
+          const alreadyTriggered = await AsyncStorage.getItem(triggeredKey);
           
-          if (triggerData) {
+          if (alreadyTriggered) {
             try {
-              const parsed = JSON.parse(triggerData);
-              displayTime = parsed.time || notif.timestamp;
-              timestamp = parsed.timestamp || notif.timestamp;
-              isNew = parsed.isNew || false;
+              const parsed = JSON.parse(alreadyTriggered);
+              triggeredNotifications.push({
+                id: notifId,
+                title: schedule.title || 'Reminder',
+                message: schedule.message || 'Time for scheduled task',
+                time: parsed.time || displayTime,
+                type: 'reminder' as const,
+                priority: 'medium' as const,
+                read: Boolean(savedReadStatus[notifId] || false),
+                horseName: schedule.horse_name || schedule.horseName,
+                scheduledTime: schedule.scheduled_time || schedule.time,
+                timestamp: parsed.timestamp || nowDate.toISOString(),
+                isNew: parsed.isNew || false,
+              });
             } catch (e) {
               console.error('[Notification] Error parsing trigger data:', e);
             }
           }
-          
-          triggeredNotifications.push({
-            id: notif.id,
-            title: notif.title,
-            message: notif.message,
-            time: displayTime,
-            type: 'reminder' as const,
-            priority: 'medium' as const,
-            read: Boolean(savedReadStatus[notif.id] || false),
-            horseName: notif.horse_name,
-            scheduledTime: notif.scheduled_time,
-            timestamp: timestamp,
-            isNew: isNew,
-          });
         }
+        
+        console.log('[Notification] Processed triggered notifications:', triggeredNotifications.length);
+        return triggeredNotifications;
+      } catch (error) {
+        return [];
       }
-      
-      console.log('[Notification] Processed triggered notifications:', triggeredNotifications.length);
-      return triggeredNotifications;
     } catch (error) {
       console.error('[Notification] Error fetching triggered notifications:', error);
       return [];
     } finally {
       fetchInProgressRef.current = false;
     }
-  }, [getValidUserId]);
+  }, [getValidUserId, loadReadStatus]);
 
+  // Fetch announcements
   const fetchAnnouncements = useCallback(async () => {
     if (fetchInProgressRef.current) {
       console.log('[Notification] Fetch already in progress, skipping');
@@ -442,14 +463,11 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
     fetchInProgressRef.current = true;
 
     try {
-      const userId = await getValidUserId();
-      if (!userId) {
-        console.log('[Notification] No valid user ID for announcements');
-        return [];
-      }
-
-      const encodedUser = encodeURIComponent(userId)
-      const apiUrl = `http://192.168.1.9:8000/api/horse_operator/announcements/?user=${encodedUser}`
+      // Still call it for logging purposes but don't store the result
+      await getValidUserId(); 
+      
+      // Use the correct endpoint from your backend: get_announcements
+      const apiUrl = `http://192.168.101.6:8000/api/horse_operator/get_announcements/`
 
       console.log("[v0] Fetching announcements from:", apiUrl)
 
@@ -459,12 +477,7 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
           Accept: "application/json",
           "Content-Type": "application/json",
         },
-        timeout: 10000, // 10 second timeout
       })
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
 
       const contentType = response.headers.get("content-type")
       if (!contentType || !contentType.includes("application/json")) {
@@ -478,9 +491,17 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       const lastCheckedKey = 'last_announcement_check';
       const lastChecked = await AsyncStorage.getItem(lastCheckedKey);
 
-      let announcementsArray = data.announcements || data.data || data.results || []
-      if (data && typeof data === "object" && !Array.isArray(data)) {
-        announcementsArray = data.announcements || data.data || data.results || [data]
+      // Parse announcements from API response
+      let announcementsArray = [];
+      
+      if (Array.isArray(data)) {
+        announcementsArray = data;
+      } else if (data && typeof data === "object") {
+        announcementsArray = data.announcements || data.data || data.results || [];
+        if (!Array.isArray(announcementsArray) && data.announce_id) {
+          // Single announcement object
+          announcementsArray = [data];
+        }
       }
 
       if (!Array.isArray(announcementsArray)) {
@@ -488,21 +509,15 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
         announcementsArray = [announcementsArray]
       }
 
-      let hasNewAnnouncements = false;
-
       const transformedNotifications: Notification[] = announcementsArray.map((item: any, index: number) => {
         const announceId = item.announce_id || item.id || `announce-${Date.now()}-${index}`
-        const announceTitle = item.announce_title || item.announce_titl || item.title || "CTU Announcement"
+        const announceTitle = item.announce_title || item.announce_titl || item.title || "Announcement"
         const announceContent =
           item.announce_content || item.announce_cor || item.message || item.content || "New announcement"
         const announceDate =
           item.announce_date || item.announce_dat || item.timestamp || item.created_at || new Date().toISOString()
 
-        if (lastChecked && new Date(announceDate) > new Date(lastChecked)) {
-          hasNewAnnouncements = true;
-        }
-
-        const rawImageUrl = item.image_url || item.announce_image || item.announce_imt
+        const rawImageUrl = item.image_url || item.announce_image || item.announce_imt || item.announce_img
         let imageUrls: string[] = []
 
         console.log("[v0] Processing images for announcement:", announceId, {
@@ -575,40 +590,23 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
           imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
           userId: userId,
           timestamp: announceDate,
-          isNew: false,
+          isNew: savedReadStatus[notificationId] === undefined && (!lastChecked || new Date(announceDate) > new Date(lastChecked)),
         }
       })
-
-      if (hasNewAnnouncements && lastChecked) {
-        const newAnnouncementsCount = transformedNotifications.filter(n => 
-          new Date(n.timestamp!) > new Date(lastChecked)
-        ).length;
-        
-        if (newAnnouncementsCount > 0) {
-          await sendLocalNotification(
-            '📢 New Announcements',
-            `You have ${newAnnouncementsCount} new announcement${newAnnouncementsCount > 1 ? 's' : ''}`,
-            { type: 'announcement', count: newAnnouncementsCount }
-          );
-        }
-      }
 
       await AsyncStorage.setItem(lastCheckedKey, new Date().toISOString());
 
       return transformedNotifications;
-    } catch (err: any) {
-      console.error("[v0] Fetch Error Details:", {
-        message: err.message,
-        stack: err.stack,
-      })
+    } catch (error) { // FIXED: Properly handle error type
+      console.error("[v0] Fetch Error:", error);
       return [];
     } finally {
       fetchInProgressRef.current = false;
     }
-  }, [getValidUserId])
+  }, [getValidUserId, loadReadStatus, mapAnnouncementType, mapPriority]);
 
-  // NEW: Fetch feed notifications
-  const fetchFeedNotifications = useCallback(async () => {
+  // Fetch feed and water notifications
+  const fetchActivityNotifications = useCallback(async () => {
     if (fetchInProgressRef.current) {
       console.log('[Notification] Fetch already in progress, skipping');
       return [];
@@ -619,93 +617,203 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
     try {
       const userId = await getValidUserId();
       if (!userId) {
-        console.log('[Notification] No valid user ID for feed notifications');
+        console.log('[Notification] No valid user ID for activity notifications');
         return [];
       }
 
-      console.log('[Notification] Fetching feed notifications for user:', userId);
+      console.log('[Notification] Fetching activity notifications for user:', userId);
       
-      // Fetch feed records from your feed endpoint
-      const response = await fetchWithTimeout(
-        `http://192.168.1.9:8000/api/horse_operator/get_recent_feed_records/?user_id=${encodeURIComponent(userId)}`,
-        {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-          },
-          timeout: 10000,
-        }
-      );
-
-      if (!response.ok) {
-        console.error('[Notification] Failed to fetch feed notifications, status:', response.status);
-        return [];
-      }
-
-      const data = await response.json();
-      console.log('[Notification] Fetched feed records:', data);
-
       const savedReadStatus = await loadReadStatus();
-      const feedNotifications: Notification[] = [];
+      const allActivityNotifications: Notification[] = [];
 
-      if (Array.isArray(data)) {
-        for (const feedRecord of data) {
-          const notificationId = `feed_${feedRecord.fd_id || feedRecord.id}`;
-          
-          // Format the time properly
-          const feedTime = new Date(feedRecord.completed_at || feedRecord.fd_time || Date.now());
-          const displayTime = feedTime.toLocaleDateString("en-US", {
-            year: "numeric",
-            month: "short",
-            day: "numeric",
-          }) + " at " + feedTime.toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          });
-
-          // Create feed notification
-          feedNotifications.push({
-            id: notificationId,
-            title: `${getTypeIcon('feed')} ${feedRecord.fd_meal_type || 'Meal'} - ${feedRecord.horse_name || feedRecord.horseName || 'Horse'}`,
-            message: `Fed ${feedRecord.fd_qty || 'some'} of ${feedRecord.fd_food_type || 'food'}${feedRecord.completed ? ' (Completed)' : ''}`,
-            time: displayTime,
-            type: 'feed' as const,
-            priority: 'medium' as const,
-            read: Boolean(savedReadStatus[notificationId] || false),
-            horseName: feedRecord.horse_name || feedRecord.horseName,
-            timestamp: feedRecord.completed_at || feedRecord.fd_time,
-            isNew: savedReadStatus[notificationId] === undefined,
-            feedData: {
-              fd_food_type: feedRecord.fd_food_type,
-              fd_qty: feedRecord.fd_qty,
-              fd_time: feedRecord.fd_time,
-              fd_meal_type: feedRecord.fd_meal_type,
-              completed_at: feedRecord.completed_at,
-              fed_by: feedRecord.fed_by || feedRecord.user_name || 'Unknown',
+      // Fetch feed logs for completed feed records
+      try {
+        const feedLogsResponse = await fetchWithTimeout(
+          `http://192.168.101.6:8000/api/horse_operator/get_feed_logs/?user_id=${encodeURIComponent(userId)}`,
+          {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
             },
-          });
+          }
+        );
+
+        if (feedLogsResponse.ok) {
+          const feedLogsData = await feedLogsResponse.json();
+          console.log('[Notification] Fetched feed logs:', feedLogsData);
+
+          if (Array.isArray(feedLogsData)) {
+            for (const feedLog of feedLogsData) {
+              const notificationId = `feed_log_${feedLog.log_id || feedLog.id || `feed-${Date.now()}-${Math.random()}`}`;
+              
+              // Format the time properly
+              const feedTime = new Date(feedLog.timestamp || feedLog.created_at || Date.now());
+              const displayTime = feedTime.toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              }) + " at " + feedTime.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+
+              allActivityNotifications.push({
+                id: notificationId,
+                title: `🍽️ ${feedLog.meal || feedLog.fd_meal_type || 'Meal'} - ${feedLog.horse || feedLog.horse_name || 'Horse'}`,
+                message: `${feedLog.user_full_name || 'Someone'} fed ${feedLog.horse || feedLog.horse_name || 'horse'}: ${feedLog.food || feedLog.fd_food_type || 'food'} (${feedLog.amount || feedLog.fd_qty || 'some'})`,
+                time: displayTime,
+                type: 'feed' as const,
+                priority: 'medium' as const,
+                read: Boolean(savedReadStatus[notificationId] || false),
+                horseName: feedLog.horse || feedLog.horse_name,
+                timestamp: feedLog.timestamp || feedLog.created_at,
+                isNew: savedReadStatus[notificationId] === undefined,
+                feedData: {
+                  fd_food_type: feedLog.food || feedLog.fd_food_type || 'Food',
+                  fd_qty: feedLog.amount || feedLog.fd_qty || 'Unknown',
+                  fd_time: feedLog.time || feedLog.fd_time || 'Unknown',
+                  fd_meal_type: feedLog.meal || feedLog.fd_meal_type || 'Meal',
+                  completed_at: feedLog.timestamp || feedLog.created_at,
+                  fed_by: feedLog.user_full_name || 'Unknown',
+                },
+              });
+            }
+          }
         }
+      } catch (feedLogsError) {
+        console.error('[Notification] Error fetching feed logs:', feedLogsError);
       }
 
-      console.log('[Notification] Processed feed notifications:', feedNotifications.length);
-      return feedNotifications;
+      // Fetch water logs
+      try {
+        const waterLogsResponse = await fetchWithTimeout(
+          `http://192.168.101.6:8000/api/horse_operator/get_water_logs/?user_id=${encodeURIComponent(userId)}`,
+          {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        if (waterLogsResponse.ok) {
+          const waterLogsData = await waterLogsResponse.json();
+          console.log('[Notification] Fetched water logs:', waterLogsData);
+
+          if (Array.isArray(waterLogsData)) {
+            for (const waterLog of waterLogsData) {
+              const notificationId = `water_log_${waterLog.id || `water-${Date.now()}-${Math.random()}`}`;
+              
+              const waterTime = new Date(waterLog.timestamp || waterLog.created_at || Date.now());
+              const displayTime = waterTime.toLocaleDateString("en-US", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              }) + " at " + waterTime.toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+
+              allActivityNotifications.push({
+                id: notificationId,
+                title: `💧 Water - ${waterLog.horse || waterLog.horse_name || 'Horse'}`,
+                message: `${waterLog.notes || `Someone gave water to ${waterLog.horse || waterLog.horse_name || 'horse'} (${waterLog.period || 'Period'})`}`,
+                time: displayTime,
+                type: 'water' as const,
+                priority: 'medium' as const,
+                read: Boolean(savedReadStatus[notificationId] || false),
+                horseName: waterLog.horse || waterLog.horse_name,
+                timestamp: waterLog.timestamp || waterLog.created_at,
+                isNew: savedReadStatus[notificationId] === undefined,
+                waterData: {
+                  quantity: waterLog.amount || 'Unknown',
+                  time: waterLog.time || displayTime,
+                  completed_at: waterLog.timestamp || waterLog.created_at,
+                  given_by: waterLog.user_full_name || 'Someone',
+                  notes: waterLog.notes || `Water given (${waterLog.period || 'Period'})`,
+                },
+              });
+            }
+          }
+        }
+      } catch (waterLogsError) {
+        console.error('[Notification] Error fetching water logs:', waterLogsError);
+      }
+
+      // Fetch feeding schedules for reminders
+      try {
+        const feedingScheduleResponse = await fetchWithTimeout(
+          `http://192.168.101.6:8000/api/horse_operator/get_feeding_schedule/?user_id=${encodeURIComponent(userId)}`,
+          {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+            },
+          }
+        );
+
+        if (feedingScheduleResponse.ok) {
+          const feedingScheduleData = await feedingScheduleResponse.json();
+          console.log('[Notification] Fetched feeding schedule:', feedingScheduleData);
+
+          if (Array.isArray(feedingScheduleData)) {
+            for (const schedule of feedingScheduleData) {
+              // Only include upcoming/current schedules (not completed)
+              if (!schedule.completed) {
+                const notificationId = `feed_schedule_${schedule.fd_id || `schedule-${Date.now()}-${Math.random()}`}`;
+                
+                const scheduleTime = new Date();
+                const displayTime = scheduleTime.toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                }) + " at " + scheduleTime.toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+
+                allActivityNotifications.push({
+                  id: notificationId,
+                  title: `⏰ ${schedule.fd_meal_type || 'Meal'} - ${schedule.horse_name || 'Horse'}`,
+                  message: `Start the day with a nutritious meal! ${schedule.fd_food_type || 'Food'} (${schedule.fd_qty || 'some'}) - Perfect time for a energy-boosting meal!`,
+                  time: displayTime,
+                  type: 'reminder' as const,
+                  priority: 'medium' as const,
+                  read: Boolean(savedReadStatus[notificationId] || false),
+                  horseName: schedule.horse_name,
+                  scheduledTime: schedule.fd_time,
+                  timestamp: scheduleTime.toISOString(),
+                  isNew: savedReadStatus[notificationId] === undefined,
+                  feedData: {
+                    fd_food_type: schedule.fd_food_type || 'Food',
+                    fd_qty: schedule.fd_qty || 'Unknown',
+                    fd_time: schedule.fd_time || 'Unknown',
+                    fd_meal_type: schedule.fd_meal_type || 'Meal',
+                  },
+                });
+              }
+            }
+          }
+        }
+      } catch (feedingScheduleError) {
+        console.error('[Notification] Error fetching feeding schedule:', feedingScheduleError);
+      }
+
+      console.log('[Notification] Processed activity notifications:', allActivityNotifications.length);
+      return allActivityNotifications;
     } catch (error) {
-      console.error('[Notification] Error fetching feed notifications:', error);
+      console.error('[Notification] Error fetching activity notifications:', error);
       return [];
     } finally {
       fetchInProgressRef.current = false;
     }
-  }, [getValidUserId]);
+  }, [getValidUserId, loadReadStatus]);
 
+  // Main fetch function
   const fetchNotifications = useCallback(async (forceRefresh = false) => {
-    // Prevent too frequent fetches (minimum 10 seconds between manual refreshes)
-    const now = Date.now();
-    if (!forceRefresh && now - lastFetchTimeRef.current < 10000) {
-      console.log('[Notification] Skipping fetch - too soon since last fetch');
-      return;
-    }
-
     if (fetchInProgressRef.current) {
       console.log('[Notification] Fetch already in progress, skipping');
       return;
@@ -714,23 +822,29 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
     try {
       console.log('[Notification] Starting to fetch all notifications...');
       setIsRefreshing(true);
-      lastFetchTimeRef.current = now;
       
-      const [announcements, triggered, feed] = await Promise.all([
-        fetchAnnouncements(),
-        fetchTriggeredNotifications(),
-        fetchFeedNotifications()
-      ]);
+      // Fetch all types of notifications in sequence
+      const announcements = await fetchAnnouncements();
+      const triggered = await fetchTriggeredNotifications();
+      const activities = await fetchActivityNotifications();
       
       console.log('[Notification] Fetched:', {
         announcements: announcements.length,
         triggered: triggered.length,
-        feed: feed.length
+        activities: activities.length
       });
       
-      const allNotifications = [...announcements, ...triggered, ...feed];
+      // Combine all notifications
+      let allNotifications = [...announcements, ...triggered, ...activities];
       
-      // Sort by timestamp (newest first) and mark new ones
+      if (allNotifications.length === 0 && !initialLoadDone) {
+        console.log('[Notification] No notifications from API, showing empty state');
+        setNotifications([]);
+        setInitialLoadDone(true);
+        return;
+      }
+      
+      // Sort by timestamp (newest first)
       allNotifications.sort((a: Notification, b: Notification) => {
         const timeA = new Date(a.timestamp || a.time).getTime();
         const timeB = new Date(b.timestamp || b.time).getTime();
@@ -739,22 +853,32 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
 
       console.log("[v0] Total notifications:", allNotifications.length);
       
+      // Calculate new reminder count (feed, water, health, appointments)
+      const newReminders = allNotifications.filter(n => 
+        (n.type === 'feed' || n.type === 'water' || n.type === 'health' || n.type === 'appointment' || n.type === 'reminder') && 
+        !n.read
+      ).length;
+      setNewReminderCount(newReminders);
+      
       if (isMountedRef.current) {
         setNotifications(allNotifications);
+        if (!initialLoadDone) {
+          setInitialLoadDone(true);
+        }
       }
     } catch (error) {
       console.error("[v0] Error fetching notifications:", error);
-      if (isMountedRef.current) {
-        Alert.alert("Connection Error", "Could not fetch notifications. Please try again.", [
-          { text: "OK" },
-        ]);
+      if (isMountedRef.current && notifications.length === 0 && !initialLoadDone) {
+        // Show empty state if fetch fails
+        setNotifications([]);
+        setInitialLoadDone(true);
       }
     } finally {
       if (isMountedRef.current) {
         setIsRefreshing(false);
       }
     }
-  }, [fetchAnnouncements, fetchTriggeredNotifications, fetchFeedNotifications]);
+  }, [fetchAnnouncements, fetchTriggeredNotifications, fetchActivityNotifications, initialLoadDone, notifications.length]);
 
   const markAsRead = useCallback(async (notificationId: string) => {
     try {
@@ -785,22 +909,25 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
         }
       }
       
-      // Update notification count
+      // Update new reminder count if notification is new and is a reminder type
       const notification = notifications.find(n => n.id === notificationId);
-      if (notification?.isNew) {
-        // Update badge count
-        const unreadCount = notifications.filter(n => !n.read && n.id !== notificationId).length;
-        await Notifications.setBadgeCountAsync(unreadCount);
+      if (notification && !notification.read && 
+          (notification.type === 'reminder' || notification.type === 'feed' || 
+           notification.type === 'water' || notification.type === 'health' || 
+           notification.type === 'appointment')) {
+        const newCount = Math.max(0, newReminderCount - 1);
+        setNewReminderCount(newCount);
       }
     } catch (error) {
       console.error('[Notification] Error marking as read:', error);
     }
-  }, [notifications]);
+  }, [notifications, newReminderCount, loadReadStatus, saveReadStatus]);
 
   const handleNotificationPress = useCallback(async (notification: Notification) => {
     console.log("[v0] Notification pressed:", notification.title);
     console.log("[v0] Notification type:", notification.type);
     console.log("[v0] Feed data:", notification.feedData);
+    console.log("[v0] Water data:", notification.waterData);
 
     setImageError(false);
     setImageLoading(true);
@@ -820,58 +947,26 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
   }, [markAsRead]);
 
   useEffect(() => {
-    isMountedRef.current = true;
-    
-    console.log('[Notification] Setting up notification listeners...');
-    
-    // Register for push notifications
-    registerForPushNotificationsAsync().then(token => {
-      if (token) {
-        console.log('Push token:', token);
-      }
-    });
+    const loadInitialData = async () => {
+      isMountedRef.current = true;
+      
+      console.log('[Notification] Setting up notification listeners...');
 
-    // Listen for incoming notifications when app is foreground
-    notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
-      console.log('Notification received:', notification);
-      // Refresh notifications when new one comes in
-      fetchNotifications(true);
-    });
-
-    // Listen for user tapping on notification
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-      console.log('User tapped notification:', response);
-      const data = response.notification.request.content.data;
-      if (data.id) {
-        const notif = notifications.find(n => n.id === data.id);
-        if (notif) {
-          handleNotificationPress(notif);
-        }
+      // Initial fetch when component mounts (only once)
+      if (!initialLoadDone) {
+        await fetchNotifications();
       }
-    });
+    };
 
-    // Initial fetch when component mounts
-    const initialFetchTimer = setTimeout(() => {
-      if (isMountedRef.current) {
-        fetchNotifications(true);
-      }
-    }, 1000);
+    loadInitialData();
 
     return () => {
-      console.log('[Notification] Cleaning up notification listeners...');
+      console.log('[Notification] Cleaning up...');
       isMountedRef.current = false;
-      
-      if (notificationListener.current) {
-        notificationListener.current.remove();
-      }
-      if (responseListener.current) {
-        responseListener.current.remove();
-      }
-      clearTimeout(initialFetchTimer);
     };
-  }, [fetchNotifications, handleNotificationPress, notifications]);
+  }, [fetchNotifications, initialLoadDone]);
 
-  const markAllAsRead = async () => {
+  const markAllAsRead = useCallback(async () => {
     try {
       const savedReadStatus = await loadReadStatus();
       const updatedReadStatus = { ...savedReadStatus };
@@ -901,31 +996,38 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
         }
       }
       
+      // Reset new reminder count
+      setNewReminderCount(0);
+      
       // Track views
       await trackNotificationViewed('announcement');
       await trackNotificationViewed('feed');
-      
-      // Reset badge count
-      await Notifications.setBadgeCountAsync(0);
       
       Alert.alert("Success", "All notifications marked as read");
     } catch (error) {
       console.error('[Notification] Error marking all as read:', error);
       Alert.alert("Error", "Failed to mark all notifications as read");
     }
-  };
+  }, [notifications, loadReadStatus, saveReadStatus]);
 
-  const deleteNotification = async (notificationId: string) => {
+  const deleteNotification = useCallback(async (notificationId: string) => {
     try {
       const notification = notifications.find(n => n.id === notificationId);
-      if (notification && (notification.type === 'reminder' || notification.type === 'feed')) {
-        // For feed notifications, you might want to handle deletion differently
+      if (notification && 
+          (notification.type === 'reminder' || notification.type === 'feed' || 
+           notification.type === 'water' || notification.type === 'health' || 
+           notification.type === 'appointment')) {
         console.log('[Notification] Removing notification:', notificationId);
         
         if (notification.type === 'reminder') {
           await AsyncStorage.removeItem(`triggered_${notificationId}`);
+          
+          // Update new reminder count if notification is new
+          if (!notification.read) {
+            const newCount = Math.max(0, newReminderCount - 1);
+            setNewReminderCount(newCount);
+          }
         }
-        // For feed notifications, we just remove from local state since they're from server
       }
       
       setNotifications((prev) => prev.filter(n => n.id !== notificationId));
@@ -933,31 +1035,34 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
         setModalVisible(false);
         setSelectedNotification(null);
       }
-      
-      const unreadCount = notifications.filter(n => !n.read && n.id !== notificationId).length;
-      await Notifications.setBadgeCountAsync(unreadCount);
     } catch (error) {
       console.error('[Notification] Error deleting notification:', error);
       Alert.alert("Error", "Failed to delete notification");
     }
-  };
+  }, [notifications, newReminderCount, selectedNotification]);
 
-  const getFilteredNotifications = () => {
+  const getFilteredNotifications = useCallback(() => {
     switch (filter) {
       case "unread":
         return notifications.filter(n => !n.read);
       case "health":
         return notifications.filter(n => n.type === "health");
       case "reminders":
-        return notifications.filter(n => n.type === "reminder");
-      case "feed":
-        return notifications.filter(n => n.type === "feed");
+        // Include all reminder types: feed, water, health, appointment, and reminder
+        return notifications.filter(n => 
+          n.type === "reminder" || 
+          n.type === "feed" || 
+          n.type === "water" || 
+          n.type === "appointment"
+        );
+      case "system":
+        return notifications.filter(n => n.type === "system" || n.type === "activity");
       default:
         return notifications;
     }
-  };
+  }, [filter, notifications]);
 
-  const getPriorityColor = (priority: Notification["priority"]) => {
+  const getPriorityColor = useCallback((priority: Notification["priority"]) => {
     switch (priority) {
       case "high":
         return "#FF4444";
@@ -968,9 +1073,9 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       default:
         return "#666";
     }
-  };
+  }, []);
 
-  const getTypeIcon = (type: Notification["type"]) => {
+  const getTypeIcon = useCallback((type: Notification["type"]) => {
     switch (type) {
       case "health":
         return "🏥";
@@ -984,69 +1089,80 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
         return "📅";
       case "feed":
         return "🍽️";
+      case "water":
+        return "💧";
       default:
         return "📢";
     }
-  };
+  }, []);
 
-  const getTypeLabel = (type: Notification["type"]) => {
+  const getTypeLabel = useCallback((type: Notification["type"]) => {
     switch (type) {
       case "health":
         return "Health";
       case "reminder":
         return "Reminder";
       case "system":
-        return "";
+        return "System";
       case "activity":
         return "Activity";
       case "appointment":
         return "Appointment";
       case "feed":
-        return "Feed Activity";
+        return "Feed";
+      case "water":
+        return "Water";
       default:
         return "Announcement";
     }
-  };
+  }, []);
 
-  const filteredNotifications = getFilteredNotifications();
-  const unreadCount = notifications.filter(n => !n.read).length;
-  const reminderCount = notifications.filter(n => n.type === "reminder").length;
-  const newReminderCount = notifications.filter(n => n.type === "reminder" && n.isNew).length;
-  const feedCount = notifications.filter(n => n.type === "feed").length;
-
-  const getAbsoluteImageUrl = (imageUrl: string): string => {
+  const getAbsoluteImageUrl = useCallback((imageUrl: string): string => {
     if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
       console.log("[v0] Image URL is already absolute:", imageUrl);
       return imageUrl;
     }
 
-    const baseUrl = "http://192.168.1.9:8000";
+    const baseUrl = "http://192.168.101.6:8000";
     const absoluteUrl = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : `${baseUrl}/${imageUrl}`;
     console.log("[v0] Converted relative URL to absolute:", imageUrl, "->", absoluteUrl);
     return absoluteUrl;
-  };
+  }, []);
 
-  const handleRefresh = async () => {
+  const handleRefresh = useCallback(async () => {
     await fetchNotifications(true);
-  };
+  }, [fetchNotifications]);
+
+  const handleBack = useCallback(() => {
+    router.back();
+  }, [router]);
+
+  // FIXED: Removed the redundant memo - using getFilteredNotifications directly
+  const filteredNotifications = getFilteredNotifications();
+  const unreadCount = useMemo(() => notifications.filter(n => !n.read).length, [notifications]);
+  const reminderCount = useMemo(() => notifications.filter(n => 
+    n.type === "reminder" || n.type === "feed" || n.type === "water" || n.type === "appointment"
+  ).length, [notifications]);
 
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: "#F5F5F5",
+      backgroundColor: "#F8F9FA",
     },
     header: {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      backgroundColor: "#C17A47",
+      backgroundColor: "#FFFFFF",
       paddingHorizontal: scale(16),
-      paddingBottom: verticalScale(12),
-      elevation: 4,
+      paddingVertical: verticalScale(12),
+      elevation: 2,
       shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 3.84,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.1,
+      shadowRadius: 2,
+      borderBottomWidth: 1,
+      borderBottomColor: "#E0E0E0",
     },
     backButton: {
       width: scale(40),
@@ -1054,21 +1170,21 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       justifyContent: "center",
       alignItems: "center",
       borderRadius: scale(20),
-      backgroundColor: "rgba(255,255,255,0.2)",
+      backgroundColor: "#F5F5F5",
     },
     backArrow: {
       width: scale(12),
       height: scale(12),
       borderLeftWidth: 2,
       borderBottomWidth: 2,
-      borderColor: "white",
+      borderColor: "#666",
       transform: [{ rotate: "45deg" }],
     },
     headerTitle: {
       flex: 1,
-      fontSize: moderateScale(17),
+      fontSize: moderateScale(20),
       fontWeight: "bold",
-      color: "white",
+      color: "#333",
       textAlign: "center",
       marginHorizontal: scale(10),
     },
@@ -1079,7 +1195,7 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
     markAllButton: {
       paddingHorizontal: scale(12),
       paddingVertical: verticalScale(6),
-      backgroundColor: "rgba(255,255,255,0.2)",
+      backgroundColor: "#C17A47",
       borderRadius: scale(6),
       marginLeft: scale(8),
     },
@@ -1091,7 +1207,7 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
     refreshButton: {
       paddingHorizontal: scale(12),
       paddingVertical: verticalScale(6),
-      backgroundColor: "rgba(255,255,255,0.2)",
+      backgroundColor: "#4CAF50",
       borderRadius: scale(6),
       marginRight: scale(8),
     },
@@ -1104,7 +1220,7 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       fontWeight: "600",
     },
     filterContainer: {
-      paddingVertical: verticalScale(8),
+      paddingVertical: verticalScale(10),
       backgroundColor: "#fff",
       borderBottomWidth: 1,
       borderBottomColor: "#E0E0E0",
@@ -1116,7 +1232,7 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       paddingHorizontal: scale(16),
       paddingVertical: verticalScale(8),
       borderRadius: scale(20),
-      backgroundColor: "#F0F0F0",
+      backgroundColor: "#F5F5F5",
       marginRight: scale(8),
       minWidth: scale(80),
       alignItems: "center",
@@ -1163,118 +1279,127 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       padding: scale(12),
       paddingBottom: verticalScale(20),
     },
-    notificationItem: {
-      backgroundColor: "#fff",
+    // PUSH NOTIFICATION STYLE - COMPACT CARD DESIGN
+    notificationCard: {
+      backgroundColor: "#FFFFFF",
       borderRadius: scale(12),
-      padding: scale(16),
       marginBottom: verticalScale(10),
+      overflow: "hidden",
       shadowColor: "#000",
-      shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: 0.1,
-      shadowRadius: 2,
-      elevation: 2,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.08,
+      shadowRadius: 4,
+      elevation: 3,
       borderWidth: 1,
       borderColor: "#F0F0F0",
-      minHeight: verticalScale(90),
     },
-    notificationItemUnread: {
+    notificationCardUnread: {
+      backgroundColor: "#FFF8F0",
       borderLeftWidth: 4,
       borderLeftColor: "#C17A47",
-      backgroundColor: "#FFF8F0",
     },
-    notificationHeader: {
+    notificationCardHeader: {
       flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "flex-start",
+      alignItems: "center",
+      padding: scale(12),
+      borderBottomWidth: 1,
+      borderBottomColor: "#F5F5F5",
     },
-    notificationLeft: {
-      flexDirection: "row",
-      flex: 1,
-      alignItems: "flex-start",
-    },
-    iconContainer: {
-      position: "relative",
-      marginRight: scale(12),
-      marginTop: scale(2),
-    },
-    notificationIcon: {
-      fontSize: moderateScale(24),
-    },
-    newBadge: {
-      position: "absolute",
-      top: scale(-6),
-      right: scale(-6),
-      backgroundColor: "#FF4444",
-      paddingHorizontal: scale(4),
-      paddingVertical: scale(2),
+    notificationAppIcon: {
+      width: scale(40),
+      height: scale(40),
       borderRadius: scale(8),
-      borderWidth: 1,
-      borderColor: "white",
+      backgroundColor: "#C17A47",
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: scale(12),
     },
-    newBadgeText: {
+    notificationAppIconText: {
+      fontSize: moderateScale(20),
       color: "white",
-      fontSize: moderateScale(8),
-      fontWeight: "bold",
-      letterSpacing: 0.5,
     },
-    notificationContent: {
+    notificationHeaderText: {
       flex: 1,
+    },
+    notificationAppName: {
+      fontSize: moderateScale(14),
+      fontWeight: "bold",
+      color: "#333",
+      marginBottom: scale(2),
+    },
+    notificationTime: {
+      fontSize: moderateScale(11),
+      color: "#999",
+    },
+    notificationBody: {
+      padding: scale(12),
     },
     notificationTitle: {
       fontSize: moderateScale(16),
-      fontWeight: "600",
-      color: "#333",
-      marginBottom: verticalScale(4),
-    },
-    notificationTitleUnread: {
       fontWeight: "bold",
-      color: "#C17A47",
+      color: "#333",
+      marginBottom: verticalScale(6),
     },
     notificationMessage: {
       fontSize: moderateScale(14),
       color: "#666",
       lineHeight: moderateScale(20),
+      marginBottom: verticalScale(8),
     },
-    horseNameBadge: {
-      fontSize: moderateScale(12),
-      color: "#8B5A2B",
-      backgroundColor: "#FFF3E0",
+    notificationMeta: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginTop: verticalScale(6),
+    },
+    notificationTypeBadge: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#F0F0F0",
       paddingHorizontal: scale(8),
       paddingVertical: verticalScale(4),
-      borderRadius: scale(8),
-      marginTop: verticalScale(6),
-      alignSelf: "flex-start",
+      borderRadius: scale(12),
+    },
+    notificationTypeIcon: {
+      fontSize: moderateScale(14),
+      marginRight: scale(4),
+    },
+    notificationTypeText: {
+      fontSize: moderateScale(12),
+      color: "#666",
+      fontWeight: "500",
+    },
+    horseNameBadge: {
+      backgroundColor: "#E3F2FD",
+      paddingHorizontal: scale(8),
+      paddingVertical: verticalScale(4),
+      borderRadius: scale(12),
+    },
+    horseNameText: {
+      fontSize: moderateScale(12),
+      color: "#1976D2",
       fontWeight: "600",
     },
-    notificationRight: {
-      justifyContent: "flex-start",
-      alignItems: "center",
-      marginLeft: scale(8),
-      paddingTop: scale(2),
-    },
-    priorityDot: {
-      width: scale(12),
-      height: scale(12),
-      borderRadius: scale(6),
-      marginBottom: verticalScale(6),
-    },
-    unreadDot: {
+    readIndicator: {
       width: scale(8),
       height: scale(8),
       borderRadius: scale(4),
-      backgroundColor: "#E53E3E",
-    },
-    notificationTime: {
-      fontSize: moderateScale(11),
-      color: "#999",
-      marginTop: verticalScale(8),
-      fontStyle: "italic",
+      backgroundColor: "#C17A47",
+      position: "absolute",
+      top: scale(12),
+      right: scale(12),
     },
     emptyState: {
       flex: 1,
       justifyContent: "center",
       alignItems: "center",
       paddingHorizontal: scale(40),
+      paddingVertical: verticalScale(40),
+    },
+    emptyStateIcon: {
+      fontSize: moderateScale(64),
+      color: "#DDD",
+      marginBottom: verticalScale(16),
     },
     emptyStateMessage: {
       fontSize: moderateScale(14),
@@ -1497,9 +1622,32 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       marginRight: scale(8),
     },
     scheduledTimeValue: {
-      fontSize: moderateScale(18),
+      fontSize: moderateScale(16),
       fontWeight: "bold",
       color: "#0D47A1",
+    },
+    waterDetailsContainer: {
+      backgroundColor: "#E0F7FA",
+      padding: scale(16),
+      borderRadius: scale(8),
+      marginBottom: verticalScale(16),
+      borderLeftWidth: 4,
+      borderLeftColor: "#00BCD4",
+    },
+    waterDetailRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      marginBottom: verticalScale(8),
+    },
+    waterDetailLabel: {
+      fontSize: moderateScale(14),
+      fontWeight: "600",
+      color: "#00838F",
+    },
+    waterDetailValue: {
+      fontSize: moderateScale(14),
+      fontWeight: "500",
+      color: "#006064",
     },
     feedDetailsContainer: {
       backgroundColor: "#E8F5E9",
@@ -1524,7 +1672,7 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       fontWeight: "500",
       color: "#1B5E20",
     },
-    fedByContainer: {
+    givenByContainer: {
       flexDirection: "row",
       alignItems: "center",
       backgroundColor: "#FFF3E0",
@@ -1532,13 +1680,13 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       borderRadius: scale(8),
       marginBottom: verticalScale(16),
     },
-    fedByLabel: {
+    givenByLabel: {
       fontSize: moderateScale(14),
       fontWeight: "600",
       color: "#8B5A2B",
       marginRight: scale(8),
     },
-    fedByValue: {
+    givenByValue: {
       fontSize: moderateScale(16),
       fontWeight: "bold",
       color: "#5D4037",
@@ -1643,10 +1791,10 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" translucent={false} />
 
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <View style={styles.backArrow} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Notifications</Text>
@@ -1712,11 +1860,11 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
             </View>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.filterTab, filter === "feed" && styles.filterTabActive]}
-            onPress={() => setFilter("feed")}
+            style={[styles.filterTab, filter === "system" && styles.filterTabActive]}
+            onPress={() => setFilter("system")}
           >
-            <Text style={[styles.filterTabText, filter === "feed" && styles.filterTabTextActive]}>
-              🍽️ Feed ({feedCount})
+            <Text style={[styles.filterTabText, filter === "system" && styles.filterTabTextActive]}>
+              System
             </Text>
           </TouchableOpacity>
         </ScrollView>
@@ -1725,8 +1873,9 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
       <View style={styles.content}>
         {filteredNotifications.length === 0 ? (
           <View style={styles.emptyState}>
+            <Text style={styles.emptyStateIcon}>📭</Text>
             <Text style={styles.emptyStateMessage}>
-              {filter === "all" ? "You're all caught up!" : `No ${filter} notifications found.`}
+              {filter === "all" ? "You're all caught up! No notifications yet." : `No ${filter} notifications found.`}
             </Text>
             <TouchableOpacity 
               style={styles.refreshButtonLarge} 
@@ -1755,7 +1904,7 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
             {filteredNotifications.map((notification) => (
               <TouchableOpacity
                 key={notification.id}
-                style={[styles.notificationItem, !notification.read && styles.notificationItemUnread]}
+                style={[styles.notificationCard, !notification.read && styles.notificationCardUnread]}
                 onPress={() => handleNotificationPress(notification)}
                 onLongPress={() => {
                   Alert.alert("Delete Notification", "Are you sure you want to delete this notification?", [
@@ -1768,39 +1917,42 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
                   ])
                 }}
               >
-                <View style={styles.notificationHeader}>
-                  <View style={styles.notificationLeft}>
-                    <View style={styles.iconContainer}>
-                      <Text style={styles.notificationIcon}>{getTypeIcon(notification.type)}</Text>
-                      {notification.isNew && (
-                        <View style={styles.newBadge}>
-                          <Text style={styles.newBadgeText}>NEW</Text>
-                        </View>
-                      )}
-                    </View>
-                    <View style={styles.notificationContent}>
-                      <Text
-                        style={[styles.notificationTitle, !notification.read && styles.notificationTitleUnread]}
-                        numberOfLines={1}
-                      >
-                        {notification.title}
-                      </Text>
-                      <Text style={styles.notificationMessage} numberOfLines={2}>
-                        {notification.message}
-                      </Text>
-                      {notification.horseName && (
-                        <Text style={styles.horseNameBadge}>
-                          🐴 {notification.horseName}
-                        </Text>
-                      )}
-                    </View>
+                <View style={styles.notificationCardHeader}>
+                  <View style={styles.notificationAppIcon}>
+                    <Text style={styles.notificationAppIconText}>
+                      {getTypeIcon(notification.type)}
+                    </Text>
                   </View>
-                  <View style={styles.notificationRight}>
-                    <View style={[styles.priorityDot, { backgroundColor: getPriorityColor(notification.priority) }]} />
-                    {!notification.read && <View style={styles.unreadDot} />}
+                  <View style={styles.notificationHeaderText}>
+                    <Text style={styles.notificationAppName}>
+                      {notification.type === 'feed' ? 'Feed Notification' :
+                       notification.type === 'water' ? 'Water Notification' :
+                       notification.type === 'reminder' ? 'Reminder' :
+                       notification.type === 'health' ? 'Health Alert' :
+                       'Smart Stable'}
+                    </Text>
+                    <Text style={styles.notificationTime}>{notification.time}</Text>
+                  </View>
+                  {!notification.read && <View style={styles.readIndicator} />}
+                </View>
+                
+                <View style={styles.notificationBody}>
+                  <Text style={styles.notificationTitle}>{notification.title}</Text>
+                  <Text style={styles.notificationMessage}>{notification.message}</Text>
+                  
+                  <View style={styles.notificationMeta}>
+                    <View style={styles.notificationTypeBadge}>
+                      <Text style={styles.notificationTypeIcon}>{getTypeIcon(notification.type)}</Text>
+                      <Text style={styles.notificationTypeText}>{getTypeLabel(notification.type)}</Text>
+                    </View>
+                    
+                    {notification.horseName && (
+                      <View style={styles.horseNameBadge}>
+                        <Text style={styles.horseNameText}>🐴 {notification.horseName}</Text>
+                      </View>
+                    )}
                   </View>
                 </View>
-                <Text style={styles.notificationTime}>{notification.time}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -1874,6 +2026,44 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
                     </View>
                   )}
 
+                  {selectedNotification.type === 'water' && selectedNotification.waterData && (
+                    <>
+                      <View style={styles.waterDetailsContainer}>
+                        {selectedNotification.waterData.quantity && (
+                          <View style={styles.waterDetailRow}>
+                            <Text style={styles.waterDetailLabel}>Quantity:</Text>
+                            <Text style={styles.waterDetailValue}>
+                              {selectedNotification.waterData.quantity}
+                            </Text>
+                          </View>
+                        )}
+                        {selectedNotification.waterData.time && (
+                          <View style={styles.waterDetailRow}>
+                            <Text style={styles.waterDetailLabel}>Time:</Text>
+                            <Text style={styles.waterDetailValue}>
+                              {selectedNotification.waterData.time}
+                            </Text>
+                          </View>
+                        )}
+                        {selectedNotification.waterData.notes && (
+                          <View style={styles.waterDetailRow}>
+                            <Text style={styles.waterDetailLabel}>Notes:</Text>
+                            <Text style={styles.waterDetailValue}>
+                              {selectedNotification.waterData.notes}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      {selectedNotification.waterData.given_by && (
+                        <View style={styles.givenByContainer}>
+                          <Text style={styles.givenByLabel}>Given By:</Text>
+                          <Text style={styles.givenByValue}>{selectedNotification.waterData.given_by}</Text>
+                        </View>
+                      )}
+                    </>
+                  )}
+
                   {selectedNotification.type === 'feed' && selectedNotification.feedData && (
                     <>
                       <View style={styles.feedDetailsContainer}>
@@ -1904,9 +2094,9 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
                       </View>
 
                       {selectedNotification.feedData.fed_by && (
-                        <View style={styles.fedByContainer}>
-                          <Text style={styles.fedByLabel}>Fed By:</Text>
-                          <Text style={styles.fedByValue}>{selectedNotification.feedData.fed_by}</Text>
+                        <View style={styles.givenByContainer}>
+                          <Text style={styles.givenByLabel}>Fed By:</Text>
+                          <Text style={styles.givenByValue}>{selectedNotification.feedData.fed_by}</Text>
                         </View>
                       )}
                     </>
@@ -1917,7 +2107,13 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
                       {selectedNotification.type === 'reminder' 
                         ? 'Reminder Details:' 
                         : selectedNotification.type === 'feed'
-                        ? 'Activity Summary:'
+                        ? 'Feeding Activity:'
+                        : selectedNotification.type === 'water'
+                        ? 'Water Activity:'
+                        : selectedNotification.type === 'health'
+                        ? 'Health Information:'
+                        : selectedNotification.type === 'appointment'
+                        ? 'Appointment Details:'
                         : 'Full Announcement:'}
                     </Text>
                     <Text style={styles.detailMessage}>{selectedNotification.message}</Text>
@@ -1949,7 +2145,7 @@ export default function NotificationsPage({ onBack }: NotificationsPageProps) {
                                 source={{ uri: getAbsoluteImageUrl(imageUrl) }}
                                 style={[styles.announcementImage, imageLoading && styles.imageHidden]}
                                 resizeMode="contain"
-                                onError={(error) => {
+                                onError={() => { // FIXED: Removed unused error parameter
                                   console.log("[v0] Image failed to load")
                                   setImageError(true)
                                   setImageLoading(false)
