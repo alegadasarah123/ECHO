@@ -377,7 +377,7 @@ export default function NotificationsPage() {
       
       try {
         const response = await fetchWithTimeout(
-          `http://10.254.39.148:8000/api/horse_operator/check_current_schedules/?op_id=${encodedUser}`,
+          `http://192.168.31.58:8000/api/horse_operator/check_current_schedules/?op_id=${encodedUser}`,
           {
             method: 'GET',
             headers: {
@@ -468,7 +468,7 @@ export default function NotificationsPage() {
       await getValidUserId(); 
       
       // Use the correct endpoint from your backend: get_announcements
-      const apiUrl = `http://10.254.39.148:8000/api/horse_operator/get_announcements/`
+      const apiUrl = `http://192.168.31.58:8000/api/horse_operator/get_announcements/`
 
       console.log("[v0] Fetching announcements from:", apiUrl)
 
@@ -630,7 +630,7 @@ export default function NotificationsPage() {
       // Fetch feed logs for completed feed records
       try {
         const feedLogsResponse = await fetchWithTimeout(
-          `http://10.254.39.148:8000/api/horse_operator/get_feed_logs/?user_id=${encodeURIComponent(userId)}`,
+          `http://192.168.31.58:8000/api/horse_operator/get_feed_logs/?user_id=${encodeURIComponent(userId)}`,
           {
             method: 'GET',
             headers: {
@@ -689,7 +689,7 @@ export default function NotificationsPage() {
       // Fetch water logs
       try {
         const waterLogsResponse = await fetchWithTimeout(
-          `http://10.254.39.148:8000/api/horse_operator/get_water_logs/?user_id=${encodeURIComponent(userId)}`,
+          `http://192.168.31.58:8000/api/horse_operator/get_water_logs/?user_id=${encodeURIComponent(userId)}`,
           {
             method: 'GET',
             headers: {
@@ -746,7 +746,7 @@ export default function NotificationsPage() {
       // Fetch feeding schedules for reminders
       try {
         const feedingScheduleResponse = await fetchWithTimeout(
-          `http://10.254.39.148:8000/api/horse_operator/get_feeding_schedule/?user_id=${encodeURIComponent(userId)}`,
+          `http://192.168.31.58:8000/api/horse_operator/get_feeding_schedule/?user_id=${encodeURIComponent(userId)}`,
           {
             method: 'GET',
             headers: {
@@ -1124,7 +1124,7 @@ export default function NotificationsPage() {
       return imageUrl;
     }
 
-    const baseUrl = "http://10.254.39.148:8000";
+    const baseUrl = "http://192.168.31.58:8000";
     const absoluteUrl = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : `${baseUrl}/${imageUrl}`;
     console.log("[v0] Converted relative URL to absolute:", imageUrl, "->", absoluteUrl);
     return absoluteUrl;
