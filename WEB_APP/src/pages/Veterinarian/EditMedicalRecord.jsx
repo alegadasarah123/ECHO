@@ -1,6 +1,6 @@
 import React, { useEffect, useCallback, useReducer, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Plus, X, Upload, Loader, Heart, Thermometer, Stethoscope, Calendar, Pill, FileText, Activity, ClipboardList, TrendingUp, StickyNote, Clock3, CheckCircle, AlertCircle, User, Image, File, Trash2, Eye, ZoomIn, ZoomOut, RotateCcw, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, X, Upload, Loader, Heart, Thermometer, Stethoscope, Calendar, Pill, FileText, Activity, ClipboardList, TrendingUp, StickyNote, Clock3, CheckCircle, AlertCircle, User, Image, File, Trash2, Eye, ZoomIn, ZoomOut, RotateCcw, ChevronLeft, ChevronRight, Edit, Save } from "lucide-react";
 import ConfirmationModal from "@/components/modal/ConfirmationModal";
 
 // --- 1. INITIAL STATE AND REDUCER LOGIC ---
@@ -30,6 +30,7 @@ const initialFormData = {
 const initialState = {
   formData: initialFormData,
   isLoading: false,
+  isLoadingRecord: true,
   error: null,
   showConfirmation: false,
   showSuccessAlert: false,
@@ -46,7 +47,9 @@ const initialState = {
   // Calendar state
   currentMonth: new Date(),
   selectedDate: null,
-  availableDates: []
+  availableDates: [],
+  // Existing lab files from server
+  existingLabFiles: []
 };
 
 function reducer(state, action) {
@@ -67,6 +70,11 @@ function reducer(state, action) {
       return {
         ...state,
         formData: { ...state.formData, treatments: updatedTreatments }
+      };
+    case 'SET_TREATMENTS':
+      return {
+        ...state,
+        formData: { ...state.formData, treatments: action.payload }
       };
     case 'ADD_TREATMENT':
       return {
@@ -107,6 +115,17 @@ function reducer(state, action) {
           ...state.formData,
           labFiles: remainingFiles
         }
+      };
+    case 'SET_EXISTING_LAB_FILES':
+      return {
+        ...state,
+        existingLabFiles: action.payload
+      };
+    case 'REMOVE_EXISTING_LAB_FILE':
+      const updatedExistingFiles = state.existingLabFiles.filter((_, i) => i !== action.index);
+      return {
+        ...state,
+        existingLabFiles: updatedExistingFiles
       };
     case 'CLEAR_LAB_FILES':
       return {
@@ -181,7 +200,7 @@ const useAutoResizeTextarea = (value, ref) => {
 const SuccessAlert = () => {
   return (
     <div className="fixed top-4 right-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg z-[1000]">
-      Medical record saved successfully!
+      Medical record updated successfully!
     </div>
   );
 };
@@ -261,26 +280,11 @@ const CalendarComponent = ({
     return `${year}-${month}-${day}`;
   };
 
-// Check if date has available slots (AND is not in the past)
-const hasAvailableSlots = (date) => {
-  const dateStr = formatDate(date);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const checkDate = new Date(date);
-  checkDate.setHours(0, 0, 0, 0);
-  
-  // Check if date is in the past
-  if (checkDate < today) return false;
-  
-  // If it's today, check if there are any future time slots
-  if (checkDate.getTime() === today.getTime()) {
-    const { morning, afternoon } = getSchedulesForDate();
-    return morning.length > 0 || afternoon.length > 0;
-  }
-  
-  // For future dates, just check if date exists in availableDates
-  return availableDates.includes(dateStr);
-};
+  // Check if date has available slots
+  const hasAvailableSlots = (date) => {
+    const dateStr = formatDate(date);
+    return availableDates.includes(dateStr);
+  };
 
   // Check if date is today
   const isToday = (date) => {
@@ -296,60 +300,37 @@ const hasAvailableSlots = (date) => {
            date.getFullYear() === currentMonth.getFullYear();
   };
 
-// Get schedules for selected date and group by morning/afternoon
-const getSchedulesForDate = () => {
-  if (!selectedDate) return { morning: [], afternoon: [] };
-  
-  const dateStr = formatDate(selectedDate);
-  const today = new Date();
-  const isToday = formatDate(today) === dateStr;
-  const currentHour = today.getHours();
-  const currentMinute = today.getMinutes();
-  
-  // Filter schedules for the selected date
-  const allSchedules = schedules.filter(schedule => schedule.date === dateStr);
-  
-  // If it's today, filter out past time slots
-  const filteredSchedules = allSchedules.filter(schedule => {
-    if (!isToday) return true;
+  // Get schedules for selected date and group by morning/afternoon
+  const getSchedulesForDate = () => {
+    if (!selectedDate) return { morning: [], afternoon: [] };
+    const dateStr = formatDate(selectedDate);
+    const allSchedules = schedules.filter(schedule => schedule.date === dateStr);
     
-    // Parse schedule start time
-    const [time, period] = schedule.startTime.split(' ');
-    let [hours, minutes] = time.split(':').map(Number);
+    // Sort schedules by start time
+    const sortedSchedules = [...allSchedules].sort((a, b) => {
+      const timeToMinutes = (timeStr) => {
+        const [time, period] = timeStr.split(' ');
+        let [hours, minutes] = time.split(':').map(Number);
+        if (period === 'PM' && hours !== 12) hours += 12;
+        if (period === 'AM' && hours === 12) hours = 0;
+        return hours * 60 + minutes;
+      };
+      return timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
+    });
     
-    // Convert to 24-hour format
-    if (period === 'PM' && hours !== 12) hours += 12;
-    if (period === 'AM' && hours === 12) hours = 0;
+    // Separate into morning (AM) and afternoon (PM)
+    const morningSlots = sortedSchedules.filter(schedule => 
+      schedule.startTime.includes('AM') || 
+      (parseInt(schedule.startTime.split(':')[0]) < 12 && !schedule.startTime.includes('PM'))
+    );
     
-    // Check if schedule is in the past
-    return hours > currentHour || (hours === currentHour && minutes > currentMinute);
-  });
-  
-  // Sort schedules by start time
-  const sortedSchedules = [...filteredSchedules].sort((a, b) => {
-    const timeToMinutes = (timeStr) => {
-      const [time, period] = timeStr.split(' ');
-      let [hours, minutes] = time.split(':').map(Number);
-      if (period === 'PM' && hours !== 12) hours += 12;
-      if (period === 'AM' && hours === 12) hours = 0;
-      return hours * 60 + minutes;
-    };
-    return timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
-  });
-  
-  // Separate into morning (AM) and afternoon (PM)
-  const morningSlots = sortedSchedules.filter(schedule => 
-    schedule.startTime.includes('AM') || 
-    (parseInt(schedule.startTime.split(':')[0]) < 12 && !schedule.startTime.includes('PM'))
-  );
-  
-  const afternoonSlots = sortedSchedules.filter(schedule => 
-    schedule.startTime.includes('PM') || 
-    (parseInt(schedule.startTime.split(':')[0]) >= 12 && !schedule.startTime.includes('AM'))
-  );
-  
-  return { morning: morningSlots, afternoon: afternoonSlots };
-};
+    const afternoonSlots = sortedSchedules.filter(schedule => 
+      schedule.startTime.includes('PM') || 
+      (parseInt(schedule.startTime.split(':')[0]) >= 12 && !schedule.startTime.includes('AM'))
+    );
+    
+    return { morning: morningSlots, afternoon: afternoonSlots };
+  };
 
   // Navigate months
   const goToPreviousMonth = () => {
@@ -591,7 +572,6 @@ const getSchedulesForDate = () => {
                                   {schedule.startTime} - {schedule.endTime}
                                 </span>
                               </div>
-                              {/* REMOVED THE "Available" badge here */}
                             </div>
                             
                             {schedule.operator_name && (
@@ -661,7 +641,6 @@ const getSchedulesForDate = () => {
                                   {schedule.startTime} - {schedule.endTime}
                                 </span>
                               </div>
-                              {/* REMOVED THE "Available" badge here */}
                             </div>
                             
                             {schedule.operator_name && (
@@ -719,11 +698,13 @@ const getSchedulesForDate = () => {
   );
 };
 
-// File Upload Section Component
+// File Upload Section Component - UPDATED FOR EDITING
 const FileUploadSection = ({ 
   labFiles, 
+  existingLabFiles,
   onFilesAdd, 
   onFileRemove, 
+  onExistingFileRemove,
   onFilePreview,
   dragActive, 
   onDragStateChange,
@@ -770,6 +751,8 @@ const FileUploadSection = ({
     event.target.value = '';
   };
 
+  const totalFilesCount = labFiles.length + existingLabFiles.length;
+
   return (
     <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
       <div className="flex items-center justify-between mb-4">
@@ -777,9 +760,9 @@ const FileUploadSection = ({
           <h3 className="font-semibold text-gray-900">Lab Files</h3>
           <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded-full">Optional</span>
         </div>
-        {labFiles.length > 0 && (
+        {totalFilesCount > 0 && (
           <span className="text-sm text-gray-500">
-            {labFiles.length}/10 files
+            {totalFilesCount}/10 files
           </span>
         )}
       </div>
@@ -788,7 +771,7 @@ const FileUploadSection = ({
         className={`relative border-2 border-dashed rounded-xl min-h-[200px] flex flex-col items-center justify-center p-6 transition-all duration-200 ${
           dragActive 
             ? 'border-blue-400 bg-blue-50' 
-            : labFiles.length > 0 
+            : totalFilesCount > 0 
               ? 'border-gray-300 bg-gray-50' 
               : 'border-gray-300 bg-gray-50 hover:border-blue-400 hover:bg-blue-50'
         }`}
@@ -806,7 +789,7 @@ const FileUploadSection = ({
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         />
         
-        {labFiles.length === 0 ? (
+        {totalFilesCount === 0 ? (
           <div className="text-center">
             <Upload className="w-12 h-12 mx-auto mb-3 text-gray-400" />
             <p className="text-gray-600 mb-2 font-medium">
@@ -830,23 +813,77 @@ const FileUploadSection = ({
             <div className="text-center mb-4">
               <FileText className="w-8 h-8 mx-auto mb-2 text-green-500" />
               <p className="text-sm text-gray-600">
-                {labFiles.length} file{labFiles.length > 1 ? 's' : ''} selected
+                {totalFilesCount} file{totalFilesCount > 1 ? 's' : ''} selected
               </p>
               <p className="text-xs text-gray-500">
                 Drag & drop to add more files, or click to browse
+              </p>
+              <p className="text-xs text-blue-600 mt-1">
+                {existingLabFiles.length} existing file(s) from server
               </p>
             </div>
           </div>
         )}
       </div>
 
-      {labFiles.length > 0 && (
+      {totalFilesCount > 0 && (
         <div className="mt-4 space-y-3">
           <h4 className="font-medium text-gray-700 text-sm">Selected Files:</h4>
           <div className="max-h-60 overflow-y-auto space-y-2">
+            {/* Show existing files first */}
+            {existingLabFiles.map((file, index) => (
+              <div 
+                key={`existing-${index}`} 
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 group"
+              >
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="flex-shrink-0">
+                    {file.file_path && (
+                      file.file_path.toLowerCase().endsWith('.pdf') ? 
+                        <FileText className="w-5 h-5 text-red-500" /> :
+                        <Image className="w-5 h-5 text-blue-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate text-gray-900">
+                      {file.file_name || 'Unknown file'}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {file.file_path && (
+                    <a
+                        href={file.file_path} // Use the full URL directly
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="h-8 w-8 flex items-center justify-center text-blue-500 hover:text-blue-700"
+                        title="View File"
+                        onClick={(e) => {
+                        e.stopPropagation(); // Prevent any parent click events
+                        // Optionally open in file viewer instead of new tab
+                        // onFilePreview(index); 
+                        }}
+                    >
+                        <Eye className="w-4 h-4" />
+                    </a>
+                    )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onExistingFileRemove(index)}
+                    className="h-8 w-8 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                    title="Remove File"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            
+            {/* Show new files */}
             {labFiles.map((file, index) => (
               <div 
-                key={index} 
+                key={`new-${index}`} 
                 className="flex items-center justify-between p-3 bg-white rounded-lg border border-gray-200 hover:border-blue-200 transition-colors group"
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -861,6 +898,9 @@ const FileUploadSection = ({
                       <span>{formatFileSize(file.size)}</span>
                       <span>•</span>
                       <span>{file.type || 'Unknown type'}</span>
+                      <span className="bg-green-100 text-green-800 px-2 py-1 rounded">
+                        New
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -887,7 +927,7 @@ const FileUploadSection = ({
             ))}
           </div>
           
-          {labFiles.length >= 10 && (
+          {totalFilesCount >= 10 && (
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mt-3">
               <div className="flex items-center gap-2 text-amber-800 text-sm">
                 <AlertCircle className="w-4 h-4" />
@@ -916,7 +956,7 @@ const FileUploadSection = ({
   );
 };
 
-// File Viewer Component
+// File Viewer Component - FIXED VERSION
 const FileViewer = ({ 
   files, 
   currentFileIndex, 
@@ -931,186 +971,243 @@ const FileViewer = ({
   onReset 
 }) => {
   const currentFile = files[currentFileIndex];
-  const isImage = currentFile?.type?.startsWith('image/');
-  const isPDF = currentFile?.type === 'application/pdf';
+  const isImage = currentFile?.type?.startsWith('image/') || 
+                  currentFile?.url?.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i);
+  const isPDF = currentFile?.type === 'application/pdf' || 
+                currentFile?.url?.toLowerCase().endsWith('.pdf');
 
   if (!files || files.length === 0) return null;
 
+  // Handle PDF viewing - use object tag instead of iframe for better compatibility
+  const renderPDF = () => {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-white">
+        <object
+          data={currentFile?.url}
+          type="application/pdf"
+          className="w-full h-full border-0"
+          title={currentFile?.name}
+          style={{ 
+            minHeight: '100vh',
+            backgroundColor: 'white'
+          }}
+        >
+          <div className="text-center p-8">
+            <FileText className="w-16 h-16 mx-auto mb-4 text-red-500" />
+            <p className="text-lg font-medium text-gray-900 mb-2">
+              Unable to display PDF
+            </p>
+            <p className="text-gray-600 mb-4">
+              This PDF cannot be displayed inline due to browser restrictions.
+            </p>
+            <a
+              href={currentFile?.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+            >
+              <FileText className="w-4 h-4" />
+              Open PDF in new tab
+            </a>
+          </div>
+        </object>
+      </div>
+    );
+  };
+
+  // Handle image viewing
+  const renderImage = () => {
+    return (
+      <div className="w-full h-full flex items-center justify-center overflow-auto">
+        <div 
+          className="flex items-center justify-center"
+          style={{
+            transform: `scale(${zoomLevel}) rotate(${rotation}deg)`,
+            transition: 'transform 0.2s ease-in-out'
+          }}
+        >
+          <img
+            src={currentFile?.url}
+            alt={currentFile?.name}
+            className="max-w-none select-none"
+            style={{
+              width: 'auto',
+              height: 'auto',
+              maxWidth: 'none',
+              maxHeight: 'none'
+            }}
+            onError={(e) => {
+              console.error("Failed to load image:", currentFile?.url);
+              e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='300' viewBox='0 0 400 300'%3E%3Crect width='400' height='300' fill='%23f3f4f6'/%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.3em' font-family='Arial, sans-serif' font-size='16' fill='%239ca3af'%3EFailed to load image%3C/text%3E%3C/svg%3E";
+            }}
+          />
+        </div>
+      </div>
+    );
+  };
+
+  // Handle unknown file types
+  const renderUnsupported = () => {
+    return (
+      <div className="text-center text-white p-8">
+        <File className="w-16 h-16 mx-auto mb-4" />
+        <p className="text-lg font-medium mb-2">Unsupported file type</p>
+        <p className="text-gray-300 mb-4">
+          This file type cannot be displayed in the viewer.
+        </p>
+        <a
+          href={currentFile?.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+        >
+          <Eye className="w-4 h-4" />
+          Open file in new tab
+        </a>
+      </div>
+    );
+  };
+
   return (
     <div className="fixed inset-0 bg-black z-[70] flex flex-col">
-      {isPDF && (
-        <div className="bg-black border-b border-gray-800 p-4 flex-shrink-0 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <FileText className="w-5 h-5 text-red-500" />
-            <div>
-              <h3 className="font-semibold text-white">{currentFile?.name}</h3>
-              <p className="text-sm text-gray-400">
-                {currentFile?.fileObject && formatFileSize(currentFile.fileObject.size)}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {files.length > 1 && (
-              <div className="flex items-center gap-1 mr-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onPrev}
-                  className="h-8 w-8 p-0 text-white hover:bg-gray-800"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <span className="text-sm font-medium text-gray-300 min-w-[60px] text-center">
-                  {currentFileIndex + 1} / {files.length}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onNext}
-                  className="h-8 w-8 p-0 text-white hover:bg-gray-800"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
-
-            <Button
-              variant="ghost"
-              onClick={onClose}
-              className="h-8 w-8 p-0 text-white hover:bg-gray-800"
-            >
-              <X className="w-5 h-5" />
-            </Button>
+      {/* Header */}
+      <div className="bg-black border-b border-gray-800 p-4 flex-shrink-0 flex justify-between items-center">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          {isPDF ? (
+            <FileText className="w-5 h-5 text-red-500 flex-shrink-0" />
+          ) : isImage ? (
+            <Image className="w-5 h-5 text-blue-500 flex-shrink-0" />
+          ) : (
+            <File className="w-5 h-5 text-gray-500 flex-shrink-0" />
+          )}
+          <div className="min-w-0">
+            <h3 className="font-semibold text-white truncate">
+              {currentFile?.name || "File"}
+            </h3>
+            <p className="text-sm text-gray-400">
+              {isPDF ? "PDF Document" : isImage ? "Image" : "File"} • 
+              {files.length > 1 && ` ${currentFileIndex + 1} of ${files.length}`}
+            </p>
           </div>
         </div>
-      )}
-
-      {isImage && (
-        <div className="fixed top-4 right-4 z-10 flex items-center gap-2 bg-black bg-opacity-70 rounded-lg p-2">
+        
+        <div className="flex items-center gap-2 flex-shrink-0">
           {files.length > 1 && (
-            <div className="flex items-center gap-1 border-r border-gray-700 pr-2">
+            <div className="flex items-center gap-1 mr-4">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onPrev}
-                className="h-8 w-8 p-0 text-white hover:bg-gray-700"
+                className="h-8 w-8 p-0 text-white hover:bg-gray-800"
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
-              <span className="text-sm font-medium text-gray-300 min-w-[40px] text-center">
+              <span className="text-sm font-medium text-gray-300 min-w-[60px] text-center">
                 {currentFileIndex + 1} / {files.length}
               </span>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onNext}
-                className="h-8 w-8 p-0 text-white hover:bg-gray-700"
+                className="h-8 w-8 p-0 text-white hover:bg-gray-800"
               >
                 <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
           )}
 
-          <div className="flex items-center gap-1 border-r border-gray-700 pr-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onZoomOut}
-              disabled={zoomLevel <= 0.5}
-              className="h-8 w-8 p-0 text-white hover:bg-gray-700"
-            >
-              <ZoomOut className="w-4 h-4" />
-            </Button>
-            <span className="text-sm font-medium text-white w-12 text-center">
-              {Math.round(zoomLevel * 100)}%
-            </span>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={onZoomIn}
-              disabled={zoomLevel >= 3}
-              className="h-8 w-8 p-0 text-white hover:bg-gray-700"
-            >
-              <ZoomIn className="w-4 h-4" />
-            </Button>
-          </div>
-          
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onRotate}
-            className="h-8 w-8 p-0 text-white hover:bg-gray-700"
+          {isImage && (
+            <>
+              <div className="flex items-center gap-1 border-r border-gray-700 pr-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onZoomOut}
+                  disabled={zoomLevel <= 0.5}
+                  className="h-8 w-8 p-0 text-white hover:bg-gray-700"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </Button>
+                <span className="text-sm font-medium text-white w-12 text-center">
+                  {Math.round(zoomLevel * 100)}%
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onZoomIn}
+                  disabled={zoomLevel >= 3}
+                  className="h-8 w-8 p-0 text-white hover:bg-gray-700"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </Button>
+              </div>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onRotate}
+                className="h-8 w-8 p-0 text-white hover:bg-gray-700"
+              >
+                <RotateCcw className="w-4 h-4" />
+              </Button>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onReset}
+                className="h-8 w-8 p-0 text-white hover:bg-gray-700"
+              >
+                Reset
+              </Button>
+            </>
+          )}
+
+          {/* Download/Open button */}
+          <a
+            href={currentFile?.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="h-8 w-8 flex items-center justify-center text-green-500 hover:text-green-400 hover:bg-gray-700 rounded"
+            title="Open in new tab"
           >
-            <RotateCcw className="w-4 h-4" />
-          </Button>
-          
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onReset}
-            className="h-8 w-8 p-0 text-white hover:bg-gray-700"
-          >
-            Reset
-          </Button>
+            <Eye className="w-4 h-4" />
+          </a>
 
           <Button
             variant="ghost"
             onClick={onClose}
-            className="h-8 w-8 p-0 text-white hover:bg-gray-700"
+            className="h-8 w-8 p-0 text-white hover:bg-gray-800"
           >
             <X className="w-5 h-5" />
           </Button>
         </div>
-      )}
+      </div>
 
+      {/* Content Area */}
       <div className="flex-1 bg-black flex items-center justify-center overflow-hidden">
-        {isImage ? (
-          <div className="w-full h-full flex items-center justify-center overflow-auto">
-            <div 
-              className="flex items-center justify-center"
-              style={{
-                transform: `scale(${zoomLevel}) rotate(${rotation}deg)`,
-                transition: 'transform 0.2s ease-in-out'
-              }}
-            >
-              <img
-                src={currentFile?.url}
-                alt={currentFile?.name}
-                className="max-w-none select-none"
-                style={{
-                  width: 'auto',
-                  height: 'auto',
-                  maxWidth: 'none',
-                  maxHeight: 'none'
-                }}
-              />
-            </div>
-          </div>
-        ) : isPDF ? (
-          <div className="w-full h-full">
-            <iframe
-              src={currentFile?.url}
-              className="w-full h-full border-0"
-              title={currentFile?.name}
-              style={{ 
-                minHeight: '100vh',
-                backgroundColor: 'white'
-              }}
-            />
-          </div>
-        ) : (
-          <div className="text-center text-white">
-            <File className="w-16 h-16 mx-auto mb-4" />
-            <p>Unsupported file type</p>
-          </div>
-        )}
+        {isImage ? renderImage() : isPDF ? renderPDF() : renderUnsupported()}
+      </div>
+
+      {/* Footer with download option */}
+      <div className="bg-black border-t border-gray-800 p-3 flex-shrink-0">
+        <div className="flex justify-center">
+          <a
+            href={currentFile?.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+          >
+            <File className="w-4 h-4" />
+            <span>Open in new tab</span>
+          </a>
+        </div>
       </div>
     </div>
   );
 };
 
 // --- 4. THE MAIN FORM COMPONENT ---
-const RecordForm = ({ 
+const EditRecordForm = ({ 
   formData, 
   isLoading, 
   error, 
@@ -1122,6 +1219,7 @@ const RecordForm = ({
   onRemoveTreatment,
   onFilesAdd,
   onFileRemove,
+  onExistingFileRemove,
   onFilePreview,
   onDragStateChange,
   horseInfo,
@@ -1139,7 +1237,9 @@ const RecordForm = ({
   availableDates,
   onScheduleSelect,
   onCancelSchedule,
-  selectedScheduleId
+  selectedScheduleId,
+  // Edit props
+  existingLabFiles = []
 }) => {
 
   const handleScheduleSelect = (scheduleId) => {
@@ -1172,7 +1272,7 @@ const RecordForm = ({
       <div className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] flex flex-col">
         <div className="p-6 border-b border-gray-200 flex-shrink-0">
           <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold text-gray-900">Add Medical Record</h2>
+            <h2 className="text-xl font-bold text-gray-900">Edit Medical Record</h2>
             <button
               onClick={onCancel}
               className="p-2 rounded-full text-gray-500 hover:text-red-600 hover:bg-red-100 transition duration-200"
@@ -1181,7 +1281,7 @@ const RecordForm = ({
             </button>
           </div>
           <p className="text-gray-600 mt-1">
-            For {horseInfo?.name || "Patient"} • Date: {new Date().toLocaleDateString()}
+            For {horseInfo?.name || "Patient"} • Editing existing record
           </p>
         </div>
 
@@ -1292,8 +1392,10 @@ const RecordForm = ({
 
             <FileUploadSection
               labFiles={formData.labFiles}
+              existingLabFiles={existingLabFiles}
               onFilesAdd={onFilesAdd}
               onFileRemove={onFileRemove}
+              onExistingFileRemove={onExistingFileRemove}
               onFilePreview={onFilePreview}
               dragActive={dragActive}
               onDragStateChange={onDragStateChange}
@@ -1399,7 +1501,6 @@ const RecordForm = ({
                 >
                   <option value="Healthy">Healthy</option>
                   <option value="Sick">Sick</option>
-                  {/* "Unhealthy" option REMOVED */}
                 </select>
                 <p className="text-xs text-gray-500 mt-2">
                   Select the current health status
@@ -1494,12 +1595,12 @@ const RecordForm = ({
                 {isLoading ? (
                   <>
                     <Loader className="w-4 h-4 animate-spin text-white" />
-                    <span className="text-white">Saving...</span>
+                    <span className="text-white">Updating...</span>
                   </>
                 ) : (
                   <>
-                    <FileText className="w-4 h-4 text-white" />
-                    <span className="text-white">Save Medical Record</span>
+                    <Save className="w-4 h-4 text-white" />
+                    <span className="text-white">Update Medical Record</span>
                   </>
                 )}
               </Button>
@@ -1512,19 +1613,21 @@ const RecordForm = ({
 };
 
 // --- 5. THE MAIN COMPONENT ---
-const MedicalRecords = ({
-  medicalRecords,
+const EditMedicalRecord = ({
   vetProfile,
   horseInfo,
   appointmentId,
   onRefresh,
   isModal,
   onCloseModal,
+  recordData,
+  recordId
 }) => {
   const [state, dispatch] = useReducer(reducer, initialState);
   const {
     formData,
     isLoading,
+    isLoadingRecord,
     error,
     showConfirmation,
     showSuccessAlert,
@@ -1538,16 +1641,21 @@ const MedicalRecords = ({
     rotation,
     currentMonth,
     selectedDate,
-    availableDates
+    availableDates,
+    existingLabFiles
   } = state;
 
   useEffect(() => {
+    console.log("✏️ EditMedicalRecord mounted with recordId:", recordId, "recordData:", recordData);
+    
+    // Load record data on mount
+    if (recordId || recordData?.id) {
+      loadRecordData();
+    }
+    
+    // Fetch schedules
     fetchSchedules();
-  }, []);
-
-  useEffect(() => {
-    dispatch({ type: 'RESET_STATE' });
-  }, []);
+  }, [recordId, recordData]);
 
   // Extract available dates from schedules
   useEffect(() => {
@@ -1571,17 +1679,206 @@ const MedicalRecords = ({
     return `${year}-${month}-${day}`;
   };
 
-  const getAllViewableFiles = useCallback(() => {
-    return formData.labFiles.map((file, index) => ({
-      url: URL.createObjectURL(file),
-      name: file.name,
-      type: file.type,
-      fileObject: file,
-      index: index
-    }));
-  }, [formData.labFiles]);
+const loadRecordData = async () => {
+  try {
+    const idToFetch = recordId || recordData?.id;
+    if (!idToFetch) {
+      console.error("❌ No record ID provided for editing");
+      dispatch({ 
+        type: 'SET_UI_STATE', 
+        payload: { 
+          error: "No record ID provided for editing",
+          isLoadingRecord: false 
+        } 
+      });
+      return;
+    }
 
-  const openFileViewer = useCallback((index = 0) => {
+    console.log("📥 Fetching record data for ID:", idToFetch);
+    dispatch({ type: 'SET_UI_STATE', payload: { isLoadingRecord: true, error: null } });
+    
+    // Use the new endpoint to fetch single record
+    const response = await fetch(
+      `http://localhost:8000/api/veterinarian/get_medical_record/${idToFetch}/`,
+      { 
+        method: "GET", 
+        credentials: "include" 
+      }
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Failed to fetch record data: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    console.log("📋 Record data fetched successfully:", data);
+    
+    if (!data.record) {
+      throw new Error("No record data found in response");
+    }
+    
+    // ✅ Treatments are already in data.record.treatments
+    console.log("💊 Treatments from API:", data.record.treatments);
+    
+    populateFormWithRecordData(data.record);
+    
+    dispatch({ 
+      type: 'SET_UI_STATE', 
+      payload: { 
+        isLoadingRecord: false 
+      } 
+    });
+    
+  } catch (err) {
+    console.error("❌ Error loading record data:", err);
+    dispatch({ 
+      type: 'SET_UI_STATE', 
+      payload: { 
+        error: `Failed to load record data: ${err.message}`,
+        isLoadingRecord: false 
+      } 
+    });
+  }
+};
+
+const populateFormWithRecordData = (record) => {
+  console.log("📝 Populating form with record:", record);
+  
+  // ✅ Use treatments directly from the API response
+  let treatments = [];
+  if (record.treatments && Array.isArray(record.treatments)) {
+    treatments = record.treatments.map(treatment => ({
+      medication: treatment.treatment_name || "",
+      dosage: treatment.treatment_dosage || "",
+      duration: treatment.treatment_duration || "",
+      outcome: treatment.treatment_outcome || "",
+      treatment_id: treatment.treatment_id // Keep the ID for updates
+    }));
+  }
+  
+  // If no treatments found, create empty array
+  if (treatments.length === 0) {
+    treatments = [{ medication: "", dosage: "", duration: "" }];
+  }
+  
+  console.log("💊 Mapped treatments:", treatments);
+  
+  // ✅ FIXED: Handle lab images - they should be FULL URLs from backend
+  // The backend now sends lab files in `record.labImages` as array of URLs
+  const existingFiles = record.labImages || [];
+  console.log("📁 Existing lab files URLs from API:", existingFiles);
+  
+  // Map existing lab files to the expected format
+  const mappedExistingFiles = existingFiles.map((fileUrl, index) => {
+    // Extract filename from URL
+    const urlParts = fileUrl.split('/');
+    const filename = urlParts[urlParts.length - 1];
+    
+    // Check file type from URL extension
+    let fileType = 'unknown';
+    if (fileUrl.toLowerCase().endsWith('.pdf')) {
+      fileType = 'application/pdf';
+    } else if (fileUrl.match(/\.(jpg|jpeg|png|gif|bmp|webp)$/i)) {
+      fileType = 'image/*';
+    }
+    
+    return {
+      id: `existing-${index}`,
+      file_path: fileUrl, // This is the FULL URL from backend
+      file_name: filename || `lab_file_${index}`,
+      file_size: 0,
+      file_type: fileType
+    };
+  });
+  
+  console.log("📁 Mapped existing files:", mappedExistingFiles);
+  dispatch({ type: 'SET_EXISTING_LAB_FILES', payload: mappedExistingFiles });
+  
+  // Convert date format if needed (backend might send MM-DD-YYYY but frontend expects YYYY-MM-DD)
+  const convertDateFormat = (dateStr) => {
+    if (!dateStr) return '';
+    
+    // Check if date is in MM-DD-YYYY format
+    const mmddyyyyRegex = /^(\d{2})-(\d{2})-(\d{4})$/;
+    const match = dateStr.match(mmddyyyyRegex);
+    
+    if (match) {
+      // Convert from MM-DD-YYYY to YYYY-MM-DD
+      const [, month, day, year] = match;
+      return `${year}-${month}-${day}`;
+    }
+    
+    // If already in YYYY-MM-DD or other format, return as-is
+    return dateStr;
+  };
+  
+  // Parse follow-up time if exists
+  let followUpStartTime = '';
+  let followUpEndTime = '';
+  
+  if (record.followUpTime) {
+    const timeParts = record.followUpTime.split('-');
+    if (timeParts.length >= 2) {
+      followUpStartTime = timeParts[0];
+      followUpEndTime = timeParts[1];
+    }
+  }
+  
+  // Rest of your form data population...
+  const newFormData = {
+    heartRate: record.heartRate || "",
+    respRate: record.respRate || "",
+    temperature: record.temperature || "",
+    clinicalSigns: record.clinicalSigns || "",
+    diagnosticProtocol: record.diagnosticProtocol || "",
+    diagnosis: record.diagnosis || "",
+    labResult: record.labResult || "",
+    labFiles: [], // New files will be added separately
+    treatments: treatments,
+    prognosis: record.prognosis || "",
+    healthStatus: record.healthStatus || record.horseStatus || "Healthy",
+    recommendation: record.recommendation || "",
+    followUpDate: convertDateFormat(record.followUpDate) || "",
+    followUpStartTime: followUpStartTime,
+    followUpEndTime: followUpEndTime,
+    scheduleId: record.scheduleId || ""
+  };
+  
+  console.log("✅ Form data populated:", newFormData);
+  dispatch({ type: 'SET_FORM_DATA', payload: newFormData });
+  
+  // Set selected date if follow-up date exists
+  if (newFormData.followUpDate) {
+    const followUpDate = new Date(newFormData.followUpDate);
+    if (!isNaN(followUpDate.getTime())) {
+      dispatch({ type: 'SET_SELECTED_DATE', payload: followUpDate });
+    }
+  }
+};
+
+const getAllViewableFiles = useCallback(() => {
+  // Combine existing files (with URLs) and new files
+  const existingFilesWithUrls = existingLabFiles.map((file, index) => ({
+    url: file.file_path, // This should be the FULL URL from backend
+    name: file.file_name,
+    type: file.file_type || (file.file_path.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/*'),
+    fileObject: null,
+    index: index
+  }));
+  
+  const newFiles = formData.labFiles.map((file, index) => ({
+    url: URL.createObjectURL(file),
+    name: file.name,
+    type: file.type,
+    fileObject: file,
+    index: index + existingLabFiles.length
+  }));
+  
+  console.log("👁️ Viewable files - existing:", existingFilesWithUrls.length, "new:", newFiles.length);
+  return [...existingFilesWithUrls, ...newFiles];
+}, [formData.labFiles, existingLabFiles]);
+
+const openFileViewer = useCallback((index = 0) => {
     dispatch({ type: 'OPEN_FILE_VIEWER', payload: index });
   }, []);
 
@@ -1624,6 +1921,10 @@ const MedicalRecords = ({
     openFileViewer(index);
   }, [openFileViewer]);
 
+  const handleExistingFileRemove = useCallback((index) => {
+    dispatch({ type: 'REMOVE_EXISTING_LAB_FILE', index });
+  }, []);
+
   const handleMonthChange = useCallback((newMonth) => {
     dispatch({ type: 'SET_CURRENT_MONTH', payload: newMonth });
   }, []);
@@ -1658,31 +1959,6 @@ const MedicalRecords = ({
         loadingSchedules: false,
         error: "Failed to load schedules" 
       } });
-    }
-  }, []);
-
-  const updateScheduleAvailability = useCallback(async (scheduleId) => {
-    try {
-      const response = await fetch("http://localhost:8000/api/veterinarian/update_schedule_availability/", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          schedule_id: scheduleId,
-          is_available: false
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to update schedule availability");
-      }
-
-      return await response.json();
-    } catch (err) {
-      console.error("Error updating schedule availability:", err);
-      throw err;
     }
   }, []);
 
@@ -1724,8 +2000,6 @@ const MedicalRecords = ({
   const handleCancelForm = useCallback(() => {
     if (isModal && onCloseModal) {
       onCloseModal();
-    } else {
-      dispatch({ type: 'RESET_STATE' });
     }
   }, [isModal, onCloseModal]);
 
@@ -1734,6 +2008,12 @@ const MedicalRecords = ({
     
     if (!horseInfo?.id || !appointmentId) {
       dispatch({ type: 'SET_UI_STATE', payload: { error: "Cannot save: missing horse or appointment information." } });
+      return;
+    }
+    
+    const recordIdToUpdate = recordId || recordData?.id;
+    if (!recordIdToUpdate) {
+      dispatch({ type: 'SET_UI_STATE', payload: { error: "Cannot update: missing record ID." } });
       return;
     }
     
@@ -1755,16 +2035,17 @@ const MedicalRecords = ({
     }
     
     dispatch({ type: 'SET_UI_STATE', payload: { error: null, showConfirmation: true } });
-  }, [formData, horseInfo, appointmentId]);
+  }, [formData, horseInfo, appointmentId, recordId, recordData]);
 
-  const handleAddMedicalRecord = useCallback(async () => {
-    if (!horseInfo?.id || !appointmentId) {
-      dispatch({ type: 'SET_UI_STATE', payload: { error: "Cannot save medical record: missing information." } });
+  const updateMedicalRecord = useCallback(async () => {
+    const recordIdToUpdate = recordId || recordData?.id;
+    if (!horseInfo?.id || !appointmentId || !recordIdToUpdate) {
+      dispatch({ type: 'SET_UI_STATE', payload: { error: "Cannot update medical record: missing information." } });
       return;
     }
 
     if (isLoading) {
-      console.log("⚠️ Submission already in progress, skipping...");
+      console.log("⚠️ Update already in progress, skipping...");
       return;
     }
 
@@ -1780,12 +2061,6 @@ const MedicalRecords = ({
         if (selectedSchedule) {
           followUpDate = selectedSchedule.date;
           followUpTime = `${selectedSchedule.startTime}-${selectedSchedule.endTime}`;
-          
-          try {
-            await updateScheduleAvailability(scheduleId);
-          } catch (err) {
-            console.error("Failed to update schedule availability, but continuing with record creation:", err);
-          }
         }
       }
 
@@ -1793,6 +2068,7 @@ const MedicalRecords = ({
       
       form.append("horse_id", horseInfo.id);
       form.append("app_id", appointmentId);
+      form.append("medrec_id", recordIdToUpdate);
 
       form.append("heartRate", formData.heartRate || "");
       form.append("respRate", formData.respRate || "");
@@ -1809,25 +2085,45 @@ const MedicalRecords = ({
       if (followUpDate) form.append("followUpDate", followUpDate);
       if (followUpTime) form.append("followUpTime", followUpTime);
 
+      // Add existing lab files (to track which ones to keep)
+      if (existingLabFiles.length > 0) {
+        form.append("existing_lab_files", JSON.stringify(existingLabFiles.map(f => f.id || f.file_path)));
+      }
+
+      // Add new lab files
       formData.labFiles.forEach((file) => {
         form.append('lab_files', file);
       });
 
       form.append("treatments", JSON.stringify(formData.treatments));
 
-      const response = await fetch("http://localhost:8000/api/veterinarian/add_medical_record/", {
+      const endpoint = "http://localhost:8000/api/veterinarian/update_medical_record/";
+      
+      console.log("📤 Updating medical record to:", endpoint);
+      console.log("📝 Record ID:", recordIdToUpdate);
+      console.log("📦 Form data:", {
+        heartRate: formData.heartRate,
+        treatments: formData.treatments,
+        labFiles: formData.labFiles.length,
+        existingLabFiles: existingLabFiles.length
+      });
+
+      const response = await fetch(endpoint, {
         method: "POST",
         credentials: "include",
         body: form,
       });
 
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Failed to add medical record");
+      if (!response.ok) {
+        throw new Error(data.error || `Failed to update medical record: ${response.status}`);
+      }
+
+      console.log("✅ Medical record updated successfully:", data);
 
       dispatch({
         type: 'SET_UI_STATE',
         payload: {
-          medrecId: data.medrec_id,
           showSuccessAlert: true,
         },
       });
@@ -1842,12 +2138,12 @@ const MedicalRecords = ({
       }, 1500);
 
     } catch (err) {
-      console.error("❌ Error saving medical record:", err);
+      console.error("❌ Error updating medical record:", err);
       dispatch({ type: 'SET_UI_STATE', payload: { error: err.message } });
     } finally {
       dispatch({ type: 'SET_UI_STATE', payload: { isLoading: false } });
     }
-  }, [formData, horseInfo, appointmentId, onRefresh, isModal, onCloseModal, schedules, isLoading, updateScheduleAvailability]);
+  }, [formData, horseInfo, appointmentId, onRefresh, isModal, onCloseModal, schedules, isLoading, recordId, recordData, existingLabFiles]);
 
   const handleAddTreatment = useCallback(() => {
     dispatch({ type: 'ADD_TREATMENT' });
@@ -1858,8 +2154,8 @@ const MedicalRecords = ({
   }, []);
 
   const handleConfirmSave = useCallback(() => {
-    handleAddMedicalRecord();
-  }, [handleAddMedicalRecord]);
+    updateMedicalRecord();
+  }, [updateMedicalRecord]);
 
   const handleCancelConfirm = useCallback(() => {
     dispatch({ type: 'SET_UI_STATE', payload: { showConfirmation: false } });
@@ -1867,9 +2163,52 @@ const MedicalRecords = ({
 
   const viewableFiles = getAllViewableFiles();
 
+  // Show loading while fetching record data
+  if (isLoadingRecord) {
+    return (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-8 flex flex-col items-center">
+          <Loader className="w-8 h-8 animate-spin text-blue-600 mb-4" />
+          <p className="text-gray-700">Loading record data...</p>
+          <p className="text-sm text-gray-500 mt-2">Please wait while we fetch the medical record</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error && !isLoadingRecord) {
+    return (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="bg-white rounded-2xl p-8 max-w-md">
+          <div className="text-center">
+            <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Error Loading Record</h3>
+            <p className="text-gray-600 mb-4">{error}</p>
+            <div className="flex gap-3">
+              <Button
+                onClick={handleCancelForm}
+                variant="outline"
+                className="flex-1"
+              >
+                Close
+              </Button>
+              <Button
+                onClick={loadRecordData}
+                className="flex-1"
+              >
+                Retry
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
-      <RecordForm
+      <EditRecordForm
         formData={formData}
         isLoading={isLoading}
         error={error}
@@ -1881,6 +2220,7 @@ const MedicalRecords = ({
         onRemoveTreatment={handleRemoveTreatment}
         onFilesAdd={handleFilesAdd}
         onFileRemove={handleFileRemove}
+        onExistingFileRemove={handleExistingFileRemove}
         onFilePreview={handleFilePreview}
         onDragStateChange={handleDragStateChange}
         horseInfo={horseInfo}
@@ -1898,6 +2238,7 @@ const MedicalRecords = ({
         onScheduleSelect={handleScheduleSelect}
         onCancelSchedule={handleCancelSchedule}
         selectedScheduleId={formData.scheduleId}
+        existingLabFiles={existingLabFiles}
       />
       
       {showConfirmation && (
@@ -1906,6 +2247,7 @@ const MedicalRecords = ({
           onCancel={handleCancelConfirm}
           isLoading={isLoading}
           formData={formData}
+          isEditMode={true}
         />
       )}
       
@@ -1930,4 +2272,4 @@ const MedicalRecords = ({
   );
 };
 
-export default React.memo(MedicalRecords);
+export default React.memo(EditMedicalRecord);

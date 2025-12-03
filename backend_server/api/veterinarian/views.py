@@ -1256,20 +1256,19 @@ def get_all_appointments(request):
     except Exception as e:
         return Response({"error": str(e)}, status=500)
         
-# -------------------- GET APPROVED APPOINTMENTS WITH FOLLOWUPS --------------------
+# -------------------- GET APPROVED APPOINTMENTS WITH FOLLOWUPS AND COMPLETED --------------------
 @api_view(["GET"])
 @login_required
 def get_approved_appointments(request):
     """
-    Returns all approved appointments for the logged-in veterinarian
-    WITHOUT any follow-up data
+    Returns all approved, follow-up, AND completed appointments for the logged-in veterinarian
     """
     vet_id = get_current_vet_id(request)
     if not vet_id:
         return Response({"error": "Unauthorized"}, status=401)
 
     try:
-        # Fetch approved appointments with horse details
+        # Get appointments where app_status is 'approved', 'Follow-up', OR 'Completed'
         res = supabase.table("appointment").select(
             """
             *,
@@ -1286,7 +1285,7 @@ def get_approved_appointments(request):
                 )
             )
             """
-        ).eq("vet_id", vet_id).eq("app_status", "approved").execute()
+        ).eq("vet_id", vet_id).in_("app_status", ["approved", "Follow-up", "Completed"]).execute()
 
         if not res.data:
             return Response({"appointments": []}, status=200)
@@ -1309,19 +1308,20 @@ def get_approved_appointments(request):
             except Exception:
                 formatted_app_date = str(app.get("app_date"))
 
-            # NO FOLLOW-UP LOGIC - just return appointment data
             appointments.append({
                 "app_id": app.get("app_id"),
                 "app_service": app.get("app_service"),
                 "app_date": formatted_app_date,
                 "app_time": app.get("app_time"),
                 "app_complain": app.get("app_complain"),
+                "app_status": app.get("app_status"),  # THIS IS IMPORTANT!
                 "horse_name": horse.get("horse_name", ""),
                 "horse_breed": horse.get("horse_breed", ""),
                 "horse_age": horse.get("horse_age", ""),
                 "operator_name": operator_name,
                 "operator_phone": operator.get("op_phone_num", ""),
                 "horse_id": horse.get("horse_id"),
+                "followup_of": app.get("followup_of"),  # In case you need it
             })
 
         return Response({"appointments": appointments}, status=200)
@@ -1761,7 +1761,6 @@ def get_horse_details(request, horse_id):
 @api_view(["GET"])
 @login_required
 def get_horse_medical_records(request, horse_id):
-    import traceback
     try:
         print("🐎 Fetching medical records for horse_id:", horse_id)
         vet_id = get_current_vet_id(request)
@@ -1791,32 +1790,60 @@ def get_horse_medical_records(request, horse_id):
                 vet.get("vet_lname")
             ])).strip() or "Unknown Veterinarian"
 
-            # 🚨 FIXED: Handle ARRAY of lab image URLs
+            # SIMPLIFIED APPROACH: Handle array or single value
             lab_images = record.get("medrec_lab_img") or []
             processed_lab_images = []
             
-            if isinstance(lab_images, list):
-                for lab_image_url in lab_images:
-                    if lab_image_url:
-                        # If the URL doesn't have the full Supabase URL, construct it
-                        if not lab_image_url.startswith(('http://', 'https://')):
-                            # Extract filename from the URL if it's just a path
-                            filename = lab_image_url.split('/')[-1] if '/' in lab_image_url else lab_image_url
-                            lab_image_url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{filename}"
-                        processed_lab_images.append(lab_image_url)
-                print(f"[DEBUG] Found {len(processed_lab_images)} lab files: {processed_lab_images}")
-            elif lab_images:  # Handle legacy single URL case
-                lab_image_url = lab_images
-                if not lab_image_url.startswith(('http://', 'https://')):
-                    filename = lab_image_url.split('/')[-1] if '/' in lab_image_url else lab_image_url
-                    lab_image_url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{filename}"
-                processed_lab_images.append(lab_image_url)
-                print(f"[DEBUG] Found single lab file: {processed_lab_images}")
+            print(f"[DEBUG] Raw lab_images data: {lab_images}")
+            print(f"[DEBUG] Type of lab_images: {type(lab_images)}")
+            
+            # If it's a string, try to parse it as JSON array
+            if isinstance(lab_images, str):
+                try:
+                    # Try to parse as JSON array
+                    import json
+                    parsed = json.loads(lab_images)
+                    if isinstance(parsed, list):
+                        lab_images = parsed
+                    else:
+                        lab_images = [lab_images]  # Convert single string to array
+                except:
+                    # If not valid JSON, treat as single URL
+                    lab_images = [lab_images]
+            
+            # Ensure we have a list
+            if not isinstance(lab_images, list):
+                lab_images = [lab_images] if lab_images else []
+            
+            # Process each URL
+            for lab_image_url in lab_images:
+                if lab_image_url and str(lab_image_url).strip():
+                    url_str = str(lab_image_url).strip()
+                    
+                    # Clean any quotes or brackets
+                    url_str = url_str.replace('"', '').replace("'", '').replace('[', '').replace(']', '')
+                    
+                    if url_str and not url_str.startswith(('http://', 'https://')):
+                        # Extract filename
+                        if '/' in url_str:
+                            filename = url_str.split('/')[-1]
+                        else:
+                            filename = url_str
+                        
+                        # Construct full URL
+                        full_url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{filename}"
+                        processed_lab_images.append(full_url)
+                    elif url_str:
+                        processed_lab_images.append(url_str)
+            
+            print(f"[DEBUG] Processed {len(processed_lab_images)} lab files: {processed_lab_images}")
 
             formatted_records.append({
                 "id": record.get("medrec_id"),
                 "date": record.get("medrec_date"),
+                "created_at": record.get("created_at"),
                 "followUpDate": record.get("medrec_followup_date"),
+                "followUpTime": record.get("medrec_followup_time"),  
                 "parentMedrecId": record.get("parent_medrec_id"),
                 "heartRate": record.get("medrec_heart_rate"),
                 "respRate": record.get("medrec_resp_rate"),
@@ -1824,7 +1851,7 @@ def get_horse_medical_records(request, horse_id):
                 "clinicalSigns": record.get("medrec_clinical_signs"),
                 "diagnosticProtocol": record.get("medrec_diagnostic_protocol"),
                 "labResult": record.get("medrec_lab_results"),
-                "labImages": processed_lab_images, 
+                "labImages": processed_lab_images,  # This is the array
                 "diagnosis": record.get("medrec_diagnosis"),
                 "prognosis": record.get("medrec_prognosis"),
                 "recommendation": record.get("medrec_recommendation"),
@@ -1835,9 +1862,198 @@ def get_horse_medical_records(request, horse_id):
         return Response({"medicalRecords": formatted_records}, status=200)
 
     except Exception as e:
-        traceback.print_exc()
+        print(f"[ERROR] {str(e)}")
         return Response({"error": str(e)}, status=500)
     
+# -------------------- GET SINGLE MEDICAL RECORD --------------------
+@api_view(["GET"])
+@login_required
+def get_medical_record(request, medrec_id):
+    """
+    Fetch a single medical record by ID with all details including treatments and lab files
+    Simplified version with network error handling
+    """
+    try:
+        print(f"🔍 Fetching single medical record: {medrec_id}")
+        vet_id = get_current_vet_id(request)
+        if not vet_id:
+            return Response({"error": "Unauthorized"}, status=401)
+
+        # Try with retry logic for network issues
+        max_retries = 3
+        record_res = None
+        last_error = None
+        
+        for attempt in range(max_retries):
+            try:
+                print(f"📡 Attempt {attempt + 1}/{max_retries} to fetch record...")
+                # SIMPLIFIED: Remove complex join, get basic data first
+                record_res = supabase.table("horse_medical_record")\
+                    .select("*")\
+                    .eq("medrec_id", medrec_id)\
+                    .eq("medrec_vet_id", vet_id)\
+                    .execute()
+                
+                # If we get here, query succeeded
+                print(f"✅ Query successful on attempt {attempt + 1}")
+                break
+                
+            except Exception as e:
+                last_error = e
+                print(f"⚠️ Attempt {attempt + 1} failed: {str(e)[:100]}")
+                if attempt < max_retries - 1:
+                    # Wait before retrying (exponential backoff: 1, 2, 4 seconds)
+                    wait_time = 2 ** attempt
+                    print(f"⏳ Waiting {wait_time}s before retry...")
+                    import time
+                    time.sleep(wait_time)
+                else:
+                    print(f"❌ All {max_retries} attempts failed")
+                    raise last_error
+
+        if hasattr(record_res, "error") and record_res.error:
+            return Response({"error": str(record_res.error)}, status=500)
+            
+        if not record_res.data:
+            return Response({"error": "Medical record not found or unauthorized"}, status=404)
+
+        record = record_res.data[0]
+        
+        # Get associated treatments (with its own retry logic)
+        treatments = []
+        try:
+            treatments_res = supabase.table("horse_treatment")\
+                .select("*")\
+                .eq("medrec_id", medrec_id)\
+                .execute()
+            treatments = treatments_res.data or []
+            print(f"✅ Found {len(treatments)} treatments")
+        except Exception as e:
+            print(f"⚠️ Could not fetch treatments: {e}")
+            # Continue without treatments
+        
+        # Get vet name separately (simpler query)
+        vet_name = "Unknown Veterinarian"
+        try:
+            vet_res = supabase.table("vet_profile")\
+                .select("vet_fname, vet_mname, vet_lname")\
+                .eq("vet_id", vet_id)\
+                .limit(1)\
+                .execute()
+            if vet_res.data:
+                vet = vet_res.data[0]
+                vet_name = " ".join(filter(None, [
+                    vet.get("vet_fname"),
+                    vet.get("vet_mname"),
+                    vet.get("vet_lname")
+                ])).strip()
+            print(f"✅ Found vet: {vet_name}")
+        except Exception as e:
+            print(f"⚠️ Could not fetch vet profile: {e}")
+        
+        # ✅ FIXED: Use the same lab image processing logic as get_horse_medical_records
+        lab_images = record.get("medrec_lab_img") or []
+        processed_lab_images = []
+        
+        print(f"[DEBUG] Raw lab_images data: {lab_images}")
+        print(f"[DEBUG] Type of lab_images: {type(lab_images)}")
+        
+        # If it's a string, try to parse it as JSON array
+        if isinstance(lab_images, str):
+            try:
+                # Try to parse as JSON array
+                import json
+                parsed = json.loads(lab_images)
+                if isinstance(parsed, list):
+                    lab_images = parsed
+                else:
+                    lab_images = [lab_images]  # Convert single string to array
+            except:
+                # If not valid JSON, treat as single URL
+                lab_images = [lab_images]
+        
+        # Ensure we have a list
+        if not isinstance(lab_images, list):
+            lab_images = [lab_images] if lab_images else []
+        
+        # Process each URL
+        for lab_image_url in lab_images:
+            if lab_image_url and str(lab_image_url).strip():
+                url_str = str(lab_image_url).strip()
+                
+                # Clean any quotes or brackets
+                url_str = url_str.replace('"', '').replace("'", '').replace('[', '').replace(']', '')
+                
+                if url_str and not url_str.startswith(('http://', 'https://')):
+                    # Extract filename
+                    if '/' in url_str:
+                        filename = url_str.split('/')[-1]
+                    else:
+                        filename = url_str
+                    
+                    # Remove query params if any
+                    filename = filename.split('?')[0]
+                    
+                    # Construct full URL
+                    full_url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{filename}"
+                    processed_lab_images.append(full_url)
+                elif url_str:
+                    processed_lab_images.append(url_str)
+        
+        print(f"[DEBUG] Processed {len(processed_lab_images)} lab files: {processed_lab_images}")
+
+        # Format dates for frontend
+        def format_date_mmddyyyy(date_str):
+            try:
+                return datetime.strptime(str(date_str)[:10], "%Y-%m-%d").strftime("%m-%d-%Y")
+            except Exception:
+                return str(date_str)[:10] if date_str else None
+
+        formatted_record = {
+            "id": record.get("medrec_id"),
+            "horse_id": record.get("medrec_horse_id"),
+            "date": format_date_mmddyyyy(record.get("medrec_date")),
+            "created_at": record.get("created_at"),
+            "followUpDate": format_date_mmddyyyy(record.get("medrec_followup_date")),
+            "followUpTime": record.get("medrec_followup_time"),
+            "parentMedrecId": record.get("parent_medrec_id"),
+            "heartRate": record.get("medrec_heart_rate"),
+            "respRate": record.get("medrec_resp_rate"),
+            "temperature": record.get("medrec_body_temp"),
+            "clinicalSigns": record.get("medrec_clinical_signs"),
+            "diagnosticProtocol": record.get("medrec_diagnostic_protocol"),
+            "labResult": record.get("medrec_lab_results"),
+            "labImages": processed_lab_images,  # ✅ Now using the clean array
+            "diagnosis": record.get("medrec_diagnosis"),
+            "prognosis": record.get("medrec_prognosis"),
+            "recommendation": record.get("medrec_recommendation"),
+            "horseStatus": record.get("medrec_horsestatus"),
+            "healthStatus": record.get("medrec_horsestatus"),
+            "veterinarian": vet_name,
+            "treatments": treatments
+        }
+
+        print(f"✅ Successfully fetched and formatted record {medrec_id}")
+        return Response({"record": formatted_record}, status=200)
+
+    except Exception as e:
+        print(f"❌ Critical error fetching medical record: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Return a user-friendly error
+        error_msg = str(e)
+        if "socket" in error_msg.lower() or "connection" in error_msg.lower() or "10035" in error_msg:
+            return Response({
+                "error": "Network connection failed",
+                "message": "Could not connect to database. Please check your internet connection and try again."
+            }, status=503)
+        else:
+            return Response({
+                "error": "Failed to fetch medical record",
+                "message": str(e)
+            }, status=500)
+            
 # -------------------- GET TREATMENT RECORDS FOR A HORSE --------------------
 @api_view(["GET"])
 @login_required
@@ -1927,103 +2143,91 @@ def add_medical_record(request):
         horse_id = request.POST.get("horse_id")
         app_id = request.POST.get("app_id")
 
-        # 🧠 Utility: safely handle empty/nullable inputs
         def safe_get(field):
             val = request.POST.get(field)
             return val if val not in [None, "", "null"] else None
 
-        # 🆕 Fields
+        # NEW FIELDS
         horse_status = safe_get("healthStatus")
         followup_date = safe_get("followUpDate")
         followup_time = safe_get("followUpTime")
 
-        # ✅ Validate
         if not horse_id or not app_id:
             return Response({"error": "Missing horse_id or app_id"}, status=400)
 
-        # 🚨 DUPLICATE CHECK: Check if we already processed this request
+        # Prevent duplicate for same horse/vet/day
         today = date.today().isoformat()
-        existing = supabase.table("horse_medical_record").select("medrec_id").eq(
-            "medrec_horse_id", horse_id
-        ).eq("medrec_vet_id", vet_id).eq("medrec_date", today).execute()
-        
+        existing = (
+            supabase.table("horse_medical_record")
+            .select("medrec_id")
+            .eq("medrec_horse_id", horse_id)
+            .eq("medrec_vet_id", vet_id)
+            .eq("medrec_date", today)
+            .execute()
+        )
         if existing.data:
-            print(f"🚨 [DEBUG] DUPLICATE DETECTED: Record already exists for today")
-            return Response({"error": "Medical record for this horse already created today"}, status=400)
+            return Response({"error": "Medical record already created today"}, status=400)
 
-        # ---------------- Handle Multiple Lab Files Upload ----------------
+        # ---------------- File Upload ----------------
         lab_files_urls = []
-        
-        # Handle multiple files from FormData
-        lab_files = request.FILES.getlist('lab_files')
-        
-        print(f"[DEBUG] Number of lab files received: {len(lab_files)}")
-        
+        lab_files = request.FILES.getlist("lab_files")
+
         for lab_file in lab_files:
             try:
-                import datetime
-                import random
-                
+                import datetime, random
                 timestamp = int(datetime.datetime.now().timestamp())
-                file_extension = lab_file.name.split('.')[-1] if '.' in lab_file.name else 'bin'
-                file_name = f"{horse_id}_lab_{timestamp}_{random.randint(1000,9999)}.{file_extension}"
-                
-                # Upload the file
-                upload_res = sr_client.storage.from_("Lab_results").upload(
+                ext = lab_file.name.split(".")[-1]
+                file_name = f"{horse_id}_lab_{timestamp}_{random.randint(1000,9999)}.{ext}"
+
+                sr_client.storage.from_("Lab_results").upload(
                     file_name,
                     lab_file.read(),
-                    {"content-type": lab_file.content_type, "x-upsert": "true"}
+                    {
+                        "content-type": lab_file.content_type,
+                        "x-upsert": "true",
+                    },
                 )
 
-                public_url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{file_name}"
-                
-                if '?' in public_url:
-                    public_url = public_url.split('?')[0]
-                    
-                lab_files_urls.append(public_url)
-                print(f"[DEBUG] Lab file uploaded: {public_url}")
-                
-            except Exception as e:
-                import logging
-                logging.exception(f"Lab file upload failed: {e}")
-                continue
+                url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{file_name}"
+                if "?" in url:
+                    url = url.split("?")[0]
 
-        # Also handle base64 images for backward compatibility
+                lab_files_urls.append(url)
+            except:
+                pass
+
+        # Base64 legacy
         lab_image_base64 = safe_get("labImageBase64")
-        lab_image_name = safe_get("labImageName") or "lab_image.jpg"
+        lab_image_name = safe_get("labImageName") or "lab.jpg"
         lab_image_type = safe_get("labImageType") or "image/jpeg"
 
         if lab_image_base64:
             try:
-                import base64
-                
+                import base64, random, datetime
+
                 timestamp = int(datetime.datetime.now().timestamp())
-                file_extension = lab_image_name.split('.')[-1] if '.' in lab_image_name else 'jpg'
-                file_name = f"{horse_id}_lab_{timestamp}_{random.randint(1000,9999)}.{file_extension}"
-                
+                ext = lab_image_name.split(".")[-1]
+                file_name = f"{horse_id}_lab_{timestamp}_{random.randint(1000,9999)}.{ext}"
+
                 file_content = base64.b64decode(lab_image_base64)
-                
-                upload_res = sr_client.storage.from_("Lab_results").upload(
+
+                sr_client.storage.from_("Lab_results").upload(
                     file_name,
                     file_content,
-                    {"content-type": lab_image_type, "x-upsert": "true"}
+                    {"content-type": lab_image_type, "x-upsert": "true"},
                 )
 
-                public_url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{file_name}"
-                
-                if '?' in public_url:
-                    public_url = public_url.split('?')[0]
-                    
-                lab_files_urls.append(public_url)
-                print(f"[DEBUG] Lab image uploaded via base64: {public_url}")
-            except Exception as e:
-                import logging
-                logging.exception(f"Lab image base64 upload failed: {e}")
+                url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{file_name}"
+                if "?" in url:
+                    url = url.split("?")[0]
 
-        # If no files were uploaded, set to None instead of empty array
+                lab_files_urls.append(url)
+            except:
+                pass
+
         final_lab_files = lab_files_urls if lab_files_urls else None
 
-        # 🚨 CREATE ONLY ONE RECORD
+        # ---------------- Create Medical Record ----------------
         medrec_id = str(uuid.uuid4())
         record_data = {
             "medrec_id": medrec_id,
@@ -2031,6 +2235,7 @@ def add_medical_record(request):
             "medrec_vet_id": vet_id,
             "medrec_date": safe_get("date") or today,
             "medrec_followup_date": followup_date,
+            "medrec_followup_time": followup_time,
             "medrec_heart_rate": safe_get("heartRate"),
             "medrec_resp_rate": safe_get("respRate"),
             "medrec_body_temp": safe_get("temperature"),
@@ -2044,26 +2249,363 @@ def add_medical_record(request):
             "medrec_horsestatus": horse_status,
         }
 
-        print(f"✅ [DEBUG] Creating ONE medical record with ID: {medrec_id}")
+        supabase.table("horse_medical_record").insert(record_data).execute()
 
-        # ✅ Insert medical record - ONLY ONCE
-        medrec_res = supabase.table("horse_medical_record").insert(record_data).execute()
-        if not medrec_res.data:
-            return Response({"error": "Failed to add medical record"}, status=500)
-
-        # 2️⃣ Sync horse_profile.horse_status with medrec_horsestatus
+        # ---------------- Update Horse Status ----------------
         if horse_status:
-            supabase.table("horse_profile").update({
-                "horse_status": horse_status
-            }).eq("horse_id", horse_id).execute()
+            supabase.table("horse_profile").update(
+                {"horse_status": horse_status}
+            ).eq("horse_id", horse_id).execute()
 
-        # 3️⃣ Handle treatments (JSON array inside FormData)
+        # ---------------- Insert Treatments ----------------
         treatments_raw = safe_get("treatments")
         treatment_records = []
 
         if treatments_raw:
+            treatments = json.loads(treatments_raw)
+            for t in treatments:
+                treatment_records.append({
+                    "treatment_id": str(uuid.uuid4()),
+                    "medrec_id": medrec_id,
+                    "treatment_name": t.get("name") or t.get("medication"),
+                    "treatment_dosage": t.get("dosage"),
+                    "treatment_duration": t.get("duration"),
+                    "treatment_outcome": t.get("outcome"),
+                })
+
+            if treatment_records:
+                supabase.table("horse_treatment").insert(treatment_records).execute()
+
+        # ---------------- FOLLOW-UP AUTO CREATION ----------------
+        if followup_date and followup_time:
+            print("➡️ [DEBUG] Creating follow-up appointment...")
+
+            # GET original appointment details including complain
+            original_app = (
+                supabase.table("appointment")
+                .select(
+                    "user_id, horse_id, app_service, vet_id, app_complain"
+                )
+                .eq("app_id", app_id)
+                .single()
+                .execute()
+            )
+
+            og = original_app.data
+
+            followup_app_id = str(uuid.uuid4())
+
+            new_followup = {
+                "app_id": followup_app_id,
+                "app_service": og["app_service"],
+                "app_date": followup_date,
+                "app_time": followup_time,
+                "app_status": "Follow-up",
+                "app_complain": og["app_complain"],   # FIXED
+                "user_id": og["user_id"],
+                "horse_id": og["horse_id"],
+                "vet_id": og["vet_id"],
+                "followup_of": app_id,                 # Link follow-up
+            }
+
+            supabase.table("appointment").insert(new_followup).execute()
+            
+            # Update original appointment to "Follow-up Scheduled"
+            supabase.table("appointment").update(
+                {"app_status": "Follow-up Scheduled"}
+            ).eq("app_id", app_id).execute()
+            
+        else:
+            # WHEN THERE IS NO FOLLOWUP SET BY THE VET, MAKE THE APP STATUS COMPLETED!
+            print("➡️ [DEBUG] No follow-up set. Marking appointment as 'Completed'")
+            supabase.table("appointment").update(
+                {"app_status": "Completed"}
+            ).eq("app_id", app_id).execute()
+
+        return Response({
+            "message": "Medical record added successfully",
+            "medrec_id": medrec_id,
+            "treatments": treatment_records,
+            "lab_files": lab_files_urls,
+            "followup_date": followup_date,
+            "followup_time": followup_time,
+            "app_status_updated": "Completed" if not (followup_date and followup_time) else "Follow-up Scheduled"
+        }, status=201)
+
+    except Exception as e:
+        print(f"❌ ERROR: {str(e)}")
+        return Response({"error": str(e)}, status=500)
+
+# -------------------- UPDATE MEDICAL RECORD --------------------
+@api_view(["POST"])
+@login_required
+def update_medical_record(request):
+    """
+    Update an existing medical record.
+    Handles:
+    - Updating all medical record fields
+    - Adding new lab files (deletes old ones if replaced)
+    - Updating treatments
+    - Preserving existing approved access
+    """
+    try:
+        print(f"🚨 [DEBUG] Starting medical record UPDATE")
+        
+        vet_id = get_current_vet_id(request)
+        if not vet_id:
+            return Response({"error": "Unauthorized"}, status=401)
+
+        medrec_id = request.POST.get("medrec_id")
+        horse_id = request.POST.get("horse_id")
+        app_id = request.POST.get("app_id")
+
+        def safe_get(field):
+            val = request.POST.get(field)
+            return val if val not in [None, "", "null"] else None
+
+        # NEW FIELDS
+        horse_status = safe_get("healthStatus")
+        followup_date = safe_get("followUpDate")
+        followup_time = safe_get("followUpTime")
+
+        if not medrec_id or not horse_id:
+            return Response({"error": "Missing medrec_id or horse_id"}, status=400)
+
+        # Check if the medical record exists and belongs to this vet
+        existing_res = supabase.table("horse_medical_record")\
+            .select("*")\
+            .eq("medrec_id", medrec_id)\
+            .eq("medrec_vet_id", vet_id)\
+            .execute()
+        
+        if not existing_res.data:
+            return Response({"error": "Medical record not found or unauthorized"}, status=404)
+
+        existing_record = existing_res.data[0]
+        
+        # Get existing lab files to preserve them
+        existing_lab_files_raw = existing_record.get("medrec_lab_img") or []
+        
+        # Parse existing files (they might be stored as JSON string)
+        existing_lab_files = []
+        if existing_lab_files_raw:
             try:
+                if isinstance(existing_lab_files_raw, str):
+                    # Try to parse JSON string
+                    try:
+                        parsed = json.loads(existing_lab_files_raw)
+                        if isinstance(parsed, list):
+                            existing_lab_files = parsed
+                        elif isinstance(parsed, str):
+                            existing_lab_files = [parsed]
+                        else:
+                            existing_lab_files = [str(parsed)]
+                    except json.JSONDecodeError:
+                        # If not JSON, check if it's a single URL
+                        if existing_lab_files_raw.startswith(('http://', 'https://')):
+                            existing_lab_files = [existing_lab_files_raw]
+                        else:
+                            existing_lab_files = []
+                elif isinstance(existing_lab_files_raw, list):
+                    existing_lab_files = existing_lab_files_raw
+            except Exception as e:
+                print(f"⚠️ Error parsing existing lab files: {e}")
+                existing_lab_files = []
+        
+        print(f"📁 Existing lab files: {existing_lab_files}")
+        
+        # Get files to keep from request (these are the files user wants to keep)
+        keep_files_json = safe_get("existing_lab_files")
+        files_to_keep = []
+        if keep_files_json:
+            try:
+                files_to_keep = json.loads(keep_files_json)
+                print(f"📁 Files user wants to keep: {files_to_keep}")
+            except Exception as e:
+                print(f"⚠️ Error parsing keep_files_json: {e}")
+                pass
+        
+        # Files to delete = existing files that are NOT in files_to_keep
+        files_to_delete = []
+        final_existing_files = []
+        
+        for existing_file in existing_lab_files:
+            keep_this_file = False
+            
+            # Check if user wants to keep this file
+            for keep_item in files_to_keep:
+                if isinstance(keep_item, dict):
+                    # Check by file_path or ID
+                    keep_file_path = keep_item.get('file_path') or keep_item.get('id') or str(keep_item)
+                    if keep_file_path and existing_file and (keep_file_path in str(existing_file) or str(keep_item) in str(existing_file)):
+                        keep_this_file = True
+                        break
+                else:
+                    # Check by string match
+                    if str(keep_item) in str(existing_file):
+                        keep_this_file = True
+                        break
+            
+            if keep_this_file:
+                final_existing_files.append(existing_file)
+                print(f"✅ Keeping existing file: {existing_file}")
+            else:
+                files_to_delete.append(existing_file)
+                print(f"🗑️ Marking for deletion: {existing_file}")
+        
+        # ---------------- Delete old files from storage ----------------
+        deleted_files = []
+        for file_url in files_to_delete:
+            try:
+                # Extract filename from URL
+                if file_url.startswith(('http://', 'https://')):
+                    # Extract from Supabase URL format
+                    # Format: https://project.supabase.co/storage/v1/object/public/Lab_results/filename.ext
+                    parts = file_url.split('/')
+                    if 'Lab_results' in parts:
+                        lab_results_index = parts.index('Lab_results')
+                        if lab_results_index + 1 < len(parts):
+                            filename = parts[lab_results_index + 1]
+                            # Remove query params if any
+                            filename = filename.split('?')[0]
+                            
+                            # Delete from Supabase storage
+                            try:
+                                sr_client.storage.from_("Lab_results").remove([filename])
+                                deleted_files.append(filename)
+                                print(f"✅ Deleted file from storage: {filename}")
+                            except Exception as delete_error:
+                                print(f"⚠️ Failed to delete {filename} from storage: {delete_error}")
+                else:
+                    # Might be just a filename
+                    filename = file_url.split('/')[-1].split('?')[0]
+                    try:
+                        sr_client.storage.from_("Lab_results").remove([filename])
+                        deleted_files.append(filename)
+                        print(f"✅ Deleted file from storage: {filename}")
+                    except Exception as delete_error:
+                        print(f"⚠️ Failed to delete {filename} from storage: {delete_error}")
+                        
+            except Exception as e:
+                print(f"⚠️ Error processing file deletion for {file_url}: {e}")
+        
+        # ---------------- Handle New Lab Files Upload ----------------
+        new_lab_files_urls = []
+        lab_files = request.FILES.getlist("lab_files")
+
+        for lab_file in lab_files:
+            try:
+                timestamp = int(datetime.now().timestamp())
+                ext = lab_file.name.split(".")[-1] if '.' in lab_file.name else 'bin'
+                file_name = f"{horse_id}_lab_{timestamp}_{random.randint(1000,9999)}.{ext}"
+
+                sr_client.storage.from_("Lab_results").upload(
+                    file_name,
+                    lab_file.read(),
+                    {
+                        "content-type": lab_file.content_type,
+                        "x-upsert": "true",
+                    },
+                )
+
+                url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{file_name}"
+                if "?" in url:
+                    url = url.split("?")[0]
+
+                new_lab_files_urls.append(url)
+                print(f"✅ Uploaded new file: {file_name}")
+            except Exception as e:
+                print(f"❌ Failed to upload new lab file: {e}")
+                continue
+
+        # Base64 legacy support (optional)
+        lab_image_base64 = safe_get("labImageBase64")
+        lab_image_name = safe_get("labImageName") or "lab.jpg"
+        lab_image_type = safe_get("labImageType") or "image/jpeg"
+
+        if lab_image_base64:
+            try:
+                import base64
+                timestamp = int(datetime.now().timestamp())
+                ext = lab_image_name.split(".")[-1] if '.' in lab_image_name else 'jpg'
+                file_name = f"{horse_id}_lab_{timestamp}_{random.randint(1000,9999)}.{ext}"
+
+                file_content = base64.b64decode(lab_image_base64)
+
+                sr_client.storage.from_("Lab_results").upload(
+                    file_name,
+                    file_content,
+                    {"content-type": lab_image_type, "x-upsert": "true"},
+                )
+
+                url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{file_name}"
+                if "?" in url:
+                    url = url.split("?")[0]
+
+                new_lab_files_urls.append(url)
+                print(f"✅ Uploaded base64 image: {file_name}")
+            except Exception as e:
+                print(f"❌ Failed to upload base64 lab image: {e}")
+
+        # Combine kept existing files and new files
+        final_lab_files = final_existing_files + new_lab_files_urls
+        if not final_lab_files:
+            final_lab_files = None
+        
+        print(f"📁 Final lab files after update: {final_lab_files}")
+
+        # ---------------- Update Medical Record ----------------
+        update_data = {
+            "medrec_heart_rate": safe_get("heartRate"),
+            "medrec_resp_rate": safe_get("respRate"),
+            "medrec_body_temp": safe_get("temperature"),
+            "medrec_clinical_signs": safe_get("clinicalSigns"),
+            "medrec_diagnostic_protocol": safe_get("diagnosticProtocol"),
+            "medrec_lab_results": safe_get("labResult"),
+            "medrec_lab_img": final_lab_files,
+            "medrec_diagnosis": safe_get("diagnosis"),
+            "medrec_prognosis": safe_get("prognosis"),
+            "medrec_recommendation": safe_get("recommendation"),
+            "medrec_horsestatus": horse_status,
+            "medrec_followup_date": followup_date,
+            "medrec_followup_time": followup_time,
+            "updated_at": datetime.now().isoformat()        
+        }
+
+        # Remove None values
+        update_data = {k: v for k, v in update_data.items() if v is not None}
+
+        print(f"📝 Updating medical record {medrec_id} with data: {update_data}")
+
+        update_res = supabase.table("horse_medical_record")\
+            .update(update_data)\
+            .eq("medrec_id", medrec_id)\
+            .execute()
+
+        if not update_res.data:
+            return Response({"error": "Failed to update medical record"}, status=500)
+
+        # ---------------- Update Horse Status ----------------
+        if horse_status:
+            supabase.table("horse_profile").update(
+                {"horse_status": horse_status}
+            ).eq("horse_id", horse_id).execute()
+
+        # ---------------- Handle Treatments ----------------
+        treatments_raw = safe_get("treatments")
+        
+        if treatments_raw:
+            try:
+                # First, delete existing treatments for this record
+                supabase.table("horse_treatment")\
+                    .delete()\
+                    .eq("medrec_id", medrec_id)\
+                    .execute()
+                
+                # Insert new treatments
                 treatments = json.loads(treatments_raw)
+                treatment_records = []
+                
                 for t in treatments:
                     treatment_records.append({
                         "treatment_id": str(uuid.uuid4()),
@@ -2076,27 +2618,39 @@ def add_medical_record(request):
 
                 if treatment_records:
                     supabase.table("horse_treatment").insert(treatment_records).execute()
-
+                    print(f"✅ Updated {len(treatment_records)} treatments")
+                    
             except Exception as e:
-                return Response({"error": f"Invalid treatments JSON: {str(e)}"}, status=400)
+                print(f"⚠️ Failed to process treatments: {e}")
 
-        print(f"🎉 [DEBUG] SUCCESS: Created medical record {medrec_id}")
+        # ---------------- Update Schedule Availability ----------------
+        schedule_id = safe_get("scheduleId")
+        if schedule_id:
+            try:
+                supabase.table("appointment_slot").update({
+                    "available": False
+                }).eq("slot_id", schedule_id).execute()
+            except Exception as e:
+                print(f"⚠️ Failed to update schedule availability: {e}")
 
-        # ✅ Success Response
-        return Response(
-            {
-                "message": "Medical record added successfully",
-                "medrec_id": medrec_id,
-                "treatments": treatment_records,
-                "horse_status": horse_status,
-                "lab_files_urls": lab_files_urls,
-                "followup_time": followup_time,
-            },
-            status=201,
-        )
+        print(f"🎉 [DEBUG] SUCCESS: Updated medical record {medrec_id}")
+
+        return Response({
+            "message": "Medical record updated successfully",
+            "medrec_id": medrec_id,
+            "treatments_updated": True if treatments_raw else False,
+            "lab_files_added": len(new_lab_files_urls),
+            "lab_files_kept": len(final_existing_files),
+            "lab_files_deleted": len(deleted_files),
+            "horse_status": horse_status,
+            "followup_date": followup_date,
+            "followup_time": followup_time,
+        }, status=200)
 
     except Exception as e:
-        print(f"❌ [DEBUG] ERROR: {str(e)}")
+        print(f"❌ ERROR updating medical record: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
         
 # -------------------- CREATE FOLLOW-UP MEDICAL RECORD --------------------
@@ -2498,67 +3052,130 @@ def delete_past_unbooked_slots(vet_id):
         print("⚠️ Error deleting past unbooked slots:", e)
         return 0
 
-def generate_slots_for_schedule(sched_id, day_of_week, start_time, end_time, slot_duration=60):
+def generate_slots_for_schedule(sched_id, day_of_week, start_time, end_time, slot_duration):
     """
-    Generate slots for one month based on vet_schedule, skipping lunch (12–1PM).
-    Only for the specified day_of_week.
+    Legacy function - now calls generate_slots_for_year for backward compatibility
     """
-    today = date.today()
-    start_of_month = today.replace(day=1)
-    next_month = (start_of_month + timedelta(days=32)).replace(day=1)
-    end_of_month = next_month - timedelta(days=1)
-    weekday_num = get_weekday_number(day_of_week)
+    print(f"⚠️ Using legacy function, switching to yearly generation")
+    generate_slots_for_year(sched_id, day_of_week, start_time, end_time, slot_duration)
+def generate_slots_for_year(sched_id, day_of_week, start_time, end_time, slot_duration):
+    """
+    Generate or update appointment slots for all occurrences of a specific weekday for 1 year.
+    Preserves booked slots and avoids duplicates.
+    """
+    try:
+        today = date.today()
+        start_date = today + timedelta(days=1)
+        end_date = start_date + timedelta(days=365)
 
-    if weekday_num == -1:
-        print(f"⚠️ Invalid day_of_week: {day_of_week}")
-        return
+        day_map = {"Monday":0,"Tuesday":1,"Wednesday":2,"Thursday":3,"Friday":4,"Saturday":5,"Sunday":6}
+        target_weekday = day_map.get(day_of_week)
+        if target_weekday is None:
+            print(f"❌ Invalid day: {day_of_week}")
+            return
 
-    lunch_start = time(12, 0)
-    lunch_end = time(13, 0)
-    slots = []
-    current_date = start_of_month
+        start_minutes = start_time.hour * 60 + start_time.minute
+        end_minutes = end_time.hour * 60 + end_time.minute
+        if end_minutes <= start_minutes:
+            print(f"❌ Invalid time range {start_time}-{end_time}")
+            return
 
-    while current_date <= end_of_month:
-        if current_date.weekday() == weekday_num:
-            current_dt = datetime.combine(current_date, start_time)
-            end_dt = datetime.combine(current_date, end_time)
+        # Fetch existing slots for this schedule and day
+        existing_slots_res = supabase.table("appointment_slot") \
+            .select("slot_id, slot_date, start_time, end_time, is_booked") \
+            .eq("sched_id", sched_id) \
+            .gte("slot_date", start_date.isoformat()) \
+            .execute()
 
-            while current_dt + timedelta(minutes=slot_duration) <= end_dt:
-                next_dt = current_dt + timedelta(minutes=slot_duration)
+        existing_slots = existing_slots_res.data if existing_slots_res.data else []
 
-                # ⏳ Skip lunch hour (12:00–13:00)
-                if not (lunch_start <= current_dt.time() < lunch_end or
-                        lunch_start < next_dt.time() <= lunch_end):
-                    slots.append({
-                        "slot_id": str(uuid.uuid4()),
-                        "sched_id": sched_id,
-                        "slot_date": current_date.isoformat(),
-                        "start_time": current_dt.time().strftime("%H:%M:%S"),
-                        "end_time": next_dt.time().strftime("%H:%M:%S"),
-                        "is_booked": False
-                    })
-                current_dt = next_dt
+        existing_map = {
+            (s["slot_date"], s["start_time"], s["end_time"]): s
+            for s in existing_slots
+        }
 
-        current_date += timedelta(days=1)
+        slots_to_insert = []
+        slots_to_update = []
 
-    if slots:
-        supabase.table("appointment_slot").insert(slots).execute()
-        print(f"✅ {len(slots)} slots created for {day_of_week} ({start_of_month}–{end_of_month})")
-    else:
-        print(f"⚠️ No slots generated for {day_of_week}")
+        current_date = start_date
 
+        while current_date <= end_date:
+            if current_date.weekday() == target_weekday:
+                date_str = current_date.isoformat()
+                slot_start_minute = start_minutes
 
-# ✅----------------- ADD OR UPDATE SCHEDULE -----------------
-# ✅----------------- ADD OR UPDATE SCHEDULE -----------------
+                while slot_start_minute + slot_duration <= end_minutes:
+                    # Skip lunch break 12:00–13:00
+                    if 720 <= slot_start_minute < 780:
+                        slot_start_minute = 780
+                        continue
+
+                    slot_end_minute = slot_start_minute + slot_duration
+                    slot_start = f"{slot_start_minute//60:02d}:{slot_start_minute%60:02d}:00"
+                    slot_end = f"{slot_end_minute//60:02d}:{slot_end_minute%60:02d}:00"
+
+                    key = (date_str, slot_start, slot_end)
+                    if key in existing_map:
+                        # Slot exists: update only if not booked
+                        slot = existing_map[key]
+                        if not slot["is_booked"]:
+                            slots_to_update.append({
+                                "slot_id": slot["slot_id"],
+                                "start_time": slot_start,
+                                "end_time": slot_end
+                            })
+                    else:
+                        slots_to_insert.append({
+                            "sched_id": sched_id,
+                            "slot_date": date_str,
+                            "start_time": slot_start,
+                            "end_time": slot_end,
+                            "is_booked": False
+                        })
+
+                    slot_start_minute += slot_duration
+
+                current_date += timedelta(days=7)
+            else:
+                current_date += timedelta(days=1)
+
+        # Batch insert new slots
+        if slots_to_insert:
+            batch_size = 500
+            for i in range(0, len(slots_to_insert), batch_size):
+                supabase.table("appointment_slot").insert(slots_to_insert[i:i + batch_size]).execute()
+
+        # Batch update existing slots (if needed)
+        for slot in slots_to_update:
+            supabase.table("appointment_slot").update({
+                "start_time": slot["start_time"],
+                "end_time": slot["end_time"]
+            }).eq("slot_id", slot["slot_id"]).execute()
+
+        print(f"✅ Generated {len(slots_to_insert)} new slots, updated {len(slots_to_update)} slots for {day_of_week}")
+
+    except Exception as e:
+        print(f"❌ Error generating slots for {day_of_week}: {e}")
+        import traceback
+        traceback.print_exc()
+
+def slot_exists(sched_id, slot_date, start_time, end_time):
+    """Check if slot exists – SAFE version"""
+    try:
+        res = supabase.table("appointment_slot") \
+            .select("slot_id") \
+            .eq("sched_id", sched_id) \
+            .eq("slot_date", slot_date) \
+            .eq("start_time", start_time) \
+            .eq("end_time", end_time) \
+            .execute()
+        return len(res.data) > 0
+    except:
+        return False
+
 @api_view(["POST"])
 @login_required
 def add_schedule(request):
-    """
-    WORKING SOLUTION:
-    - DELETE ALL old vet_schedule records
-    - DELETE UNBOOKED SLOTS that have NO appointments
-    - Create new schedules
-    """
     vet_id = get_current_vet_id(request)
     if not vet_id:
         return Response({"error": "Unauthorized"}, status=401)
@@ -2568,91 +3185,135 @@ def add_schedule(request):
         return Response({"error": "No schedules provided"}, status=400)
 
     try:
-        # 🗑️ STEP 1: GET OLD SCHEDULE IDs
-        old_schedules_res = supabase.table("vet_schedule").select("sched_id").eq("vet_id", vet_id).execute()
-        old_schedule_ids = [sched["sched_id"] for sched in old_schedules_res.data] if old_schedules_res.data else []
-        
-        if old_schedule_ids:
-            # 🚨 STEP 2: SAFELY DELETE UNBOOKED SLOTS
-            today = date.today().isoformat()
-            
-            # Get all future slots from old schedules
-            future_slots_res = supabase.table("appointment_slot").select("slot_id, is_booked").in_("sched_id", old_schedule_ids).gte("slot_date", today).execute()
-            
-            if future_slots_res.data:
-                # Separate slots by booking status
-                unbooked_slot_ids = []
-                booked_slot_ids = []
-                
-                for slot in future_slots_res.data:
-                    if slot["is_booked"] == False or slot["is_booked"] == "FALSE" or slot["is_booked"] == "false":
-                        unbooked_slot_ids.append(slot["slot_id"])
-                    else:
-                        booked_slot_ids.append(slot["slot_id"])
-                
-                print(f"🔍 Found {len(unbooked_slot_ids)} unbooked slots and {len(booked_slot_ids)} booked slots")
-                
-                # DOUBLE CHECK: Verify unbooked slots have no appointments
-                if unbooked_slot_ids:
-                    appointments_check = supabase.table("appointment").select("slot_id").in_("slot_id", unbooked_slot_ids).execute()
-                    slots_with_appointments = [app["slot_id"] for app in appointments_check.data] if appointments_check.data else []
-                    
-                    # Only delete slots that are TRULY unbooked and have NO appointments
-                    safe_to_delete = [slot_id for slot_id in unbooked_slot_ids if slot_id not in slots_with_appointments]
-                    
-                    if safe_to_delete:
-                        supabase.table("appointment_slot").delete().in_("slot_id", safe_to_delete).execute()
-                        print(f"🗑️ SAFELY DELETED {len(safe_to_delete)} UNBOOKED SLOTS WITH NO APPOINTMENTS")
-                    else:
-                        print("✅ No safe slots to delete")
-            
-            # 🗑️ STEP 3: DELETE ALL OLD VET_SCHEDULE RECORDS
-            supabase.table("vet_schedule").delete().eq("vet_id", vet_id).execute()
-            print(f"🗑️ DELETED {len(old_schedule_ids)} OLD VET_SCHEDULE RECORDS")
+        # Get existing schedules for this vet
+        existing_res = supabase.table("vet_schedule").select("*").eq("vet_id", vet_id).execute()
+        existing_schedules = existing_res.data if existing_res.data else []
 
-        # ✅ STEP 4: CREATE NEW SCHEDULES
-        entries = []
+        # Convert existing to dict by day for fast check
+        existing_by_day = {s["day_of_week"]: s for s in existing_schedules}
+
+        keep_ids = []
+        response_entries = []
+
+        # Track days already processed in this request to prevent duplicates
+        processed_days = set()
+
         for sched in schedules:
-            day_of_week = sched.get("day_of_week")
-            start_time = sched.get("startTime")
-            end_time = sched.get("endTime")
+            day = sched.get("day_of_week")
+            start_time = convert_to_24h(sched.get("startTime"))
+            end_time = convert_to_24h(sched.get("endTime"))
             slot_duration = int(sched.get("slot_duration", 60))
 
-            if not all([day_of_week, start_time, end_time]):
+            if not all([day, start_time, end_time]):
                 continue
 
-            # Convert AM/PM to 24h
-            start_time_24 = convert_to_24h(start_time)
-            end_time_24 = convert_to_24h(end_time)
-            start_t = datetime.strptime(start_time_24, "%H:%M").time()
-            end_t = datetime.strptime(end_time_24, "%H:%M").time()
+            # Skip if this day is already processed in this request
+            if day in processed_days:
+                continue
+            processed_days.add(day)
 
-            # Create new schedule
-            sched_id = str(uuid.uuid4())
-            res = supabase.table("vet_schedule").insert({
-                "sched_id": sched_id,
-                "vet_id": vet_id,
-                "day_of_week": day_of_week,
-                "start_time": start_time_24,
-                "end_time": end_time_24,
-                "slot_duration": slot_duration,
-                "is_available": True
-            }).execute()
+            # CASE 1: Day already exists in DB
+            if day in existing_by_day:
+                existing = existing_by_day[day]
+                sched_id = existing["sched_id"]
 
-            if res.data:
-                entries.append(res.data[0])
-                generate_slots_for_schedule(sched_id, day_of_week, start_t, end_t, slot_duration)
-                print(f"✅ Created schedule for {day_of_week}")
+                # Check for booked slots
+                future_slots = supabase.table("appointment_slot") \
+                    .select("slot_id, is_booked") \
+                    .eq("sched_id", sched_id) \
+                    .gte("slot_date", date.today().isoformat()) \
+                    .execute()
+
+                booked = [s["slot_id"] for s in future_slots.data if s["is_booked"]]
+
+                if booked:
+                    # BOOKED: update only times, set unavailable
+                    supabase.table("vet_schedule").update({
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "slot_duration": slot_duration,
+                        "is_available": False
+                    }).eq("sched_id", sched_id).execute()
+                    start_t = datetime.strptime(start_time, "%H:%M").time()
+                    end_t = datetime.strptime(end_time, "%H:%M").time()
+                    generate_slots_for_year(sched_id, day, start_t, end_t, slot_duration)
+                else:
+                    # NOT BOOKED: delete old slots & regenerate
+                    supabase.table("appointment_slot").delete().eq("sched_id", sched_id).execute()
+                    supabase.table("vet_schedule").update({
+                        "start_time": start_time,
+                        "end_time": end_time,
+                        "slot_duration": slot_duration,
+                        "is_available": True
+                    }).eq("sched_id", sched_id).execute()
+                    start_t = datetime.strptime(start_time, "%H:%M").time()
+                    end_t = datetime.strptime(end_time, "%H:%M").time()
+                    generate_slots_for_year(sched_id, day, start_t, end_t, slot_duration)
+
+                keep_ids.append(sched_id)
+                response_entries.append({
+                    "sched_id": sched_id,
+                    "day_of_week": day,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "slot_duration": slot_duration,
+                    "is_available": False if booked else True
+                })
+
+            # CASE 2: New day -> insert new record
+            else:
+                sched_id = str(uuid.uuid4())
+                supabase.table("vet_schedule").insert({
+                    "sched_id": sched_id,
+                    "vet_id": vet_id,
+                    "day_of_week": day,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "slot_duration": slot_duration,
+                    "is_available": True
+                }).execute()
+                start_t = datetime.strptime(start_time, "%H:%M").time()
+                end_t = datetime.strptime(end_time, "%H:%M").time()
+                generate_slots_for_year(sched_id, day, start_t, end_t, slot_duration)
+
+                keep_ids.append(sched_id)
+                response_entries.append({
+                    "sched_id": sched_id,
+                    "day_of_week": day,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "slot_duration": slot_duration,
+                    "is_available": True
+                })
+
+        # DELETE OLD DAYS NOT IN NEW INPUT
+        for existing in existing_schedules:
+            if existing["sched_id"] not in keep_ids:
+                sched_id = existing["sched_id"]
+
+                # Only delete if no booked slots
+                future_slots = supabase.table("appointment_slot") \
+                    .select("slot_id, is_booked") \
+                    .eq("sched_id", sched_id) \
+                    .gte("slot_date", date.today().isoformat()) \
+                    .execute()
+                booked = [s["slot_id"] for s in future_slots.data if s["is_booked"]]
+
+                if not booked:
+                    supabase.table("appointment_slot").delete().eq("sched_id", sched_id).execute()
+                    supabase.table("vet_schedule").delete().eq("sched_id", sched_id).execute()
 
         return Response({
-            "message": "Schedule updated successfully", 
-            "schedules": entries
+            "message": "Schedule updated successfully",
+            "schedules": response_entries
         }, status=201)
 
     except Exception as e:
-        print("❌ Error in add_schedule:", e)
+        import traceback
+        traceback.print_exc()
         return Response({"error": str(e)}, status=500)
-        
+
+
 # -------------------- GET VET SCHEDULES --------------------
 def convert_to_ampm(time_val):
     """
@@ -2727,42 +3388,59 @@ def get_schedules(request):
 @login_required
 def update_schedule_availability(request):
     """
-    Update schedule availability status.
+    Mark appointment slot as booked when selected for follow-up.
     """
-    vet_id = get_current_vet_id(request)
-    if not vet_id:
-        return Response({"error": "Unauthorized"}, status=401)
-
-    schedule_id = request.data.get("schedule_id")
-    is_available = request.data.get("is_available", False)
-
-    if not schedule_id:
-        return Response({"error": "Schedule ID is required"}, status=400)
+    slot_id = request.data.get("schedule_id")  # Frontend sends "schedule_id"
+    
+    if not slot_id:
+        return Response({"error": "Slot ID is required"}, status=400)
 
     try:
-        # Verify the schedule belongs to the current vet
-        schedule_res = supabase.table("vet_schedule").select("*").eq("sched_id", schedule_id).eq("vet_id", vet_id).execute()
-        
-        if not schedule_res.data:
-            return Response({"error": "Schedule not found or access denied"}, status=404)
+        # First check if the slot exists
+        check_res = supabase.table("appointment_slot") \
+            .select("*") \
+            .eq("slot_id", slot_id) \
+            .execute()
 
-        # Update availability
-        update_res = supabase.table("vet_schedule").update({
-            "is_available": is_available
-        }).eq("sched_id", schedule_id).execute()
+        if not check_res.data:
+            return Response({"error": f"Slot with ID {slot_id} not found"}, status=404)
+        
+        # Update the slot to mark as booked
+        update_res = supabase.table("appointment_slot") \
+            .update({
+                "is_booked": True
+            }) \
+            .eq("slot_id", slot_id) \
+            .execute()
 
         if update_res.data:
             return Response({
-                "message": "Schedule availability updated successfully",
-                "schedule_id": schedule_id,
-                "is_available": is_available
+                "message": "Slot booked successfully",
+                "slot_id": slot_id,
+                "is_booked": True
             }, status=200)
         else:
-            return Response({"error": "Failed to update schedule availability"}, status=500)
+            # Check if the update actually failed
+            # Sometimes supabase returns empty data even on success
+            # Let's verify by fetching the updated record
+            verify_res = supabase.table("appointment_slot") \
+                .select("is_booked") \
+                .eq("slot_id", slot_id) \
+                .execute()
+            
+            if verify_res.data and verify_res.data[0].get("is_booked"):
+                return Response({
+                    "message": "Slot booked successfully",
+                    "slot_id": slot_id,
+                    "is_booked": True
+                }, status=200)
+            else:
+                return Response({"error": "Failed to update slot"}, status=500)
 
     except Exception as e:
-        return Response({"error": str(e)}, status=500)
-
+        print(f"Error booking slot: {str(e)}")
+        return Response({"error": f"Internal server error: {str(e)}"}, status=500)
+            
 def convert_to_ampm(time_val):
     """
     Convert time value to 'HH:MM AM/PM'.
@@ -2789,99 +3467,55 @@ def get_all_schedules(request):
     if not vet_id:
         return Response({"error": "Unauthorized"}, status=401)
 
-    def safe_query(fn, retries=3, delay=0.5):
-        """Retry supabase query to avoid connection termination."""
-        for attempt in range(retries):
-            try:
-                return fn()
-            except Exception as e:
-                if attempt < retries - 1:
-                    time.sleep(delay)
-                    continue
-                raise e
-
     try:
-        res = safe_query(lambda: supabase.table("vet_schedule")
-            .select("sched_id, sched_date, start_time, end_time, is_available")
-            .eq("vet_id", vet_id)
-            .order("sched_date")
+        # Get vet_schedule IDs
+        schedule_res = supabase.table("vet_schedule") \
+            .select("sched_id") \
+            .eq("vet_id", vet_id) \
             .execute()
-        )
+        
+        schedule_ids = [sched["sched_id"] for sched in schedule_res.data or []]
+        
+        if not schedule_ids:
+            return Response({"schedule_slots": []}, status=200)
+        
+        # Get appointment slots (only future dates)
+        today = datetime.now().date().isoformat()
+        
+        res = supabase.table("appointment_slot") \
+            .select("slot_id, sched_id, slot_date, start_time, end_time, is_booked") \
+            .in_("sched_id", schedule_ids) \
+            .gte("slot_date", today) \
+            .order("slot_date") \
+            .execute()
 
-        schedules = res.data or []
-        now = datetime.now()
+        slots = res.data or []
         schedule_slots = []
 
-        for s in schedules:
-            sched_date = s.get("sched_date")
-            start_time_val = s.get("start_time")
-            end_time_val = s.get("end_time")
-
-            # Skip past schedules
-            try:
-                sched_datetime = datetime.combine(
-                    datetime.strptime(sched_date, "%Y-%m-%d").date(),
-                    datetime.strptime(start_time_val, "%H:%M:%S").time()
-                )
-                if sched_datetime < now:
-                    continue
-            except Exception:
+        for slot in slots:
+            # Skip if booked
+            if slot.get("is_booked", False):
                 continue
-
-            # ✅ Fetch appointment linked to schedule
-            app_res = safe_query(lambda: supabase.table("appointment")
-                .select("app_service, app_status, horse_id")
-                .eq("sched_id", s.get("sched_id"))
-                .execute()
-            )
-
-            appointment = app_res.data[0] if app_res.data else None
-
-            operator_name = None
-            is_available = s.get("is_available", True)
-            is_pending = False
-
-            if appointment:
-                status = appointment.get("app_status")
-                if status in ["declined", "cancelled"]:
-                    is_available = True
-                    is_pending = False
-                else:
-                    is_available = False
-                    is_pending = (status == "pending")
-
-                if status not in ["declined", "cancelled"]:
-                    horse_res = safe_query(lambda: supabase.table("horse_profile")
-                        .select("op_id")
-                        .eq("horse_id", appointment.get("horse_id"))
-                        .execute()
-                    )
-                    horse_data = horse_res.data[0] if horse_res.data else None
-                    if horse_data:
-                        op_res = safe_query(lambda: supabase.table("horse_op_profile")
-                            .select("op_fname, op_lname")
-                            .eq("op_id", horse_data.get("op_id"))
-                            .execute()
-                        )
-                        op_data = op_res.data[0] if op_res.data else None
-                        if op_data:
-                            operator_name = f"{op_data.get('op_fname')} {op_data.get('op_lname')}"
-
+                
             schedule_slots.append({
-                "id": s.get("sched_id"),
-                "date": sched_date,
-                "startTime": convert_to_ampm(start_time_val),
-                "endTime": convert_to_ampm(end_time_val),
-                "available": is_available,
-                "pending": is_pending,
-                "operator_name": operator_name,
+                "id": slot.get("slot_id"),
+                "date": slot.get("slot_date"),
+                "startTime": convert_to_ampm(slot.get("start_time")),
+                "endTime": convert_to_ampm(slot.get("end_time")),
+                "available": True,
+                "pending": False,
+                "operator_name": None,
+                "slot_id": slot.get("slot_id"),
+                "sched_id": slot.get("sched_id")
             })
 
         return Response({"schedule_slots": schedule_slots}, status=200)
 
     except Exception as e:
-        return Response({"error": str(e)}, status=500)      
-          
+        print(f"Error fetching schedules: {str(e)}")
+        # Return empty array instead of error for frontend
+        return Response({"schedule_slots": []}, status=200)      
+            
 # -------------------- GET ALL MEDICAL RECORDS ACCESSIBLE TO VET --------------------
 @api_view(["GET"])
 @login_required

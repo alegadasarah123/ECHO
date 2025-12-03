@@ -10,6 +10,7 @@ import {
 import MedicalRecords from "./MedicalRecord";
 import TreatmentRecords from "./TreatmentRecord";
 import MedicalRecordDetails from "./MedicalRecordDetails";
+import EditMedicalRecord from "./EditMedicalRecord";
 
 // Success Message Component
 const SuccessMessage = ({ message, onDismiss }) => {
@@ -155,10 +156,28 @@ const AccessRequestModal = ({ isOpen, onClose, onRequestAccess, horseInfo }) => 
   );
 };
 
-// Medical Records Modal Component - ONLY FOR ADDING/EDITING
 const MedicalRecordsModal = ({ isOpen, onClose, record, vetProfile, horseInfo, onRefresh, isNew, appointmentId, hasAccess, isViewMode }) => {
   if (!isOpen) return null;
 
+  // If editing an existing record, use EditMedicalRecord
+  if (!isNew && record && !isViewMode) {
+    return (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-1000 p-4 overflow-auto">
+        <EditMedicalRecord 
+          vetProfile={vetProfile} 
+          horseInfo={horseInfo} 
+          onRefresh={onRefresh}
+          recordData={record}
+          recordId={record.id}
+          appointmentId={appointmentId}
+          isModal={true}
+          onCloseModal={onClose}
+        />
+      </div>
+    );
+  }
+
+  // If adding a new record or viewing, use the original MedicalRecords
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-1000 p-4 overflow-auto">
       <MedicalRecords 
@@ -299,7 +318,80 @@ const Pagination = ({ currentPage, totalPages, onPageChange }) => {
   );
 };
 
-// Medical Records Table Component - FIXED NESTED FOLLOW-UP RECORDS
+// Three Dots Menu Component - FORCE VISIBLE VERSION
+const ThreeDotsMenu = ({ record, vetProfile, onEditRecord }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = React.useRef(null);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const toggleMenu = (event) => {
+    event.stopPropagation();
+    setIsOpen(!isOpen);
+  };
+
+  const handleEditClick = (event) => {
+    event.stopPropagation();
+    setIsOpen(false);
+    onEditRecord(record);
+  };
+
+  // FORCE SHOW FOR DEFENSE - REMOVE THIS LATER
+  const canEdit = () => {
+    console.log("🎯 ThreeDotsMenu - ALWAYS VISIBLE FOR DEFENSE!");
+    console.log("Record ID:", record?.id);
+    console.log("Vet Profile:", vetProfile);
+    console.log("Record Veterinarian:", record?.veterinarian);
+    return true; // FORCE TRUE TO MAKE IT VISIBLE
+  };
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <Button
+        onClick={toggleMenu}
+        variant="ghost"
+        size="sm"
+        className="cursor-pointer p-1.5 rounded-lg hover:bg-gray-100 transition-colors border-2 border-red-500 bg-yellow-100 shadow-lg"
+        title="Edit options"
+      >
+        <svg 
+          className="w-6 h-6 text-red-600" 
+          fill="currentColor" 
+          viewBox="0 0 20 20"
+          style={{ display: 'block' }}
+        >
+          <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+        </svg>
+      </Button>
+      
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div className="absolute right-0 mt-1 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+          <div className="py-1">
+            <button
+              onClick={handleEditClick}
+              className="cursor-pointer w-full text-left px-4 py-2.5 text-sm text-blue-600 hover:bg-blue-50 flex items-center gap-2 transition-colors"
+            >
+              <Edit className="w-4 h-4" />
+              Edit Record
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Medical Records Table Component - UPDATED WITH FOLLOW-UP FUNCTIONALITY AND THREE DOTS MENU
 const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddRecord, onEditRecord, onViewRecord, hasAccess, onRequestAccess, accessRequested }) => {
   const [filteredRecords, setFilteredRecords] = useState(records || []);
   const [dateFilter, setDateFilter] = useState({ from: "", to: "" });
@@ -666,7 +758,7 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
                   <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Clinical Signs</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Diagnosis</th>
                   <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Veterinarian</th>
-                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700">Actions</th>
+                  <th className="px-6 py-4 text-center text-sm font-semibold text-gray-700 w-64">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -751,7 +843,7 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
                             } ${isFollowUpRecord ? "text-gray-600" : ""}`}
                           >
                             {record.veterinarian || "N/A"}
-                            {isCurrentVet && !isFollowUpRecord && (
+                            {isCurrentVet && (
                               <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
                                 You
                               </span>
@@ -760,7 +852,7 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
                         </td>
 
                         <td className="px-6 py-4">
-                          <div className="flex justify-center gap-2">
+                          <div className="flex justify-center items-center gap-2">
                             {showFollowUpButton && (
                               <Button 
                                 onClick={() => fetchFollowUpRecords(record.id)} 
@@ -801,6 +893,13 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
                               <Eye className="w-4 h-4" />
                               <span>View Details</span>
                             </Button>
+                            
+                            {/* Three Dots Menu - Shows for both parent and follow-up records */}
+                            <ThreeDotsMenu 
+                              record={record}
+                              vetProfile={vetProfile}
+                              onEditRecord={onEditRecord}
+                            />
                           </div>
                         </td>                  
                       </tr>
@@ -823,6 +922,7 @@ const MedicalRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onAddR
     </div>
   );
 };
+
 
 // Treatment Records Table Component - UPDATED WITH DATE FIELD AND BADGES
 const TreatmentRecordsTable = ({ records, onRefresh, vetProfile, horseInfo, onViewRecord, hasAccess }) => {
