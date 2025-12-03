@@ -119,7 +119,7 @@ interface UserData {
 }
 
 interface AvailableUser {
-  id: number
+  id: string | number
   name: string
   role: string
   avatar: string
@@ -130,6 +130,7 @@ interface AvailableUser {
   first_name?: string
   last_name?: string
   online?: boolean
+  user_id?: string
 }
 
 const ChatInterface = ({
@@ -314,7 +315,7 @@ export default function MessageScreen() {
   const [showAIChat, setShowAIChat] = useState(false)
   const [showIndividualChat, setShowIndividualChat] = useState(false)
   const [selectedContact, setSelectedContact] = useState<Message | AvailableUser | null>(null)
-  const [selectedUserId, setSelectedUserId] = useState<number | string | null>(null)
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
   const [chatInput, setChatInput] = useState("")
 
   const [userData, setUserData] = useState<UserData | null>(null)
@@ -345,8 +346,7 @@ export default function MessageScreen() {
   const directChatProcessedRef = useRef(false)
   const initialLoadCompleteRef = useRef(false)
   const loadMessagesTimeoutRef = useRef<number | null>(null)
-  const lastSelectedUserIdRef = useRef<number | string | null>(null)
-  const paramsProcessedRef = useRef(false)
+  const lastSelectedUserIdRef = useRef<string | null>(null)
 
   const calculateTotalUnread = useCallback((convs: Message[]) => {
     const total = convs.reduce((sum, conv) => sum + (conv.unread_count || 0), 0)
@@ -550,9 +550,12 @@ export default function MessageScreen() {
         console.log('✅ Users API response count:', data.users?.length || 0)
         
         if (data.users && data.users.length > 0) {
-          const usersWithStatus = data.users.map((user: AvailableUser) => ({
+          // Ensure all IDs are strings for consistency
+          const usersWithStatus = data.users.map((user: any) => ({
             ...user,
-            online: onlineUsers.has(user.id.toString()),
+            id: String(user.id || user.user_id || ''),
+            user_id: String(user.user_id || user.id || ''),
+            online: onlineUsers.has(String(user.id || user.user_id || '')),
           }))
           setAvailableUsers(usersWithStatus)
         }
@@ -564,7 +567,7 @@ export default function MessageScreen() {
     }
   }, [userData?.id, searchQuery, roleFilter, onlineUsers])
 
-  const loadChatMessages = useCallback(async (otherUserId: number | string) => {
+  const loadChatMessages = useCallback(async (otherUserId: string) => {
     if (!userData?.id || !otherUserId) {
       console.log('❌ Cannot load messages: missing user data or otherUserId')
       return
@@ -579,8 +582,13 @@ export default function MessageScreen() {
     loadMessagesTimeoutRef.current = setTimeout(async () => {
       try {
         console.log('💬 Loading messages for other user:', otherUserId, 'Type:', typeof otherUserId)
+        console.log('💬 Current user ID:', userData.id)
+        
+        // Ensure otherUserId is properly formatted as a UUID string
+        const formattedUserId = String(otherUserId).trim()
+        
         const response = await fetch(
-          `${API_BASE_URL}/get_messages/?user_id=${userData.id}&other_user_id=${otherUserId}`,
+          `${API_BASE_URL}/get_messages/?user_id=${userData.id}&other_user_id=${formattedUserId}`,
           {
             method: "GET",
             headers: {
@@ -600,7 +608,8 @@ export default function MessageScreen() {
             setIndividualChatMessages(mappedMessages)
           }
         } else {
-          console.error('❌ Failed to load messages:', response.status)
+          const errorText = await response.text()
+          console.error('❌ Failed to load messages:', response.status, errorText)
         }
       } catch (error) {
         console.error("Error loading chat messages:", error)
@@ -610,11 +619,13 @@ export default function MessageScreen() {
     }, 300) as unknown as number
   }, [userData?.id])
 
-  const sendMessageToBackend = useCallback(async (receiverId: number | string, content: string) => {
+  const sendMessageToBackend = useCallback(async (receiverId: string, content: string) => {
     if (!userData?.id) return null
 
     try {
       console.log('📤 Sending message to:', receiverId, 'Content:', content)
+      console.log('📤 Sender ID:', userData.id)
+      
       const response = await fetch(`${API_BASE_URL}/send_message/`, {
         method: "POST",
         headers: {
@@ -636,6 +647,7 @@ export default function MessageScreen() {
         }
       } else {
         const errorData = await response.json()
+        console.error('❌ Send message error:', errorData)
         Alert.alert("Error", errorData.error || "Failed to send message")
         return null
       }
@@ -828,7 +840,7 @@ export default function MessageScreen() {
     const email = item.email
     const profileImage = item.profile_image
     const role = item.role
-    const partnerId = "partner_id" in item ? item.partner_id : "id" in item ? item.id : null
+    const partnerId = "partner_id" in item ? item.partner_id : "id" in item ? String(item.id) : null
     
     const isOnline = partnerId ? onlineUsers.has(partnerId.toString()) : false
     
@@ -881,14 +893,14 @@ export default function MessageScreen() {
     (contact: Message | AvailableUser) => {
       console.log('💬 Opening chat with contact:', contact)
       
-      let userId: string | number | undefined
+      let userId: string | undefined
 
       if ("partner_id" in contact && contact.partner_id) {
-        userId = contact.partner_id
+        userId = String(contact.partner_id)
       } else if ("user_id" in contact && contact.user_id) {
-        userId = contact.user_id
+        userId = String(contact.user_id)
       } else if ("id" in contact && contact.id) {
-        userId = contact.id
+        userId = String(contact.id)
       }
 
       if (!userId || userId === undefined) {
@@ -905,18 +917,15 @@ export default function MessageScreen() {
       console.log('💬 Setting up chat for user ID:', userId)
       
       setSelectedContact(contact)
-      setSelectedUserId(userId as any)
+      setSelectedUserId(userId)
       setShowIndividualChat(true)
       setChatInput("")
       setIndividualChatMessages([])
       lastSelectedUserIdRef.current = userId
       
-      // Reset params processed flag when opening a new chat
-      paramsProcessedRef.current = false
-      
       // Load messages after a short delay to ensure state is updated
       setTimeout(() => {
-        loadChatMessages(userId as any)
+        loadChatMessages(userId as string)
       }, 100)
     },
     [loadChatMessages, showIndividualChat],
@@ -1024,9 +1033,9 @@ export default function MessageScreen() {
 
   // Fixed version of checkForDirectChat
   const checkForDirectChat = useCallback(() => {
-    // Prevent multiple executions using a ref
-    if (paramsProcessedRef.current) {
-      console.log("⏭️ Params already processed, skipping")
+    // Prevent multiple executions
+    if (directChatProcessedRef.current) {
+      console.log("⏭️ Direct chat already processed, skipping")
       return false
     }
 
@@ -1034,55 +1043,55 @@ export default function MessageScreen() {
       openChat: params.openChat,
       contactId: params.contactId,
       contactName: params.contactName,
+      timestamp: params.timestamp,
     })
 
-    if (params.openChat === "true" && params.contactId && !showIndividualChat) {
+    if (params.openChat === "true" && params.contactId && !showIndividualChat && !showAIChat) {
       console.log("✅ Direct chat params detected!")
       console.log("📨 Opening chat from profile:", params.contactName)
       console.log("📨 Contact ID:", params.contactId, "Type:", typeof params.contactId)
 
       // Mark as processed immediately
-      paramsProcessedRef.current = true
+      directChatProcessedRef.current = true
 
-      // Parse contact ID
-      const contactIdValue = params.contactId as string
-      const contactIdNum = parseInt(contactIdValue)
+      // Parse contact ID - ensure it's a string
+      const contactIdValue = String(params.contactId).trim()
       
-      if (isNaN(contactIdNum)) {
-        console.error("❌ Invalid contact ID:", contactIdValue)
+      if (!contactIdValue) {
+        console.error("❌ Invalid contact ID:", params.contactId)
         return false
       }
 
-      console.log("📨 Parsed contact ID:", contactIdNum)
+      console.log("📨 Contact ID string:", contactIdValue)
 
-      // Create contact object
+      // Create contact object with proper string ID
       const contact: AvailableUser = {
-        id: contactIdNum,
-        name: params.contactName as string || "Unknown User",
-        avatar: (params.contactAvatar as string) || "https://via.placeholder.com/150",
-        role: (params.contactRole as string) || "user",
+        id: contactIdValue,
+        name: String(params.contactName || "Unknown User"),
+        avatar: String(params.contactAvatar || ""),
+        role: String(params.contactRole || "user"),
         email: "",
         phone: "",
         status: "active",
-        profile_image: (params.contactAvatar as string) || undefined,
+        profile_image: params.contactAvatar ? String(params.contactAvatar) : undefined,
       }
 
       console.log("📨 Setting up chat for contact:", contact)
 
       // Set state to open chat
       setSelectedContact(contact)
-      setSelectedUserId(contactIdNum)
+      setSelectedUserId(contactIdValue)
       setShowIndividualChat(true)
       setChatInput("")
       setIndividualChatMessages([])
-      lastSelectedUserIdRef.current = contactIdNum
+      lastSelectedUserIdRef.current = contactIdValue
       
       console.log("✅ Chat state set successfully!")
       
       // Load messages after a delay to ensure state is updated
       setTimeout(() => {
-        console.log("📨 Loading messages for contact:", contactIdNum)
-        loadChatMessages(contactIdNum)
+        console.log("📨 Loading messages for contact:", contactIdValue)
+        loadChatMessages(contactIdValue)
       }, 500)
       
       return true
@@ -1091,14 +1100,11 @@ export default function MessageScreen() {
       if (!params.openChat) console.log("   - openChat missing or not 'true'")
       if (!params.contactId) console.log("   - contactId missing")
       if (showIndividualChat) console.log("   - chat already open")
+      if (showAIChat) console.log("   - AI chat open")
       
-      // Only mark as processed if we're not supposed to open a chat
-      if (!params.openChat) {
-        paramsProcessedRef.current = true
-      }
       return false
     }
-  }, [params, showIndividualChat, loadChatMessages])
+  }, [params, showIndividualChat, showAIChat, loadChatMessages])
 
   // Load user data on mount
   useEffect(() => {
@@ -1121,8 +1127,8 @@ export default function MessageScreen() {
       loadConversations()
       loadAvailableUsers()
       
-      // Reset params processed flag on initial load
-      paramsProcessedRef.current = false
+      // Reset direct chat flag on initial load
+      directChatProcessedRef.current = false
     }
 
     // Cleanup function
@@ -1139,13 +1145,13 @@ export default function MessageScreen() {
     }
   }, [userData, setupOnlinePresence, setupMessageSubscription, loadConversations, loadAvailableUsers])
 
-  // Check for direct chat ONLY when user data is loaded and not already in a chat
+  // Check for direct chat when params change
   useEffect(() => {
-    if (userData && !showIndividualChat && !showAIChat && !paramsProcessedRef.current) {
-      console.log("🔄 Checking for direct chat on mount/update")
+    if (userData && !showIndividualChat && !showAIChat) {
+      console.log("🔄 Checking for direct chat on params change")
       checkForDirectChat()
     }
-  }, [userData, showIndividualChat, showAIChat, checkForDirectChat])
+  }, [userData, params, showIndividualChat, showAIChat, checkForDirectChat])
 
   // Update conversations and users when online status changes
   useEffect(() => {
@@ -1172,7 +1178,6 @@ export default function MessageScreen() {
         
         // Reset direct chat flag when navigating back to main screen
         if (!showIndividualChat && !showAIChat) {
-          paramsProcessedRef.current = false
           directChatProcessedRef.current = false
         }
         
@@ -1194,23 +1199,15 @@ export default function MessageScreen() {
       selectedUserId,
       messagesCount: individualChatMessages.length,
       directChatProcessed: directChatProcessedRef.current,
-      paramsProcessed: paramsProcessedRef.current,
     })
   }, [showIndividualChat, showAIChat, selectedContact, selectedUserId, individualChatMessages])
 
   const handleBackFromAI = useCallback(() => setShowAIChat(false), [])
   const handleBackFromIndividual = useCallback(() => {
-    console.log('🔙 Back from individual chat')
-    setShowIndividualChat(false)
-    setSelectedContact(null)
-    setSelectedUserId(null)
-    setIndividualChatMessages([])
-    lastSelectedUserIdRef.current = null
-    // Reset flags when leaving individual chat
-    directChatProcessedRef.current = false
-    paramsProcessedRef.current = false
-    loadConversations()
-  }, [loadConversations])
+    console.log('🔙 Back from individual chat - navigating back to Hmessage')
+    // Navigate back to the main messages screen
+    router.back()
+  }, [router])
 
   const handleNavigateToProfile = useCallback(() => {
     if (!selectedContact || !selectedUserId) {
@@ -1223,7 +1220,7 @@ export default function MessageScreen() {
     router.push({
       pathname: "../HORSE_OPERATOR/Hallprofile",
       params: {
-        userId: String(selectedUserId),
+        userId: selectedUserId,
         userName: "sender" in selectedContact ? selectedContact.sender : selectedContact.name,
       },
     })
@@ -1279,9 +1276,9 @@ export default function MessageScreen() {
 
   if (showIndividualChat && selectedContact) {
     const contactName = "sender" in selectedContact ? selectedContact.sender : selectedContact.name
-    const partnerId = "partner_id" in selectedContact ? selectedContact.partner_id : "id" in selectedContact ? selectedContact.id : null
+    const partnerId = "partner_id" in selectedContact ? selectedContact.partner_id : "id" in selectedContact ? String(selectedContact.id) : null
     
-    const isContactOnline = partnerId ? onlineUsers.has(partnerId.toString()) : false
+    const isContactOnline = partnerId ? onlineUsers.has(partnerId) : false
     
     console.log("🎨 Rendering Individual Chat with:", contactName, "Online:", isContactOnline)
     return (
@@ -1654,7 +1651,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: scale(16),
     paddingBottom: dynamicSpacing(12),
     minHeight: verticalScale(50),
-    marginTop: dynamicSpacing(10),
+    marginTop: dynamicSpacing(0),
   },
   headerLeft: {
     width: scale(60),

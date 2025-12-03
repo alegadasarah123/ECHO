@@ -519,9 +519,7 @@ export default function HorseOperatorHome() {
     const statusLower = status.toLowerCase()
     if (statusLower.includes("healthy") || statusLower.includes("excellent") || statusLower.includes("good")) {
       return "#4CAF50"
-    } else if (statusLower.includes("mild") || statusLower.includes("moderate") || statusLower.includes("monitor")) {
-      return "#FF9800"
-    } else if (statusLower.includes("critical") || statusLower.includes("severe") || statusLower.includes("emergency")) {
+    } else if (statusLower.includes("sick") || statusLower.includes("moderate") || statusLower.includes("monitor")) {
       return "#F44336"
     } else if (statusLower.includes("recovering") || statusLower.includes("stable")) {
       return "#2196F3"

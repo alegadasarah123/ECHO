@@ -1,1363 +1,665 @@
-"use client"
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { FontAwesome5 } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 
-import { useState, useEffect, useRef, useCallback } from "react"
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Image,
-  ActivityIndicator,
-  StatusBar,
-  Dimensions,
-  Platform,
-  Alert,
-  Modal,
-  TouchableWithoutFeedback,
-} from "react-native"
-import { useRouter, useLocalSearchParams } from "expo-router"
-import { FontAwesome5 } from "@expo/vector-icons"
-import * as SecureStore from "expo-secure-store"
-
-const { width, height } = Dimensions.get("window")
-
-const scale = (size: number) => {
-  const scaleFactor = width / 375
-  return Math.max(Math.min(size * scaleFactor, size * 1.2), size * 0.8)
+interface MedicalRecord {
+  medrec_id: string;
+  horse_id: string;
+  vet_id: string;
+  vet_name: string;
+  vet_specialization: string;
+  date: string;
+  formatted_date: string;
+  vital_signs: {
+    heart_rate: string;
+    respiratory_rate: string;
+    body_temperature: string;
+  };
+  clinical_findings: {
+    clinical_signs: string;
+    diagnostic_protocol: string;
+    lab_results?: string;
+    lab_image?: string;
+  };
+  assessment: {
+    diagnosis: string;
+    prognosis: string;
+    recommendations: string;
+  };
+  horse_status?: string;
+  parent_medrec_id?: string;
+  followup_date?: string;
 }
 
-const verticalScale = (size: number) => {
-  const scaleFactor = height / 812
-  return Math.max(Math.min(size * scaleFactor, size * 1.15), size * 0.85)
-}
-
-const moderateScale = (size: number, factor = 0.5) => {
-  return size + (scale(size) - size) * factor
+interface Horse {
+  horse_id: string;
+  horse_name: string;
+  horse_age?: string;
+  horse_breed?: string;
 }
 
 const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
 
-interface UserProfile {
-  id: string
-  email: string
-  role: string
-  status: string
-  profile: {
-    fname: string
-    mname?: string
-    lname: string
-    username?: string
-    email: string
-    phone?: string
-    city?: string
-    province?: string
-    address?: string  // General address field for all users
-    clinic_address?: string  // Specific clinic address for veterinarians
-    profile_image?: string
-    specialization?: string
-    experience_years?: string
-  }
-}
+const MedicalRecordsScreen: React.FC = () => {
+  const router = useRouter();
+  const params = useLocalSearchParams<{ id?: string }>();
+  
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [horseId, setHorseId] = useState<string | null>(null);
+  const [horse, setHorse] = useState<Horse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-interface VetSchedule {
-  sched_id: string
-  vet_id: string
-  day_of_week: string
-  start_time: string
-  end_time: string
-  slot_duration: number
-  is_available: boolean
-  created_at: string
-}
-
-interface Contact {
-  id: string
-  name: string
-  avatar: string
-  role: string
-}
-
-interface Post {
-  id: string
-  title: string
-  content: string
-  author: string
-  author_role: string
-  created_at: string
-  formatted_date: string
-  image_url?: string
-  is_announcement: boolean
-  category?: string
-}
-
-export default function UnifiedProfileView() {
-  const router = useRouter()
-  const params = useLocalSearchParams()
-
-  const [loading, setLoading] = useState(true)
-  const [scheduleLoading, setScheduleLoading] = useState(false)
-  const [postsLoading, setPostsLoading] = useState(false)
-  const [currentUserId, setCurrentUserId] = useState<string>("")
-  const [profileData, setProfileData] = useState<UserProfile | null>(null)
-  const [vetSchedules, setVetSchedules] = useState<VetSchedule[]>([])
-  const [userPosts, setUserPosts] = useState<Post[]>([])
-  const [expandedPosts, setExpandedPosts] = useState<{ [key: string]: boolean }>({})
-  const [selectedImage, setSelectedImage] = useState<string | null>(null)
-  const [imageModalVisible, setImageModalVisible] = useState(false)
-
-  const hasLoadedProfile = useRef(false)
-
-  // Function to get profile picture based on user role
-  const getProfilePicture = (userData: UserProfile | null) => {
-    if (!userData) return null
-    
-    const userRole = userData.role?.toLowerCase()
-    
-    // CTU role - use CTU logo
-    if (userRole === 'ctu_veterinarian' || userRole === 'ctu-vetmed' || userRole === 'ctu-admin') {
-      return require("../../assets/images/CTU.jpg")
-    }
-    
-    // DVMF role - use DVMF logo  
-    if (userRole === 'dvmf' || userRole === 'dvmf-admin') {
-      return require("../../assets/images/DVMF.png")
-    }
-    
-    // For other users, use their profile image if available
-    if (userData.profile?.profile_image) {
-      return { uri: userData.profile.profile_image }
-    }
-    
-    // Fallback to initials avatar
-    return null
-  }
-
-  const fetchVetBaseSchedule = useCallback(async (vetId: string) => {
-    try {
-        setScheduleLoading(true)
-        const storedAccessToken = await SecureStore.getItemAsync("access_token")
-
-        if (!storedAccessToken) {
-            throw new Error("No access token found")
+  // Load user ID from SecureStore
+  useEffect(() => {
+    const loadUserId = async () => {
+      try {
+        console.log('Loading user ID from SecureStore...');
+        const storedUser = await SecureStore.getItemAsync("user_data");
+        
+        if (!storedUser) {
+          console.error('No user data in SecureStore');
+          setError('User not logged in');
+          setLoading(false);
+          return;
         }
 
-        console.log("📅 Fetching vet base schedule for vet:", vetId)
+        const parsed = JSON.parse(storedUser);
+        const id = parsed.user_id || parsed.id;
+        console.log('Loaded user ID:', id);
+        setUserId(id);
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        setError('Failed to load user data');
+        setLoading(false);
+      }
+    };
+    
+    loadUserId();
+  }, []); // Only run once on mount
 
-        const scheduleResponse = await fetch(`${API_BASE_URL}/get_vet_base_schedule/?vet_id=${vetId}`, {
-            method: "GET",
-            headers: {
-                Authorization: `Bearer ${storedAccessToken}`,
-                "Content-Type": "application/json",
-            },
-        })
-
-        console.log("📊 Schedule response status:", scheduleResponse.status)
-
-        if (scheduleResponse.ok) {
-            const scheduleData = await scheduleResponse.json()
-            console.log("✅ Vet base schedule loaded:", scheduleData)
-            
-            // Handle the response format correctly
-            if (scheduleData.schedules && Array.isArray(scheduleData.schedules)) {
-                setVetSchedules(scheduleData.schedules)
-                console.log(`📋 Loaded ${scheduleData.schedules.length} schedule items`)
-            } else {
-                console.log("📭 No schedule data available or empty array")
-                setVetSchedules([])
-            }
-        } else {
-            console.log("⚠️ Failed to fetch schedule data, status:", scheduleResponse.status)
-            setVetSchedules([])
+  // Load horse ID from route params or SecureStore
+  useEffect(() => {
+    const loadHorseId = async () => {
+      try {
+        // First try route params
+        if (params?.id) {
+          console.log('Loaded horse_id from route params:', params.id);
+          setHorseId(params.id);
+          return;
         }
-    } catch (error) {
-        console.error("❌ Error fetching vet base schedule:", error)
-        setVetSchedules([])
-    } finally {
-        setScheduleLoading(false)
-    }
-}, [])
+        
+        // Fallback to SecureStore
+        const storedHorseId = await SecureStore.getItemAsync("selected_horse_id");
+        if (storedHorseId) {
+          console.log('Loaded horse_id from storage (fallback):', storedHorseId);
+          setHorseId(storedHorseId);
+          return;
+        }
+        
+        console.warn('No horse_id found in params or storage');
+        setError('No horse selected');
+        setLoading(false);
+      } catch (error) {
+        console.error('Error loading horse ID:', error);
+        setError('Failed to load horse data');
+        setLoading(false);
+      }
+    };
+    
+    loadHorseId();
+  }, [params?.id]); // Only re-run if params.id changes
 
-  const fetchUserPosts = useCallback(async (userId: string) => {
+  // Fetch horse details
+  const fetchHorseDetails = useCallback(async () => {
+    if (!userId || !horseId) return;
+    
     try {
-      setPostsLoading(true)
-      const storedAccessToken = await SecureStore.getItemAsync("access_token")
-
-      if (!storedAccessToken) {
-        throw new Error("No access token found")
+      const response = await fetch(`${API_BASE_URL}/get_horses/?user_id=${encodeURIComponent(userId)}`);
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch horses: ${response.status}`);
       }
 
-      console.log("📝 Fetching posts for user:", userId)
+      const horses = await response.json();
+      const horseData = horses.find((h: Horse) => h.horse_id === horseId);
+      
+      if (horseData) {
+        setHorse(horseData);
+        console.log('Horse details loaded:', horseData.horse_name);
+      }
+    } catch (error) {
+      console.error('Error fetching horse details:', error);
+    }
+  }, [userId, horseId]);
 
-      const response = await fetch(`${API_BASE_URL}/get_user_posts/${userId}/`, {
-        method: "GET",
+  // Fetch medical records - REMOVED horse from dependencies to prevent loop
+  const fetchMedicalRecords = useCallback(async (showLoader = true) => {
+    if (!userId || !horseId) {
+      console.log('Cannot fetch - missing userId or horseId:', { userId, horseId });
+      return;
+    }
+
+    try {
+      if (showLoader) setLoading(true);
+      setError(null);
+
+      const url = `${API_BASE_URL}/get_horse_medical_records/?horse_id=${horseId}&user_id=${userId}`;
+      console.log('Fetching from URL:', url);
+
+      const response = await fetch(url, {
+        method: 'GET',
         headers: {
-          Authorization: `Bearer ${storedAccessToken}`,
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
-      })
+      });
 
-      console.log("📊 Posts response status:", response.status)
+      console.log('Response status:', response.status);
+      const data = await response.json();
+      console.log('Found', data.medical_records?.length || 0, 'medical records');
 
       if (response.ok) {
-        const postsData = await response.json()
-        console.log("✅ Posts loaded:", postsData)
-        
-        // Handle different response formats
-        if (postsData.posts && Array.isArray(postsData.posts)) {
-          setUserPosts(postsData.posts)
-        } else if (Array.isArray(postsData)) {
-          setUserPosts(postsData)
-        } else {
-          console.log("⚠️ Unexpected posts data format:", postsData)
-          setUserPosts([])
-        }
-      } else {
-        console.log("⚠️ No posts data available, status:", response.status)
-        setUserPosts([])
-      }
-    } catch (error) {
-      console.error("❌ Error fetching user posts:", error)
-      setUserPosts([])
-    } finally {
-      setPostsLoading(false)
-    }
-  }, [])
-
-  const fetchUserProfile = useCallback(
-    async (userId: string) => {
-      try {
-        setLoading(true)
-        const storedAccessToken = await SecureStore.getItemAsync("access_token")
-
-        if (!storedAccessToken) {
-          throw new Error("No access token found")
-        }
-
-        console.log("🔍 Fetching unified profile for user:", userId)
-
-        const response = await fetch(`${API_BASE_URL}/get_user_profile/${userId}/`, {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${storedAccessToken}`,
-            "Content-Type": "application/json",
-          },
-        })
-
-        console.log("📊 Profile response status:", response.status)
-
-        if (response.ok) {
-          const result = await response.json()
-          console.log("📋 Profile response data:", result)
+        if (data.medical_records && Array.isArray(data.medical_records)) {
+          setMedicalRecords(data.medical_records);
           
-          if (result.success && result.user) {
-            const userData = result.user
-            console.log("✅ Profile loaded from unified API:", userData)
-            console.log("User role:", userData.role)
-            console.log("User profile data:", userData.profile)
-            console.log("Address field:", userData.profile?.address)
-            console.log("Clinic address field:", userData.profile?.clinic_address)
-            setProfileData(userData)
-
-            // If user is a regular veterinarian, fetch their base schedule
-            const isRegularVet = userData.role === "Veterinarian" || userData.role === "veterinarian"
-            if (isRegularVet) {
-              console.log("🩺 User is a veterinarian, fetching schedule...")
-              await fetchVetBaseSchedule(userData.id)
-            } else {
-              console.log("👤 User is not a veterinarian, role:", userData.role)
-            }
-
-            // If user is CTU or DVMF, fetch their posts
-            const isCTUorDVMF = userData.role?.toLowerCase().includes('ctu') || 
-                               userData.role?.toLowerCase().includes('dvmf')
-            if (isCTUorDVMF) {
-              console.log("🏢 User is CTU/DVMF, fetching posts...")
-              await fetchUserPosts(userData.id)
-            } else {
-              console.log("👤 User is not CTU/DVMF, role:", userData.role)
-            }
-          } else {
-            throw new Error(result.error || "Failed to fetch user profile")
+          // Set horse name from response - use setHorse conditionally
+          if (data.horse_name) {
+            setHorse(prev => {
+              // Only update if we don't have horse data yet
+              if (!prev || !prev.horse_name) {
+                return {
+                  horse_id: horseId,
+                  horse_name: data.horse_name,
+                };
+              }
+              return prev;
+            });
           }
+        } else if (Array.isArray(data)) {
+          setMedicalRecords(data);
         } else {
-          const errorData = await response.json()
-          throw new Error(errorData.error || "Failed to fetch user profile")
+          setMedicalRecords([]);
         }
-      } catch (error) {
-        console.error("❌ Error fetching user profile:", error)
-        Alert.alert("Error", "Failed to load user profile")
-        router.back()
-      } finally {
-        setLoading(false)
-      }
-    },
-    [router, fetchVetBaseSchedule, fetchUserPosts],
-  )
-
-  useEffect(() => {
-    loadCurrentUser()
-  }, [])
-
-  useEffect(() => {
-    if (hasLoadedProfile.current) return
-
-    const loadProfile = async () => {
-      if (params.userData) {
-        try {
-          const userData = typeof params.userData === "string" ? JSON.parse(params.userData) : params.userData
-
-          console.log("📦 Using passed userData:", userData)
-          await fetchUserProfile(userData.user_id || userData.id)
-          hasLoadedProfile.current = true
-        } catch (error) {
-          console.error("❌ Error parsing user data:", error)
-          Alert.alert("Error", "Failed to load user profile")
-          router.back()
-        }
-      } else if (params.userId) {
-        console.log("🆔 Fetching profile for userId:", params.userId)
-        await fetchUserProfile(params.userId as string)
-        hasLoadedProfile.current = true
       } else {
-        console.error("❌ No user data or userId provided")
-        Alert.alert("Error", "No user data provided")
-        router.back()
-      }
-    }
-
-    loadProfile()
-  }, [params.userData, params.userId, fetchUserProfile, router])
-
-  const loadCurrentUser = async () => {
-    try {
-      const storedUserData = await SecureStore.getItemAsync("user_data")
-      if (storedUserData) {
-        const parsedUserData = JSON.parse(storedUserData)
-        setCurrentUserId(parsedUserData.id)
-        console.log("👤 Current user ID:", parsedUserData.id)
+        const errorMessage = data.error || data.message || 'Failed to fetch medical records';
+        console.error('API Error:', errorMessage);
+        setError(errorMessage);
       }
     } catch (error) {
-      console.error("❌ Error loading current user:", error)
+      console.error('Network error fetching medical records:', error);
+      setError('Network error. Please check your connection and API URL.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
-  }
+  }, [userId, horseId]); // Removed 'horse' from dependencies
 
-  const getUserRoleBadgeColor = (role: string) => {
-    switch (role?.toLowerCase()) {
-      case "horse operator":
-        return { bg: "#E3F2FD", text: "#CD853F" }
-      case "kutsero":
-        return { bg: "#E3F2FD", text: "#CD853F" }
-      case "veterinarian":
-        return { bg: "#F3E5F5", text: "#10B981" }
-      case "ctu_veterinarian":
-      case "ctu-vetmed":
-        return { bg: "#FCE4EC", text: "#c2181eff" }
-      case "ctu-admin":
-        return { bg: "#FCE4EC", text: "#c2181eff" }
-      case "dvmf":
-        return { bg: "#FCE4EC", text: "#c2181eff" }
-      case "dvmf-admin":
-        return { bg: "#FCE4EC", text: "#c2181eff" }
-      case "kutsero president":
-        return { bg: "#E3F2FD", text: "#CD853F" }
-      default:
-        return { bg: "#F5F5F5", text: "#666" }
+  // Trigger data fetching when IDs are ready - use ref to prevent multiple calls
+  const hasFetchedRef = React.useRef(false);
+  
+  useEffect(() => {
+    if (userId && horseId && !hasFetchedRef.current) {
+      console.log('Both IDs ready, fetching data...');
+      hasFetchedRef.current = true;
+      fetchHorseDetails();
+      fetchMedicalRecords();
     }
-  }
+  }, [userId, horseId, fetchHorseDetails, fetchMedicalRecords]);
 
-  const formatRoleLabel = (role: string) => {
-    const roleMap: { [key: string]: string } = {
-      "horse operator": "Horse Operator",
-      "kutsero": "Kutsero",
-      "veterinarian": "Veterinarian",
-      "ctu_veterinarian": "CTU Veterinarian",
-      "ctu-vetmed": "CTU Veterinarian",
-      "dvmf": "DVMF",
-      "kutsero president": "Kutsero President",
-    }
-    return roleMap[role?.toLowerCase()] || role
-  }
+  // Pull to refresh
+  const onRefresh = useCallback(() => {
+    console.log('Refreshing medical records...');
+    setRefreshing(true);
+    fetchMedicalRecords(false);
+  }, [fetchMedicalRecords]);
 
-  const handleSendMessage = async () => {
-    try {
-      if (!currentUserId) {
-        router.replace("/auth/login")
-        return
-      }
-
-      if (!profileData) {
-        Alert.alert("Error", "Profile data not available")
-        return
-      }
-
-      const fullName = `${profileData.profile.fname} ${profileData.profile.lname}`.trim()
-
-      const contact: Contact = {
-        id: profileData.id,
-        name: fullName,
-        avatar: profileData.profile.profile_image || "",
-        role: profileData.role,
-      }
-
-      console.log("📱 Opening chat with:", contact.name)
-
-      router.push({
-        pathname: "/HORSE_OPERATOR/Hmessage",
-        params: {
-          openChat: "true",
-          contactId: contact.id,
-          contactName: contact.name,
-          contactAvatar: contact.avatar,
-          contactRole: contact.role,
-          userId: currentUserId,
-        },
-      })
-    } catch (error) {
-      console.error("Error opening chat:", error)
-      Alert.alert("Error", "Failed to open chat.")
-    }
-  }
-
-  const handleBookAppointment = () => {
-    if (!profileData) return
-
-    const fullName = `${profileData.profile.fname} ${profileData.profile.lname}`.trim()
-
-    console.log("📅 Booking appointment with:", fullName)
-
+  // Navigate to record details
+  const handleRecordPress = (record: MedicalRecord) => {
+    console.log('Opening record:', record.medrec_id);
     router.push({
-      pathname: "../HORSE_OPERATOR/Hbook",
+      pathname: '../HORSE_OPERATOR/medicalrec',
       params: {
-        vetId: profileData.id,
-        vetName: fullName,
-        vetAvatar: profileData.profile.profile_image || "",
-        vetSpecialization: profileData.profile.specialization || "General Practice",
-        vetExperience: profileData.profile.experience_years || "5",
-      },
-    })
-  }
+        recordId: record.medrec_id,
+        horseId: horseId || '',
+        userId: userId || ''
+      }
+    });
+  };
 
-  const handleBack = () => {
-    console.log("⬅️ Going back")
-    router.back()
-  }
+  const handleGoBack = () => {
+    console.log('Going back...');
+    router.back();
+  };
 
-  const togglePostExpansion = (postId: string) => {
-    setExpandedPosts(prev => ({
-      ...prev,
-      [postId]: !prev[postId]
-    }))
-  }
-
-  const handleImagePress = (imageUrl: string) => {
-    setSelectedImage(imageUrl)
-    setImageModalVisible(true)
-  }
-
-  const closeImageModal = () => {
-    setImageModalVisible(false)
-    setSelectedImage(null)
-  }
-
-  const formatTimeTo12Hour = (time24: string) => {
-    try {
-      if (!time24) return time24
-      
-      const timeParts = time24.split(':')
-      if (timeParts.length < 2) return time24
-      
-      let hours = parseInt(timeParts[0])
-      const minutes = timeParts[1]
-      
-      const period = hours >= 12 ? 'PM' : 'AM'
-      hours = hours % 12 || 12
-      
-      return `${hours}:${minutes} ${period}`
-    } catch {
-      return time24
-    }
-  }
-
-  const renderPostItem = (post: Post) => {
-    const isExpanded = expandedPosts[post.id]
-    const contentLength = post.content.length
-    const shouldTruncate = contentLength > 150
-    const displayContent = shouldTruncate && !isExpanded 
-      ? post.content.substring(0, 150) + '...' 
-      : post.content
-
+  // Loading state
+  if (loading && !refreshing) {
     return (
-      <View key={post.id} style={styles.postItem}>
-        <View style={styles.postHeader}>
-          <Text style={styles.postTitle}>{post.title}</Text>
-          {post.is_announcement && (
-            <View style={styles.announcementBadge}>
-              <FontAwesome5 name="bullhorn" size={scale(10)} color="white" />
-              <Text style={styles.announcementBadgeText}>Announcement</Text>
-            </View>
-          )}
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#CD853F" />
+          <Text style={styles.loadingText}>Loading medical records...</Text>
+          <Text style={styles.debugText}>User ID: {userId || 'Loading...'}</Text>
+          <Text style={styles.debugText}>Horse: {horse?.horse_name || horseId || 'Loading...'}</Text>
         </View>
-        
-        <Text style={styles.postContent} numberOfLines={isExpanded ? undefined : 3}>
-          {displayContent}
-        </Text>
-        
-        {shouldTruncate && (
-          <TouchableOpacity 
-            style={styles.seeMoreButton}
-            onPress={() => togglePostExpansion(post.id)}
-          >
-            <Text style={styles.seeMoreText}>
-              {isExpanded ? 'See Less' : 'See More'}
-            </Text>
+      </SafeAreaView>
+    );
+  }
+
+  // Error state
+  if (error && !refreshing) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
+            <FontAwesome5 name="arrow-left" size={24} color="#000" />
           </TouchableOpacity>
-        )}
-        
-        {post.image_url && (
-          <TouchableOpacity 
-            onPress={() => handleImagePress(post.image_url!)}
-            activeOpacity={0.8}
-          >
-            <Image 
-              source={{ uri: post.image_url }} 
-              style={styles.postImage}
-              resizeMode="cover"
-            />
-            <View style={styles.imageOverlay}>
-              <FontAwesome5 name="expand" size={scale(16)} color="white" />
-            </View>
-          </TouchableOpacity>
-        )}
-        
-        <View style={styles.postFooter}>
-          <Text style={styles.postDate}>{post.formatted_date}</Text>
-          {post.category && (
-            <View style={styles.categoryBadge}>
-              <Text style={styles.categoryText}>{post.category}</Text>
-            </View>
-          )}
+          <Text style={styles.headerTitle}>Medical Records</Text>
+          <View style={styles.headerSpacer} />
         </View>
-      </View>
-    )
+        <View style={styles.errorContainer}>
+          <FontAwesome5 name="exclamation-circle" size={50} color="#E74C3C" />
+          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.debugText}>API: {API_BASE_URL}</Text>
+          <TouchableOpacity 
+            style={styles.retryButton}
+            onPress={() => fetchMedicalRecords()}
+          >
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
   }
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
-        <ActivityIndicator size="large" color="#C17A47" />
-        <Text style={styles.loadingText}>Loading profile...</Text>
-      </View>
-    )
-  }
-
-  if (!profileData) {
-    return (
-      <View style={styles.errorContainer}>
-        <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
-        <FontAwesome5 name="user-slash" size={scale(64)} color="#CCC" />
-        <Text style={styles.errorText}>Profile not found</Text>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Text style={styles.backButtonText}>Go Back</Text>
-        </TouchableOpacity>
-      </View>
-    )
-  }
-
-  const roleColors = getUserRoleBadgeColor(profileData.role)
-  const isOwnProfile = currentUserId === profileData.id
-  const fullName = `${profileData.profile.fname} ${profileData.profile.lname}`.trim()
-  const phoneNumber = profileData.profile.phone
-  
-  // Get the appropriate address display
-  const isRegularVet = profileData.role === "Veterinarian" || profileData.role === "veterinarian"
-  const city = profileData.profile.city
-  const province = profileData.profile.province
-  const address = profileData.profile.address // General address field
-  const clinicAddress = profileData.profile.clinic_address // Specific clinic address for vets
-  
-  // Determine what address to display
-  let displayAddress = clinicAddress || address || (city && province ? `${city}, ${province}` : city || province)
-  
-  // Get profile picture based on role
-  const profilePicture = getProfilePicture(profileData)
-  
-  // Check user types
-  const isCTUorDVMF = profileData.role?.toLowerCase().includes('ctu') || 
-                     profileData.role?.toLowerCase().includes('dvmf')
-
-  console.log("👤 Profile Analysis:", {
-    role: profileData.role,
-    isRegularVet,
-    isCTUorDVMF,
-    hasSchedules: vetSchedules.length > 0,
-    hasPosts: userPosts.length > 0,
-    address: address,
-    clinicAddress: clinicAddress,
-    displayAddress: displayAddress
-  })
 
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
-
-      {/* Full Screen Image Modal */}
-      <Modal
-        visible={imageModalVisible}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={closeImageModal}
-      >
-        <View style={styles.imageModalContainer}>
-          <TouchableWithoutFeedback onPress={closeImageModal}>
-            <View style={styles.imageModalBackground}>
-              {selectedImage && (
-                <Image 
-                  source={{ uri: selectedImage }} 
-                  style={styles.fullScreenImage}
-                  resizeMode="contain"
-                />
-              )}
-              <TouchableOpacity 
-                style={styles.closeImageButton}
-                onPress={closeImageModal}
-              >
-                <FontAwesome5 name="times" size={scale(20)} color="white" />
-              </TouchableOpacity>
-            </View>
-          </TouchableWithoutFeedback>
-        </View>
-      </Modal>
-
+    <SafeAreaView style={styles.safeArea}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backIconButton} onPress={handleBack}>
-          <FontAwesome5 name="arrow-left" size={scale(20)} color="white" />
+        <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
+          <FontAwesome5 name="arrow-left" size={24} color="#000" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile</Text>
+        <Text style={styles.headerTitle}>Medical Records</Text>
         <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Profile Header Card */}
-        <View style={styles.profileHeaderCard}>
-          <View style={styles.avatarContainer}>
-            {profilePicture ? (
-              <Image 
-                source={profilePicture} 
-                style={styles.avatar} 
-                resizeMode="cover" 
-              />
-            ) : (
-              <View style={styles.avatarFallback}>
-                <Text style={styles.avatarFallbackText}>
-                  {profileData.profile.fname?.[0] || ""}
-                  {profileData.profile.lname?.[0] || ""}
-                </Text>
-              </View>
+      {horse && (
+        <View style={styles.horseBanner}>
+          <FontAwesome5 name="horse" size={24} color="#CD853F" />
+          <View style={styles.horseBannerText}>
+            <Text style={styles.horseName}>{horse.horse_name}</Text>
+            {horse.horse_breed && (
+              <Text style={styles.horseDetails}>
+                {horse.horse_age && `${horse.horse_age} years`} {horse.horse_age && horse.horse_breed && '•'} {horse.horse_breed}
+              </Text>
             )}
           </View>
+        </View>
+      )}
 
-          <Text style={styles.fullName}>{fullName}</Text>
-
-          <View style={[styles.roleBadge, { backgroundColor: roleColors.bg }]}>
-            <Text style={[styles.roleBadgeText, { color: roleColors.text }]}>
-              {formatRoleLabel(profileData.role)}
+      <ScrollView 
+        style={styles.container}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            colors={['#CD853F']}
+          />
+        }
+      >
+        {medicalRecords.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <FontAwesome5 name="file-medical" size={60} color="#CCC" />
+            <Text style={styles.emptyText}>No Medical Records</Text>
+            <Text style={styles.emptySubtext}>
+              Medical records for {horse?.horse_name || 'this horse'} will appear here
             </Text>
           </View>
-
-          {!isOwnProfile && (
-            <TouchableOpacity style={styles.messageButton} onPress={handleSendMessage} activeOpacity={0.7}>
-              <FontAwesome5 name="comment-dots" size={scale(16)} color="white" />
-              <Text style={styles.messageButtonText}>Send Message</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-
-        <View style={styles.infoCard}>
-          <View style={styles.infoCardHeader}>
-            <FontAwesome5 name="info-circle" size={scale(18)} color="#C17A47" />
-            <Text style={styles.infoCardTitle}>Contact Information</Text>
-          </View>
-
-          <View style={styles.detailsContent}>
-            {profileData.profile.email && (
-              <View style={styles.contactItem}>
-                <View style={styles.iconContainer}>
-                  <FontAwesome5 name="envelope" size={scale(14)} color="#C17A47" />
+        ) : (
+          <View style={styles.recordsList}>
+            <Text style={styles.sectionTitle}>
+              {medicalRecords.length} Record{medicalRecords.length !== 1 ? 's' : ''}
+            </Text>
+            
+            {medicalRecords.map((record) => (
+              <TouchableOpacity
+                key={record.medrec_id}
+                style={styles.recordCard}
+                onPress={() => handleRecordPress(record)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.recordHeader}>
+                  <View style={styles.recordIconContainer}>
+                    <FontAwesome5 name="file-medical-alt" size={20} color="#CD853F" />
+                  </View>
+                  <View style={styles.recordHeaderText}>
+                    <Text style={styles.recordDate}>{record.formatted_date}</Text>
+                    <Text style={styles.recordVet}>{record.vet_name}</Text>
+                  </View>
+                  <FontAwesome5 name="chevron-right" size={16} color="#999" />
                 </View>
-                <View style={styles.contactTextContainer}>
-                  <Text style={styles.contactLabel}>Email</Text>
-                  <Text style={styles.contactText}>{profileData.profile.email}</Text>
-                </View>
-              </View>
-            )}
 
-            {phoneNumber && (
-              <View style={styles.contactItem}>
-                <View style={styles.iconContainer}>
-                  <FontAwesome5 name="phone" size={scale(14)} color="#C17A47" />
-                </View>
-                <View style={styles.contactTextContainer}>
-                  <Text style={styles.contactLabel}>Phone</Text>
-                  <Text style={styles.contactText}>{phoneNumber}</Text>
-                </View>
-              </View>
-            )}
+                {/* Horse Status Badge */}
+                {record.horse_status && (
+                  <View style={[
+                    styles.statusBadge,
+                    record.horse_status === 'Healthy' && styles.statusHealthy,
+                    record.horse_status === 'Sick' && styles.statusSick,
+                    record.horse_status === 'Unhealthy' && styles.statusUnhealthy
+                  ]}>
+                    <Text style={styles.statusText}>{record.horse_status}</Text>
+                  </View>
+                )}
 
-            {/* Address Display - Shows clinic address for vets, regular address for others */}
-            {displayAddress && (
-              <View style={styles.contactItem}>
-                <View style={styles.iconContainer}>
-                  <FontAwesome5 
-                    name={isRegularVet ? "clinic-medical" : "map-marker-alt"} 
-                    size={scale(14)} 
-                    color={isRegularVet ? "#10B981" : "#C17A47"} 
-                  />
-                </View>
-                <View style={styles.contactTextContainer}>
-                  <Text style={[styles.contactLabel, { color: isRegularVet ? "#10B981" : "#999" }]}>
-                    {isRegularVet ? "Clinic Address" : "Address"}
+                <View style={styles.diagnosisPreview}>
+                  <Text style={styles.diagnosisLabel}>Diagnosis:</Text>
+                  <Text style={styles.diagnosisText} numberOfLines={2}>
+                    {record.assessment.diagnosis}
                   </Text>
-                  <Text style={styles.contactText}>{displayAddress}</Text>
-                </View>
-              </View>
-            )}
-
-            {/* Veterinarian Specialization */}
-            {isRegularVet && profileData.profile.specialization && (
-              <View style={styles.contactItem}>
-                <View style={styles.iconContainer}>
-                  <FontAwesome5 name="stethoscope" size={scale(14)} color="#10B981" />
-                </View>
-                <View style={styles.contactTextContainer}>
-                  <Text style={[styles.contactLabel, { color: "#10B981" }]}>Specialization</Text>
-                  <Text style={styles.contactText}>{profileData.profile.specialization}</Text>
-                </View>
-              </View>
-            )}
-
-            {/* Veterinarian Experience */}
-            {isRegularVet && profileData.profile.experience_years && (
-              <View style={styles.contactItem}>
-                <View style={styles.iconContainer}>
-                  <FontAwesome5 name="briefcase" size={scale(14)} color="#10B981" />
-                </View>
-                <View style={styles.contactTextContainer}>
-                  <Text style={[styles.contactLabel, { color: "#10B981" }]}>Experience</Text>
-                  <Text style={styles.contactText}>{profileData.profile.experience_years} years</Text>
-                </View>
-              </View>
-            )}
-
-            {!profileData.profile.email && !phoneNumber && !displayAddress && (
-              <View style={styles.noContactInfo}>
-                <FontAwesome5 name="info-circle" size={scale(16)} color="#999" />
-                <Text style={styles.noContactInfoText}>No contact information available</Text>
-              </View>
-            )}
-          </View>
-        </View>
-
-        {/* Veterinarian Schedule Information - Only show for regular veterinarians */}
-        {isRegularVet && (
-          <View style={styles.infoCard}>
-            <View style={styles.infoCardHeader}>
-              <FontAwesome5 name="calendar-alt" size={scale(18)} color="#10B981" />
-              <Text style={styles.infoCardTitle}>Schedule</Text>
-            </View>
-
-            {scheduleLoading ? (
-              <View style={styles.scheduleLoadingContainer}>
-                <ActivityIndicator size="small" color="#10B981" />
-                <Text style={styles.scheduleLoadingText}>Loading schedule...</Text>
-              </View>
-            ) : vetSchedules.length > 0 ? (
-              <View style={styles.regularScheduleContainer}>
-                <Text style={styles.scheduleDescription}>
-                  This veterinarian is regularly available on:
-                </Text>
-                
-                <View style={styles.scheduleDaysContainer}>
-                  {vetSchedules.map((schedule, index) => (
-                    <View key={schedule.sched_id || index} style={styles.scheduleDayItem}>
-                      <Text style={styles.dayNameText}>
-                        {schedule.day_of_week}
-                      </Text>
-                      <Text style={styles.scheduleTimeText}>
-                        {formatTimeTo12Hour(schedule.start_time)} - {formatTimeTo12Hour(schedule.end_time)}
-                      </Text>
-                    </View>
-                  ))}
                 </View>
 
-                {/* Book Appointment Button */}
-                {!isOwnProfile && (
-                  <TouchableOpacity
-                    style={styles.bookAppointmentButton}
-                    onPress={handleBookAppointment}
-                    activeOpacity={0.7}
-                  >
-                    <FontAwesome5 name="calendar-plus" size={scale(16)} color="white" />
-                    <Text style={styles.bookAppointmentText}>Book an Appointment</Text>
-                  </TouchableOpacity>
+                <View style={styles.vitalSignsRow}>
+                  <View style={styles.vitalSign}>
+                    <FontAwesome5 name="heartbeat" size={14} color="#E74C3C" />
+                    <Text style={styles.vitalSignText}>
+                      {record.vital_signs.heart_rate}
+                    </Text>
+                  </View>
+                  <View style={styles.vitalSign}>
+                    <FontAwesome5 name="lungs" size={14} color="#3498DB" />
+                    <Text style={styles.vitalSignText}>
+                      {record.vital_signs.respiratory_rate}
+                    </Text>
+                  </View>
+                  <View style={styles.vitalSign}>
+                    <FontAwesome5 name="thermometer-half" size={14} color="#F39C12" />
+                    <Text style={styles.vitalSignText}>
+                      {record.vital_signs.body_temperature}
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Follow-up Date if exists */}
+                {record.followup_date && (
+                  <View style={styles.followupContainer}>
+                    <FontAwesome5 name="calendar-check" size={12} color="#CD853F" />
+                    <Text style={styles.followupText}>
+                      Follow-up: {new Date(record.followup_date).toLocaleDateString()}
+                    </Text>
+                  </View>
                 )}
-              </View>
-            ) : (
-              <View style={styles.noScheduleContainer}>
-                <FontAwesome5 name="calendar-times" size={scale(32)} color="#CCC" />
-                <Text style={styles.noScheduleText}>No regular schedule set</Text>
-                <Text style={styles.noScheduleSubtext}>
-                  This veterinarian hasn&#39;t set their weekly availability yet
-                </Text>
-                
-                {/* Book Appointment Button (even without schedule) */}
-                {!isOwnProfile && (
-                  <TouchableOpacity
-                    style={[styles.bookAppointmentButton, styles.bookButtonWithoutSchedule]}
-                    onPress={handleBookAppointment}
-                    activeOpacity={0.7}
-                  >
-                    <FontAwesome5 name="calendar-plus" size={scale(16)} color="white" />
-                    <Text style={styles.bookAppointmentText}>Request Appointment</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
+
+                <View style={styles.viewDetailsHint}>
+                  <Text style={styles.viewDetailsText}>Tap to view full details</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
           </View>
         )}
 
-        {/* Posts/Announcements Card - Only show for CTU and DVMF users */}
-        {isCTUorDVMF && (
-          <View style={styles.infoCard}>
-            <View style={styles.infoCardHeader}>
-              <FontAwesome5 name="newspaper" size={scale(18)} color="#C17A47" />
-              <Text style={styles.infoCardTitle}>
-                {profileData.role?.toLowerCase().includes('ctu') ? 'CTU Announcements' : 'DVMF Announcements'}
-              </Text>
-            </View>
-
-            {postsLoading ? (
-              <View style={styles.postsLoadingContainer}>
-                <ActivityIndicator size="small" color="#C17A47" />
-                <Text style={styles.postsLoadingText}>Loading announcements...</Text>
-              </View>
-            ) : userPosts.length > 0 ? (
-              <View style={styles.postsContainer}>
-                {userPosts.slice(0, 3).map(renderPostItem)}
-                
-                {userPosts.length > 3 && (
-                  <TouchableOpacity style={styles.viewAllPostsButton}>
-                    <Text style={styles.viewAllPostsText}>View All Announcements</Text>
-                    <FontAwesome5 name="arrow-right" size={scale(12)} color="#C17A47" />
-                  </TouchableOpacity>
-                )}
-              </View>
-            ) : (
-              <View style={styles.noPostsContainer}>
-                <FontAwesome5 name="newspaper" size={scale(32)} color="#CCC" />
-                <Text style={styles.noPostsText}>
-                  No announcements posted yet
-                </Text>
-              </View>
-            )}
-          </View>
-        )}
-
-        {/* Own Profile Note */}
-        {isOwnProfile && (
-          <View style={styles.ownProfileNote}>
-            <FontAwesome5 name="info-circle" size={scale(14)} color="#666" />
-            <Text style={styles.ownProfileNoteText}>This is your profile. To edit, go to Profile tab.</Text>
-          </View>
-        )}
+        <View style={styles.bottomSpacing} />
       </ScrollView>
-    </View>
-  )
-}
+    </SafeAreaView>
+  );
+};
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    backgroundColor: "#F5F5F5",
+    backgroundColor: '#F8F9FA',
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#F5F5F5",
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 15,
   },
   loadingText: {
-    marginTop: verticalScale(16),
-    fontSize: moderateScale(16),
-    color: "#666",
-    fontWeight: "500",
+    fontSize: 16,
+    color: '#666',
+    marginTop: 10,
+  },
+  debugText: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 5,
   },
   errorContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#F5F5F5",
-    paddingHorizontal: scale(32),
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    gap: 15,
   },
   errorText: {
-    fontSize: moderateScale(18),
-    color: "#666",
-    marginTop: verticalScale(16),
-    marginBottom: verticalScale(24),
-    textAlign: "center",
+    fontSize: 16,
+    color: '#E74C3C',
+    textAlign: 'center',
+    marginTop: 10,
   },
-  backButton: {
-    backgroundColor: "#C17A47",
-    paddingHorizontal: scale(32),
-    paddingVertical: verticalScale(12),
-    borderRadius: scale(8),
+  retryButton: {
+    backgroundColor: '#CD853F',
+    paddingHorizontal: 30,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 10,
   },
-  backButtonText: {
-    color: "white",
-    fontSize: moderateScale(16),
-    fontWeight: "600",
+  retryButtonText: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
-    backgroundColor: "#C17A47",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(16),
-    paddingTop: Platform.OS === "ios" ? verticalScale(50) : verticalScale(16),
-  },
-  backIconButton: {
-    width: scale(40),
-    height: scale(40),
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  headerTitle: {
-    fontSize: moderateScale(20),
-    fontWeight: "bold",
-    color: "white",
-    flex: 1,
-    textAlign: "center",
-  },
-  headerSpacer: {
-    width: scale(40),
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: verticalScale(32),
-  },
-  profileHeaderCard: {
-    backgroundColor: "white",
-    alignItems: "center",
-    paddingVertical: verticalScale(32),
-    paddingHorizontal: scale(24),
-    marginBottom: verticalScale(16),
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#E0E0E0",
-  },
-  avatarContainer: {
-    marginBottom: verticalScale(16),
-  },
-  avatar: {
-    width: scale(120),
-    height: scale(120),
-    borderRadius: scale(60),
-    borderWidth: 4,
-    borderColor: "#000000ff",
-    overflow: "hidden",
-  },
-  avatarFallback: {
-    width: scale(120),
-    height: scale(120),
-    borderRadius: scale(60),
-    backgroundColor: "#C17A47",
-    justifyContent: "center",
-    alignItems: "center",
-    borderWidth: 4,
-    borderColor: "#A66A3E",
-  },
-  avatarFallbackText: {
-    fontSize: moderateScale(48),
-    fontWeight: "bold",
-    color: "white",
-  },
-  fullName: {
-    fontSize: moderateScale(24),
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: verticalScale(8),
-    textAlign: "center",
-  },
-  roleBadge: {
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(6),
-    borderRadius: scale(20),
-    marginBottom: verticalScale(12),
-  },
-  roleBadgeText: {
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-  },
-  messageButton: {
-    width: "90%",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#C17A47",
-    paddingHorizontal: scale(20),
-    paddingVertical: verticalScale(12),
-    borderRadius: scale(25),
-    gap: scale(8),
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    marginTop: verticalScale(10),
-  },
-  messageButtonText: {
-    color: "white",
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-  },
-  infoCard: {
-    backgroundColor: "white",
-    marginHorizontal: scale(16),
-    marginBottom: verticalScale(16),
-    borderRadius: scale(12),
-    padding: scale(16),
-    shadowColor: "#000",
+    borderBottomColor: '#E9ECEF',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 2,
+    marginTop: 16,
   },
-  infoCardHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: verticalScale(16),
-    paddingBottom: verticalScale(12),
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#F8F9FA',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#2C3E50',
+  },
+  headerSpacer: {
+    width: 40,
+  },
+  horseBanner: {
+    backgroundColor: '#FFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
-    gap: scale(8),
+    borderBottomColor: '#E9ECEF',
+    gap: 12,
   },
-  infoCardTitle: {
-    fontSize: moderateScale(18),
-    fontWeight: "600",
-    color: "#333",
-  },
-  detailsContent: {
-    paddingVertical: verticalScale(8),
-  },
-  contactItem: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: verticalScale(16),
-    gap: scale(12),
-  },
-  iconContainer: {
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
-    backgroundColor: "#F5F5F5",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  contactTextContainer: {
+  horseBannerText: {
     flex: 1,
   },
-  contactLabel: {
-    fontSize: moderateScale(12),
-    color: "#999",
-    marginBottom: verticalScale(2),
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+  horseName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#2C3E50',
+    marginBottom: 2,
   },
-  contactText: {
-    fontSize: moderateScale(14),
-    color: "#333",
-    lineHeight: moderateScale(20),
+  horseDetails: {
+    fontSize: 14,
+    color: '#6C757D',
   },
-  noContactInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: verticalScale(20),
-    gap: scale(8),
-  },
-  noContactInfoText: {
-    fontSize: moderateScale(14),
-    color: "#999",
-    fontStyle: "italic",
-  },
-  ownProfileNote: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFF3E0",
-    marginHorizontal: scale(16),
-    padding: scale(16),
-    borderRadius: scale(12),
-    gap: scale(12),
-  },
-  ownProfileNoteText: {
+  container: {
     flex: 1,
-    fontSize: moderateScale(13),
-    color: "#666",
-    lineHeight: moderateScale(18),
   },
-  scheduleLoadingContainer: {
-    paddingVertical: verticalScale(20),
-    alignItems: "center",
-    justifyContent: "center",
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 40,
+    marginTop: 80,
   },
-  scheduleLoadingText: {
-    marginTop: verticalScale(8),
-    fontSize: moderateScale(14),
-    color: "#666",
+  emptyText: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#999',
+    marginTop: 20,
   },
-  
-  // Regular Schedule Styles
-  regularScheduleContainer: {
-    paddingVertical: verticalScale(8),
+  emptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    textAlign: 'center',
+    marginTop: 8,
   },
-  scheduleDaysContainer: {
-    gap: verticalScale(8),
+  recordsList: {
+    padding: 16,
   },
-  scheduleDayItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: verticalScale(10),
-    paddingHorizontal: scale(12),
-    backgroundColor: "#F0F9FF",
-    borderRadius: scale(8),
-    borderLeftWidth: 3,
-    borderLeftColor: "#10B981",
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6C757D',
+    marginBottom: 12,
+    marginLeft: 4,
   },
-  dayNameText: {
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-    color: "#333",
-  },
-  scheduleTimeText: {
-    fontSize: moderateScale(13),
-    color: "#666",
-    fontWeight: "500",
-  },
-  scheduleDescription: {
-    fontSize: moderateScale(14),
-    color: "#666",
-    marginBottom: verticalScale(12),
-    lineHeight: moderateScale(20),
-  },
-  
-  // Book Appointment Button
-  bookAppointmentButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#10B981",
-    paddingHorizontal: scale(20),
-    paddingVertical: verticalScale(14),
-    borderRadius: scale(12),
-    marginTop: verticalScale(16),
-    gap: scale(10),
-    shadowColor: "#000",
+  recordCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
     elevation: 3,
+    borderWidth: 1,
+    borderColor: '#F1F3F4',
   },
-  bookAppointmentText: {
-    color: "white",
-    fontSize: moderateScale(16),
-    fontWeight: "600",
+  recordHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 12,
   },
-  
-  noScheduleContainer: {
-    paddingVertical: verticalScale(32),
-    alignItems: "center",
-    justifyContent: "center",
+  recordIconContainer: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#FFF5E6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  noScheduleText: {
-    marginTop: verticalScale(12),
-    fontSize: moderateScale(14),
-    color: "#999",
-    textAlign: "center",
-  },
-  noScheduleSubtext: {
-    fontSize: moderateScale(13),
-    color: "#999",
-    textAlign: "center",
-    marginTop: verticalScale(4),
-    marginBottom: verticalScale(8),
-  },
-  bookButtonWithoutSchedule: {
-    backgroundColor: "#6B7280",
-  },
-  
-  // Posts/Announcements Styles
-  postsLoadingContainer: {
-    paddingVertical: verticalScale(20),
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  postsLoadingText: {
-    marginTop: verticalScale(8),
-    fontSize: moderateScale(14),
-    color: "#666",
-  },
-  postsContainer: {
-    paddingVertical: verticalScale(8),
-  },
-  postItem: {
-    backgroundColor: "#F9F9F9",
-    borderRadius: scale(8),
-    padding: scale(12),
-    marginBottom: verticalScale(8),
-    borderLeftWidth: 3,
-    borderLeftColor: "#C17A47",
-  },
-  postHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: verticalScale(8),
-  },
-  postTitle: {
-    fontSize: moderateScale(16),
-    fontWeight: "600",
-    color: "#333",
+  recordHeaderText: {
     flex: 1,
-    marginRight: scale(8),
   },
-  announcementBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#C17A47",
-    paddingHorizontal: scale(8),
-    paddingVertical: verticalScale(4),
-    borderRadius: scale(4),
-    gap: scale(4),
+  recordDate: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#2C3E50',
+    marginBottom: 2,
   },
-  announcementBadgeText: {
-    fontSize: moderateScale(10),
-    color: "white",
-    fontWeight: "600",
+  recordVet: {
+    fontSize: 14,
+    color: '#6C757D',
   },
-  postContent: {
-    fontSize: moderateScale(14),
-    color: "#666",
-    lineHeight: moderateScale(20),
-    marginBottom: verticalScale(4),
-  },
-  seeMoreButton: {
+  statusBadge: {
     alignSelf: 'flex-start',
-    marginBottom: verticalScale(8),
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 8,
   },
-  seeMoreText: {
-    fontSize: moderateScale(12),
-    color: "#C17A47",
-    fontWeight: "600",
+  statusHealthy: {
+    backgroundColor: '#D4EDDA',
   },
-  postImage: {
-    width: "100%",
-    height: verticalScale(120),
-    borderRadius: scale(6),
-    marginBottom: verticalScale(8),
+  statusSick: {
+    backgroundColor: '#F8D7DA',
   },
-  imageOverlay: {
-    position: 'absolute',
-    top: scale(8),
-    right: scale(8),
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    width: scale(32),
-    height: scale(32),
-    borderRadius: scale(16),
-    justifyContent: 'center',
+  statusUnhealthy: {
+    backgroundColor: '#FFF3CD',
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#2C3E50',
+  },
+  diagnosisPreview: {
+    marginBottom: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F3F4',
+  },
+  diagnosisLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#6C757D',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+  },
+  diagnosisText: {
+    fontSize: 14,
+    color: '#2C3E50',
+    lineHeight: 20,
+  },
+  vitalSignsRow: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 8,
+  },
+  vitalSign: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
-  postFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  vitalSignText: {
+    fontSize: 12,
+    color: '#6C757D',
+    fontWeight: '500',
   },
-  postDate: {
-    fontSize: moderateScale(12),
-    color: "#999",
-  },
-  categoryBadge: {
-    backgroundColor: "#E3F2FD",
-    paddingHorizontal: scale(8),
-    paddingVertical: verticalScale(2),
-    borderRadius: scale(4),
-  },
-  categoryText: {
-    fontSize: moderateScale(10),
-    color: "#1976D2",
-    fontWeight: "500",
-  },
-  viewAllPostsButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: verticalScale(12),
-    paddingHorizontal: scale(16),
-    backgroundColor: "#FFF3E0",
-    borderRadius: scale(8),
-    marginTop: verticalScale(8),
-    gap: scale(8),
-  },
-  viewAllPostsText: {
-    fontSize: moderateScale(14),
-    color: "#C17A47",
-    fontWeight: "600",
-  },
-  noPostsContainer: {
-    paddingVertical: verticalScale(32),
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  noPostsText: {
-    marginTop: verticalScale(12),
-    fontSize: moderateScale(14),
-    color: "#999",
-    textAlign: "center",
-  },
-  
-  // Image Modal Styles
-  imageModalContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    justifyContent: 'center',
+  followupContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F3F4',
   },
-  imageModalBackground: {
-    flex: 1,
-    width: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
+  followupText: {
+    fontSize: 12,
+    color: '#CD853F',
+    fontWeight: '500',
   },
-  fullScreenImage: {
-    width: '95%',
-    height: '80%',
+  viewDetailsHint: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F3F4',
   },
-  closeImageButton: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? verticalScale(50) : verticalScale(20),
-    right: scale(20),
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(20),
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+  viewDetailsText: {
+    fontSize: 12,
+    color: '#CD853F',
+    fontWeight: '600',
+    textAlign: 'center',
   },
-})
+  bottomSpacing: {
+    height: 20,
+  },
+});
+
+export default MedicalRecordsScreen;

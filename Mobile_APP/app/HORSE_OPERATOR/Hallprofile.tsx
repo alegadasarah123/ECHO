@@ -1,5 +1,3 @@
-// HORSE_OPERATOR/Hallprofile.tsx
-
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
@@ -69,13 +67,6 @@ interface VetSchedule {
   slot_duration: number
   is_available: boolean
   created_at: string
-}
-
-interface Contact {
-  id: string
-  name: string
-  avatar: string
-  role: string
 }
 
 interface Post {
@@ -393,24 +384,20 @@ export default function UnifiedProfileView() {
 
       const fullName = `${profileData.profile.fname} ${profileData.profile.lname}`.trim()
 
-      const contact: Contact = {
-        id: profileData.id,
-        name: fullName,
-        avatar: profileData.profile.profile_image || "",
-        role: profileData.role,
-      }
+      console.log("📱 Opening chat with:", fullName)
 
-      console.log("📱 Opening chat with:", contact.name)
-
+      // Navigate to messages screen with proper parameters
       router.push({
-        pathname: "/HORSE_OPERATOR/Hmessage",
+        pathname: "../HORSE_OPERATOR/Hmessage",
         params: {
           openChat: "true",
-          contactId: contact.id,
-          contactName: contact.name,
-          contactAvatar: contact.avatar,
-          contactRole: contact.role,
+          contactId: profileData.id,
+          contactName: fullName,
+          contactAvatar: profileData.profile.profile_image || "",
+          contactRole: profileData.role,
           userId: currentUserId,
+          // Add timestamp to force refresh
+          timestamp: Date.now().toString(),
         },
       })
     } catch (error) {
