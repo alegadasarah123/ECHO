@@ -1,13 +1,11 @@
-// KUTSERO FEED PAGE COMPONENT
-
 import { useState, useEffect } from "react";
-import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Alert, SafeAreaView, TextInput, Modal } from "react-native";
+import { ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View, Alert, SafeAreaView, TextInput, Modal, Image } from "react-native";
 import { FontAwesome5 } from '@expo/vector-icons';
 import FeedLogPage from './FeedLogPage';
 import WaterLogPage from './waterlogpage';
 
 // API Configuration
-const API_BASE_URL = 'http://10.254.39.148:8000/api/kutsero';
+const API_BASE_URL = 'http://192.168.31.58:8000/api/kutsero';
 
 interface FeedLog {
   log_id: string;
@@ -55,6 +53,7 @@ interface MealSchedule {
   horse_id: string;
   completed: boolean;
   completed_at?: string;
+  completed_by?: string;
   created_at?: string;
   op_id?: string;
   user_type?: string;
@@ -69,6 +68,7 @@ interface WaterSchedule {
   horse_id: string;
   completed: boolean;
   completed_at?: string;
+  completed_by?: string;
   created_at?: string;
   op_id?: string;
   user_type?: string;
@@ -78,6 +78,24 @@ type FeedType = {
   id: string;
   name: string;
   amount: string;
+  image: string;
+};
+
+// Real horse food images from Unsplash - actual photos of what horses eat
+const FOOD_IMAGES = {
+  hay: "https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=400&h=300&fit=crop", // Hay bales
+  oats: "https://images.unsplash.com/photo-1598965675045-8cde31b355d0?w=400&h=300&fit=crop", // Oats
+  grains: "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=400&h=300&fit=crop", // Mixed grains
+  carrots: "https://images.unsplash.com/photo-1445282768818-728615cc910a?w=400&h=300&fit=crop", // Carrots
+  apples: "https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&h=300&fit=crop", // Apples
+  pellets: "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=400&h=300&fit=crop", // Horse pellets
+  beetpulp: "https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?w=400&h=300&fit=crop", // Beet pulp
+  bran: "https://images.unsplash.com/photo-1598965675045-8cde31b355d0?w=400&h=300&fit=crop", // Bran mash
+  alfalfa: "https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=400&h=300&fit=crop", // Alfalfa hay
+  grass: "https://images.unsplash.com/photo-1500937386664-56d1dfef3854?w=400&h=300&fit=crop", // Fresh grass
+  saltblock: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop", // Salt/mineral block
+  supplements: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop", // Vitamin supplements
+  default: "https://images.unsplash.com/photo-1504208434303-cb4f6350f0b8?w=400&h=300&fit=crop", // General horse feed
 };
 
 // ============================================================================
@@ -203,7 +221,8 @@ const markWaterCompleted = async (kutseronId: string, horseId: string, waterId: 
 
 const fetchFeedLogs = async (kutseronId: string, horseId: string, logDate?: string, logMeal?: string): Promise<FeedLog[]> => {
   try {
-    let url = `${API_BASE_URL}/feed-logs/?kutsero_id=${kutseronId}&horse_id=${horseId}&user_type=kutsero`;
+    // Remove user-specific filtering to see all feed logs for the horse
+    let url = `${API_BASE_URL}/feed-logs/?horse_id=${horseId}`;
     if (logDate) url += `&log_date=${logDate}`;
     if (logMeal && logMeal !== 'All Meals') url += `&log_meal=${logMeal}`;
     
@@ -222,7 +241,8 @@ const fetchFeedLogs = async (kutseronId: string, horseId: string, logDate?: stri
 
 const fetchWaterLogs = async (kutseronId: string, horseId: string, logDate?: string, logPeriod?: string): Promise<WaterLog[]> => {
   try {
-    let url = `${API_BASE_URL}/water-logs/?kutsero_id=${kutseronId}&horse_id=${horseId}&user_type=kutsero`;
+    // Remove user-specific filtering to see all water logs for the horse
+    let url = `${API_BASE_URL}/water-logs/?horse_id=${horseId}`;
     if (logDate) url += `&log_date=${logDate}`;
     if (logPeriod && logPeriod !== 'All Periods') url += `&log_period=${logPeriod}`;
     
@@ -287,17 +307,18 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
   const [feedingSchedule, setFeedingSchedule] = useState<MealSchedule[]>([]);
   const [feedLogs, setFeedLogs] = useState<FeedLog[]>([]);
   const [feedTypes, setFeedTypes] = useState<FeedType[]>([
-    { id: '1', name: 'Chaff', amount: '' },
-    { id: '2', name: 'Resolve', amount: '' },
-    { id: '3', name: 'Dynavy', amount: '' },
-    { id: '4', name: 'Magnesium', amount: '' },
+    { id: '1', name: 'Hay', amount: '', image: FOOD_IMAGES.hay },
+    { id: '2', name: 'Oats', amount: '', image: FOOD_IMAGES.oats },
+    { id: '3', name: 'Grains', amount: '', image: FOOD_IMAGES.grains },
+    { id: '4', name: 'Carrots', amount: '', image: FOOD_IMAGES.carrots },
+    { id: '5', name: 'Apples', amount: '', image: FOOD_IMAGES.apples },
+    { id: '6', name: 'Pellets', amount: '', image: FOOD_IMAGES.pellets },
   ]);
   const [editingMeal, setEditingMeal] = useState<MealSchedule | null>(null);
   
   // Water states
   const [waterSchedule, setWaterSchedule] = useState<WaterSchedule[]>([]);
   const [waterLogs, setWaterLogs] = useState<WaterLog[]>([]);
-  const [selectedPeriod, setSelectedPeriod] = useState('Morning');
   const [waterAmount, setWaterAmount] = useState('');
   const [editingWater, setEditingWater] = useState<WaterSchedule | null>(null);
   
@@ -310,7 +331,54 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
   const [saving, setSaving] = useState(false);
   const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
 
-  const periods = ['Morning', 'Afternoon', 'Evening'];
+  const getPeriodIcon = (period: string): string => {
+    switch (period) {
+      case 'Morning': return 'sun';
+      case 'Afternoon': return 'cloud-sun';
+      case 'Evening': return 'moon';
+      default: return 'tint';
+    }
+  };
+
+  const getPeriodColor = (period: string): string => {
+    switch (period) {
+      case 'Morning': return '#F59E0B';
+      case 'Afternoon': return '#3B82F6';
+      case 'Evening': return '#6366F1';
+      default: return '#06B6D4';
+    }
+  };
+
+  const getFoodImage = (foodType: string) => {
+    const lowerCaseFood = foodType.toLowerCase();
+    switch (lowerCaseFood) {
+      case 'hay': return FOOD_IMAGES.hay;
+      case 'oats': return FOOD_IMAGES.oats;
+      case 'grains': return FOOD_IMAGES.grains;
+      case 'carrots': return FOOD_IMAGES.carrots;
+      case 'apples': return FOOD_IMAGES.apples;
+      case 'pellets': return FOOD_IMAGES.pellets;
+      case 'beetpulp': return FOOD_IMAGES.beetpulp;
+      case 'bran': return FOOD_IMAGES.bran;
+      case 'alfalfa': return FOOD_IMAGES.alfalfa;
+      case 'grass': return FOOD_IMAGES.grass;
+      case 'saltblock': return FOOD_IMAGES.saltblock;
+      case 'supplements': return FOOD_IMAGES.supplements;
+      default: return FOOD_IMAGES.default;
+    }
+  };
+
+  const getFoodIcon = (foodType: string) => {
+    switch (foodType.toLowerCase()) {
+      case 'hay': return 'leaf';
+      case 'oats': return 'seedling';
+      case 'grains': return 'wheat';
+      case 'carrots': return 'carrot';
+      case 'apples': return 'apple-alt';
+      case 'pellets': return 'circle';
+      default: return 'utensils';
+    }
+  };
 
   useEffect(() => {
     console.log('FeedPage loaded with feedType:', feedType);
@@ -339,6 +407,37 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
     }
   };
 
+  const getCurrentTime = () => {
+    const now = new Date();
+    return {
+      hours: now.getHours(),
+      minutes: now.getMinutes()
+    };
+  };
+
+  const convertTo24Hour = (hour: string, period: string): number => {
+    let h = parseInt(hour);
+    if (period === 'PM' && h !== 12) {
+      h += 12;
+    } else if (period === 'AM' && h === 12) {
+      h = 0;
+    }
+    return h;
+  };
+
+  const isTimeInPast = (hour: string, minute: string, period: string): boolean => {
+    const current = getCurrentTime();
+    const selectedHour24 = convertTo24Hour(hour, period);
+    const selectedMinutes = parseInt(minute);
+    
+    if (selectedHour24 < current.hours) {
+      return true;
+    } else if (selectedHour24 === current.hours && selectedMinutes < current.minutes) {
+      return true;
+    }
+    return false;
+  };
+
   const getMealName = (time: string): string => {
     try {
       const timeParts = time.trim().split(' ');
@@ -352,14 +451,7 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
       const hour = parseInt(timeComponent.split(':')[0]);
       if (isNaN(hour)) return 'Meal';
       
-      let hour24: number;
-      if (period.toUpperCase() === 'PM' && hour !== 12) {
-        hour24 = hour + 12;
-      } else if (period.toUpperCase() === 'AM' && hour === 12) {
-        hour24 = 0;
-      } else {
-        hour24 = hour;
-      }
+      const hour24 = convertTo24Hour(hour.toString(), period);
 
       if (hour24 < 10) return 'Breakfast';
       if (hour24 < 16) return 'Lunch';
@@ -369,34 +461,16 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
     }
   };
 
-  const getPeriodIcon = (period: string): string => {
-    switch (period) {
-      case 'Morning': return 'sun';
-      case 'Afternoon': return 'cloud-sun';
-      case 'Evening': return 'moon';
-      default: return 'tint';
-    }
-  };
-
-  const getPeriodColor = (period: string): string => {
-    switch (period) {
-      case 'Morning': return '#F59E0B';
-      case 'Afternoon': return '#3B82F6';
-      case 'Evening': return '#6366F1';
-      default: return '#06B6D4';
-    }
-  };
-
-  const getFoodIcon = (foodType: string) => {
-    switch (foodType.toLowerCase()) {
-      case 'chaff': return 'seedling';
-      case 'hay': return 'leaf';
-      case 'grain': return 'wheat';
-      case 'pellets': return 'circle';
-      case 'resolve': return 'apple-alt';
-      case 'dynavy': return 'pills';
-      case 'magnesium': return 'tablets';
-      default: return 'utensils';
+  // Function to determine period based on time (for water schedule)
+  const getPeriodFromTime = (hour: string, period: string): string => {
+    const hour24 = convertTo24Hour(hour, period);
+    
+    if (hour24 >= 5 && hour24 < 12) {
+      return 'Morning';
+    } else if (hour24 >= 12 && hour24 < 17) {
+      return 'Afternoon';
+    } else {
+      return 'Evening';
     }
   };
 
@@ -419,7 +493,6 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
       } catch (error) {
         setFeedingTime({ hour: '6', minute: '00', period: 'AM' });
       }
-      setSelectedPeriod(water.water_period);
       setWaterAmount(water.water_amount);
     } else {
       const meal = item as MealSchedule;
@@ -441,10 +514,12 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
       }
       
       const resetFeedTypes = [
-        { id: '1', name: 'Chaff', amount: '' },
-        { id: '2', name: 'Resolve', amount: '' },
-        { id: '3', name: 'Dynavy', amount: '' },
-        { id: '4', name: 'Magnesium', amount: '' },
+        { id: '1', name: 'Hay', amount: '', image: FOOD_IMAGES.hay },
+        { id: '2', name: 'Oats', amount: '', image: FOOD_IMAGES.oats },
+        { id: '3', name: 'Grains', amount: '', image: FOOD_IMAGES.grains },
+        { id: '4', name: 'Carrots', amount: '', image: FOOD_IMAGES.carrots },
+        { id: '5', name: 'Apples', amount: '', image: FOOD_IMAGES.apples },
+        { id: '6', name: 'Pellets', amount: '', image: FOOD_IMAGES.pellets },
       ];
       
       const updatedFeedTypes = resetFeedTypes.map(feed => ({
@@ -461,16 +536,17 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
     if (isWater) {
       setEditingWater(null);
       setFeedingTime({ hour: '6', minute: '00', period: 'AM' });
-      setSelectedPeriod('Morning');
       setWaterAmount('');
     } else {
       setEditingMeal(null);
       setFeedingTime({ hour: '6', minute: '45', period: 'AM' });
       setFeedTypes([
-        { id: '1', name: 'Chaff', amount: '' },
-        { id: '2', name: 'Resolve', amount: '' },
-        { id: '3', name: 'Dynavy', amount: '' },
-        { id: '4', name: 'Magnesium', amount: '' },
+        { id: '1', name: 'Hay', amount: '', image: FOOD_IMAGES.hay },
+        { id: '2', name: 'Oats', amount: '', image: FOOD_IMAGES.oats },
+        { id: '3', name: 'Grains', amount: '', image: FOOD_IMAGES.grains },
+        { id: '4', name: 'Carrots', amount: '', image: FOOD_IMAGES.carrots },
+        { id: '5', name: 'Apples', amount: '', image: FOOD_IMAGES.apples },
+        { id: '6', name: 'Pellets', amount: '', image: FOOD_IMAGES.pellets },
       ]);
     }
     setShowAddView(true);
@@ -496,7 +572,12 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
       { text: 'Add', onPress: (text?: string) => {
         if (text && text.trim()) {
           const newId = (feedTypes.length + 1).toString();
-          setFeedTypes(prev => [...prev, { id: newId, name: text.trim(), amount: '' }]);
+          setFeedTypes(prev => [...prev, { 
+            id: newId, 
+            name: text.trim(), 
+            amount: '',
+            image: FOOD_IMAGES.default 
+          }]);
         }
       }}
     ]);
@@ -521,6 +602,16 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
       return;
     }
 
+    // Validate time is not in the past (only for new schedules, not editing)
+    if (!showEditView && isTimeInPast(feedingTime.hour, feedingTime.minute, feedingTime.period)) {
+      Alert.alert(
+        'Invalid Time', 
+        'You cannot add a schedule for a time that has already passed. Please select a future time.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     setSaving(true);
     
     const paddedHour = feedingTime.hour.padStart(2, '0');
@@ -531,8 +622,11 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
       let result;
       
       if (isWater) {
+        // Calculate period based on time
+        const period = getPeriodFromTime(feedingTime.hour, feedingTime.period);
+        
         const waterData = {
-          water_period: selectedPeriod,
+          water_period: period,
           water_amount: waterAmount.trim(),
           water_time: updatedTime,
           kutsero_id: userId,
@@ -773,58 +867,34 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
             </View>
 
             {isWater ? (
-              <>
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Period</Text>
-                  <View style={styles.periodContainer}>
-                    {periods.map((period) => (
-                      <TouchableOpacity
-                        key={period}
-                        style={[
-                          styles.periodButton,
-                          selectedPeriod === period && styles.periodButtonActive,
-                          { borderColor: getPeriodColor(period) }
-                        ]}
-                        onPress={() => setSelectedPeriod(period)}
-                      >
-                        <FontAwesome5 
-                          name={getPeriodIcon(period)} 
-                          size={18} 
-                          color={selectedPeriod === period ? '#fff' : getPeriodColor(period)} 
-                        />
-                        <Text style={[
-                          styles.periodButtonText,
-                          selectedPeriod === period && styles.periodButtonTextActive
-                        ]}>
-                          {period}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Water Amount</Text>
-                  <TextInput 
-                    style={styles.amountInputFull} 
-                    value={waterAmount} 
-                    onChangeText={setWaterAmount} 
-                    placeholder="Enter water amount (e.g., 5 liters)" 
-                  />
-                </View>
-              </>
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Water Amount</Text>
+                <TextInput 
+                  style={styles.amountInputFull} 
+                  value={waterAmount} 
+                  onChangeText={setWaterAmount} 
+                  placeholder="Enter water amount (e.g., 5 liters)" 
+                />
+              </View>
             ) : (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Feed Types & Amounts</Text>
                 <View style={styles.feedTypesGrid}>
                   {feedTypes.map((feed) => (
                     <View key={feed.id} style={styles.feedTypeCard}>
-                      <Text style={styles.feedTypeName}>{feed.name}</Text>
+                      <View style={styles.feedTypeHeader}>
+                        <Image 
+                          source={{ uri: feed.image }} 
+                          style={styles.feedImage}
+                          resizeMode="cover"
+                        />
+                        <Text style={styles.feedTypeName}>{feed.name}</Text>
+                      </View>
                       <TextInput 
                         style={styles.amountInput} 
                         value={feed.amount} 
                         onChangeText={(value) => handleAmountChange(feed.id, value)} 
-                        placeholder="Enter amount" 
+                        placeholder="Amount" 
                       />
                     </View>
                   ))}
@@ -936,7 +1006,12 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                       <View style={styles.completedIconContainer}>
                         <FontAwesome5 name="check" size={14} color="#fff" />
                       </View>
-                      <Text style={styles.completedText}>Completed</Text>
+                      <View style={styles.completedTextContainer}>
+                        <Text style={styles.completedText}>Completed</Text>
+                        {water.completed_by && (
+                          <Text style={styles.completedByText}>by {water.completed_by}</Text>
+                        )}
+                      </View>
                     </View>
                   ) : (
                     <TouchableOpacity 
@@ -964,15 +1039,17 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                 
                 <View style={styles.cardContent}>
                   <View style={styles.detailInfo}>
-                    <View style={styles.feedTypeRow}>
-                      <FontAwesome5 
-                        name={meal.fd_meal_type === 'Breakfast' ? 'sun' : meal.fd_meal_type === 'Lunch' ? 'cloud-sun' : 'moon'} 
-                        size={18} 
-                        color={meal.completed ? '#10B981' : '#8B5A2B'} 
+                    <View style={styles.feedInfoContainer}>
+                      <Image 
+                        source={{ uri: getFoodImage(meal.fd_food_type) }} 
+                        style={styles.foodImage}
+                        resizeMode="cover"
                       />
-                      <Text style={styles.feedType}>{meal.fd_food_type}</Text>
+                      <View style={styles.feedTextContainer}>
+                        <Text style={styles.feedType}>{meal.fd_food_type}</Text>
+                        <Text style={styles.feedAmount}>{meal.fd_qty}</Text>
+                      </View>
                     </View>
-                    <Text style={styles.feedAmount}>{meal.fd_qty}</Text>
                   </View>
                   
                   {meal.completed ? (
@@ -980,7 +1057,12 @@ export default function FeedPage({ onBack, feedType, horseName, horseId, userId,
                       <View style={styles.completedIconContainer}>
                         <FontAwesome5 name="check" size={14} color="#fff" />
                       </View>
-                      <Text style={styles.completedText}>Completed</Text>
+                      <View style={styles.completedTextContainer}>
+                        <Text style={styles.completedText}>Completed</Text>
+                        {meal.completed_by && (
+                          <Text style={styles.completedByText}>by {meal.completed_by}</Text>
+                        )}
+                      </View>
                     </View>
                   ) : (
                     <TouchableOpacity 
@@ -1043,16 +1125,13 @@ const styles = StyleSheet.create({
   dropdownOptionActive: { backgroundColor: '#EFF6FF' },
   dropdownOptionText: { fontSize: 16, fontWeight: '600', color: '#334155' },
   dropdownOptionTextActive: { color: '#3B82F6' },
-  periodContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
-  periodButton: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#F8FAFC', borderRadius: 16, paddingVertical: 14, borderWidth: 2, gap: 8 },
-  periodButtonActive: { backgroundColor: '#06B6D4', borderColor: '#06B6D4' },
-  periodButtonText: { fontSize: 14, fontWeight: '600', color: '#334155' },
-  periodButtonTextActive: { color: '#fff' },
   amountInputFull: { backgroundColor: '#F8FAFC', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, fontWeight: '500', borderWidth: 2, borderColor: '#E2E8F0', color: '#334155' },
   feedTypesGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 20 },
   feedTypeCard: { width: '48%', backgroundColor: '#F8FAFC', borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 2, borderColor: '#E2E8F0', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 8, elevation: 2 },
-  feedTypeName: { fontSize: 16, fontWeight: '700', color: '#1E293B', textAlign: 'center', marginBottom: 12 },
-  amountInput: { backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, fontWeight: '500', borderWidth: 2, borderColor: '#E2E8F0', color: '#334155' },
+  feedTypeHeader: { flexDirection: 'column', alignItems: 'center', marginBottom: 12 },
+  feedImage: { width: 60, height: 60, borderRadius: 12, marginBottom: 8 },
+  feedTypeName: { fontSize: 16, fontWeight: '700', color: '#1E293B', textAlign: 'center' },
+  amountInput: { backgroundColor: '#FFFFFF', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15, fontWeight: '500', borderWidth: 2, borderColor: '#E2E8F0', color: '#334155', textAlign: 'center' },
   addFeedButton: { backgroundColor: '#3B82F6', borderRadius: 16, paddingVertical: 16, alignItems: 'center', shadowColor: '#3B82F6', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
   addFeedButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   bottomButtons: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 20, backgroundColor: '#FFFFFF', borderTopWidth: 1, borderTopColor: '#E2E8F0', gap: 12 },
@@ -1071,12 +1150,17 @@ const styles = StyleSheet.create({
   editButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#EFF6FF', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#BFDBFE' },
   cardContent: { gap: 16 },
   detailInfo: { backgroundColor: '#F8FAFC', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E2E8F0' },
+  feedInfoContainer: { flexDirection: 'row', alignItems: 'center' },
+  foodImage: { width: 60, height: 60, borderRadius: 12, marginRight: 16 },
+  feedTextContainer: { flex: 1 },
   feedTypeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  feedType: { fontSize: 18, fontWeight: '600', color: '#334155', marginLeft: 12 },
-  feedAmount: { fontSize: 15, color: '#64748B', fontWeight: '500' },
+  feedType: { fontSize: 18, fontWeight: '600', color: '#334155' },
+  feedAmount: { fontSize: 15, color: '#64748B', fontWeight: '500', marginTop: 4 },
   completedBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#A7F3D0' },
   completedIconContainer: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#10B981', justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  completedTextContainer: { flex: 1 },
   completedText: { color: '#059669', fontSize: 16, fontWeight: '600' },
+  completedByText: { color: '#059669', fontSize: 12, fontWeight: '500', marginTop: 2 },
   markButton: { backgroundColor: '#10B981', paddingVertical: 16, borderRadius: 16, alignItems: 'center', shadowColor: '#10B981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },
   markButtonText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   addButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderRadius: 16, marginBottom: 16, shadowColor: '#10B981', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 3 },

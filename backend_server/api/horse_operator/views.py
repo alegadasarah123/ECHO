@@ -1985,49 +1985,115 @@ def format_timestamp(ts):
 @api_view(['GET'])
 def get_messages(request):
     """
-    Get all messages between two users.
+    Get all messages between two users - FIXED VERSION
+    Now correctly uses mes_date column instead of created_at
     """
     try:
         user_id = request.GET.get("user_id")
         other_user_id = request.GET.get("other_user_id")
+        
         if not user_id or not other_user_id:
-            return Response({"error": "user_id and other_user_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"error": "user_id and other_user_id are required"}, 
+                          status=status.HTTP_400_BAD_REQUEST)
+
+        print(f"💬 Fetching messages between {user_id} and {other_user_id}")
 
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
         # Fetch messages between two users
+        # Use OR condition to get both sent and received messages
         messages_response = service_client.table("message").select(
             "mes_id, user_id, receiver_id, mes_content, mes_date, is_read"
         ).or_(
-            f"and(user_id.eq.{user_id},receiver_id.eq.{other_user_id}),"
-            f"and(user_id.eq.{other_user_id},receiver_id.eq.{user_id})"
-        ).order("mes_date", desc=False).execute()
+            f"user_id.eq.{user_id},receiver_id.eq.{user_id}"
+        ).execute()
+
+        if not messages_response.data:
+            print(f"📭 No messages found between {user_id} and {other_user_id}")
+            return Response({
+                'success': True,
+                'messages': []
+            }, status=status.HTTP_200_OK)
+
+        print(f"📨 Found {len(messages_response.data)} total messages")
+
+        # Filter messages to only include conversations between these two users
+        filtered_messages = []
+        for msg in messages_response.data:
+            # Check if message is between the two users
+            if ((str(msg['user_id']) == str(user_id) and str(msg['receiver_id']) == str(other_user_id)) or
+                (str(msg['user_id']) == str(other_user_id) and str(msg['receiver_id']) == str(user_id))):
+                
+                filtered_messages.append(msg)
+        
+        print(f"🔍 Filtered to {len(filtered_messages)} messages between specified users")
+
+        # Sort by date
+        filtered_messages.sort(key=lambda x: x.get('mes_date', ''))
 
         messages = []
-        for msg in messages_response.data or []:
-            # Parse the timestamp and convert to Philippine time
-            created_at = datetime.fromisoformat(msg['mes_date'].replace('Z', '+00:00'))
-            created_at_ph = created_at.astimezone(PHILIPPINE_TZ)
-            
-            messages.append({
-                'id': str(msg['mes_id']),
-                'text': msg['mes_content'],
-                'isUser': str(msg['user_id']) == str(user_id),
-                'timestamp': created_at_ph.strftime('%I:%M %p'),  # Philippine time
-                'created_at': msg['mes_date']  # Keep original UTC timestamp
-            })
+        for msg in filtered_messages:
+            try:
+                # Parse timestamp - use mes_date instead of created_at
+                created_at = msg.get('mes_date')
+                if not created_at:
+                    continue
+                
+                # Handle different timestamp formats
+                if isinstance(created_at, str):
+                    if created_at.endswith('Z'):
+                        created_at_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    else:
+                        created_at_dt = datetime.fromisoformat(created_at)
+                else:
+                    created_at_dt = created_at
+                
+                # Convert to Philippine time
+                if created_at_dt.tzinfo is None:
+                    created_at_dt = pytz.UTC.localize(created_at_dt)
+                
+                created_at_ph = created_at_dt.astimezone(PHILIPPINE_TZ)
+                
+                messages.append({
+                    'id': str(msg['mes_id']),
+                    'text': msg['mes_content'],
+                    'isUser': str(msg['user_id']) == str(user_id),
+                    'timestamp': created_at_ph.strftime('%I:%M %p'),
+                    'created_at': created_at,
+                    'date': created_at
+                })
+            except Exception as parse_error:
+                print(f"Error parsing message {msg}: {parse_error}")
+                continue
 
         # Mark unread messages as read
-        service_client.table("message").update({"is_read": True}).eq("user_id", other_user_id).eq("receiver_id", user_id).eq("is_read", False).execute()
+        try:
+            # Find messages from other user that are unread
+            unread_messages = service_client.table("message").select("mes_id").eq(
+                "user_id", other_user_id
+            ).eq("receiver_id", user_id).eq("is_read", False).execute()
+            
+            if unread_messages.data and len(unread_messages.data) > 0:
+                # Update all unread messages
+                message_ids = [msg["mes_id"] for msg in unread_messages.data]
+                service_client.table("message").update({"is_read": True}).in_("mes_id", message_ids).execute()
+                print(f"✅ Marked {len(message_ids)} messages as read")
+        except Exception as update_error:
+            print(f"Warning: Could not mark messages as read: {update_error}")
 
+        print(f"📤 Returning {len(messages)} formatted messages")
         return Response({
             'success': True,
             'messages': messages
         }, status=status.HTTP_200_OK)
 
     except Exception as e:
-        print(f"Error fetching messages: {e}")
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        print(f"❌ Error fetching messages: {e}")
+        print(f"Traceback: {traceback.format_exc()}")
+        return Response({
+            "error": "Failed to fetch messages", 
+            "detail": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @api_view(['POST'])
@@ -2059,9 +2125,15 @@ def send_message(request):
             return Response({"error": "Failed to send message"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         msg = message_response.data[0]
-        # Parse the timestamp and convert to Philippine time
-        created_at = datetime.fromisoformat(msg['mes_date'].replace('Z', '+00:00'))
-        created_at_ph = created_at.astimezone(PHILIPPINE_TZ)
+        # Parse the timestamp from mes_date field
+        created_at = msg.get('mes_date', datetime.now(pytz.UTC).isoformat())
+        
+        if isinstance(created_at, str):
+            created_at_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+        else:
+            created_at_dt = created_at
+            
+        created_at_ph = created_at_dt.astimezone(PHILIPPINE_TZ)
 
         return Response({
             'success': True,
@@ -2070,7 +2142,7 @@ def send_message(request):
                 'text': msg['mes_content'],
                 'isUser': True,
                 'timestamp': created_at_ph.strftime('%I:%M %p'),  # Philippine time
-                'created_at': msg['mes_date']  # Keep original UTC timestamp
+                'created_at': created_at
             }
         }, status=status.HTTP_201_CREATED)
 

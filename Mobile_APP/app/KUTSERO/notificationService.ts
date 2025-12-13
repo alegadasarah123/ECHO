@@ -82,7 +82,7 @@ export async function checkScheduledTimesGlobal(userName: string) {
     const encodedUser = encodeURIComponent(userName);
     
     const response = await fetch(
-      `http://192.168.1.9:8000/api/kutsero/check-current-schedules/?kutsero_id=${encodedUser}`
+      `http://192.168.31.58:8000/api/kutsero/check-current-schedules/?kutsero_id=${encodedUser}`
     );
     
     if (!response.ok) {

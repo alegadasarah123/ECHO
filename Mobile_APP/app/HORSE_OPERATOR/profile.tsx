@@ -76,7 +76,7 @@ interface UserData {
   role?: string;
 }
 
-const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator";
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator";
 
 const TabButton = ({
   iconSource,

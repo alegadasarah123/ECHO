@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
-import { Calendar, Activity, ClipboardList, FileText, Heart, StickyNote, TrendingUp, X, Plus, CheckCircle, Clock, Pill, Syringe, Clock3, Thermometer, User, MapPin, Loader, Edit, Save, Upload, File, Image, Trash2, Eye, ZoomIn, ZoomOut, RotateCcw, ChevronLeft, ChevronRight, AlertCircle } from "lucide-react";
+import { Calendar, Activity, ClipboardList, FileText, Heart, StickyNote, TrendingUp, X, Plus, CheckCircle, Clock, Pill, Syringe, Clock3, Thermometer, User, MapPin, Loader, Edit, Save, Upload, File, Image, Trash2, Eye, ZoomIn, ZoomOut, RotateCcw, ChevronLeft, ChevronRight, AlertCircle, ChevronDown, ChevronUp } from "lucide-react";
 
 const MedicalRecordDetails = ({ 
   record, 
@@ -52,6 +52,11 @@ const MedicalRecordDetails = ({
   // NEW: Track if follow-up exists
   const [followUpExists, setFollowUpExists] = useState(false);
   const [checkingFollowUp, setCheckingFollowUp] = useState(false);
+
+  // ========== COPIED CALENDAR STATES ==========
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(null);
+  const [availableDates, setAvailableDates] = useState([]);
 
   if (!record) return null;
 
@@ -118,180 +123,117 @@ const MedicalRecordDetails = ({
     checkFollowUpExists();
   }, [record.id]);
 
-  // ========== FIXED FULL-SCREEN FILE VIEWER - MOVED TO TOP ==========
-  const FileViewer = () => {
-    const currentFile = getCurrentFile();
-    const allFiles = getAllViewableFiles();
+const FileViewer = () => {
+  const currentFile = getCurrentFile();
+  const allFiles = getAllViewableFiles();
 
-    if (!fileViewerOpen || !currentFile) return null;
+  if (!fileViewerOpen || !currentFile) return null;
 
-    // FIXED: Use the improved file type detection
-    const fileInfo = getFileInfo(currentFile.url, currentFile.name);
-    const isPDF = fileInfo.type === 'pdf';
-    const isImage = fileInfo.type === 'image';
+  // Get clean filename without ID
+  const getCleanFileName = (url) => {
+    if (!url) return "File";
+    const parts = url.split('/');
+    let name = parts[parts.length - 1];
+    name = name.split('?')[0]; // Remove query params
+    name = decodeURIComponent(name); // Decode URL encoded characters
+    return name || "File";
+  };
 
-    return (
-      <div className="fixed inset-0 bg-black z-[70] flex flex-col">
-        {/* Header */}
-        <div className="bg-black border-b border-gray-800 p-4 flex-shrink-0 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            {isPDF ? (
-              <FileText className="w-5 h-5 text-red-500" />
-            ) : isImage ? (
-              <Image className="w-5 h-5 text-blue-500" />
-            ) : (
-              <File className="w-5 h-5 text-gray-500" />
-            )}
-            <div>
-              <h3 className="font-semibold text-white">{fileInfo.name}</h3>
-              <p className="text-sm text-gray-400">
-                {currentFile.fileObject && formatFileSize(currentFile.fileObject.size)}
-                {allFiles.length > 1 && ` • File ${currentFileIndex + 1} of ${allFiles.length}`}
-                {` • Type: ${fileInfo.type}`}
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* File Navigation */}
-            {allFiles.length > 1 && (
-              <div className="flex items-center gap-1 mr-4">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={prevFile}
-                  className="cursor-pointer h-8 w-8 p-0 text-white hover:bg-gray-800"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </Button>
-                <span className="text-sm font-medium text-gray-300 min-w-[60px] text-center">
-                  {currentFileIndex + 1} / {allFiles.length}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={nextFile}
-                  className="cursor-pointer h-8 w-8 p-0 text-white hover:bg-gray-800"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </Button>
-              </div>
-            )}
+  const fileName = getCleanFileName(currentFile.url);
+  const isPDF = fileName.toLowerCase().endsWith('.pdf');
+  const isImage = fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|bmp|webp|svg)$/);
 
-            {/* Image Controls */}
-            {isImage && (
-              <div className="flex items-center gap-1 border-r border-gray-700 pr-2 mr-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleZoomOut}
-                  disabled={zoomLevel <= 0.5}
-                  className="cursor-pointer h-8 w-8 p-0 text-white hover:bg-gray-800"
-                >
-                  <ZoomOut className="w-4 h-4" />
-                </Button>
-                <span className="text-sm font-medium text-white w-12 text-center">
-                  {Math.round(zoomLevel * 100)}%
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleZoomIn}
-                  disabled={zoomLevel >= 3}
-                  className="cursor-pointer h-8 w-8 p-0 text-white hover:bg-gray-800"
-                >
-                  <ZoomIn className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleRotate}
-                  className="cursor-pointer h-8 w-8 p-0 text-white hover:bg-gray-800"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={resetTransform}
-                  className="cursor-pointer h-8 w-8 p-0 text-white hover:bg-gray-800"
-                >
-                  Reset
-                </Button>
-              </div>
-            )}
-
-            <Button
-              variant="ghost"
-              onClick={closeFileViewer}
-              className="cursor-pointer h-8 w-8 p-0 text-white hover:bg-gray-800"
-            >
-              <X className="w-5 h-5" />
-            </Button>
+  return (
+    <div className="fixed inset-0 bg-black z-[70] flex flex-col">
+      {/* Clean Header */}
+      <div className="bg-black border-b border-gray-800 p-4 flex-shrink-0 flex justify-between items-center">
+        <div className="flex items-center gap-3">
+          {isPDF ? (
+            <FileText className="w-5 h-5 text-red-500" />
+          ) : isImage ? (
+            <Image className="w-5 h-5 text-blue-500" />
+          ) : (
+            <File className="w-5 h-5 text-gray-500" />
+          )}
+          <div className="max-w-xl">
+            <h3 className="font-semibold text-white truncate">{fileName}</h3>
+            <p className="text-sm text-gray-400">
+              {allFiles.length > 1 && `File ${currentFileIndex + 1} of ${allFiles.length}`}
+            </p>
           </div>
         </div>
-
-        {/* File Content - Full Screen */}
-        <div className="flex-1 bg-black flex items-center justify-center overflow-hidden">
-          {isPDF ? (
-            <div className="w-full h-full">
-              <iframe
-                src={currentFile.url}
-                className="w-full h-full border-0"
-                title={currentFile.name}
-                style={{ 
-                  minHeight: '100vh',
-                  backgroundColor: 'white'
-                }}
-              />
-            </div>
-          ) : isImage ? (
-            <div className="w-full h-full flex items-center justify-center overflow-auto">
-              <div 
-                className="flex items-center justify-center"
-                style={{
-                  transform: `scale(${zoomLevel}) rotate(${rotation}deg)`,
-                  transition: 'transform 0.2s ease-in-out'
-                }}
+        
+        <div className="flex items-center gap-2">
+          {/* Navigation */}
+          {allFiles.length > 1 && (
+            <div className="flex items-center gap-1 mr-4">
+              <button
+                onClick={prevFile}
+                className="p-2 rounded-lg text-white hover:bg-gray-800 transition-colors cursor-pointer"
               >
-                <img
-                  src={currentFile.url}
-                  alt={currentFile.name}
-                  className="max-w-none select-none"
-                  style={{
-                    width: 'auto',
-                    height: 'auto',
-                    maxWidth: '90vw',
-                    maxHeight: '90vh'
-                  }}
-                  onError={(e) => {
-                    console.error('Failed to load image:', currentFile.url);
-                    e.target.src = currentFile.url;
-                  }}
-                />
-              </div>
-            </div>
-          ) : (
-            <div className="text-center text-white p-8">
-              <File className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-              <p className="text-lg mb-2">Unsupported file type</p>
-              <p className="text-sm text-gray-400 mb-1">File: {currentFile.name}</p>
-              <p className="text-sm text-gray-400 mb-1">Type: {fileInfo.type}</p>
-              <p className="text-sm text-gray-400">URL: {currentFile.url}</p>
-              <div className="mt-4">
-                <Button
-                  onClick={() => window.open(currentFile.url, '_blank')}
-                  variant="outline"
-                  className="cursor-pointer text-white border-white hover:bg-white hover:text-black"
-                >
-                  Open in New Tab
-                </Button>
-              </div>
+                <ChevronLeft className="w-5 h-5" />
+              </button>
+              <button
+                onClick={nextFile}
+                className="p-2 rounded-lg text-white hover:bg-gray-800 transition-colors cursor-pointer"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </button>
             </div>
           )}
+
+          {/* Close button */}
+          <button
+            onClick={closeFileViewer}
+            className="p-2 rounded-lg text-white hover:bg-gray-800 transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
       </div>
-    );
-  };
+
+      {/* File Content */}
+      <div className="flex-1 bg-black flex items-center justify-center overflow-hidden">
+        {isPDF ? (
+          <iframe
+            src={currentFile.url}
+            className="w-full h-full border-0"
+            title={fileName}
+            style={{ 
+              minHeight: '100vh',
+              backgroundColor: 'white'
+            }}
+          />
+        ) : isImage ? (
+          <div className="w-full h-full flex items-center justify-center">
+            <img
+              src={currentFile.url}
+              alt={fileName}
+              className="max-w-full max-h-full object-contain"
+              style={{
+                transform: `scale(${zoomLevel}) rotate(${rotation}deg)`,
+                transition: 'transform 0.2s ease-in-out'
+              }}
+            />
+          </div>
+        ) : (
+          <div className="text-center text-white p-8">
+            <File className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+            <p className="text-lg mb-2">Preview not available</p>
+            <a
+              href={currentFile.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white mt-4"
+            >
+              Download File
+            </a>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
   // ========== COPIED SCHEDULE FUNCTIONS ==========
   const fetchSchedules = async () => {
@@ -312,12 +254,30 @@ const MedicalRecordDetails = ({
       const availableSchedules = data.schedule_slots?.filter(schedule => schedule.available && !schedule.pending) || [];
       
       setSchedules(availableSchedules);
+      // Extract available dates
+      const dates = [...new Set(availableSchedules.map(schedule => schedule.date))];
+      setAvailableDates(dates);
+      
+      // Set today as selected date if available
+      const today = new Date();
+      const todayStr = formatDate(today);
+      if (dates.includes(todayStr)) {
+        setSelectedDate(today);
+      }
     } catch (err) {
       console.error("Error fetching schedules:", err);
       setError("Failed to load schedules");
     } finally {
       setLoadingSchedules(false);
     }
+  };
+
+  const formatDate = (date) => {
+    if (!date) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const updateScheduleAvailability = async (scheduleId) => {
@@ -390,105 +350,436 @@ const MedicalRecordDetails = ({
     }
   };
 
-  // Time slots for custom schedule
-  const timeSlots = [
-    "08:00 AM", "08:30 AM", "09:00 AM", "09:30 AM", "10:00 AM", "10:30 AM",
-    "11:00 AM", "11:30 AM", "12:00 PM", "12:30 PM", "01:00 PM", "01:30 PM",
-    "02:00 PM", "02:30 PM", "03:00 PM", "03:30 PM", "04:00 PM", "04:30 PM",
-    "05:00 PM", "05:30 PM", "06:00 PM"
-  ];
+  // ========== COPIED CALENDAR COMPONENT ==========
+  const CalendarComponent = () => {
+    // Get days in month
+    const getDaysInMonth = (date) => {
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      return new Date(year, month + 1, 0).getDate();
+    };
 
-  const calculateDuration = (startTime, endTime) => {
-    if (!startTime || !endTime) return '';
-    
-    const start = convertTimeToMinutes(startTime);
-    const end = convertTimeToMinutes(endTime);
-    
-    if (end <= start) return 'Invalid time range';
-    
-    const durationMinutes = end - start;
-    const hours = Math.floor(durationMinutes / 60);
-    const minutes = durationMinutes % 60;
-    
-    if (hours > 0 && minutes > 0) {
-      return `${hours}h ${minutes}m`;
-    } else if (hours > 0) {
-      return `${hours}h`;
-    } else {
-      return `${minutes}m`;
-    }
-  };
+    // Get first day of month
+    const getFirstDayOfMonth = (date) => {
+      const year = date.getFullYear();
+      const month = date.getMonth();
+      return new Date(year, month, 1).getDay();
+    };
 
-  const convertTimeToMinutes = (timeStr) => {
-    const [time, modifier] = timeStr.split(' ');
-    let [hours, minutes] = time.split(':').map(Number);
-    
-    if (modifier === 'PM' && hours !== 12) {
-      hours += 12;
-    }
-    if (modifier === 'AM' && hours === 12) {
-      hours = 0;
-    }
-    
-    return hours * 60 + minutes;
-  };
+    // Check if date has available slots
+    const hasAvailableSlots = (date) => {
+      const dateStr = formatDate(date);
+      return availableDates.includes(dateStr);
+    };
 
-  // Schedule Card Component
-  const ScheduleCard = ({ schedule, isSelected, onSelect, onCancelSelect }) => {
+    // Check if date is today
+    const isToday = (date) => {
+      const today = new Date();
+      return date.getDate() === today.getDate() &&
+             date.getMonth() === today.getMonth() &&
+             date.getFullYear() === today.getFullYear();
+    };
+
+    // Check if date is in current month
+    const isCurrentMonth = (date) => {
+      return date.getMonth() === currentMonth.getMonth() &&
+             date.getFullYear() === currentMonth.getFullYear();
+    };
+
+    // Get schedules for selected date and group by morning/afternoon
+    const getSchedulesForDate = () => {
+      if (!selectedDate) return { morning: [], afternoon: [] };
+      const dateStr = formatDate(selectedDate);
+      const allSchedules = schedules.filter(schedule => schedule.date === dateStr);
+      
+      // Sort schedules by start time
+      const sortedSchedules = [...allSchedules].sort((a, b) => {
+        const timeToMinutes = (timeStr) => {
+          const [time, period] = timeStr.split(' ');
+          let [hours, minutes] = time.split(':').map(Number);
+          if (period === 'PM' && hours !== 12) hours += 12;
+          if (period === 'AM' && hours === 12) hours = 0;
+          return hours * 60 + minutes;
+        };
+        return timeToMinutes(a.startTime) - timeToMinutes(b.startTime);
+      });
+      
+      // Separate into morning (AM) and afternoon (PM)
+      const morningSlots = sortedSchedules.filter(schedule => 
+        schedule.startTime.includes('AM') || 
+        (parseInt(schedule.startTime.split(':')[0]) < 12 && !schedule.startTime.includes('PM'))
+      );
+      
+      const afternoonSlots = sortedSchedules.filter(schedule => 
+        schedule.startTime.includes('PM') || 
+        (parseInt(schedule.startTime.split(':')[0]) >= 12 && !schedule.startTime.includes('AM'))
+      );
+      
+      return { morning: morningSlots, afternoon: afternoonSlots };
+    };
+
+    // Navigate months
+    const goToPreviousMonth = () => {
+      const newMonth = new Date(currentMonth);
+      newMonth.setMonth(newMonth.getMonth() - 1);
+      setCurrentMonth(newMonth);
+    };
+
+    const goToNextMonth = () => {
+      const newMonth = new Date(currentMonth);
+      newMonth.setMonth(newMonth.getMonth() + 1);
+      setCurrentMonth(newMonth);
+    };
+
+    const goToToday = () => {
+      const today = new Date();
+      setCurrentMonth(today);
+      setSelectedDate(today);
+    };
+
+    // Generate calendar days
+    const generateCalendarDays = () => {
+      const year = currentMonth.getFullYear();
+      const month = currentMonth.getMonth();
+      const daysInMonth = getDaysInMonth(currentMonth);
+      const firstDay = getFirstDayOfMonth(currentMonth);
+      
+      const days = [];
+      
+      // Add empty cells for days before first day of month
+      for (let i = 0; i < firstDay; i++) {
+        days.push(null);
+      }
+      
+      // Add days of the month
+      for (let day = 1; day <= daysInMonth; day++) {
+        const date = new Date(year, month, day);
+        days.push(date);
+      }
+      
+      return days;
+    };
+
+    const calendarDays = generateCalendarDays();
+    const monthName = currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const { morning, afternoon } = getSchedulesForDate();
+    const totalSlots = morning.length + afternoon.length;
+
     return (
-      <div
-        className={`p-4 border rounded-lg transition-all duration-200 ${
-          isSelected
-            ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
-            : 'border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50 cursor-pointer'
-        }`}
-        onClick={() => !isSelected && onSelect(schedule.id)}
-      >
-        <div className="flex justify-between items-start mb-2">
+      <div className="space-y-4">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-gray-600" />
-            <span className="font-medium text-gray-900">{schedule.date}</span>
+            <Calendar className="w-5 h-5 text-blue-600" />
+            <h4 className="font-medium text-gray-900">Select Follow-up Date & Time</h4>
           </div>
-          <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full border border-green-200">
-            <CheckCircle className="w-3 h-3" />
-            Available
-          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={goToToday}
+            className="h-8 text-xs"
+          >
+            Today
+          </Button>
         </div>
-        
-        <div className="flex items-center gap-2 mb-2">
-          <Clock3 className="w-4 h-4 text-gray-500" />
-          <span className="text-sm text-gray-700">
-            {schedule.startTime} - {schedule.endTime}
-          </span>
-        </div>
-        
-        {schedule.operator_name && (
-          <div className="flex items-center gap-2">
-            <User className="w-4 h-4 text-gray-500" />
-            <span className="text-sm text-gray-600">{schedule.operator_name}</span>
-          </div>
-        )}
-        
-        {isSelected && (
-          <div className="mt-3 p-2 bg-blue-100 rounded border border-blue-200">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-blue-700 font-medium">
-                ✓ Selected for follow-up
-              </p>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Calendar Grid */}
+          <div className="bg-white border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-4">
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCancelSelect();
-                }}
-                className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-100"
+                onClick={goToPreviousMonth}
+                className="h-8 w-8 p-0"
               >
-                <X className="w-3 h-3" />
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              
+              <h3 className="font-semibold text-gray-900">{monthName}</h3>
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={goToNextMonth}
+                className="h-8 w-8 p-0"
+              >
+                <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
+
+            <div className="grid grid-cols-7 gap-1 mb-2">
+              {dayNames.map((day) => (
+                <div key={day} className="text-center text-xs font-medium text-gray-500 py-2">
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-1">
+              {calendarDays.map((date, index) => {
+                if (!date) {
+                  return <div key={`empty-${index}`} className="h-10"></div>;
+                }
+                
+                const dateStr = formatDate(date);
+                const hasSlots = hasAvailableSlots(date);
+                const isSelected = selectedDate && formatDate(selectedDate) === dateStr;
+                const isTodayDate = isToday(date);
+                const isCurrentMonthDate = isCurrentMonth(date);
+                
+                return (
+                  <button
+                    key={dateStr}
+                    type="button"
+                    onClick={() => hasSlots && setSelectedDate(date)}
+                    disabled={!hasSlots}
+                    className={`
+                      h-10 rounded-lg text-sm font-medium transition-all duration-200
+                      flex flex-col items-center justify-center relative
+                      ${!hasSlots 
+                        ? 'text-gray-300 cursor-not-allowed' 
+                        : isSelected
+                          ? 'bg-blue-600 text-white'
+                          : isTodayDate
+                            ? 'bg-blue-100 text-blue-700'
+                            : 'text-gray-700 hover:bg-gray-100'
+                      }
+                      ${!isCurrentMonthDate ? 'text-gray-400' : ''}
+                    `}
+                  >
+                    <span>{date.getDate()}</span>
+                    {hasSlots && !isSelected && isCurrentMonthDate && (
+                      <div className="absolute bottom-1 w-1 h-1 rounded-full bg-green-500"></div>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <div className="flex items-center justify-center gap-4 text-xs">
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                  <span className="text-gray-600">Available</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-blue-600"></div>
+                  <span className="text-gray-600">Selected</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-2 h-2 rounded-full bg-blue-100"></div>
+                  <span className="text-gray-600">Today</span>
+                </div>
+              </div>
+            </div>
           </div>
-        )}
+
+          {/* Time Slots Panel */}
+          <div>
+            {!selectedDate ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                <Calendar className="w-12 h-12 text-gray-400 mb-3" />
+                <p className="font-medium text-gray-700">Select a date from the calendar</p>
+                <p className="text-sm text-gray-500 mt-1">Available dates are marked with a green dot</p>
+              </div>
+            ) : totalSlots === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center p-8 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                <Clock3 className="w-12 h-12 text-gray-400 mb-3" />
+                <p className="font-medium text-gray-700">No available time slots</p>
+                <p className="text-sm text-gray-500 mt-1">
+                  {selectedDate.toLocaleDateString('en-US', { 
+                    month: 'long', 
+                    day: 'numeric',
+                    year: 'numeric'
+                  })} has no available slots
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-gray-900">
+                      {selectedDate.toLocaleDateString('en-US', { 
+                        weekday: 'long', 
+                        month: 'long', 
+                        day: 'numeric',
+                        year: 'numeric'
+                      })}
+                    </h4>
+                    <p className="text-sm text-gray-600">
+                      {totalSlots} available slot{totalSlots > 1 ? 's' : ''}
+                    </p>
+                  </div>
+                  {selectedDate && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={goToToday}
+                      className="text-blue-600 hover:text-blue-700"
+                    >
+                      Change date
+                    </Button>
+                  )}
+                </div>
+
+                <div className="space-y-6 max-h-80 overflow-y-auto p-1">
+                  {/* Morning Slots */}
+                  {morning.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-amber-500"></div>
+                        <h5 className="font-medium text-gray-900">Morning</h5>
+                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                          {morning.length} slot{morning.length > 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {morning.map((schedule) => {
+                          const isSelected = schedule.id === selectedScheduleId;
+                          
+                          return (
+                            <div
+                              key={schedule.id}
+                              onClick={() => !isSelected && handleScheduleSelect(schedule.id)}
+                              className={`
+                                p-3 border rounded-lg transition-all duration-200 cursor-pointer
+                                ${isSelected
+                                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                                  : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50'
+                                }
+                              `}
+                            >
+                              <div className="flex justify-between items-start mb-2">
+                                <div className="flex items-center gap-2">
+                                  <Clock3 className="w-4 h-4 text-gray-600" />
+                                  <span className="font-medium text-gray-900">
+                                    {schedule.startTime} - {schedule.endTime}
+                                  </span>
+                                </div>
+                              </div>
+                              
+                              {schedule.operator_name && (
+                                <div className="flex items-center gap-2">
+                                  <User className="w-4 h-4 text-gray-500" />
+                                  <span className="text-sm text-gray-600">{schedule.operator_name}</span>
+                                </div>
+                              )}
+                              
+                              {isSelected && (
+                                <div className="mt-3 p-2 bg-blue-100 rounded border border-blue-200">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-xs text-blue-700 font-medium">
+                                      ✓ Selected for follow-up
+                                    </p>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCancelSchedule();
+                                      }}
+                                      className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-100"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Afternoon Slots */}
+                  {afternoon.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                        <h5 className="font-medium text-gray-900">Afternoon</h5>
+                        <span className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                          {afternoon.length} slot{afternoon.length > 1 ? 's' : ''}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {afternoon.map((schedule) => {
+                          const isSelected = schedule.id === selectedScheduleId;
+                          
+                          return (
+                            <div
+                              key={schedule.id}
+                              onClick={() => !isSelected && handleScheduleSelect(schedule.id)}
+                              className={`
+                                p-3 border rounded-lg transition-all duration-200 cursor-pointer
+                                ${isSelected
+                                  ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                                  : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-blue-50'
+                                }
+                              `}
+                            >
+                              <div className="flex justify-between items-start mb-2">
+                                <div className="flex items-center gap-2">
+                                  <Clock3 className="w-4 h-4 text-gray-600" />
+                                  <span className="font-medium text-gray-900">
+                                    {schedule.startTime} - {schedule.endTime}
+                                  </span>
+                                </div>
+                              </div>
+                              
+                              {schedule.operator_name && (
+                                <div className="flex items-center gap-2">
+                                  <User className="w-4 h-4 text-gray-500" />
+                                  <span className="text-sm text-gray-600">{schedule.operator_name}</span>
+                                </div>
+                              )}
+                              
+                              {isSelected && (
+                                <div className="mt-3 p-2 bg-blue-100 rounded border border-blue-200">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-xs text-blue-700 font-medium">
+                                      ✓ Selected for follow-up
+                                    </p>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCancelSchedule();
+                                      }}
+                                      className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-100"
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {selectedScheduleId && (
+                  <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <div className="flex items-center gap-2 mb-2">
+                      <CheckCircle className="w-5 h-5 text-blue-600" />
+                      <span className="font-medium text-blue-700">Follow-up Scheduled</span>
+                    </div>
+                    <p className="text-sm text-blue-600">
+                      Your follow-up is scheduled for {selectedDate.toLocaleDateString()} at{' '}
+                      {[...morning, ...afternoon].find(s => s.id === selectedScheduleId)?.startTime}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     );
   };
@@ -624,46 +915,53 @@ const MedicalRecordDetails = ({
     };
   };
 
-  // FIXED: Get all existing files from database (handles arrays from backend)
-  const getAllExistingFiles = () => {
-    const files = [];
+// FIXED: Get all existing files from database
+const getAllExistingFiles = () => {
+  const files = [];
+  
+  // Get the lab files data - FIXED: Use the correct property name from backend
+  const labImages = displayRecord.labImages;
+  
+  console.log("========== DEBUG FILE DATA ==========");
+  console.log("displayRecord:", displayRecord);
+  console.log("labImages (from backend):", labImages);
+  console.log("Type of labImages:", typeof labImages);
+  console.log("Is array?", Array.isArray(labImages));
+  console.log("=====================================");
+  
+  if (!labImages || !Array.isArray(labImages)) {
+    console.log("❌ No lab images array found or it's not an array");
+    return files;
+  }
+  
+  console.log(`✅ Processing ${labImages.length} files from labImages array`);
+  
+  labImages.forEach((fileUrl, index) => {
+    console.log(`\n--- File ${index + 1} ---`);
+    console.log("Raw URL:", fileUrl);
     
-    // Get the lab files data - could be string (old) or array (new)
-    const labFilesData = displayRecord.labImages || displayRecord.labImage;
-    const labFileNames = displayRecord.labFileName || "Lab Result File";
-    
-    console.log("📁 Raw lab files data:", labFilesData);
-    console.log("📁 Raw lab file names:", labFileNames);
-    
-    if (!labFilesData) return files;
-    
-    // Handle array of files (NEW FORMAT from backend - labImages)
-    if (Array.isArray(labFilesData)) {
-      console.log("✅ Detected array of files from backend");
-      labFilesData.forEach((fileUrl, index) => {
-        if (fileUrl && fileUrl.trim() !== '') {
-          const fileName = Array.isArray(labFileNames) 
-            ? (labFileNames[index] || `Lab File ${index + 1}`)
-            : (index === 0 ? labFileNames : `Lab File ${index + 1}`);
-            
-          const fileInfo = getFileInfo(fileUrl, fileName);
-          
-          if (fileInfo.url && fileInfo.url.trim() !== '') {
-            files.push({
-              url: fileInfo.url,
-              name: fileInfo.name,
-              type: fileInfo.type,
-              isExisting: true,
-              index: index
-            });
-          }
-        }
-      });
-    } 
-    // Handle single file (string) - backward compatibility (labImage)
-    else if (labFilesData && labFilesData.trim() !== '') {
-      console.log("✅ Detected single file from backend");
-      const fileInfo = getFileInfo(labFilesData, labFileNames);
+    if (fileUrl && fileUrl.toString().trim() !== '') {
+      // Clean URL
+      let cleanUrl = fileUrl.toString();
+      
+      // Remove any brackets or quotes
+      cleanUrl = cleanUrl.replace(/[\[\]"]/g, '');
+      console.log("Cleaned URL:", cleanUrl);
+      
+      // Check if URL is complete
+      if (!cleanUrl.startsWith('http')) {
+        console.log("⚠️ URL is not a complete HTTP link");
+        // Try to construct full URL using your Supabase URL
+        const filename = cleanUrl.split('/').pop() || cleanUrl;
+        // Use the same URL construction as backend
+        cleanUrl = `https://${process.env.NEXT_PUBLIC_SUPABASE_PROJECT_ID || 'YOUR_PROJECT_ID'}.supabase.co/storage/v1/object/public/Lab_results/${filename}`;
+        console.log("Constructed URL:", cleanUrl);
+      }
+      
+      // Get file info
+      const fileName = cleanUrl.split('/').pop() || `Lab File ${index + 1}`;
+      const fileInfo = getFileInfo(cleanUrl, fileName);
+      console.log("File Info:", fileInfo);
       
       if (fileInfo.url && fileInfo.url.trim() !== '') {
         files.push({
@@ -671,16 +969,24 @@ const MedicalRecordDetails = ({
           name: fileInfo.name,
           type: fileInfo.type,
           isExisting: true,
-          index: 0
+          index: index,
+          originalUrl: fileUrl
         });
+        console.log(`✅ Added file: ${fileName}`);
       }
+    } else {
+      console.log(`❌ File ${index} is empty`);
     }
-    
-    console.log("📁 Processed existing files:", files);
-    return files;
-  };
+  });
+  
+  console.log(`📁 Total files processed: ${files.length}`);
+  console.log("Files array:", files);
+  console.log("=====================================\n");
+  
+  return files;
+};
 
-  const handleImageError = () => {
+const handleImageError = () => {
     setImageError(true);
   };
 
@@ -712,30 +1018,44 @@ const MedicalRecordDetails = ({
     setZoomLevel(1);
     setRotation(0);
   };
-
   // FIXED: Properly get all viewable files with array support
-  const getAllViewableFiles = () => {
-    const files = [];
-    
-    // Add existing files from database
-    const existingFiles = getAllExistingFiles();
-    files.push(...existingFiles);
-    
-    // Add uploaded files
-    labFiles.forEach(file => {
-      const fileInfo = getFileInfo(URL.createObjectURL(file), file.name);
+const getAllViewableFiles = () => {
+  const files = [];
+  
+  // Just use what's in labImages
+  const labImages = displayRecord.labImages || [];
+  
+  labImages.forEach((url, index) => {
+    if (url) {
+      const fileName = url.split('/').pop() || `Lab File ${index + 1}`;
+      const isPDF = fileName.toLowerCase().endsWith('.pdf');
+      const isImage = fileName.toLowerCase().match(/\.(jpg|jpeg|png|gif|bmp|webp|svg)$/);
+      
       files.push({
-        url: URL.createObjectURL(file),
-        name: file.name,
-        type: fileInfo.type,
-        fileObject: file,
-        isExisting: false
+        url: url,
+        name: fileName,
+        type: isPDF ? 'pdf' : isImage ? 'image' : 'unknown',
+        isExisting: true,
+        index: index
       });
+    }
+  });
+  
+  // Add uploaded files
+  labFiles.forEach((file, index) => {
+    files.push({
+      url: URL.createObjectURL(file),
+      name: file.name,
+      type: file.type.startsWith('image/') ? 'image' : 
+            file.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'unknown',
+      fileObject: file,
+      isExisting: false,
+      index: files.length
     });
+  });
 
-    console.log("📁 All viewable files:", files);
-    return files;
-  };
+  return files;
+};
 
   const getCurrentFile = () => {
     const files = getAllViewableFiles();
@@ -1127,83 +1447,137 @@ const MedicalRecordDetails = ({
       </div>
     </div>
   );
+const FileDisplaySection = () => {
+  // Get lab images array from backend
+  const labImages = displayRecord.labImages || [];
+  const hasFiles = labImages.length > 0;
 
-  // FIXED: File Display Section that handles both old and new data formats
-  const FileDisplaySection = () => {
-    // FIXED: Only show existing files when NOT in follow-up mode
-    const allFiles = isFollowUpMode 
-      ? [] // EMPTY in follow-up mode - no redundant display
-      : getAllExistingFiles();
-
-    const hasFiles = allFiles.length > 0;
-
-    return (
-      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-gray-900">Lab Files</h3>
-          {hasFiles && (
-            <span className="text-sm text-gray-500">
-              {allFiles.length} file{allFiles.length > 1 ? 's' : ''}
-            </span>
-          )}
-        </div>
-        
-        {hasFiles ? (
-          <div className="space-y-4">
-            {/* Files Display */}
-            {allFiles.map((file, index) => {
-              const fileInfo = getFileInfo(file.url, file.name);
-              return (
-                <div key={`existing-${file.index}`} 
-                     className="border border-gray-200 rounded-xl p-4 bg-gray-50 hover:bg-gray-100 transition-colors">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      {fileInfo.type === 'pdf' ? (
-                        <FileText className="w-8 h-8 text-red-500" />
-                      ) : fileInfo.type === 'image' ? (
-                        <Image className="w-8 h-8 text-blue-500" />
-                      ) : (
-                        <File className="w-8 h-8 text-gray-500" />
-                      )}
-                      <div>
-                        <p className="font-medium text-gray-900">{fileInfo.name}</p>
-                        <p className="text-sm text-gray-600">
-                          {fileInfo.type === 'pdf' ? 'PDF Document' : 
-                           fileInfo.type === 'image' ? 'Image File' : 
-                           'File'}
-                          {!isFollowUpMode && ' • Existing File'}
-                        </p>
-                      </div>
-                    </div>
-                    <Button
-                      onClick={() => {
-                        // In normal view, show all existing files
-                        const existingFiles = getAllExistingFiles();
-                        openFileViewer(existingFiles, index);
-                      }}
-                      variant="outline"
-                      className="flex items-center gap-2 cursor-pointer"
-                    >
-                      <Eye className="w-4 h-4" />
-                      View File
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-            <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-            <p className="text-gray-600">No lab files attached</p>
-            <p className="text-sm text-gray-500 mt-1">Files will appear here when uploaded</p>
-          </div>
-        )}
-      </div>
-    );
+  // Function to get clean filename from URL
+  const getCleanFileName = (url) => {
+    if (!url) return 'Lab File';
+    
+    // Clean the URL first
+    let cleanUrl = url.toString().replace(/[\[\]"]/g, '');
+    
+    // Extract just the filename
+    const parts = cleanUrl.split('/');
+    let fileName = parts[parts.length - 1];
+    
+    // Remove query parameters
+    fileName = fileName.split('?')[0];
+    
+    // Decode URL-encoded characters (like %20 for space)
+    try {
+      fileName = decodeURIComponent(fileName);
+    } catch (e) {
+      // Keep as is if decoding fails
+    }
+    
+    // Return filename or default
+    return fileName || 'Lab Result';
   };
 
-  // ========== FILE UPLOAD COMPONENT WITH "OPTIONAL" LABEL ==========
+  // Function to get file icon
+  const getFileIcon = (fileName) => {
+    const lowerName = fileName.toLowerCase();
+    if (lowerName.endsWith('.pdf')) {
+      return <FileText className="w-5 h-5 text-red-600" />;
+    } else if (lowerName.match(/\.(jpg|jpeg|png|gif|bmp|webp|svg)$/)) {
+      return <Image className="w-5 h-5 text-blue-600" />;
+    }
+    return <File className="w-5 h-5 text-gray-600" />;
+  };
+
+  // Function to get file type
+  const getFileType = (fileName) => {
+    const lowerName = fileName.toLowerCase();
+    if (lowerName.endsWith('.pdf')) return 'PDF';
+    if (lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) return 'JPEG Image';
+    if (lowerName.endsWith('.png')) return 'PNG Image';
+    if (lowerName.endsWith('.gif')) return 'GIF';
+    if (lowerName.match(/\.(bmp|webp|svg)$/)) return 'Image';
+    return 'File';
+  };
+
+  // Prepare files for viewer
+  const prepareFilesForViewer = () => {
+    return labImages.map((url, index) => {
+      const fileName = getCleanFileName(url);
+      return {
+        url: url,
+        name: fileName,
+        type: fileName.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image',
+        index: index
+      };
+    });
+  };
+
+  return (
+    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <FileText className="w-5 h-5 text-blue-600" />
+          <h3 className="font-semibold text-gray-900">Lab Files</h3>
+        </div>
+        {hasFiles && (
+          <span className="text-sm text-gray-500">
+            {labImages.length} file{labImages.length > 1 ? 's' : ''}
+          </span>
+        )}
+      </div>
+      
+      {hasFiles ? (
+        <div className="space-y-3">
+          {labImages.map((fileUrl, index) => {
+            const fileName = getCleanFileName(fileUrl);
+            const fileType = getFileType(fileName);
+            
+            return (
+              <div 
+                key={`file-${index}`}
+                className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors group"
+              >
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div className="flex-shrink-0">
+                    {getFileIcon(fileName)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 truncate">
+                      {fileName}
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      {fileType}
+                    </p>
+                  </div>
+                </div>
+                
+                {/* Eye icon INSIDE container - no button, no overlap */}
+                <div 
+                  onClick={() => {
+                    const files = prepareFilesForViewer();
+                    openFileViewer(files, index);
+                  }}
+                  className="flex-shrink-0 cursor-pointer p-2 rounded-md bg-white border border-gray-300 text-gray-600 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 transition-colors ml-2"
+                  title="View file"
+                >
+                  <Eye className="w-4 h-4" />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-300">
+          <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+          <p className="text-gray-600">No lab files attached</p>
+          <p className="text-sm text-gray-500 mt-1">Files will appear here when uploaded</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ========== FILE UPLOAD COMPONENT WITH "OPTIONAL" LABEL ==========
   const FileUploadSection = () => (
     <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
       <div className="flex items-center justify-between mb-4">
@@ -1367,189 +1741,11 @@ const MedicalRecordDetails = ({
     </div>
   );
 
-  // ========== COPIED FOLLOW-UP SCHEDULE SECTION ==========
-  const FollowUpScheduleSection = () => {
-    const availableSchedules = schedules.filter(s => s.available && !s.pending);
-
-    return (
-      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-        <div className="flex items-center gap-2 mb-4">
-          <Clock3 className="w-5 h-5 text-blue-600" />
-          <h3 className="font-semibold text-gray-900">Next Follow-up Schedule (Optional)</h3>
-        </div>
-
-        {/* Schedule Selection Toggle */}
-        <div className="flex gap-4 mb-4">
-          <Button
-            type="button"
-            onClick={() => handleToggleCustomSchedule(false)}
-            className={`
-              flex-1 py-2 font-semibold rounded-lg backdrop-blur-sm transition-all duration-300
-              ${!showCustomSchedule
-                ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg scale-105"
-                : "bg-white/50 text-gray-600 border border-gray-200 hover:bg-blue-50"}
-            `}
-          >
-            Choose Existing Schedule
-          </Button>
-
-          <Button
-            type="button"
-            onClick={() => handleToggleCustomSchedule(true)}
-            className={`
-              flex-1 py-2 font-semibold rounded-lg backdrop-blur-sm transition-all duration-300
-              ${showCustomSchedule
-                ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg scale-105"
-                : "bg-white/50 text-gray-600 border border-gray-200 hover:bg-blue-50"}
-            `}
-          >
-            Create New Schedule
-          </Button>
-        </div>
-
-        {!showCustomSchedule ? (
-          /* Existing Schedules with Card Design and Cancel Option */
-          <div className="space-y-4">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  onClick={fetchSchedules}
-                  variant="outline"
-                  size="sm"
-                  disabled={loadingSchedules}
-                  className={`
-                    flex items-center justify-center gap-2
-                    border border-gray-300 text-gray-700
-                    hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600
-                    disabled:opacity-60 disabled:cursor-not-allowed
-                    transition-all duration-200 ease-in-out
-                    rounded-md shadow-sm
-                  `}
-                >
-                  {loadingSchedules ? (
-                    <Loader className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Calendar className="w-4 h-4" />
-                  )}
-                  <span className="font-medium">Refresh Schedules</span>
-                </Button>
-
-                <span className="text-sm text-gray-600">
-                  {availableSchedules.length} available schedule(s)
-                </span>
-              </div>
-              {selectedScheduleId && (
-                <span className="text-sm text-green-600 font-medium flex items-center gap-1">
-                  <CheckCircle className="w-4 h-4" />
-                  Schedule selected
-                </span>
-              )}
-            </div>
-
-            {availableSchedules.length > 0 ? (
-              <div className="space-y-3 max-h-60 overflow-y-auto p-1">
-                {availableSchedules.map((schedule) => (
-                  <ScheduleCard
-                    key={schedule.id}
-                    schedule={schedule}
-                    isSelected={selectedScheduleId === schedule.id}
-                    onSelect={handleScheduleSelect}
-                    onCancelSelect={handleCancelSchedule}
-                  />
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg border border-gray-200">
-                <Calendar className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                <p className="text-sm font-medium">No available schedules</p>
-                <p className="text-xs mt-1">Create a new schedule or refresh to check again</p>
-              </div>
-            )}
-          </div>
-        ) : (
-          /* Custom Schedule Creation with Time Range */
-          <div className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Date Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Follow-up Date (Optional)
-                </label>
-                <input
-                  type="date"
-                  value={followUpData.followUpDate || ""}
-                  onChange={(e) => handleFollowUpInputChange('followUpDate', e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg p-3 text-sm"
-                  min={new Date().toISOString().split('T')[0]}
-                />
-              </div>
-              
-              {/* Time Range Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Time Range (Optional)
-                </label>
-                <div className="flex gap-2">
-                  {/* Start Time */}
-                  <select
-                    value={followUpData.followUpStartTime || ""}
-                    onChange={(e) => handleFollowUpInputChange('followUpStartTime', e.target.value)}
-                    className="flex-1 border border-gray-300 rounded-lg p-3 text-sm"
-                  >
-                    <option value="">Start time</option>
-                    {timeSlots.map((time) => (
-                      <option key={time} value={time}>
-                        {time}
-                      </option>
-                    ))}
-                  </select>
-                  
-                  {/* Separator */}
-                  <div className="flex items-center justify-center text-gray-500 font-medium">
-                    to
-                  </div>
-                  
-                  {/* End Time */}
-                  <select
-                    value={followUpData.followUpEndTime || ""}
-                    onChange={(e) => handleFollowUpInputChange('followUpEndTime', e.target.value)}
-                    className="flex-1 border border-gray-300 rounded-lg p-3 text-sm"
-                  >
-                    <option value="">End time</option>
-                    {timeSlots.map((time) => (
-                      <option key={time} value={time}>
-                        {time}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-            
-            {/* Duration Display */}
-            {followUpData.followUpStartTime && followUpData.followUpEndTime && (
-              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-blue-700 font-medium">
-                  Duration: {calculateDuration(followUpData.followUpStartTime, followUpData.followUpEndTime)}
-                </p>
-              </div>
-            )}
-            
-            <p className="text-xs text-gray-500">
-              A new schedule will be created for this follow-up appointment and automatically marked as unavailable
-            </p>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  // ========== UPDATED FOLLOW-UP FORM WITH SCHEDULE SUPPORT ==========
+  // ========== UPDATED FOLLOW-UP FORM WITH CALENDAR COMPONENT ==========
   const renderFollowUpForm = () => {
     return (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+        <div className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] flex flex-col">
           {/* Fixed Header */}
           <div className="p-6 border-b border-gray-200 flex-shrink-0">
             <div className="flex justify-between items-center">
@@ -1836,7 +2032,6 @@ const MedicalRecordDetails = ({
                     className="w-full border border-gray-300 rounded-lg p-3 text-sm"
                   >
                     <option value="Healthy">Healthy</option>
-                    <option value="Unhealthy">Unhealthy</option>
                     <option value="Sick">Sick</option>
                   </select>
                   <p className="text-xs text-gray-500 mt-2">
@@ -1860,8 +2055,45 @@ const MedicalRecordDetails = ({
                 />
               </div>
 
-              {/* ========== MOVED: Follow-up Schedule Section AFTER Recommendations ========== */}
-              <FollowUpScheduleSection />
+              {/* ========== ADDED: CALENDAR COMPONENT FOR FOLLOW-UP SCHEDULING ========== */}
+              <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                  <Clock3 className="w-5 h-5 text-blue-600" />
+                  <h3 className="font-semibold text-gray-900">Next Follow-up Schedule (Optional)</h3>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Button
+                        type="button"
+                        onClick={fetchSchedules}
+                        variant="outline"
+                        size="sm"
+                        disabled={loadingSchedules}
+                        className="flex items-center gap-2 border border-gray-300 text-gray-700 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 rounded-md shadow-sm"
+                      >
+                        {loadingSchedules ? (
+                          <Loader className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Calendar className="w-4 h-4" />
+                        )}
+                        <span className="font-medium">Refresh Schedules</span>
+                      </Button>
+                    </div>
+                    
+                    {selectedScheduleId && (
+                      <span className="text-sm text-green-600 font-medium flex items-center gap-1">
+                        <CheckCircle className="w-4 h-4" />
+                        Schedule selected
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Calendar Component */}
+                  <CalendarComponent />
+                </div>
+              </div>
 
               {/* ========== FIXED: Error Display BELOW the Follow-up Schedule Section ========== */}
               {error && (
@@ -2170,11 +2402,23 @@ const MedicalRecordDetails = ({
               
               {displayRecord.followUpDate || displayRecord.medrec_followup_date ? (
                 <div className="space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-600">Next Appointment</span>
-                    <span className="font-medium">
-                      {new Date(displayRecord.followUpDate || displayRecord.medrec_followup_date).toLocaleDateString()}
-                    </span>
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Next Appointment</span>
+                      <span className="font-medium">
+                        {new Date(displayRecord.followUpDate || displayRecord.medrec_followup_date).toLocaleDateString()}
+                      </span>
+                    </div>
+                    
+                    {/* 🆕 ADD FOLLOW-UP TIME DISPLAY HERE */}
+                    {displayRecord.followUpTime && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-600">Scheduled Time</span>
+                        <span className="font-medium text-blue-700">
+                          {displayRecord.followUpTime}
+                        </span>
+                      </div>
+                    )}
                   </div>
                   
                   {/* FIXED: Only show button when today is on or after follow-up date AND no follow-up exists */}
@@ -2195,19 +2439,26 @@ const MedicalRecordDetails = ({
                     <div className="text-center py-3 bg-emerald-50 rounded-lg border border-emerald-200">
                       <CheckCircle className="w-5 h-5 mx-auto mb-1 text-emerald-600" />
                       <p className="text-sm font-medium text-emerald-800">Follow-up Record Saved</p>
-                      <p className="text-xs text-emerald-600 mt-1">
-                        Follow-up has already been recorded for this appointment
-                      </p>
+                      {/* 🆕 ADD DATE AND TIME DISPLAY HERE */}
+                      {displayRecord.created_at && (
+                        <p className="text-xs text-emerald-600 mt-1">
+                          at {new Date(displayRecord.created_at).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      )}
                     </div>
                   ) : (
-                    <div className="text-center py-3 text-amber-600 bg-amber-50 rounded-lg border border-amber-200">
-                      <Clock className="w-5 h-5 mx-auto mb-1" />
-                      <p className="text-sm font-medium">
-                        Follow-up scheduled for {new Date(displayRecord.followUpDate || displayRecord.medrec_followup_date).toLocaleDateString()}
-                      </p>
-                      <p className="text-xs text-amber-500 mt-1">
-                        You can record follow-up only on or after the appointment date
-                      </p>
+                    <div className="space-y-2">
+                      <div className="text-center py-3 text-amber-600 bg-amber-50 rounded-lg border border-amber-200">
+                        <p className="text-xs text-amber-500 mt-1">
+                          You can record follow-up only on or after the appointment date
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>

@@ -377,7 +377,7 @@ export default function NotificationsPage() {
       
       try {
         const response = await fetchWithTimeout(
-          `http://192.168.101.6:8000/api/horse_operator/check_current_schedules/?op_id=${encodedUser}`,
+          `http://192.168.31.58:8000/api/horse_operator/check_current_schedules/?op_id=${encodedUser}`,
           {
             method: 'GET',
             headers: {
@@ -442,6 +442,7 @@ export default function NotificationsPage() {
         
         console.log('[Notification] Processed triggered notifications:', triggeredNotifications.length);
         return triggeredNotifications;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       } catch (error) {
         return [];
       }
@@ -467,7 +468,7 @@ export default function NotificationsPage() {
       await getValidUserId(); 
       
       // Use the correct endpoint from your backend: get_announcements
-      const apiUrl = `http://192.168.101.6:8000/api/horse_operator/get_announcements/`
+      const apiUrl = `http://192.168.31.58:8000/api/horse_operator/get_announcements/`
 
       console.log("[v0] Fetching announcements from:", apiUrl)
 
@@ -597,7 +598,7 @@ export default function NotificationsPage() {
       await AsyncStorage.setItem(lastCheckedKey, new Date().toISOString());
 
       return transformedNotifications;
-    } catch (error) { // FIXED: Properly handle error type
+    } catch (error) {
       console.error("[v0] Fetch Error:", error);
       return [];
     } finally {
@@ -629,7 +630,7 @@ export default function NotificationsPage() {
       // Fetch feed logs for completed feed records
       try {
         const feedLogsResponse = await fetchWithTimeout(
-          `http://192.168.101.6:8000/api/horse_operator/get_feed_logs/?user_id=${encodeURIComponent(userId)}`,
+          `http://192.168.31.58:8000/api/horse_operator/get_feed_logs/?user_id=${encodeURIComponent(userId)}`,
           {
             method: 'GET',
             headers: {
@@ -688,7 +689,7 @@ export default function NotificationsPage() {
       // Fetch water logs
       try {
         const waterLogsResponse = await fetchWithTimeout(
-          `http://192.168.101.6:8000/api/horse_operator/get_water_logs/?user_id=${encodeURIComponent(userId)}`,
+          `http://192.168.31.58:8000/api/horse_operator/get_water_logs/?user_id=${encodeURIComponent(userId)}`,
           {
             method: 'GET',
             headers: {
@@ -745,7 +746,7 @@ export default function NotificationsPage() {
       // Fetch feeding schedules for reminders
       try {
         const feedingScheduleResponse = await fetchWithTimeout(
-          `http://192.168.101.6:8000/api/horse_operator/get_feeding_schedule/?user_id=${encodeURIComponent(userId)}`,
+          `http://192.168.31.58:8000/api/horse_operator/get_feeding_schedule/?user_id=${encodeURIComponent(userId)}`,
           {
             method: 'GET',
             headers: {
@@ -1123,7 +1124,7 @@ export default function NotificationsPage() {
       return imageUrl;
     }
 
-    const baseUrl = "http://192.168.101.6:8000";
+    const baseUrl = "http://192.168.31.58:8000";
     const absoluteUrl = imageUrl.startsWith("/") ? `${baseUrl}${imageUrl}` : `${baseUrl}/${imageUrl}`;
     console.log("[v0] Converted relative URL to absolute:", imageUrl, "->", absoluteUrl);
     return absoluteUrl;
@@ -1153,7 +1154,7 @@ export default function NotificationsPage() {
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
-      backgroundColor: "#FFFFFF",
+      backgroundColor: "#C17A47",
       paddingHorizontal: scale(16),
       paddingVertical: verticalScale(12),
       elevation: 2,
@@ -1170,21 +1171,21 @@ export default function NotificationsPage() {
       justifyContent: "center",
       alignItems: "center",
       borderRadius: scale(20),
-      backgroundColor: "#F5F5F5",
+
     },
     backArrow: {
       width: scale(12),
       height: scale(12),
       borderLeftWidth: 2,
       borderBottomWidth: 2,
-      borderColor: "#666",
+      borderColor: "#ffffffff",
       transform: [{ rotate: "45deg" }],
     },
     headerTitle: {
       flex: 1,
       fontSize: moderateScale(20),
       fontWeight: "bold",
-      color: "#333",
+      color: "#ffffffff",
       textAlign: "center",
       marginHorizontal: scale(10),
     },
@@ -1195,19 +1196,19 @@ export default function NotificationsPage() {
     markAllButton: {
       paddingHorizontal: scale(12),
       paddingVertical: verticalScale(6),
-      backgroundColor: "#C17A47",
+      backgroundColor: "#696969ff",
       borderRadius: scale(6),
       marginLeft: scale(8),
     },
     markAllText: {
-      color: "white",
+      color: "#ffffffff",
       fontSize: moderateScale(12),
       fontWeight: "600",
     },
     refreshButton: {
       paddingHorizontal: scale(12),
       paddingVertical: verticalScale(6),
-      backgroundColor: "#4CAF50",
+      backgroundColor: "#696969ff",
       borderRadius: scale(6),
       marginRight: scale(8),
     },
@@ -2145,7 +2146,7 @@ export default function NotificationsPage() {
                                 source={{ uri: getAbsoluteImageUrl(imageUrl) }}
                                 style={[styles.announcementImage, imageLoading && styles.imageHidden]}
                                 resizeMode="contain"
-                                onError={() => { // FIXED: Removed unused error parameter
+                                onError={() => {
                                   console.log("[v0] Image failed to load")
                                   setImageError(true)
                                   setImageLoading(false)

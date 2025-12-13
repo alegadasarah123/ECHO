@@ -63,7 +63,7 @@ const getSafeAreaPadding = () => {
 }
 
 const CARD_WIDTH = width - scale(64)
-const API_BASE_URL = "http://10.254.39.148:8000/api/horse_operator"
+const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
 
 // Configure notifications handler with proper NotificationBehavior type
 Notifications.setNotificationHandler({
@@ -519,9 +519,7 @@ export default function HorseOperatorHome() {
     const statusLower = status.toLowerCase()
     if (statusLower.includes("healthy") || statusLower.includes("excellent") || statusLower.includes("good")) {
       return "#4CAF50"
-    } else if (statusLower.includes("mild") || statusLower.includes("moderate") || statusLower.includes("monitor")) {
-      return "#FF9800"
-    } else if (statusLower.includes("critical") || statusLower.includes("severe") || statusLower.includes("emergency")) {
+    } else if (statusLower.includes("sick") || statusLower.includes("moderate") || statusLower.includes("monitor")) {
       return "#F44336"
     } else if (statusLower.includes("recovering") || statusLower.includes("stable")) {
       return "#2196F3"
