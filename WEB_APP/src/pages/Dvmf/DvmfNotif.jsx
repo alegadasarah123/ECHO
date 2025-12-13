@@ -10,13 +10,14 @@ import {
   RefreshCw,
   X
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsRead }) => {
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const API_BASE = "http://localhost:8000/api/dvmf"
+  const processedNotificationsRef = useRef(new Set()) // Ref to track processed notifications
 
   const formatDate = (dateStr) => {
     if (!dateStr) return ""
@@ -100,6 +101,40 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
     onNotificationClick?.(notification)
   }
 
+  // Function to create a unique key for a notification
+  const createNotificationKey = (notif) => {
+    if (!notif.id) {
+      // Fallback for notifications without id
+      return `${notif.type}-${notif.message}-${notif.date}`
+    }
+    return `${notif.id}-${notif.type}-${notif.message}`
+  }
+
+  // Function to deduplicate notifications
+  const deduplicateNotifications = (notificationsArray) => {
+    const seen = new Set()
+    const uniqueNotifications = []
+    
+    for (const notif of notificationsArray) {
+      if (!notif.message || !notif.id) {
+        continue // Skip invalid notifications
+      }
+      
+      const key = createNotificationKey(notif)
+      
+      // Only add if we haven't seen this exact notification before
+      if (!seen.has(key)) {
+        seen.add(key)
+        uniqueNotifications.push({
+          ...notif,
+          uniqueKey: key
+        })
+      }
+    }
+    
+    return uniqueNotifications
+  }
+
   const fetchNotifications = async () => {
     try {
       setLoading(true)
@@ -121,33 +156,75 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
 
       const data = await response.json()
       
-      const seenMessages = new Set()
-      const uniqueNotifications = []
+      if (!Array.isArray(data)) {
+        throw new Error("Invalid response format: expected array")
+      }
       
-      data.forEach((notif) => {
-        if (!notif.message) return
+      // First pass: deduplicate based on all properties
+      const deduplicated = deduplicateNotifications(data)
+      
+      // Second pass: filter out notifications that have already been processed
+      const seenKeys = processedNotificationsRef.current
+      const newNotifications = []
+      
+      for (const notif of deduplicated) {
+        const key = createNotificationKey(notif)
         
-        const messageKey = `${notif.id}-${notif.message}`
-        if (!seenMessages.has(messageKey)) {
-          seenMessages.add(messageKey)
-          uniqueNotifications.push({
+        // Only add if we haven't processed this notification before
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key)
+          newNotifications.push({
             id: notif.id,
             message: normalizeStatus(notif.message),
             date: notif.date || new Date().toISOString(),
             read: notif.read || false,
             type: notif.type || "general",
-            uniqueKey: messageKey,
+            uniqueKey: key,
           })
         }
-      })
+      }
       
-      setNotifications(uniqueNotifications)
+      // Update state with new unique notifications
+      if (newNotifications.length > 0) {
+        setNotifications(prev => {
+          // Combine with existing, ensuring no duplicates
+          const existingKeys = new Set(prev.map(n => n.uniqueKey))
+          const combined = [...prev]
+          
+          newNotifications.forEach(notif => {
+            if (!existingKeys.has(notif.uniqueKey)) {
+              existingKeys.add(notif.uniqueKey)
+              combined.unshift(notif) // Add new ones at the beginning
+            }
+          })
+          
+          return combined
+        })
+      } else if (data.length > 0 && notifications.length === 0) {
+        // If we got data but no new notifications, show existing data
+        const formatted = data.map(notif => ({
+          id: notif.id,
+          message: normalizeStatus(notif.message),
+          date: notif.date || new Date().toISOString(),
+          read: notif.read || false,
+          type: notif.type || "general",
+          uniqueKey: createNotificationKey(notif),
+        }))
+        setNotifications(formatted)
+      }
     } catch (err) {
       setError(err.message)
       setNotifications([])
     } finally {
       setLoading(false)
     }
+  }
+
+  // Clear processed notifications when modal closes
+  const handleClose = () => {
+    // Optionally clear the ref when modal closes
+    // processedNotificationsRef.current.clear()
+    onClose?.()
   }
 
   useEffect(() => {
@@ -169,7 +246,7 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
           bottom: 0,
           zIndex: 999,
         }}
-        onClick={onClose}
+        onClick={handleClose}
       />
 
       <div style={styles.dropdown}>
@@ -180,7 +257,10 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
             </div>
             <div>
               <h2 style={styles.title}>Notifications</h2>
-              <p style={styles.subtitle}>{unreadCount} unread</p>
+              <p style={styles.subtitle}>
+                {notifications.length} notification{notifications.length !== 1 ? 's' : ''} • 
+                {unreadCount > 0 ? ` ${unreadCount} unread` : ' All read'}
+              </p>
             </div>
           </div>
 
@@ -217,33 +297,38 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
               </div>
             </div>
           ) : notifications.length > 0 ? (
-            notifications.map((n) => (
-              <div
-                key={n.uniqueKey}
-                style={{
-                  ...styles.notification,
-                  ...(n.read ? styles.notificationRead : styles.notificationUnread),
-                }}
-                onClick={() => handleNotificationClick(n)}
-              >
-                <div style={styles.notificationContent}>
-                  <div style={styles.notificationIcon}>
-                    {!n.read && <Circle size={12} fill="#0F3D5A" color="#0F3D5A" />}
-                  </div>
-                  <div style={styles.messageContainer}>
-                    <p style={styles.message}>{n.message}</p>
-                    <div style={styles.notificationFooter}>
-                      <div style={styles.dateContainer}>
-                        <Clock size={12} color="#64748b" />
-                        <span style={styles.date}>{formatDate(n.date)}</span>
+            <div>
+              <div style={styles.notificationsHeader}>
+                <span>Showing {notifications.length} unique notification{notifications.length !== 1 ? 's' : ''}</span>
+              </div>
+              {notifications.map((n) => (
+                <div
+                  key={n.uniqueKey}
+                  style={{
+                    ...styles.notification,
+                    ...(n.read ? styles.notificationRead : styles.notificationUnread),
+                  }}
+                  onClick={() => handleNotificationClick(n)}
+                >
+                  <div style={styles.notificationContent}>
+                    <div style={styles.notificationIcon}>
+                      {!n.read && <Circle size={12} fill="#0F3D5A" color="#0F3D5A" />}
+                    </div>
+                    <div style={styles.messageContainer}>
+                      <p style={styles.message}>{n.message}</p>
+                      <div style={styles.notificationFooter}>
+                        <div style={styles.dateContainer}>
+                          <Clock size={12} color="#64748b" />
+                          <span style={styles.date}>{formatDate(n.date)}</span>
+                        </div>
+                        {!n.read && <span style={styles.newBadge}>New</span>}
                       </div>
-                      {!n.read && <span style={styles.newBadge}>New</span>}
                     </div>
                   </div>
+                  <div style={styles.notificationHoverEffect}></div>
                 </div>
-                <div style={styles.notificationHoverEffect}></div>
-              </div>
-            ))
+              ))}
+            </div>
           ) : (
             <div style={styles.emptyState}>
               <Inbox size={48} color="#64748b" opacity={0.6} />
@@ -255,7 +340,7 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
 
         {notifications.length > 0 && (
           <div style={styles.footer}>
-            <button style={styles.closeButton} onClick={onClose}>
+            <button style={styles.closeButton} onClick={handleClose}>
               <X size={16} />
               Close
             </button>
@@ -307,7 +392,7 @@ const styles = {
     letterSpacing: "-0.025em",
   },
   subtitle: {
-    fontSize: "13px",
+    fontSize: "12px",
     color: "rgba(255,255,255,0.8)",
     margin: 0,
     fontWeight: "500",
@@ -332,6 +417,14 @@ const styles = {
     overflowY: "auto",
     background: "#fafbfc",
     flex: 1,
+  },
+  notificationsHeader: {
+    padding: "12px 24px",
+    fontSize: "12px",
+    color: "#64748b",
+    background: "#f1f5f9",
+    borderBottom: "1px solid #e1e5e9",
+    fontWeight: "500",
   },
   loadingContainer: {
     display: "flex",

@@ -770,30 +770,45 @@ from rest_framework.response import Response
 @api_view(["GET"])
 def get_vetnotifications(request):
     try:
-        existing_keys = set()
+        # Track notifications that should only be sent once
+        notification_sent_once = set()
         notifications_to_insert = []
 
         # ---------------- FETCH EXISTING NOTIFICATIONS ----------------
         try:
-            # Get ALL existing notifications (including read ones) to prevent duplicates
+            # Get existing notifications to check for duplicates
             existing_res = sr_client.table("notification") \
-                .select("related_id, notif_read") \
+                .select("related_id, notification_type, notif_read") \
                 .not_.is_("related_id", None) \
                 .execute()
-            existing_keys = {row["related_id"] for row in (existing_res.data or [])}
+            
+            # Store notification data for checking
+            existing_notifications = {}
+            for row in (existing_res.data or []):
+                related_id = row["related_id"]
+                existing_notifications[related_id] = {
+                    "type": row["notification_type"],
+                    "read": row["notif_read"]
+                }
+                
+                # For all notification types, mark as already sent (to prevent duplicates)
+                notification_sent_once.add(related_id)
+                    
         except Exception as e:
             print(f"Error fetching existing notifications: {e}")
-            existing_keys = set()
+            existing_notifications = {}
+            notification_sent_once = set()
 
         # ---------------- HELPER FUNCTION ----------------
         def add_notification(user_id, message, notif_type, related_id, created_at=None):
-            # Prevent duplicates based on related_id regardless of read status
-            if not user_id or not related_id or related_id in existing_keys:
+            # For ALL notification types, check if already sent
+            if not user_id or not related_id or related_id in notification_sent_once:
                 return
-
+            
+            # Create new notification
             dt_ph = datetime.fromisoformat(created_at) if created_at else datetime.now()
             notifications_to_insert.append({
-                "id": user_id,  # FIXED: This should be 'id' (foreign key to users), not 'user_id'
+                "id": user_id,
                 "notif_message": message,
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
@@ -801,7 +816,9 @@ def get_vetnotifications(request):
                 "notification_type": notif_type,
                 "related_id": related_id
             })
-            existing_keys.add(related_id)
+            
+            # Mark as sent to prevent duplicates
+            notification_sent_once.add(related_id)
 
         # ---------------- SOS EMERGENCY REQUESTS ----------------
         try:
@@ -822,10 +839,6 @@ def get_vetnotifications(request):
 
                 # Create related_id using SOS request ID
                 related_id = f"sos_{sos['id']}"
-                
-                # Check if notification already exists (including read ones)
-                if related_id in existing_keys:
-                    continue
                 
                 # Construct notification message (without status)
                 user_name = sos.get("user_name", "A user")
@@ -934,31 +947,18 @@ def get_vetnotifications(request):
                     continue
 
                 related_id = f"comment_{comment['id']}"
-                if related_id in existing_keys:
-                    continue
-
-                # Correct PK column: announce_id
+                
                 try:
-                    # Debug logging to see what we're looking for
-                    print(f"Looking for announcement ID: {ann_id}")
-                    
                     announcement_res = sr_client.table("announcement") \
                         .select("user_id") \
                         .eq("announce_id", ann_id) \
                         .maybe_single() \
                         .execute()
                     
-                    # FIXED: Check if the response object exists and has data attribute
-                    if not announcement_res:
-                        print(f"No response object for announcement {ann_id}")
-                        continue
-                    
-                    if not hasattr(announcement_res, 'data'):
-                        print(f"Response object has no data attribute for announcement {ann_id}")
+                    if not announcement_res or not hasattr(announcement_res, 'data'):
                         continue
                     
                     post_owner_id = announcement_res.data.get("user_id") if announcement_res.data else None
-                    print(f"Found post owner ID: {post_owner_id} for announcement {ann_id}")
                     
                 except Exception as ann_error:
                     print(f"Error fetching announcement {ann_id}: {ann_error}")
