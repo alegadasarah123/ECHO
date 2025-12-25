@@ -3,7 +3,7 @@
 import Sidebar from "@/components/DvmfSidebar";
 import jsPDF from "jspdf";
 import { Bell, Calendar, Download, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import FloatingMessages from './DvmfMessage';
 import NotificationModal from "./DvmfNotif";
@@ -26,6 +26,7 @@ function DvmfHealthReport() {
   })
   const [monthlyData, setMonthlyData] = useState([])
   const [exportLoading, setExportLoading] = useState(false)
+  const [dataError, setDataError] = useState(null)
   
   // Date filter states with validation
   const [dateFrom, setDateFrom] = useState("")
@@ -95,6 +96,34 @@ function DvmfHealthReport() {
     </div>
   )
 
+  // Data validation and fixing function
+  const validateAndFixData = useCallback((data) => {
+    if (!data || !Array.isArray(data)) return data;
+    
+    return data.map(item => {
+      // Ensure all required fields exist and are numbers
+      const healthy = Number(item.healthy) || 0;
+      const sick = Number(item.sick) || 0;
+      const deceased = Number(item.deceased) || 0;
+      
+      // Calculate total (should match healthy + sick + deceased)
+      const calculatedTotal = healthy + sick + deceased;
+      
+      // Use the provided total if it exists and is reasonable
+      const total = (item.total && Math.abs(item.total - calculatedTotal) <= 5) 
+        ? item.total 
+        : calculatedTotal;
+      
+      return {
+        ...item,
+        healthy,
+        sick,
+        deceased,
+        total
+      };
+    });
+  }, [])
+
   // Date validation
   const validateDates = () => {
     if (dateFrom && dateTo) {
@@ -117,6 +146,38 @@ function DvmfHealthReport() {
     if (diffInMinutes < 60) return `${diffInMinutes}m ago`
     if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`
     return `${Math.floor(diffInMinutes / 1440)}d ago`
+  }, [])
+
+  // Data consistency verification
+  const verifyDataConsistency = useCallback((monthlyData, statistics) => {
+    if (!monthlyData || monthlyData.length === 0) return;
+    
+    const calculatedHealthy = monthlyData.reduce((sum, month) => sum + (month.healthy || 0), 0);
+    const calculatedSick = monthlyData.reduce((sum, month) => sum + (month.sick || 0), 0);
+    const calculatedDeceased = monthlyData.reduce((sum, month) => sum + (month.deceased || 0), 0);
+    
+    console.log("Data Consistency Check:");
+    console.log("From monthly data - Healthy:", calculatedHealthy, "Sick:", calculatedSick, "Deceased:", calculatedDeceased);
+    console.log("From statistics - Healthy:", statistics.healthy, "Sick:", statistics.sick, "Deceased:", statistics.deceased);
+    
+    // Check for discrepancies
+    const discrepancies = [];
+    if (Math.abs(calculatedHealthy - statistics.healthy) > 1) {
+      discrepancies.push(`Healthy count mismatch: monthly sum=${calculatedHealthy}, stats=${statistics.healthy}`);
+    }
+    if (Math.abs(calculatedSick - statistics.sick) > 1) {
+      discrepancies.push(`Sick count mismatch: monthly sum=${calculatedSick}, stats=${statistics.sick}`);
+    }
+    if (Math.abs(calculatedDeceased - statistics.deceased) > 1) {
+      discrepancies.push(`Deceased count mismatch: monthly sum=${calculatedDeceased}, stats=${statistics.deceased}`);
+    }
+    
+    if (discrepancies.length > 0) {
+      console.warn("Data inconsistencies found:", discrepancies);
+      return false;
+    }
+    
+    return true;
   }, [])
 
   // MARK ALL NOTIFICATIONS AS READ
@@ -263,7 +324,7 @@ const handleNotificationClick = async (notification) => {
   const loadNotifications = useCallback(() => {
     console.log("Loading notifications...")
 
-    fetch(`${API_BASE}/get_vetnotifications/`)
+    return fetch(`${API_BASE}/get_vetnotifications/`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
@@ -277,11 +338,15 @@ const handleNotificationClick = async (notification) => {
           type: notif.type || "general"
         }))
         setNotifications(formatted)
+        return formatted
       })
-      .catch((err) => console.error("Failed to fetch notifications:", err))
+      .catch((err) => {
+        console.error("Failed to fetch notifications:", err)
+        throw err
+      })
   }, [])
 
-  // Load statistics with date validation
+  // Load statistics with date validation - UPDATED
   const loadStatistics = useCallback(() => {
     if (!validateDates()) return;
 
@@ -292,35 +357,68 @@ const handleNotificationClick = async (notification) => {
     if (dateFrom) params.append('date_from', dateFrom);
     if (dateTo) params.append('date_to', dateTo);
 
-    fetch(`http://localhost:8000/api/dvmf/get_horse_statistics/?${params}`)
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch statistics")
-        return res.json()
-      })
-      .then((data) => {
-        console.log("Monthly data received:", data);
+    console.log("Loading statistics with params:", params.toString())
+
+    return Promise.all([
+      fetch(`http://localhost:8000/api/dvmf/get_horse_statistics/?${params}`)
+        .then(res => {
+          if (!res.ok) throw new Error("Failed to fetch monthly statistics");
+          return res.json();
+        }),
+      fetch(`http://localhost:8000/api/dvmf/get_statistics_summary/?${params}`)
+        .then(res => {
+          if (!res.ok) {
+            console.warn("Failed to fetch summary, will calculate from monthly data");
+            return null;
+          }
+          return res.json();
+        })
+    ])
+      .then(([monthlyData, summaryData]) => {
+        console.log("Monthly data received:", monthlyData);
+        console.log("Summary data received:", summaryData);
         
-        const healthy = data.reduce((sum, month) => sum + month.healthy, 0)
-        const sick = data.reduce((sum, month) => sum + month.sick, 0)
-        const deceased = data.reduce((sum, month) => sum + month.deceased, 0)
+        // Validate and fix monthly data
+        const validatedMonthlyData = validateAndFixData(monthlyData);
+        
+        // Use summary data if available, otherwise calculate from monthly data
+        let healthy, sick, deceased;
+        
+        if (summaryData) {
+          healthy = summaryData.healthy || 0;
+          sick = summaryData.sick || 0;
+          deceased = summaryData.deceased || 0;
+        } else {
+          // Calculate from monthly data
+          healthy = validatedMonthlyData.reduce((sum, month) => sum + (month.healthy || 0), 0);
+          sick = validatedMonthlyData.reduce((sum, month) => sum + (month.sick || 0), 0);
+          deceased = validatedMonthlyData.reduce((sum, month) => sum + (month.deceased || 0), 0);
+        }
         
         setStatistics({
           healthy,
           sick,
           deceased,
-        })
+        });
         
-        setMonthlyData(data)
+        setMonthlyData(validatedMonthlyData);
+        
+        // Verify data consistency
+        verifyDataConsistency(validatedMonthlyData, { healthy, sick, deceased });
         
         setStatsLoading(false);
         setChartLoading(false);
+        
+        return { validatedMonthlyData, statistics: { healthy, sick, deceased } };
       })
       .catch((err) => {
-        console.error("Failed to fetch statistics:", err)
+        console.error("Failed to fetch statistics:", err);
+        setDataError("Failed to load statistics data. Please try again.");
         setStatsLoading(false);
         setChartLoading(false);
-      })
-  }, [dateFrom, dateTo])
+        throw err;
+      });
+  }, [dateFrom, dateTo, validateAndFixData, verifyDataConsistency])
 
   // Handle date filter changes with validation
   const handleDateFilterChange = () => {
@@ -374,6 +472,7 @@ const handleNotificationClick = async (notification) => {
     
     setStatsLoading(true)
     setChartLoading(true)
+    setDataError(null)
 
     Promise.all([loadStatistics(), loadNotifications()])
       .then(() => {
@@ -385,36 +484,49 @@ const handleNotificationClick = async (notification) => {
         setIsRefreshing(false)
         setStatsLoading(false)
         setChartLoading(false)
+        setDataError("Refresh failed. Please try again.")
       })
   }, [loadStatistics, loadNotifications])
 
-  // PDF export with monthly health status table
+  // Helper: load image to data URL
+  const imageToDataURL = async (url) => {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      return await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // PDF export with monthly health status table - UPDATED
   const handleExport = async () => {
     setExportLoading(true);
 
-    // helper: load image path to dataURL (returns null on failure)
-    const imageToDataURL = async (url) => {
-      try {
-        const res = await fetch(url);
-        if (!res.ok) return null;
-        const blob = await res.blob();
-        return await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onloadend = () => resolve(reader.result);
-          reader.readAsDataURL(blob);
-        });
-      } catch (e) {
-        return null;
-      }
-    };
-
     try {
-      const detailedData = await fetch(
-        `http://localhost:8000/api/dvmf/get_horse_statistics/?export_details=true&date_from=${dateFrom || ''}&date_to=${dateTo || ''}`
-      ).then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch detailed data");
-        return res.json();
-      });
+      // Fetch fresh data to ensure accuracy
+      const [detailedData, freshStatistics] = await Promise.all([
+        fetch(
+          `http://localhost:8000/api/dvmf/get_horse_statistics/?export_details=true&date_from=${dateFrom || ''}&date_to=${dateTo || ''}`
+        ).then(res => {
+          if (!res.ok) throw new Error("Failed to fetch detailed data");
+          return res.json();
+        }),
+        fetch(
+          `http://localhost:8000/api/dvmf/get_statistics_summary/?date_from=${dateFrom || ''}&date_to=${dateTo || ''}`
+        ).then(res => {
+          if (!res.ok) {
+            console.warn("Using current statistics for PDF");
+            return statistics;
+          }
+          return res.json();
+        }).catch(() => statistics) // Fallback to current state
+      ]);
 
       // Get current user data
       let userName = "Veterinarian"
@@ -428,7 +540,6 @@ const handleNotificationClick = async (notification) => {
         }
       } catch (userError) {
         console.error("Error fetching user data:", userError)
-        // Continue with default name if user fetch fails
       }
 
       const pdf = new jsPDF({
@@ -437,7 +548,7 @@ const handleNotificationClick = async (notification) => {
         format: "a4",
       });
 
-      // ✅ Load CTU Logo
+      // ✅ Load DVMF Logo
       const logoLeft = "/Images/dvmf.png";
       const ctuLogo = await imageToDataURL(logoLeft);
 
@@ -484,7 +595,14 @@ const handleNotificationClick = async (notification) => {
       pdf.setFontSize(13);
       pdf.text("Horse Health Reports", 105, 70, { align: "center" });
 
-      // LEFT aligned generated-on
+      // Date range in header if filters are applied
+      let dateRangeText = "All Time";
+      if (dateFrom || dateTo) {
+        dateRangeText = `${dateFrom || "Start"} to ${dateTo || "End"}`;
+      }
+      pdf.setFontSize(10);
+      pdf.text(`Date Range: ${dateRangeText}`, 20, 78);
+
       const headerDateStr = new Date().toLocaleDateString("en-US", {
         year: "numeric",
         month: "long",
@@ -492,23 +610,27 @@ const handleNotificationClick = async (notification) => {
         hour: "2-digit",
         minute: "2-digit",
       });
-      pdf.setFont("helvetica", "normal");
-      pdf.setFontSize(10);
-      pdf.text(`Generated on: ${headerDateStr}`, 20, 78);
+      pdf.text(`Generated on: ${headerDateStr}`, 20, 84);
 
-      let yPosition = 90;
+      let yPosition = 95;
 
       // -------------------- HEALTH STATISTICS --------------------
       pdf.setFontSize(16);
       pdf.setTextColor(0, 0, 0);
       pdf.text("Health Statistics", 20, yPosition);
-      yPosition += 15;
+      yPosition += 10;
 
       pdf.setFontSize(12);
+      
+      // Use fresh statistics for accuracy
+      const pdfHealthy = freshStatistics.healthy || statistics.healthy;
+      const pdfSick = freshStatistics.sick || statistics.sick;
+      const pdfDeceased = freshStatistics.deceased || statistics.deceased;
+      
       const stats = [
-        { label: "Healthy:", value: statistics?.healthy ?? 0, color: [40, 167, 69] },
-        { label: "Sick:", value: statistics?.sick ?? 0, color: [253, 126, 20] },
-        { label: "Deceased:", value: statistics?.deceased ?? 0, color: [220, 53, 69] },
+        { label: "Healthy:", value: pdfHealthy, color: [40, 167, 69] },
+        { label: "Sick:", value: pdfSick, color: [253, 126, 20] },
+        { label: "Deceased:", value: pdfDeceased, color: [220, 53, 69] },
       ];
 
       stats.forEach((stat, index) => {
@@ -523,7 +645,13 @@ const handleNotificationClick = async (notification) => {
         pdf.text(String(stat.value), 80, rowY);
       });
 
-      yPosition += 40;
+      yPosition += 25;
+
+      // Add total count
+      const totalHorses = pdfHealthy + pdfSick + pdfDeceased;
+      pdf.setFontSize(11);
+      pdf.text(`Total Horses: ${totalHorses}`, 20, yPosition);
+      yPosition += 10;
 
       // -------------------- SICK HORSES DIAGNOSIS --------------------
       if (detailedData?.sick_horses && detailedData.sick_horses.length > 0) {
@@ -644,22 +772,23 @@ const handleNotificationClick = async (notification) => {
       pdf.setFontSize(11);
       pdf.setTextColor(80, 80, 80);
 
-      const healthy = statistics?.healthy ?? 0;
-      const sick = statistics?.sick ?? 0;
-      const deceased = statistics?.deceased ?? 0;
-      const total = healthy + sick + deceased;
+      // Use accurate statistics
+      const summaryHealthy = freshStatistics.healthy || statistics.healthy;
+      const summarySick = freshStatistics.sick || statistics.sick;
+      const summaryDeceased = freshStatistics.deceased || statistics.deceased;
+      const summaryTotal = summaryHealthy + summarySick + summaryDeceased;
 
-      const hp = total ? ((healthy / total) * 100).toFixed(1) : "0.0";
-      const sp = total ? ((sick / total) * 100).toFixed(1) : "0.0";
-      const dp = total ? ((deceased / total) * 100).toFixed(1) : "0.0";
+      const hp = summaryTotal ? ((summaryHealthy / summaryTotal) * 100).toFixed(1) : "0.0";
+      const sp = summaryTotal ? ((summarySick / summaryTotal) * 100).toFixed(1) : "0.0";
+      const dp = summaryTotal ? ((summaryDeceased / summaryTotal) * 100).toFixed(1) : "0.0";
 
-      pdf.text(`Total horses monitored: ${total}`, 25, yPosition);
+      pdf.text(`Total horses monitored: ${summaryTotal}`, 25, yPosition);
       yPosition += 6;
-      pdf.text(`• ${healthy} horses (${hp}%) are in healthy condition`, 25, yPosition);
+      pdf.text(`• ${summaryHealthy} horses (${hp}%) are in healthy condition`, 25, yPosition);
       yPosition += 6;
-      pdf.text(`• ${sick} horses (${sp}%) require medical attention`, 25, yPosition);
+      pdf.text(`• ${summarySick} horses (${sp}%) require medical attention`, 25, yPosition);
       yPosition += 6;
-      pdf.text(`• ${deceased} horses (${dp}%) are deceased`, 25, yPosition);
+      pdf.text(`• ${summaryDeceased} horses (${dp}%) are deceased`, 25, yPosition);
       yPosition += 15;
 
       // -------------------- MONTHLY SUMMARY TABLE --------------------
@@ -802,6 +931,8 @@ const handleNotificationClick = async (notification) => {
 
   const loadAllData = useCallback(() => {
     setIsLoading(true);
+    setDataError(null);
+    
     Promise.all([loadStatistics(), loadNotifications()])
       .then(() => {
         setIsLoading(false);
@@ -809,12 +940,20 @@ const handleNotificationClick = async (notification) => {
       .catch((error) => {
         console.error("Error loading data:", error);
         setIsLoading(false);
+        setDataError("Failed to load data. Please try refreshing.");
       });
   }, [loadStatistics, loadNotifications]);
 
   useEffect(() => {
     loadAllData();
   }, [loadAllData]);
+
+  // Call data consistency check after data loads
+  useEffect(() => {
+    if (!statsLoading && !chartLoading && monthlyData.length > 0) {
+      verifyDataConsistency(monthlyData, statistics);
+    }
+  }, [statsLoading, chartLoading, monthlyData, statistics, verifyDataConsistency]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -831,8 +970,8 @@ const handleNotificationClick = async (notification) => {
     }
   }, [isNotificationDropdownOpen, isLogoutModalOpen])
 
-  // UPDATED: Dynamic Y-axis scale calculation that handles values up to 100 (copied from CTU version)
-  const getYAxisScale = () => {
+  // UPDATED: Dynamic Y-axis scale calculation that handles values up to 100
+  const getYAxisScale = useMemo(() => {
     if (monthlyData.length === 0) return { maxValue: 10, steps: [0, 2, 4, 6, 8, 10] }
 
     // Find the maximum value across all data points
@@ -879,20 +1018,23 @@ const handleNotificationClick = async (notification) => {
     }
 
     return { maxValue: roundedMax, steps }
-  }
+  }, [monthlyData])
 
-  const { maxValue: yAxisMax, steps: yAxisSteps } = getYAxisScale()
+  const { maxValue: yAxisMax, steps: yAxisSteps } = getYAxisScale
 
   const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
 
+  // Calculate percentages for pie chart
+  const totalHorses = statistics.healthy + statistics.sick + statistics.deceased;
+  const aliveHorses = statistics.healthy + statistics.sick;
+  const deceasedPercentage = totalHorses ? ((statistics.deceased / totalHorses) * 100).toFixed(1) : 0;
+  const alivePercentage = totalHorses ? ((aliveHorses / totalHorses) * 100).toFixed(1) : 0;
+
+  
+
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full m-0 p-0 box-border">
-      {isLoading && (
-        <div className="fixed top-0 left-0 w-full h-full bg-white/90 flex flex-col items-center justify-center z-[9999]">
-          <div className="text-6xl animate-pulse"></div>
-          <div className="mt-4 text-lg font-bold text-black">Loading Health Report...</div>
-        </div>
-      )}
+      
 
       <div className="sidebars" id="sidebars">
         <Sidebar isOpen={isSidebarOpen} ref={sidebarRef} />
@@ -902,7 +1044,11 @@ const handleNotificationClick = async (notification) => {
         <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
           <div className="flex flex-col">
             <h2 className="text-2xl font-bold text-gray-800 mb-1">Health Reports</h2>
-          
+            {dataError && (
+              <div className="text-sm text-red-600 bg-red-50 px-3 py-1 rounded-md">
+                {dataError}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-4">
@@ -942,8 +1088,8 @@ const handleNotificationClick = async (notification) => {
         </header>
 
         <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
+          {/* Stat Cards Section */}
           <div className="mb-6">
-            {/* Stat Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-[30px]">
               {statsLoading ? (
                 <>
@@ -985,11 +1131,80 @@ const handleNotificationClick = async (notification) => {
                 </>
               )}
             </div>
+          </div>
 
-            {/* Line Chart Section */}
+          {/* Date Range Filter Section */}
+          <div className="bg-white rounded-lg shadow-sm p-4 lg:p-6 border border-gray-200 mb-6">
+            <div className="flex items-center gap-3 mb-4">
+              <Calendar className="w-5 h-5 text-gray-600" />
+              <h2 className="text-lg lg:text-[18px] font-semibold text-gray-950">
+                Date Range Filter
+              </h2>
+            </div>
+            
+            <div className="flex gap-4 flex-wrap items-end">
+              <div className="flex flex-col flex-1 min-w-[150px]">
+                <label className="text-sm text-gray-600 mb-1 font-medium">Date From</label>
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(e) => setDateFrom(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0F3D5A] focus:border-transparent"
+                />
+              </div>
+              <div className="flex flex-col flex-1 min-w-[150px]">
+                <label className="text-sm text-gray-600 mb-1 font-medium">Date To</label>
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(e) => setDateTo(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#0F3D5A] focus:border-transparent"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleDateFilterChange}
+                  className="bg-[#0F3D5A] text-white border-none py-2 px-4 rounded-md text-sm font-medium cursor-pointer transition-colors hover:bg-[#0C3148] h-[42px] whitespace-nowrap"
+                >
+                  Apply Filters
+                </button>
+                <button
+                  onClick={handleClearFilters}
+                  className="bg-gray-500 text-white border-none py-2 px-4 rounded-md text-sm font-medium cursor-pointer transition-colors hover:bg-gray-600 h-[42px] whitespace-nowrap"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            {/* Date Error Message */}
+            {dateError && (
+              <div className="text-red-600 text-sm bg-red-50 p-2 rounded border border-red-200 mt-3">
+                {dateError}
+              </div>
+            )}
+
+            {/* Quick Date Range Presets */}
+            <div className="flex gap-2 flex-wrap mt-4">
+              <span className="text-sm text-gray-600 font-medium mr-2">Quick ranges:</span>
+              {['week', 'month', 'quarter', 'year'].map((range) => (
+                <button
+                  key={range}
+                  onClick={() => handleQuickDateRange(range)}
+                  className="text-xs bg-white border border-gray-300 text-gray-700 py-1 px-3 rounded hover:bg-gray-50 transition-colors capitalize"
+                >
+                  Last {range}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Line Chart and Pie Chart Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+            {/* Line Chart - Takes 2/3 of the width */}
             <div 
               ref={chartRef}
-              className="bg-white rounded-lg shadow-sm p-4 lg:p-6 border border-gray-200 min-h-[735px]"
+              className="bg-white rounded-lg shadow-sm p-4 lg:p-6 border border-gray-200 lg:col-span-2 min-h-[570px] flex flex-col"
             >
               <div className="flex justify-between items-center mb-5 flex-wrap gap-4">
                 <div className="flex items-center gap-3">
@@ -999,7 +1214,7 @@ const handleNotificationClick = async (notification) => {
                   </h2>
                 </div>
                 <button
-                 className="bg-[#0F3D5A] text-white border-none py-2 px-4 rounded-md text-sm lg:text-[14px] font-medium cursor-pointer transition-colors hover:bg-[#0C3148] min-h-[40px] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                  className="bg-[#0F3D5A] text-white border-none py-2 px-4 rounded-md text-sm lg:text-[14px] font-medium cursor-pointer transition-colors hover:bg-[#0C3148] min-h-[40px] flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
                   onClick={handleExport}
                   disabled={exportLoading || (statistics.healthy + statistics.sick + statistics.deceased) === 0}
                 >
@@ -1012,74 +1227,7 @@ const handleNotificationClick = async (notification) => {
                 </button>
               </div>
 
-              {/* Date Filters with Quick Presets - ALWAYS VISIBLE */}
-              <div className="bg-gray-50 p-4 rounded-lg mb-5 border border-gray-200">
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-3">
-                    <Calendar className="w-4 h-4 text-gray-600" />
-                    <h3 className="text-sm font-medium text-gray-700">Date Range Filter</h3>
-                  </div>
-                  
-                  <div className="flex gap-4 flex-wrap items-end">
-                    <div className="flex flex-col flex-1 min-w-[150px]">
-                      <label className="text-sm text-gray-600 mb-1 font-medium">Date From</label>
-                      <input
-                        type="date"
-                        value={dateFrom}
-                        onChange={(e) => setDateFrom(e.target.value)}
-                        className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div className="flex flex-col flex-1 min-w-[150px]">
-                      <label className="text-sm text-gray-600 mb-1 font-medium">Date To</label>
-                      <input
-                        type="date"
-                        value={dateTo}
-                        onChange={(e) => setDateTo(e.target.value)}
-                        className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={handleDateFilterChange}
-                       className="bg-[#0F3D5A] text-white border-none py-2 px-4 rounded-md text-sm font-medium cursor-pointer transition-colors hover:bg-[#0C3148] h-[42px] whitespace-nowrap"
-
-                      >
-                        Apply Filters
-                      </button>
-                      <button
-                        onClick={handleClearFilters}
-                        className="bg-gray-500 text-white border-none py-2 px-4 rounded-md text-sm font-medium cursor-pointer transition-colors hover:bg-gray-600 h-[42px] whitespace-nowrap"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Date Error Message */}
-                  {dateError && (
-                    <div className="text-red-600 text-sm bg-red-50 p-2 rounded border border-red-200">
-                      {dateError}
-                    </div>
-                  )}
-
-                  {/* Quick Date Range Presets */}
-                  <div className="flex gap-2 flex-wrap">
-                    <span className="text-sm text-gray-600 font-medium mr-2">Quick ranges:</span>
-                    {['week', 'month', 'quarter', 'year'].map((range) => (
-                      <button
-                        key={range}
-                        onClick={() => handleQuickDateRange(range)}
-                        className="text-xs bg-white border border-gray-300 text-gray-700 py-1 px-3 rounded hover:bg-gray-50 transition-colors capitalize"
-                      >
-                        Last {range}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Chart Content with Loading State */}
+              {/* Line Chart Content with Loading State */}
               {chartLoading ? (
                 <ChartSkeleton />
               ) : (
@@ -1100,324 +1248,444 @@ const handleNotificationClick = async (notification) => {
                     </div>
                   </div>
 
-                  {/* Line Chart - FIXED: Proper alignment of month labels with data points */}
-                  <div className="w-full">
-                    <div className="min-w-[700px]">
-                      <div className="relative h-80 mt-4">
-                        {/* Y-axis title */}
-                        <div className="absolute left-0 top-1/2 transform -translate-y-1/2 -translate-x-15 -rotate-90 text-xs font-medium text-gray-600 whitespace-nowrap">
-                          Total Number of Health Status
-                        </div>
+                  {/* ✅ FIXED: Horizontal scrollable chart container */}
+                  <div className="flex-1 overflow-hidden flex flex-col">
+                    {/* Chart wrapper with horizontal scroll */}
+                    <div className="overflow-x-auto pb-3 flex-1">
+                      <div className="min-w-[700px] h-full">
+                        <div className="relative h-full">
+                          {/* Y-axis title */}
+                          <div className="absolute left-0 top-1/2 transform -translate-y-1/2 -translate-x-15 -rotate-90 text-xs font-medium text-gray-600 whitespace-nowrap z-10">
+                            Total Number of Health Status
+                          </div>
 
-                        {/* Y-axis labels with proper spacing */}
-                        <div className="absolute left-8 top-0 bottom-0 w-8">
-                          {yAxisSteps.map((value) => {
-                            const positionFromTop = 300 - (value / yAxisMax) * 300
-                            return (
-                              <div
-                                key={value}
-                                className="text-right pr-1 text-xs text-gray-500 absolute"
-                                style={{
-                                  top: `${positionFromTop}px`,
-                                  transform: 'translateY(-50%)',
-                                  width: '100%'
-                                }}
-                              >
-                                {value}
-                              </div>
-                            )
-                          })}
-                        </div>
+                          {/* Y-axis labels */}
+                          <div className="absolute left-8 top-0 bottom-0 w-8 z-10">
+                            {yAxisSteps.map((value) => {
+                              const positionFromTop = 300 - (value / yAxisMax) * 300
+                              return (
+                                <div
+                                  key={value}
+                                  className="text-right pr-1 text-xs text-gray-500 absolute bg-white"
+                                  style={{
+                                    top: `${positionFromTop}px`,
+                                    transform: 'translateY(-50%)',
+                                    width: '100%'
+                                  }}
+                                >
+                                  {value}
+                                </div>
+                              )
+                            })}
+                          </div>
 
-                        {/* Chart area - Consistent 300px height */}
-                        <div className="ml-16 pl-2 h-[300px] flex items-end justify-start gap-6 px-0 border-b border-l border-gray-300 relative">
-                          {monthlyData.length > 0 && (
-                            <>
-                              <svg
-                                width="100%"
-                                height="100%"
-                                className="absolute top-0 left-0"
-                                style={{ marginLeft: "20px", width: "500px", height: "300px" }}
-                              >
-                                {/* Grid lines for better readability */}
-                                {yAxisSteps.map((value) => {
-                                  const y = 300 - (value / yAxisMax) * 300
-                                  return (
-                                    <line
-                                      key={value}
-                                      x1="0"
-                                      y1={y}
-                                      x2="500"
-                                      y2={y}
-                                      stroke="#e5e7eb"
-                                      strokeWidth="1"
-                                      strokeDasharray="2,2"
-                                    />
-                                  )
-                                })}
-
-                                {/* Chart lines */}
-                                <polyline
-                                  fill="none"
-                                  stroke="#28a745"
-                                  strokeWidth="2"
-                                  points={monthlyData
-                                    .map((month, index) => {
-                                      const x = index * (500 / Math.max(1, monthlyData.length - 1))
-                                      const y = 300 - ((month.healthy || 0) / yAxisMax) * 300
-                                      return `${x},${y}`
-                                    })
-                                    .join(" ")}
-                                />
-                                
-                                <polyline
-                                  fill="none"
-                                  stroke="#fd7e14"
-                                  strokeWidth="2"
-                                  points={monthlyData
-                                    .map((month, index) => {
-                                      const x = index * (500 / Math.max(1, monthlyData.length - 1))
-                                      const y = 300 - ((month.sick || 0) / yAxisMax) * 300
-                                      return `${x},${y}`
-                                    })
-                                    .join(" ")}
-                                />
-                                
-                                <polyline
-                                  fill="none"
-                                  stroke="#dc3545"
-                                  strokeWidth="2"
-                                  points={monthlyData
-                                    .map((month, index) => {
-                                      const x = index * (500 / Math.max(1, monthlyData.length - 1))
-                                      const y = 300 - ((month.deceased || 0) / yAxisMax) * 300
-                                      return `${x},${y}`
-                                    })
-                                    .join(" ")}
-                                />
-
-                                {/* Data points */}
-                                {monthlyData.map((month, index) => {
-                                  const x = index * (500 / Math.max(1, monthlyData.length - 1))
-                                  return (
-                                    <g key={index}>
-                                      <circle
-                                        cx={x}
-                                        cy={300 - ((month.healthy || 0) / yAxisMax) * 300}
-                                        r="4"
-                                        fill="#28a745"
-                                        stroke="#ffffff"
-                                        strokeWidth="1.5"
+                          {/* Chart area */}
+                          <div className="ml-16 pl-2 h-[300px] flex items-end justify-start px-0 border-b border-l border-gray-300 relative min-w-[500px]">
+                            {monthlyData.length > 0 && (
+                              <>
+                                <svg
+                                  width={`${Math.max(500, monthlyData.length * 70)}px`}
+                                  height="300px"
+                                  className="absolute top-0 left-0"
+                                  style={{ marginLeft: "20px" }}
+                                >
+                                  {/* Grid lines */}
+                                  {yAxisSteps.map((value) => {
+                                    const y = 300 - (value / yAxisMax) * 300
+                                    return (
+                                      <line
+                                        key={value}
+                                        x1="0"
+                                        y1={y}
+                                        x2={monthlyData.length > 1 ? (monthlyData.length - 1) * 70 : 500}
+                                        y2={y}
+                                        stroke="#e5e7eb"
+                                        strokeWidth="1"
+                                        strokeDasharray="2,2"
                                       />
-                                      <circle
-                                        cx={x}
-                                        cy={300 - ((month.sick || 0) / yAxisMax) * 300}
-                                        r="4"
-                                        fill="#fd7e14"
-                                        stroke="#ffffff"
-                                        strokeWidth="1.5"
-                                      />
-                                      <circle
-                                        cx={x}
-                                        cy={300 - ((month.deceased || 0) / yAxisMax) * 300}
-                                        r="4"
-                                        fill="#dc3545"
-                                        stroke="#ffffff"
-                                        strokeWidth="1.5"
-                                      />
-                                    </g>
-                                  )
-                                })}
+                                    )
+                                  })}
 
-                                {/* Zero baseline */}
-                                <line
-                                  x1="0"
-                                  y1="300"
-                                  x2="500"
-                                  y2="300"
-                                  stroke="#6b7280"
-                                  strokeWidth="2"
-                                  opacity="0.8"
-                                />
-                              </svg>
+                                  {/* Calculate dynamic spacing */}
+                                  {(() => {
+                                    const totalWidth = Math.max(500, monthlyData.length * 70)
+                                    const spacing = monthlyData.length > 1 ? totalWidth / (monthlyData.length - 1) : 500
+                                    
+                                    return (
+                                      <>
+                                        {/* Chart lines */}
+                                        <polyline
+                                          fill="none"
+                                          stroke="#28a745"
+                                          strokeWidth="2"
+                                          points={monthlyData
+                                            .map((month, index) => {
+                                              const x = index * spacing
+                                              const y = 300 - ((month.healthy || 0) / yAxisMax) * 300
+                                              return `${x},${y}`
+                                            })
+                                            .join(" ")}
+                                        />
+                                        
+                                        <polyline
+                                          fill="none"
+                                          stroke="#fd7e14"
+                                          strokeWidth="2"
+                                          points={monthlyData
+                                            .map((month, index) => {
+                                              const x = index * spacing
+                                              const y = 300 - ((month.sick || 0) / yAxisMax) * 300
+                                              return `${x},${y}`
+                                            })
+                                            .join(" ")}
+                                        />
+                                        
+                                        <polyline
+                                          fill="none"
+                                          stroke="#dc3545"
+                                          strokeWidth="2"
+                                          points={monthlyData
+                                            .map((month, index) => {
+                                              const x = index * spacing
+                                              const y = 300 - ((month.deceased || 0) / yAxisMax) * 300
+                                              return `${x},${y}`
+                                            })
+                                            .join(" ")}
+                                        />
 
-                              {/* Month labels - FIXED: Proper alignment with data points */}
-                              <div 
-                                className="absolute -bottom-8 left-0 right-0 flex justify-between" 
-                                style={{ 
-                                  marginLeft: "20px", 
-                                  width: "500px",
-                                  paddingLeft: "0px",
-                                  paddingRight: "0px"
-                                }}
-                              >
-                                {monthlyData.map((monthData, index) => {
-                                  // Calculate exact X position to match SVG data points
-                                  const totalWidth = 500
-                                  const pointSpacing = totalWidth / Math.max(1, monthlyData.length - 1)
-                                  const xPosition = index * pointSpacing
-                                  
-                                  return (
-                                    <div 
-                                      key={index} 
-                                      className="flex flex-col items-center absolute"
-                                      style={{ 
-                                        left: `${xPosition}px`,
-                                        transform: "translateX(-50%)"
-                                      }}
-                                    >
-                                      <div className="text-xs text-gray-600 font-medium text-center whitespace-nowrap">
-                                        {String(monthData.month).substring(0, 3)}
+                                        {/* Data points */}
+                                        {monthlyData.map((month, index) => {
+                                          const x = index * spacing
+                                          return (
+                                            <g key={index}>
+                                              <circle
+                                                cx={x}
+                                                cy={300 - ((month.healthy || 0) / yAxisMax) * 300}
+                                                r="4"
+                                                fill="#28a745"
+                                                stroke="#ffffff"
+                                                strokeWidth="1.5"
+                                              />
+                                              <circle
+                                                cx={x}
+                                                cy={300 - ((month.sick || 0) / yAxisMax) * 300}
+                                                r="4"
+                                                fill="#fd7e14"
+                                                stroke="#ffffff"
+                                                strokeWidth="1.5"
+                                              />
+                                              <circle
+                                                cx={x}
+                                                cy={300 - ((month.deceased || 0) / yAxisMax) * 300}
+                                                r="4"
+                                                fill="#dc3545"
+                                                stroke="#ffffff"
+                                                strokeWidth="1.5"
+                                              />
+                                            </g>
+                                          )
+                                        })}
+
+                                        {/* Zero baseline */}
+                                        <line
+                                          x1="0"
+                                          y1="300"
+                                          x2={totalWidth}
+                                          y2="300"
+                                          stroke="#6b7280"
+                                          strokeWidth="2"
+                                          opacity="0.8"
+                                        />
+                                      </>
+                                    )
+                                  })()}
+                                </svg>
+
+                                {/* Month labels */}
+                                <div 
+                                  className="absolute -bottom-8 left-0 flex" 
+                                  style={{ 
+                                    marginLeft: "20px",
+                                    width: `${Math.max(500, monthlyData.length * 70)}px`
+                                  }}
+                                >
+                                  {monthlyData.map((monthData, index) => {
+                                    const totalWidth = Math.max(500, monthlyData.length * 70)
+                                    const spacing = monthlyData.length > 1 ? totalWidth / (monthlyData.length - 1) : 0
+                                    const xPosition = index * spacing
+                                    
+                                    return (
+                                      <div 
+                                        key={index} 
+                                        className="absolute flex flex-col items-center"
+                                        style={{ 
+                                          left: `${xPosition}px`,
+                                          transform: monthlyData.length > 1 && index === monthlyData.length - 1 
+                                            ? "translateX(-100%)" 
+                                            : index === 0 
+                                              ? "translateX(0)" 
+                                              : "translateX(-50%)"
+                                        }}
+                                      >
+                                        <div className="text-xs text-gray-600 font-medium text-center whitespace-nowrap">
+                                          {String(monthData.month).substring(0, 3)}
+                                        </div>
                                       </div>
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </>
-                          )}
-                          
-                          {/* X-axis title */}
-                          <div className="absolute -bottom-20 left-1/2 transform -translate-x-1/2 text-xs font-medium text-gray-600">
-                            Months
+                                    )
+                                  })}
+                                </div>
+                              </>
+                            )}
+                            
+                            {/* X-axis title */}
+                            <div className="absolute -bottom-25 left-1/2 transform -translate-x-1/2 text-xs font-medium text-gray-600 whitespace-nowrap">
+                              Months
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Scroll indicator (only shows when needed) */}
+                    {monthlyData.length > 10 && (
+                      <div className="text-xs text-gray-400 text-center mt-2 pt-2 border-t border-gray-200">
+                        Scroll horizontally to view all months →
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Pie Chart - Takes 1/3 of the width (Deceased Horses Only) */}
+            <div className="bg-white rounded-lg shadow-sm p-4 lg:p-6 border border-gray-200">
+              <div className="flex items-center gap-3 mb-5">
+                <h2 className="text-lg lg:text-[18px] font-semibold text-gray-950">
+                  Deceased Horses Overview
+                </h2>
+              </div>
+
+              {chartLoading ? (
+                <div className="animate-pulse">
+                  <div className="h-64 w-64 rounded-full bg-gray-300 mx-auto mb-6"></div>
+                  <div className="space-y-3">
+                    <div className="h-4 bg-gray-300 rounded w-3/4 mx-auto"></div>
+                    <div className="h-4 bg-gray-300 rounded w-1/2 mx-auto"></div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Pie Chart Visualization - Deceased vs Alive */}
+                  <div className="flex flex-col items-center">
+                    <div className="relative w-64 h-64 mb-6">
+                      {/* SVG Pie Chart - Only deceased vs alive (healthy + sick) */}
+                      <svg width="256" height="256" viewBox="0 0 256 256" className="transform -rotate-90">
+                        {/* Alive segment (Healthy + Sick) */}
+                        {alivePercentage > 0 && (
+                          <circle
+                            cx="128"
+                            cy="128"
+                            r="100"
+                            fill="transparent"
+                            stroke="#e5e7eb" /* Light gray for alive */
+                            strokeWidth="50"
+                            strokeDasharray={`${alivePercentage * 3.6} ${360 - (alivePercentage * 3.6)}`}
+                            strokeDashoffset="0"
+                          />
+                        )}
+                        
+                        {/* Deceased segment */}
+                        {deceasedPercentage > 0 && (
+                          <circle
+                            cx="128"
+                            cy="128"
+                            r="100"
+                            fill="transparent"
+                            stroke="#dc3545" /* Red for deceased */
+                            strokeWidth="50"
+                            strokeDasharray={`${deceasedPercentage * 3.6} ${360 - (deceasedPercentage * 3.6)}`}
+                            strokeDashoffset={`-${alivePercentage * 3.6}`}
+                          />
+                        )}
+                      </svg>
+                      
+                      {/* Center text */}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <div className="text-2xl font-bold text-gray-900">{statistics.deceased}</div>
+                        <div className="text-sm text-gray-600">Deceased Horses</div>
+                        <div className="text-xs text-gray-500 mt-1">{deceasedPercentage}% of total</div>
+                      </div>
+                    </div>
+
+                    {/* Statistics Summary */}
+                    <div className="w-full space-y-4">
+                      {/* Deceased Horses Detail */}
+                      <div className="p-4 bg-red-50 rounded-lg border border-red-100">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded-sm bg-red-500"></div>
+                            <span className="text-sm font-medium text-gray-700">Deceased Horses</span>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-lg font-bold text-red-600">{statistics.deceased}</div>
+                            <div className="text-xs text-gray-600">{deceasedPercentage}% of total</div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Add the monthly data table below the chart */}
-                      {monthlyData.length > 0 && (
-                        <div className="mt-20 bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                          <div className="px-6 py-4 border-b border-gray-200">
-                            <h3 className="text-lg font-semibold text-gray-900">Monthly Health Status Data</h3>
-                            <p className="text-sm text-gray-500 mt-1">Detailed breakdown of health status by month</p>
-                          </div>
-                          
-                          <div className="overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                    Month
-                                  </th>
-                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                    Total
-                                  </th>
-                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                    Healthy
-                                  </th>
-                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                    Sick
-                                  </th>
-                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                    Deceased
-                                  </th>
-                                  <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                                    Healthy %
-                                  </th>
-                                </tr>
-                              </thead>
-                              <tbody className="bg-white divide-y divide-gray-200">
-                                {monthlyData.map((month, index) => {
-                                  const healthyPercentage = month.total ? ((month.healthy / month.total) * 100).toFixed(1) : "0.0";
-                                  return (
-                                    <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                                        {month.month}
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-semibold">
-                                        {month.total}
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                                          {month.healthy}
-                                        </span>
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-                                          {month.sick}
-                                        </span>
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap text-sm">
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                                          {month.deceased}
-                                        </span>
-                                      </td>
-                                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-medium">
-                                        {healthyPercentage}%
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                                
-                                {/* Summary row */}
-                                {monthlyData.length > 1 && (
-                                  <tr className="bg-gray-100 border-t border-gray-300">
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                                      Total
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                                      {monthlyData.reduce((sum, month) => sum + month.total, 0)}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-700">
-                                      {monthlyData.reduce((sum, month) => sum + month.healthy, 0)}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-orange-700">
-                                      {monthlyData.reduce((sum, month) => sum + month.sick, 0)}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-700">
-                                      {monthlyData.reduce((sum, month) => sum + month.deceased, 0)}
-                                    </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
-                                      {(() => {
-                                        const totalHorses = monthlyData.reduce((sum, month) => sum + month.total, 0);
-                                        const totalHealthy = monthlyData.reduce((sum, month) => sum + month.healthy, 0);
-                                        return totalHorses ? ((totalHealthy / totalHorses) * 100).toFixed(1) : "0.0";
-                                      })()}%
-                                    </td>
-                                  </tr>
-                                )}
-                              </tbody>
-                            </table>
-                          </div>
-                          
-                          <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
-                            <div className="flex justify-between items-center">
-                              <div>
-                                Showing {monthlyData.length} month{monthlyData.length !== 1 ? 's' : ''} of data
-                                {dateFrom && dateTo && (
-                                  <span className="ml-2">(Filtered: {dateFrom} to {dateTo})</span>
-                                )}
-                              </div>
-                             
-                            </div>
-                          </div>
+                      {/* Total Horses */}
+                      <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <div className="flex items-center justify-between">
+                          <div className="text-sm font-medium text-gray-700">Total Horses</div>
+                          <div className="text-lg font-bold text-gray-900">{totalHorses}</div>
                         </div>
-                      )}
-
-                      {monthlyData.length === 0 && !isLoading && (
-                        <div className="text-center text-gray-500 py-12 bg-gray-50 rounded-lg mt-8">
-                          <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                          <p className="text-lg font-medium text-gray-600 mb-2">No Data Available</p>
-                          <p className="text-sm text-gray-500 max-w-md mx-auto">
-                            {dateFrom || dateTo
-                              ? "No data found for the selected date range. Try adjusting your filters."
-                              : "No health data available in the system."}
-                          </p>
-                          {(dateFrom || dateTo) && (
-                            <button
-                              onClick={handleClearFilters}
-                              className="mt-4 bg-[#0F3D5A] text-white px-4 py-2 rounded-md text-sm hover:bg-[#0C3148] transition-colors"
-                            >
-                              Clear Date Filters
-                            </button>
-                          )}
-                        </div>
-                      )}
+                      </div>
                     </div>
                   </div>
                 </>
               )}
             </div>
           </div>
+
+          {/* Data Table Section */}
+          {monthlyData.length > 0 && !chartLoading && (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Monthly Health Status Data</h3>
+                <p className="text-sm text-gray-500 mt-1">Detailed breakdown of health status by month</p>
+              </div>
+              
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                        Month
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                        Total
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                        Healthy
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                        Sick
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                        Deceased
+                      </th>
+                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                        Healthy %
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {monthlyData.map((month, index) => {
+                      const healthyPercentage = month.total ? ((month.healthy / month.total) * 100).toFixed(1) : "0.0";
+                      return (
+                        <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {month.month}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-semibold">
+                            {month.total}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                              {month.healthy}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
+                              {month.sick}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                              {month.deceased}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-medium">
+                            {healthyPercentage}%
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    
+                    {/* Summary row - Fixed calculations */}
+                    {monthlyData.length > 1 && (
+                      <tr className="bg-gray-100 border-t border-gray-300">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                          Total
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                          {(() => {
+                            // Calculate from monthly data for accuracy
+                            const totalHealthy = monthlyData.reduce((sum, month) => sum + month.healthy, 0);
+                            const totalSick = monthlyData.reduce((sum, month) => sum + month.sick, 0);
+                            const totalDeceased = monthlyData.reduce((sum, month) => sum + month.deceased, 0);
+                            return totalHealthy + totalSick + totalDeceased;
+                          })()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-green-700">
+                          {monthlyData.reduce((sum, month) => sum + month.healthy, 0)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-orange-700">
+                          {monthlyData.reduce((sum, month) => sum + month.sick, 0)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-red-700">
+                          {monthlyData.reduce((sum, month) => sum + month.deceased, 0)}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-900">
+                          {(() => {
+                            const totalHealthy = monthlyData.reduce((sum, month) => sum + month.healthy, 0);
+                            const totalSick = monthlyData.reduce((sum, month) => sum + month.sick, 0);
+                            const totalDeceased = monthlyData.reduce((sum, month) => sum + month.deceased, 0);
+                            const totalHorses = totalHealthy + totalSick + totalDeceased;
+                            return totalHorses ? ((totalHealthy / totalHorses) * 100).toFixed(1) : "0.0";
+                          })()}%
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 text-xs text-gray-500">
+                <div className="flex justify-between items-center">
+                  <div>
+                    Showing {monthlyData.length} month{monthlyData.length !== 1 ? 's' : ''} of data
+                    {dateFrom && dateTo && (
+                      <span className="ml-2">(Filtered: {dateFrom} to {dateTo})</span>
+                    )}
+                  </div>
+                  <div className="text-xs text-gray-400">
+                    Data verified: {verifyDataConsistency(monthlyData, statistics) ? "✓ Consistent" : "⚠ Check required"}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {monthlyData.length === 0 && !isLoading && !chartLoading && (
+            <div className="text-center text-gray-500 py-12 bg-gray-50 rounded-lg mt-8">
+              <Calendar className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <p className="text-lg font-medium text-gray-600 mb-2">No Data Available</p>
+              <p className="text-sm text-gray-500 max-w-md mx-auto">
+                {dateFrom || dateTo
+                  ? "No data found for the selected date range. Try adjusting your filters."
+                  : "No health data available in the system."}
+              </p>
+              {(dateFrom || dateTo) && (
+                <button
+                  onClick={handleClearFilters}
+                  className="mt-4 bg-[#0F3D5A] text-white px-4 py-2 rounded-md text-sm hover:bg-[#0C3148] transition-colors"
+                >
+                  Clear Date Filters
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

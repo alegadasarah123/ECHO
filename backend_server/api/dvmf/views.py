@@ -622,33 +622,27 @@ from datetime import datetime
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
+# -------------------- GET VET NOTIFICATIONS --------------------
 @api_view(["GET"])
 def get_vetnotifications(request):
     try:
         existing_keys = set()
         notifications_to_insert = []
 
-        # ---------------- FETCH EXISTING NOTIFICATIONS ----------------
+        # Fetch existing notifications to avoid duplicates
         try:
-            # Get ALL existing notifications (including read ones) to prevent duplicates
-            existing_res = sr_client.table("notification") \
-                .select("related_id, notif_read") \
-                .not_.is_("related_id", None) \
-                .execute()
-            existing_keys = {row["related_id"] for row in (existing_res.data or [])}
-        except Exception as e:
-            print(f"Error fetching existing notifications: {e}")
+            existing_res = sr_client.table("notification").select("*").execute()
+            existing_keys = set(row.get("related_id") for row in (existing_res.data or []) if row.get("related_id"))
+        except:
             existing_keys = set()
 
-        # ---------------- HELPER FUNCTION ----------------
+        # Helper to add notifications
         def add_notification(user_id, message, notif_type, related_id, created_at=None):
-            # Prevent duplicates based on related_id regardless of read status
-            if not user_id or not related_id or related_id in existing_keys:
+            if not user_id or related_id in existing_keys:
                 return
-
-            dt_ph = datetime.fromisoformat(created_at) if created_at else datetime.now()
+            dt_ph = to_manila_time(created_at) if created_at else datetime.now(manila_tz)
             notifications_to_insert.append({
-                "id": user_id,  # FIXED: This should be 'id' (foreign key to users), not 'user_id'
+                "id": user_id,
                 "notif_message": message,
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
@@ -658,237 +652,105 @@ def get_vetnotifications(request):
             })
             existing_keys.add(related_id)
 
-        # ---------------- SOS EMERGENCY REQUESTS ----------------
-        try:
-            # Fetch SOS requests with pending status
-            sos_res = sr_client.table("sos_requests") \
-                .select("id, user_name, emergency_type, horse_status, description, location_text, created_at, user_id, status") \
-                .eq("status", "pending") \
-                .execute()
-
-            for sos in (sos_res.data or []):
-                if sos.get("status", "").lower() != "pending":
-                    continue
-
-                # Get user_id from SOS request or related user
-                user_id = sos.get("user_id")
-                if not user_id:
-                    continue
-
-                # Create related_id using SOS request ID
-                related_id = f"sos_{sos['id']}"
-                
-                # Construct notification message (without status)
-                user_name = sos.get("user_name", "A user")
-                emergency_type = sos.get("emergency_type", "an emergency")
-                horse_status = sos.get("horse_status", "")
-                location = sos.get("location_text", "")
-                
-                # Build descriptive message
-                description = sos.get("description", "")
-                if description:
-                    # Truncate description if too long
-                    if len(description) > 50:
-                        description = f"{description[:47]}..."
-                
-                # Create the notification message without mentioning status
-                message_parts = [f"{user_name} reported {emergency_type}"]
-                
-                if horse_status:
-                    message_parts.append(f"Horse: {horse_status}")
-                
-                if location:
-                    message_parts.append(f"Location: {location}")
-                
-                if description:
-                    message_parts.append(f"Details: {description}")
-                
-                message = ". ".join(message_parts) + "."
-                
-                add_notification(
-                    user_id,
-                    message,
-                    "sos_emergency",
-                    related_id,
-                    sos.get("created_at")
-                )
-        except Exception as e:
-            print(f"Error in SOS request notifications: {e}")
-
-        # ---------------- VET REGISTRATION / APPROVAL / DECLINE ----------------
+        # ---------------- VET REGISTRATION/APPROVAL/DECLINE ----------------
         try:
             vets_res = sr_client.table("vet_profile") \
                 .select("vet_id, vet_fname, vet_lname, created_at, users(id, status, role)") \
                 .execute()
-
             for vet in (vets_res.data or []):
                 users = vet.get("users") or {}
-                if users.get("role", "").lower() != "veterinarian":
+                if users.get("role","").lower() != "veterinarian":
                     continue
-
                 user_id = users.get("id")
-                status = users.get("status", "").lower()
-                vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
-
-                if status in ["pending", "approved", "declined"]:
-                    related_id = f"vet_{vet['vet_id']}_{status}"
-                    add_notification(
-                        user_id,
-                        f"Veterinarian {status}: Dr. {vet_name}.",
-                        status,
-                        related_id,
-                        vet.get("created_at")
-                    )
-        except Exception as e:
-            print(f"Error in vet notifications: {e}")
+                status = users.get("status","").lower()
+                vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
+                if status in ["pending","approved","declined"]:
+                    add_notification(user_id, f"Veterinarian {status}: Dr. {vet_name}.", status,
+                                     f"vet_{vet['vet_id']}_{status}", vet.get("created_at"))
+        except:
+            pass
 
         # ---------------- MEDICAL RECORD ACCESS REQUESTS ----------------
         try:
             medreq_res = sr_client.table("medrec_access_request") \
                 .select("request_id, vet_profile(vet_fname, vet_lname, users(id)), horse_profile(horse_name), requested_at, request_status") \
                 .execute()
-
             for req in (medreq_res.data or []):
-                if req.get("request_status", "").lower() != "pending":
+                if req.get("request_status","").lower() != "pending":
                     continue
-
                 vet = req.get("vet_profile") or {}
                 users = vet.get("users") or {}
                 user_id = users.get("id")
                 if not user_id:
                     continue
-
-                vet_name = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}".strip()
-                horse_name = (req.get("horse_profile") or {}).get("horse_name", "Unknown Horse")
-
-                related_id = f"medreq_{req['request_id']}"
-                add_notification(
-                    user_id,
-                    f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
-                    "medrec_request",
-                    related_id,
-                    req.get("requested_at")
-                )
-        except Exception as e:
-            print(f"Error in medical record notifications: {e}")
+                vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
+                horse_name = (req.get("horse_profile") or {}).get("horse_name","Unknown Horse")
+                add_notification(user_id, f"Vet. {vet_name} requested access to {horse_name}'s medical record.",
+                                 "medrec_request", f"medreq_{req['request_id']}", req.get("requested_at"))
+        except:
+            pass
 
         # ---------------- COMMENT NOTIFICATIONS ----------------
         try:
             comments_res = sr_client.table("comment") \
                 .select("id, comment_text, comment_date, user_id, announcement_id") \
                 .execute()
-
             for comment in (comments_res.data or []):
                 commenter_id = comment.get("user_id")
                 ann_id = comment.get("announcement_id")
                 if not commenter_id or not ann_id:
                     continue
-
                 related_id = f"comment_{comment['id']}"
                 if related_id in existing_keys:
                     continue
 
-                # Correct PK column: announce_id
-                try:
-                    # Debug logging to see what we're looking for
-                    print(f"Looking for announcement ID: {ann_id}")
-                    
-                    announcement_res = sr_client.table("announcement") \
-                        .select("user_id") \
-                        .eq("announce_id", ann_id) \
-                        .maybe_single() \
-                        .execute()
-                    
-                    # FIXED: Check if the response object exists and has data attribute
-                    if not announcement_res:
-                        print(f"No response object for announcement {ann_id}")
-                        continue
-                    
-                    if not hasattr(announcement_res, 'data'):
-                        print(f"Response object has no data attribute for announcement {ann_id}")
-                        continue
-                    
-                    post_owner_id = announcement_res.data.get("user_id") if announcement_res.data else None
-                    print(f"Found post owner ID: {post_owner_id} for announcement {ann_id}")
-                    
-                except Exception as ann_error:
-                    print(f"Error fetching announcement {ann_id}: {ann_error}")
-                    continue
-
+                # Fetch announcement owner
+                announcement_res = sr_client.table("announcement").select("user_id") \
+                    .eq("id", ann_id).maybe_single().execute()
+                post_owner_id = announcement_res.data.get("user_id") if announcement_res.data else None
                 if not post_owner_id or post_owner_id == commenter_id:
                     continue
 
-                # Fetch commenter name
+                # Get commenter name (Kutsero or Horse Operator)
                 commenter_name = None
-                try:
-                    kutsero_res = sr_client.table("kutsero_profile").select("kutsero_fname,kutsero_lname") \
-                        .eq("kutsero_id", commenter_id).maybe_single().execute()
-                    if kutsero_res and kutsero_res.data:
-                        commenter_name = f"{kutsero_res.data.get('kutsero_fname', '')} {kutsero_res.data.get('kutsero_lname', '')}".strip()
-                    else:
-                        op_res = sr_client.table("horse_op_profile").select("op_fname,op_lname") \
-                            .eq("op_id", commenter_id).maybe_single().execute()
-                        if op_res and op_res.data:
-                            commenter_name = f"{op_res.data.get('op_fname', '')} {op_res.data.get('op_lname', '')}".strip()
-                except Exception as name_error:
-                    print(f"Error fetching commenter name {commenter_id}: {name_error}")
-                    continue
-
+                kutsero_res = sr_client.table("kutsero_profile").select("kutsero_fname,kutsero_lname") \
+                                .eq("kutsero_id", commenter_id).maybe_single().execute()
+                if kutsero_res.data:
+                    commenter_name = f"{kutsero_res.data.get('kutsero_fname','')} {kutsero_res.data.get('kutsero_lname','')}".strip()
+                else:
+                    op_res = sr_client.table("horse_op_profile").select("op_fname,op_lname") \
+                                .eq("op_id", commenter_id).maybe_single().execute()
+                    if op_res.data:
+                        commenter_name = f"{op_res.data.get('op_fname','')} {op_res.data.get('op_lname','')}".strip()
                 if not commenter_name:
                     continue
 
-                comment_text = comment.get('comment_text', '')
-                if len(comment_text) > 50:
-                    comment_text = f"{comment_text[:47]}..."
+                add_notification(post_owner_id, f"{commenter_name} commented: '{comment.get('comment_text','')[:50]}...'",
+                                 "comment", related_id, comment.get("comment_date"))
+        except:
+            pass
 
-                add_notification(
-                    post_owner_id,
-                    f"{commenter_name} commented: '{comment_text}'",
-                    "comment",
-                    related_id,
-                    comment.get("comment_date")
-                )
-        except Exception as e:
-            print(f"Error in comment notifications: {e}")
-
-        # ---------------- BULK INSERT (DEDUPED) ----------------
+        # ---------------- BULK INSERT ----------------
         if notifications_to_insert:
             try:
-                result = sr_client.table("notification").insert(notifications_to_insert).execute()
-                print(f"Inserted {len(notifications_to_insert)} new notifications")
-                if hasattr(result, 'error') and result.error:
-                    print(f"Insert error details: {result.error}")
-            except Exception as e:
-                print(f"Error inserting notifications: {e}")
+                sr_client.table("notification").insert(notifications_to_insert).execute()
+            except:
+                pass
 
-        # ---------------- FETCH ALL VALID NOTIFICATIONS ----------------
-        # Add "sos_emergency" to valid notification types
-        valid_types = ["medrec_request", "approved", "declined", "pending", "comment", "sos_emergency"]
-        all_notifs_res = (
-            sr_client.table("notification")
-            .select("*")
-            .in_("notification_type", valid_types)
-            .order("notif_date", desc=True)
-            .order("notif_time", desc=True)
-            .limit(50)
-            .execute()
-        )
-
-        notifications = [
-            {
-                "id": row.get("notif_id"),  # FIXED: Use notif_id as the notification ID
-                "message": row.get("notif_message"),
-                "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
-                "read": row.get("notif_read", False),
-                "type": row.get("notification_type", "general"),
-            }
-            for row in (all_notifs_res.data or [])
-        ]
+        # ---------------- FETCH ALL NOTIFICATIONS ----------------
+        all_notifs_res = sr_client.table("notification").select("*") \
+                            .order("notif_date", desc=True).order("notif_time", desc=True).execute()
+        notifications = [{
+            "id": row.get("id"),
+            "message": row.get("notif_message"),
+            "date": f"{row.get('notif_date')}T{row.get('notif_time')}+08:00",
+            "read": row.get("notif_read", False),
+            "type": row.get("notification_type","general")
+        } for row in (all_notifs_res.data or [])]
 
         return Response(notifications, status=200)
 
     except Exception as e:
-        print(f"Error in get_vetnotifications: {e}")
         return Response({"error": str(e)}, status=500)
 
 

@@ -98,7 +98,7 @@ def login(request):
         value=access_token,
         httponly=True,
         secure=False,
-        samesite="None",
+        samesite="Lax",
         max_age=86400
     )
 
@@ -109,33 +109,19 @@ def login(request):
 @api_view(['GET'])
 def check_email(request):
     email = request.GET.get('email', '').strip().lower()
-
+    
     if not email:
         return Response({"exists": False}, status=status.HTTP_400_BAD_REQUEST)
-
+    
     try:
-        service_client = create_client(
-            settings.SUPABASE_URL,
-            settings.SUPABASE_SERVICE_ROLE_KEY
-        )
-
-        result = service_client.auth.admin.list_users()
-        users = result.users  # ✅ THIS is the list
-
-        user_exists = any(
-            user.email and user.email.lower() == email
-            for user in users
-        )
-
+        service_client = create_client(settings.SUPABASE_URL, settings.SUPABASE_SERVICE_ROLE_KEY)   
+        users_list = service_client.auth.admin.list_users()
+        user_exists = any(user.email.lower() == email for user in users_list)
         return Response({"exists": user_exists}, status=status.HTTP_200_OK)
-
+        
     except Exception as e:
-        print("check_email error:", e)
-        return Response(
-            {"exists": False, "error": str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
+        print(f"Error checking email: {e}")
+        return Response({"exists": False, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
 #-----------------------------------------------------------------SIGNUP VET WEB---------------------------------------------------------------------------------------
 @api_view(['POST'])

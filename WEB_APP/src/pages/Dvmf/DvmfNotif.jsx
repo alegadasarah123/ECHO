@@ -298,9 +298,7 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
             </div>
           ) : notifications.length > 0 ? (
             <div>
-              <div style={styles.notificationsHeader}>
-                <span>Showing {notifications.length} unique notification{notifications.length !== 1 ? 's' : ''}</span>
-              </div>
+              
               {notifications.map((n) => (
                 <div
                   key={n.uniqueKey}

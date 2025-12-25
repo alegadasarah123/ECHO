@@ -12,6 +12,7 @@ urlpatterns = [
     path("update-vet-status/<str:vet_profile_id>/", views.update_vet_status, name="update-vet-status"),
 
     path('users/', views.fetch_users, name='fetch-users'), 
+    path('get_users/', views.get_users, name='get_users'),
      path('users/deactivate/<str:user_id>/', views.deactivate_user, name='deactivate_user'),
     path('users/reactivate/<str:user_id>/', views.reactivate_user, name='reactivate_user'),
    
@@ -27,7 +28,6 @@ urlpatterns = [
 
 
 
-    path('get-users/', views.get_users, name='get-users'),
     
         # urls.py
     path('get_directory_profiles/', views.get_directory_profiles, name='get_directory_profiles'),

@@ -1,7 +1,7 @@
 "use client"
 
 import Sidebar from "@/components/DvmfSidebar"
-import { Bell, CheckCircle, Edit2, Eye, EyeOff, Plus, RefreshCcw, Users, XCircle } from "lucide-react"
+import { Bell, Edit2, Eye, EyeOff, RefreshCcw } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 
@@ -46,16 +46,6 @@ const DvmfSettings = () => {
 
   const [activeUserTab, setActiveUserTab] = useState("addNew")
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
-  // State for new user
-  const [newUser, setNewUser] = useState({
-    firstname: "",
-    lastname: "",
-    email: "",
-    phone: "",
-    role: "Dvmf",
-    password: "",
-  })
-
   const [error, setError] = useState("")
   const [activeSettingsView, setActiveSettingsView] = useState("userManagement")
   const [isLoading, setIsLoading] = useState(false)
@@ -67,10 +57,7 @@ const DvmfSettings = () => {
     confirm_new_password: "",
   })
 
-  // Phone validation error state
   const [phoneError, setPhoneError] = useState("")
-
-  // Refresh state
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   const handleChange = (e) => {
@@ -352,134 +339,11 @@ const handleNotificationClick = async (notification) => {
     }
   }
 
-  // Handle input changes
-  const handleNewUserChange = (field, value) => {
-    setNewUser((prev) => ({ ...prev, [field]: value }))
-    
-    // Clear phone error when user starts typing
-    if (field === "phone") {
-      setPhoneError("")
-    }
-  }
-
   const togglePasswordVisibility = (field) => {
     setPasswordVisibility((prev) => ({
       ...prev,
       [field]: !prev[field],
     }))
-  }
-
-  const toggleNewUserPasswordVisibility = () => {
-    setIsPasswordVisible(!isPasswordVisible)
-  }
-
-  // Add new user function
-  const addNewUser = async () => {
-    const { firstname, lastname, email, phone, password, role } = newUser
-
-    // Validate input
-    if (!firstname || !lastname || !email || !phone || !password || !role) {
-      showAlert("Please fill in all required fields.", "error")
-      return
-    }
-
-    // Validate email
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-    if (!emailRegex.test(email.trim())) {
-      showAlert("Please enter a valid email address.", "error")
-      return
-    }
-
-    // Validate phone: must start with 09 and be 11 digits
-    const phoneRegex = /^09\d{9}$/
-    if (!phoneRegex.test(phone.trim())) {
-      setPhoneError("Phone number must start with 09 and be 11 digits long.")
-      showAlert("Phone number must start with 09 and be 11 digits long.", "error")
-      return
-    }
-
-    try {
-      const response = await fetch("http://localhost:8000/api/dvmf/signup/", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: email.trim().toLowerCase(),
-          password: password.trim(),
-          firstName: firstname.trim(),
-          lastName: lastname.trim(),
-          phoneNumber: phone.trim(),
-          role: role.trim(),
-        }),
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        showAlert(data.error || "Failed to create user.", "error")
-        return
-      }
-
-      setUsers((prev) => [
-        ...prev,
-        {
-          id: data.user.dvmf_id || data.user.id,
-          firstname,
-          lastname,
-          email,
-          phone,
-          role: data.user.dvmf_role || role,
-          status: "Active",
-        },
-      ])
-
-      setNewUser({
-        firstname: "",
-        lastname: "",
-        email: "",
-        phone: "",
-        password: "",
-        role: "Dvmf",
-      })
-
-      showAlert("User created successfully!")
-    } catch (err) {
-      showAlert("Failed to add user. Make sure the backend server is running.", "error")
-    }
-  }
-
-  // DEACTIVATE USER
-  const deactivateUser = async (id) => {
-    try {
-      const res = await fetch(`http://localhost:8000/api/dvmf/users/deactivate/${id}/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      })
-
-      if (!res.ok) throw new Error("Failed to deactivate user")
-
-      setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, status: "deactivated" } : p)))
-      showAlert("User deactivated successfully!", "success")
-    } catch (err) {
-      showAlert("Error deactivating user", "error")
-    }
-  }
-
-  // REACTIVATE USER
-  const reactivateUser = async (id) => {
-    try {
-      const res = await fetch(`http://localhost:8000/api/dvmf/users/reactivate/${id}/`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      })
-
-      if (!res.ok) throw new Error("Failed to reactivate user")
-
-      setProfiles((prev) => prev.map((p) => (p.id === id ? { ...p, status: "Approved" } : p)))
-      showAlert("User reactivated successfully!", "success")
-    } catch (err) {
-      showAlert("Error reactivating user", "error")
-    }
   }
 
   // Manual refresh function
@@ -489,7 +353,6 @@ const handleNotificationClick = async (notification) => {
       await Promise.all([
         fetchProfile(),
         loadNotifications(),
-        fetchUsers()
       ])
       showAlert("Data refreshed successfully!")
     } catch (error) {
@@ -541,28 +404,6 @@ const handleNotificationClick = async (notification) => {
     }, 30000)
     return () => clearInterval(interval)
   }, [loadNotifications])
-
-  // Fetch users from backend
-  const fetchUsers = async () => {
-    try {
-      setLoading(true)
-      const res = await fetch("http://localhost:8000/api/dvmf/users/", {
-        method: "GET",
-        credentials: "include",
-      })
-      const data = await res.json()
-      if (res.ok)
-        setProfiles(data)
-    } catch (err) {
-      showAlert("Error fetching users", "error")
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchUsers()
-  }, [])
 
   const validatePassword = (password) => {
     return {
@@ -633,25 +474,19 @@ const handleNotificationClick = async (notification) => {
         </div>
 
         <div className="flex gap-6 mb-6 mt-5 ml-5">
-          {["profile", "security", "userManagement"].map((tab) => {
-            if (tab === "userManagement" && profile?.dvmf_role?.trim().toLowerCase() !== "dvmf-admin") {
-              return null
-            }
-
-            return (
-              <button
-                key={tab}
-                className={`py-1.5 px-0 bg-transparent border-none cursor-pointer text-base text-gray-600 transition-all duration-200 ${
-                  activeTab === tab
-                    ? "font-bold border-b-2 border-red-700 transform scale-105 text-[#0F3D5A]"
-                    : "hover:text-[#0F3D5A]"
-                }`}
-                onClick={() => setActiveTab(tab)}
-              >
-                {tab === "userManagement" ? "User Management" : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            )
-          })}
+          {["profile", "security"].map((tab) => (
+            <button
+              key={tab}
+              className={`py-1.5 px-0 bg-transparent border-none cursor-pointer text-base text-gray-600 transition-all duration-200 ${
+                activeTab === tab
+                  ? "font-bold border-b-2 border-red-700 transform scale-105 text-[#0F3D5A]"
+                  : "hover:text-[#0F3D5A]"
+              }`}
+              onClick={() => setActiveTab(tab)}
+            >
+              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -935,257 +770,6 @@ const handleNotificationClick = async (notification) => {
               </div>
             </div>
           )}
-
-          {activeTab === "userManagement" ? (
-            profile ? (
-              profile.dvmf_role?.trim().toLowerCase() === "dvmf-admin" ? (
-                <div className="bg-white rounded-xl p-5 mb-5 shadow-sm ml-5 mr-10">
-                  <div className="flex border-b border-gray-200 mb-6">
-                    <button
-                      className={`px-6 py-3 bg-transparent border-none cursor-pointer text-sm font-medium transition-all duration-200 ${
-                        activeUserTab === "addNew"
-                          ? "text-[#0F3D5A] border-b-2 border-[#0F3D5A] bg-blue-50"
-                          : "text-gray-600 hover:text-[#0F3D5A]"
-                      }`}
-                      onClick={() => setActiveUserTab("addNew")}
-                    >
-                      Add New User
-                    </button>
-                    <button
-                      className={`px-6 py-3 bg-transparent border-none cursor-pointer text-sm font-medium transition-all duration-200 ${
-                        activeUserTab === "existing"
-                          ? "text-[#0F3D5A] border-b-2 border-[#0F3D5A] bg-blue-50"
-                          : "text-gray-600 hover:text-[#0F3D5A]"
-                      }`}
-                      onClick={() => setActiveUserTab("existing")}
-                    >
-                      Existing Users
-                    </button>
-                  </div>
-
-                  {activeUserTab === "addNew" && (
-                    <div className="py-4">
-                      <div className="flex gap-5 mb-5 flex-wrap">
-                        <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative">
-                          <label className="font-medium mb-1">First Name</label>
-                          <input
-                            type="text"
-                            className="px-3 py-2 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                            placeholder="Enter first name"
-                            value={newUser.firstname}
-                            onChange={(e) => handleNewUserChange("firstname", e.target.value)}
-                          />
-                        </div>
-                        <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative">
-                          <label className="font-medium mb-1">Last Name</label>
-                          <input
-                            type="text"
-                            className="px-3 py-2 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                            placeholder="Enter last name"
-                            value={newUser.lastname}
-                            onChange={(e) => handleNewUserChange("lastname", e.target.value)}
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex gap-5 mb-5 flex-wrap">
-                        <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative">
-                          <label className="font-medium mb-1">Email</label>
-                          <input
-                            type="email"
-                            className="px-3 py-2 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                            placeholder="Enter email"
-                            value={newUser.email}
-                            onChange={(e) => handleNewUserChange("email", e.target.value)}
-                          />
-                        </div>
-                        <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative">
-                          <label className="font-medium mb-1">Phone Number</label>
-                          <input
-                            type="tel"
-                            className={`px-3 py-2 border rounded-md text-sm outline-none transition-all duration-200 ${
-                              phoneError 
-                                ? "border-red-500 focus:border-red-500 focus:ring-1 focus:ring-red-500" 
-                                : "border-gray-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                            }`}
-                            placeholder="Enter phone number"
-                            value={newUser.phone}
-                            onChange={(e) => handleNewUserChange("phone", e.target.value)}
-                          />
-                          {phoneError && (
-                            <p className="text-red-500 text-xs absolute -bottom-5 right-0 m-0">
-                              {phoneError}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="flex gap-5 mb-5 flex-wrap">
-                        <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative">
-                          <label className="font-medium mb-1">Role</label>
-                          <select
-                            className="px-3 py-2 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                            value={newUser.role}
-                            onChange={(e) => handleNewUserChange("role", e.target.value)}
-                          >
-                            <option value="">Select role</option>
-                            <option value="Ctu-Vetmed">Ctu-Vetmed</option>
-                            <option value="Dvmf">Dvmf</option>
-                          </select>
-                        </div>
-                        <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative">
-                          <label className="font-medium mb-1">Password</label>
-                          <div className="flex items-center">
-                            <input
-                              type={isPasswordVisible ? "text" : "password"}
-                              className="w-full pr-9 pl-3 py-2 border border-gray-300 rounded-md text-sm outline-none box-border transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                              placeholder="Enter password"
-                              value={newUser.password}
-                              onChange={(e) => handleNewUserChange("password", e.target.value)}
-                            />
-                            <button
-                              type="button"
-                              onClick={toggleNewUserPasswordVisibility}
-                              className="absolute right-3 cursor-pointer border-none bg-transparent hover:text-gray-700"
-                            >
-                              {isPasswordVisible ? <EyeOff size={16} /> : <Eye size={16} />}
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-5 text-left">
-                        <button
-                          type="button"
-                          className="flex items-center gap-2 px-5 py-2.5 bg-green-700 text-white border-none rounded-md cursor-pointer text-sm font-medium hover:bg-green-800 transition-all duration-200"
-                          onClick={addNewUser}
-                        >
-                          Add User
-                          <Plus size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {activeUserTab === "existing" && (
-                    <div className="py-4">
-                      {profiles.filter((p) => {
-                        const statusMatch =
-                          p.status === "Approved" ||
-                          p.status === "approved" ||
-                          p.status === "deactivated" ||
-                          p.status === "Deactivated"
-                        const roleMatch = p.role !== "Dvmf-Admin"
-                        return statusMatch && roleMatch
-                      }).length === 0 ? (
-                        <div className="flex flex-col items-center justify-center text-center py-10 text-gray-500 gap-2.5">
-                          <Users size={48} />
-                          <h3 className="text-lg font-semibold">No users found</h3>
-                          <p className="text-sm">Add your first user to get started</p>
-                        </div>
-                      ) : (
-                        <div className="border border-gray-200 rounded-lg overflow-hidden max-h-96 overflow-y-auto">
-                          <div className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_1fr_120px] bg-gray-50 border-b border-gray-200">
-                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">First Name</div>
-                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Last Name</div>
-                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Email</div>
-                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Phone</div>
-                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Role</div>
-                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Status</div>
-                            <div className="px-3 py-3 text-xs font-semibold text-gray-700 uppercase">Actions</div>
-                          </div>
-
-                          {profiles
-                            .filter((p) => {
-                              const statusMatch =
-                                p.status === "Approved" ||
-                                p.status === "approved" ||
-                                p.status === "deactivated" ||
-                                p.status === "Deactivated"
-                              const roleMatch = p.role !== "Dvmf-Admin"
-                              return statusMatch && roleMatch
-                            })
-                            .map((p) => {
-                              const displayStatus =
-                                p.status === "Approved" || p.status === "approved" ? "active" : p.status
-
-                              return (
-                                <div
-                                  key={p.id}
-                                  className="grid grid-cols-[1fr_1fr_2fr_1fr_1fr_1fr_120px] border-b border-gray-200 last:border-b-0"
-                                >
-                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
-                                    {p.dvmf_fname || "-"}
-                                  </div>
-                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
-                                    {p.dvmf_lname || "-"}
-                                  </div>
-                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
-                                    {p.dvmf_email || "-"}
-                                  </div>
-                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
-                                    {p.dvmf_phonenum || "-"}
-                                  </div>
-                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
-                                    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-xl text-xs font-medium">
-                                      {p.role || "-"}
-                                    </span>
-                                  </div>
-                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
-                                    <span
-                                      className={`px-2 py-1 rounded-xl text-xs font-medium text-white ${
-                                        p.status === "Approved" || p.status === "approved"
-                                          ? "bg-green-500"
-                                          : p.status === "deactivated" || p.status === "Deactivated"
-                                            ? "bg-red-500"
-                                            : "bg-gray-500"
-                                      }`}
-                                    >
-                                      {displayStatus}
-                                    </span>
-                                  </div>
-                                  <div className="px-3 py-3 text-sm text-gray-700 flex items-center justify-center gap-2">
-                                    {(p.status === "Approved" || p.status === "approved") && (
-                                      <button
-                                        className="p-1.5 bg-red-50 border border-red-200 rounded-md text-red-600 cursor-pointer transition-all duration-200 hover:bg-red-100 hover:border-red-300"
-                                        onClick={async () => {
-                                          await deactivateUser(p.id)
-                                        }}
-                                      >
-                                        <XCircle size={16} />
-                                      </button>
-                                    )}
-
-                                    {(p.status === "deactivated" || p.status === "Deactivated") && (
-                                      <button
-                                        className="p-1.5 bg-green-50 border border-green-200 rounded-md text-green-600 cursor-pointer transition-all duration-200 hover:bg-green-100 hover:border-green-300"
-                                        onClick={async () => {
-                                          await reactivateUser(p.id)
-                                        }}
-                                      >
-                                        <CheckCircle size={16} />
-                                      </button>
-                                    )}
-                                  </div>
-                                </div>
-                              )
-                            })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center text-center py-10 text-gray-500 gap-2.5">
-                  <Users size={48} />
-                  <h3 className="text-lg font-semibold">Restricted Access</h3>
-                  <p className="text-sm">You do not have permission to view this section.</p>
-                </div>
-              )
-            ) : (
-              <p>Loading...</p>
-            )
-          ) : null}
 
           <FloatingMessages />
         </div>
