@@ -81,6 +81,7 @@ urlpatterns = [
       path("edit_reply/<uuid:reply_id>/", views.edit_reply, name="edit_reply"),
     path("edit_comment/<uuid:comment_id>/", views.edit_comment, name="edit_comment"),
      path("get_current_user/", views.get_current_user, name="get_current_user"),
+     path("get_current_user_id/", views.get_current_user_id, name="get_current_user_id_id"),
 
      # -------------------- Messaging --------------------
     path("ctu_vet_profile/", views.ctu_vet_profile, name="ctu_vet_profile"),

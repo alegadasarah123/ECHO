@@ -31,47 +31,59 @@ const NotificationsModal = ({ isOpen, onNotificationClick, onClose, onMarkAllAsR
         hour12: true,
       });
     } catch (e) {
+      console.error("Error formatting date:", e, dateStr);
       return "Invalid date";
     }
   };
 
   // Mark single notification as read
-// In your markNotificationAsRead function, ensure you're using the correct ID
-const markNotificationAsRead = async (notifId) => {
-  try {
-    const response = await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
-      method: "POST",
-      credentials: "include",
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-    
-    if (!response.ok) {
-      throw new Error(`Failed to mark as read: ${response.status}`);
-    }
-    
-    return response.ok;
-  } catch (error) {
-    console.error('Error marking notification as read:', error);
-    return false;
-  }
-};
-
-  // Mark all notifications as read
-  const markAllNotificationsAsRead = async () => {
+  const markNotificationAsRead = async (notifId) => {
     try {
-      const response = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+      console.log(`Marking notification ${notifId} as read`);
+      const response = await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
         method: "POST",
         credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
-      return response.ok;
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Failed to mark as read: ${response.status}`, errorText);
+        throw new Error(`Failed to mark as read: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      return true;
     } catch (error) {
+      console.error('Error marking notification as read:', error);
       return false;
     }
   };
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  // Mark all notifications as read
+  const markAllNotificationsAsRead = async () => {
+    try {
+      console.log("Marking all notifications as read");
+      const response = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to mark all as read: ${response.status}`);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error marking all notifications as read:', error);
+      return false;
+    }
+  };
 
   // Mark all as read
   const markAllAsRead = async () => {
@@ -86,14 +98,21 @@ const markNotificationAsRead = async (notifId) => {
 
   // Handle single notification click
   const handleNotificationClick = async (notification) => {
+    console.log("Notification clicked:", notification);
+    
     if (!notification.read) {
-      const success = await markNotificationAsRead(notification.id);
+      const success = await markNotificationAsRead(notification.notif_id || notification.id);
       if (success) {
         setNotifications((prev) =>
-          prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n))
+          prev.map((n) => 
+            (n.notif_id === notification.notif_id || n.id === notification.id) 
+              ? { ...n, read: true } 
+              : n
+          )
         );
       }
     }
+    
     onClose?.();
     onNotificationClick?.(notification);
   };
@@ -104,31 +123,42 @@ const markNotificationAsRead = async (notifId) => {
       setLoading(true);
       setError(null);
       
+      console.log("Fetching notifications...");
       const response = await fetch(`${API_BASE}/get_vetnotifications/`, {
         method: "GET",
         credentials: "include",
+        headers: {
+          'Content-Type': 'application/json',
+        },
       });
       
       if (!response.ok) {
-        throw new Error(`Failed to load notifications: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`Failed to load notifications: ${response.status}`, errorText);
+        throw new Error(`Failed to load notifications: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
+      console.log("Notifications response:", data);
 
       if (Array.isArray(data)) {
         const formatted = data.map((notif, index) => ({
-          id: notif.id,
+          notif_id: notif.notif_id,  // Use notif_id from backend
+          user_id: notif.user_id,
           message: notif.message || "No message",
           date: notif.date || new Date().toISOString(),
           read: notif.read || false,
           type: notif.type || "general",
-          uniqueKey: `${notif.type}-${notif.id}-${index}`,
+          uniqueKey: `${notif.type}-${notif.notif_id}-${index}`,
         }));
+        
+        console.log(`Formatted ${formatted.length} notifications`);
         setNotifications(formatted);
       } else {
-        throw new Error("Invalid response format");
+        throw new Error("Invalid response format: expected array");
       }
     } catch (err) {
+      console.error("Error in fetchNotifications:", err);
       setError(err.message);
       setNotifications([]);
     } finally {
@@ -136,11 +166,15 @@ const markNotificationAsRead = async (notifId) => {
     }
   };
 
+  // Fetch notifications when modal opens
   useEffect(() => {
     if (isOpen) {
+      console.log("Modal opened, fetching notifications...");
       fetchNotifications();
     }
   }, [isOpen]);
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   if (!isOpen) return null;
 
@@ -168,7 +202,11 @@ const markNotificationAsRead = async (notifId) => {
           </div>
 
           {unreadCount > 0 && (
-            <button onClick={markAllAsRead} disabled={loading} style={styles.markAllButton}>
+            <button 
+              onClick={markAllAsRead} 
+              disabled={loading} 
+              style={styles.markAllButton}
+            >
               {loading ? <Loader2 size={14} className="spinner" /> : "Mark all as read"}
             </button>
           )}
@@ -237,15 +275,13 @@ const markNotificationAsRead = async (notifId) => {
           )}
         </div>
 
-        {/* Footer */}
-        {notifications.length > 0 && (
-          <div style={styles.footer}>
-            <button style={styles.clearButton} onClick={onClose}>
-              <X size={16} />
-              Close
-            </button>
-          </div>
-        )}
+        {/* Footer - Simplified */}
+        <div style={styles.footer}>
+          <button style={styles.clearButton} onClick={onClose}>
+            <X size={16} />
+            Close
+          </button>
+        </div>
       </div>
     </>
   );
@@ -258,7 +294,7 @@ const styles = {
     right: "10px",
     background: "#fff",
     borderRadius: "16px",
-    width: "380px",
+    width: "420px",
     boxShadow: "0 20px 40px rgba(0,0,0,0.15), 0 8px 20px rgba(0,0,0,0.1)",
     border: "1px solid #e5e7eb",
     zIndex: 1000,
@@ -343,6 +379,7 @@ const styles = {
     fontSize: "13px",
     margin: "0 0 16px 0",
     opacity: 0.8,
+    wordBreak: "break-word",
   },
   retryButton: {
     marginTop: "8px",
@@ -453,10 +490,11 @@ const styles = {
     opacity: 0.8,
   },
   footer: {
-    padding: "16px 20px",
+    padding: "12px 20px",
     borderTop: "1px solid #f3f4f6",
     display: "flex",
     justifyContent: "flex-end",
+    alignItems: "center",
     background: "white",
   },
   clearButton: {
@@ -477,46 +515,54 @@ const styles = {
 };
 
 // Add CSS animation for spinner
-const styleSheet = document.styleSheets[0];
-styleSheet.insertRule(`
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
+if (typeof document !== 'undefined' && document.styleSheets.length > 0) {
+  const styleSheet = document.styleSheets[0];
+  
+  try {
+    // Insert spinner animation
+    styleSheet.insertRule(`
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    `, styleSheet.cssRules.length);
+    
+    styleSheet.insertRule(`
+      .spinner {
+        animation: spin 1s linear infinite;
+      }
+    `, styleSheet.cssRules.length);
+    
+    // Hover effects
+    styleSheet.insertRule(`
+      .notification:hover .notificationHoverEffect {
+        opacity: 1;
+      }
+    `, styleSheet.cssRules.length);
+    
+    styleSheet.insertRule(`
+      .markAllButton:hover {
+        background: rgba(255,255,255,0.25) !important;
+        transform: translateY(-1px);
+      }
+    `, styleSheet.cssRules.length);
+    
+    styleSheet.insertRule(`
+      .retryButton:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(185, 28, 28, 0.3);
+      }
+    `, styleSheet.cssRules.length);
+    
+    styleSheet.insertRule(`
+      .clearButton:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
+      }
+    `, styleSheet.cssRules.length);
+  } catch (e) {
+    console.error("Error inserting CSS rules:", e);
   }
-`, styleSheet.cssRules.length);
-
-styleSheet.insertRule(`
-  .spinner {
-    animation: spin 1s linear infinite;
-  }
-`, styleSheet.cssRules.length);
-
-// Add hover effects
-styleSheet.insertRule(`
-  .notification:hover .notificationHoverEffect {
-    opacity: 1;
-  }
-`, styleSheet.cssRules.length);
-
-styleSheet.insertRule(`
-  .markAllButton:hover {
-    background: rgba(255,255,255,0.25) !important;
-    transform: translateY(-1px);
-  }
-`, styleSheet.cssRules.length);
-
-styleSheet.insertRule(`
-  .retryButton:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(185, 28, 28, 0.3);
-  }
-`, styleSheet.cssRules.length);
-
-styleSheet.insertRule(`
-  .clearButton:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(185, 28, 28, 0.3);
-  }
-`, styleSheet.cssRules.length);
+}
 
 export default NotificationsModal;
