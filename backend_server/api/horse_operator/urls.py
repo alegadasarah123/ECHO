@@ -11,7 +11,6 @@ urlpatterns = [
     path('get_horse_operator_data/', views.get_horse_operator_data, name='get_horse_operator_data'),
     path('add_horse/', views.add_horse, name='add_horse'),
     path('get_horses/', views.get_horses, name='get_horses'),
-    path('mark_horse_deceased/<str:horse_id>/', views.mark_horse_deceased, name='mark_horse_deceased'),
     path('update_horse/<str:horse_id>/', views.update_horse, name='update_horse'),
     path('delete_horse_image/<str:horse_id>/', views.delete_horse_image, name='delete_horse_image'),
     
@@ -140,4 +139,21 @@ urlpatterns = [
     path('feed-water-notifications/', views.feed_water_notifications, name='feed_water_notifications'),
     path('check-current-schedules/', views.check_current_schedules, name='check_current_schedules'),
 
+    # Death Records URLs
+    path('mark_horse_deceased/', views.mark_horse_deceased, name='mark_horse_deceased'),
+    path('get_horse_death_records/', views.get_horse_death_records, name='get_horse_death_records'),
+    path('get_horse_death_record_details/', views.get_horse_death_record_details, name='get_horse_death_record_details'),
+    path('get_horse_death_record/', views.get_horse_death_record, name='get_horse_death_record'),
+
+    # Kutsero Application URLs
+    path('get_kutsero_applications/', views.get_kutsero_applications, name='get_kutsero_applications'),
+    path('get_approved_kutseros/', views.get_approved_kutseros, name='get_approved_kutseros'),
+    path('update_kutsero_application/<int:application_id>/', views.update_kutsero_application, name='update_kutsero_application'),
+    path('remove_kutsero_assignment/', views.remove_kutsero_assignment, name='remove_kutsero_assignment'),
+    path('get_kutsero_application_stats/', views.get_kutsero_application_stats, name='get_kutsero_application_stats'),
+    path('get_kutsero_profile_details/', views.get_kutsero_profile_details, name='get_kutsero_profile_details'),
+    path('get_kutsero_horse_assignments/', views.get_kutsero_horse_assignments, name='get_kutsero_horse_assignments'),
+
+
+    
 ]

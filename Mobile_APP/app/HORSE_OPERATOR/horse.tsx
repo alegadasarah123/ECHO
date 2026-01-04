@@ -13,6 +13,7 @@ import {
   StatusBar,
   TextInput,
   Platform,
+  ActivityIndicator,
 } from "react-native"
 import { useRouter, useFocusEffect } from "expo-router"
 import { FontAwesome5 } from "@expo/vector-icons"
@@ -72,6 +73,22 @@ interface Horse {
   conditionColor?: string
 }
 
+interface MedicalRecord {
+  date: string
+  formatted_date?: string
+  vet_name?: string
+  vital_signs?: {
+    heart_rate?: string
+    respiratory_rate?: string
+    body_temperature?: string
+  }
+  assessment?: {
+    diagnosis?: string
+    prognosis?: string
+  }
+  horse_status?: string
+}
+
 interface UserData {
   id: string
   email: string
@@ -90,7 +107,7 @@ interface UserData {
   user_role: string
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
 
 type HorseTab = 'alive' | 'deceased'
 
@@ -102,6 +119,8 @@ const HorseScreen = () => {
   const [userFirstName, setUserFirstName] = useState<string | null>(null)
   const [searchText, setSearchText] = useState("")
   const [activeHorseTab, setActiveHorseTab] = useState<HorseTab>('alive')
+  const [medicalRecords, setMedicalRecords] = useState<{[key: string]: MedicalRecord | null}>({})
+  const [loadingMedicalRecords, setLoadingMedicalRecords] = useState<{[key: string]: boolean}>({})
   
   // Track if notification has been scheduled to prevent duplicates
   const notificationScheduledRef = useRef<boolean>(false)
@@ -315,6 +334,35 @@ const HorseScreen = () => {
     [userData?.profile?.op_fname],
   )
 
+  const fetchLatestMedicalRecord = useCallback(async (horseId: string, uid: string) => {
+    setLoadingMedicalRecords(prev => ({ ...prev, [horseId]: true }))
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/get_horse_medical_records/?horse_id=${encodeURIComponent(horseId)}&user_id=${encodeURIComponent(uid)}`
+      )
+      
+      if (response.ok) {
+        const data = await response.json()
+        
+        if (data.medical_records && data.medical_records.length > 0) {
+          const latestRecord = data.medical_records[0]
+          setMedicalRecords(prev => ({ ...prev, [horseId]: latestRecord }))
+          console.log("✅ Latest medical record loaded for horse:", horseId)
+        } else {
+          setMedicalRecords(prev => ({ ...prev, [horseId]: null }))
+        }
+      } else {
+        console.warn("Failed to fetch medical records for horse:", horseId)
+        setMedicalRecords(prev => ({ ...prev, [horseId]: null }))
+      }
+    } catch (error) {
+      console.error('Error fetching medical records:', error)
+      setMedicalRecords(prev => ({ ...prev, [horseId]: null }))
+    } finally {
+      setLoadingMedicalRecords(prev => ({ ...prev, [horseId]: false }))
+    }
+  }, [])
+
   const fetchHorses = useCallback(
     async (uid?: string) => {
       try {
@@ -348,6 +396,13 @@ const HorseScreen = () => {
         const horsesArray = Array.isArray(data) ? data : []
         setHorses(horsesArray)
 
+        // Fetch latest medical records for each horse
+        horsesArray.forEach((horse: Horse) => {
+          if (horse.horse_id && horse.horse_status !== 'Deceased') {
+            fetchLatestMedicalRecord(horse.horse_id, targetUid!)
+          }
+        })
+
         // Count alive horses (excluding deceased)
         const aliveHorsesCount = horsesArray.filter((horse: Horse) => 
           horse.horse_status !== 'Deceased'
@@ -363,7 +418,7 @@ const HorseScreen = () => {
         Alert.alert("Error", error.message || "Unable to load horses")
       }
     },
-    [userId, scheduleDailyHealthCheck],
+    [userId, scheduleDailyHealthCheck, fetchLatestMedicalRecord],
   )
 
   // Filter horses based on active tab
@@ -391,63 +446,16 @@ const HorseScreen = () => {
   const aliveHorsesCount = horses.filter(horse => horse.horse_status !== 'Deceased').length
   const deceasedHorsesCount = horses.filter(horse => horse.horse_status === 'Deceased').length
 
-  const markHorseDeceased = async (horseId: string, horseName: string) => {
-    Alert.alert(
-      "Mark Horse as Deceased", 
-      `Are you sure you want to mark ${horseName} as deceased? This action cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Mark as Deceased",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              console.log("🕊️ Marking horse as deceased:", horseId)
-              const response = await fetch(`${API_BASE_URL}/mark_horse_deceased/${horseId}/`, {
-                method: "PUT",
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  user_id: userId
-                })
-              })
-              
-              const data = await response.json()
-
-              if (response.ok) {
-                console.log("✅ Horse marked as deceased successfully")
-                // Update local state to reflect the status change
-                const updatedHorses = horses.map((h) => 
-                  h.horse_id === horseId 
-                    ? { ...h, horse_status: "Deceased" }
-                    : h
-                )
-                setHorses(updatedHorses)
-                
-                // Recalculate alive horses count
-                const newAliveCount = updatedHorses.filter(h => h.horse_status !== 'Deceased').length
-                
-                // Reset notification tracking since count changed
-                notificationScheduledRef.current = false
-                lastScheduledCountRef.current = 0
-                
-                // Schedule new notification with updated count
-                scheduleDailyHealthCheck(newAliveCount)
-                
-                Alert.alert("Success", `${horseName} has been marked as deceased`)
-              } else {
-                console.log("❌ Mark as deceased failed:", data)
-                Alert.alert("Error", data.error || "Failed to mark horse as deceased")
-              }
-            } catch (error) {
-              console.error("❌ Error marking horse as deceased:", error)
-              Alert.alert("Error", "Failed to mark horse as deceased")
-            }
-          },
-        },
-      ]
-    )
+  const handleMarkDeceased = (horse: Horse) => {
+    // Navigate to horsedeathinput page with horse data
+    router.push({
+      pathname: "../HORSE_OPERATOR/horsedeathinput",
+      params: { 
+        horse_id: horse.horse_id,
+        horse_name: horse.horse_name,
+        horseData: JSON.stringify(horse) 
+      },
+    })
   }
 
   useFocusEffect(
@@ -473,31 +481,29 @@ const HorseScreen = () => {
     }, [userId, fetchHorses, fetchUserProfile]),
   )
 
-  const handleFeed = (horseName: string, horseId: string) => {
-    // Check if horse is deceased before allowing feed
-    const horse = horses.find(h => h.horse_id === horseId)
-    if (horse?.horse_status === 'Deceased') {
-      Alert.alert("Cannot Feed", `${horseName} is deceased and cannot be fed.`)
-      return
-    }
-    router.push({ pathname: "/HORSE_OPERATOR/Hfeed", params: { horseName, horseId } })
-  }
-
-  const handleWater = (horseName: string, horseId: string) => {
-    // Check if horse is deceased before allowing water
-    const horse = horses.find(h => h.horse_id === horseId)
-    if (horse?.horse_status === 'Deceased') {
-      Alert.alert("Cannot Water", `${horseName} is deceased and cannot be watered.`)
-      return
-    }
-    router.push({ pathname: "/HORSE_OPERATOR/water", params: { horseName, horseId } })
-  }
-
   const handleHorseProfile = (horse: Horse) => {
-    router.push({
-      pathname: "../HORSE_OPERATOR/horseprofile",
-      params: { id: horse.horse_id, horseData: JSON.stringify(horse) },
-    })
+    // Check if horse is deceased
+    const isDeceased = horse.horse_status === 'Deceased'
+    
+    if (isDeceased) {
+      // Navigate to horseprofile screen for deceased horses
+      router.push({
+        pathname: "../HORSE_OPERATOR/horseprofile",
+        params: { 
+          id: horse.horse_id, 
+          horseData: JSON.stringify(horse) 
+        },
+      })
+    } else {
+      // Navigate to horseprofile screen for active horses
+      router.push({
+        pathname: "../HORSE_OPERATOR/horseprofile",
+        params: { 
+          id: horse.horse_id, 
+          horseData: JSON.stringify(horse) 
+        },
+      })
+    }
   }
 
   const TabButton = ({
@@ -588,6 +594,203 @@ const HorseScreen = () => {
     </View>
   )
 
+  // Helper functions for medical records
+  const getConditionFromMedicalRecord = (record: MedicalRecord | null) => {
+    if (!record) return 'Unknown'
+    const status = record?.horse_status || record?.assessment?.prognosis || 'Unknown'
+    return status
+  }
+
+  const getConditionColorFromStatus = (status: string) => {
+    const lowerStatus = status.toLowerCase()
+    
+    if (lowerStatus.includes('excellent') || lowerStatus.includes('great') || 
+        lowerStatus.includes('healthy') || lowerStatus === 'good') {
+      return '#4CAF50'
+    }
+    
+    if (lowerStatus.includes('fair') || lowerStatus.includes('stable') || 
+        lowerStatus.includes('improving')) {
+      return '#8BC34A'
+    }
+    
+    if (lowerStatus.includes('guarded') || lowerStatus.includes('cautious') || 
+        lowerStatus.includes('monitor')) {
+      return '#FFC107'
+    }
+    
+    if (lowerStatus.includes('poor') || lowerStatus.includes('critical') || 
+        lowerStatus.includes('grave') || lowerStatus.includes('emergency')) {
+      return '#FF5722'
+    }
+    
+    return '#757575'
+  }
+
+  const calculateDaysAgo = (dateString: string | null) => {
+    if (!dateString) return null
+    try {
+      const recordDate = new Date(dateString)
+      const today = new Date()
+      const diffTime = Math.abs(today.getTime() - recordDate.getTime())
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+      return diffDays
+    } catch {
+      return null
+    }
+  }
+
+  const formatLastVetCheck = (record: MedicalRecord | null) => {
+    if (!record) return 'No medical records'
+    
+    const examinationDate = record.formatted_date || record.date
+    const daysAgo = calculateDaysAgo(record.date)
+    
+    if (daysAgo === null) return examinationDate
+    
+    if (daysAgo === 0) return 'Today'
+    if (daysAgo === 1) return 'Yesterday'
+    if (daysAgo <= 7) return `${daysAgo} days ago`
+    if (daysAgo <= 30) return `${Math.floor(daysAgo / 7)} week${Math.floor(daysAgo / 7) !== 1 ? 's' : ''} ago`
+    if (daysAgo <= 365) return `${Math.floor(daysAgo / 30)} month${Math.floor(daysAgo / 30) !== 1 ? 's' : ''} ago`
+    
+    return `${Math.floor(daysAgo / 365)} year${Math.floor(daysAgo / 365) !== 1 ? 's' : ''} ago`
+  }
+
+  const getHealthStatusColor = (daysAgo: number | null) => {
+    if (daysAgo === null) return '#757575'
+    if (daysAgo <= 30) return '#4CAF50'
+    if (daysAgo <= 90) return '#FFC107'
+    if (daysAgo <= 180) return '#FF9800'
+    return '#FF5722'
+  }
+
+  const renderVitalSigns = (record: MedicalRecord | null) => {
+    if (!record?.vital_signs) return null
+
+    const { vital_signs } = record
+    const hasVitalSigns = vital_signs.heart_rate || vital_signs.respiratory_rate || vital_signs.body_temperature
+    
+    if (!hasVitalSigns) return null
+
+    return (
+      <View style={styles.vitalSignsContainer}>
+        <Text style={styles.vitalSignsTitle}>Latest Vital Signs</Text>
+        <View style={styles.vitalSignsGrid}>
+          {vital_signs.heart_rate && (
+            <View style={styles.vitalSignItem}>
+              <FontAwesome5 name="heartbeat" size={scale(14)} color="#CD853F" />
+              <Text style={styles.vitalSignLabel}>Heart Rate</Text>
+              <Text style={styles.vitalSignValue}>{vital_signs.heart_rate}</Text>
+            </View>
+          )}
+          {vital_signs.respiratory_rate && (
+            <View style={styles.vitalSignItem}>
+              <FontAwesome5 name="lungs" size={scale(14)} color="#CD853F" />
+              <Text style={styles.vitalSignLabel}>Respiratory Rate</Text>
+              <Text style={styles.vitalSignValue}>{vital_signs.respiratory_rate}</Text>
+            </View>
+          )}
+          {vital_signs.body_temperature && (
+            <View style={styles.vitalSignItem}>
+              <FontAwesome5 name="thermometer-half" size={scale(14)} color="#CD853F" />
+              <Text style={styles.vitalSignLabel}>Temperature</Text>
+              <Text style={styles.vitalSignValue}>{vital_signs.body_temperature}</Text>
+            </View>
+          )}
+        </View>
+      </View>
+    )
+  }
+
+  const renderBasicInfoSection = (horse: Horse) => {
+    const medicalRecord = medicalRecords[horse.horse_id]
+    const isLoading = loadingMedicalRecords[horse.horse_id]
+
+    return (
+      <View style={styles.basicInfoContainer}>
+        <Text style={styles.basicInfoTitle}>Health Information</Text>
+        
+        <View style={styles.infoRow}>
+          <View style={styles.infoIconContainer}>
+            <FontAwesome5 name="stethoscope" size={scale(14)} color="#CD853F" />
+          </View>
+          <View style={styles.infoContent}>
+            <Text style={styles.infoLabel}>Last Veterinary Examination</Text>
+            {isLoading ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator size="small" color="#CD853F" />
+                <Text style={[styles.infoValue, { marginLeft: 8 }]}>Loading...</Text>
+              </View>
+            ) : medicalRecord ? (
+              <View>
+                <Text style={[
+                  styles.infoValue, 
+                  { 
+                    color: getHealthStatusColor(calculateDaysAgo(medicalRecord.date)),
+                    fontWeight: 'bold',
+                    fontSize: moderateScale(13)
+                  }
+                ]}>
+                  {formatLastVetCheck(medicalRecord)}
+                </Text>
+                {medicalRecord.vet_name && (
+                  <Text style={styles.infoSubtext}>by {medicalRecord.vet_name}</Text>
+                )}
+                {medicalRecord.formatted_date && (
+                  <Text style={styles.infoSubtext}>{medicalRecord.formatted_date}</Text>
+                )}
+              </View>
+            ) : (
+              <View>
+                <Text style={[styles.infoValue, { color: '#757575', fontStyle: 'italic', fontSize: moderateScale(13) }]}>
+                  No medical records
+                </Text>
+                <Text style={styles.infoSubtext}>Schedule a veterinary examination</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        <View style={styles.infoRow}>
+          <View style={styles.infoIconContainer}>
+            <FontAwesome5 name="heart" size={scale(14)} color="#CD853F" />
+          </View>
+          <View style={styles.infoContent}>
+            <Text style={styles.infoLabel}>Current Condition</Text>
+            {isLoading ? (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator size="small" color="#CD853F" />
+                <Text style={[styles.infoValue, { marginLeft: 8 }]}>Loading...</Text>
+              </View>
+            ) : medicalRecord ? (
+              <View>
+                <Text style={[styles.infoValue, { 
+                  color: getConditionColorFromStatus(getConditionFromMedicalRecord(medicalRecord)), 
+                  fontWeight: 'bold',
+                  fontSize: moderateScale(13)
+                }]}>
+                  {getConditionFromMedicalRecord(medicalRecord)}
+                </Text>
+                {medicalRecord.assessment?.diagnosis && (
+                  <Text style={styles.infoSubtext}>
+                    Diagnosis: {medicalRecord.assessment.diagnosis}
+                  </Text>
+                )}
+              </View>
+            ) : (
+              <Text style={[styles.infoValue, { color: '#757575', fontStyle: 'italic', fontSize: moderateScale(13) }]}>
+                No condition data
+              </Text>
+            )}
+          </View>
+        </View>
+
+        {renderVitalSigns(medicalRecord)}
+      </View>
+    )
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#CD853F" translucent={false} />
@@ -625,12 +828,6 @@ const HorseScreen = () => {
           {/* Page Title */}
           <View style={styles.titleSection}>
             <Text style={styles.pageTitle}>My Horses</Text>
-            <Text style={styles.pageSubtitle}>
-              {activeHorseTab === 'alive' 
-                ? `${aliveHorsesCount} active ${aliveHorsesCount === 1 ? 'horse' : 'horses'}`
-                : `${deceasedHorsesCount} deceased ${deceasedHorsesCount === 1 ? 'horse' : 'horses'}`
-              }
-            </Text>
           </View>
 
           {/* Horse Status Tabs */}
@@ -711,28 +908,24 @@ const HorseScreen = () => {
                         <View style={styles.horseMetaRow}>
                           <View style={styles.horseMetaItem}>
                             <FontAwesome5 
-                              name="heartbeat" 
+                              name="venus-mars" 
                               size={scale(12)} 
-                              color={
-                                horse.horse_status === 'Healthy' ? '#28A745' : 
-                                horse.horse_status === 'Sick' ? '#DC3545' : 
-                                horse.horse_status === 'Under Treatment' ? '#FFC107' : 
-                                horse.horse_status === 'Deceased' ? '#6C757D' :
-                                '#6C757D'
-                              } 
+                              color={horse.horse_sex === 'Stallion' ? '#4A90E2' : 
+                                     horse.horse_sex === 'Mare' ? '#E91E63' : 
+                                     horse.horse_sex === 'Gelding' ? '#795548' : 
+                                     '#6C757D'} 
                             />
                             <Text style={[
                               styles.horseMetaText,
                               {
-                                color: horse.horse_status === 'Healthy' ? '#28A745' : 
-                                       horse.horse_status === 'Sick' ? '#DC3545' : 
-                                       horse.horse_status === 'Under Treatment' ? '#FFC107' : 
-                                       horse.horse_status === 'Deceased' ? '#6C757D' :
+                                color: horse.horse_sex === 'Stallion' ? '#4A90E2' : 
+                                       horse.horse_sex === 'Mare' ? '#E91E63' : 
+                                       horse.horse_sex === 'Gelding' ? '#795548' : 
                                        '#6C757D',
                                 fontWeight: '600'
                               }
                             ]}>
-                              {horse.horse_status || 'Unknown'}
+                              {horse.horse_sex || 'Unknown'}
                             </Text>
                           </View>
                         </View>
@@ -741,7 +934,7 @@ const HorseScreen = () => {
                       {activeHorseTab === 'alive' && (
                         <TouchableOpacity
                           style={styles.deceasedButton}
-                          onPress={() => markHorseDeceased(horse.horse_id, horse.horse_name)}
+                          onPress={() => handleMarkDeceased(horse)}
                           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                         >
                           <FontAwesome5 name="skull" size={scale(16)} color="#6C757D" />
@@ -749,41 +942,8 @@ const HorseScreen = () => {
                       )}
                     </View>
 
-                    <View style={styles.divider} />
-
-                    {activeHorseTab === 'alive' && (
-                      <View style={styles.actionSection}>
-                        <View style={styles.actionButtons}>
-                          <TouchableOpacity
-                            style={[styles.actionButton, styles.feedButton]}
-                            onPress={(e) => {
-                              e.stopPropagation()
-                              handleFeed(horse.horse_name, horse.horse_id)
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <FontAwesome5 name="pagelines" size={scale(16)} color="#28A745" />
-                            <Text style={[styles.actionButtonText, styles.feedButtonText]}>
-                              Feed
-                            </Text>
-                          </TouchableOpacity>
-
-                          <TouchableOpacity
-                            style={[styles.actionButton, styles.waterButton]}
-                            onPress={(e) => {
-                              e.stopPropagation()
-                              handleWater(horse.horse_name, horse.horse_id)
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <FontAwesome5 name="tint" size={scale(16)} color="#007BFF" />
-                            <Text style={[styles.actionButtonText, styles.waterButtonText]}>
-                              Water
-                            </Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    )}
+                    {/* Basic Information Section */}
+                    {activeHorseTab === 'alive' && renderBasicInfoSection(horse)}
                   </TouchableOpacity>
                 </View>
               ))
@@ -818,6 +978,13 @@ const HorseScreen = () => {
           tabKey="horses"
           isActive={activeTab === "horses"}
           onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}
+        />
+        <TabButton
+          iconSource={require("../../assets/images/kutsero.png")}
+          label="Kutsero"
+          tabKey="kutsero"
+          isActive={activeTab === "kutsero"}
+          onPress={() => router.push("../HORSE_OPERATOR/kutsero" as any)}
         />
         <TabButton
           iconSource={require("../../assets/images/chat.png")}
@@ -1098,7 +1265,6 @@ const styles = StyleSheet.create({
   horseHeader: {
     flexDirection: "row",
     alignItems: "flex-start",
-    marginBottom: verticalScale(12),
   },
   horseImageContainer: {
     position: "relative",
@@ -1180,48 +1346,101 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Divider
-  divider: {
-    height: 1,
-    backgroundColor: "#E9ECEF",
-    marginBottom: verticalScale(16),
+  // Basic Information Styles (NEW)
+  basicInfoContainer: {
+    marginTop: dynamicSpacing(16),
+    paddingTop: dynamicSpacing(12),
+    borderTopWidth: 1,
+    borderTopColor: "#E9ECEF",
   },
-
-  // Action Section
-  actionSection: {},
-  actionButtons: {
+  basicInfoTitle: {
+    fontSize: moderateScale(16),
+    fontWeight: "700",
+    color: "#2C3E50",
+    marginBottom: dynamicSpacing(12),
+  },
+  infoRow: {
     flexDirection: "row",
-    gap: scale(12),
+    marginBottom: dynamicSpacing(12),
+    alignItems: "flex-start",
   },
-  actionButton: {
+  infoIconContainer: {
+    width: scale(30),
+    height: scale(30),
+    borderRadius: scale(15),
+    backgroundColor: "#F8F9FA",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: scale(12),
+  },
+  infoContent: {
     flex: 1,
+  },
+  infoLabel: {
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+    color: "#6C757D",
+    marginBottom: verticalScale(2),
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
+  },
+  infoValue: {
+    fontSize: moderateScale(14),
+    color: "#2C3E50",
+    fontWeight: "500",
+    lineHeight: moderateScale(18),
+  },
+  infoSubtext: {
+    fontSize: moderateScale(11),
+    color: "#6C757D",
+    fontStyle: "italic",
+    marginTop: verticalScale(2),
+  },
+  loadingRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: verticalScale(12),
-    paddingHorizontal: scale(16),
-    borderRadius: scale(12),
-    borderWidth: 1,
-    minHeight: 44,
   },
-  feedButton: {
-    backgroundColor: "#F8FFF8",
-    borderColor: "#D4EDDA",
+
+  // Vital Signs Styles
+  vitalSignsContainer: {
+    marginTop: dynamicSpacing(12),
+    paddingTop: dynamicSpacing(12),
+    borderTopWidth: 1,
+    borderTopColor: "#E9ECEF",
   },
-  waterButton: {
-    backgroundColor: "#F0F8FF",
-    borderColor: "#CCE7FF",
-  },
-  actionButtonText: {
-    fontSize: moderateScale(15),
+  vitalSignsTitle: {
+    fontSize: moderateScale(12),
     fontWeight: "600",
-    marginLeft: scale(8),
+    color: "#6C757D",
+    marginBottom: dynamicSpacing(8),
+    textTransform: "uppercase",
+    letterSpacing: 0.3,
   },
-  feedButtonText: {
-    color: "#28A745",
+  vitalSignsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: scale(8),
   },
-  waterButtonText: {
-    color: "#007BFF",
+  vitalSignItem: {
+    flex: 1,
+    minWidth: "30%",
+    backgroundColor: "#F8F9FA",
+    borderRadius: scale(8),
+    padding: scale(10),
+    alignItems: "center",
+  },
+  vitalSignLabel: {
+    fontSize: moderateScale(10),
+    color: "#6C757D",
+    marginTop: verticalScale(4),
+    marginBottom: verticalScale(2),
+    textAlign: "center",
+  },
+  vitalSignValue: {
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+    color: "#2C3E50",
+    textAlign: "center",
   },
 
   // Add Button

@@ -171,7 +171,8 @@ export default function SOSEmergencyScreen({ onBack, kutseroId: propKutseroId }:
             console.log("[DEBUG] ⚠️ Pre-set kutseroProfileId to:", kutseroId)
             
             try {
-                const url = `http://192.168.31.58:8000/api/kutsero/profile/${kutseroId}/`
+                // UPDATED: Use production API URL
+                const url = `https://echo-ebl8.onrender.com/api/kutsero/profile/${kutseroId}/`
                 console.log("[DEBUG] Fetching from URL:", url)
                 
                 // Create a timeout promise
@@ -486,7 +487,8 @@ export default function SOSEmergencyScreen({ onBack, kutseroId: propKutseroId }:
                 kutsero_profile: sosData.kutsero_profile
             })
 
-            const response = await fetch("http://192.168.31.58:8000/api/kutsero/sos/create/", {
+            // UPDATED: Use production API URL
+            const response = await fetch("https://echo-ebl8.onrender.com/api/kutsero/sos/create/", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -549,7 +551,7 @@ export default function SOSEmergencyScreen({ onBack, kutseroId: propKutseroId }:
                 <View style={styles.formContainer}>
                     <View style={styles.importantNotice}>
                         <Text style={styles.importantText}>
-                            Important: This form sends an emergency alert to DVME and CTU Vermed. Please provide accurate information about your emergency situation.
+                            Important: This form sends an emergency alert to DVMF and CTU Vetmed. Please provide accurate information about your emergency situation.
                         </Text>
                     </View>
 

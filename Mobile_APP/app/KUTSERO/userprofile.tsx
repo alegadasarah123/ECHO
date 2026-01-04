@@ -1,4 +1,4 @@
-"use client"
+
 
 import { FontAwesome5 } from "@expo/vector-icons"
 import { useLocalSearchParams, useRouter } from "expo-router"
@@ -36,7 +36,8 @@ const moderateScale = (size: number, factor = 0.5) => {
   return size + (scale(size) - size) * factor
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+// ✅ UPDATED: Changed from localhost to Render URL
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/kutsero"
 
 interface UserProfileData {
   user_id: string
@@ -109,6 +110,7 @@ export default function UserProfileScreen() {
     try {
       const userId = params.userId as string
       
+      // ✅ Using the Render URL
       const response = await fetch(`${API_BASE_URL}/get_user_profile/${userId}/`, {
         method: "GET",
         headers: {
@@ -169,6 +171,7 @@ export default function UserProfileScreen() {
 
     setIsLoadingAnnouncements(true)
     try {
+      // ✅ Using the Render URL
       const response = await fetch(`${API_BASE_URL}/get_user_announcements/${userIdToUse}/`, {
         method: "GET",
         headers: {

@@ -63,7 +63,7 @@ const FOOD_IMAGES = {
   magnesium: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=400&h=300&fit=crop", // Magnesium supplement
 };
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
 
 // Configure notification handler
 Notifications.setNotificationHandler({

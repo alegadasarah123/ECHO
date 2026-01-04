@@ -1,3 +1,5 @@
+// HORSE_OPERATOR/addhorse.tsx
+
 import React, { useState } from 'react';
 import {
   View,
@@ -12,6 +14,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
@@ -34,7 +37,7 @@ interface Horse {
   image: string | null;
 }
 
-const API_URL = "http://10.254.39.148:8000/api/horse_operator";
+const API_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
 
 const AddHorseScreen = () => {
   const router = useRouter();
@@ -51,11 +54,13 @@ const AddHorseScreen = () => {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [date, setDate] = useState(new Date());
-  const [showDropdowns, setShowDropdowns] = useState<Record<DropdownField, boolean>>({
-    sex: false,
-    breed: false,
+  const [dropdownModal, setDropdownModal] = useState<{ visible: boolean; field: DropdownField | null }>({
+    visible: false,
+    field: null,
   });
   const [isUploading, setIsUploading] = useState(false);
+  const [otherBreed, setOtherBreed] = useState('');
+  const [showOtherBreedInput, setShowOtherBreedInput] = useState(false);
 
   const sexOptions = ['Stallion', 'Gelding', 'Mare'];
   const breedOptions = [
@@ -83,17 +88,29 @@ const AddHorseScreen = () => {
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleDropdownSelect = (field: DropdownField, value: string) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-    setShowDropdowns(prev => ({ ...prev, [field]: false }));
+  const openDropdownModal = (field: DropdownField) => {
+    setDropdownModal({ visible: true, field });
   };
 
-  const toggleDropdown = (field: DropdownField) => {
-    setShowDropdowns({
-      sex: false,
-      breed: false,
-      [field]: !showDropdowns[field],
-    });
+  const closeDropdownModal = () => {
+    setDropdownModal({ visible: false, field: null });
+  };
+
+  const handleDropdownSelect = (field: DropdownField, value: string) => {
+    if (field === 'breed' && value === 'Other') {
+      setFormData(prev => ({ ...prev, [field]: '' }));
+      setShowOtherBreedInput(true);
+    } else {
+      setFormData(prev => ({ ...prev, [field]: value }));
+      setShowOtherBreedInput(false);
+      setOtherBreed('');
+    }
+    closeDropdownModal();
+  };
+
+  const handleOtherBreedChange = (value: string) => {
+    setOtherBreed(value);
+    setFormData(prev => ({ ...prev, breed: value }));
   };
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
@@ -124,13 +141,15 @@ const AddHorseScreen = () => {
 
   const saveHorseToBackend = async (newHorse: Horse, userId: string) => {
     try {
+      const finalBreed = showOtherBreedInput && otherBreed ? otherBreed : newHorse.breed;
+      
       console.log("🐴 Sending horse data to backend:", {
         user_id: userId,
         name: newHorse.name,
         age: newHorse.age,
         dateOfBirth: newHorse.dateOfBirth,
         sex: newHorse.sex,
-        breed: newHorse.breed,
+        breed: finalBreed,
         color: newHorse.color,
         height: newHorse.height,
         weight: newHorse.weight,
@@ -146,7 +165,7 @@ const AddHorseScreen = () => {
           age: newHorse.age,
           dateOfBirth: newHorse.dateOfBirth,
           sex: newHorse.sex,
-          breed: newHorse.breed,
+          breed: finalBreed,
           color: newHorse.color,
           height: newHorse.height,
           weight: newHorse.weight,
@@ -174,6 +193,16 @@ const AddHorseScreen = () => {
       return;
     }
 
+    if (!formData.breed.trim()) {
+      Alert.alert("Error", "Please select or enter a breed");
+      return;
+    }
+
+    if (showOtherBreedInput && !otherBreed.trim()) {
+      Alert.alert("Error", "Please enter the breed name");
+      return;
+    }
+
     setIsUploading(true);
 
     try {
@@ -193,7 +222,6 @@ const AddHorseScreen = () => {
 
       console.log("👤 Using user_id:", userId);
 
-      // Convert image to base64 if exists
       let imageBase64 = null;
       if (imageUri) {
         try {
@@ -201,7 +229,6 @@ const AddHorseScreen = () => {
           const response = await fetch(imageUri);
           const blob = await response.blob();
           
-          // Convert blob to base64
           imageBase64 = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve(reader.result as string);
@@ -212,7 +239,6 @@ const AddHorseScreen = () => {
           console.log("✅ Image converted to base64 (length:", imageBase64.length, ")");
         } catch (imageError) {
           console.error("⚠️ Error converting image:", imageError);
-          // Show alert but allow user to continue
           Alert.alert(
             "Warning", 
             "Could not process image. Horse will be saved without image. Continue?",
@@ -230,11 +256,11 @@ const AddHorseScreen = () => {
         age: formData.age,
         dateOfBirth: formData.dateOfBirth,
         sex: formData.sex,
-        breed: formData.breed,
+        breed: showOtherBreedInput && otherBreed ? otherBreed : formData.breed,
         color: formData.color,
         height: formData.height,
         weight: formData.weight,
-        image: imageBase64, // Send base64 string instead of URI
+        image: imageBase64,
       };
 
       const backendRes = await saveHorseToBackend(newHorse, userId);
@@ -253,41 +279,82 @@ const AddHorseScreen = () => {
   };
 
   const renderDropdownField = (field: DropdownField, options: string[], label: string) => (
-    <View style={[styles.inputGroup, showDropdowns[field] && styles.dropdownExpanded]} key={field}>
+    <View style={styles.inputGroup} key={field}>
       <Text style={styles.label}>{label}</Text>
       <TouchableOpacity
-        style={[styles.dropdown, showDropdowns[field] && styles.dropdownOpen]}
-        onPress={() => toggleDropdown(field)}
+        style={styles.dropdown}
+        onPress={() => openDropdownModal(field)}
+        disabled={isUploading}
       >
         <Text style={[styles.dropdownText, !formData[field] && styles.placeholder]}>
-          {formData[field] || `Select ${label.toLowerCase()}`}
+          {field === 'breed' && showOtherBreedInput ? 'Other' : 
+           formData[field] || `Select ${label.toLowerCase()}`}
         </Text>
         <FontAwesome5
-          name={showDropdowns[field] ? "chevron-up" : "chevron-down"}
+          name="chevron-down"
           size={16}
-          color="#666"
+          color="#000000ff"
         />
       </TouchableOpacity>
-      
-      {showDropdowns[field] && (
-        <View style={styles.dropdownMenu}>
-          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
-            {options.map((option) => (
-              <TouchableOpacity
-                key={option}
-                style={[styles.dropdownItem, formData[field] === option && styles.selectedItem]}
-                onPress={() => handleDropdownSelect(field, option)}
-              >
-                <Text style={[styles.dropdownItemText, formData[field] === option && styles.selectedText]}>
-                  {option}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-      )}
     </View>
   );
+
+  const renderDropdownModal = () => {
+    if (!dropdownModal.field) return null;
+
+    const options = dropdownModal.field === 'sex' ? sexOptions : breedOptions;
+    const label = dropdownModal.field === 'sex' ? 'Sex' : 'Breed';
+    const isOtherSelected = dropdownModal.field === 'breed' && showOtherBreedInput;
+
+    return (
+      <Modal
+        visible={dropdownModal.visible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeDropdownModal}
+      >
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={closeDropdownModal}
+        >
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Select {label}</Text>
+              <TouchableOpacity onPress={closeDropdownModal} style={styles.closeButton}>
+                <FontAwesome5 name="times" size={20} color="#666" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView 
+              style={styles.modalScrollView}
+              showsVerticalScrollIndicator={true}
+              nestedScrollEnabled={true}
+            >
+              {options.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  style={[
+                    styles.modalItem,
+                    (dropdownModal.field === 'breed' && option === 'Other' && isOtherSelected) && styles.selectedModalItem,
+                    dropdownModal.field && formData[dropdownModal.field] === option && styles.selectedModalItem
+                  ]}
+                  onPress={() => handleDropdownSelect(dropdownModal.field!, option)}
+                >
+                  <Text style={[
+                    styles.modalItemText,
+                    (dropdownModal.field === 'breed' && option === 'Other' && isOtherSelected) && styles.selectedModalText,
+                    dropdownModal.field && formData[dropdownModal.field] === option && styles.selectedModalText
+                  ]}>
+                    {option}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -390,6 +457,22 @@ const AddHorseScreen = () => {
             {renderDropdownField("sex", sexOptions, "Sex")}
             {renderDropdownField("breed", breedOptions, "Breed")}
 
+            {/* Other Breed Input - Conditionally shown */}
+            {showOtherBreedInput && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Specify Breed</Text>
+                <TextInput
+                  style={styles.input}
+                  value={otherBreed}
+                  onChangeText={handleOtherBreedChange}
+                  placeholder="Enter breed name"
+                  placeholderTextColor="#999"
+                  returnKeyType="next"
+                  editable={!isUploading}
+                />
+              </View>
+            )}
+
             {/* Color Field */}
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Color</Text>
@@ -452,6 +535,9 @@ const AddHorseScreen = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Dropdown Modal */}
+      {renderDropdownModal()}
     </SafeAreaView>
   );
 };
@@ -490,6 +576,7 @@ const styles = StyleSheet.create({
   },
   scrollContentContainer: {
     flexGrow: 1,
+    paddingBottom: 20,
   },
   photoSection: {
     alignItems: 'center',
@@ -531,12 +618,6 @@ const styles = StyleSheet.create({
   },
   inputGroup: {
     marginBottom: 20,
-    position: 'relative',
-    zIndex: 1,
-  },
-  dropdownExpanded: {
-    zIndex: 1000,
-    elevation: 1000,
   },
   label: {
     fontSize: 16,
@@ -593,51 +674,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     minHeight: 48,
   },
-  dropdownOpen: {
-    borderBottomLeftRadius: 0,
-    borderBottomRightRadius: 0,
-    borderBottomWidth: 0,
-  },
   dropdownText: {
     fontSize: 16,
     color: '#333',
     flex: 1,
-  },
-  dropdownMenu: {
-    position: 'absolute',
-    top: '100%',
-    left: 0,
-    right: 0,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderTopWidth: 0,
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-    maxHeight: 200,
-    zIndex: 1000,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  dropdownItem: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  selectedItem: {
-    backgroundColor: '#f8f8f8',
-  },
-  dropdownItemText: {
-    fontSize: 16, 
-    color: '#333',
-  },
-  selectedText: {
-    color: '#CD853F',
-    fontWeight: '500',
   },
   submitBtn: {
     backgroundColor: '#CD853F',
@@ -659,6 +699,58 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    width: '100%',
+    maxHeight: '70%',
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#333',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  modalScrollView: {
+    maxHeight: 300,
+  },
+  modalItem: {
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  selectedModalItem: {
+    backgroundColor: '#f8f8f8',
+  },
+  modalItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  selectedModalText: {
+    color: '#CD853F',
+    fontWeight: '500',
   },
 });
 

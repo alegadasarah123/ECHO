@@ -314,232 +314,277 @@ def signup_vet(request):
             
 #-----------------------------------------------------------------LOGIN MOBILE---------------------------------------------------------------------------------------
 
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+from rest_framework import status
+from datetime import datetime
+import requests
+import base64
+import random
+import os
+
+# Supabase configuration
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+
 @api_view(['POST'])
 def signup_mobile(request):
-    email = request.data.get("email")
-    password = request.data.get("password")
-    role = request.data.get("role")
-
-    if not email or not password or not role:
-        return Response({"error": "Email, password, and role are required"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Generate username if not provided
-    username = request.data.get("username")
-    if not username:
-        first_name = request.data.get("firstName", "").strip()
-        last_name = request.data.get("lastName", "").strip()
-        username = f"{first_name.lower()}.{last_name.lower()}" if first_name and last_name else email.split('@')[0]
-
-    # Handle profile picture upload to Supabase Storage
-    profile_picture_url = None
-    profile_picture_base64 = request.data.get("profilePicture")
-    
-    if profile_picture_base64 and profile_picture_base64.strip():
-        try:
-            if ";base64," in profile_picture_base64:
-                # Extract format and base64 data
-                format_part, imgstr = profile_picture_base64.split(";base64,")
-                ext = format_part.split("/")[-1]
-                
-                # Generate unique filename
-                timestamp = int(datetime.now().timestamp())
-                file_name = f"{email.split('@')[0]}_{timestamp}_{random.randint(1000,9999)}.{ext}"
-                
-                # Decode base64 to bytes
-                file_bytes = base64.b64decode(imgstr)
-                
-                # Upload to Supabase storage using REST API
-                print(f"[DEBUG] Uploading profile picture: {file_name}")
-                upload_url = f"{SUPABASE_URL}/storage/v1/object/kutsero_op_profile/{file_name}"
-                upload_headers = {
-                    "apikey": SUPABASE_SERVICE_ROLE_KEY,
-                    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-                    "Content-Type": f"image/{ext}",
-                }
-                
-                upload_response = requests.post(upload_url, data=file_bytes, headers=upload_headers)
-                print(f"[DEBUG] Upload status: {upload_response.status_code}")
-                print(f"[DEBUG] Upload response: {upload_response.text}")
-                
-                if upload_response.status_code in [200, 201]:
-                    # Construct public URL manually
-                    profile_picture_url = f"{SUPABASE_URL}/storage/v1/object/public/kutsero_op_profile/{file_name}"
-                    print(f"[DEBUG] Profile picture URL: {profile_picture_url}")
-                else:
-                    print(f"[ERROR] Upload failed with status {upload_response.status_code}")
-                
-        except Exception as e:
-            print(f"[ERROR] Profile picture upload failed: {e}")
-            import traceback
-            traceback.print_exc()
-            profile_picture_url = None
-
-    # Create user in Supabase Auth
-    signup_url = f"{SUPABASE_URL}/auth/v1/admin/users"
-    headers = {
-        "apikey": SUPABASE_SERVICE_ROLE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-        "Content-Type": "application/json"
-    }
-    payload_auth = {
-        "email": email, 
-        "password": password,
-        "email_confirm": True  # Auto-confirm email
-    }
-    
-    print(f"[DEBUG] Creating auth user for: {email}")
-    auth_response = requests.post(signup_url, json=payload_auth, headers=headers)
-    auth_json = auth_response.json()
-    print(f"[DEBUG] Auth response status: {auth_response.status_code}")
-    print(f"[DEBUG] Auth response: {auth_json}")
-
-    if auth_response.status_code not in [200, 201]:
-        return Response({"error": "Failed to create user in Supabase Auth", "details": auth_json}, status=status.HTTP_400_BAD_REQUEST)
-
-    user_id = auth_json.get('id') or auth_json.get('user', {}).get('id')
-    if not user_id:
-        return Response({"error": "Supabase Auth did not return a user ID"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Convert role to proper format for database
-    db_role = "Kutsero" if role == "kutsero" else "Horse Operator" if role == "horse_operator" else role
-
-    # Insert into users table
-    user_payload = {
-        "id": user_id,
-        "role": db_role,
-        "status": "pending",
-    }
-
-    insert_user_url = f"{SUPABASE_URL}/rest/v1/users"
-    insert_headers = {
-        "apikey": SUPABASE_SERVICE_ROLE_KEY,
-        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation"
-    }
-    
-    print(f"[DEBUG] Inserting into users table...")
-    user_insert_response = requests.post(insert_user_url, json=user_payload, headers=insert_headers)
-    user_insert_json = user_insert_response.json()
-    print(f"[DEBUG] User insert status: {user_insert_response.status_code}")
-    print(f"[DEBUG] User insert response: {user_insert_json}")
-
-    if user_insert_response.status_code not in [200, 201]:
-        print(f"[ERROR] Failed to insert into users table")
-        delete_url = f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}"
-        requests.delete(delete_url, headers=headers)
-        return Response({"error": "Failed to insert into users table", "details": user_insert_json}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Prepare profile payload based on role
-    if role == "kutsero":
-        profile_payload = {
-            "kutsero_id": user_id,
-            "kutsero_username": username,
-            "kutsero_email": email,
-        }
+    """
+    Mobile signup endpoint for Kutsero and Horse Operator registration
+    """
+    try:
+        print(f"[DEBUG] ====== NEW SIGNUP REQUEST ======")
+        data = request.data
         
-        # Add optional fields only if they have values
-        optional_fields = {
-            "kutsero_fname": request.data.get("firstName"),
-            "kutsero_mname": request.data.get("middleName"),
-            "kutsero_lname": request.data.get("lastName"),
-            "kutsero_dob": request.data.get("dob"),
-            "kutsero_sex": request.data.get("sex"),
-            "kutsero_phone_num": request.data.get("phoneNumber"),
-            "kutsero_province": request.data.get("province"),
-            "kutsero_city": request.data.get("city"),
-            "kutsero_municipality": request.data.get("municipality"),
-            "kutsero_brgy": request.data.get("barangay"),
-            "kutsero_zipcode": request.data.get("zipCode"),
-            "kutsero_image": profile_picture_url,
-            "created_at": datetime.utcnow().isoformat(),
-        }
+        # Debug membership document
+        membership_document_base64 = data.get("membershipDocument")
+        membership_document_name = data.get("membershipDocumentName")
+        membership_document_type = data.get("membershipDocumentType")
         
-        # Only add non-None values
-        for key, value in optional_fields.items():
-            if value is not None and value != "":
-                profile_payload[key] = value
+        print(f"[DEBUG] Membership document present: {bool(membership_document_base64)}")
+        print(f"[DEBUG] Membership document name: {membership_document_name}")
+        print(f"[DEBUG] Membership document type: {membership_document_type}")
         
-        insert_profile_url = f"{SUPABASE_URL}/rest/v1/kutsero_profile"
-
-    elif role == "horse_operator":
-        profile_payload = {
-            "op_id": user_id,
-            "op_email": email,
-            "op_province": "Cebu",  # Default value
-        }
+        # Validate required fields
+        email = data.get("email")
+        password = data.get("password")
+        role = data.get("role")
+        is_member = data.get("isMember")
         
-        # Add optional fields only if they have values
-        optional_fields = {
-            "op_fname": request.data.get("firstName"),
-            "op_mname": request.data.get("middleName"),
-            "op_lname": request.data.get("lastName"),
-            "op_dob": request.data.get("dob"),
-            "op_sex": request.data.get("sex"),
-            "op_phone_num": request.data.get("phoneNumber"),
-            "op_city": request.data.get("city"),
-            "op_municipality": request.data.get("municipality"),
-            "op_brgy": request.data.get("barangay"),
-            "op_zipcode": request.data.get("zipCode"),
-            "op_house_add": request.data.get("houseAddress"),
-            "op_routefrom": request.data.get("route"),
-            "op_routeto": request.data.get("to"),
-            "op_fb": request.data.get("facebook"),
-            "op_image": profile_picture_url,
-        }
+        print(f"[DEBUG] Email: {email}")
+        print(f"[DEBUG] Role: {role}")
+        print(f"[DEBUG] Is Member: {is_member}")
         
-        # Only add non-None values
-        for key, value in optional_fields.items():
-            if value is not None and value != "":
-                profile_payload[key] = value
+        if not email or not password or not role:
+            return Response(
+                {"error": "Email, password, and role are required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
-        insert_profile_url = f"{SUPABASE_URL}/rest/v1/horse_op_profile"
-
-    else:
-        return Response({"error": "Invalid role selected"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Insert profile
-    print(f"[DEBUG] Inserting profile for {role}...")
-    print(f"[DEBUG] Profile payload: {profile_payload}")
-    profile_insert_response = requests.post(insert_profile_url, json=profile_payload, headers=insert_headers)
-    profile_insert_json = profile_insert_response.json()
-    print(f"[DEBUG] Profile insert status: {profile_insert_response.status_code}")
-    print(f"[DEBUG] Profile insert response: {profile_insert_json}")
-
-    if profile_insert_response.status_code not in [200, 201]:
-        print(f"[ERROR] Failed to insert profile")
+        # Check if membership document is required
+        if is_member in ["yes", "no"] and not membership_document_base64:
+            print("[DEBUG] Membership document is required but not provided")
+            # For now, allow to proceed but warn
+            print("[WARNING] Membership document not provided but membership info is set")
         
-        # Cleanup: delete user record
-        requests.delete(f"{SUPABASE_URL}/rest/v1/users?id=eq.{user_id}", headers=insert_headers)
+        # Generate username
+        first_name = data.get("firstName", "").strip()
+        last_name = data.get("lastName", "").strip()
+        if first_name and last_name:
+            username = f"{first_name.lower()}.{last_name.lower()}"
+        else:
+            username = email.split('@')[0]
         
-        # Cleanup: delete auth user
-        requests.delete(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=headers)
+        print(f"[DEBUG] Generated username: {username}")
         
-        # Cleanup uploaded image
-        if profile_picture_url:
+        # Handle profile picture upload
+        profile_picture_url = None
+        profile_picture_base64 = data.get("profilePicture")
+        
+        if profile_picture_base64 and isinstance(profile_picture_base64, str) and profile_picture_base64.strip():
             try:
-                file_name = profile_picture_url.split("/")[-1]
-                delete_url = f"{SUPABASE_URL}/storage/v1/object/kutsero_op_profile/{file_name}"
-                delete_headers = {
-                    "apikey": SUPABASE_SERVICE_ROLE_KEY,
-                    "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
-                }
-                requests.delete(delete_url, headers=delete_headers)
-                print(f"[DEBUG] Cleaned up uploaded image: {file_name}")
+                print("[DEBUG] Processing profile picture upload")
+                if ";base64," in profile_picture_base64:
+                    format_part, imgstr = profile_picture_base64.split(";base64,")
+                    ext = format_part.split("/")[-1]
+                    
+                    timestamp = int(datetime.now().timestamp())
+                    file_name = f"profile_{email.split('@')[0]}_{timestamp}.{ext}"
+                    bucket_name = "kutsero_op_profile"
+                    
+                    file_bytes = base64.b64decode(imgstr)
+                    upload_url = f"{SUPABASE_URL}/storage/v1/object/{bucket_name}/{file_name}"
+                    upload_headers = {
+                        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                        "Content-Type": f"image/{ext}",
+                    }
+                    
+                    upload_response = requests.post(upload_url, data=file_bytes, headers=upload_headers)
+                    if upload_response.status_code in [200, 201]:
+                        profile_picture_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket_name}/{file_name}"
+                        print(f"[DEBUG] Profile picture uploaded: {profile_picture_url}")
             except Exception as e:
-                print(f"[ERROR] Failed to cleanup image: {e}")
+                print(f"[ERROR] Profile picture upload failed: {e}")
+                profile_picture_url = None
         
-        return Response({"error": "Failed to insert profile", "details": profile_insert_json}, status=status.HTTP_400_BAD_REQUEST)
-
-    print(f"[SUCCESS] User registration completed for {email}")
-    return Response({
-        "message": "User registration completed successfully. Your account is pending approval.",
-        "user": auth_json,
-        "user_record": user_insert_json,
-        "profile": profile_insert_json,
-        "profile_picture": profile_picture_url
-    }, status=status.HTTP_201_CREATED)
-
+        # Handle membership document as IMAGE
+        membership_document_url = None
+        if membership_document_base64 and isinstance(membership_document_base64, str) and membership_document_base64.strip():
+            try:
+                print("[DEBUG] Processing membership document image upload")
+                if ";base64," in membership_document_base64:
+                    format_part, imgstr = membership_document_base64.split(";base64,")
+                    ext = format_part.split("/")[-1]
+                    
+                    timestamp = int(datetime.now().timestamp())
+                    file_name = f"membership_{email.split('@')[0]}_{timestamp}.{ext}"
+                    
+                    # Upload to documents bucket
+                    bucket_name = "kutsero_documents"
+                    
+                    file_bytes = base64.b64decode(imgstr)
+                    upload_url = f"{SUPABASE_URL}/storage/v1/object/{bucket_name}/{file_name}"
+                    upload_headers = {
+                        "apikey": SUPABASE_SERVICE_ROLE_KEY,
+                        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+                        "Content-Type": f"image/{ext}",
+                    }
+                    
+                    upload_response = requests.post(upload_url, data=file_bytes, headers=upload_headers)
+                    if upload_response.status_code in [200, 201]:
+                        membership_document_url = f"{SUPABASE_URL}/storage/v1/object/public/{bucket_name}/{file_name}"
+                        print(f"[DEBUG] Membership document uploaded: {membership_document_url}")
+                    else:
+                        print(f"[ERROR] Membership document upload failed: {upload_response.text}")
+            except Exception as e:
+                print(f"[ERROR] Membership document upload failed: {e}")
+                import traceback
+                traceback.print_exc()
+                membership_document_url = None
+        
+        # Create user in Supabase Auth
+        print(f"[DEBUG] Creating Supabase Auth user for: {email}")
+        signup_url = f"{SUPABASE_URL}/auth/v1/admin/users"
+        headers = {
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload_auth = {
+            "email": email, 
+            "password": password,
+            "email_confirm": True
+        }
+        
+        auth_response = requests.post(signup_url, json=payload_auth, headers=headers)
+        auth_json = auth_response.json()
+        
+        if auth_response.status_code not in [200, 201]:
+            print(f"[ERROR] Failed to create user: {auth_json}")
+            return Response(
+                {"error": "Failed to create user", "details": auth_json}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user_id = auth_json.get('id') or auth_json.get('user', {}).get('id')
+        print(f"[DEBUG] Created user with ID: {user_id}")
+        
+        # Insert into users table
+        membership_status = "pending"
+        if is_member == "yes":
+            membership_status = "pending_verification"
+        elif is_member == "no":
+            membership_status = "applied"
+        
+        user_payload = {
+            "id": user_id,
+            "role": role.capitalize(),
+            "status": "pending",
+            "membership_status": membership_status,
+        }
+        
+        insert_user_url = f"{SUPABASE_URL}/rest/v1/users"
+        insert_headers = {
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+        }
+        
+        user_insert_response = requests.post(insert_user_url, json=user_payload, headers=insert_headers)
+        if user_insert_response.status_code not in [200, 201]:
+            print(f"[ERROR] Failed to insert user: {user_insert_response.text}")
+            requests.delete(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=headers)
+            return Response(
+                {"error": "Failed to insert user"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Prepare profile data
+        current_time = datetime.utcnow().isoformat()
+        
+        if role.lower() == "kutsero":
+            profile_payload = {
+                "kutsero_id": user_id,
+                "kutsero_username": username,
+                "kutsero_email": email,
+                "kutsero_fname": data.get("firstName", ""),
+                "kutsero_mname": data.get("middleName", ""),
+                "kutsero_lname": data.get("lastName", ""),
+                "kutsero_dob": data.get("dob", ""),
+                "kutsero_sex": data.get("sex", ""),
+                "kutsero_phone_num": data.get("phoneNumber", ""),
+                "kutsero_province": data.get("province", ""),
+                "kutsero_city": data.get("city", ""),
+                "kutsero_municipality": data.get("municipality", ""),
+                "kutsero_brgy": data.get("barangay", ""),
+                "kutsero_zipcode": data.get("zipCode", ""),
+                "kutsero_image": profile_picture_url,
+                "created_at": current_time,
+                # Membership fields - store as TEXT/IMAGE URL
+                "is_member": is_member == "yes",
+                "membership_verified": False,
+                "membership_document_url": membership_document_url,  # This is now an image URL
+                "years_experience": data.get("yearsExperience"),
+                "membership_status": membership_status,
+            }
+            
+            insert_profile_url = f"{SUPABASE_URL}/rest/v1/kutsero_profile"
+            
+        else:  # horse_operator
+            profile_payload = {
+                "op_id": user_id,
+                "op_email": email,
+                "op_fname": data.get("firstName", ""),
+                "op_mname": data.get("middleName", ""),
+                "op_lname": data.get("lastName", ""),
+                "op_dob": data.get("dob", ""),
+                "op_sex": data.get("sex", ""),
+                "op_phone_num": data.get("phoneNumber", ""),
+                "op_province": data.get("province", ""),
+                "op_city": data.get("city", ""),
+                "op_municipality": data.get("municipality", ""),
+                "op_brgy": data.get("barangay", ""),
+                "op_zipcode": data.get("zipCode", ""),
+                "op_image": profile_picture_url,
+                "created_at": current_time,
+            }
+            
+            insert_profile_url = f"{SUPABASE_URL}/rest/v1/horse_op_profile"
+        
+        # Insert profile
+        profile_insert_response = requests.post(insert_profile_url, json=profile_payload, headers=insert_headers)
+        if profile_insert_response.status_code not in [200, 201]:
+            print(f"[ERROR] Failed to insert profile: {profile_insert_response.text}")
+            requests.delete(f"{SUPABASE_URL}/rest/v1/users?id=eq.{user_id}", headers=insert_headers)
+            requests.delete(f"{SUPABASE_URL}/auth/v1/admin/users/{user_id}", headers=headers)
+            return Response(
+                {"error": "Failed to insert profile"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Success response
+        response_data = {
+            "message": f"{role.capitalize()} registration completed successfully.",
+            "user_id": user_id,
+            "email": email,
+            "role": role,
+            "profile_picture": profile_picture_url,
+            "membership_document": membership_document_url,  # This is the image URL
+        }
+        
+        return Response(response_data, status=status.HTTP_201_CREATED)
+        
+    except Exception as e:
+        print(f"[EXCEPTION] Error in signup_mobile: {e}")
+        import traceback
+        traceback.print_exc()
+        return Response(
+            {"error": "Internal server error", "details": str(e)}, 
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
 @api_view(['POST'])
 def login_mobile(request):
     email = request.data.get("email", "").strip()

@@ -1,4 +1,4 @@
-"use client"
+
 
 import { useFocusEffect, useRouter, useLocalSearchParams } from "expo-router"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
@@ -55,7 +55,7 @@ const getSafeAreaPadding = () => {
   }
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
 
 const SUPABASE_URL = "https://drgknejiqupegkyxfaab.supabase.co"
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRyZ2tuZWppcXVwZWdreXhmYWFiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ5MDAxMTUsImV4cCI6MjA3MDQ3NjExNX0.KcIRm5t6z63X_KHGxDeU5ojwArVTasZWBzh01bD2nzo"
@@ -1603,6 +1603,13 @@ export default function MessageScreen() {
           label="Horse"
           tabKey="horse"
           isActive={false}
+        />
+        <TabButtonWithBadge
+          iconSource={require("../../assets/images/kutsero.png")}
+          label="Kutsero"
+          tabKey="kutsero"
+          isActive={false}
+          onPress={() => router.push("../HORSE_OPERATOR/kutsero")}
         />
         <TabButtonWithBadge 
           iconSource={require("../../assets/images/chat.png")} 

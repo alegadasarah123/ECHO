@@ -1,4 +1,4 @@
-"use client"
+
 
 import { useRouter } from "expo-router"
 import { useState, useEffect } from "react"
@@ -65,8 +65,7 @@ interface Event {
   notificationId?: string // Store notification ID for cancellation
 }
 
-// API Base URL - UPDATE THIS TO YOUR IP ADDRESS
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+
 
 // Configure notifications with proper TypeScript types
 Notifications.setNotificationHandler({
@@ -93,6 +92,7 @@ export default function CalendarScreen() {
   const [ampm, setAmPm] = useState<"AM" | "PM">("AM")
   const [expoPushToken, setExpoPushToken] = useState<string>("")
   const [notificationPermissions, setNotificationPermissions] = useState(false)
+  const [apiError, setApiError] = useState<string>("")
 
   const safeArea = getSafeAreaPadding()
 
@@ -111,7 +111,7 @@ export default function CalendarScreen() {
   // Register for push notifications
   const registerForPushNotifications = async () => {
     if (!Device.isDevice) {
-      Alert.alert("Warning", "Must use physical device for Push Notifications")
+      console.log("Must use physical device for Push Notifications")
       return
     }
 
@@ -124,7 +124,7 @@ export default function CalendarScreen() {
     }
 
     if (finalStatus !== "granted") {
-      Alert.alert("Warning", "Failed to get push token for push notification!")
+      console.log("Failed to get push token for push notification!")
       setNotificationPermissions(false)
       return
     }
@@ -276,6 +276,7 @@ export default function CalendarScreen() {
     setMinute("")
     setAmPm("AM")
     setShowAddEventModal(true)
+    setApiError("")
   }
 
   const saveEventsToSecureStorage = async (events: Event[]): Promise<void> => {
@@ -299,9 +300,13 @@ export default function CalendarScreen() {
   const fetchEvents = async (): Promise<void> => {
     try {
       setLoading(true)
-      console.log("Attempting to fetch events from:", `${API_BASE_URL}/get-calendar-events/`)
+      setApiError("")
+      console.log("Attempting to fetch events from: https://echo-ebl8.onrender.com/api/kutsero/get-calendar-events/")
 
-      const response = await fetch(`${API_BASE_URL}/get-calendar-events/`)
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/kutsero/get-calendar-events/`, {
+        // Add timeout for fetch request
+        signal: AbortSignal.timeout(10000) // 10 second timeout
+      })
 
       if (response.ok) {
         const data = await response.json()
@@ -332,12 +337,14 @@ export default function CalendarScreen() {
         const localEvents = await loadEventsFromSecureStorage()
         setEvents(localEvents)
         await scheduleAllFutureNotifications(localEvents)
+        setApiError("Unable to connect to server. Using locally stored events.")
       }
     } catch (error) {
       console.error("Network or API error while fetching events:", error)
       const localEvents = await loadEventsFromSecureStorage()
       setEvents(localEvents)
       await scheduleAllFutureNotifications(localEvents)
+      setApiError("Network error. Using locally stored events.")
     } finally {
       setLoading(false)
     }
@@ -385,6 +392,7 @@ export default function CalendarScreen() {
 
     try {
       setLoading(true)
+      setApiError("")
 
       const requestBody = {
         title_event: eventTitle.trim(),
@@ -394,12 +402,13 @@ export default function CalendarScreen() {
 
       console.log("Sending request to add event:", requestBody)
 
-      const response = await fetch(`${API_BASE_URL}/create-calendar-event/`, {
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/kutsero/create-calendar-event/`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(requestBody),
+        signal: AbortSignal.timeout(10000) // 10 second timeout
       })
 
       if (response.ok) {
@@ -418,7 +427,8 @@ export default function CalendarScreen() {
       } else {
         const errorText = await response.text()
         console.error("Server error:", response.status, errorText)
-        Alert.alert("Warning", "Failed to save event on server. Saved locally.")
+        
+        // Save locally if server fails
         const updatedEvents = [...events, newEvent]
         setEvents(updatedEvents)
         await saveEventsToSecureStorage(updatedEvents)
@@ -427,11 +437,13 @@ export default function CalendarScreen() {
         await scheduleNotification(newEvent)
         await scheduleExactTimeNotification(newEvent)
         
+        Alert.alert("Success", "Event saved locally. Could not connect to server.")
         setShowAddEventModal(false)
       }
     } catch (error) {
       console.error("Network or API error while adding event:", error)
-      Alert.alert("Warning", "Network error. Event saved locally.")
+      
+      // Save locally on network error
       const updatedEvents = [...events, newEvent]
       setEvents(updatedEvents)
       await saveEventsToSecureStorage(updatedEvents)
@@ -440,7 +452,9 @@ export default function CalendarScreen() {
       await scheduleNotification(newEvent)
       await scheduleExactTimeNotification(newEvent)
       
+      Alert.alert("Success", "Event saved locally due to network error.")
       setShowAddEventModal(false)
+      setApiError("Network error. Event saved locally.")
     } finally {
       setLoading(false)
     }
@@ -461,10 +475,9 @@ export default function CalendarScreen() {
           onPress: async () => {
             try {
               setLoading(true);
+              setApiError("");
               
               // Cancel all scheduled notifications for this event
-              // We need to cancel both the reminder and exact time notifications
-              // Since we don't store the IDs, we'll cancel all and reschedule remaining events
               const eventToDelete = events.find(event => event.id === eventId)
               if (eventToDelete) {
                 // Cancel all notifications and reschedule remaining events
@@ -475,8 +488,9 @@ export default function CalendarScreen() {
                 await scheduleAllFutureNotifications(remainingEvents)
               }
 
-              const response = await fetch(`${API_BASE_URL}/delete-calendar-event/${eventId}/`, {
+              const response = await fetch(`https://echo-ebl8.onrender.com/api/kutsero/delete-calendar-event/${eventId}/`, {
                 method: "DELETE",
+                signal: AbortSignal.timeout(10000)
               });
 
               if (response.ok) {
@@ -485,13 +499,20 @@ export default function CalendarScreen() {
                 setEvents(updatedEvents);
                 await saveEventsToSecureStorage(updatedEvents);
               } else {
-                const errorText = await response.text();
-                console.error("Server error:", response.status, errorText);
-                Alert.alert("Error", "Failed to delete event on server.");
+                // If server delete fails, still delete locally
+                const updatedEvents = events.filter(event => event.id !== eventId);
+                setEvents(updatedEvents);
+                await saveEventsToSecureStorage(updatedEvents);
+                Alert.alert("Success", "Event deleted locally. Could not connect to server.");
               }
             } catch (error) {
               console.error("Network or API error while deleting event:", error);
-              Alert.alert("Error", "Network error. Failed to delete event.");
+              // Still delete locally on network error
+              const updatedEvents = events.filter(event => event.id !== eventId);
+              setEvents(updatedEvents);
+              await saveEventsToSecureStorage(updatedEvents);
+              Alert.alert("Success", "Event deleted locally due to network error.");
+              setApiError("Network error. Event deleted locally.");
             } finally {
               setLoading(false);
             }
@@ -709,6 +730,18 @@ export default function CalendarScreen() {
             { paddingBottom: safeArea.bottom + dynamicSpacing(100) },
           ]}
         >
+          {apiError ? (
+            <View style={styles.apiWarning}>
+              <Text style={styles.apiWarningText}>{apiError}</Text>
+              <TouchableOpacity 
+                style={styles.retryButton}
+                onPress={fetchEvents}
+              >
+                <Text style={styles.retryButtonText}>Retry Connection</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+
           <View style={styles.calendarSection}>
             <Text style={styles.sectionTitle}>Calendar</Text>
 
@@ -987,6 +1020,33 @@ const styles = StyleSheet.create({
   scrollContentContainer: {
     flexGrow: 1,
   },
+  apiWarning: {
+    backgroundColor: '#FFF3CD',
+    marginHorizontal: scale(16),
+    marginTop: dynamicSpacing(16),
+    padding: scale(12),
+    borderRadius: scale(8),
+    borderWidth: 1,
+    borderColor: '#FFEAA7',
+    alignItems: 'center',
+  },
+  apiWarningText: {
+    fontSize: moderateScale(12),
+    color: '#856404',
+    marginBottom: verticalScale(8),
+    textAlign: 'center',
+  },
+  retryButton: {
+    backgroundColor: '#C17A47',
+    paddingHorizontal: scale(12),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(6),
+  },
+  retryButtonText: {
+    color: 'white',
+    fontSize: moderateScale(12),
+    fontWeight: '600',
+  },
   calendarSection: {
     backgroundColor: "white",
     marginHorizontal: scale(16),
@@ -1039,11 +1099,11 @@ const styles = StyleSheet.create({
     borderBottomColor: "#E0E0E0",
     paddingBottom: verticalScale(8),
   },
-   dayHeader: {
+  dayHeader: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    minWidth: 0, // This is important for flex items to shrink properly
+    minWidth: 0,
   },
   dayHeaderText: {
     fontSize: moderateScale(12),

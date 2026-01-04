@@ -1,6 +1,4 @@
-"use client"
-
-// Enhanced Signup Component with Role Selection - No Username Required
+// Enhanced Signup Component with Role Selection, Membership, and Document Upload
 import { useState, useEffect } from "react"
 import { useRouter } from "expo-router"
 import {
@@ -22,6 +20,7 @@ import {
 } from "react-native"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import * as ImagePicker from "expo-image-picker"
+import * as FileSystem from 'expo-file-system'
 
 const { width, height } = Dimensions.get("window")
 
@@ -307,6 +306,12 @@ const roleOptions = [
   },
 ]
 
+const membershipOptions = [
+  { value: "yes", label: "Yes, I am a member" },
+  { value: "no", label: "No, but I want to apply" },
+  { value: "no_interest", label: "No, not interested" },
+]
+
 interface DropdownFieldProps {
   label: string
   value: string
@@ -324,8 +329,16 @@ interface ProfilePicture {
   name?: string
 }
 
+interface DocumentFile {
+  uri: string
+  name: string
+  type: string
+  size: number
+  base64?: string | null  // Add null as a possible type
+}
+
 const API_CONFIG = {
-  BASE_URL: "http://192.168.31.58:8000/api/signup_mobile/",
+  BASE_URL: "https://echo-ebl8.onrender.com/api/signup_mobile/",
   TIMEOUT: 60000,
   RETRY_ATTEMPTS: 2,
   RETRY_DELAY: 3000,
@@ -350,6 +363,13 @@ interface FormData {
   barangay: string
   zipCode: string
   termsAccepted: boolean
+  // New fields for membership
+  isMember: string
+  membershipDocument: DocumentFile | null
+  yearsExperience: string
+  applyingForMembership: boolean
+  membershipStatus: string
+  membershipNotes: string
 }
 
 const calculatePasswordStrength = (password: string): { strength: string; score: number; color: string } => {
@@ -425,6 +445,7 @@ export default function Signup() {
   const [dropdownVisible, setDropdownVisible] = useState<string | null>(null)
   const [showDatePicker, setShowDatePicker] = useState(false)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
+  const [membershipDocument, setMembershipDocument] = useState<DocumentFile | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({})
@@ -458,6 +479,13 @@ export default function Signup() {
     barangay: "",
     zipCode: "",
     termsAccepted: false,
+    // New fields
+    isMember: "",
+    membershipDocument: null,
+    yearsExperience: "",
+    applyingForMembership: false,
+    membershipStatus: "pending",
+    membershipNotes: "",
   })
 
   // Load cities when province changes
@@ -499,6 +527,15 @@ export default function Signup() {
     
     loadBarangays()
   }, [formData.province, formData.city])
+
+  // Update applyingForMembership when isMember changes
+  useEffect(() => {
+    if (formData.isMember === "no") {
+      updateFormData("applyingForMembership", true)
+    } else {
+      updateFormData("applyingForMembership", false)
+    }
+  }, [formData.isMember])
 
   const updateFormData = (field: string, value: any) => {
     setFormData((prev) => {
@@ -547,6 +584,13 @@ export default function Signup() {
 
     switch (step) {
       case 1:
+        if (!formData.role) {
+          newErrors.role = "Please select your role"
+          Alert.alert("Error", "Please select your role to continue")
+        }
+        break
+
+      case 2:
         if (!formData.firstName.trim()) {
           newErrors.firstName = "First name is required"
         }
@@ -569,13 +613,6 @@ export default function Signup() {
         }
         break
 
-      case 2:
-        if (!formData.role) {
-          newErrors.role = "Please select your role"
-          Alert.alert("Error", "Please select your role to continue")
-        }
-        break
-
       case 3:
         if (!formData.province) {
           newErrors.province = "Province is required"
@@ -594,6 +631,30 @@ export default function Signup() {
         break
 
       case 4:
+        if (!formData.isMember) {
+          newErrors.isMember = "Please select your membership status"
+        }
+        
+        if (formData.isMember === "no") {
+          if (!membershipDocument) {
+            newErrors.membershipDocument = "Please upload a document for membership application"
+          }
+        } else if (formData.isMember === "yes") {
+          if (!membershipDocument) {
+            newErrors.membershipDocument = "Please upload your membership document for verification"
+          }
+        }
+        
+        if (!formData.yearsExperience) {
+          newErrors.yearsExperience = "Years of experience is required"
+        } else if (!/^\d+$/.test(formData.yearsExperience)) {
+          newErrors.yearsExperience = "Please enter a valid number"
+        } else if (parseInt(formData.yearsExperience) > 60) {
+          newErrors.yearsExperience = "Please enter a realistic number of years"
+        }
+        break
+
+      case 5:
         if (!formData.email.trim()) {
           newErrors.email = "Email is required"
         } else if (!isValidEmail(formData.email)) {
@@ -630,7 +691,7 @@ export default function Signup() {
       return
     }
 
-    if (currentStep < 6) {
+    if (currentStep < 7) {
       setCurrentStep(currentStep + 1)
     }
   }
@@ -743,21 +804,83 @@ export default function Signup() {
     }
   }
 
+  const handleDocumentPicker = async () => {
+    try {
+      // For membership documents, use ImagePicker to get images
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+        base64: true,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        const imageUri = asset.uri;
+        
+        // Get file extension from URI
+        let extension = 'jpg';
+        if (asset.uri.toLowerCase().includes('.png')) extension = 'png';
+        if (asset.uri.toLowerCase().includes('.jpeg')) extension = 'jpeg';
+        if (asset.uri.toLowerCase().includes('.jpg')) extension = 'jpg';
+        
+        const mimeType = `image/${extension}`;
+        const fileName = `membership_${Date.now()}.${extension}`;
+
+        const documentData: DocumentFile = {
+          uri: imageUri,
+          name: fileName,
+          type: mimeType,
+          size: asset.fileSize || 0,
+          base64: asset.base64,
+        };
+
+        setMembershipDocument(documentData);
+        updateFormData("membershipDocument", documentData);
+        
+        Alert.alert("Success", "Document image uploaded successfully!");
+      }
+    } catch (error) {
+      console.error("Document picker error:", error);
+      Alert.alert("Error", "Failed to upload document image. Please try again.");
+    }
+  };
+
   const convertImageToBase64 = async (uri: string): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      fetch(uri)
-        .then((response) => response.blob())
-        .then((blob) => {
-          const reader = new FileReader()
-          reader.onloadend = () => {
-            resolve(reader.result as string)
-          }
-          reader.onerror = reject
-          reader.readAsDataURL(blob)
-        })
-        .catch(reject)
-    })
+    try {
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      
+      // Determine mime type from file extension
+      let mimeType = 'image/jpeg';
+      if (uri.toLowerCase().includes('.png')) mimeType = 'image/png';
+      if (uri.toLowerCase().includes('.jpeg')) mimeType = 'image/jpeg';
+      if (uri.toLowerCase().includes('.jpg')) mimeType = 'image/jpeg';
+      
+      return `data:${mimeType};base64,${base64}`;
+    } catch (error) {
+      console.error("Error converting image to base64:", error);
+      throw error;
+    }
   }
+
+  const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
+    try {
+      // Use expo-file-system to read the file
+      const base64 = await FileSystem.readAsStringAsync(file.uri, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      
+      // Create proper data URL with correct mime type
+      const mimeType = file.type || 'image/jpeg';
+      return `data:${mimeType};base64,${base64}`;
+    } catch (error) {
+      console.error("Error converting file to base64:", error);
+      throw error;
+    }
+  };
 
   const handleSignUp = async () => {
     if (isLoading) return
@@ -791,6 +914,17 @@ export default function Signup() {
     } else if (!isValidPhoneNumber(formData.phoneNumber)) {
       validationErrors.phoneNumber = "Invalid phone number format"
     }
+    if (!formData.isMember) validationErrors.isMember = "Membership status is required"
+    if (!formData.yearsExperience) {
+      validationErrors.yearsExperience = "Years of experience is required"
+    }
+
+    // Validate documents based on membership status
+    if (formData.isMember === "no" || formData.isMember === "yes") {
+      if (!membershipDocument) {
+        validationErrors.membershipDocument = "Document upload is required"
+      }
+    }
 
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors)
@@ -805,16 +939,49 @@ export default function Signup() {
       let profileImageBase64 = null
       if (formData.profilePicture && formData.profilePicture.uri) {
         try {
-          console.log("Converting image to base64...")
+          console.log("Converting profile image to base64...")
           profileImageBase64 = await convertImageToBase64(formData.profilePicture.uri)
-          console.log("Image converted successfully")
+          console.log("Profile image converted successfully")
         } catch (error) {
-          console.error("Error converting image:", error)
+          console.error("Error converting profile image:", error)
           Alert.alert("Error", "Failed to process profile picture. Please try again.")
           setIsLoading(false)
           return
         }
       }
+
+      let membershipDocumentBase64 = null
+      if (membershipDocument) {
+        try {
+          console.log("Converting membership document to base64...")
+          membershipDocumentBase64 = await convertFileToBase64(membershipDocument)
+          console.log("Membership document converted successfully")
+          
+          // Debug the base64 string
+          console.log("DEBUG - Membership document base64:", {
+            startsWithData: membershipDocumentBase64.startsWith('data:'),
+            hasBase64Prefix: membershipDocumentBase64.includes(';base64,'),
+            mimeType: membershipDocument?.type,
+            base64Length: membershipDocumentBase64.length,
+            first50Chars: membershipDocumentBase64.substring(0, 50)
+          });
+        } catch (error) {
+          console.error("Error converting membership document:", error)
+          Alert.alert("Error", "Failed to process membership document. Please try again.")
+          setIsLoading(false)
+          return
+        }
+      }
+
+      // Debug log to see what's being sent
+      console.log("DEBUG - Membership data being sent:", {
+        isMember: formData.isMember,
+        hasMembershipDocument: !!membershipDocument,
+        membershipDocumentBase64Length: membershipDocumentBase64?.length,
+        membershipDocumentBase64First50: membershipDocumentBase64?.substring(0, 50),
+        membershipDocumentName: membershipDocument?.name,
+        membershipDocumentType: membershipDocument?.type,
+      })
 
       const bodyData = {
         firstName: formData.firstName,
@@ -832,12 +999,24 @@ export default function Signup() {
         email: formData.email,
         password: formData.password,
         profilePicture: profileImageBase64,
+        // New fields for membership
+        isMember: formData.isMember,
+        membershipDocument: membershipDocumentBase64,
+        membershipDocumentName: membershipDocument?.name || null,
+        membershipDocumentType: membershipDocument?.type || null,
+        yearsExperience: formData.yearsExperience,
+        applyingForMembership: formData.isMember === "no",
+        membershipStatus: formData.isMember === "yes" ? "pending_verification" : 
+                         formData.isMember === "no" ? "applied" : "not_interested",
       }
 
       console.log("Sending request to:", API_CONFIG.BASE_URL)
       console.log("User selected role:", formData.role)
-      console.log("User email:", formData.email)
+      console.log("Membership status:", formData.isMember)
+      console.log("Years experience:", formData.yearsExperience)
       console.log("Has profile picture:", !!profileImageBase64)
+      console.log("Has membership document:", !!membershipDocumentBase64)
+      console.log("Full body data keys:", Object.keys(bodyData))
 
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), API_CONFIG.TIMEOUT)
@@ -868,6 +1047,7 @@ export default function Signup() {
             {
               text: "OK",
               onPress: () => {
+                // Reset form
                 setFormData({
                   firstName: "",
                   lastName: "",
@@ -887,8 +1067,15 @@ export default function Signup() {
                   barangay: "",
                   zipCode: "",
                   termsAccepted: false,
+                  isMember: "",
+                  membershipDocument: null,
+                  yearsExperience: "",
+                  applyingForMembership: false,
+                  membershipStatus: "pending",
+                  membershipNotes: "",
                 })
                 setSelectedImage(null)
+                setMembershipDocument(null)
                 setCurrentStep(1)
                 setErrors({})
                 setPasswordStrength({ strength: "", score: 0, color: "#E0E0E0" })
@@ -915,7 +1102,7 @@ export default function Signup() {
                 { text: "Go to Login", onPress: () => router.replace("/auth/login") },
               ])
               setErrors({ email: "A user with that email already exists" })
-              setCurrentStep(4) // Go back to credentials step
+              setCurrentStep(5) // Go back to credentials step
               return
             }
           }
@@ -927,7 +1114,7 @@ export default function Signup() {
           if (response.status === 409) {
             errorMessage = "A user with that email already exists."
             setErrors({ email: "A user with that email already exists" })
-            setCurrentStep(4)
+            setCurrentStep(5)
           } else if (response.status === 400) {
             errorMessage = "Invalid information provided. Please check your details."
           } else if (response.status === 500) {
@@ -1025,6 +1212,55 @@ export default function Signup() {
   const renderStep1 = () => {
     return (
       <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
+        <Text style={styles.stepTitle}>Select Your Role</Text>
+        <Text style={styles.stepSubtitle}>Choose what describes you best</Text>
+
+        <View style={styles.roleSelectionContainer}>
+          {roleOptions.map((role) => (
+            <TouchableOpacity
+              key={role.value}
+              style={[styles.roleCard, formData.role === role.value && styles.roleCardSelected]}
+              onPress={() => updateFormData("role", role.value)}
+            >
+              <View style={styles.roleIconContainer}>
+                <Text style={styles.roleIcon}>{role.icon}</Text>
+              </View>
+              <View style={styles.roleContent}>
+                <Text style={[styles.roleLabel, formData.role === role.value && styles.roleLabelSelected]}>
+                  {role.label}
+                </Text>
+                <Text style={[styles.roleDescription, formData.role === role.value && styles.roleDescriptionSelected]}>
+                  {role.description}
+                </Text>
+              </View>
+              <View style={styles.roleRadio}>
+                <View style={[styles.radioOuter, formData.role === role.value && styles.radioOuterSelected]}>
+                  {formData.role === role.value && <View style={styles.radioInner} />}
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
+          <Text style={styles.nextButtonText}>Next</Text>
+        </TouchableOpacity>
+
+        <View style={styles.signInLinkContainer}>
+          <Text style={styles.signInText}>
+            Already have an account?{" "}
+            <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
+              <Text style={styles.signInLink}>Sign in</Text>
+            </TouchableOpacity>
+          </Text>
+        </View>
+      </ScrollView>
+    )
+  }
+
+  const renderStep2 = () => {
+    return (
+      <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
         <Text style={styles.stepTitle}>Tell us about yourself</Text>
         <Text style={styles.stepSubtitle}>Please complete the information below</Text>
 
@@ -1105,55 +1341,6 @@ export default function Signup() {
           {errors.phoneNumber && <Text style={styles.errorText}>{errors.phoneNumber}</Text>}
         </View>
 
-        <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
-          <Text style={styles.nextButtonText}>Next</Text>
-        </TouchableOpacity>
-
-        <View style={styles.signInLinkContainer}>
-          <Text style={styles.signInText}>
-            Already have an account?{" "}
-            <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
-              <Text style={styles.signInLink}>Sign in</Text>
-            </TouchableOpacity>
-          </Text>
-        </View>
-      </ScrollView>
-    )
-  }
-
-  const renderStep2 = () => {
-    return (
-      <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
-        <Text style={styles.stepTitle}>Select Your Role</Text>
-        <Text style={styles.stepSubtitle}>Choose what describes you best</Text>
-
-        <View style={styles.roleSelectionContainer}>
-          {roleOptions.map((role) => (
-            <TouchableOpacity
-              key={role.value}
-              style={[styles.roleCard, formData.role === role.value && styles.roleCardSelected]}
-              onPress={() => updateFormData("role", role.value)}
-            >
-              <View style={styles.roleIconContainer}>
-                <Text style={styles.roleIcon}>{role.icon}</Text>
-              </View>
-              <View style={styles.roleContent}>
-                <Text style={[styles.roleLabel, formData.role === role.value && styles.roleLabelSelected]}>
-                  {role.label}
-                </Text>
-                <Text style={[styles.roleDescription, formData.role === role.value && styles.roleDescriptionSelected]}>
-                  {role.description}
-                </Text>
-              </View>
-              <View style={styles.roleRadio}>
-                <View style={[styles.radioOuter, formData.role === role.value && styles.radioOuterSelected]}>
-                  {formData.role === role.value && <View style={styles.radioInner} />}
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-
         <View style={styles.buttonRow}>
           <TouchableOpacity style={styles.prevButton} onPress={prevStep}>
             <Text style={styles.prevButtonText}>Previous</Text>
@@ -1178,8 +1365,8 @@ export default function Signup() {
   const renderStep3 = () => {
     return (
       <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
-        <Text style={styles.stepTitle}>Tell us about yourself</Text>
-        <Text style={styles.stepSubtitle}>Please complete the information below</Text>
+        <Text style={styles.stepTitle}>Address Information</Text>
+        <Text style={styles.stepSubtitle}>Please provide your complete address</Text>
 
         <Text style={styles.sectionTitle}>ADDRESS IN THE PHILIPPINES</Text>
 
@@ -1266,10 +1453,156 @@ export default function Signup() {
     )
   }
 
-  // ... rest of your existing render functions (renderStep4, renderStep5, renderStep6) remain the same
-  // I'm omitting them for brevity since they don't need changes
+  const renderStep4 = () => {
+    return (
+      <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
+        <Text style={styles.stepTitle}>Membership & Experience</Text>
+        <Text style={styles.stepSubtitle}>Tell us about your experience and membership status</Text>
 
-  const renderStep4 = () => (
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>Membership Status</Text>
+          <Text style={styles.sectionDescription}>
+            Are you currently a member of any horse operators association or kutsero group?
+          </Text>
+
+          <View style={styles.membershipOptionsContainer}>
+            {membershipOptions.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                style={[
+                  styles.membershipOption,
+                  formData.isMember === option.value && styles.membershipOptionSelected,
+                  errors.isMember && styles.inputError,
+                ]}
+                onPress={() => updateFormData("isMember", option.value)}
+              >
+                <View style={styles.membershipRadio}>
+                  <View
+                    style={[
+                      styles.membershipRadioOuter,
+                      formData.isMember === option.value && styles.membershipRadioOuterSelected,
+                    ]}
+                  >
+                    {formData.isMember === option.value && <View style={styles.membershipRadioInner} />}
+                  </View>
+                </View>
+                <Text
+                  style={[
+                    styles.membershipOptionText,
+                    formData.isMember === option.value && styles.membershipOptionTextSelected,
+                  ]}
+                >
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {errors.isMember && <Text style={styles.errorText}>{errors.isMember}</Text>}
+        </View>
+
+        {(formData.isMember === "yes" || formData.isMember === "no") && (
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>
+              {formData.isMember === "yes" ? "Membership Verification" : "Membership Application"}
+            </Text>
+            <Text style={styles.sectionDescription}>
+              {formData.isMember === "yes"
+                ? "Please upload your membership ID or certificate for verification"
+                : "Please upload any supporting document for your membership application"}
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.documentUploadButton, errors.membershipDocument && styles.inputError]}
+              onPress={handleDocumentPicker}
+            >
+              <Text style={styles.documentUploadIcon}>📎</Text>
+              <View style={styles.documentUploadTextContainer}>
+                <Text style={styles.documentUploadTitle}>
+                  {membershipDocument ? "Document Uploaded" : "Upload Document"}
+                </Text>
+                <Text style={styles.documentUploadSubtitle}>
+                  {membershipDocument
+                    ? membershipDocument.name
+                    : "JPG, PNG (Max 10MB)"}
+                </Text>
+              </View>
+              {membershipDocument && (
+                <View style={styles.documentCheckmark}>
+                  <Text style={styles.checkmarkText}>✓</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            {/* Document Image Preview */}
+            {membershipDocument && membershipDocument.uri && (
+              <View style={styles.documentPreviewContainer}>
+                <Image 
+                  source={{ uri: membershipDocument.uri }} 
+                  style={styles.documentPreview}
+                  resizeMode="contain"
+                />
+                <Text style={styles.documentPreviewText}>
+                  Preview of uploaded document
+                </Text>
+              </View>
+            )}
+
+            {membershipDocument && (
+              <TouchableOpacity
+                style={styles.removeDocumentButton}
+                onPress={() => {
+                  setMembershipDocument(null)
+                  updateFormData("membershipDocument", null)
+                }}
+              >
+                <Text style={styles.removeDocumentText}>🗑️ Remove Document</Text>
+              </TouchableOpacity>
+            )}
+
+            {errors.membershipDocument && <Text style={styles.errorText}>{errors.membershipDocument}</Text>}
+          </View>
+        )}
+
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>Years of Experience</Text>
+          <Text style={styles.sectionDescription}>How many years of experience do you have as a {formData.role === "kutsero" ? "kutsero" : "horse operator"}?</Text>
+
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={[styles.textInput, styles.experienceInput, errors.yearsExperience && styles.inputError]}
+              value={formData.yearsExperience}
+              onChangeText={(value) => updateFormData("yearsExperience", value)}
+              placeholder="Enter number of years"
+              placeholderTextColor="#999"
+              keyboardType="numeric"
+            />
+            <Text style={styles.experienceLabel}>years</Text>
+          </View>
+          {errors.yearsExperience && <Text style={styles.errorText}>{errors.yearsExperience}</Text>}
+        </View>
+
+        <View style={styles.buttonRow}>
+          <TouchableOpacity style={styles.prevButton} onPress={prevStep}>
+            <Text style={styles.prevButtonText}>Previous</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.nextButton} onPress={nextStep}>
+            <Text style={styles.nextButtonText}>Next</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.signInLinkContainer}>
+          <Text style={styles.signInText}>
+            Already have an account?{" "}
+            <TouchableOpacity onPress={handleBackToLogin} style={styles.signInTouchable}>
+              <Text style={styles.signInLink}>Sign in</Text>
+            </TouchableOpacity>
+          </Text>
+        </View>
+      </ScrollView>
+    )
+  }
+
+  const renderStep5 = () => (
     <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
       <Text style={styles.stepTitle}>Login Credentials</Text>
       <Text style={styles.stepSubtitle}>Create your login information</Text>
@@ -1402,7 +1735,7 @@ export default function Signup() {
     </ScrollView>
   )
 
-  const renderStep5 = () => (
+  const renderStep6 = () => (
     <ScrollView style={styles.stepContainer} showsVerticalScrollIndicator={false}>
       <Text style={styles.stepTitle}>Set Your Profile Picture</Text>
       <Text style={styles.stepSubtitle}>Upload or capture a photo for your profile</Text>
@@ -1476,7 +1809,7 @@ export default function Signup() {
     </ScrollView>
   )
 
-  const renderStep6 = () => (
+  const renderStep7 = () => (
     <View style={styles.stepContainer}>
       <Text style={styles.stepTitle}>Terms & Conditions</Text>
       <Text style={styles.stepSubtitle}>Please read and accept our terms to continue</Text>
@@ -1665,6 +1998,8 @@ export default function Signup() {
         return renderStep5()
       case 6:
         return renderStep6()
+      case 7:
+        return renderStep7()
       default:
         return renderStep1()
     }
@@ -1684,12 +2019,12 @@ export default function Signup() {
         </View>
 
         <View style={styles.progressContainer}>
-          {[1, 2, 3, 4, 5, 6].map((step) => (
+          {[1, 2, 3, 4, 5, 6, 7].map((step) => (
             <View key={step} style={styles.progressStep}>
               <View style={[styles.progressCircle, currentStep >= step && styles.progressCircleActive]}>
                 <Text style={[styles.progressText, currentStep >= step && styles.progressTextActive]}>{step}</Text>
               </View>
-              {step < 6 && <View style={[styles.progressLine, currentStep > step && styles.progressLineActive]} />}
+              {step < 7 && <View style={[styles.progressLine, currentStep > step && styles.progressLineActive]} />}
             </View>
           ))}
         </View>
@@ -1701,38 +2036,6 @@ export default function Signup() {
 }
 
 const styles = StyleSheet.create({
-  inputError: {
-    borderColor: "#FF4444",
-    borderWidth: 2,
-  },
-  errorText: {
-    color: "#FF4444",
-    fontSize: moderateScale(12),
-    marginTop: moderateScale(4),
-    marginLeft: moderateScale(2),
-  },
-
-  passwordStrengthContainer: {
-    marginTop: moderateScale(8),
-    marginBottom: moderateScale(4),
-  },
-  passwordStrengthBar: {
-    height: moderateScale(6),
-    backgroundColor: "#E0E0E0",
-    borderRadius: moderateScale(3),
-    overflow: "hidden",
-    marginBottom: moderateScale(6),
-  },
-  passwordStrengthFill: {
-    height: "100%",
-    borderRadius: moderateScale(3),
-  },
-  passwordStrengthText: {
-    fontSize: moderateScale(12),
-    fontWeight: "600",
-    textAlign: "right",
-  },
-
   container: {
     flex: 1,
     backgroundColor: "#B8763E",
@@ -1780,9 +2083,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   progressCircle: {
-    width: moderateScale(25),
-    height: moderateScale(25),
-    borderRadius: moderateScale(12.5),
+    width: moderateScale(22),
+    height: moderateScale(22),
+    borderRadius: moderateScale(11),
     backgroundColor: "rgba(255, 255, 255, 0.3)",
     justifyContent: "center",
     alignItems: "center",
@@ -1802,7 +2105,7 @@ const styles = StyleSheet.create({
     color: "#B8763E",
   },
   progressLine: {
-    width: moderateScale(20),
+    width: moderateScale(15),
     height: 2,
     backgroundColor: "rgba(255, 255, 255, 0.3)",
   },
@@ -1834,12 +2137,20 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: moderateScale(30),
   },
+  sectionContainer: {
+    marginBottom: moderateScale(25),
+  },
   sectionTitle: {
     fontSize: moderateScale(16),
     fontWeight: "600",
     color: "#333333",
+    marginBottom: moderateScale(8),
+  },
+  sectionDescription: {
+    fontSize: moderateScale(14),
+    color: "#666666",
+    lineHeight: moderateScale(20),
     marginBottom: moderateScale(15),
-    marginTop: moderateScale(10),
   },
   roleSelectionContainer: {
     marginBottom: moderateScale(30),
@@ -1914,8 +2225,132 @@ const styles = StyleSheet.create({
     borderRadius: moderateScale(5),
     backgroundColor: "#B8763E",
   },
+  membershipOptionsContainer: {
+    marginBottom: moderateScale(10),
+  },
+  membershipOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9F9F9",
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+    borderRadius: moderateScale(8),
+    padding: moderateScale(15),
+    marginBottom: moderateScale(10),
+  },
+  membershipOptionSelected: {
+    backgroundColor: "#FFF8F5",
+    borderColor: "#B8763E",
+  },
+  membershipRadio: {
+    marginRight: moderateScale(12),
+  },
+  membershipRadioOuter: {
+    width: moderateScale(20),
+    height: moderateScale(20),
+    borderRadius: moderateScale(10),
+    borderWidth: 2,
+    borderColor: "#CCCCCC",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+  },
+  membershipRadioOuterSelected: {
+    borderColor: "#B8763E",
+  },
+  membershipRadioInner: {
+    width: moderateScale(10),
+    height: moderateScale(10),
+    borderRadius: moderateScale(5),
+    backgroundColor: "#B8763E",
+  },
+  membershipOptionText: {
+    fontSize: moderateScale(16),
+    color: "#333333",
+    flex: 1,
+  },
+  membershipOptionTextSelected: {
+    color: "#B8763E",
+    fontWeight: "500",
+  },
+  documentUploadButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F9F9F9",
+    borderWidth: 2,
+    borderColor: "#E0E0E0",
+    borderRadius: moderateScale(8),
+    padding: moderateScale(15),
+    borderStyle: "dashed",
+  },
+  documentUploadIcon: {
+    fontSize: moderateScale(24),
+    marginRight: moderateScale(12),
+  },
+  documentUploadTextContainer: {
+    flex: 1,
+  },
+  documentUploadTitle: {
+    fontSize: moderateScale(16),
+    fontWeight: "500",
+    color: "#333333",
+    marginBottom: moderateScale(4),
+  },
+  documentUploadSubtitle: {
+    fontSize: moderateScale(12),
+    color: "#666666",
+  },
+  documentCheckmark: {
+    width: moderateScale(24),
+    height: moderateScale(24),
+    borderRadius: moderateScale(12),
+    backgroundColor: "#4CAF50",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  checkmarkText: {
+    color: "#FFFFFF",
+    fontSize: moderateScale(14),
+    fontWeight: "bold",
+  },
+  documentPreviewContainer: {
+    marginTop: moderateScale(10),
+    alignItems: 'center',
+  },
+  documentPreview: {
+    width: '100%',
+    height: moderateScale(200),
+    borderRadius: moderateScale(8),
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  documentPreviewText: {
+    fontSize: moderateScale(12),
+    color: '#666',
+    marginTop: moderateScale(5),
+  },
+  removeDocumentButton: {
+    marginTop: moderateScale(10),
+    padding: moderateScale(10),
+    alignItems: "center",
+  },
+  removeDocumentText: {
+    color: "#FF4444",
+    fontSize: moderateScale(14),
+  },
+  experienceInput: {
+    paddingRight: moderateScale(70),
+  },
+  experienceLabel: {
+    position: "absolute",
+    right: moderateScale(15),
+    top: moderateScale(12),
+    fontSize: moderateScale(16),
+    color: "#666666",
+  },
   inputContainer: {
     marginBottom: moderateScale(15),
+    position: 'relative',
   },
   inputLabel: {
     fontSize: moderateScale(14),
@@ -2101,19 +2536,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#FFFFFF",
   },
-
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  
-  loadingText: {
-    fontSize: moderateScale(12),
-    color: '#666',
-    marginLeft: moderateScale(8),
-  },
-  
   profileIcon: {
     alignItems: "center",
   },
@@ -2295,5 +2717,46 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     color: "#333333",
     lineHeight: moderateScale(20),
+  },
+  // Error and loading styles
+  inputError: {
+    borderColor: "#FF4444",
+    borderWidth: 2,
+  },
+  errorText: {
+    color: "#FF4444",
+    fontSize: moderateScale(12),
+    marginTop: moderateScale(4),
+    marginLeft: moderateScale(2),
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    fontSize: moderateScale(12),
+    color: '#666',
+    marginLeft: moderateScale(8),
+  },
+  passwordStrengthContainer: {
+    marginTop: moderateScale(8),
+    marginBottom: moderateScale(4),
+  },
+  passwordStrengthBar: {
+    height: moderateScale(6),
+    backgroundColor: "#E0E0E0",
+    borderRadius: moderateScale(3),
+    overflow: "hidden",
+    marginBottom: moderateScale(6),
+  },
+  passwordStrengthFill: {
+    height: "100%",
+    borderRadius: moderateScale(3),
+  },
+  passwordStrengthText: {
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+    textAlign: "right",
   },
 })

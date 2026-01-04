@@ -62,7 +62,7 @@ interface MedicalRecordDetails {
   };
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator";
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/horse_operator";
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const MedicalRecordScreen: React.FC = () => {

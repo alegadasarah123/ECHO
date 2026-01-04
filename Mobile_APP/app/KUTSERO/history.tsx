@@ -1,4 +1,4 @@
-"use client"
+
 
 import { useFocusEffect, useRouter } from "expo-router"
 import * as SecureStore from "expo-secure-store"
@@ -110,8 +110,8 @@ export default function HistoryScreen() {
 
   const safeArea = getSafeAreaPadding()
 
-  // Replace with your actual API base URL
-  const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+  // Updated to use your Render server
+  const API_BASE_URL = 'https://echo-ebl8.onrender.com/api/kutsero'
 
   // Load user data from SecureStore (matching dashboard approach)
   const loadUserData = async (): Promise<UserData | null> => {

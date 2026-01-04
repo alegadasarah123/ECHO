@@ -1,39 +1,20 @@
 {
   "expo": {
-    "name": "KUTSERO_FINAL5",
-    "slug": "KUTSERO_FINAL5",
+    "name": "ECHO",
+    "slug": "echo",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
-    "scheme": "kutserofinal5",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
-    "ios": {
-      "supportsTablet": true
-    },
     "android": {
+      "package": "com.vine12.echo",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
         "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      }
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-splash-screen",
-        {
-          "image": "./assets/images/splash-icon.png",
-          "imageWidth": 200,
-          "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
-        }
-      ],
       "expo-secure-store",
       "expo-web-browser"
     ],
@@ -41,11 +22,12 @@
       "typedRoutes": true
     },
     "extra": {
+      "apiUrl": "https://echo-ebl8.onrender.com/api",
       "router": {},
       "eas": {
-        "projectId": "cf3222dd-533d-43ff-8a4f-43661b38e862"
+        "projectId": "93113c48-d927-448f-b0ae-cc432c8096a2"
       }
     },
-    "owner": "echo_horsecare"
+    "owner": "vine12"
   }
 }

@@ -22,6 +22,11 @@ import json
 import os
 from zoneinfo import ZoneInfo
 from django.db import models
+import base64
+from io import BytesIO
+from django.utils import timezone
+from supabase import create_client, Client
+import traceback
 
 
 # Set up logging
@@ -409,51 +414,6 @@ def get_horses(request):
         logger.error(f"Error deleting horse image: {e}", exc_info=True)
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-@api_view(['PUT'])
-def mark_horse_deceased(request, horse_id):
-    """
-    Mark a horse as deceased instead of deleting it
-    This preserves the horse record but changes its status to 'Deceased'
-    """
-    try:
-        user_id = request.data.get("user_id")
-        
-        if not user_id:
-            return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
-        
-        # Verify the horse exists and belongs to the user
-        horse_check = supabase.table("horse_profile").select("*").eq("horse_id", horse_id).eq("op_id", user_id).execute()
-        
-        if not horse_check.data:
-            return Response({"error": "Horse not found or doesn't belong to user"}, status=status.HTTP_404_NOT_FOUND)
-        
-        horse_info = horse_check.data[0]
-        horse_name = horse_info.get("horse_name", "Unknown Horse")
-        
-        # Update horse status to 'Deceased'
-        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-        
-        update_result = service_client.table("horse_profile").update({
-            "horse_status": "Deceased",
-            "updated_at": datetime.now().isoformat()
-        }).eq("horse_id", horse_id).eq("op_id", user_id).execute()
-        
-        if update_result.data:
-            logger.info(f"✅ Horse marked as deceased: {horse_name} (ID: {horse_id})")
-            
-            return Response({
-                "message": f"{horse_name} has been marked as deceased",
-                "horse_id": horse_id,
-                "horse_name": horse_name,
-                "new_status": "Deceased"
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({"error": "Failed to update horse status"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-    except Exception as e:
-        logger.error(f"Error marking horse as deceased: {e}", exc_info=True)
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
 @api_view(['PUT'])
@@ -4895,8 +4855,8 @@ def get_horse_medical_records(request):
 @api_view(['GET'])
 def get_medical_record_details(request):
     """
-    Get details of a specific medical record by ID - FIXED VERSION WITH ROBUST IMAGE URL HANDLING
-    Now includes ALL fields from horse_medical_record table
+    Get details of a specific medical record by ID - ULTIMATE FIXED VERSION
+    Now properly handles both images and PDFs from Supabase Storage with URL validation
     """
     medrec_id = request.GET.get("medrec_id")
     user_id = request.GET.get("user_id")
@@ -5007,77 +4967,139 @@ def get_medical_record_details(request):
             except Exception as parent_error:
                 logger.warning(f"Could not fetch parent record info: {parent_error}")
         
-        # ✅ FIXED: Robust laboratory image URL handling with JSON array parsing
-        lab_image_url = record.get("medrec_lab_img")
-        formatted_lab_image = None
+        # ✅ FIXED: Properly handle lab image/document URLs from JSON arrays
+        lab_file_url = record.get("medrec_lab_img")
+        formatted_lab_file_url = None
+        file_type = "unknown"
         
-        if lab_image_url:
+        if lab_file_url:
             try:
                 # Log the raw value from database
-                logger.info(f"Raw lab image value from DB: {lab_image_url}")
+                logger.info(f"📄 Raw lab file value from DB: {lab_file_url}")
                 
-                # Clean the URL string - remove any whitespace or newlines
-                lab_image_url = str(lab_image_url).strip()
+                # Convert to string and clean
+                lab_file_str = str(lab_file_url).strip()
                 
-                # ✅ NEW: Handle JSON array format first (e.g., '["url"]')
-                if lab_image_url.startswith('[') and lab_image_url.endswith(']'):
+                # Handle JSON array format
+                if lab_file_str.startswith('[') and lab_file_str.endswith(']'):
                     try:
+                        # Try to parse as JSON array
                         import json
-                        url_array = json.loads(lab_image_url)
+                        url_array = json.loads(lab_file_str)
+                        
                         if url_array and len(url_array) > 0:
-                            lab_image_url = str(url_array[0]).strip()
-                            logger.info(f"✅ Extracted URL from JSON array: {lab_image_url}")
-                    except json.JSONDecodeError as json_error:
-                        logger.warning(f"Failed to parse JSON array: {json_error}")
-                        # Try to extract manually if JSON parsing fails
-                        if '["' in lab_image_url and '"]' in lab_image_url:
-                            lab_image_url = lab_image_url.replace('["', '').replace('"]', '').strip()
-                            logger.info(f"✅ Manually extracted URL: {lab_image_url}")
-                
-                # Case 1: Already a full URL with https:// or http://
-                if lab_image_url.startswith('https://') or lab_image_url.startswith('http://'):
-                    formatted_lab_image = lab_image_url
-                    logger.info(f"✅ Using existing full URL: {formatted_lab_image}")
-                
-                # Case 2: Starts with /storage/ path
-                elif lab_image_url.startswith('/storage/'):
-                    formatted_lab_image = f"{SUPABASE_URL}{lab_image_url}"
-                    logger.info(f"✅ Constructed URL from path: {formatted_lab_image}")
-                
-                # Case 3: Contains storage/v1/object in the middle
-                elif '/storage/v1/object/' in lab_image_url:
-                    if not lab_image_url.startswith('http'):
-                        formatted_lab_image = f"{SUPABASE_URL}{lab_image_url}"
-                    else:
-                        formatted_lab_image = lab_image_url
-                    logger.info(f"✅ Constructed URL from storage path: {formatted_lab_image}")
-                
-                # Case 4: Just a filename - construct full public URL
+                            # Get the first URL from the array
+                            lab_file_url = str(url_array[0]).strip()
+                            logger.info(f"✅ Extracted URL from JSON array: {lab_file_url}")
+                        else:
+                            logger.warning("JSON array is empty")
+                            lab_file_url = None
+                    except json.JSONDecodeError:
+                        # If JSON parsing fails, extract manually
+                        logger.info("Manual extraction from array-like string")
+                        lab_file_str = lab_file_str.strip('[]')
+                        # Split by comma and get first item
+                        parts = lab_file_str.split(',')
+                        if parts and len(parts) > 0:
+                            lab_file_url = parts[0].strip().strip('"\'').strip()
+                            logger.info(f"✅ Manually extracted URL: {lab_file_url}")
+                        else:
+                            lab_file_url = None
                 else:
-                    # Assume it's in a Lab_results bucket (based on your error message)
-                    formatted_lab_image = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{lab_image_url}"
-                    logger.info(f"✅ Constructed URL from filename: {formatted_lab_image}")
+                    # Already a string URL
+                    lab_file_url = lab_file_str.strip()
                 
-                # ✅ CRITICAL: Final validation - ensure clean URL
-                if formatted_lab_image:
-                    # Basic validation: ensure URL starts with http:// or https://
-                    if not (formatted_lab_image.startswith('https://') or formatted_lab_image.startswith('http://')):
-                        logger.error(f"❌ Invalid URL scheme: {formatted_lab_image}")
-                        formatted_lab_image = None
-                    # Ensure no suspicious characters that could cause parsing errors
-                    elif any(char in formatted_lab_image for char in ['[', ']', '"', ' ', '\n', '\r']):
-                        logger.error(f"❌ URL contains invalid characters: {formatted_lab_image}")
-                        formatted_lab_image = None
+                # If we have a URL, process it
+                if lab_file_url and lab_file_url != 'None' and lab_file_url != 'null':
+                    # Remove any remaining quotes
+                    lab_file_url = lab_file_url.replace('"', '').replace("'", '').strip()
+                    
+                    # Determine file type
+                    lab_file_url_lower = lab_file_url.lower()
+                    if '.pdf' in lab_file_url_lower:
+                        file_type = "pdf"
+                    elif any(ext in lab_file_url_lower for ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']):
+                        file_type = "image"
                     else:
-                        logger.info(f"✅ Valid lab image URL: {formatted_lab_image}")
+                        # Default to image if unknown but has image-like content
+                        file_type = "image"
+                    
+                    logger.info(f"📁 File type determined: {file_type}")
+                    
+                    # Remove any existing query parameters
+                    if '?' in lab_file_url:
+                        lab_file_url = lab_file_url.split('?')[0]
+                    
+                    # Case 1: Already a complete public URL
+                    if lab_file_url.startswith('https://') or lab_file_url.startswith('http://'):
+                        formatted_lab_file_url = lab_file_url
+                        logger.info(f"✅ Using existing full URL: {formatted_lab_file_url}")
+                    
+                    # Case 2: Storage path without full URL
+                    else:
+                        # Clean the path
+                        path_parts = lab_file_url.split('/')
+                        clean_parts = []
+                        for part in path_parts:
+                            part = part.strip()
+                            if part and part not in ['"', "'", '[', ']', '{', '}']:
+                                clean_parts.append(part)
+                        
+                        filename = clean_parts[-1] if clean_parts else f"lab_result_{medrec_id}"
+                        
+                        # Construct proper Supabase public URL
+                        formatted_lab_file_url = f"{SUPABASE_URL}/storage/v1/object/public/Lab_results/{filename}"
+                        logger.info(f"✅ Constructed public URL: {formatted_lab_file_url}")
+                    
+                    # Final cleanup
+                    if formatted_lab_file_url:
+                        # Remove any remaining invalid characters
+                        invalid_chars = ['[', ']', '{', '}', '(', ')', ' ', '\\']
+                        for char in invalid_chars:
+                            formatted_lab_file_url = formatted_lab_file_url.replace(char, '')
+                        
+                        # Ensure it's a proper URL
+                        if not formatted_lab_file_url.startswith('https://'):
+                            logger.error(f"❌ Invalid URL after processing: {formatted_lab_file_url}")
+                            formatted_lab_file_url = None
+                        else:
+                            logger.info(f"✅ Final validated URL: {formatted_lab_file_url}")
+                            
+                            # Optional: Test URL accessibility
+                            try:
+                                import requests
+                                test_response = requests.head(formatted_lab_file_url, timeout=3, allow_redirects=True)
+                                logger.info(f"✅ URL test response: {test_response.status_code}")
+                                
+                                if test_response.status_code >= 400:
+                                    logger.warning(f"⚠️ URL might not be accessible: HTTP {test_response.status_code}")
+                                    # Still return URL, let frontend handle the error
+                            except Exception as test_error:
+                                logger.warning(f"⚠️ Could not test URL (non-critical): {test_error}")
+                                # Continue anyway, URL might still work in browser
+                else:
+                    logger.info("No valid lab file URL found")
+                    formatted_lab_file_url = None
                 
-            except Exception as img_error:
-                logger.error(f"❌ Error processing lab image URL: {img_error}", exc_info=True)
-                formatted_lab_image = None
+            except Exception as url_error:
+                logger.error(f"❌ Error processing lab file URL: {url_error}", exc_info=True)
+                formatted_lab_file_url = None
+                file_type = "unknown"
         else:
-            logger.info("No lab image in this record")
+            logger.info("No lab file in this record")
+            formatted_lab_file_url = None
         
-        # Build detailed response with ALL fields from your schema
+        # Generate a fallback filename
+        file_name = f"lab_result_{medrec_id}"
+        if formatted_lab_file_url:
+            try:
+                # Extract filename from URL
+                if '/' in formatted_lab_file_url:
+                    file_name = formatted_lab_file_url.split('/')[-1].split('?')[0]
+            except:
+                pass
+        
+        # Build detailed response
         detailed_record = {
             "medrec_id": record["medrec_id"],
             "horse": {
@@ -5102,7 +5124,9 @@ def get_medical_record_details(request):
             
             "laboratory": {
                 "results": record.get("medrec_lab_results"),
-                "image_url": formatted_lab_image  # ✅ Now properly formatted and validated
+                "file_url": formatted_lab_file_url,
+                "file_type": file_type,
+                "file_name": file_name
             },
             
             "assessment": {
@@ -5121,7 +5145,8 @@ def get_medical_record_details(request):
         }
         
         logger.info(f"✅ Returning detailed medical record {medrec_id}")
-        logger.info(f"Lab image URL in response: {formatted_lab_image}")
+        logger.info(f"📎 Lab file: {formatted_lab_file_url}")
+        logger.info(f"📄 File type: {file_type}")
         
         return Response(detailed_record, status=status.HTTP_200_OK)
         
@@ -8857,5 +8882,1427 @@ def check_current_schedules(request):
             'success': False,
             'message': f'Error checking schedules: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+# ------------------------------------------------ HORSE DEATH RECORDS API ------------------------------------------------
+
+@api_view(['POST'])
+def mark_horse_deceased(request):
+    """
+    Mark a horse as deceased and save death record with MULTIPLE images
+    """
+    try:
+        logger.info(f"Received death record request: {request.data}")
+        
+        user_id = request.data.get("user_id")
+        horse_id = request.data.get("horse_id")
+        death_date = request.data.get("death_date")
+        cause_of_death = request.data.get("cause_of_death")
+        death_location = request.data.get("death_location")
+        images = request.data.get("images", [])  # List of base64 strings
+        
+        logger.info(f"Parsed data - user_id: {user_id}, horse_id: {horse_id}, image_count: {len(images)}")
+
+        # Validate required fields
+        if not user_id:
+            return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not horse_id:
+            return Response({"error": "horse_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not cause_of_death or not cause_of_death.strip():
+            return Response({"error": "cause_of_death is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validate death_date
+        parsed_death_date = None
+        if death_date:
+            try:
+                parsed_death_date = datetime.strptime(death_date, '%Y-%m-%d').date()
+                if parsed_death_date > datetime.now().date():
+                    return Response({"error": "Death date cannot be in the future"}, status=status.HTTP_400_BAD_REQUEST)
+            except ValueError:
+                return Response({"error": "Invalid death_date format. Use YYYY-MM-DD"}, status=status.HTTP_400_BAD_REQUEST)
+        else:
+            parsed_death_date = datetime.now().date()
+
+        # Verify horse exists and belongs to user
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        horse_check = service_client.table("horse_profile").select("*").eq("horse_id", horse_id).eq("op_id", user_id).execute()
+        
+        if not horse_check.data:
+            return Response({"error": "Horse not found or doesn't belong to user"}, status=status.HTTP_404_NOT_FOUND)
+        
+        horse_info = horse_check.data[0]
+        horse_name = horse_info.get("horse_name", "Unknown Horse")
+        
+        # Check if horse is already deceased
+        if horse_info.get("horse_status") == "Deceased":
+            return Response({"error": f"{horse_name} is already marked as deceased"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if death record already exists for this horse
+        existing_death_record = service_client.table("horse_death_records").select("*").eq("horse_id", horse_id).execute()
+        if existing_death_record.data:
+            return Response({"error": f"Death record already exists for {horse_name}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Start transaction
+        try:
+            # Generate UUIDs
+            hdeath_id = str(uuid.uuid4())
+            current_timestamp = datetime.now(pytz.UTC).isoformat()
+            
+            # Process multiple images
+            uploaded_images = []
+            
+            if images and isinstance(images, list):
+                for idx, image_base64 in enumerate(images):
+                    if not image_base64 or not isinstance(image_base64, str):
+                        continue
+                        
+                    try:
+                        # Extract base64 data
+                        if ',' in image_base64:
+                            image_base64 = image_base64.split(',')[1]
+                        
+                        # Decode base64 to bytes
+                        try:
+                            image_bytes = base64.b64decode(image_base64, validate=True)
+                        except base64.binascii.Error as e:
+                            logger.error(f"Invalid base64 data for image {idx}: {e}")
+                            continue
+                        
+                        file_size = len(image_bytes)
+                        
+                        # Check file size (max 10MB per image)
+                        MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+                        if file_size > MAX_FILE_SIZE:
+                            logger.warning(f"Image {idx} exceeds size limit (10MB). Skipping.")
+                            continue
+                        
+                        # Generate unique filename
+                        timestamp = int(datetime.now().timestamp() * 1000)
+                        random_suffix = uuid.uuid4().hex[:8]
+                        filename = f"{horse_id}_{timestamp}_{idx}_{random_suffix}.jpg"
+                        
+                        # FIXED: Upload to Supabase Storage with proper headers
+                        try:
+                            storage_response = service_client.storage.from_('death_records').upload(
+                                path=filename,
+                                file=image_bytes,
+                                file_options={
+                                    "content-type": "image/jpeg",
+                                    "cache-control": "3600"
+                                }
+                            )
+                            
+                            logger.info(f"Storage upload response for {filename}: {storage_response}")
+                            
+                            # Check for errors
+                            if hasattr(storage_response, 'error') and storage_response.error:
+                                logger.error(f"Storage upload error for {filename}: {storage_response.error}")
+                                continue
+                            
+                        except Exception as upload_error:
+                            logger.error(f"Failed to upload {filename}: {upload_error}", exc_info=True)
+                            # Try alternative upload method without file_options
+                            try:
+                                storage_response = service_client.storage.from_('death_records').upload(
+                                    path=filename,
+                                    file=image_bytes
+                                )
+                                logger.info(f"Alternative upload succeeded for {filename}")
+                            except Exception as alt_error:
+                                logger.error(f"Alternative upload also failed: {alt_error}")
+                                continue
+                        
+                        # Construct public URL
+                        image_url = f"{SUPABASE_URL}/storage/v1/object/public/death_records/{filename}"
+                        uploaded_images.append(image_url)
+                        logger.info(f"Image {idx} uploaded successfully: {image_url}")
+                        
+                    except Exception as image_error:
+                        logger.error(f"Error processing image {idx}: {image_error}", exc_info=True)
+                        # Continue processing other images even if one fails
+                        continue
+            
+            # Create death record with image URLs as JSON array
+            death_record_payload = {
+                "hdeath_id": hdeath_id,
+                "horse_id": horse_id,
+                "op_id": user_id,
+                "hdeath_date": parsed_death_date.isoformat(),
+                "cause_of_death": cause_of_death.strip(),
+                "death_location": death_location.strip() if death_location else None,
+                "status": "recorded",
+                "created_at": current_timestamp,
+                "updated_at": current_timestamp,
+                "images": uploaded_images if uploaded_images else None  # Store as JSON array
+            }
+            
+            logger.info(f"Creating death record for horse {horse_id} ({horse_name})")
+            logger.info(f"Death record payload: {death_record_payload}")
+            
+            # Insert death record
+            death_record_result = service_client.table("horse_death_records").insert(death_record_payload).execute()
+            
+            if not death_record_result.data:
+                raise Exception("Failed to create death record")
+            
+            logger.info(f"✅ Death record created: {hdeath_id} with {len(uploaded_images)} images")
+            
+            # Update horse status to 'Deceased'
+            update_horse_result = service_client.table("horse_profile").update({
+                "horse_status": "Deceased",
+                "updated_at": current_timestamp
+            }).eq("horse_id", horse_id).eq("op_id", user_id).execute()
+            
+            if not update_horse_result.data:
+                raise Exception("Failed to update horse status")
+            
+            logger.info(f"✅ Horse {horse_id} ({horse_name}) marked as deceased")
+            
+            return Response({
+                "success": True,
+                "message": f"{horse_name} has been marked as deceased with {len(uploaded_images)} images.",
+                "data": {
+                    "horse_id": horse_id,
+                    "horse_name": horse_name,
+                    "death_record_id": hdeath_id,
+                    "death_date": parsed_death_date.isoformat(),
+                    "cause_of_death": cause_of_death.strip(),
+                    "death_location": death_location.strip() if death_location else None,
+                    "images_uploaded": len(uploaded_images),
+                    "image_urls": uploaded_images,
+                    "new_status": "Deceased",
+                    "timestamp": current_timestamp
+                }
+            }, status=status.HTTP_201_CREATED)
+            
+        except Exception as transaction_error:
+            logger.error(f"Transaction error in mark_horse_deceased: {transaction_error}", exc_info=True)
+            return Response({
+                "error": "Failed to complete death record",
+                "detail": str(transaction_error)
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+    except Exception as e:
+        logger.error(f"Error in mark_horse_deceased: {e}", exc_info=True)
+        return Response({
+            "error": "Failed to mark horse as deceased",
+            "detail": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_horse_death_records(request):
+    """
+    Get death records for a horse operator's horses
+    """
+    user_id = request.GET.get("user_id")
+    
+    if not user_id:
+        return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Get all death records for horses owned by this operator
+        death_records = service_client.table("horse_death_records").select(
+            "hdeath_id, horse_id, hdeath_date, cause_of_death, death_location, status, created_at, updated_at, images"
+        ).eq("op_id", user_id).order("created_at", desc=True).execute()
+        
+        if not death_records.data:
+            return Response({
+                "success": True,
+                "user_id": user_id,
+                "death_records": [],
+                "total_records": 0,
+                "message": "No death records found"
+            }, status=status.HTTP_200_OK)
+        
+        # Get horse names for the records
+        horse_ids = list(set([record["horse_id"] for record in death_records.data]))
+        horse_data = service_client.table("horse_profile").select("horse_id, horse_name, horse_image").in_("horse_id", horse_ids).execute()
+        
+        horse_map = {}
+        if horse_data.data:
+            for horse in horse_data.data:
+                horse_map[horse["horse_id"]] = {
+                    "name": horse["horse_name"],
+                    "image": horse.get("horse_image")
+                }
+        
+        # Format records
+        formatted_records = []
+        for record in death_records.data:
+            # Format death date
+            death_date = record.get("hdeath_date")
+            formatted_date = "Unknown Date"
+            readable_date = ""
+            if death_date:
+                try:
+                    if isinstance(death_date, str):
+                        date_obj = datetime.strptime(str(death_date), '%Y-%m-%d')
+                    else:
+                        date_obj = death_date
+                    formatted_date = date_obj.strftime('%B %d, %Y')
+                    readable_date = date_obj.strftime('%Y-%m-%d')
+                except Exception as date_error:
+                    logger.error(f"Error parsing date {death_date}: {date_error}")
+                    formatted_date = str(death_date)
+                    readable_date = str(death_date)
+            
+            # Format timestamps
+            created_at = record.get("created_at")
+            formatted_created = created_at
+            if created_at:
+                try:
+                    if isinstance(created_at, str):
+                        created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    else:
+                        created_dt = created_at
+                    
+                    if created_dt.tzinfo is None:
+                        created_dt = pytz.UTC.localize(created_dt)
+                    
+                    created_dt_ph = created_dt.astimezone(PHILIPPINE_TZ)
+                    formatted_created = created_dt_ph.strftime('%B %d, %Y %I:%M %p')
+                except:
+                    formatted_created = str(created_at)
+            
+            horse_info = horse_map.get(record["horse_id"], {})
+            
+            # Get images array
+            images = record.get("images", [])
+            if not isinstance(images, list):
+                images = []
+            
+            formatted_records.append({
+                "death_record_id": record["hdeath_id"],
+                "horse_id": record["horse_id"],
+                "horse_name": horse_info.get("name", "Unknown Horse"),
+                "horse_image": horse_info.get("image"),
+                "death_date": readable_date,
+                "formatted_date": formatted_date,
+                "cause_of_death": record["cause_of_death"],
+                "death_location": record["death_location"],
+                "status": record["status"],
+                "created_at": created_at,
+                "formatted_created": formatted_created,
+                "updated_at": record.get("updated_at"),
+                "images": images,  # Array of image URLs
+                "image_count": len(images),
+                "has_images": len(images) > 0
+            })
+        
+        logger.info(f"Returning {len(formatted_records)} death records for user {user_id}")
+        
+        return Response({
+            "success": True,
+            "user_id": user_id,
+            "death_records": formatted_records,
+            "total_records": len(formatted_records)
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error fetching death records: {e}", exc_info=True)
+        return Response({
+            "error": "Failed to fetch death records",
+            "detail": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_horse_death_record_details(request):
+    """
+    Get detailed death record information
+    """
+    death_record_id = request.GET.get("death_record_id")
+    user_id = request.GET.get("user_id")
+    
+    if not death_record_id or not user_id:
+        return Response({"error": "death_record_id and user_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Get death record
+        death_record = service_client.table("horse_death_records").select("*").eq("hdeath_id", death_record_id).eq("op_id", user_id).execute()
+        
+        if not death_record.data:
+            return Response({"error": "Death record not found or access denied"}, status=status.HTTP_404_NOT_FOUND)
+        
+        record = death_record.data[0]
+        
+        # Get horse information
+        horse_data = service_client.table("horse_profile").select(
+            "horse_name, horse_breed, horse_age, horse_sex, horse_color, horse_image, horse_status"
+        ).eq("horse_id", record["horse_id"]).execute()
+        
+        horse_info = {}
+        if horse_data.data:
+            horse_info = horse_data.data[0]
+        
+        # Format dates
+        death_date = record.get("hdeath_date")
+        formatted_date = "Unknown Date"
+        if death_date:
+            try:
+                if isinstance(death_date, str):
+                    date_obj = datetime.strptime(str(death_date), '%Y-%m-%d')
+                else:
+                    date_obj = death_date
+                formatted_date = date_obj.strftime('%B %d, %Y')
+            except:
+                formatted_date = str(death_date)
+        
+        # Format created_at
+        created_at = record.get("created_at")
+        formatted_created = created_at
+        if created_at:
+            try:
+                if isinstance(created_at, str):
+                    created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                else:
+                    created_dt = created_at
+                
+                if created_dt.tzinfo is None:
+                    created_dt = pytz.UTC.localize(created_dt)
+                
+                created_dt_ph = created_dt.astimezone(PHILIPPINE_TZ)
+                formatted_created = created_dt_ph.strftime('%B %d, %Y %I:%M %p')
+            except:
+                formatted_created = str(created_at)
+        
+        # Format updated_at if exists
+        updated_at = record.get("updated_at")
+        formatted_updated = updated_at
+        if updated_at:
+            try:
+                if isinstance(updated_at, str):
+                    updated_dt = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+                else:
+                    updated_dt = updated_at
+                
+                if updated_dt.tzinfo is None:
+                    updated_dt = pytz.UTC.localize(updated_dt)
+                
+                updated_dt_ph = updated_dt.astimezone(PHILIPPINE_TZ)
+                formatted_updated = updated_dt_ph.strftime('%B %d, %Y %I:%M %p')
+            except:
+                formatted_updated = str(updated_at)
+        
+        # Get images array
+        images = record.get("images", [])
+        if not isinstance(images, list):
+            images = []
+        
+        detailed_record = {
+            "success": True,
+            "death_record_id": record["hdeath_id"],
+            "horse": {
+                "horse_id": record["horse_id"],
+                "horse_name": horse_info.get("horse_name", "Unknown Horse"),
+                "breed": horse_info.get("horse_breed"),
+                "age": horse_info.get("horse_age"),
+                "sex": horse_info.get("horse_sex"),
+                "color": horse_info.get("horse_color"),
+                "image": horse_info.get("horse_image"),
+                "status": horse_info.get("horse_status")
+            },
+            "death_details": {
+                "date": death_date,
+                "formatted_date": formatted_date,
+                "cause_of_death": record["cause_of_death"],
+                "location": record["death_location"],
+                "status": record["status"]
+            },
+            "images": {
+                "urls": images,
+                "count": len(images),
+                "has_images": len(images) > 0
+            },
+            "record_info": {
+                "created_at": created_at,
+                "formatted_created": formatted_created,
+                "updated_at": updated_at,
+                "formatted_updated": formatted_updated
+            }
+        }
+        
+        return Response(detailed_record, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error fetching death record details: {e}", exc_info=True)
+        return Response({
+            "error": "Failed to fetch death record details",
+            "detail": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_horse_death_record(request):
+    """
+    Get death record for a specific horse from horse_death_records table
+    FIXED: Properly handles image URLs from JSON array
+    """
+    horse_id = request.GET.get("horse_id")
+    user_id = request.GET.get("user_id")
+    
+    if not horse_id or not user_id:
+        return Response({"error": "horse_id and user_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Get death record directly from horse_death_records table
+        death_record = service_client.table("horse_death_records").select("*").eq("horse_id", horse_id).eq("op_id", user_id).execute()
+        
+        if not death_record.data or len(death_record.data) == 0:
+            return Response({
+                "success": True,
+                "horse_id": horse_id,
+                "user_id": user_id,
+                "death_record": None,
+                "message": "No death record found for this horse"
+            }, status=status.HTTP_200_OK)
+        
+        record = death_record.data[0]
+        
+        # ✅ FIXED: Handle images properly (could be JSON string, list, or null)
+        images = []
+        images_data = record.get("images")
+        
+        if images_data:
+            try:
+                # If it's a JSON string, parse it
+                if isinstance(images_data, str):
+                    import json
+                    images = json.loads(images_data)
+                    if not isinstance(images, list):
+                        images = [images] if images else []
+                # If it's already a list, use it
+                elif isinstance(images_data, list):
+                    images = images_data
+                else:
+                    images = []
+            except Exception as img_error:
+                logger.error(f"Error parsing images data: {img_error}")
+                images = []
+        
+        # Ensure all image URLs are properly formatted
+        formatted_images = []
+        for img_url in images:
+            if img_url:
+                # If it's already a full URL, use as-is
+                if isinstance(img_url, str) and (img_url.startswith('http://') or img_url.startswith('https://')):
+                    formatted_images.append(img_url)
+                # If it's a storage path, construct full URL
+                elif isinstance(img_url, str) and 'death_records/' in img_url:
+                    # Extract filename
+                    if '/death_records/' in img_url:
+                        filename = img_url.split('/death_records/')[-1]
+                        formatted_url = f"{SUPABASE_URL}/storage/v1/object/public/death_records/{filename}"
+                        formatted_images.append(formatted_url)
+                else:
+                    # Try to construct URL from filename
+                    formatted_url = f"{SUPABASE_URL}/storage/v1/object/public/death_records/{img_url}"
+                    formatted_images.append(formatted_url)
+        
+        # Format dates
+        death_date = record.get("hdeath_date")
+        formatted_date = "Unknown Date"
+        if death_date:
+            try:
+                if isinstance(death_date, str):
+                    date_obj = datetime.strptime(str(death_date), '%Y-%m-%d')
+                else:
+                    date_obj = death_date
+                formatted_date = date_obj.strftime('%B %d, %Y')
+            except:
+                formatted_date = str(death_date)
+        
+        # Format created_at
+        created_at = record.get("created_at")
+        formatted_created = created_at
+        if created_at:
+            try:
+                if isinstance(created_at, str):
+                    created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                else:
+                    created_dt = created_at
+                
+                if created_dt.tzinfo is None:
+                    created_dt = pytz.UTC.localize(created_dt)
+                
+                created_dt_ph = created_dt.astimezone(PHILIPPINE_TZ)
+                formatted_created = created_dt_ph.strftime('%B %d, %Y %I:%M %p')
+            except:
+                formatted_created = str(created_at)
+        
+        # Get horse info for additional context
+        horse_data = service_client.table("horse_profile").select(
+            "horse_name, horse_breed, horse_age, horse_sex, horse_color"
+        ).eq("horse_id", horse_id).execute()
+        
+        horse_info = {}
+        if horse_data.data:
+            horse_info = horse_data.data[0]
+        
+        response_data = {
+            "success": True,
+            "death_record": {
+                "hdeath_id": record["hdeath_id"],
+                "horse_id": record["horse_id"],
+                "op_id": record["op_id"],
+                "hdeath_date": death_date,
+                "cause_of_death": record["cause_of_death"],
+                "death_location": record["death_location"],
+                "status": record["status"],
+                "created_at": created_at,
+                "updated_at": record.get("updated_at"),
+                "images": formatted_images,  # ✅ Now properly formatted URLs
+                "image_count": len(formatted_images),
+                "has_images": len(formatted_images) > 0
+            },
+            "horse_info": horse_info,
+            "formatted_date": formatted_date,
+            "formatted_created": formatted_created
+        }
+        
+        logger.info(f"✅ Death record fetched for horse {horse_id}: {len(formatted_images)} images")
+        return Response(response_data, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"❌ Error fetching death record: {e}", exc_info=True)
+        return Response({
+            "error": "Failed to fetch death record",
+            "detail": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ------------------------------------------------ KUTSERO APPLICATION API ------------------------------------------------
+
+@api_view(['GET'])
+def get_kutsero_applications(request):
+    """
+    Get all kutsero applications for a horse operator
+    Includes kutsero profile information
+    """
+    op_id = request.GET.get("op_id")
+    
+    if not op_id:
+        return Response({"error": "op_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Get applications for this operator with kutsero details
+        applications_data = service_client.table("op_kutsero_application").select(
+            "application_id, op_id, kutsero_id, application_date, status, review_date, review_notes, created_at, updated_at"
+        ).eq("op_id", op_id).order("created_at", desc=True).execute()
+        
+        if not applications_data.data:
+            logger.info(f"No kutsero applications found for operator {op_id}")
+            return Response([], status=status.HTTP_200_OK)
+        
+        # Get all kutsero IDs
+        kutsero_ids = list(set([app["kutsero_id"] for app in applications_data.data]))
+        
+        # Get kutsero profiles
+        kutsero_profiles = {}
+        if kutsero_ids:
+            kutsero_data = service_client.table("kutsero_profile").select(
+                "kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_email, kutsero_phone_num, kutsero_image"
+            ).in_("kutsero_id", kutsero_ids).execute()
+            
+            for kutsero in kutsero_data.data if kutsero_data.data else []:
+                kutsero_profiles[kutsero["kutsero_id"]] = kutsero
+        
+        # Format applications with kutsero details
+        formatted_applications = []
+        for app in applications_data.data:
+            kutsero_id = app["kutsero_id"]
+            kutsero_info = kutsero_profiles.get(kutsero_id, {})
+            
+            # Build kutsero name
+            fname = kutsero_info.get("kutsero_fname", "")
+            lname = kutsero_info.get("kutsero_lname", "")
+            kutsero_name = f"{fname} {lname}".strip() or "Unknown Kutsero"
+            
+            # Format application date
+            app_date = app.get("application_date")
+            formatted_date = "Unknown Date"
+            if app_date:
+                try:
+                    if isinstance(app_date, str):
+                        date_obj = datetime.strptime(str(app_date), '%Y-%m-%d')
+                    else:
+                        date_obj = app_date
+                    formatted_date = date_obj.strftime('%B %d, %Y')
+                except:
+                    formatted_date = str(app_date)
+            
+            # Format review date if exists
+            review_date = app.get("review_date")
+            formatted_review_date = None
+            if review_date:
+                try:
+                    if isinstance(review_date, str):
+                        rev_date_obj = datetime.strptime(str(review_date), '%Y-%m-%d')
+                    else:
+                        rev_date_obj = review_date
+                    formatted_review_date = rev_date_obj.strftime('%B %d, %Y')
+                except:
+                    formatted_review_date = str(review_date)
+            
+            # Handle kutsero image URL
+            kutsero_image = None
+            if kutsero_info.get("kutsero_image"):
+                img = kutsero_info["kutsero_image"]
+                if img.startswith("http://") or img.startswith("https://"):
+                    kutsero_image = img
+                elif img.startswith("kutsero_images/"):
+                    kutsero_image = f"{SUPABASE_URL}/storage/v1/object/public/{img}"
+                else:
+                    kutsero_image = f"{SUPABASE_URL}/storage/v1/object/public/kutsero_images/{img}"
+            
+            # Get assigned horses count (if any)
+            assigned_horses_count = 0
+            try:
+                assigned_data = service_client.table("horse_assignment").select(
+                    "assign_id"
+                ).eq("kutsero_id", kutsero_id).eq("op_id", op_id).execute()
+                
+                assigned_horses_count = len(assigned_data.data) if assigned_data.data else 0
+            except:
+                assigned_horses_count = 0
+            
+            # Get application days ago
+            created_at = app.get("created_at")
+            days_ago = "Today"
+            if created_at:
+                try:
+                    if isinstance(created_at, str):
+                        created_dt = datetime.fromisoformat(created_at.replace('Z', '+00:00'))
+                    else:
+                        created_dt = created_at
+                    
+                    if created_dt.tzinfo is None:
+                        created_dt = pytz.UTC.localize(created_dt)
+                    
+                    now = datetime.now(pytz.UTC)
+                    time_diff = now - created_dt
+                    days = time_diff.days
+                    
+                    if days == 0:
+                        hours = int(time_diff.seconds / 3600)
+                        if hours == 0:
+                            minutes = int(time_diff.seconds / 60)
+                            days_ago = f"{minutes} minute{'s' if minutes != 1 else ''} ago"
+                        else:
+                            days_ago = f"{hours} hour{'s' if hours != 1 else ''} ago"
+                    elif days == 1:
+                        days_ago = "Yesterday"
+                    else:
+                        days_ago = f"{days} days ago"
+                except:
+                    days_ago = "Recently"
+            
+            formatted_applications.append({
+                "application_id": app["application_id"],
+                "kutsero_id": kutsero_id,
+                "kutsero_name": kutsero_name,
+                "kutsero_fname": kutsero_info.get("kutsero_fname", ""),
+                "kutsero_lname": kutsero_info.get("kutsero_lname", ""),
+                "kutsero_email": kutsero_info.get("kutsero_email", ""),
+                "kutsero_phone": kutsero_info.get("kutsero_phone_num", ""),
+                "kutsero_image": kutsero_image,
+                "application_date": app_date,
+                "formatted_date": formatted_date,
+                "status": app["status"],
+                "review_date": review_date,
+                "formatted_review_date": formatted_review_date,
+                "review_notes": app.get("review_notes"),
+                "days_ago": days_ago,
+                "assigned_horses_count": assigned_horses_count,
+                "created_at": created_at
+            })
+        
+        logger.info(f"Returning {len(formatted_applications)} kutsero applications for operator {op_id}")
+        
+        return Response(formatted_applications, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error fetching kutsero applications: {e}", exc_info=True)
+        return Response({
+            "error": "Failed to fetch kutsero applications",
+            "detail": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['PUT'])
+def update_kutsero_application(request, application_id):
+    """
+    Update kutsero application status (approve/reject)
+    """
+    try:
+        op_id = request.data.get("op_id")
+        new_status = request.data.get("status")
+        review_notes = request.data.get("review_notes", "")
+        
+        if not op_id:
+            return Response({"error": "op_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not new_status:
+            return Response({"error": "status is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Validate status
+        valid_statuses = ["pending", "approved", "rejected"]
+        if new_status not in valid_statuses:
+            return Response({
+                "error": f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Check if application exists and belongs to operator
+        application_check = service_client.table("op_kutsero_application").select("*").eq(
+            "application_id", application_id
+        ).eq("op_id", op_id).execute()
+        
+        if not application_check.data:
+            return Response({"error": "Application not found or access denied"}, status=status.HTTP_404_NOT_FOUND)
+        
+        current_application = application_check.data[0]
+        
+        # Check if already approved/rejected
+        current_status = current_application.get("status")
+        if current_status in ["approved", "rejected"]:
+            return Response({
+                "error": f"Application already {current_status}. Cannot change status."
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Update the application
+        update_data = {
+            "status": new_status,
+            "review_date": datetime.now().date().isoformat(),
+            "updated_at": datetime.now(pytz.UTC).isoformat()
+        }
+        
+        if review_notes:
+            update_data["review_notes"] = review_notes.strip()
+        
+        update_result = service_client.table("op_kutsero_application").update(update_data).eq(
+            "application_id", application_id
+        ).execute()
+        
+        if not update_result.data:
+            return Response({"error": "Failed to update application"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+        updated_application = update_result.data[0]
+        
+        # Get kutsero info for response
+        kutsero_id = current_application["kutsero_id"]
+        kutsero_data = service_client.table("kutsero_profile").select(
+            "kutsero_fname, kutsero_lname"
+        ).eq("kutsero_id", kutsero_id).execute()
+        
+        kutsero_name = "Unknown Kutsero"
+        if kutsero_data.data:
+            kutsero = kutsero_data.data[0]
+            kutsero_name = f"{kutsero.get('kutsero_fname', '')} {kutsero.get('kutsero_lname', '')}".strip()
+        
+        # If approved, automatically create horse assignments for all operator's horses
+        if new_status == "approved":
+            try:
+                # Get all horses owned by this operator
+                horses_data = service_client.table("horse_profile").select(
+                    "horse_id, horse_name"
+                ).eq("op_id", op_id).eq("horse_status", "Healthy").execute()
+                
+                if horses_data.data:
+                    for horse in horses_data.data:
+                        # Check if assignment already exists
+                        existing_assignment = service_client.table("horse_assignment").select("*").eq(
+                            "horse_id", horse["horse_id"]
+                        ).eq("kutsero_id", kutsero_id).execute()
+                        
+                        if not existing_assignment.data:
+                            # Create new assignment
+                            assign_id = str(uuid.uuid4())
+                            assignment_payload = {
+                                "assign_id": assign_id,
+                                "kutsero_id": kutsero_id,
+                                "horse_id": horse["horse_id"],
+                                "date_start": datetime.now().date().isoformat(),
+                                "created_at": datetime.now(pytz.UTC).isoformat(),
+                                "updated_at": datetime.now(pytz.UTC).isoformat()
+                            }
+                            
+                            service_client.table("horse_assignment").insert(assignment_payload).execute()
+                            logger.info(f"Created assignment for horse {horse['horse_name']} to kutsero {kutsero_name}")
+                
+                logger.info(f"Created assignments for {len(horses_data.data) if horses_data.data else 0} horses")
+            except Exception as assignment_error:
+                logger.error(f"Error creating horse assignments: {assignment_error}")
+                # Continue even if assignments fail - the application was still updated
+        
+        logger.info(f"Application {application_id} updated to {new_status} for kutsero {kutsero_name}")
+        
+        return Response({
+            "message": f"Application {new_status} successfully",
+            "application_id": application_id,
+            "status": new_status,
+            "kutsero_name": kutsero_name,
+            "review_date": update_data["review_date"],
+            "assigned_horses": new_status == "approved"
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error updating kutsero application: {e}", exc_info=True)
+        return Response({
+            "error": "Failed to update application",
+            "detail": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_approved_kutseros(request):
+    """
+    Get all approved kutseros for a horse operator
+    """
+    op_id = request.GET.get("op_id")
+    
+    if not op_id:
+        return Response({"error": "op_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Get approved applications
+        applications_data = service_client.table("op_kutsero_application").select(
+            "application_id, kutsero_id, application_date, review_date"
+        ).eq("op_id", op_id).eq("status", "approved").execute()
+        
+        if not applications_data.data:
+            logger.info(f"No approved kutseros found for operator {op_id}")
+            return Response([], status=status.HTTP_200_OK)
+        
+        # Get kutsero IDs
+        kutsero_ids = [app["kutsero_id"] for app in applications_data.data]
+        
+        # Get kutsero profiles
+        kutsero_profiles = {}
+        kutsero_data = service_client.table("kutsero_profile").select(
+            "kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_email, kutsero_phone_num, kutsero_image"
+        ).in_("kutsero_id", kutsero_ids).execute()
+        
+        if kutsero_data.data:
+            for kutsero in kutsero_data.data:
+                kutsero_profiles[kutsero["kutsero_id"]] = kutsero
+        
+        # Get assigned horses count for each kutsero
+        assigned_counts = {}
+        for kutsero_id in kutsero_ids:
+            # Get operator's horses
+            operator_horses = service_client.table("horse_profile").select(
+                "horse_id"
+            ).eq("op_id", op_id).execute()
+            
+            if operator_horses.data:
+                operator_horse_ids = [horse["horse_id"] for horse in operator_horses.data]
+                
+                # Count assignments for this kutsero
+                assignments_count = 0
+                for horse_id in operator_horse_ids:
+                    assignment_check = service_client.table("horse_assignment").select(
+                        "assign_id"
+                    ).eq("horse_id", horse_id).eq("kutsero_id", kutsero_id).execute()
+                    
+                    if assignment_check.data:
+                        assignments_count += 1
+                
+                assigned_counts[kutsero_id] = assignments_count
+            else:
+                assigned_counts[kutsero_id] = 0
+        
+        # Format approved kutseros
+        approved_kutseros = []
+        for app in applications_data.data:
+            kutsero_id = app["kutsero_id"]
+            kutsero_info = kutsero_profiles.get(kutsero_id, {})
+            
+            # Build name
+            fname = kutsero_info.get("kutsero_fname", "")
+            lname = kutsero_info.get("kutsero_lname", "")
+            kutsero_name = f"{fname} {lname}".strip() or "Unknown Kutsero"
+            
+            # Handle image
+            kutsero_image = None
+            if kutsero_info.get("kutsero_image"):
+                img = kutsero_info["kutsero_image"]
+                if img.startswith("http://") or img.startswith("https://"):
+                    kutsero_image = img
+                elif img.startswith("kutsero_images/"):
+                    kutsero_image = f"{SUPABASE_URL}/storage/v1/object/public/{img}"
+                else:
+                    kutsero_image = f"{SUPABASE_URL}/storage/v1/object/public/kutsero_images/{img}"
+            
+            approved_kutseros.append({
+                "kutsero_id": kutsero_id,
+                "kutsero_name": kutsero_name,
+                "kutsero_email": kutsero_info.get("kutsero_email", ""),
+                "kutsero_phone": kutsero_info.get("kutsero_phone_num", ""),
+                "kutsero_image": kutsero_image,
+                "application_id": app["application_id"],
+                "application_date": app["application_date"],
+                "approval_date": app["review_date"],
+                "assigned_horses_count": assigned_counts.get(kutsero_id, 0)
+            })
+        
+        logger.info(f"Returning {len(approved_kutseros)} approved kutseros for operator {op_id}")
+        
+        return Response(approved_kutseros, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error fetching approved kutseros: {e}", exc_info=True)
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['DELETE'])
+def remove_kutsero_assignment(request):
+    """
+    Remove a kutsero assignment (unassign from all horses)
+    """
+    try:
+        op_id = request.data.get("op_id")
+        kutsero_id = request.data.get("kutsero_id")
+        
+        if not op_id or not kutsero_id:
+            return Response({"error": "op_id and kutsero_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Check if kutsero is approved for this operator
+        application_check = service_client.table("op_kutsero_application").select("*").eq(
+            "op_id", op_id
+        ).eq("kutsero_id", kutsero_id).eq("status", "approved").execute()
+        
+        if not application_check.data:
+            return Response({
+                "error": "Kutsero not approved or not found"
+            }, status=status.HTTP_404_NOT_FOUND)
+        
+        # Get kutsero name for logging
+        kutsero_data = service_client.table("kutsero_profile").select(
+            "kutsero_fname, kutsero_lname"
+        ).eq("kutsero_id", kutsero_id).execute()
+        
+        kutsero_name = "Unknown Kutsero"
+        if kutsero_data.data:
+            kutsero = kutsero_data.data[0]
+            kutsero_name = f"{kutsero.get('kutsero_fname', '')} {kutsero.get('kutsero_lname', '')}".strip()
+        
+        # Get all horses owned by this operator
+        operator_horses = service_client.table("horse_profile").select(
+            "horse_id"
+        ).eq("op_id", op_id).execute()
+        
+        deleted_count = 0
+        
+        if operator_horses.data:
+            operator_horse_ids = [horse["horse_id"] for horse in operator_horses.data]
+            
+            # Delete horse assignments for these horses and this kutsero
+            for horse_id in operator_horse_ids:
+                delete_result = service_client.table("horse_assignment").delete().eq(
+                    "horse_id", horse_id
+                ).eq("kutsero_id", kutsero_id).execute()
+                
+                if delete_result.data:
+                    deleted_count += len(delete_result.data)
+        
+        logger.info(f"Removed {deleted_count} horse assignments for kutsero {kutsero_name}")
+        
+        return Response({
+            "message": f"Removed {kutsero_name} from {deleted_count} horse(s)",
+            "deleted_count": deleted_count,
+            "kutsero_name": kutsero_name
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error removing kutsero assignment: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+
+@api_view(['GET'])
+def get_kutsero_application_stats(request):
+    """
+    Get statistics for kutsero applications
+    """
+    op_id = request.GET.get("op_id")
+    
+    if not op_id:
+        return Response({"error": "op_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Get all applications
+        applications_data = service_client.table("op_kutsero_application").select(
+            "status"
+        ).eq("op_id", op_id).execute()
+        
+        if not applications_data.data:
+            return Response({
+                "total": 0,
+                "pending": 0,
+                "approved": 0,
+                "rejected": 0
+            }, status=status.HTTP_200_OK)
+        
+        # Count by status
+        total = len(applications_data.data)
+        pending = len([app for app in applications_data.data if app.get("status") == "pending"])
+        approved = len([app for app in applications_data.data if app.get("status") == "approved"])
+        rejected = len([app for app in applications_data.data if app.get("status") == "rejected"])
+        
+        return Response({
+            "total": total,
+            "pending": pending,
+            "approved": approved,
+            "rejected": rejected
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error fetching application stats: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+@api_view(['GET'])
+def get_kutsero_profile_details(request):
+    """
+    Get detailed kutsero profile information for display in horse operator's view
+    """
+    try:
+        kutsero_id = request.GET.get("kutsero_id")
+        op_id = request.GET.get("op_id")
+        
+        if not kutsero_id:
+            return Response({"error": "kutsero_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Get kutsero profile information
+        kutsero_data = service_client.table("kutsero_profile").select("*").eq("kutsero_id", kutsero_id).execute()
+        
+        if not kutsero_data.data:
+            return Response({"error": "Kutsero profile not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        profile = kutsero_data.data[0]
+        
+        # Handle image URL
+        kutsero_image = None
+        if profile.get("kutsero_image"):
+            img = profile["kutsero_image"]
+            if img.startswith("http://") or img.startswith("https://"):
+                kutsero_image = img
+            elif img.startswith("kutsero_images/"):
+                kutsero_image = f"{SUPABASE_URL}/storage/v1/object/public/{img}"
+            else:
+                kutsero_image = f"{SUPABASE_URL}/storage/v1/object/public/kutsero_images/{img}"
+        
+        # Format date of birth
+        dob = profile.get("kutsero_dob")
+        formatted_dob = None
+        if dob:
+            try:
+                if isinstance(dob, str):
+                    dob_obj = datetime.strptime(dob, '%Y-%m-%d')
+                    formatted_dob = dob_obj.strftime('%B %d, %Y')
+                else:
+                    formatted_dob = str(dob)
+            except:
+                formatted_dob = dob
+        
+        # Build full address
+        address_parts = []
+        if profile.get("kutsero_brgy"):
+            address_parts.append(f"Brgy. {profile['kutsero_brgy']}")
+        if profile.get("kutsero_municipality"):
+            address_parts.append(profile["kutsero_municipality"])
+        if profile.get("kutsero_city"):
+            address_parts.append(profile["kutsero_city"])
+        if profile.get("kutsero_province"):
+            address_parts.append(profile["kutsero_province"])
+        if profile.get("kutsero_zipcode"):
+            address_parts.append(f"ZIP: {profile['kutsero_zipcode']}")
+        
+        full_address = ", ".join(address_parts) if address_parts else "No address provided"
+        
+        # Calculate age from DOB if available
+        age = None
+        if dob:
+            try:
+                if isinstance(dob, str):
+                    birth_date = datetime.strptime(dob, '%Y-%m-%d')
+                else:
+                    birth_date = dob
+                
+                today = datetime.now()
+                age = today.year - birth_date.year - ((today.month, today.day) < (birth_date.month, birth_date.day))
+            except:
+                age = None
+        
+        # Get membership information
+        membership_status = profile.get("membership_status", "not_applied")
+        years_experience = profile.get("years_experience")
+        is_member = profile.get("is_member", False)
+        
+        # If operator ID is provided, get application status for this specific operator
+        application_status = None
+        assigned_horses = 0
+        if op_id:
+            # Get application status
+            application_data = service_client.table("op_kutsero_application").select(
+                "status, application_date, review_date, review_notes"
+            ).eq("op_id", op_id).eq("kutsero_id", kutsero_id).execute()
+            
+            if application_data.data:
+                application = application_data.data[0]
+                application_status = {
+                    "status": application.get("status"),
+                    "application_date": application.get("application_date"),
+                    "review_date": application.get("review_date"),
+                    "review_notes": application.get("review_notes")
+                }
+            
+            # Get assigned horses count - FIXED: Check if horse_assignment has op_id column
+            try:
+                # First, let's check the table structure
+                assigned_data = service_client.table("horse_assignment").select(
+                    "assign_id"
+                ).eq("kutsero_id", kutsero_id).execute()
+                
+                # Filter by operator if op_id exists in the assignment records
+                if assigned_data.data:
+                    # Check if assignment has operator relationship
+                    # This depends on your schema - if assignments are operator-specific
+                    # If not, we need to get horses owned by operator and check assignments
+                    
+                    # Get horses owned by this operator
+                    operator_horses = service_client.table("horse_profile").select(
+                        "horse_id"
+                    ).eq("op_id", op_id).execute()
+                    
+                    if operator_horses.data:
+                        operator_horse_ids = [horse["horse_id"] for horse in operator_horses.data]
+                        
+                        # Get assignments for these horses and this kutsero
+                        filtered_assignments = []
+                        for assignment in assigned_data.data:
+                            # We need to get the horse_id from each assignment
+                            assignment_detail = service_client.table("horse_assignment").select(
+                                "horse_id, kutsero_id"
+                            ).eq("assign_id", assignment["assign_id"]).execute()
+                            
+                            if assignment_detail.data:
+                                assignment_info = assignment_detail.data[0]
+                                if assignment_info.get("horse_id") in operator_horse_ids:
+                                    filtered_assignments.append(assignment)
+                        
+                        assigned_horses = len(filtered_assignments)
+                    else:
+                        assigned_horses = 0
+                else:
+                    assigned_horses = 0
+                    
+            except Exception as e:
+                logger.error(f"Error fetching assigned horses count: {e}")
+                # Fallback: try alternative approach
+                try:
+                    # Get assignments by checking horse profiles
+                    operator_horses = service_client.table("horse_profile").select(
+                        "horse_id"
+                    ).eq("op_id", op_id).execute()
+                    
+                    if operator_horses.data:
+                        operator_horse_ids = [horse["horse_id"] for horse in operator_horses.data]
+                        
+                        # Check assignments for these horses
+                        assignments_count = 0
+                        for horse_id in operator_horse_ids:
+                            assignment_check = service_client.table("horse_assignment").select(
+                                "assign_id"
+                            ).eq("horse_id", horse_id).eq("kutsero_id", kutsero_id).execute()
+                            
+                            if assignment_check.data:
+                                assignments_count += 1
+                        
+                        assigned_horses = assignments_count
+                    else:
+                        assigned_horses = 0
+                except:
+                    assigned_horses = 0
+        
+        # Get complete name
+        fname = profile.get("kutsero_fname", "")
+        mname = profile.get("kutsero_mname", "")
+        lname = profile.get("kutsero_lname", "")
+        
+        name_parts = []
+        if fname:
+            name_parts.append(fname)
+        if mname:
+            name_parts.append(mname)
+        if lname:
+            name_parts.append(lname)
+        
+        full_name = " ".join(name_parts)
+        
+        formatted_profile = {
+            "kutsero_id": kutsero_id,
+            "full_name": full_name,
+            "first_name": fname,
+            "middle_name": mname,
+            "last_name": lname,
+            "email": profile.get("kutsero_email", ""),
+            "phone_number": profile.get("kutsero_phone_num", ""),
+            "date_of_birth": dob,
+            "formatted_dob": formatted_dob,
+            "age": age,
+            "gender": profile.get("kutsero_sex", ""),
+            "address": {
+                "barangay": profile.get("kutsero_brgy"),
+                "municipality": profile.get("kutsero_municipality"),
+                "city": profile.get("kutsero_city"),
+                "province": profile.get("kutsero_province"),
+                "zipcode": profile.get("kutsero_zipcode"),
+                "full_address": full_address
+            },
+            "profile_image": kutsero_image,
+            "username": profile.get("kutsero_username"),
+            "membership_info": {
+                "is_member": is_member,
+                "membership_status": membership_status,
+                "years_experience": years_experience,
+                "membership_verified": profile.get("membership_verified", False),
+                "applying_for_membership": profile.get("applying_for_membership", False),
+                "membership_application_date": profile.get("membership_application_date"),
+                "membership_verification_date": profile.get("membership_verification_date")
+            },
+            "application_status": application_status,
+            "assigned_horses_count": assigned_horses,
+            "created_at": profile.get("created_at")
+        }
+        
+        logger.info(f"Returning detailed profile for kutsero {kutsero_id}")
+        
+        return Response({
+            "success": True,
+            "profile": formatted_profile
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error fetching kutsero profile details: {e}", exc_info=True)
+        return Response({
+            "error": "Failed to fetch kutsero profile",
+            "detail": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+def get_kutsero_horse_assignments(request):
+    """
+    Get all horse assignments for a specific kutsero under a horse operator
+    FIXED: Now correctly fetches horse age and other details from horse_profile
+    """
+    op_id = request.GET.get("op_id")
+    kutsero_id = request.GET.get("kutsero_id")
+    
+    if not op_id or not kutsero_id:
+        return Response({"error": "op_id and kutsero_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+    
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        logger.info(f"Fetching horse assignments for operator {op_id} and kutsero {kutsero_id}")
+        
+        # Get all horse assignments for this kutsero
+        assignments_data = service_client.table("horse_assignment").select(
+            "assign_id, horse_id, date_start, date_end, created_at, updated_at"
+        ).eq("kutsero_id", kutsero_id).execute()
+        
+        if not assignments_data.data:
+            logger.info(f"No assignments found for kutsero {kutsero_id}")
+            return Response([], status=status.HTTP_200_OK)
+        
+        # Get all horse IDs from assignments
+        horse_ids = [assignment["horse_id"] for assignment in assignments_data.data]
+        
+        # Get horses owned by this operator with their details
+        horses_data = service_client.table("horse_profile").select(
+            "horse_id, horse_name, horse_age, horse_breed, horse_color, horse_image"
+        ).eq("op_id", op_id).in_("horse_id", horse_ids).execute()
+        
+        # Create a mapping of horse_id to horse details
+        horse_map = {}
+        if horses_data.data:
+            for horse in horses_data.data:
+                horse_map[horse["horse_id"]] = {
+                    "horse_name": horse.get("horse_name", "Unknown Horse"),
+                    "horse_age": horse.get("horse_age", "Unknown"),
+                    "horse_breed": horse.get("horse_breed"),
+                    "horse_color": horse.get("horse_color"),
+                    "horse_image": horse.get("horse_image")
+                }
+        
+        # Format assignments with horse details
+        formatted_assignments = []
+        for assignment in assignments_data.data:
+            horse_id = assignment["horse_id"]
+            horse_details = horse_map.get(horse_id, {})
+            
+            # Determine if assignment is active (no end date or future end date)
+            date_end = assignment.get("date_end")
+            is_active = True
+            
+            if date_end:
+                try:
+                    end_date = datetime.fromisoformat(date_end.replace('Z', '+00:00')) if isinstance(date_end, str) else date_end
+                    is_active = end_date > datetime.now(pytz.UTC)
+                except:
+                    is_active = False
+            
+            formatted_assignments.append({
+                "assign_id": assignment["assign_id"],
+                "horse_id": horse_id,
+                "horse_name": horse_details.get("horse_name", "Unknown Horse"),
+                "horse_age": horse_details.get("horse_age", "Unknown"),
+                "horse_age_from_profile": horse_details.get("horse_age", "Unknown"),  # Added for clarity
+                "horse_breed": horse_details.get("horse_breed"),
+                "horse_color": horse_details.get("horse_color"),
+                "horse_image": horse_details.get("horse_image"),
+                "date_start": assignment["date_start"],
+                "date_end": date_end,
+                "is_active": is_active,
+                "created_at": assignment.get("created_at"),
+                "updated_at": assignment.get("updated_at")
+            })
+        
+        logger.info(f"Returning {len(formatted_assignments)} horse assignments for kutsero {kutsero_id}")
+        
+        return Response(formatted_assignments, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        logger.error(f"Error fetching kutsero horse assignments: {e}", exc_info=True)
+        return Response({
+            "error": "Failed to fetch horse assignments",
+            "detail": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 
 

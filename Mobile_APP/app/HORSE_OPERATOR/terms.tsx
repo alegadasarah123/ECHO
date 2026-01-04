@@ -1,6 +1,5 @@
 // HORSE OPERATOR Terms and Policies Screen
 
-"use client"
 import { useState } from "react"
 import {
     Dimensions,

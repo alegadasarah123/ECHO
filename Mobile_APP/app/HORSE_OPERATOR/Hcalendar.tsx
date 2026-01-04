@@ -1,6 +1,6 @@
 // HORSE_OPERATOR/Hcalendar.tsx
 
-"use client"
+
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import {
@@ -52,7 +52,7 @@ interface VetDetails {
 }
 
 // Configuration
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
 
 const { width, height } = Dimensions.get("window")
 
@@ -1735,6 +1735,13 @@ const CalendarScreen = () => {
           tabKey="horses"
           isActive={activeTab === "horses"}
           onPress={() => router.push("../HORSE_OPERATOR/horse" as any)}
+        />
+        <TabButton
+          iconSource={require("../../assets/images/kutsero.png")}
+          label="Kutsero"
+          tabKey="kutsero"
+          isActive={activeTab === "kutsero"}
+          onPress={() => router.push("../HORSE_OPERATOR/kutsero" as any)}
         />
         <TabButton
           iconSource={require("../../assets/images/chat.png")}
