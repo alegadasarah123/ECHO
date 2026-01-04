@@ -1,3 +1,4 @@
+// Horse Profile Screen - horseprofile.tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -13,12 +14,16 @@ import {
   TextInput,
   ActivityIndicator,
   Platform,
+  Dimensions,
+  FlatList,
 } from 'react-native';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+
+const { width: screenWidth } = Dimensions.get('window');
 
 interface Horse {
   horse_id: string;
@@ -31,12 +36,45 @@ interface Horse {
   horse_height: string;
   horse_weight: string;
   horse_image: string | null;
+  horse_status?: string;
   lastVetCheck?: string;
   condition?: string;
   conditionColor?: string;
+  death_status?: boolean;
+  date_of_death?: string;
+  death_cause?: string;
+  death_location?: string;
+  death_documents?: any[];
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
+interface DeathRecordDetails {
+  hdeath_id: string;
+  horse_id: string;
+  op_id: string;
+  hdeath_date: string;
+  cause_of_death: string;
+  death_location: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  images: string[]; // Array of image URLs
+}
+
+interface DeathRecordResponse {
+  success: boolean;
+  death_record: DeathRecordDetails;
+  horse_info: {
+    horse_name: string;
+    horse_breed?: string;
+    horse_age?: string;
+    horse_sex?: string;
+    horse_color?: string;
+  };
+  formatted_date: string;
+  formatted_created: string;
+}
+
+const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
 
 const HorseProfileScreen = () => {
   const router = useRouter();
@@ -44,20 +82,24 @@ const HorseProfileScreen = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const [horseId, setHorseId] = useState<string | null>(null);
   const [horseData, setHorseData] = useState<Horse | null>(null);
-  const [latestMedicalRecord, setLatestMedicalRecord] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editedHorse, setEditedHorse] = useState<Horse | null>(null);
   const [imageError, setImageError] = useState(false);
-  const [loadingMedicalRecord, setLoadingMedicalRecord] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [editImageError, setEditImageError] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showDobPicker, setShowDobPicker] = useState(false);
   const [showSexDropdown, setShowSexDropdown] = useState(false);
-  const [datePickerDate, setDatePickerDate] = useState(new Date());
+  const [dobPickerDate, setDobPickerDate] = useState(new Date());
+  const [deathRecordDetails, setDeathRecordDetails] = useState<DeathRecordDetails | null>(null);
+  const [loadingDeathInfo, setLoadingDeathInfo] = useState(false);
+  const [hasDeathRecord, setHasDeathRecord] = useState(false);
+  const [isDeceased, setIsDeceased] = useState(false);
+  const [showImageGallery, setShowImageGallery] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   const hasFetchedRef = useRef(false);
   const isFetchingRef = useRef(false);
@@ -118,32 +160,46 @@ const HorseProfileScreen = () => {
     return null;
   }, [params?.id, router]);
 
-  const fetchLatestMedicalRecord = useCallback(async (horseId: string, uid: string) => {
-    setLoadingMedicalRecord(true);
+  const fetchDeathRecord = useCallback(async (horseId: string, user_id: string) => {
+    console.log("🔍 Fetching death record for horse:", horseId);
+    console.log("👤 User ID:", user_id);
+    
+    setLoadingDeathInfo(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/get_horse_medical_records/?horse_id=${encodeURIComponent(horseId)}&user_id=${encodeURIComponent(uid)}`);
+      // Fetch death record directly from horse_death_records table
+      const response = await fetch(
+        `${API_BASE_URL}/get_horse_death_record/?horse_id=${encodeURIComponent(horseId)}&user_id=${encodeURIComponent(user_id)}`
+      );
+      
+      console.log("📊 Death record response status:", response.status);
       
       if (response.ok) {
-        const data = await response.json();
-        console.log("Medical records response:", data);
+        const data = await response.json() as DeathRecordResponse;
+        console.log("📋 Death record data:", data);
         
-        if (data.medical_records && data.medical_records.length > 0) {
-          const latestRecord = data.medical_records[0];
-          setLatestMedicalRecord(latestRecord);
-          console.log("Latest medical record loaded:", latestRecord);
+        if (data.death_record) {
+          setHasDeathRecord(true);
+          
+          // The backend returns the death record with images array
+          setDeathRecordDetails(data.death_record);
+          console.log("🖼️ Death record images:", data.death_record.images);
+          console.log("🖼️ Images count:", data.death_record.images?.length || 0);
         } else {
-          setLatestMedicalRecord(null);
-          console.log("No medical records found for this horse");
+          console.log("📭 No death record found in horse_death_records table");
+          setHasDeathRecord(false);
+          setDeathRecordDetails(null);
         }
       } else {
-        console.warn("Failed to fetch medical records:", response.status);
-        setLatestMedicalRecord(null);
+        console.log("❌ Failed to fetch death record, status:", response.status);
+        setHasDeathRecord(false);
+        setDeathRecordDetails(null);
       }
     } catch (error) {
-      console.error('Error fetching medical records:', error);
-      setLatestMedicalRecord(null);
+      console.error("❌ Error fetching death record:", error);
+      setHasDeathRecord(false);
+      setDeathRecordDetails(null);
     } finally {
-      setLoadingMedicalRecord(false);
+      setLoadingDeathInfo(false);
     }
   }, []);
 
@@ -193,19 +249,38 @@ const HorseProfileScreen = () => {
         return;
       }
 
+      // Check if horse is deceased (from horse_status field)
+      const isHorseDeceased = horse.horse_status === 'Deceased' || horse.death_status === true;
+      setIsDeceased(isHorseDeceased);
+
       const processedHorse = {
         ...horse,
         horse_image: horse.horse_image || null,
         lastVetCheck: horse.lastVetCheck || 'Loading...',
         condition: horse.condition || 'Good',
-        conditionColor: getConditionColor(horse.condition || 'Good')
+        conditionColor: getConditionColor(horse.condition || 'Good'),
+        death_status: isHorseDeceased,
+        date_of_death: horse.date_of_death || '',
+        death_cause: horse.death_cause || '',
+        death_location: horse.death_location || '',
+        death_documents: horse.death_documents || []
       };
+
+      console.log("🐴 Processed horse data:", processedHorse);
+      console.log("💀 Death status from horse_status:", processedHorse.horse_status);
+      console.log("🏥 Is horse deceased?:", isHorseDeceased);
 
       setHorseData(processedHorse);
       setEditedHorse(processedHorse);
-
-      if (uid && processedHorse.horse_id) {
-        await fetchLatestMedicalRecord(processedHorse.horse_id, uid);
+      
+      // Fetch death record if horse is deceased
+      if (isHorseDeceased) {
+        console.log("⚰️ Horse is deceased, fetching death record...");
+        await fetchDeathRecord(processedHorse.horse_id, uid);
+      } else {
+        console.log("🐎 Horse is alive, clearing death info");
+        setDeathRecordDetails(null);
+        setHasDeathRecord(false);
       }
       
       hasFetchedRef.current = true;
@@ -222,7 +297,7 @@ const HorseProfileScreen = () => {
         setLoading(false);
       }
     }
-  }, [userId, horseId, params?.id, fetchLatestMedicalRecord, router]);
+  }, [userId, horseId, params?.id, router, fetchDeathRecord]);
 
   useEffect(() => {
     const initializeData = async () => {
@@ -276,8 +351,9 @@ const HorseProfileScreen = () => {
     setShowMenu(false);
   };
 
+
   const handleEditHorse = () => {
-    if (horseData) {
+    if (horseData && !isDeceased) {
       setEditedHorse({ ...horseData });
       setEditImageError(false);
       setShowSexDropdown(false);
@@ -287,13 +363,13 @@ const HorseProfileScreen = () => {
         try {
           const existingDate = new Date(horseData.horse_dob);
           if (!isNaN(existingDate.getTime())) {
-            setDatePickerDate(existingDate);
+            setDobPickerDate(existingDate);
           }
         } catch {
-          setDatePickerDate(new Date());
+          setDobPickerDate(new Date());
         }
       } else {
-        setDatePickerDate(new Date());
+        setDobPickerDate(new Date());
       }
       
       setShowEditModal(true);
@@ -301,15 +377,82 @@ const HorseProfileScreen = () => {
     setShowMenu(false);
   };
 
-  const handleDateChange = (event: any, selectedDate?: Date) => {
+  const handleFeed = async () => {
+    if (horseData && !isDeceased) {
+      console.log(`Opening feed for ${horseData.horse_name}`);
+      
+      // Store horse data before navigation
+      await SecureStore.setItemAsync("selected_horse_id", horseData.horse_id);
+      await SecureStore.setItemAsync("selected_horse_name", horseData.horse_name);
+      
+      // Navigate with proper parameters
+      router.push({
+        pathname: '../HORSE_OPERATOR/Hfeed',
+        params: {
+          id: horseData.horse_id,
+          horseId: horseData.horse_id,  // Add this line
+          horseName: horseData.horse_name
+        }
+      });
+    }
+    setShowMenu(false);
+  };
+
+  const handleWater = async () => {
+    if (horseData && !isDeceased) {
+      console.log(`Opening water for ${horseData.horse_name}`);
+      await SecureStore.setItemAsync("selected_horse_id", horseData.horse_id);
+      router.push({
+        pathname: '../HORSE_OPERATOR/water',
+        params: {
+          id: horseData.horse_id,  // This is the key parameter
+          horseId: horseData.horse_id,  // Also pass as horseId for consistency
+          horseName: horseData.horse_name
+        }
+      });
+    }
+    setShowMenu(false);
+  };
+
+  const handleFeedLogs = async () => {
+    if (horseData) {
+      console.log(`Opening feed logs for ${horseData.horse_name}`);
+      await SecureStore.setItemAsync("selected_horse_id", horseData.horse_id);
+      router.push({
+        pathname: '../HORSE_OPERATOR/Hfeedlog',
+        params: {
+          id: horseData.horse_id,
+          horseName: horseData.horse_name
+        }
+      });
+    }
+    setShowMenu(false);
+  };
+
+  const handleWaterLogs = async () => {
+    if (horseData) {
+      console.log(`Opening water logs for ${horseData.horse_name}`);
+      await SecureStore.setItemAsync("selected_horse_id", horseData.horse_id);
+      router.push({
+        pathname: '../HORSE_OPERATOR/waterlog',
+        params: {
+          id: horseData.horse_id,
+          horseName: horseData.horse_name
+        }
+      });
+    }
+    setShowMenu(false);
+  };
+
+  const handleDobChange = (event: any, selectedDate?: Date) => {
     if (selectedDate) {
-      setDatePickerDate(selectedDate);
+      setDobPickerDate(selectedDate);
       const formatted = selectedDate.toISOString().split("T")[0];
       if (editedHorse) {
         setEditedHorse({ ...editedHorse, horse_dob: formatted });
       }
     }
-    setShowDatePicker(false);
+    setShowDobPicker(false);
   };
 
   const handleSexSelect = (sex: string) => {
@@ -450,7 +593,7 @@ const HorseProfileScreen = () => {
         horse_color: editedHorse.horse_color?.trim(),
         horse_height: editedHorse.horse_height?.trim(),
         horse_weight: editedHorse.horse_weight?.trim(),
-        horse_image: editedHorse.horse_image || null  // Send base64 or URL
+        horse_image: editedHorse.horse_image || null
       };
 
       console.log('Updating horse with payload:', { 
@@ -474,10 +617,14 @@ const HorseProfileScreen = () => {
       if (response.ok) {
         const updatedHorse = { 
           ...responseData.horse,
-          conditionColor: getConditionColor(responseData.horse.condition || 'Good') 
+          conditionColor: getConditionColor(responseData.horse.condition || 'Good'),
+          death_status: responseData.horse.death_status || false,
+          date_of_death: responseData.horse.date_of_death || '',
+          death_cause: responseData.horse.death_cause || ''
         };
         
         setHorseData(updatedHorse);
+        setIsDeceased(updatedHorse.horse_status === 'Deceased' || updatedHorse.death_status === true);
         setShowEditModal(false);
         
         Alert.alert('Success', 'Horse profile updated successfully');
@@ -493,45 +640,6 @@ const HorseProfileScreen = () => {
       Alert.alert('Error', 'Failed to update horse profile. Please check your connection and try again.');
     } finally {
       setSavingEdit(false);
-    }
-  };
-
-  const handleDeleteHorse = () => {
-    Alert.alert(
-      'Delete Horse',
-      `Are you sure you want to delete ${horseData?.horse_name}? This action cannot be undone.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
-          style: 'destructive',
-          onPress: confirmDeleteHorse
-        }
-      ]
-    );
-    setShowMenu(false);
-  };
-
-  const confirmDeleteHorse = async () => {
-    if (!horseData) return;
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/delete_horse/${horseData.horse_id}/`, {
-        method: 'DELETE',
-      });
-
-      if (response.ok) {
-        await SecureStore.deleteItemAsync("selected_horse_id");
-        Alert.alert('Success', 'Horse deleted successfully', [
-          { text: 'OK', onPress: () => router.back() }
-        ]);
-      } else {
-        const errorData = await response.json();
-        Alert.alert('Error', errorData.error || 'Failed to delete horse');
-      }
-    } catch (error) {
-      console.error('Error deleting horse:', error);
-      Alert.alert('Error', 'Failed to delete horse');
     }
   };
 
@@ -565,94 +673,259 @@ const HorseProfileScreen = () => {
     }
   };
 
-  const getDisplayAge = (horse: Horse) => {
-    if (horse.horse_age) {
-      return `${horse.horse_age} years old`;
-    } else if (horse.horse_dob) {
-      try {
-        const birthDate = new Date(horse.horse_dob);
-        const today = new Date();
-        const age = today.getFullYear() - birthDate.getFullYear();
-        const monthDiff = today.getMonth() - birthDate.getMonth();
-        
-        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
-          return `${age - 1} years`;
-        }
-        return `${age} years`;
-      } catch {
-        return 'Unknown';
-      }
+  // Function to render menu items based on horse status
+  const renderMenuItems = () => {
+    if (!horseData) return null;
+
+    // For deceased horses
+    if (isDeceased) {
+      return (
+        <>
+          <TouchableOpacity style={styles.menuItem} onPress={handleHorseHandling}>
+            <FontAwesome5 name="horse" size={16} color="#333" />
+            <Text style={styles.menuItemText}>Horse Handling</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem} onPress={handleMedical}>
+            <FontAwesome5 name="clipboard-list" size={16} color="#333" />
+            <Text style={styles.menuItemText}>Medical Records</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem} onPress={handleFeedLogs}>
+            <FontAwesome5 name="carrot" size={16} color="#FF9800" />
+            <Text style={[styles.menuItemText, { color: '#FF9800' }]}>Feed Logs</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.menuItem} onPress={handleWaterLogs}>
+            <FontAwesome5 name="tint" size={16} color="#2196F3" />
+            <Text style={[styles.menuItemText, { color: '#2196F3' }]}>Water Logs</Text>
+          </TouchableOpacity>
+        </>
+      );
     }
-    return 'Unknown';
+
+    // For active horses
+    return (
+      <>
+        <TouchableOpacity style={styles.menuItem} onPress={handleHorseHandling}>
+          <FontAwesome5 name="horse" size={16} color="#333" />
+          <Text style={styles.menuItemText}>Horse Handling</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.menuItem} onPress={handleMedical}>
+          <FontAwesome5 name="clipboard-list" size={16} color="#333" />
+          <Text style={styles.menuItemText}>Medical Records</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.menuItem} onPress={handleEditHorse}>
+          <FontAwesome5 name="edit" size={16} color="#333" />
+          <Text style={styles.menuItemText}>Update Horse</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.menuItem} onPress={handleFeed}>
+          <FontAwesome5 name="carrot" size={16} color="#FF9800" />
+          <Text style={[styles.menuItemText, { color: '#FF9800' }]}>Feed</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.menuItem} onPress={handleWater}>
+          <FontAwesome5 name="tint" size={16} color="#2196F3" />
+          <Text style={[styles.menuItemText, { color: '#2196F3' }]}>Water</Text>
+        </TouchableOpacity>
+      </>
+    );
   };
 
-  const getHealthStatusColor = (daysAgo: number | null) => {
-    if (daysAgo === null) return '#757575';
-    if (daysAgo <= 30) return '#4CAF50';
-    if (daysAgo <= 90) return '#FFC107';
-    if (daysAgo <= 180) return '#FF9800';
-    return '#FF5722';
-  };
-
-  const getConditionFromMedicalRecord = (record: any) => {
-    const status = record?.horse_status || record?.assessment?.prognosis || 'Unknown';
-    return status;
-  };
-
-  const getConditionColorFromStatus = (status: string) => {
-    const lowerStatus = status.toLowerCase();
-    
-    if (lowerStatus.includes('excellent') || lowerStatus.includes('great') || 
-        lowerStatus.includes('healthy') || lowerStatus === 'good') {
-      return '#4CAF50';
-    }
-    
-    if (lowerStatus.includes('fair') || lowerStatus.includes('stable') || 
-        lowerStatus.includes('improving')) {
-      return '#8BC34A';
-    }
-    
-    if (lowerStatus.includes('guarded') || lowerStatus.includes('cautious') || 
-        lowerStatus.includes('monitor')) {
-      return '#FFC107';
-    }
-    
-    if (lowerStatus.includes('poor') || lowerStatus.includes('critical') || 
-        lowerStatus.includes('grave') || lowerStatus.includes('emergency')) {
-      return '#FF5722';
-    }
-    
-    return '#757575';
-  };
-
-  const calculateDaysAgo = (dateString: string | null) => {
-    if (!dateString) return null;
-    try {
-      const recordDate = new Date(dateString);
-      const today = new Date();
-      const diffTime = Math.abs(today.getTime() - recordDate.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays;
-    } catch {
+  // Function to render death document images
+  const renderDeathImages = () => {
+    if (!deathRecordDetails || !deathRecordDetails.images || deathRecordDetails.images.length === 0) {
       return null;
     }
+
+    const images = deathRecordDetails.images;
+    
+    return (
+      <View style={styles.imagesSection}>
+        <Text style={styles.imagesSectionTitle}>Documentation</Text>
+        <Text style={styles.imagesCountText}>{images.length} image(s)</Text>
+        
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={true}
+          style={styles.imagesScrollView}
+          contentContainerStyle={styles.imagesContainer}
+        >
+          {images.map((imageUrl, index) => (
+            <TouchableOpacity
+              key={index}
+              style={styles.imageThumbnailContainer}
+              onPress={() => {
+                setSelectedImageIndex(index);
+                setShowImageGallery(true);
+              }}
+            >
+              <Image
+                source={{ uri: imageUrl }}
+                style={styles.imageThumbnail}
+                resizeMode="cover"
+              />
+              {images.length > 1 && (
+                <View style={styles.imageCounter}>
+                  <Text style={styles.imageCounterText}>{index + 1}/{images.length}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+    );
   };
 
-  const formatLastVetCheck = (record: any) => {
-    if (!record) return 'No medical records';
-    
-    const examinationDate = record.formatted_date || record.date;
-    const daysAgo = calculateDaysAgo(record.date);
-    
-    if (daysAgo === null) return examinationDate;
-    
-    if (daysAgo === 0) return 'Today';
-    if (daysAgo === 1) return 'Yesterday';
-    if (daysAgo <= 7) return `${daysAgo} days ago`;
-    if (daysAgo <= 30) return `${Math.floor(daysAgo / 7)} week${Math.floor(daysAgo / 7) !== 1 ? 's' : ''} ago`;
-    if (daysAgo <= 365) return `${Math.floor(daysAgo / 30)} month${Math.floor(daysAgo / 30) !== 1 ? 's' : ''} ago`;
-    
-    return `${Math.floor(daysAgo / 365)} year${Math.floor(daysAgo / 365) !== 1 ? 's' : ''} ago`;
+  // Function to render Death Information section
+  const renderDeathInfoSection = () => {
+    if (!isDeceased) return null;
+
+    return (
+      <View style={styles.deathInfoCard}>
+        <View style={styles.deathInfoHeader}>
+          <FontAwesome5 name="skull-crossbones" size={20} color="#F44336" />
+          <Text style={styles.deathSectionTitle}>Death Information</Text>
+        </View>
+        
+        {loadingDeathInfo ? (
+          <View style={styles.loadingContainerSmall}>
+            <ActivityIndicator size="small" color="#CD853F" />
+            <Text style={styles.loadingTextSmall}>Loading death information...</Text>
+          </View>
+        ) : hasDeathRecord && deathRecordDetails ? (
+          <>
+            {/* Death Date */}
+            <View style={styles.infoRow}>
+              <View style={styles.infoIconContainer}>
+                <FontAwesome5 name="calendar-times" size={18} color="#F44336" />
+              </View>
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>Date of Death</Text>
+                <Text style={[styles.infoValue, styles.deathInfoText]}>
+                  {formatDate(deathRecordDetails.hdeath_date)}
+                </Text>
+              </View>
+            </View>
+
+            {/* Cause of Death */}
+            <View style={styles.infoRow}>
+              <View style={styles.infoIconContainer}>
+                <FontAwesome5 name="heartbeat" size={18} color="#F44336" />
+              </View>
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>Cause of Death</Text>
+                <Text style={[styles.infoValue, styles.deathInfoText]}>
+                  {deathRecordDetails.cause_of_death || 'Not specified'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Death Location */}
+            <View style={styles.infoRow}>
+              <View style={styles.infoIconContainer}>
+                <FontAwesome5 name="map-marker-alt" size={18} color="#F44336" />
+              </View>
+              <View style={styles.infoContent}>
+                <Text style={styles.infoLabel}>Death Location</Text>
+                <Text style={[styles.infoValue, styles.deathInfoText]}>
+                  {deathRecordDetails.death_location || 'Not specified'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Render death document images */}
+            {renderDeathImages()}
+          </>
+        ) : (
+          <View style={styles.noDeathInfoContainer}>
+            <FontAwesome5 name="exclamation-circle" size={32} color="#757575" />
+            <Text style={styles.noDeathInfoTitle}>No Detailed Death Record Found</Text>
+            <Text style={styles.noDeathInfoDescription}>
+              This horse is marked as deceased but no detailed death record was found in the system.
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  // Function to render Image Gallery Modal
+  const renderImageGalleryModal = () => {
+    if (!deathRecordDetails || !deathRecordDetails.images || deathRecordDetails.images.length === 0) {
+      return null;
+    }
+
+    const images = deathRecordDetails.images;
+
+    return (
+      <Modal
+        visible={showImageGallery}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowImageGallery(false)}
+      >
+        <SafeAreaView style={styles.galleryModalContainer}>
+          <View style={styles.galleryHeader}>
+            <TouchableOpacity
+              style={styles.galleryCloseButton}
+              onPress={() => setShowImageGallery(false)}
+            >
+              <FontAwesome5 name="times" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text style={styles.galleryTitle}>
+              Image {selectedImageIndex + 1} of {images.length}
+            </Text>
+            <View style={styles.galleryHeaderSpacer} />
+          </View>
+
+          <View style={styles.galleryContent}>
+            <FlatList
+              data={images}
+              horizontal
+              pagingEnabled
+              showsHorizontalScrollIndicator={false}
+              onMomentumScrollEnd={(event) => {
+                const index = Math.round(event.nativeEvent.contentOffset.x / screenWidth);
+                setSelectedImageIndex(index);
+              }}
+              keyExtractor={(item, index) => index.toString()}
+              renderItem={({ item }) => (
+                <View style={styles.galleryImageContainer}>
+                  <Image
+                    source={{ uri: item }}
+                    style={styles.galleryImage}
+                    resizeMode="contain"
+                  />
+                </View>
+              )}
+            />
+          </View>
+
+          {/* Thumbnail strip */}
+          {images.length > 1 && (
+            <View style={styles.thumbnailStrip}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                {images.map((imageUrl, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={[
+                      styles.thumbnailItem,
+                      index === selectedImageIndex && styles.thumbnailItemActive
+                    ]}
+                    onPress={() => {
+                      setSelectedImageIndex(index);
+                    }}
+                  >
+                    <Image
+                      source={{ uri: imageUrl }}
+                      style={styles.thumbnailImage}
+                      resizeMode="cover"
+                    />
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          )}
+        </SafeAreaView>
+      </Modal>
+    );
   };
 
   if (loading) {
@@ -713,7 +986,10 @@ const HorseProfileScreen = () => {
               source={{
                 uri: (horseData.horse_image && !imageError) ? horseData.horse_image : getPlaceholderImage()
               }}
-              style={styles.horseImage}
+              style={[
+                styles.horseImage,
+                isDeceased && styles.deceasedHorseImage
+              ]}
               onError={handleImageError}
             />
             {imageError && horseData.horse_image && (
@@ -721,10 +997,17 @@ const HorseProfileScreen = () => {
                 <FontAwesome5 name="image" size={30} color="#999" />
               </View>
             )}
+            {isDeceased && (
+              <View style={styles.deceasedOverlay}>
+                <Text style={styles.deceasedText}>DECEASED</Text>
+              </View>
+            )}
           </View>
-          <Text style={styles.horseName}>{horseData.horse_name}</Text>
-          <Text style={styles.horseSubtitle}>
-            {getDisplayAge(horseData)} • {horseData.horse_breed}
+          <Text style={[
+            styles.horseName,
+            isDeceased && styles.deceasedHorseName
+          ]}>
+            {horseData.horse_name}
           </Text>
         </View>
 
@@ -733,7 +1016,7 @@ const HorseProfileScreen = () => {
           <Text style={styles.sectionTitle}>Basic Information</Text>
           
           {[
-            { icon: 'birthday-cake', label: 'Age', value: getDisplayAge(horseData) },
+            { icon: 'birthday-cake', label: 'Age', value: horseData.horse_age ? `${horseData.horse_age} years old` : 'Unknown' },
             { icon: 'calendar-alt', label: 'Date of Birth', value: formatDate(horseData.horse_dob) },
             { icon: 'venus-mars', label: 'Sex', value: horseData.horse_sex || 'Not specified' },
             { icon: 'dna', label: 'Breed', value: horseData.horse_breed || 'Mixed' },
@@ -747,123 +1030,21 @@ const HorseProfileScreen = () => {
               </View>
               <View style={styles.infoContent}>
                 <Text style={styles.infoLabel}>{label}</Text>
-                <Text style={styles.infoValue}>{value}</Text>
+                <Text style={styles.infoValue}>
+                  {value}
+                </Text>
               </View>
             </View>
           ))}
         </View>
 
-        {/* Health Information Card */}
-        <View style={styles.profileCard}>
-          <Text style={styles.sectionTitle}>Health Information</Text>
-          
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconContainer}>
-              <FontAwesome5 name="stethoscope" size={18} color="#CD853F" />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Last Veterinary Examination</Text>
-              {loadingMedicalRecord ? (
-                <View style={styles.loadingRow}>
-                  <ActivityIndicator size="small" color="#CD853F" />
-                  <Text style={[styles.infoValue, { marginLeft: 8 }]}>Loading...</Text>
-                </View>
-              ) : latestMedicalRecord ? (
-                <View>
-                  <Text style={[
-                    styles.infoValue, 
-                    { 
-                      color: getHealthStatusColor(calculateDaysAgo(latestMedicalRecord.date)),
-                      fontWeight: 'bold' 
-                    }
-                  ]}>
-                    {formatLastVetCheck(latestMedicalRecord)}
-                  </Text>
-                  {latestMedicalRecord.vet_name && (
-                    <Text style={styles.infoSubtext}>by {latestMedicalRecord.vet_name}</Text>
-                  )}
-                  {latestMedicalRecord.formatted_date && (
-                    <Text style={styles.infoSubtext}>{latestMedicalRecord.formatted_date}</Text>
-                  )}
-                </View>
-              ) : (
-                <View>
-                  <Text style={[styles.infoValue, { color: '#757575', fontStyle: 'italic' }]}>
-                    No medical records
-                  </Text>
-                  <Text style={styles.infoSubtext}>Schedule a veterinary examination</Text>
-                </View>
-              )}
-            </View>
-          </View>
-
-          <View style={styles.infoRow}>
-            <View style={styles.infoIconContainer}>
-              <FontAwesome5 name="heart" size={18} color="#CD853F" />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Current Condition</Text>
-              {loadingMedicalRecord ? (
-                <View style={styles.loadingRow}>
-                  <ActivityIndicator size="small" color="#CD853F" />
-                  <Text style={[styles.infoValue, { marginLeft: 8 }]}>Loading...</Text>
-                </View>
-              ) : latestMedicalRecord ? (
-                <View>
-                  <Text style={[styles.infoValue, { 
-                    color: getConditionColorFromStatus(getConditionFromMedicalRecord(latestMedicalRecord)), 
-                    fontWeight: 'bold' 
-                  }]}>
-                    {getConditionFromMedicalRecord(latestMedicalRecord)}
-                  </Text>
-                  {latestMedicalRecord.assessment?.diagnosis && (
-                    <Text style={styles.infoSubtext}>
-                      Diagnosis: {latestMedicalRecord.assessment.diagnosis}
-                    </Text>
-                  )}
-                </View>
-              ) : (
-                <Text style={[styles.infoValue, { color: '#757575', fontStyle: 'italic' }]}>
-                  No condition data
-                </Text>
-              )}
-            </View>
-          </View>
-
-          {latestMedicalRecord?.vital_signs && (
-            <View style={styles.vitalSignsContainer}>
-              <Text style={styles.vitalSignsTitle}>Latest Vital Signs</Text>
-              <View style={styles.vitalSignsGrid}>
-                {latestMedicalRecord.vital_signs.heart_rate && (
-                  <View style={styles.vitalSignItem}>
-                    <FontAwesome5 name="heartbeat" size={14} color="#CD853F" />
-                    <Text style={styles.vitalSignLabel}>Heart Rate</Text>
-                    <Text style={styles.vitalSignValue}>{latestMedicalRecord.vital_signs.heart_rate}</Text>
-                  </View>
-                )}
-                {latestMedicalRecord.vital_signs.respiratory_rate && (
-                  <View style={styles.vitalSignItem}>
-                    <FontAwesome5 name="lungs" size={14} color="#CD853F" />
-                    <Text style={styles.vitalSignLabel}>Respiratory Rate</Text>
-                    <Text style={styles.vitalSignValue}>{latestMedicalRecord.vital_signs.respiratory_rate}</Text>
-                  </View>
-                )}
-                {latestMedicalRecord.vital_signs.body_temperature && (
-                  <View style={styles.vitalSignItem}>
-                    <FontAwesome5 name="thermometer-half" size={14} color="#CD853F" />
-                    <Text style={styles.vitalSignLabel}>Temperature</Text>
-                    <Text style={styles.vitalSignValue}>{latestMedicalRecord.vital_signs.body_temperature}</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-          )}
-        </View>
+        {/* Death Information Card - Only for deceased horses */}
+        {renderDeathInfoSection()}
 
         <View style={styles.bottomSpacing} />
       </ScrollView>
 
-      {/* Floating Action Menu Button */}
+      {/* Floating Action Menu Button - Show for both alive and deceased horses */}
       <View style={styles.menuButtonContainer}>
         <TouchableOpacity style={styles.menuButton} onPress={handleMenuToggle}>
           <FontAwesome5 name="ellipsis-v" size={20} color="#fff" />
@@ -878,22 +1059,7 @@ const HorseProfileScreen = () => {
             onPress={() => setShowMenu(false)}
           />
           <View style={styles.menuContainer}>
-            <TouchableOpacity style={styles.menuItem} onPress={handleHorseHandling}>
-              <FontAwesome5 name="horse" size={16} color="#333" />
-              <Text style={styles.menuItemText}>Horse Handling</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={handleMedical}>
-              <FontAwesome5 name="clipboard-list" size={16} color="#333" />
-              <Text style={styles.menuItemText}>Medical Records</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={handleEditHorse}>
-              <FontAwesome5 name="edit" size={16} color="#333" />
-              <Text style={styles.menuItemText}>Update Horse</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={handleDeleteHorse}>
-              <FontAwesome5 name="trash" size={16} color="#FF5722" />
-              <Text style={[styles.menuItemText, { color: '#FF5722' }]}>Delete Horse</Text>
-            </TouchableOpacity>
+            {renderMenuItems()}
             <View style={styles.menuDivider} />
             <TouchableOpacity
               style={styles.menuItem}
@@ -906,291 +1072,296 @@ const HorseProfileScreen = () => {
         </View>
       )}
 
-      {/* Edit Modal */}
-      <Modal
-        visible={showEditModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity 
-              onPress={() => {
-                setShowEditModal(false);
-                setShowSexDropdown(false);
-              }}
-              disabled={savingEdit}
-            >
-              <Text style={[styles.modalCancelText, savingEdit && { opacity: 0.5 }]}>Cancel</Text>
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Update Horse</Text>
-            <TouchableOpacity 
-              onPress={handleSaveEdit}
-              disabled={savingEdit}
-            >
-              <View style={styles.saveButtonContainer}>
-                {savingEdit && <ActivityIndicator size="small" color="#CD853F" style={{ marginRight: 8 }} />}
-                <Text style={[styles.modalSaveText, savingEdit && { opacity: 0.5 }]}>
-                  {savingEdit ? 'Saving...' : 'Save'}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-          
-          <ScrollView 
-            style={styles.modalContent} 
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled"
-          >
-            {/* Image Section */}
-            <View style={styles.imageEditSection}>
-              <Text style={styles.imageSectionTitle}>Horse Photo</Text>
-              <View style={styles.imageEditContainer}>
-                <View style={styles.imagePreviewContainer}>
-                  {uploadingImage ? (
-                    <View style={styles.imageUploadingContainer}>
-                      <ActivityIndicator size="large" color="#CD853F" />
-                      <Text style={styles.imageUploadingText}>Uploading...</Text>
-                    </View>
-                  ) : (
-                    <Image
-                      source={{
-                        uri: (editedHorse?.horse_image && !editImageError) 
-                          ? editedHorse.horse_image 
-                          : getPlaceholderImage()
-                      }}
-                      style={styles.imagePreview}
-                      onError={handleEditImageError}
-                    />
-                  )}
-                  {editImageError && editedHorse?.horse_image && (
-                    <View style={styles.imagePreviewErrorOverlay}>
-                      <FontAwesome5 name="image" size={40} color="#999" />
-                    </View>
-                  )}
+      {/* Edit Modal - Only for alive horses */}
+      {!isDeceased && (
+        <Modal
+          visible={showEditModal}
+          animationType="slide"
+          presentationStyle="pageSheet"
+        >
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity 
+                onPress={() => {
+                  setShowEditModal(false);
+                  setShowSexDropdown(false);
+                }}
+                disabled={savingEdit}
+              >
+                <Text style={[styles.modalCancelText, savingEdit && { opacity: 0.5 }]}>Cancel</Text>
+              </TouchableOpacity>
+              <Text style={styles.modalTitle}>Update Horse</Text>
+              <TouchableOpacity 
+                onPress={handleSaveEdit}
+                disabled={savingEdit}
+              >
+                <View style={styles.saveButtonContainer}>
+                  {savingEdit && <ActivityIndicator size="small" color="#CD853F" style={{ marginRight: 8 }} />}
+                  <Text style={[styles.modalSaveText, savingEdit && { opacity: 0.5 }]}>
+                    {savingEdit ? 'Saving...' : 'Save'}
+                  </Text>
                 </View>
-                
-                <View style={styles.imageButtonsContainer}>
-                  <TouchableOpacity
-                    style={styles.imageButton}
-                    onPress={handlePickImage}
-                    disabled={uploadingImage || savingEdit}
-                  >
-                    <FontAwesome5 name="camera" size={18} color="#fff" />
-                    <Text style={styles.imageButtonText}>
-                      {editedHorse?.horse_image ? 'Change Photo' : 'Add Photo'}
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  {editedHorse?.horse_image && (
-                    <TouchableOpacity
-                      style={styles.imageButtonSecondary}
-                      onPress={handleRemoveImage}
-                      disabled={uploadingImage || savingEdit}
-                    >
-                      <FontAwesome5 name="trash" size={18} color="#FF5722" />
-                      <Text style={styles.imageButtonTextSecondary}>Remove</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
+              </TouchableOpacity>
             </View>
-
-            {/* Basic Information Section */}
-            <View style={styles.formSection}>
-              <Text style={styles.formSectionTitle}>Basic Information</Text>
-              
-              {editedHorse && (
-                <>
-                  {/* Horse Name */}
-                  <View style={styles.inputGroup}>
-                    <View style={styles.inputLabelRow}>
-                      <FontAwesome5 name="horse-head" size={16} color="#CD853F" style={{ marginRight: 8 }} />
-                      <Text style={styles.inputLabel}>
-                        Name
-                        <Text style={styles.requiredAsterisk}> *</Text>
-                      </Text>
-                    </View>
-                    <TextInput
-                      style={[
-                        styles.textInput,
-                        !editedHorse.horse_name?.trim() && styles.textInputError
-                      ]}
-                      value={editedHorse.horse_name || ''}
-                      onChangeText={(text) => setEditedHorse({ ...editedHorse, horse_name: text })}
-                      placeholder="Enter horse name"
-                      placeholderTextColor="#999"
-                      editable={!savingEdit}
-                    />
-                    {!editedHorse.horse_name?.trim() && (
-                      <Text style={styles.inputErrorText}>This field is required</Text>
-                    )}
-                  </View>
-
-                  {/* Age */}
-                  <View style={styles.inputGroup}>
-                    <View style={styles.inputLabelRow}>
-                      <FontAwesome5 name="calendar" size={16} color="#CD853F" style={{ marginRight: 8 }} />
-                      <Text style={styles.inputLabel}>Age</Text>
-                    </View>
-                    <TextInput
-                      style={styles.textInput}
-                      value={editedHorse.horse_age || ''}
-                      onChangeText={(text) => setEditedHorse({ ...editedHorse, horse_age: text })}
-                      placeholder="Age in years"
-                      placeholderTextColor="#999"
-                      editable={!savingEdit}
-                      keyboardType="numeric"
-                    />
-                  </View>
-
-                  {/* Date of Birth with DatePicker */}
-                  <View style={styles.inputGroup}>
-                    <View style={styles.inputLabelRow}>
-                      <FontAwesome5 name="birthday-cake" size={16} color="#CD853F" style={{ marginRight: 8 }} />
-                      <Text style={styles.inputLabel}>Date of Birth</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.datePickerButton}
-                      onPress={() => setShowDatePicker(true)}
-                      disabled={savingEdit}
-                    >
-                      <Text style={[styles.datePickerText, !editedHorse.horse_dob && styles.placeholder]}>
-                        {editedHorse.horse_dob || "YYYY-MM-DD"}
-                      </Text>
-                      <FontAwesome5 name="calendar" size={16} color="#666" />
-                    </TouchableOpacity>
-                  </View>
-
-                  {showDatePicker && (
-                    <DateTimePicker
-                      value={datePickerDate}
-                      mode="date"
-                      display={Platform.OS === "ios" ? "spinner" : "default"}
-                      onChange={handleDateChange}
-                      maximumDate={new Date()}
-                    />
-                  )}
-
-                  {/* Sex Dropdown */}
-                  <View style={[styles.inputGroup, showSexDropdown && styles.dropdownExpanded]}>
-                    <View style={styles.inputLabelRow}>
-                      <FontAwesome5 name="venus-mars" size={16} color="#CD853F" style={{ marginRight: 8 }} />
-                      <Text style={styles.inputLabel}>Sex</Text>
-                    </View>
-                    <TouchableOpacity
-                      style={[styles.dropdown, showSexDropdown && styles.dropdownOpen]}
-                      onPress={() => setShowSexDropdown(!showSexDropdown)}
-                      disabled={savingEdit}
-                    >
-                      <Text style={[styles.dropdownText, !editedHorse.horse_sex && styles.placeholder]}>
-                        {editedHorse.horse_sex || 'Select sex'}
-                      </Text>
-                      <FontAwesome5
-                        name={showSexDropdown ? "chevron-up" : "chevron-down"}
-                        size={16}
-                        color="#666"
+            
+            <ScrollView 
+              style={styles.modalContent} 
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              {/* Image Section */}
+              <View style={styles.imageEditSection}>
+                <Text style={styles.imageSectionTitle}>Horse Photo</Text>
+                <View style={styles.imageEditContainer}>
+                  <View style={styles.imagePreviewContainer}>
+                    {uploadingImage ? (
+                      <View style={styles.imageUploadingContainer}>
+                        <ActivityIndicator size="large" color="#CD853F" />
+                        <Text style={styles.imageUploadingText}>Uploading...</Text>
+                      </View>
+                    ) : (
+                      <Image
+                        source={{
+                          uri: (editedHorse?.horse_image && !editImageError) 
+                            ? editedHorse.horse_image 
+                            : getPlaceholderImage()
+                        }}
+                        style={styles.imagePreview}
+                        onError={handleEditImageError}
                       />
-                    </TouchableOpacity>
-                    
-                    {showSexDropdown && (
-                      <View style={styles.dropdownMenu}>
-                        <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                          {sexOptions.map((option) => (
-                            <TouchableOpacity
-                              key={option}
-                              style={[
-                                styles.dropdownItem,
-                                editedHorse.horse_sex === option && styles.selectedItem
-                              ]}
-                              onPress={() => handleSexSelect(option)}
-                            >
-                              <Text
-                                style={[
-                                  styles.dropdownItemText,
-                                  editedHorse.horse_sex === option && styles.selectedText
-                                ]}
-                              >
-                                {option}
-                              </Text>
-                            </TouchableOpacity>
-                          ))}
-                        </ScrollView>
+                    )}
+                    {editImageError && editedHorse?.horse_image && (
+                      <View style={styles.imagePreviewErrorOverlay}>
+                        <FontAwesome5 name="image" size={40} color="#999" />
                       </View>
                     )}
                   </View>
-
-                  {/* Breed */}
-                  <View style={styles.inputGroup}>
-                    <View style={styles.inputLabelRow}>
-                      <FontAwesome5 name="dna" size={16} color="#CD853F" style={{ marginRight: 8 }} />
-                      <Text style={styles.inputLabel}>Breed</Text>
-                    </View>
-                    <TextInput
-                      style={styles.textInput}
-                      value={editedHorse.horse_breed || ''}
-                      onChangeText={(text) => setEditedHorse({ ...editedHorse, horse_breed: text })}
-                      placeholder="Enter breed"
-                      placeholderTextColor="#999"
-                      editable={!savingEdit}
-                    />
+                  
+                  <View style={styles.imageButtonsContainer}>
+                    <TouchableOpacity
+                      style={styles.imageButton}
+                      onPress={handlePickImage}
+                      disabled={uploadingImage || savingEdit}
+                    >
+                      <FontAwesome5 name="camera" size={18} color="#fff" />
+                      <Text style={styles.imageButtonText}>
+                        {editedHorse?.horse_image ? 'Change Photo' : 'Add Photo'}
+                      </Text>
+                    </TouchableOpacity>
+                    
+                    {editedHorse?.horse_image && (
+                      <TouchableOpacity
+                        style={styles.imageButtonSecondary}
+                        onPress={handleRemoveImage}
+                        disabled={uploadingImage || savingEdit}
+                      >
+                        <FontAwesome5 name="trash" size={18} color="#FF5722" />
+                        <Text style={styles.imageButtonTextSecondary}>Remove</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
+                </View>
+              </View>
 
-                  {/* Color */}
-                  <View style={styles.inputGroup}>
-                    <View style={styles.inputLabelRow}>
-                      <FontAwesome5 name="palette" size={16} color="#CD853F" style={{ marginRight: 8 }} />
-                      <Text style={styles.inputLabel}>Color</Text>
+              {/* Basic Information Section */}
+              <View style={styles.formSection}>
+                <Text style={styles.formSectionTitle}>Basic Information</Text>
+                
+                {editedHorse && (
+                  <>
+                    {/* Horse Name */}
+                    <View style={styles.inputGroup}>
+                      <View style={styles.inputLabelRow}>
+                        <FontAwesome5 name="horse-head" size={16} color="#CD853F" style={{ marginRight: 8 }} />
+                        <Text style={styles.inputLabel}>
+                          Name
+                          <Text style={styles.requiredAsterisk}> *</Text>
+                        </Text>
+                      </View>
+                      <TextInput
+                        style={[
+                          styles.textInput,
+                          !editedHorse.horse_name?.trim() && styles.textInputError
+                        ]}
+                        value={editedHorse.horse_name || ''}
+                        onChangeText={(text) => setEditedHorse({ ...editedHorse, horse_name: text })}
+                        placeholder="Enter horse name"
+                        placeholderTextColor="#999"
+                        editable={!savingEdit}
+                      />
+                      {!editedHorse.horse_name?.trim() && (
+                        <Text style={styles.inputErrorText}>This field is required</Text>
+                      )}
                     </View>
-                    <TextInput
-                      style={styles.textInput}
-                      value={editedHorse.horse_color || ''}
-                      onChangeText={(text) => setEditedHorse({ ...editedHorse, horse_color: text })}
-                      placeholder="Enter color"
-                      placeholderTextColor="#999"
-                      editable={!savingEdit}
-                    />
-                  </View>
 
-                  {/* Height */}
-                  <View style={styles.inputGroup}>
-                    <View style={styles.inputLabelRow}>
-                      <FontAwesome5 name="ruler-vertical" size={16} color="#CD853F" style={{ marginRight: 8 }} />
-                      <Text style={styles.inputLabel}>Height</Text>
+                    {/* Age */}
+                    <View style={styles.inputGroup}>
+                      <View style={styles.inputLabelRow}>
+                        <FontAwesome5 name="calendar" size={16} color="#CD853F" style={{ marginRight: 8 }} />
+                        <Text style={styles.inputLabel}>Age</Text>
+                      </View>
+                      <TextInput
+                        style={styles.textInput}
+                        value={editedHorse.horse_age || ''}
+                        onChangeText={(text) => setEditedHorse({ ...editedHorse, horse_age: text })}
+                        placeholder="Age in years"
+                        placeholderTextColor="#999"
+                        editable={!savingEdit}
+                        keyboardType="numeric"
+                      />
                     </View>
-                    <TextInput
-                      style={styles.textInput}
-                      value={editedHorse.horse_height || ''}
-                      onChangeText={(text) => setEditedHorse({ ...editedHorse, horse_height: text })}
-                      placeholder="e.g., 15.2 hands"
-                      placeholderTextColor="#999"
-                      editable={!savingEdit}
-                    />
-                  </View>
 
-                  {/* Weight */}
-                  <View style={styles.inputGroup}>
-                    <View style={styles.inputLabelRow}>
-                      <FontAwesome5 name="weight" size={16} color="#CD853F" style={{ marginRight: 8 }} />
-                      <Text style={styles.inputLabel}>Weight</Text>
+                    {/* Date of Birth with DatePicker */}
+                    <View style={styles.inputGroup}>
+                      <View style={styles.inputLabelRow}>
+                        <FontAwesome5 name="birthday-cake" size={16} color="#CD853F" style={{ marginRight: 8 }} />
+                        <Text style={styles.inputLabel}>Date of Birth</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.datePickerButton}
+                        onPress={() => setShowDobPicker(true)}
+                        disabled={savingEdit}
+                      >
+                        <Text style={[styles.datePickerText, !editedHorse.horse_dob && styles.placeholder]}>
+                          {editedHorse.horse_dob || "YYYY-MM-DD"}
+                        </Text>
+                        <FontAwesome5 name="calendar" size={16} color="#666" />
+                      </TouchableOpacity>
                     </View>
-                    <TextInput
-                      style={styles.textInput}
-                      value={editedHorse.horse_weight || ''}
-                      onChangeText={(text) => setEditedHorse({ ...editedHorse, horse_weight: text })}
-                      placeholder="e.g., 1000 lbs"
-                      placeholderTextColor="#999"
-                      editable={!savingEdit}
-                    />
-                  </View>
-                </>
-              )}
-            </View>
-            
-            <View style={styles.bottomSpacing} />
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
+
+                    {showDobPicker && (
+                      <DateTimePicker
+                        value={dobPickerDate}
+                        mode="date"
+                        display={Platform.OS === "ios" ? "spinner" : "default"}
+                        onChange={handleDobChange}
+                        maximumDate={new Date()}
+                      />
+                    )}
+
+                    {/* Sex Dropdown */}
+                    <View style={[styles.inputGroup, showSexDropdown && styles.dropdownExpanded]}>
+                      <View style={styles.inputLabelRow}>
+                        <FontAwesome5 name="venus-mars" size={16} color="#CD853F" style={{ marginRight: 8 }} />
+                        <Text style={styles.inputLabel}>Sex</Text>
+                      </View>
+                      <TouchableOpacity
+                        style={[styles.dropdown, showSexDropdown && styles.dropdownOpen]}
+                        onPress={() => setShowSexDropdown(!showSexDropdown)}
+                        disabled={savingEdit}
+                      >
+                        <Text style={[styles.dropdownText, !editedHorse.horse_sex && styles.placeholder]}>
+                          {editedHorse.horse_sex || 'Select sex'}
+                        </Text>
+                        <FontAwesome5
+                          name={showSexDropdown ? "chevron-up" : "chevron-down"}
+                          size={16}
+                          color="#666"
+                        />
+                      </TouchableOpacity>
+                      
+                      {showSexDropdown && (
+                        <View style={styles.dropdownMenu}>
+                          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                            {sexOptions.map((option) => (
+                              <TouchableOpacity
+                                key={option}
+                                style={[
+                                  styles.dropdownItem,
+                                  editedHorse.horse_sex === option && styles.selectedItem
+                                ]}
+                                onPress={() => handleSexSelect(option)}
+                              >
+                                <Text
+                                  style={[
+                                    styles.dropdownItemText,
+                                    editedHorse.horse_sex === option && styles.selectedText
+                                  ]}
+                                >
+                                  {option}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </ScrollView>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Breed */}
+                    <View style={styles.inputGroup}>
+                      <View style={styles.inputLabelRow}>
+                        <FontAwesome5 name="dna" size={16} color="#CD853F" style={{ marginRight: 8 }} />
+                        <Text style={styles.inputLabel}>Breed</Text>
+                      </View>
+                      <TextInput
+                        style={styles.textInput}
+                        value={editedHorse.horse_breed || ''}
+                        onChangeText={(text) => setEditedHorse({ ...editedHorse, horse_breed: text })}
+                        placeholder="Enter breed"
+                        placeholderTextColor="#999"
+                        editable={!savingEdit}
+                      />
+                    </View>
+
+                    {/* Color */}
+                    <View style={styles.inputGroup}>
+                      <View style={styles.inputLabelRow}>
+                        <FontAwesome5 name="palette" size={16} color="#CD853F" style={{ marginRight: 8 }} />
+                        <Text style={styles.inputLabel}>Color</Text>
+                      </View>
+                      <TextInput
+                        style={styles.textInput}
+                        value={editedHorse.horse_color || ''}
+                        onChangeText={(text) => setEditedHorse({ ...editedHorse, horse_color: text })}
+                        placeholder="Enter color"
+                        placeholderTextColor="#999"
+                        editable={!savingEdit}
+                      />
+                    </View>
+
+                    {/* Height */}
+                    <View style={styles.inputGroup}>
+                      <View style={styles.inputLabelRow}>
+                        <FontAwesome5 name="ruler-vertical" size={16} color="#CD853F" style={{ marginRight: 8 }} />
+                        <Text style={styles.inputLabel}>Height</Text>
+                      </View>
+                      <TextInput
+                        style={styles.textInput}
+                        value={editedHorse.horse_height || ''}
+                        onChangeText={(text) => setEditedHorse({ ...editedHorse, horse_height: text })}
+                        placeholder="e.g., 15.2 hands"
+                        placeholderTextColor="#999"
+                        editable={!savingEdit}
+                      />
+                    </View>
+
+                    {/* Weight */}
+                    <View style={styles.inputGroup}>
+                      <View style={styles.inputLabelRow}>
+                        <FontAwesome5 name="weight" size={16} color="#CD853F" style={{ marginRight: 8 }} />
+                        <Text style={styles.inputLabel}>Weight</Text>
+                      </View>
+                      <TextInput
+                        style={styles.textInput}
+                        value={editedHorse.horse_weight || ''}
+                        onChangeText={(text) => setEditedHorse({ ...editedHorse, horse_weight: text })}
+                        placeholder="e.g., 1000 lbs"
+                        placeholderTextColor="#999"
+                        editable={!savingEdit}
+                      />
+                    </View>
+                  </>
+                )}
+              </View>
+              
+              <View style={styles.bottomSpacing} />
+            </ScrollView>
+          </SafeAreaView>
+        </Modal>
+      )}
+
+      {/* Image Gallery Modal */}
+      {renderImageGalleryModal()}
     </SafeAreaView>
   );
 };
@@ -1215,6 +1386,17 @@ const styles = StyleSheet.create({
     color: '#666',
     marginTop: 10,
     fontWeight: '500',
+  },
+  loadingContainerSmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    gap: 10,
+  },
+  loadingTextSmall: {
+    fontSize: 14,
+    color: '#666',
   },
   errorContainer: {
     flex: 1,
@@ -1299,6 +1481,10 @@ const styles = StyleSheet.create({
     shadowRadius: 12,
     elevation: 4,
   },
+  deceasedHorseImage: {
+    opacity: 0.7,
+    borderColor: '#757575',
+  },
   imageErrorOverlay: {
     position: 'absolute',
     top: 0,
@@ -1310,6 +1496,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  deceasedOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 70,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  deceasedText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+    backgroundColor: 'rgba(244, 67, 54, 0.8)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 10,
+    letterSpacing: 1,
+  },
   horseName: {
     fontSize: 28,
     fontWeight: '700',
@@ -1317,11 +1524,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 8,
   },
-  horseSubtitle: {
-    fontSize: 16,
-    color: '#6C757D',
-    textAlign: 'center',
-    fontWeight: '500',
+  deceasedHorseName: {
+    color: '#757575',
+    textDecorationLine: 'line-through',
   },
   profileCard: {
     backgroundColor: '#FFFFFF',
@@ -1337,6 +1542,34 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#F1F3F4',
   },
+  deathInfoCard: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 20,
+    marginBottom: 20,
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#FFEBEE',
+  },
+  deathInfoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: '#F44336',
+  },
+  deathSectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#F44336',
+    marginLeft: 12,
+  },
   sectionTitle: {
     fontSize: 20,
     fontWeight: '700',
@@ -1345,6 +1578,137 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 2,
     borderBottomColor: '#CD853F',
+  },
+  // Images Section Styles
+  imagesSection: {
+    marginTop: 20,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F3F4',
+  },
+  imagesSectionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#2C3E50',
+    marginBottom: 8,
+  },
+  imagesCountText: {
+    fontSize: 14,
+    color: '#6C757D',
+    marginBottom: 12,
+  },
+  imagesScrollView: {
+    marginHorizontal: -24,
+  },
+  imagesContainer: {
+    paddingHorizontal: 24,
+    paddingBottom: 8,
+  },
+  imageThumbnailContainer: {
+    position: 'relative',
+    marginRight: 12,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#F8F9FA',
+  },
+  imageThumbnail: {
+    width: 120,
+    height: 120,
+    borderRadius: 12,
+  },
+  imageCounter: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  imageCounterText: {
+    fontSize: 12,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  viewAllImagesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8F9FA',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 25,
+    marginTop: 16,
+    borderWidth: 1,
+    borderColor: '#CD853F',
+    alignSelf: 'center',
+  },
+  viewAllImagesText: {
+    fontSize: 16,
+    color: '#CD853F',
+    fontWeight: '600',
+  },
+  // Gallery Modal Styles
+  galleryModalContainer: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  galleryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+  },
+  galleryCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  galleryTitle: {
+    fontSize: 18,
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  galleryHeaderSpacer: {
+    width: 40,
+  },
+  galleryContent: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  galleryImageContainer: {
+    width: screenWidth,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  galleryImage: {
+    width: screenWidth,
+    height: '100%',
+  },
+  thumbnailStrip: {
+    height: 80,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    paddingVertical: 8,
+  },
+  thumbnailItem: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginHorizontal: 4,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  thumbnailItemActive: {
+    borderColor: '#CD853F',
+  },
+  thumbnailImage: {
+    width: '100%',
+    height: '100%',
   },
   infoRow: {
     flexDirection: 'row',
@@ -1378,55 +1742,28 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     lineHeight: 24,
   },
-  infoSubtext: {
-    fontSize: 14,
-    color: '#6C757D',
-    fontStyle: 'italic',
-    marginTop: 2,
+  deathInfoText: {
+    color: '#F44336',
+    fontWeight: '500',
   },
-  loadingRow: {
-    flexDirection: 'row',
+  noDeathInfoContainer: {
     alignItems: 'center',
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+    gap: 15,
   },
-  vitalSignsContainer: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E9ECEF',
-  },
-  vitalSignsTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6C757D',
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  vitalSignsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-  },
-  vitalSignItem: {
-    flex: 1,
-    minWidth: '30%',
-    backgroundColor: '#F8F9FA',
-    borderRadius: 8,
-    padding: 12,
-    alignItems: 'center',
-  },
-  vitalSignLabel: {
-    fontSize: 11,
-    color: '#6C757D',
-    marginTop: 6,
-    marginBottom: 4,
+  noDeathInfoTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#757575',
     textAlign: 'center',
   },
-  vitalSignValue: {
+  noDeathInfoDescription: {
     fontSize: 14,
-    fontWeight: '600',
-    color: '#2C3E50',
+    color: '#757575',
     textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: 10,
   },
   bottomSpacing: {
     height: 120,
@@ -1705,95 +2042,83 @@ const styles = StyleSheet.create({
     marginTop: 6,
     marginLeft: 4,
   },
-  // Add these styles to your StyleSheet.create() object:
-
-datePickerButton: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  borderWidth: 1,
-  borderColor: '#E9ECEF',
-  borderRadius: 12,
-  paddingHorizontal: 16,
-  paddingVertical: 14,
-  backgroundColor: '#FFFFFF',
-  minHeight: 50,
-},
-
-datePickerText: {
-  fontSize: 16,
-  color: '#2C3E50',
-},
-
-placeholder: {
-  color: '#999',
-  fontStyle: 'italic',
-},
-
-dropdown: {
-  flexDirection: 'row',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  borderWidth: 1,
-  borderColor: '#E9ECEF',
-  borderRadius: 12,
-  paddingHorizontal: 16,
-  paddingVertical: 14,
-  backgroundColor: '#FFFFFF',
-  minHeight: 50,
-},
-
-dropdownOpen: {
-  borderColor: '#CD853F',
-  borderBottomLeftRadius: 0,
-  borderBottomRightRadius: 0,
-},
-
-dropdownText: {
-  fontSize: 16,
-  color: '#2C3E50',
-},
-
-dropdownMenu: {
-  position: 'absolute',
-  top: '100%',
-  left: 0,
-  right: 0,
-  backgroundColor: '#FFFFFF',
-  borderWidth: 1,
-  borderTopWidth: 0,
-  borderColor: '#CD853F',
-  borderBottomLeftRadius: 12,
-  borderBottomRightRadius: 12,
-  maxHeight: 200,
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 4 },
-  shadowOpacity: 0.1,
-  shadowRadius: 8,
-  elevation: 5,
-  zIndex: 1001,
-},
-
-dropdownItem: {
-  paddingVertical: 14,
-  paddingHorizontal: 16,
-  borderBottomWidth: 1,
-  borderBottomColor: '#F1F3F4',
-},
-
-selectedItem: {
-  backgroundColor: '#F8F9FA',
-},
-
-dropdownItemText: {
-  fontSize: 16,
-  color: '#2C3E50',
-},
-
-selectedText: {
-  color: '#CD853F',
-  fontWeight: '600',
-},
+  datePickerButton: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    minHeight: 50,
+  },
+  datePickerText: {
+    fontSize: 16,
+    color: '#2C3E50',
+  },
+  placeholder: {
+    color: '#999',
+    fontStyle: 'italic',
+  },
+  dropdown: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E9ECEF',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: '#FFFFFF',
+    minHeight: 50,
+  },
+  dropdownOpen: {
+    borderColor: '#CD853F',
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  dropdownText: {
+    fontSize: 16,
+    color: '#2C3E50',
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderTopWidth: 0,
+    borderColor: '#CD853F',
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
+    maxHeight: 200,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+    zIndex: 1001,
+  },
+  dropdownItem: {
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F3F4',
+  },
+  selectedItem: {
+    backgroundColor: '#F8F9FA',
+  },
+  dropdownItemText: {
+    fontSize: 16,
+    color: '#2C3E50',
+  },
+  selectedText: {
+    color: '#CD853F',
+    fontWeight: '600',
+  },
 });
 
 export default HorseProfileScreen;

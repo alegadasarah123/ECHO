@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+// HORSE_OPERATOR/medicalrec.tsx - UPDATED VERSION WITHOUT DOWNLOAD
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,9 +11,13 @@ import {
   Image,
   Modal,
   Dimensions,
+  Alert,
+  Linking,
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
+import { WebView } from 'react-native-webview';
 
 interface MedicalRecordDetails {
   medrec_id: string;
@@ -41,7 +46,9 @@ interface MedicalRecordDetails {
   };
   laboratory: {
     results?: string;
-    image_url?: string;
+    file_url?: string;
+    file_type?: 'image' | 'pdf' | 'unknown';
+    file_name?: string;
   };
   assessment: {
     diagnosis: string;
@@ -62,24 +69,49 @@ interface MedicalRecordDetails {
   };
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator";
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator";
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const MedicalRecordScreen: React.FC = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
-  
+
   const [medicalRecord, setMedicalRecord] = useState<MedicalRecordDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [imageModalVisible, setImageModalVisible] = useState(false);
-  const [imageLoading, setImageLoading] = useState(true);
-  const [imageError, setImageError] = useState(false);
+  const [fileModalVisible, setFileModalVisible] = useState(false);
+  const [fileLoading, setFileLoading] = useState(true);
+  const [fileError, setFileError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
+  const [fileUrlWithTimestamp, setFileUrlWithTimestamp] = useState<string>('');
+  const [imageKey, setImageKey] = useState(0);
 
   const recordId = params.recordId as string;
   const userId = params.userId as string;
 
-  const fetchMedicalRecordDetails = async () => {
+  // ✅ Clean and safe file URL handler
+  const cleanFileUrl = (url: string): string => {
+    if (!url) return '';
+    let cleanUrl = url.trim();
+
+    if (cleanUrl.startsWith('[') && cleanUrl.endsWith(']')) {
+      cleanUrl = cleanUrl.slice(1, -1);
+    }
+    cleanUrl = cleanUrl.replace(/['"]/g, '');
+
+    if (cleanUrl.includes('?')) {
+      cleanUrl = cleanUrl.split('?')[0];
+    }
+
+    if (!cleanUrl.startsWith('http://') && !cleanUrl.startsWith('https://')) {
+      const filename = cleanUrl.split('/').pop() || `lab_${Date.now()}`;
+      cleanUrl = `https://drgknejiqupegkyxfaab.supabase.co/storage/v1/object/public/Lab_results/${filename}`;
+    }
+
+    return cleanUrl;
+  };
+
+  const fetchMedicalRecordDetails = useCallback(async () => {
     if (!recordId || !userId) {
       setError('Missing required information');
       setLoading(false);
@@ -93,34 +125,72 @@ const MedicalRecordScreen: React.FC = () => {
       const url = `${API_BASE_URL}/get_medical_record_details/?medrec_id=${recordId}&user_id=${userId}`;
       console.log('Fetching medical record from:', url);
 
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
+      const response = await fetch(url);
       const data = await response.json();
 
       if (response.ok) {
         setMedicalRecord(data);
-        console.log('Medical record loaded successfully');
+        if (data.laboratory?.file_url) {
+          const originalUrl = data.laboratory.file_url;
+          const cleanedUrl = cleanFileUrl(originalUrl);
+          const timestamp = Date.now();
+          const urlWithTimestamp = `${cleanedUrl}?t=${timestamp}`;
+          setFileUrlWithTimestamp(urlWithTimestamp);
+          setImageKey(prev => prev + 1);
+        }
       } else {
         setError(data.error || 'Failed to load medical record');
-        console.error('API Error:', data.error);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error fetching medical record:', err);
       setError('Network error. Please check your connection.');
     } finally {
       setLoading(false);
     }
+  }, [recordId, userId]);
+
+  const retryFileLoad = () => {
+    const newRetryCount = retryCount + 1;
+    setRetryCount(newRetryCount);
+    setFileError(false);
+    setFileLoading(true);
+    if (medicalRecord?.laboratory?.file_url) {
+      const timestamp = Date.now();
+      const cleanUrl = cleanFileUrl(medicalRecord.laboratory.file_url);
+      const fileUrl = `${cleanUrl}?t=${timestamp}&retry=${newRetryCount}`;
+      setFileUrlWithTimestamp(fileUrl);
+      setImageKey(prev => prev + 1);
+    }
+  };
+
+  // ✅ Open file in browser only
+  const openInBrowser = async () => {
+    if (!medicalRecord?.laboratory?.file_url) {
+      Alert.alert('Error', 'No file URL available');
+      return;
+    }
+    try {
+      const cleanUrl = cleanFileUrl(medicalRecord.laboratory.file_url);
+      await WebBrowser.openBrowserAsync(cleanUrl);
+    } catch (error: any) {
+      console.error('Failed to open URL in browser:', error);
+      try {
+        const cleanUrl = cleanFileUrl(medicalRecord.laboratory.file_url);
+        const supported = await Linking.canOpenURL(cleanUrl);
+        if (supported) {
+          await Linking.openURL(cleanUrl);
+        } else {
+          Alert.alert('Error', 'Unable to open the file in browser.');
+        }
+      } catch (linkError: any) {
+        Alert.alert('Error', `Unable to open the file: ${linkError.message}`);
+      }
+    }
   };
 
   useEffect(() => {
     fetchMedicalRecordDetails();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recordId, userId]);
+  }, [fetchMedicalRecordDetails]);
 
   const handleGoBack = () => {
     router.back();
@@ -136,8 +206,166 @@ const MedicalRecordScreen: React.FC = () => {
     });
   };
 
-  const handleImagePress = () => {
-    setImageModalVisible(true);
+  const handleFilePress = () => {
+    if (!medicalRecord?.laboratory?.file_type) return;
+    
+    const isPDF = medicalRecord.laboratory.file_type === 'pdf';
+    const isImage = medicalRecord.laboratory.file_type === 'image';
+    
+    if (isImage) {
+      // For images, open the modal
+      setFileModalVisible(true);
+    } else if (isPDF) {
+      // For PDFs, offer options
+      Alert.alert(
+        'Open PDF',
+        'How would you like to view the PDF?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'View in App', onPress: () => setFileModalVisible(true) },
+          { text: 'Open in Browser', onPress: openInBrowser }
+        ]
+      );
+    } else {
+      // For unknown files, open in browser
+      openInBrowser();
+    }
+  };
+
+  const renderFileSection = () => {
+    if (!medicalRecord?.laboratory?.file_url) {
+      return null;
+    }
+
+    const displayFileUrl = fileUrlWithTimestamp || medicalRecord.laboratory.file_url;
+    const isPDF = medicalRecord.laboratory.file_type === 'pdf';
+    const isImage = medicalRecord.laboratory.file_type === 'image';
+
+    return (
+      <View style={styles.labFileSection}>
+        <View style={styles.labFileHeader}>
+          <FontAwesome5 
+            name={isPDF ? "file-pdf" : "image"} 
+            size={14} 
+            color={isPDF ? "#E74C3C" : "#6C757D"} 
+          />
+          <Text style={styles.labFileTitle}>
+            {isPDF ? 'Laboratory PDF Report' : 'Laboratory Image'}
+          </Text>
+        </View>
+        
+        <TouchableOpacity 
+          style={[
+            styles.labFileContainer,
+            isPDF && styles.pdfContainer
+          ]}
+          onPress={handleFilePress}
+          activeOpacity={0.9}
+        >
+          {isImage ? (
+            <>
+              {fileLoading && !fileError && (
+                <View style={styles.fileLoadingContainer}>
+                  <ActivityIndicator size="large" color="#CD853F" />
+                  <Text style={styles.fileLoadingText}>Loading image...</Text>
+                </View>
+              )}
+              
+              {fileError && (
+                <View style={styles.fileErrorContainer}>
+                  <FontAwesome5 name="exclamation-triangle" size={40} color="#E74C3C" />
+                  <Text style={styles.fileErrorText}>Failed to load image</Text>
+                  <View style={styles.fileErrorButtons}>
+                    <TouchableOpacity 
+                      style={styles.retryFileButton}
+                      onPress={retryFileLoad}
+                    >
+                      <Text style={styles.retryFileButtonText}>Retry</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={styles.openFileButton}
+                      onPress={openInBrowser}
+                    >
+                      <Text style={styles.openFileButtonText}>Open in Browser</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+              
+              <Image
+                key={`image-${imageKey}`}
+                source={{ 
+                  uri: displayFileUrl,
+                  cache: 'reload'
+                }}
+                style={[
+                  styles.labFileImage,
+                  (fileLoading || fileError) && styles.labFileHidden
+                ]}
+                resizeMode="cover"
+                onLoadStart={() => {
+                  setFileLoading(true);
+                  setFileError(false);
+                }}
+                onLoadEnd={() => {
+                  console.log('Image loaded successfully:', displayFileUrl);
+                  setFileLoading(false);
+                }}
+                onError={(e) => {
+                  console.error('Failed to load lab image:', e.nativeEvent.error);
+                  console.error('Image URL:', displayFileUrl);
+                  setFileLoading(false);
+                  setFileError(true);
+                }}
+              />
+              
+              {!fileLoading && !fileError && (
+                <View style={styles.fileOverlay}>
+                  <FontAwesome5 name="search-plus" size={24} color="#fff" />
+                  <Text style={styles.fileOverlayText}>Tap to enlarge</Text>
+                </View>
+              )}
+            </>
+          ) : isPDF ? (
+            <View style={styles.pdfPreviewContainer}>
+              <FontAwesome5 name="file-pdf" size={60} color="#E74C3C" />
+              <Text style={styles.pdfPreviewText}>PDF Document</Text>
+              <Text style={styles.pdfFileName} numberOfLines={1}>
+                {medicalRecord.laboratory.file_name || 'lab_report.pdf'}
+              </Text>
+              <Text style={styles.pdfTapText}>Tap to view options</Text>
+            </View>
+          ) : (
+            <View style={styles.unknownFileContainer}>
+              <FontAwesome5 name="file" size={60} color="#6C757D" />
+              <Text style={styles.unknownFileText}>Document</Text>
+              <Text style={styles.unknownFileSubText}>Tap to view</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+        
+        {/* File Actions Row */}
+        <View style={styles.fileActionsRow}>
+          {isImage && (
+            <TouchableOpacity 
+              style={styles.fileActionButton}
+              onPress={() => setFileModalVisible(true)}
+            >
+              <FontAwesome5 name="eye" size={14} color="#2E5BBA" />
+              <Text style={styles.fileActionText}>Preview</Text>
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity 
+            style={styles.fileActionButton}
+            onPress={openInBrowser}
+          >
+            <FontAwesome5 name="external-link-alt" size={14} color="#2E5BBA" />
+            <Text style={styles.fileActionText}>Open in Browser</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
   };
 
   if (loading) {
@@ -178,6 +406,9 @@ const MedicalRecordScreen: React.FC = () => {
       </SafeAreaView>
     );
   }
+
+  const isPDF = medicalRecord.laboratory?.file_type === 'pdf';
+  const displayFileUrl = fileUrlWithTimestamp || medicalRecord.laboratory?.file_url;
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -287,8 +518,8 @@ const MedicalRecordScreen: React.FC = () => {
             </View>
           </View>
 
-          {/* Laboratory Tests - ENHANCED */}
-          {(medicalRecord.laboratory.results || medicalRecord.laboratory.image_url) && (
+          {/* Laboratory Tests */}
+          {(medicalRecord.laboratory.results || medicalRecord.laboratory.file_url) && (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <FontAwesome5 name="flask" size={16} color="#CD853F" style={styles.sectionIcon} />
@@ -304,60 +535,7 @@ const MedicalRecordScreen: React.FC = () => {
                 </View>
               )}
               
-              {medicalRecord.laboratory.image_url && (
-                <View style={styles.labImageSection}>
-                  <View style={styles.labImageHeader}>
-                    <FontAwesome5 name="image" size={14} color="#6C757D" />
-                    <Text style={styles.labImageTitle}>Laboratory Image</Text>
-                  </View>
-                  
-                  <TouchableOpacity 
-                    style={styles.labImageContainer}
-                    onPress={handleImagePress}
-                    activeOpacity={0.9}
-                  >
-                    {imageLoading && !imageError && (
-                      <View style={styles.imageLoadingContainer}>
-                        <ActivityIndicator size="large" color="#CD853F" />
-                        <Text style={styles.imageLoadingText}>Loading image...</Text>
-                      </View>
-                    )}
-                    
-                    {imageError && (
-                      <View style={styles.imageErrorContainer}>
-                        <FontAwesome5 name="image" size={40} color="#CCC" />
-                        <Text style={styles.imageErrorText}>Image unavailable</Text>
-                      </View>
-                    )}
-                    
-                    <Image
-                      source={{ uri: medicalRecord.laboratory.image_url }}
-                      style={[
-                        styles.labImage,
-                        (imageLoading || imageError) && styles.labImageHidden
-                      ]}
-                      resizeMode="cover"
-                      onLoadStart={() => {
-                        setImageLoading(true);
-                        setImageError(false);
-                      }}
-                      onLoadEnd={() => setImageLoading(false)}
-                      onError={(e) => {
-                        console.error('Failed to load lab image:', e.nativeEvent.error);
-                        setImageLoading(false);
-                        setImageError(true);
-                      }}
-                    />
-                    
-                    {!imageLoading && !imageError && (
-                      <View style={styles.imageOverlay}>
-                        <FontAwesome5 name="search-plus" size={24} color="#fff" />
-                        <Text style={styles.imageOverlayText}>Tap to enlarge</Text>
-                      </View>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              )}
+              {renderFileSection()}
             </View>
           )}
 
@@ -408,26 +586,96 @@ const MedicalRecordScreen: React.FC = () => {
         <View style={styles.bottomSpacing} />
       </ScrollView>
 
-      {/* Image Modal */}
+      {/* File Modal */}
       <Modal
-        visible={imageModalVisible}
+        visible={fileModalVisible}
         transparent={true}
         animationType="fade"
-        onRequestClose={() => setImageModalVisible(false)}
+        onRequestClose={() => setFileModalVisible(false)}
       >
         <View style={styles.modalContainer}>
-          <TouchableOpacity 
-            style={styles.modalCloseButton}
-            onPress={() => setImageModalVisible(false)}
-          >
-            <FontAwesome5 name="times" size={24} color="#fff" />
-          </TouchableOpacity>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              {isPDF ? 'PDF Report' : 'Laboratory Image'}
+            </Text>
+            <View style={styles.modalHeaderButtons}>
+              <TouchableOpacity 
+                style={styles.modalActionButton}
+                onPress={openInBrowser}
+              >
+                <FontAwesome5 
+                  name="external-link-alt" 
+                  size={18} 
+                  color="#fff" 
+                />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.modalCloseButton}
+                onPress={() => setFileModalVisible(false)}
+              >
+                <FontAwesome5 name="times" size={24} color="#fff" />
+              </TouchableOpacity>
+            </View>
+          </View>
           
-          <Image
-            source={{ uri: medicalRecord.laboratory.image_url }}
-            style={styles.modalImage}
-            resizeMode="contain"
-          />
+          {displayFileUrl ? (
+            isPDF ? (
+              <WebView
+                source={{ uri: displayFileUrl }}
+                style={styles.pdfViewer}
+                startInLoadingState={true}
+                renderLoading={() => (
+                  <View style={styles.pdfLoadingContainer}>
+                    <ActivityIndicator size="large" color="#CD853F" />
+                    <Text style={styles.pdfLoadingText}>Loading PDF...</Text>
+                  </View>
+                )}
+                onError={(syntheticEvent) => {
+                  const { nativeEvent } = syntheticEvent;
+                  console.error('WebView error: ', nativeEvent);
+                  Alert.alert(
+                    'PDF Load Error',
+                    'Failed to load PDF. Try opening in browser instead.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Open in Browser', onPress: openInBrowser }
+                    ]
+                  );
+                }}
+              />
+            ) : (
+              <Image
+                key={`modal-image-${imageKey}`}
+                source={{ 
+                  uri: displayFileUrl,
+                  cache: 'reload'
+                }}
+                style={styles.modalImage}
+                resizeMode="contain"
+                onLoadStart={() => setFileLoading(true)}
+                onLoadEnd={() => {
+                  console.log('Modal image loaded successfully');
+                  setFileLoading(false);
+                }}
+                onError={(e) => {
+                  console.error('Failed to load image in modal:', e.nativeEvent.error);
+                  Alert.alert(
+                    'Image Load Error',
+                    'Failed to load image. Try opening in browser instead.',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { text: 'Open in Browser', onPress: openInBrowser }
+                    ]
+                  );
+                }}
+              />
+            )
+          ) : (
+            <View style={styles.modalErrorContainer}>
+              <FontAwesome5 name="exclamation-triangle" size={60} color="#E74C3C" />
+              <Text style={styles.modalErrorText}>No file URL available</Text>
+            </View>
+          )}
         </View>
       </Modal>
     </SafeAreaView>
@@ -668,38 +916,44 @@ const styles = StyleSheet.create({
     color: '#2C3E50',
     lineHeight: 20,
   },
-  labImageSection: {
+  labFileSection: {
     marginTop: 16,
   },
-  labImageHeader: {
+  labFileHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginBottom: 12,
   },
-  labImageTitle: {
+  labFileTitle: {
     fontSize: 13,
     fontWeight: '600',
     color: '#6C757D',
+    flex: 1,
   },
-  labImageContainer: {
+  labFileContainer: {
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#F8F9FA',
     borderWidth: 2,
     borderColor: '#E5E7EB',
-    minHeight: 250,
+    minHeight: 200,
     position: 'relative',
   },
-  labImage: {
-    width: '100%',
-    height: 250,
+  pdfContainer: {
+    minHeight: 180,
+    borderColor: '#E74C3C',
+    backgroundColor: '#FEF2F2',
   },
-  labImageHidden: {
+  labFileImage: {
+    width: '100%',
+    height: 200,
+  },
+  labFileHidden: {
     opacity: 0,
     position: 'absolute',
   },
-  imageLoadingContainer: {
+  fileLoadingContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -709,11 +963,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  imageLoadingText: {
+  fileLoadingText: {
     fontSize: 14,
     color: '#6C757D',
   },
-  imageErrorContainer: {
+  fileErrorContainer: {
     position: 'absolute',
     top: 0,
     left: 0,
@@ -722,12 +976,41 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     gap: 12,
+    padding: 20,
   },
-  imageErrorText: {
+  fileErrorText: {
     fontSize: 14,
-    color: '#999',
+    color: '#E74C3C',
+    textAlign: 'center',
+    marginBottom: 10,
   },
-  imageOverlay: {
+  fileErrorButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  retryFileButton: {
+    backgroundColor: '#CD853F',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  retryFileButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  openFileButton: {
+    backgroundColor: '#2E5BBA',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 6,
+  },
+  openFileButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  fileOverlay: {
     position: 'absolute',
     bottom: 0,
     left: 0,
@@ -739,9 +1022,70 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  imageOverlayText: {
+  fileOverlayText: {
     color: '#fff',
     fontSize: 14,
+    fontWeight: '500',
+  },
+  pdfPreviewContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  pdfPreviewText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2C3E50',
+    marginTop: 10,
+  },
+  pdfFileName: {
+    fontSize: 12,
+    color: '#6C757D',
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  pdfTapText: {
+    fontSize: 12,
+    color: '#CD853F',
+    marginTop: 10,
+    fontWeight: '500',
+  },
+  unknownFileContainer: {
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  unknownFileText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#2C3E50',
+    marginTop: 10,
+  },
+  unknownFileSubText: {
+    fontSize: 12,
+    color: '#6C757D',
+    marginTop: 4,
+  },
+  fileActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 12,
+    paddingHorizontal: 10,
+  },
+  fileActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 8,
+  },
+  fileActionText: {
+    fontSize: 12,
+    color: '#2C3E50',
     fontWeight: '500',
   },
   followupSection: {
@@ -787,22 +1131,72 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: '#000',
   },
-  modalCloseButton: {
+  modalHeader: {
     position: 'absolute',
     top: 50,
-    right: 20,
+    left: 0,
+    right: 0,
     zIndex: 10,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 20,
-    padding: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+  },
+  modalHeaderButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+  },
+  modalActionButton: {
+    padding: 8,
+  },
+  modalCloseButton: {
+    padding: 8,
   },
   modalImage: {
     width: SCREEN_WIDTH,
-    height: '80%',
+    height: SCREEN_HEIGHT,
+  },
+  pdfViewer: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    backgroundColor: '#fff',
+  },
+  pdfLoadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  pdfLoadingText: {
+    marginTop: 12,
+    fontSize: 14,
+    color: '#666',
+  },
+  modalErrorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000',
+  },
+  modalErrorText: {
+    color: '#fff',
+    fontSize: 18,
+    marginTop: 20,
+    textAlign: 'center',
   },
 });
 

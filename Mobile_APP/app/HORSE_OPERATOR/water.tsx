@@ -11,7 +11,6 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
-  Platform,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
@@ -31,9 +30,9 @@ type WaterSchedule = {
   user_type?: string;
 };
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator";
+const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator";
 
-// Configure notifications handler with proper NotificationBehavior type
+// Configure notifications handler - FIXED with complete NotificationBehavior properties
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -47,8 +46,14 @@ Notifications.setNotificationHandler({
 const WaterScreen = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
+  
+  // Get parameters from navigation - try both 'id' and 'horseId' for compatibility
+  const horseId = params.horseId as string || params.id as string || '';
   const horseName = params.horseName as string || 'Unknown Horse';
-  const horseId = params.horseId as string || '';
+  
+  console.log("WaterScreen params:", params);
+  console.log("Extracted horseId:", horseId);
+  console.log("Extracted horseName:", horseName);
   
   const [currentUser, setCurrentUser] = useState<string>('');
   const [wateringSchedule, setWateringSchedule] = useState<WaterSchedule[]>([]);
@@ -94,8 +99,6 @@ const WaterScreen = () => {
 
   // Get current user
   const getCurrentUser = useCallback(async (): Promise<string | null> => {
-    if (currentUser) return currentUser;
-    
     try {
       const storedUser = await SecureStore.getItemAsync("user_data");
       if (storedUser) {
@@ -111,11 +114,16 @@ const WaterScreen = () => {
       console.error('Error getting current user:', error);
     }
     return null;
-  }, [currentUser]);
+  }, []);
 
   // Load today's water records
   const loadTodaysWaterRecords = useCallback(async (userId: string): Promise<WaterSchedule[]> => {
     try {
+      if (!horseId) {
+        console.error("No horseId available for loading water records");
+        return [];
+      }
+      
       const url = `${API_BASE_URL}/get_watering_schedule/?user_id=${encodeURIComponent(userId)}&horse_id=${encodeURIComponent(horseId)}`;
       console.log("Loading today's water records:", url);
 
@@ -138,13 +146,17 @@ const WaterScreen = () => {
           }));
           
           const sortedWater = sortWaterByPeriod(water);
+          console.log(`Loaded ${sortedWater.length} water records`);
           return sortedWater;
         }
+      } else {
+        console.log('No water records found or server error');
       }
     } catch (error) {
       console.error('Error loading water records:', error);
     }
     
+    console.log('Returning empty water records array');
     return [];
   }, [horseId, sortWaterByPeriod]);
 
@@ -300,12 +312,6 @@ const WaterScreen = () => {
                 sound: 'default',
                 priority: 'high',
                 badge: 1,
-                ...(Platform.OS === 'ios' && {
-                  categoryIdentifier: 'WATER_REMINDER',
-                  threadIdentifier: `horse-watering-${horseId}`,
-                  summaryArgument: horseName,
-                  relevanceScore: 1.0,
-                }),
               },
               trigger,
             });
@@ -343,7 +349,7 @@ const WaterScreen = () => {
       // Store the current schedule for automatic daily notifications
       await storeLastViewedWaterTime(schedule);
 
-      // Schedule new notifications for each water schedule with improved design
+      // Schedule new notifications for each water schedule
       console.log(`Scheduling ${schedule.length} new water notifications`);
       
       for (const water of schedule) {
@@ -376,12 +382,6 @@ const WaterScreen = () => {
               sound: 'default',
               priority: 'high',
               badge: 1,
-              ...(Platform.OS === 'ios' && {
-                categoryIdentifier: 'WATER_REMINDER',
-                threadIdentifier: `horse-watering-${horseId}`,
-                summaryArgument: horseName,
-                relevanceScore: 1.0,
-              }),
             },
             trigger,
           });
@@ -453,22 +453,33 @@ const WaterScreen = () => {
     }
   };
 
-  // Initialize water screen
+  // Initialize water screen - FIXED VERSION
   const initializeWaterScreen = useCallback(async (): Promise<void> => {
-    if (isInitialized || !horseId) return;
-
     console.log("Initializing water screen...");
-    setIsLoading(true);
+    console.log("Horse ID:", horseId);
+    console.log("Horse Name:", horseName);
+    
+    // Ensure we have horseId
+    if (!horseId) {
+      console.error("No horseId provided");
+      setIsLoading(false);
+      Alert.alert('Error', 'No horse selected. Please go back and select a horse.');
+      return;
+    }
     
     try {
       const userId = await getCurrentUser();
       if (!userId) {
         console.error("No user ID found");
+        setIsLoading(false);
+        Alert.alert('Error', 'User not found. Please log in again.');
         return;
       }
 
+      console.log(`Loading water records for horse: ${horseId}, user: ${userId}`);
+      
       const todaysRecords = await loadTodaysWaterRecords(userId);
-      console.log(`Loaded ${todaysRecords.length} watering schedule items for today`);
+      console.log(`Loaded ${todaysRecords.length} watering schedule items`);
       
       setWateringSchedule(todaysRecords);
       setIsInitialized(true);
@@ -487,12 +498,15 @@ const WaterScreen = () => {
     } catch (error) {
       console.error('Error initializing water screen:', error);
       setWateringSchedule([]);
+      Alert.alert('Error', 'Failed to load watering schedule. Please try again.');
     } finally {
+      // ALWAYS set isLoading to false - this was the main issue
       setIsLoading(false);
+      console.log("Initialization complete, isLoading set to false");
     }
   }, [
-    isInitialized, 
     horseId, 
+    horseName,
     getCurrentUser, 
     loadTodaysWaterRecords, 
     scheduleWaterNotifications, 
@@ -525,11 +539,10 @@ const WaterScreen = () => {
       if (data.type === 'water_reminder' || data.type === 'auto_water_reminder') {
         console.log('Water reminder notification tapped:', data);
         
-        // Show a friendly message when notification is tapped
         Alert.alert(
           `${data.period} Water Reminder`,
           `Remember to give ${data.amount} of water to ${data.horseName}`,
-          [{ text: 'OK', onPress: () => console.log('Notification handled') }]
+          [{ text: 'OK' }]
         );
       }
     });
@@ -537,8 +550,11 @@ const WaterScreen = () => {
     return () => subscription.remove();
   }, []);
 
+  // Initialize on component mount - FIXED
   useEffect(() => {
     let mounted = true;
+    
+    console.log("WaterScreen mounted, starting initialization");
     
     const init = async () => {
       if (mounted && !isInitialized) {
@@ -550,6 +566,7 @@ const WaterScreen = () => {
     
     return () => {
       mounted = false;
+      console.log("WaterScreen unmounted");
     };
   }, [initializeWaterScreen, isInitialized]);
 
@@ -587,6 +604,7 @@ const WaterScreen = () => {
   // Focus effect
   useFocusEffect(
     useCallback(() => {
+      console.log("WaterScreen focused");
       if (currentUser && isInitialized) {
         onRefresh();
       }
@@ -683,7 +701,7 @@ const WaterScreen = () => {
           water_period: water.period,
           water_amount: water.amount,
           completed_at: completedAt,
-          water_id: water.water_id, // Pass water_id for tracking
+          water_id: water.water_id,
         }),
       });
 
@@ -947,7 +965,19 @@ const WaterScreen = () => {
 
   // Handle water log navigation
   const handleWaterLog = (): void => {
-    router.push('/HORSE_OPERATOR/waterlog');
+    if (!horseId) {
+      Alert.alert('Error', 'No horse selected. Cannot view water log.');
+      return;
+    }
+    
+    router.push({
+      pathname: '../HORSE_OPERATOR/waterlog',
+      params: {
+        id: horseId,
+        horseId: horseId,
+        horseName: horseName
+      }
+    });
   };
 
   // Handle time change
@@ -1140,8 +1170,8 @@ const WaterScreen = () => {
   if (isLoading) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-          <Text>Loading watering schedule...</Text>
+        <View style={styles.loadingContainer}>
+          <Text style={styles.loadingText}>Loading watering schedule...</Text>
         </View>
       </SafeAreaView>
     );
@@ -1415,7 +1445,7 @@ const WaterScreen = () => {
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push('/HORSE_OPERATOR/horse')} style={styles.backButton}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <FontAwesome5 name="arrow-left" size={20} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
@@ -1544,8 +1574,6 @@ const WaterScreen = () => {
                   <Text style={styles.addScheduleButtonText}>Add Water Schedule</Text>
                 </TouchableOpacity>
               )}
-
-              {availablePeriods.length === 0 && wateringSchedule.length > 0}
             </>
           )}
         </View>
@@ -1558,6 +1586,17 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: '#3B82F6',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+  },
+  loadingText: {
+    fontSize: 18,
+    color: '#64748B',
+    fontWeight: '500',
   },
   header: {
     flexDirection: 'row',
@@ -1834,37 +1873,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 3,
   },
-  addIconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#EFF6FF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
-  },
   addScheduleButtonText: {
-    color: '#ffffffff',
+    color: '#fff',
     fontSize: 16,
     fontWeight: '700',
-  },
-  noAvailablePeriodsInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F8FAFC',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  noAvailablePeriodsText: {
-    fontSize: 14,
-    color: '#64748B',
-    fontWeight: '500',
-    marginLeft: 8,
-    textAlign: 'center',
   },
   section: {
     marginBottom: 24,

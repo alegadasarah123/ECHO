@@ -37,7 +37,7 @@ type Horse = {
   horse_name: string;
 };
 
-const API_BASE_URL = "http://192.168.101.81:8000/api/horse_operator"
+const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
 
 const WaterLogScreen = () => {
   const router = useRouter();

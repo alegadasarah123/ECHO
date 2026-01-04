@@ -40,7 +40,7 @@ interface Horse {
   horse_breed?: string;
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
+const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
 
 const MedicalRecordsScreen: React.FC = () => {
   const router = useRouter();

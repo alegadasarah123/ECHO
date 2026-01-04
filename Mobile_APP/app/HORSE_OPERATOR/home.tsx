@@ -63,7 +63,7 @@ const getSafeAreaPadding = () => {
 }
 
 const CARD_WIDTH = width - scale(64)
-const API_BASE_URL = "http://192.168.31.58:8000/api/horse_operator"
+const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
 
 // Configure notifications handler with proper NotificationBehavior type
 Notifications.setNotificationHandler({
@@ -1936,6 +1936,13 @@ export default function HorseOperatorHome() {
             tabKey="horses"
             isActive={activeTab === "horses"}
             onPress={() => router.push("../HORSE_OPERATOR/horse")}
+          />
+          <TabButton
+            iconSource={require("../../assets/images/kutsero.png")}
+            label="Kutsero"
+            tabKey="kutsero"
+            isActive={activeTab === "kutsero"}
+            onPress={() => router.push("../HORSE_OPERATOR/kutsero")}
           />
           <TabButton
             iconSource={require("../../assets/images/chat.png")}
