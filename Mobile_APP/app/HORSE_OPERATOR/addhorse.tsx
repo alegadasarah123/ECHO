@@ -37,7 +37,7 @@ interface Horse {
   image: string | null;
 }
 
-const API_URL = "http://192.168.101.4:8000/api/horse_operator";
+const API_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
 
 const AddHorseScreen = () => {
   const router = useRouter();

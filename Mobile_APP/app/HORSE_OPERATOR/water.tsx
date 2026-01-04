@@ -30,7 +30,7 @@ type WaterSchedule = {
   user_type?: string;
 };
 
-const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator";
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
 
 // Configure notifications handler - FIXED with complete NotificationBehavior properties
 Notifications.setNotificationHandler({
