@@ -183,63 +183,153 @@ def signup(request):
         return Response({"error": "Internal Server Error", "details": str(e)}, status=500)
 
 
-
-
-# -------------------- GET VET PROFILES --------------------
-@api_view(["GET"])
-def get_vet_profiles(request):
-    import json
-    import logging
-
+# -------------------- GET ALL PROFILES --------------------
+@api_view(['GET'])
+def get_all_profiles(request):
+    """
+    Get all user profiles (vet, kutsero, horse_operator)
+    """
     try:
-        response = sr_client.table("vet_profile").select("*, users(status)").execute()
-        data = response.data or []
+        # Fetch vet profiles
+        vet_res = sr_client.table("vet_profile")\
+            .select("*, users(*)")\
+            .execute()
+        
+        # Fetch kutsero profiles - Note: table name is kutsero_profile
+        kutsero_res = sr_client.table("kutsero_profile")\
+            .select("*, users(*)")\
+            .execute()
+        
+        # Fetch horse operator profiles - Note: table name is horse_op_profile (not horse_operator_profile)
+        horse_op_res = sr_client.table("horse_op_profile")\
+            .select("*, users(*)")\
+            .execute()
+        
+        # Combine all profiles with type identifier
+        all_profiles = []
+        
+        # Process vet profiles
+        for vet in vet_res.data:
+            vet['type'] = 'Veterinarian'
+            vet['user_id'] = vet.get('vet_id')
+            vet['name'] = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}"
+            vet['email'] = vet.get('vet_email')
+            vet['profile_photo'] = vet.get('vet_profile_photo')
+            vet['city'] = vet.get('vet_city')
+            vet['province'] = vet.get('vet_province')
+            vet['status'] = vet.get('users', {}).get('status', 'pending')
+            vet['decline_reason'] = vet.get('users', {}).get('decline_reason', '')
+            all_profiles.append(vet)
+        
+        # Process kutsero profiles - Note field names are kutsero_ prefixed
+        for kutsero in kutsero_res.data:
+            kutsero['type'] = 'Kutsero'
+            kutsero['user_id'] = kutsero.get('kutsero_id')
+            kutsero['name'] = f"{kutsero.get('kutsero_fname', '')} {kutsero.get('kutsero_lname', '')}"
+            kutsero['email'] = kutsero.get('kutsero_email')
+            kutsero['profile_photo'] = kutsero.get('kutsero_image')  # Note: field name is kutsero_image
+            kutsero['city'] = kutsero.get('kutsero_city')
+            kutsero['province'] = kutsero.get('kutsero_province')
+            kutsero['status'] = kutsero.get('users', {}).get('status', 'pending')
+            kutsero['decline_reason'] = kutsero.get('users', {}).get('decline_reason', '')
+            all_profiles.append(kutsero)
+        
+        # Process horse operator profiles - Note field names are op_ prefixed
+        for operator in horse_op_res.data:
+            operator['type'] = 'Horse Operator'
+            operator['user_id'] = operator.get('op_id')
+            operator['name'] = f"{operator.get('op_fname', '')} {operator.get('op_lname', '')}"
+            operator['email'] = operator.get('op_email')
+            operator['profile_photo'] = operator.get('op_image')  # Note: field name is op_image
+            operator['city'] = operator.get('op_city')
+            operator['province'] = operator.get('op_province')
+            operator['status'] = operator.get('users', {}).get('status', 'pending')
+            operator['decline_reason'] = operator.get('users', {}).get('decline_reason', '')
+            all_profiles.append(operator)
+        
+        return Response({
+            "success": True,
+            "data": all_profiles,
+            "count": len(all_profiles)
+        }, status=200)
+        
+    except Exception as e:
+        logging.exception("Error fetching all profiles")
+        return Response({"error": str(e)}, status=500)
 
-        for row in data:
-            # Normalize vet_profile_photo
-            profile_photo = row.get("vet_profile_photo")
-            if profile_photo:
-                if isinstance(profile_photo, str) and not profile_photo.startswith("http"):
-                    # If only filename stored, get full public URL
-                    public_url = sr_client.storage.from_("vet_profile").get_public_url(profile_photo)
-                    row["vet_profile_photo"] = public_url
-                # Else already a full URL — leave as is
-
-            # Normalize vet_documents (may be stored as JSON string or list)
-            documents = row.get("vet_documents", "[]")
-            normalized_docs = []
-
-            # Decode JSON string if needed
-            if isinstance(documents, str):
-                try:
-                    docs_list = json.loads(documents)
-                except json.JSONDecodeError:
-                    docs_list = []
-            elif isinstance(documents, list):
-                docs_list = documents
-            else:
-                docs_list = []
-
-            # Normalize each document URL
-            for doc in docs_list:
-                if isinstance(doc, str) and doc.strip():
-                    if doc.startswith("http"):
-                        normalized_docs.append(doc)
-                    else:
-                        public_url = sr_client.storage.from_("vet_documents").get_public_url(doc)
-                        if public_url:
-                            normalized_docs.append(public_url)
-
-            # Always return vet_documents as a list
-            row["vet_documents"] = normalized_docs
-
-        return Response({"data": data}, status=status.HTTP_200_OK)
-
-    except Exception:
-        return Response({"error": "Failed to fetch vet profiles"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
+# -------------------- GET ACCOUNT COUNTS --------------------
+@api_view(['GET'])
+def get_all_profile_counts(request):
+    """
+    Get counts for all user types
+    """
+    try:
+        # Get all profiles
+        vet_res = sr_client.table("vet_profile")\
+            .select("*, users(*)")\
+            .execute()
+        
+        kutsero_res = sr_client.table("kutsero_profile")\
+            .select("*, users(*)")\
+            .execute()
+        
+        horse_op_res = sr_client.table("horse_op_profile")\
+            .select("*, users(*)")\
+            .execute()
+        
+        # Initialize counters
+        pending_count = 0
+        approved_count = 0
+        declined_count = 0
+        
+        # Count vet profiles
+        for vet in vet_res.data:
+            status = vet.get('users', {}).get('status', 'pending')
+            if status == 'pending':
+                pending_count += 1
+            elif status == 'approved':
+                approved_count += 1
+            elif status == 'declined':
+                declined_count += 1
+        
+        # Count kutsero profiles
+        for kutsero in kutsero_res.data:
+            status = kutsero.get('users', {}).get('status', 'pending')
+            if status == 'pending':
+                pending_count += 1
+            elif status == 'approved':
+                approved_count += 1
+            elif status == 'declined':
+                declined_count += 1
+        
+        # Count horse operator profiles
+        for operator in horse_op_res.data:
+            status = operator.get('users', {}).get('status', 'pending')
+            if status == 'pending':
+                pending_count += 1
+            elif status == 'approved':
+                approved_count += 1
+            elif status == 'declined':
+                declined_count += 1
+        
+        total_count = pending_count + approved_count + declined_count
+        
+        return Response({
+            "success": True,
+            "data": {
+                "pending": pending_count,
+                "approved": approved_count,
+                "declined": declined_count,
+                "all": total_count
+            }
+        }, status=200)
+        
+    except Exception as e:
+        logging.exception("Error fetching profile counts")
+        return Response({"error": str(e)}, status=500)
 
 
 # -------------------- UPDATE STATUS --------------------
@@ -250,50 +340,82 @@ from django.core.mail import send_mail
 from django.conf import settings
 import logging
 
-# assume sr_client is already created at module top
-# sr_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
+# -------------------- UPDATE USER STATUS --------------------
 @api_view(['PATCH'])
-def update_vet_status(request, vet_profile_id):
+def update_user_status(request, user_profile_id):
     """
-    Update the status of a vet user (pending, approved, declined)
+    Update the status of any user (vet, kutsero, horse_operator) 
     and send a modern HTML email notification on approved or declined.
     """
     new_status = request.data.get("status")
-    decline_reason = request.data.get("decline_reason")  # Get decline reason from request
+    decline_reason = request.data.get("decline_reason")
+    user_type = request.data.get("user_type", "vet")  # Get user type from request
+    
     reason_text = decline_reason if decline_reason else "Not provided"
-
     allowed_statuses = ["pending", "approved", "declined"]
+    
     if new_status not in allowed_statuses:
         return Response({"error": f"Invalid status. Allowed: {allowed_statuses}"}, status=400)
 
-    # Get vet profile
-    vet_profile_res = sr_client.table("vet_profile")\
-        .select("vet_id, vet_email, vet_fname, vet_lname")\
-        .eq("vet_id", str(vet_profile_id)).execute()
+    # Define table mapping based on user type
+    table_mapping = {
+        "vet": {
+            "table": "vet_profile",
+            "id_field": "vet_id",
+            "email_field": "vet_email",
+            "fname_field": "vet_fname",
+            "lname_field": "vet_lname"
+        },
+        "kutsero": {
+            "table": "kutsero_profile",
+            "id_field": "kutsero_id",
+            "email_field": "kutsero_email",
+            "fname_field": "kutsero_fname",
+            "lname_field": "kutsero_lname"
+        },
+        "horse_operator": {
+            "table": "horse_op_profile",  # Note: actual table name
+            "id_field": "op_id",  # Note: field name is op_id
+            "email_field": "op_email",  # Note: field name is op_email
+            "fname_field": "op_fname",  # Note: field name is op_fname
+            "lname_field": "op_lname"   # Note: field name is op_lname
+        }
+    }
 
-    if not vet_profile_res.data:
-        return Response({"error": "Vet profile not found"}, status=404)
+    if user_type not in table_mapping:
+        return Response({"error": f"Invalid user type. Allowed: {list(table_mapping.keys())}"}, status=400)
 
-    vet_data = vet_profile_res.data[0]
-    vet_id = vet_data["vet_id"]
-    vet_email = vet_data.get("vet_email")
-    vet_name = f"{vet_data.get('vet_fname','')} {vet_data.get('vet_lname','')}".strip() or "User"
+    table_info = table_mapping[user_type]
+    
+    # Get user profile based on type
+    profile_res = sr_client.table(table_info["table"])\
+        .select(f"{table_info['id_field']}, {table_info['email_field']}, {table_info['fname_field']}, {table_info['lname_field']}")\
+        .eq(table_info["id_field"], str(user_profile_id)).execute()
+
+    if not profile_res.data:
+        return Response({"error": f"{user_type.replace('_', ' ').title()} profile not found"}, status=404)
+
+    profile_data = profile_res.data[0]
+    user_id = profile_data[table_info["id_field"]]
+    user_email = profile_data.get(table_info["email_field"])
+    user_name = f"{profile_data.get(table_info['fname_field'], '')} {profile_data.get(table_info['lname_field'], '')}".strip() or "User"
 
     # Update user status and save decline_reason in users table
     update_data = {"status": new_status}
     if new_status == "declined":
         update_data["decline_reason"] = reason_text
 
-    update_res = sr_client.table("users").update(update_data).eq("id", vet_id).execute()
+    update_res = sr_client.table("users").update(update_data).eq("id", user_id).execute()
     if not update_res.data:
-        return Response({"error": "User not found"}, status=404)
+        return Response({"error": "User not found in users table"}, status=404)
 
     # Send email when approved or declined
-    if vet_email and new_status in ["approved", "declined"]:
+    if user_email and new_status in ["approved", "declined"]:
+        user_type_display = user_type.replace("_", " ").title()
+        
         if new_status == "approved":
-            subject = "Your Veterinarian Account Has Been Approved"
-            plain_message = f"Hello {vet_name},\n\nYour veterinarian account has been approved. You can now log in and start using the system.\n\nBest regards,\nECHOSys Team"
+            subject = f"Your {user_type_display} Account Has Been Approved"
+            plain_message = f"Hello {user_name},\n\nYour {user_type_display} account has been approved. You can now log in and start using the system.\n\nBest regards,\nECHOSys Team"
             html_message = f"""
             <html>
               <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
@@ -302,8 +424,8 @@ def update_vet_status(request, vet_profile_id):
                     <h1 style="margin:0; font-size:24px;">Account Approved ✅</h1>
                   </div>
                   <div style="padding:30px; color:#333; font-size:16px; line-height:1.5;">
-                    <p>Hello {vet_name},</p>
-                    <p>Good news! Your veterinarian account has been approved by the admin. You can now log in and start using the system.</p>
+                    <p>Hello {user_name},</p>
+                    <p>Good news! Your {user_type_display} account has been approved by the admin. You can now log in and start using the system.</p>
                     <div style="text-align:center; margin:30px 0;">
                       <a href="http://localhost:5173/login" style="background-color:#8B4513; color:white; text-decoration:none; padding:12px 25px; border-radius:6px; font-weight:bold;">Login Now</a>
                     </div>
@@ -314,8 +436,8 @@ def update_vet_status(request, vet_profile_id):
             </html>
             """
         else:  # declined
-            subject = "Your Veterinarian Account Has Been Declined"
-            plain_message = f"Hello {vet_name},\n\nWe’re sorry to inform you that your veterinarian account request was NOT APPROVEDD by the admin. The reason: {reason_text}. Please contact support if needed.\n\nBest regards,\nECHOSys Team"
+            subject = f"Your {user_type_display} Account Has Been Declined"
+            plain_message = f"Hello {user_name},\n\nWe're sorry to inform you that your {user_type_display} account request was NOT APPROVED by the admin. The reason: {reason_text}. Please contact support if needed.\n\nBest regards,\nECHOSys Team"
             html_message = f"""
             <html>
               <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
@@ -324,9 +446,8 @@ def update_vet_status(request, vet_profile_id):
                     <h1 style="margin:0; font-size:24px;">Account Declined ⚠️</h1>
                   </div>
                   <div style="padding:30px; color:#333; font-size:16px; line-height:1.5;">
-                    <p>Hello {vet_name},</p>
-                    <p>We’re sorry to inform you that your veterinarian account request has been NOT APPROVED by the admin. The reason: <strong>{reason_text}</strong>.</p>
-                    
+                    <p>Hello {user_name},</p>
+                    <p>We're sorry to inform you that your {user_type_display} account request has been NOT APPROVED by the admin. The reason: <strong>{reason_text}</strong>.</p>
                     <p>Best regards,<br>ECHOSys Team</p>
                   </div>
                 </div>
@@ -340,12 +461,12 @@ def update_vet_status(request, vet_profile_id):
                 subject=subject,
                 message=plain_message,
                 from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
-                recipient_list=[vet_email],
+                recipient_list=[user_email],
                 fail_silently=False,
                 html_message=html_message
             )
         except Exception as e:
-            logging.exception("Failed to send vet status email")
+            logging.exception(f"Failed to send {user_type} status email")
             return Response({
                 "message": f"Status updated to {new_status}, but email failed to send",
                 "error": str(e)
@@ -353,16 +474,10 @@ def update_vet_status(request, vet_profile_id):
 
     return Response({
         "message": f"Status updated to {new_status}",
-        "data": update_res.data[0]
+        "data": update_res.data[0],
+        "user_type": user_type
     }, status=200)
-
-
-
-
-
-
-
-
+    
 # -------------------- VET ACTIVITY ENDPOINT --------------------
 
 import time
@@ -812,13 +927,12 @@ def get_users(request):
 
 
 
-# -------------------- GET VET NOTIFICATIONS --------------------
-from datetime import datetime
+from datetime import datetime, timedelta
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from django.views.decorators.csrf import csrf_exempt
 import jwt
 import pytz
+from django.core.cache import cache
 
 # Manila Timezone
 manila_tz = pytz.timezone('Asia/Manila')
@@ -845,163 +959,119 @@ def get_current_user_id_internal(request):
         print(f"Error getting user ID from token: {e}")
         return None
 
-# Wrapper for backward compatibility
-def get_current_user_id(request):
-    return get_current_user_id_internal(request)
-
-# -------------------- GET CURRENT USER ID --------------------
 @api_view(["GET"])
-def get_current_user_id_endpoint(request):
-    """
-    Get only the user ID from JWT token.
-    """
-    try:
-        user_id = get_current_user_id_internal(request)
-        if not user_id:
-            return Response({"error": "User not authenticated"}, status=401)
-        
-        return Response({
-            "success": True,
-            "user_id": user_id
-        }, status=200)
-    except Exception as e:
-        print(f"Error getting user ID: {e}")
-        return Response({"error": str(e)}, status=500)
+def get_current_user_id(request):
+    """API endpoint to get current user ID from JWT token"""
+    user_id = get_current_user_id_internal(request)
+    if not user_id:
+        return Response({"error": "User not authenticated"}, status=401)
+    return Response({"user_id": user_id}, status=200)
 
-# -------------------- GET VET NOTIFICATIONS --------------------
 @api_view(["GET"])
 def get_vetnotifications(request):
     try:
         current_user_id = get_current_user_id_internal(request)
         if not current_user_id:
             return Response({"error": "User not authenticated"}, status=401)
-        
-        print(f"\n{'='*60}")
-        print(f"FETCHING NOTIFICATIONS for user: {current_user_id}")
-        print(f"{'='*60}")
-        
+
+        # ============== FIX 1: Get ALL existing notifications FIRST ==============
+        try:
+            existing_notifs_res = sr_client.table("notification") \
+                .select("*") \
+                .eq("id", current_user_id) \
+                .execute()
+            
+            # Create dictionary with related_id as key (like the working code)
+            existing_notifs = {}
+            for notif in (existing_notifs_res.data or []):
+                related_id = notif.get("related_id")
+                if related_id:
+                    existing_notifs[related_id] = {
+                        'notif_id': notif.get('notif_id'),
+                        'notif_read': notif.get('notif_read', False),
+                    }
+        except Exception as e:
+            print(f"Error fetching existing notifications: {e}")
+            existing_notifs = {}
+
         notifications_to_insert = []
 
-        # Get current user info
-        user_res = sr_client.table("users") \
-            .select("id, role") \
-            .eq("id", current_user_id) \
-            .execute()
-        
-        current_user_role = None
-        if user_res.data:
-            current_user_role = user_res.data[0].get("role")
-            print(f"Current user role: {current_user_role}")
-
-        # Helper to add notifications - EACH USER GETS THEIR OWN COPY
+        # ============== FIX 2: Update add_notification function ==============
         def add_notification(user_id, message, notif_type, event_id, created_at=None):
+            """Add notification for a single user if it doesn't exist"""
             if not user_id:
                 return False
+
+            # Create related_id - SIMILAR TO WORKING CODE
+            if created_at:
+                dt_ph = to_manila_time(created_at)
+                timestamp = dt_ph.strftime("%Y%m%d%H%M")
+            else:
+                dt_ph = datetime.now(manila_tz)
+                timestamp = dt_ph.strftime("%Y%m%d%H%M%S")
             
-            # Generate UNIQUE related_id PER USER
-            import hashlib
-            import json
+            # Use event_id in related_id (like working code uses "today-{app['app_id']}")
+            related_id = f"vetnotif_{event_id}"
             
-            # Create fingerprint: event_id + message + user_id
-            # This ensures EACH USER gets their OWN UNIQUE notification
-            fingerprint_data = {
-                "event_id": event_id,
-                "message": message[:100],  # First 100 chars
-                "user_id": user_id  # INCLUDING USER_ID makes it unique per user
-            }
-            fingerprint = hashlib.md5(json.dumps(fingerprint_data, sort_keys=True).encode()).hexdigest()
-            
-            # Create unique related_id WITH USER_ID in it
-            related_id = f"notif_{user_id}_{fingerprint[:12]}"
-            
-            # Check if THIS SPECIFIC USER already has THIS EXACT notification
-            try:
-                existing_res = sr_client.table("notification") \
-                    .select("notif_id") \
-                    .eq("id", user_id) \
-                    .eq("related_id", related_id) \
-                    .execute()
-                
-                if existing_res.data and len(existing_res.data) > 0:
-                    # THIS USER already has this EXACT notification
-                    print(f"  User {user_id[:8]}... already has: {message[:30]}...")
-                    return False
-                    
-            except Exception as e:
-                print(f"  Error checking duplicate: {e}")
-                # On error, proceed with different related_id
-                related_id = f"notif_error_{user_id}_{event_id}"
-            
-            dt_ph = to_manila_time(created_at) if created_at else datetime.now(manila_tz)
+            # ============== FIX 3: Check if already exists (like working code) ==============
+            if related_id in existing_notifs:
+                # Already exists, don't add again
+                return False
+
+            # ============== FIX 4: Add to insert list (only if doesn't exist) ==============
             notifications_to_insert.append({
                 "id": user_id,
                 "notif_message": message,
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
-                "notif_read": False,  # Each user starts with unread
+                "notif_read": False,
                 "notification_type": notif_type,
-                "related_id": related_id  # UNIQUE PER USER
+                "related_id": related_id  # Use the consistent related_id
             })
-            print(f"  ✓ Adding for user {user_id[:8]}...: {notif_type} - {message[:50]}...")
+            
+            # ============== FIX 5: Mark as existing to prevent duplicates in same batch ==============
+            existing_notifs[related_id] = {
+                'notif_id': None,
+                'notif_read': False
+            }
+            
             return True
 
-        # Get ALL administrative users (CTU, DVMF, Admin)
-        print(f"\n[1] Getting all administrative users...")
+        # [Rest of your code for getting admin users, time_filter, etc...]
+
+        # Get all administrative users
+        all_admin_users = []
         try:
-            # Get ALL CTU users
-            ctu_users_res = sr_client.table("ctu_vet_profile") \
-                .select("ctu_id") \
-                .execute()
-            ctu_user_ids = [user.get("ctu_id") for user in (ctu_users_res.data or []) if user.get("ctu_id")]
-            print(f"  Found {len(ctu_user_ids)} CTU users")
-            
-            # Get ALL DVMF users
-            dvmf_users_res = sr_client.table("dvmf_user_profile") \
-                .select("dvmf_id") \
-                .execute()
-            dvmf_user_ids = [user.get("dvmf_id") for user in (dvmf_users_res.data or []) if user.get("dvmf_id")]
-            print(f"  Found {len(dvmf_user_ids)} DVMF users")
-            
-            # Get ALL Admin users (Ctu-Admin)
             admin_users_res = sr_client.table("users") \
                 .select("id") \
-                .eq("role", "Ctu-Admin") \
+                .in_("role", ["Ctu-Admin", "Super-Admin"]) \
                 .execute()
-            admin_user_ids = [user.get("id") for user in (admin_users_res.data or []) if user.get("id")]
-            print(f"  Found {len(admin_user_ids)} Admin users")
             
-            # Combine ALL administrative users
-            all_admin_users = ctu_user_ids + dvmf_user_ids + admin_user_ids
-            all_admin_users = list(set(all_admin_users))  # Remove duplicates
-            print(f"  Total administrative users: {len(all_admin_users)}")
-            
+            if admin_users_res.data:
+                all_admin_users = [u["id"] for u in admin_users_res.data if u.get("id")]
         except Exception as e:
-            print(f"  Error getting admin users: {e}")
-            all_admin_users = []
+            print(f"Error getting admin users: {e}")
+            all_admin_users = [current_user_id]
 
-        # Helper to notify ALL administrative users - EACH GETS THEIR OWN COPY
         def notify_all_admins(message, notif_type, event_id, created_at=None):
+            """Notify all admin users about an event"""
             if not all_admin_users:
                 return
-            
-            added_count = 0
             for admin_user_id in all_admin_users:
-                if add_notification(admin_user_id, message, notif_type, event_id, created_at):
-                    added_count += 1
-            
-            if added_count > 0:
-                print(f"    ✅ Notified {added_count}/{len(all_admin_users)} admin users")
-            else:
-                print(f"    ⚠️ All admins already have this notification")
+                add_notification(admin_user_id, message, notif_type, event_id, created_at)
 
-        # ---------------- VET REGISTRATION/APPROVAL/DECLINE ----------------
-        print(f"\n[2] Checking VET REGISTRATION notifications...")
+        # Use 24-hour time window (like your original code)
+        time_filter = (datetime.now(manila_tz) - timedelta(hours=24)).isoformat()
+
+        # ============== FIX 6: Update all event_id generation ==============
+        # Make sure event_id is consistent and unique
+        
+        # VET REGISTRATION - Update event_id format
         try:
             vets_res = sr_client.table("vet_profile") \
                 .select("vet_id, vet_fname, vet_lname, created_at, users(id, status, role)") \
+                .gt("created_at", time_filter) \
                 .execute()
-            
-            print(f"  Found {len(vets_res.data or [])} vet profiles")
             
             for vet in (vets_res.data or []):
                 users = vet.get("users") or {}
@@ -1013,9 +1083,7 @@ def get_vetnotifications(request):
                 vet_user_id = users.get("id")
                 
                 if status == "pending":
-                    print(f"    Processing pending vet: Dr. {vet_name}")
-                    
-                    # Notify ALL administrative users - EACH GETS THEIR OWN COPY
+                    # Use consistent event_id format
                     event_id = f"vet_pending_{vet['vet_id']}"
                     notify_all_admins(
                         f"New veterinarian registration: Dr. {vet_name} needs approval.",
@@ -1025,19 +1093,15 @@ def get_vetnotifications(request):
                     )
                 
                 elif status in ["approved", "declined"]:
-                    print(f"    Processing vet {status}: Dr. {vet_name}")
-                    
-                    # Notify ALL administrative users - EACH GETS THEIR OWN COPY
-                    event_id = f"vet_{status}_{vet['vet_id']}_admin"
+                    event_id = f"vet_{status}_{vet['vet_id']}"
                     notify_all_admins(
                         f"Veterinarian Dr. {vet_name} has been {status}.",
                         "vet_status_update",
                         event_id,
                         vet.get("created_at")
                     )
-                    
-                    # Also notify the VET themselves - THEY GET THEIR OWN COPY
                     if vet_user_id:
+                        # Different event_id for self notification
                         event_id = f"vet_{status}_{vet['vet_id']}_self"
                         add_notification(
                             vet_user_id,
@@ -1046,18 +1110,15 @@ def get_vetnotifications(request):
                             event_id,
                             vet.get("created_at")
                         )
-                        
         except Exception as e:
-            print(f"  Error: {e}")
+            print(f"Vet notifications error: {e}")
 
-        # ---------------- MEDICAL RECORD ACCESS REQUESTS ----------------
-        print(f"\n[3] Checking MEDICAL RECORD REQUEST notifications...")
+        # MEDICAL RECORD REQUESTS
         try:
             medreq_res = sr_client.table("medrec_access_request") \
                 .select("request_id, vet_profile(vet_fname, vet_lname, users(id)), horse_profile(horse_name, horse_op_profile(op_fname, op_lname, op_id)), requested_at, request_status") \
+                .gt("requested_at", time_filter) \
                 .execute()
-            
-            print(f"  Found {len(medreq_res.data or [])} medical record access requests")
             
             for req in (medreq_res.data or []):
                 request_status = req.get("request_status","").lower()
@@ -1066,16 +1127,10 @@ def get_vetnotifications(request):
                 
                 horse_profile = req.get("horse_profile") or {}
                 horse_name = horse_profile.get("horse_name","Unknown Horse")
-                
-                # Get horse owner info
                 horse_op_profile = horse_profile.get("horse_op_profile") or {}
                 horse_owner_name = f"{horse_op_profile.get('op_fname','')} {horse_op_profile.get('op_lname','')}".strip()
-                horse_owner_id = horse_op_profile.get("op_id")
                 
                 if request_status == "pending":
-                    print(f"    Processing pending medical request: Dr. {vet_name} for {horse_name}")
-                    
-                    # Notify ALL administrative users - EACH GETS THEIR OWN COPY
                     event_id = f"medreq_pending_{req['request_id']}"
                     notify_all_admins(
                         f"Medical record access requested by Dr. {vet_name} for {horse_name} (Owner: {horse_owner_name}).",
@@ -1083,195 +1138,210 @@ def get_vetnotifications(request):
                         event_id,
                         req.get("requested_at")
                     )
-                    
                 elif request_status in ["approved", "declined"]:
-                    print(f"    Processing medical request {request_status}: Dr. {vet_name} for {horse_name}")
-                    
-                    # Notify ALL administrative users - EACH GETS THEIR OWN COPY
-                    event_id = f"medreq_{request_status}_{req['request_id']}_admin"
+                    event_id = f"medreq_{request_status}_{req['request_id']}"
                     notify_all_admins(
                         f"Medical record request by Dr. {vet_name} for {horse_name} has been {request_status}.",
                         "medrec_status_update",
                         event_id,
                         req.get("requested_at")
                     )
-                        
         except Exception as e:
-            print(f"  Error: {e}")
+            print(f"Medical request notifications error: {e}")
 
-        # ---------------- COMMENT NOTIFICATIONS ----------------
-        print(f"\n[4] Checking COMMENT notifications...")
+        # KUTSERO/HORSE-OP REGISTRATIONS
+        for role in ["Kutsero", "Horse-Operator"]:
+            try:
+                pending_res = sr_client.table("users") \
+                    .select("id, created_at") \
+                    .eq("role", role) \
+                    .eq("status", "pending") \
+                    .gt("created_at", time_filter) \
+                    .execute()
+                    
+                for user in (pending_res.data or []):
+                    try:
+                        if role == "Kutsero":
+                            profile_table = "kutsero_profile"
+                            id_field = "kutsero_id"
+                            fname_field = "kutsero_fname"
+                            lname_field = "kutsero_lname"
+                        else:
+                            profile_table = "horse_op_profile"
+                            id_field = "op_id"
+                            fname_field = "op_fname"
+                            lname_field = "op_lname"
+                        
+                        profile_res = sr_client.table(profile_table) \
+                            .select(f"{fname_field}, {lname_field}") \
+                            .eq(id_field, user['id']) \
+                            .limit(1) \
+                            .execute()
+                        
+                        name = "Unnamed User"
+                        if profile_res.data and len(profile_res.data) > 0:
+                            pdata = profile_res.data[0]
+                            name = f"{pdata.get(fname_field,'')} {pdata.get(lname_field,'')}".strip()
+                            if not name.strip():
+                                name = "Unnamed User"
+                        
+                        event_id = f"reg_{role.lower().replace('-', '_')}_{user['id']}"
+                        notify_all_admins(
+                            f"New {role.lower()} registration: {name} needs approval.", 
+                            "registration", 
+                            event_id, 
+                            user.get("created_at")
+                        )
+                    except Exception as e:
+                        print(f"Error processing {user['id']}: {e}")
+                        continue
+            except Exception as e:
+                print(f"{role} registration notifications error: {e}")
+
+        # SOS REQUESTS
         try:
-            comments_res = sr_client.table("comment") \
-                .select("id, comment_text, comment_date, user_id, announcement_id") \
+            sos_res = sr_client.table("sos_requests") \
+                .select("id, user_name, emergency_type, location_text, created_at, status, description") \
+                .gt("created_at", time_filter) \
+                .limit(20) \
                 .execute()
             
-            print(f"  Found {len(comments_res.data or [])} total comments")
-            
-            for comment in (comments_res.data or []):
-                commenter_id = comment.get("user_id")
-                ann_id = comment.get("announcement_id")
+            for sos in (sos_res.data or []):
+                status = sos.get("status", "").lower()
+                description = sos.get("description", "")
+                if len(description) > 100:
+                    description = description[:100] + "..."
                 
-                if not commenter_id or not ann_id:
-                    continue
-                
-                # Fetch announcement owner and details
-                try:
-                    announcement_res = sr_client.table("announcement").select("*") \
-                        .eq("announce_id", ann_id).execute()
-                    
-                    if not announcement_res.data:
-                        continue
-                    
-                    announcement = announcement_res.data[0]
-                    post_owner_id = announcement.get("user_id")
-                    post_title = announcement.get("announce_title", "Untitled Post")
-                    
-                    if not post_owner_id or post_owner_id == commenter_id:
-                        continue
-                    
-                except Exception as e:
-                    continue
-
-                # Get commenter name
-                commenter_name = "Someone"
-                try:
-                    kutsero_res = sr_client.table("kutsero_profile") \
-                        .select("kutsero_fname,kutsero_lname") \
-                        .eq("kutsero_id", commenter_id).execute()
-                    
-                    if kutsero_res.data:
-                        kutsero_data = kutsero_res.data[0]
-                        commenter_name = f"{kutsero_data.get('kutsero_fname','')} {kutsero_data.get('kutsero_lname','')}".strip()
-                    else:
-                        op_res = sr_client.table("horse_op_profile") \
-                            .select("op_fname,op_lname") \
-                            .eq("op_id", commenter_id).execute()
-                        
-                        if op_res.data:
-                            op_data = op_res.data[0]
-                            commenter_name = f"{op_data.get('op_fname','')} {op_data.get('op_lname','')}".strip()
-                        else:
-                            # Check if vet
-                            vet_res = sr_client.table("vet_profile") \
-                                .select("vet_fname,vet_lname") \
-                                .eq("vet_id", commenter_id).execute()
-                            
-                            if vet_res.data:
-                                vet_data = vet_res.data[0]
-                                commenter_name = f"Dr. {vet_data.get('vet_fname','')} {vet_data.get('vet_lname','')}".strip()
-                except:
-                    pass
-                
-                comment_text = comment.get('comment_text','')[:50]
-                if len(comment.get('comment_text','')) > 50:
-                    comment_text += "..."
-                
-                # Notify ALL administrative users about comment - EACH GETS THEIR OWN COPY
-                event_id = f"comment_{comment['id']}_admin"
-                notify_all_admins(
-                    f"{commenter_name} commented '{comment_text}' on post: '{post_title}'",
-                    "comment",
-                    event_id,
-                    comment.get("comment_date")
-                )
-                
-                # Also notify post owner - THEY GET THEIR OWN COPY
-                event_id = f"comment_{comment['id']}_owner"
-                add_notification(
-                    post_owner_id,
-                    f"{commenter_name} commented: '{comment_text}' on your post '{post_title}'",
-                    "comment",
-                    event_id,
-                    comment.get("comment_date")
-                )
+                if status == "pending":
+                    event_id = f"sos_pending_{sos['id']}"
+                    notify_all_admins(
+                        f"🚨 SOS EMERGENCY: {sos.get('user_name','Unknown')} needs help! "
+                        f"Type: {sos.get('emergency_type','Emergency')}, "
+                        f"Location: {sos.get('location_text','Unknown')}. {description}",
+                        "sos_request", 
+                        event_id, 
+                        sos.get("created_at")
+                    )
+                elif status in ["responded", "resolved", "cancelled"]:
+                    event_id = f"sos_{status}_{sos['id']}"
+                    notify_all_admins(
+                        f"SOS request by {sos.get('user_name','Unknown')} has been {status}. "
+                        f"Type: {sos.get('emergency_type','Emergency')}",
+                        "sos_status_update", 
+                        event_id, 
+                        sos.get("created_at")
+                    )
         except Exception as e:
-            print(f"  Error: {e}")
+            print(f"SOS notifications error: {e}")
 
-        # ---------------- BULK INSERT ----------------
-        print(f"\n[5] Inserting new notifications...")
-        if notifications_to_insert:
-            try:
-                print(f"  Inserting {len(notifications_to_insert)} new notifications")
+        # COMMENT NOTIFICATIONS - FIX announcement column
+        try:
+            comment_res = sr_client.table("comment") \
+                .select("id, comment_text, user_id, created_at, announcement_id") \
+                .gt("created_at", time_filter) \
+                .limit(20) \
+                .execute()
+            
+            for comment in (comment_res.data or []):
+                user_id = comment.get("user_id")
+                announcement_id = comment.get("announcement_id")
+                if not user_id: 
+                    continue
                 
-                # Insert in batches
-                batch_size = 50
-                inserted_count = 0
-                for i in range(0, len(notifications_to_insert), batch_size):
-                    batch = notifications_to_insert[i:i + batch_size]
+                commenter_name = "Unknown User"
+                try:
+                    user_res = sr_client.table("users") \
+                        .select("role") \
+                        .eq("id", user_id) \
+                        .limit(1) \
+                        .execute()
+                    
+                    if user_res.data and len(user_res.data) > 0:
+                        role = user_res.data[0].get("role")
+                        if role == "Veterinarian":
+                            commenter_name = f"Dr. User {user_id[:8]}"
+                        elif role == "Kutsero":
+                            commenter_name = f"Kutsero {user_id[:8]}"
+                        elif role == "Horse-Operator":
+                            commenter_name = f"Horse Operator {user_id[:8]}"
+                        elif role in ["Ctu-Admin","Super-Admin"]:
+                            commenter_name = f"Admin {user_id[:8]}"
+                except Exception as e:
+                    print(f"Error getting commenter name: {e}")
+
+                event_id = f"comment_{comment['id']}"
+                message_preview = comment.get("comment_text","")[:50]
+                if message_preview:
+                    notify_all_admins(
+                        f"{commenter_name} commented: '{message_preview}'",
+                        "comment_notification",
+                        event_id,
+                        comment.get("created_at")
+                    )
+
+                # Skip announcement creator notification for now to fix the error
+                # We'll fix this after we resolve the main duplicate issue
+
+        except Exception as e:
+            print(f"Comment notifications error: {e}")
+
+        # ============== FIX 7: Insert notifications ==============
+        if notifications_to_insert:
+            print(f"Attempting to insert {len(notifications_to_insert)} notifications")
+            
+            # Insert in small batches
+            batch_size = 10
+            inserted_count = 0
+            
+            for i in range(0, len(notifications_to_insert), batch_size):
+                try:
+                    batch = notifications_to_insert[i:i+batch_size]
                     result = sr_client.table("notification").insert(batch).execute()
                     inserted_count += len(batch)
-                    print(f"    Inserted batch {i//batch_size + 1}: {len(batch)} notifications")
-                
-                print(f"  ✓ Successfully inserted {inserted_count} notifications")
-            except Exception as e:
-                print(f"  ✗ Error inserting: {e}")
+                    print(f"Inserted batch {i//batch_size + 1} ({len(batch)} notifications)")
+                except Exception as e:
+                    print(f"Error inserting batch {i//batch_size + 1}: {e}")
+            
+            print(f"Total inserted: {inserted_count} notifications")
         else:
-            print(f"  No new notifications to insert")
+            print("No new notifications to insert")
 
-        # ---------------- FETCH NOTIFICATIONS FOR CURRENT USER ----------------
-        print(f"\n[6] Fetching notifications for CURRENT USER ({current_user_id})...")
-        
-        all_notifs_res = sr_client.table("notification").select("*") \
-                            .eq("id", current_user_id) \
-                            .order("notif_date", desc=True) \
-                            .order("notif_time", desc=True) \
-                            .execute()
-        
-        print(f"  Query result: {len(all_notifs_res.data or [])} notifications found")
-        
+        # ============== FIX 8: Fetch final notifications ==============
+        # Re-fetch to get updated list with new notifications
+        all_notifs_res = sr_client.table("notification") \
+            .select("*") \
+            .eq("id", current_user_id) \
+            .order("notif_date", desc=True) \
+            .order("notif_time", desc=True) \
+            .limit(100) \
+            .execute()
+
         notifications = []
         for row in (all_notifs_res.data or []):
-            try:
-                date_str = row.get("notif_date", "")
-                time_str = row.get("notif_time", "")
-                
-                # Handle time format
-                if time_str and isinstance(time_str, str):
-                    if len(time_str.split(':')) == 3:
-                        time_part = time_str
-                    else:
-                        time_part = time_str + ":00"
-                else:
-                    time_part = "00:00:00"
-                
-                notifications.append({
-                    "notif_id": row.get("notif_id"),
-                    "user_id": row.get("id"),
-                    "message": row.get("notif_message", "No message"),
-                    "date": f"{date_str}T{time_part}+08:00",
-                    "read": row.get("notif_read", False),
-                    "type": row.get("notification_type","general")
-                })
-            except Exception as e:
-                print(f"    Error processing notification: {e}")
-                continue
+            date_str = row.get("notif_date","")
+            time_str = row.get("notif_time","00:00:00")
+            if time_str and len(time_str.split(":")) == 2:
+                time_str += ":00"
+            notifications.append({
+                "notif_id": row.get("notif_id"),
+                "user_id": row.get("id"),
+                "message": row.get("notif_message","No message"),
+                "date": f"{date_str}T{time_str}+08:00",
+                "read": row.get("notif_read", False),
+                "type": row.get("notification_type","general"),
+                "related_id": row.get("related_id")
+            })
 
-        print(f"\n[7] FINAL RESULT for user {current_user_id}")
-        print(f"  Total notifications: {len(notifications)}")
-        
-        # Show unread count
-        unread_count = sum(1 for n in notifications if not n.get("read", True))
-        print(f"  Unread notifications: {unread_count}")
-        
-        # Show notification types
-        type_counts = {}
-        for notif in notifications:
-            notif_type = notif.get("type", "unknown")
-            type_counts[notif_type] = type_counts.get(notif_type, 0) + 1
-        
-        for notif_type, count in type_counts.items():
-            print(f"    {notif_type}: {count}")
-        
-        print(f"{'='*60}\n")
-        
+        print(f"Returning {len(notifications)} notifications")
         return Response(notifications, status=200)
 
     except Exception as e:
-        print(f"\n✗ ERROR: {str(e)}")
         import traceback
         traceback.print_exc()
-        return Response({"error": str(e)}, status=500)
+        print(f"General error in get_vetnotifications: {e}")
+        return Response([], status=200)
+
+
 # -------------------- MARK NOTIFICATION AS READ --------------------
 @api_view(["POST"])
 def mark_notification_read(request, notif_id):
@@ -1296,7 +1366,7 @@ def mark_notification_read(request, notif_id):
         # Update only if notification belongs to current user
         update_result = sr_client.table("notification").update({
             "notif_read": True
-        }).eq("notif_id", notif_id).eq("id", current_user_id).execute()  # CHANGED: "user_id" to "id"
+        }).eq("notif_id", notif_id).eq("id", current_user_id).execute()
 
         if update_result.data:
             return Response({
@@ -1312,6 +1382,7 @@ def mark_notification_read(request, notif_id):
         print(f"Error marking notification as read: {e}")
         return Response({"error": "Internal server error"}, status=500)
 
+
 # -------------------- MARK ALL NOTIFICATIONS AS READ --------------------
 @api_view(["POST"])
 def mark_all_notifications_read(request):
@@ -1326,7 +1397,7 @@ def mark_all_notifications_read(request):
         # Update all unread notifications for current user only
         update_result = sr_client.table("notification").update({
             "notif_read": True
-        }).eq("notif_read", False).eq("id", current_user_id).execute()  # CHANGED: "user_id" to "id"
+        }).eq("notif_read", False).eq("id", current_user_id).execute()
 
         return Response({
             "success": True,
@@ -3157,21 +3228,6 @@ def get_user_profile_info(user_id, role):
                     "avatar": p.get("op_image")
                 }
 
-        # 🧑 Kutsero President
-        elif role == "Kutsero President":
-            res = safe_execute(
-                sr_client.table("kutsero_pres_profile")
-                .select("pres_fname, pres_lname")
-                .eq("user_id", user_id)
-            )
-            if res.data:
-                p = res.data[0]
-                full_name = " ".join(filter(None, [p.get("pres_fname"), p.get("pres_lname")])).strip()
-                return {
-                    "name": f"{full_name} (Kutsero President)",
-                    "avatar": None
-                }
-
         # 🧑 DVMF
         elif role == "Dvmf":
             res = safe_execute(
@@ -3606,22 +3662,7 @@ def get_all_users(request):
                     "avatar": p.get("op_image")
                 }
 
-        # 🧑 Kutsero President - CORRECTED
-        if "Kutsero President" in role_groups:
-            ids = role_groups["Kutsero President"]
-            res = safe_execute(
-                sr_client.table("kutsero_pres_profile")
-                .select("user_id, pres_fname, pres_lname")  # Corrected field names
-                .in_("user_id", ids)
-            )
-            print(f"Debug: Found {len(res.data or [])} Kutsero President profiles")
-            for p in res.data or []:
-                full_name = " ".join(filter(None, [p.get("pres_fname"), p.get("pres_lname")])).strip()
-                profiles_map[p["user_id"]] = {  # Use user_id as key
-                    "name": f"{full_name} (Kutsero President)",
-                    "avatar": None
-                }
-
+      
         # 🧑 DVMF + DVMF-Admin
         for role_key in ["Dvmf", "Dvmf-Admin"]:
             if role_key in role_groups:
