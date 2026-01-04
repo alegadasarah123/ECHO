@@ -94,7 +94,7 @@ interface ApprovedKutsero {
   assigned_horses_count: number
 }
 
-const API_BASE_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
+const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
 
 type ApplicationTab = 'pending' | 'approved' | 'rejected'
 type BottomTabKey = 'home' | 'horses' | 'kutsero' | 'messages' | 'bookings' | 'profile'
@@ -219,35 +219,23 @@ const KutseroManagementScreen = () => {
     try {
       const uid = userId || await loadUserId()
       
-      if (!uid) {
-        console.log("❌ No user ID found for fetching approved kutseros")
-        return
-      }
+      if (!uid) return
 
       console.log("📡 Fetching approved kutseros for operator:", uid)
       const response = await fetch(
         `${API_BASE_URL}/get_approved_kutseros/?op_id=${encodeURIComponent(uid)}`
       )
       
-      console.log("📊 Response status for approved kutseros:", response.status)
-      
       if (response.ok) {
         const data = await response.json()
         console.log(`✅ Loaded ${data.length} approved kutseros`)
         setApprovedKutseros(data)
       } else {
-        const errorText = await response.text()
-        console.error("❌ Error response text:", errorText)
-        try {
-          const errorData = JSON.parse(errorText)
-          console.error("❌ Error fetching approved kutseros:", errorData)
-        } catch {
-          console.error("❌ Raw error response:", errorText)
-        }
+        const errorData = await response.json().catch(() => ({}))
+        console.error("❌ Error fetching approved kutseros:", errorData)
       }
     } catch (error) {
       console.error("❌ Error fetching approved kutseros:", error)
-      // Don't show alert here to avoid disrupting user experience
     }
   }, [userId])
 
@@ -347,7 +335,6 @@ const KutseroManagementScreen = () => {
                 return
               }
 
-              console.log(`📤 Removing kutsero ${kutseroId} for operator ${uid}`)
               const response = await fetch(
                 `${API_BASE_URL}/remove_kutsero_assignment/`,
                 {
@@ -362,18 +349,14 @@ const KutseroManagementScreen = () => {
                 }
               )
 
-              console.log("📊 Remove response status:", response.status)
-              
               if (response.ok) {
                 const result = await response.json()
-                console.log("✅ Remove successful:", result)
                 Alert.alert("Success", result.message)
                 // Refresh approved kutseros list
                 await fetchApprovedKutseros()
               } else {
-                const errorText = await response.text()
-                console.error("❌ Remove failed:", errorText)
-                Alert.alert("Error", "Failed to remove kutsero. Please try again.")
+                const errorData = await response.json().catch(() => ({}))
+                Alert.alert("Error", errorData.error || "Failed to remove kutsero")
               }
             } catch (error) {
               console.error("❌ Error removing kutsero:", error)
@@ -645,20 +628,6 @@ const KutseroManagementScreen = () => {
           >
             <FontAwesome5 name="user-times" size={scale(12)} color="#F44336" />
             <Text style={styles.removeButtonText}>Remove</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={styles.assignButton}
-            onPress={() => router.push({
-              pathname: "../HORSE_OPERATOR/horseassignments",
-              params: { 
-                kutsero_id: kutsero.kutsero_id, 
-                kutsero_name: kutsero.kutsero_name 
-              }
-            })}
-          >
-            <FontAwesome5 name="tasks" size={scale(12)} color="#4CAF50" />
-            <Text style={styles.assignButtonText}>Assign Horses</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1373,20 +1342,6 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(12),
     fontWeight: "600",
     color: "#F44336",
-  },
-  assignButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: verticalScale(6),
-    paddingHorizontal: scale(12),
-    backgroundColor: "rgba(76, 175, 80, 0.1)",
-    borderRadius: scale(6),
-    gap: scale(4),
-  },
-  assignButtonText: {
-    fontSize: moderateScale(12),
-    fontWeight: "600",
-    color: "#4CAF50",
   },
 
   // Empty State

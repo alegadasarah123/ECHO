@@ -47,13 +47,14 @@ const CtuSettings = () => {
   const [activeUserTab, setActiveUserTab] = useState("addNew")
   const [isPasswordVisible, setIsPasswordVisible] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(null)
+  
   // State for new user
   const [newUser, setNewUser] = useState({
     firstname: "",
     lastname: "",
     email: "",
     phone: "",
-    role: "Ctu-Vetmed",
+    role: "", // Changed from "Ctu-Vetmed" to empty string
     password: "",
   })
 
@@ -103,9 +104,9 @@ const CtuSettings = () => {
     }
   };
 
-// HANDLE INDIVIDUAL NOTIFICATION CLICK
+ // HANDLE INDIVIDUAL NOTIFICATION CLICK - CTU VERSION WITH HORSE OPERATOR & KUTSERO
 const handleNotificationClick = async (notification) => {
-  const notifId = notification?.notif_id || notification?.id; // fallback support
+  const notifId = notification?.notif_id || notification?.id;
 
   if (!notifId) {
     console.warn("Notification ID is missing:", notification);
@@ -147,7 +148,6 @@ const handleNotificationClick = async (notification) => {
       message.includes("injured") || 
       message.includes("trauma")))
   ) {
-    // Extract SOS ID from related_id if available
     let sosId = null;
     if (notification.related_id && notification.related_id.startsWith("sos_")) {
       sosId = notification.related_id.replace("sos_", "");
@@ -157,20 +157,83 @@ const handleNotificationClick = async (notification) => {
       state: {
         highlightedNotification: notification,
         shouldHighlight: true,
-        sosId: sosId, // Pass the specific SOS ID if available
+        sosId: sosId,
       },
     });
     return;
   }
 
-  // Navigate for account-related notifications
+  // VETERINARIAN Account Approvals - SPECIFIC
+  if (
+    message.includes("veterinarian") && 
+    (message.includes("registration") ||
+     message.includes("approved") ||
+     message.includes("declined") ||
+     message.includes("pending") ||
+     message.includes("needs approval") ||
+     message.includes("vet "))
+  ) {
+    navigate("/CtuAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        tab: "veterinarian", // ADDED: Specify veterinarian tab
+      },
+    });
+    return;
+  }
+
+  // HORSE OPERATOR Account Approvals - NEW FOR CTU
+  if (
+    message.includes("horse-operator") ||
+    message.includes("horse operator") ||
+    (message.includes("horse") && message.includes("operator") && 
+     (message.includes("registration") || 
+      message.includes("approved") || 
+      message.includes("declined") || 
+      message.includes("pending"))) ||
+    (type === "registration" && message.includes("horse"))
+  ) {
+    navigate("/CtuAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        tab: "horse-operator", // ADDED: Specify horse-operator tab
+      },
+    });
+    return;
+  }
+
+  // KUTSERO Account Approvals - NEW FOR CTU
+  if (
+    message.includes("kutsero") ||
+    (message.includes("registration") && message.includes("kutsero")) ||
+    (message.includes("kutsero") && 
+     (message.includes("approved") || 
+      message.includes("declined") || 
+      message.includes("pending"))) ||
+    (type === "registration" && message.includes("kutsero"))
+  ) {
+    navigate("/CtuAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        tab: "kutsero", // ADDED: Specify kutsero tab
+      },
+    });
+    return;
+  }
+
+  // GENERAL REGISTRATION (catch-all for any registration type)
   if (
     message.includes("new registration") ||
-    message.includes("new veterinarian approved") ||
-    message.includes("veterinarian approved") ||
-    message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered") ||
-    message.includes("veterinarian pending")
+    message.includes("needs approval") ||
+    message.includes("registration:") ||
+    (message.includes("registration") && 
+     (message.includes("approved") || 
+      message.includes("declined") || 
+      message.includes("pending"))) ||
+    type === "registration"
   ) {
     navigate("/CtuAccountApproval", {
       state: {
@@ -181,21 +244,26 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
+  // MEDICAL RECORD ACCESS REQUESTS
   if (
-    message.includes("pending medical record access") ||
-    message.includes("requested access")
+    message.includes("medical record") ||
+    message.includes("medical access") ||
+    message.includes("requested access") ||
+    message.includes("medrec") ||
+    (message.includes("record") && message.includes("access"))
   ) {
     navigate("/CtuDashboard", {
       state: {
         highlightedNotification: notification,
         shouldHighlight: true,
+        section: "medical-records", // Optional: specify section
       },
     });
     return;
   }
 
-  // Only navigate to CtuAnnouncement for comment-related notifications
-  if (message.includes("comment")) {
+  // COMMENT NOTIFICATIONS
+  if (message.includes("comment") || type === "comment" || type === "comment_notification") {
     navigate("/CtuAnnouncement", {
       state: {
         highlightedNotification: notification,
@@ -205,32 +273,89 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
-  // Default fallback - stay on current page
+  // APPOINTMENT NOTIFICATIONS (if CTU has appointment management)
+  if (
+    message.includes("appointment") ||
+    message.includes("schedule") ||
+    type.includes("appointment")
+  ) {
+    navigate("/CtuDashboard", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        section: "appointments",
+      },
+    });
+    return;
+  }
+
+  // VET STATUS UPDATES (approved/declined notifications for admins)
+  if (
+    type === "vet_status_update" ||
+    type === "vet_registration" ||
+    (message.includes("vet") && 
+     (message.includes("status") || message.includes("update")))
+  ) {
+    navigate("/CtuAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        tab: "veterinarian",
+      },
+    });
+    return;
+  }
+
+  // SOS STATUS UPDATES (responded/resolved/cancelled)
+  if (
+    type === "sos_status_update" ||
+    message.includes("responded") ||
+    message.includes("resolved") ||
+    message.includes("cancelled")
+  ) {
+    navigate("/CtuDashboard", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        section: "sos",
+      },
+    });
+    return;
+  }
+
   console.log("Notification clicked but no specific action:", notification);
+  
+  // DEFAULT: Go to dashboard for other notifications
+  navigate("/CtuDashboard", {
+    state: {
+      highlightedNotification: notification,
+      shouldHighlight: true,
+    },
+  });
 };
 
   // Handle notifications update from modal
-const handleNotificationsUpdate = (updatedNotifications) => {
-  setNotifications(updatedNotifications);
-};
+  const handleNotificationsUpdate = (updatedNotifications) => {
+    setNotifications(updatedNotifications);
+  };
 
-const loadNotifications = useCallback(() => {
-  fetch(`http://localhost:8000/api/ctu_vetmed/get_vetnotifications/`)
-    .then((res) => res.json())
-    .then((data) => {
-      const formatted = data.map((notif) => ({
-        id: notif.id,
-        message: notif.message,
-        date: notif.date || new Date().toISOString(),
-        read: notif.read || false,
-        type: notif.type || "general",
-      }));
-      setNotifications(formatted);
-    })
-    .catch(() => {
-      // silently ignore all errors
-    });
-}, []);
+  const loadNotifications = useCallback(() => {
+    fetch(`http://localhost:8000/api/ctu_vetmed/get_vetnotifications/`)
+      .then((res) => res.json())
+      .then((data) => {
+        const formatted = data.map((notif) => ({
+          id: notif.id,
+          message: notif.message,
+          date: notif.date || new Date().toISOString(),
+          read: notif.read || false,
+          type: notif.type || "general",
+        }));
+        setNotifications(formatted);
+      })
+      .catch(() => {
+        // silently ignore all errors
+      });
+  }, []);
 
   // Save first-time CTU Vet profile
   const handleSave = async (e) => {
@@ -439,10 +564,11 @@ const loadNotifications = useCallback(() => {
         email: "",
         phone: "",
         password: "",
-        role: "Ctu-Vetmed",
+        role: "", // Reset to empty string
       })
 
       showAlert("User created successfully!")
+      fetchUsers() // Refresh the users list
     } catch (err) {
       showAlert("Failed to add user. Make sure the backend server is running.", "error")
     }
@@ -607,7 +733,6 @@ const loadNotifications = useCallback(() => {
         <div className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
           <div className="flex flex-col">
             <h2 className="text-2xl font-bold text-gray-800 mb-1">Settings</h2>
-           
           </div>
 
           <div className="flex items-center gap-4">
@@ -667,14 +792,12 @@ const loadNotifications = useCallback(() => {
             <div className="bg-white rounded-xl p-5 mb-5 shadow-sm ml-5 mr-10">
               <div className="flex gap-20 items-start">
                 <div className="flex flex-col items-center min-w-[200px] flex-none mr-24">
-                  {/* Logo Image instead of initials */}
                   <div className="w-35 h-35 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden border-2 border-gray-100 mt-12 ml-24">
                     <img 
-                      src= "/Images/logo1.png"
+                      src="/Images/logo1.png"
                       alt="Profile Logo" 
                       className="w-52 h-52 object-cover mt-8"
                       onError={(e) => {
-                        // Fallback to initials if image fails to load
                         e.target.style.display = 'none'
                         e.target.nextSibling.style.display = 'flex'
                       }}
@@ -691,7 +814,6 @@ const loadNotifications = useCallback(() => {
                     <h3 className="text-xl font-semibold m-0 text-gray-800">
                       {profile.ctu_fname} {profile.ctu_lname}
                     </h3>
-                    <p className="text-sm text-gray-500 m-0 font-normal"></p>
                   </div>
                 </div>
 
@@ -704,7 +826,6 @@ const loadNotifications = useCallback(() => {
                   <form onSubmit={profileExists ? handleUpdate : handleSave}>
                     <div className="flex-1 min-w-[200px] flex flex-col gap-1.5 relative mb-6">
                       <div className="flex gap-3">
-                        {/* First Name Field */}
                         <div className="flex-1 flex flex-col gap-1.5">
                           <label className="font-medium mb-1">First Name:</label>
                           <input
@@ -722,7 +843,6 @@ const loadNotifications = useCallback(() => {
                           />
                         </div>
                         
-                        {/* Last Name Field */}
                         <div className="flex-1 flex flex-col gap-1.5">
                           <label className="font-medium mb-1">Last Name:</label>
                           <input
@@ -1035,6 +1155,7 @@ const loadNotifications = useCallback(() => {
                             className="px-3 py-2 border border-gray-300 rounded-md text-sm outline-none transition-all duration-200 focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
                             value={newUser.role}
                             onChange={(e) => handleNewUserChange("role", e.target.value)}
+                            required
                           >
                             <option value="">Select role</option>
                             <option value="Ctu-Vetmed">Ctu-Vetmed</option>
@@ -1135,7 +1256,15 @@ const loadNotifications = useCallback(() => {
                                     {p.ctu_phonenum || "-"}
                                   </div>
                                   <div className="px-3 py-3 text-sm text-gray-700 flex items-center">
-                                    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded-xl text-xs font-medium">
+                                    <span 
+                                      className={`px-2 py-1 rounded-xl text-xs font-medium ${
+                                        p.role === "Ctu-Vetmed" 
+                                          ? "bg-red-100 text-red-800" 
+                                          : p.role === "Dvmf" 
+                                            ? "bg-blue-100 text-blue-800" 
+                                            : "bg-gray-100 text-gray-800"
+                                      }`}
+                                    >
                                       {p.role || "-"}
                                     </span>
                                   </div>

@@ -1,15 +1,20 @@
 
 
-import { useEffect, useState, useRef } from "react"
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from "expo-secure-store";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   Dimensions,
+  Image,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+<<<<<<< Updated upstream
   Modal,
   Image,
   Platform,
@@ -19,6 +24,9 @@ import * as SecureStore from "expo-secure-store"
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
+=======
+} from "react-native";
+>>>>>>> Stashed changes
 
 const { width, height } = Dimensions.get("window")
 
@@ -537,7 +545,94 @@ export default function NotificationsPage({ onBack, userName }: NotificationsPag
 
   const checkScheduledTimes = async () => {
     try {
+<<<<<<< Updated upstream
       return await checkScheduledTimesGlobal(userName);
+=======
+      const encodedUser = encodeURIComponent(userName);
+      
+      const response = await fetch(
+        `http://192.168.101.81:8000/api/kutsero/check-current-schedules/?kutsero_id=${encodedUser}`
+      );
+      
+      if (!response.ok) {
+        console.error('[Notification] Failed to check current schedules');
+        return;
+      }
+      
+      const data = await response.json();
+      console.log('[Notification] Check schedules response:', data);
+      
+      if (!data.success || !data.data || data.data.length === 0) {
+        console.log('[Notification] No schedules due at this time');
+        return;
+      }
+      
+      const now = new Date();
+      const displayTime = now.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      }) + " at " + now.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      
+      let newNotificationsAdded = false;
+      
+      for (const schedule of data.data) {
+        const notifId = schedule.id;
+        const triggeredKey = `triggered_${notifId}`;
+        
+        const alreadyTriggered = await AsyncStorage.getItem(triggeredKey);
+        
+        if (!alreadyTriggered) {
+          const triggeredNotif = {
+            id: notifId,
+            title: schedule.title,
+            message: schedule.message,
+            time: displayTime,
+            horseName: schedule.horse_name,
+            scheduledTime: schedule.scheduled_time,
+            timestamp: now.toISOString(),
+            isNew: true,
+          };
+          
+          await AsyncStorage.setItem(triggeredKey, JSON.stringify(triggeredNotif));
+          console.log('[Notification] Triggered notification:', notifId);
+          newNotificationsAdded = true;
+          
+          const countKey = 'new_feed_water_count';
+          const currentCount = await AsyncStorage.getItem(countKey);
+          const newCount = currentCount ? parseInt(currentCount) + 1 : 1;
+          await AsyncStorage.setItem(countKey, newCount.toString());
+          setNewFeedWaterCount(newCount);
+        }
+      }
+      
+      if (newNotificationsAdded) {
+        await fetchNotifications();
+      }
+      
+      const allKeys = await AsyncStorage.getAllKeys();
+      const triggeredKeys = allKeys.filter(key => key.startsWith('triggered_'));
+      
+      for (const key of triggeredKeys) {
+        const data = await AsyncStorage.getItem(key);
+        if (data) {
+          try {
+            const parsed = JSON.parse(data);
+            const notifTime = new Date(parsed.time);
+            const diffHours = (now.getTime() - notifTime.getTime()) / 1000 / 60 / 60;
+            if (diffHours > 24) {
+              await AsyncStorage.removeItem(key);
+              console.log('[Notification] Cleaned up old notification:', key);
+            }
+          } catch (e) {
+            console.error('[Notification] Error cleaning up:', e);
+          }
+        }
+      }
+>>>>>>> Stashed changes
     } catch (error) {
       console.error('[Notification] Error checking scheduled times:', error);
       return false;

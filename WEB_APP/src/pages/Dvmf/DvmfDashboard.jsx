@@ -1,11 +1,9 @@
-"use client"
-
 import Sidebar from "@/components/DvmfSidebar"
-import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, Eye, MapPin, Phone, RefreshCw, User, X, XCircle } from "lucide-react"
+import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, ExternalLink, Eye, MapPin, Phone, RefreshCw, User, X, XCircle } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
-import FloatingMessages from './DvmfMessage'
-import NotificationsModal from "./DvmfNotif"
+import FloatingMessages from "./DvmfMessage"
+import NotificationModal from "./DvmfNotif"
 
 const API_BASE = "http://localhost:8000/api/dvmf";
 
@@ -157,28 +155,33 @@ function DvmfDashboard() {
   }
 
   const loadStats = useCallback(() => {
-    console.log("Loading statistics...")
-    setStatsLoading(true)
+    setStatsLoading(true);
 
     fetch("http://localhost:8000/api/dvmf/get_status_counts/", {
-      method: 'GET',
-      credentials: 'include',
+      method: "GET",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+      },
     })
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`)
-        return res.json()
+        if (!res.ok) {
+          throw new Error(`HTTP error! Status: ${res.status}`);
+        }
+        return res.json();
       })
       .then((data) => {
-        setrecordCount(data.pending || 0)
-        setvetCount(data.approved || 0)
-        setDeclinedCount(data.declined || 0)
-        setStatsLoading(false)
+        setrecordCount(data.pending || 0);
+        setvetCount(data.approved || 0);
+        setDeclinedCount(data.declined || 0);
       })
       .catch((err) => {
-        console.error("Error fetching stats:", err)
-        setStatsLoading(false)
+        setStatsLoading(false);
       })
-  }, [])
+      .finally(() => {
+        setStatsLoading(false);
+      });
+  }, []);
 
   const loadRecentActivities = useCallback(() => {
     setActivitiesLoading(true);
@@ -189,13 +192,10 @@ function DvmfDashboard() {
     })
       .then(async (res) => {
         if (res.status === 401) {
-          console.warn("Unauthorized - redirecting to login");
           return [];
         }
 
         if (!res.ok) {
-          const errorText = await res.text();
-          console.error("Backend returned error:", errorText);
           return [];
         }
 
@@ -205,7 +205,6 @@ function DvmfDashboard() {
         if (Array.isArray(data)) {
           setRecentActivities(data);
         } else if (data.error) {
-          console.error("Backend error:", data.error);
           setRecentActivities([]);
         } else {
           setRecentActivities([]);
@@ -213,71 +212,71 @@ function DvmfDashboard() {
 
         setActivitiesLoading(false);
       })
-      .catch((err) => {
-        console.error("Error fetching activity:", err);
+      .catch(() => {
         setRecentActivities([]);
         setActivitiesLoading(false);
       });
   }, []);
 
-  const loadNotifications = useCallback(() => {
-    console.log("Loading notifications...")
-
-    fetch("http://localhost:8000/api/dvmf/get_vetnotifications/", {
-      credentials: "include"
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error("Failed to fetch notifications")
-        return res.json()
+  const loadNotifications = useCallback(async () => {
+    try {
+      const response = await fetch(`${API_BASE}/get_vetnotifications/`, {
+        method: "GET",
+        credentials: "include",
       })
-      .then((data) => {
-        console.log("Raw notifications data:", data);
-        const formatted = data.map((notif) => ({
+      
+      if (response.ok) {
+        const data = await response.json()
+        
+        const formatted = Array.isArray(data) ? data.map((notif) => ({
           id: notif.id,
           message: notif.message,
           date: notif.date || new Date().toISOString(),
           read: notif.read || false,
           type: notif.type || "general"
-        }))
-        console.log("Formatted notifications:", formatted);
-        console.log("Unread count:", formatted.filter(n => !n.read).length);
+        })) : []
+        
         setNotifications(formatted)
-      })
-      .catch((err) => console.error("Failed to fetch notifications:", err))
+      } else {
+        setNotifications([])
+      }
+    } catch (err) {
+      setNotifications([])
+    }
   }, [])
 
   const loadSosEmergencies = useCallback(() => {
-    console.log("Loading SOS emergencies...")
-    setSosLoading(true)
+    setSosLoading(true);
 
     fetch("http://localhost:8000/api/dvmf/get_sos_requests/", {
       method: "GET",
       credentials: "include",
     })
       .then((res) => {
-        if (!res.ok) throw new Error(`HTTPS error! Status: ${res.status}`)
-        return res.json()
+        if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
+        return res.json();
       })
       .then((data) => {
-        console.log("Raw SOS data:", data)
-
-        let sosData = []
-        if (Array.isArray(data)) sosData = data
-        else if (data.sos_requests && Array.isArray(data.sos_requests)) sosData = data.sos_requests
-        else if (data.results && Array.isArray(data.results)) sosData = data.results
-        else {
-          console.warn("Unexpected data structure:", data)
-          setSosEmergencies([])
-          setSosLoading(false)
-          return
+        let sosData = [];
+        if (Array.isArray(data)) {
+          sosData = data;
+        } else if (data.sos_requests && Array.isArray(data.sos_requests)) {
+          sosData = data.sos_requests;
+        } else if (data.results && Array.isArray(data.results)) {
+          sosData = data.results;
+        } else if (data.data && Array.isArray(data.data)) {
+          sosData = data.data;
+        } else {
+          setSosEmergencies([]);
+          setSosLoading(false);
+          return;
         }
 
         const formatted = sosData.map((item) => {
-          let formattedTime = "Unknown time"
+          let formattedTime = "Unknown time";
           try {
             if (item.time || item.created_at) {
-              const createdDate = new Date(item.time || item.created_at)
-              
+              const createdDate = new Date(item.time || item.created_at);
               formattedTime = createdDate.toLocaleDateString('en-US', {
                 month: 'long',
                 day: 'numeric',
@@ -286,36 +285,45 @@ function DvmfDashboard() {
                 hour: 'numeric',
                 minute: 'numeric',
                 hour12: true
-              })
+              });
             }
-          } catch {
-            console.warn("Invalid timestamp:", item.time || item.created_at)
+          } catch {}
+
+          // Handle image URL
+          let sos_image_url = null;
+          if (item.sos_image_url) {
+            sos_image_url = item.sos_image_url;
+          } else if (item.sos_image) {
+            const imagePath = item.sos_image;
+            if (typeof imagePath === 'string') {
+              const cleanUrl = imagePath.trim().replace(/^\[|\]|"|'$/g, '');
+              sos_image_url = cleanUrl.startsWith("http") ? cleanUrl : null;
+            }
           }
 
           return {
             id: item.id,
-            type: item.type || "Emergency",
-            contact: item.contact || "Unknown Contact",
-            phone: item.phone || "N/A",
-            location: item.location || "No location provided",
+            type: item.type || item.emergency_type || "Emergency",
+            contact: item.contact || item.user_name || "Unknown Contact",
+            phone: item.phone || item.contact_number || "N/A",
+            location: item.location || item.location_text || "No location provided",
             time: formattedTime,
-            urgent: item.urgent === true || item.status === "pending",
+            urgent: item.urgent === true || (item.status && item.status.toLowerCase() === "pending"),
             description: item.description || "No description provided",
-            sos_image_url: item.sos_image_url || null,
-            horse_status: item.horse_status || "Unknown",
-            additional_info: item.additional_info || ""
-          }
-        })
+            sos_image_url: sos_image_url,
+            latitude: item.latitude,
+            longitude: item.longitude
+          };
+        });
 
-        console.log("Formatted SOS data:", formatted)
-        setSosEmergencies(formatted)
-        setSosLoading(false)
+        setSosEmergencies(formatted);
+        setSosLoading(false);
       })
-      .catch((err) => {
-        console.error("Error fetching SOS emergencies:", err)
-        setSosLoading(false)
-      })
-  }, [])
+      .catch((error) => {
+        setSosLoading(false);
+        setSosEmergencies([]);
+      });
+  }, []);
 
   const loadDashboardData = useCallback(() => {
     setIsLoading(true)
@@ -329,7 +337,6 @@ function DvmfDashboard() {
         setIsLoading(false)
       })
       .catch((error) => {
-        console.error("Error loading dashboard data:", error)
         setIsLoading(false)
         setStatsLoading(false)
         setActivitiesLoading(false)
@@ -338,7 +345,6 @@ function DvmfDashboard() {
   }, [loadStats, loadRecentActivities, loadNotifications, loadSosEmergencies])
 
   const handleRefresh = useCallback(() => {
-    console.log("Manual refresh triggered")
     setIsRefreshing(true)
     
     setStatsLoading(true)
@@ -348,10 +354,8 @@ function DvmfDashboard() {
     Promise.all([loadStats(), loadRecentActivities(), loadNotifications(), loadSosEmergencies()])
       .then(() => {
         setIsRefreshing(false)
-        console.log("Manual refresh completed")
       })
       .catch((error) => {
-        console.error("Error during manual refresh:", error)
         setIsRefreshing(false)
         setStatsLoading(false)
         setActivitiesLoading(false)
@@ -368,37 +372,23 @@ function DvmfDashboard() {
       const res = await fetch(`${API_BASE}/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
+      })
       
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to mark all as read");
+      if (res.ok) {
+        setNotifications(prev => prev.map(notif => ({ ...notif, read: true })))
       }
-      
-      const data = await res.json();
-      console.log("Mark all as read result:", data);
-
-      setNotifications(prev =>
-        prev.map(notif => ({ ...notif, read: true }))
-      );
-      
     } catch (err) {
-      console.error("Error marking all as read:", err);
     }
-  };
+  }
 
-  // ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
+  // HANDLE INDIVIDUAL NOTIFICATION CLICK - UPDATED WITH HORSE OPERATOR & KUTSERO
 const handleNotificationClick = async (notification) => {
-  const notifId = notification?.notif_id || notification?.id; // fallback support
+  const notifId = notification?.notif_id || notification?.id;
 
   if (!notifId) {
     console.warn("Notification ID is missing:", notification);
   }
 
-  // Mark as read in frontend immediately
   setNotifications((prev) =>
     prev.map((notif) =>
       notif.notif_id === notifId || notif.id === notifId
@@ -407,10 +397,9 @@ const handleNotificationClick = async (notification) => {
     )
   );
 
-  // Mark as read in backend (only if valid ID)
   if (notifId) {
     try {
-      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+      await fetch(`${API_BASE_URL}/mark_notification_read/${notifId}/`, {
         method: "POST",
         credentials: "include",
       });
@@ -422,7 +411,7 @@ const handleNotificationClick = async (notification) => {
   const message = (notification.message || "").toLowerCase();
   const type = (notification.type || "").toLowerCase();
 
-  // Navigate for SOS emergency notifications
+  // SOS & Emergency Notifications
   if (
     type === "sos_emergency" ||
     message.includes("sos") ||
@@ -434,30 +423,87 @@ const handleNotificationClick = async (notification) => {
       message.includes("injured") || 
       message.includes("trauma")))
   ) {
-    // Extract SOS ID from related_id if available
     let sosId = null;
     if (notification.related_id && notification.related_id.startsWith("sos_")) {
       sosId = notification.related_id.replace("sos_", "");
     }
-    
+
     navigate("/DvmfDashboard", {
       state: {
         highlightedNotification: notification,
         shouldHighlight: true,
-        sosId: sosId, // Pass the specific SOS ID if available
+        sosId: sosId,
       },
     });
     return;
   }
 
-  // Navigate for account-related notifications
+  // VETERINARIAN Account Approvals
+  if (
+    message.includes("veterinarian") && 
+    (message.includes("registration") ||
+     message.includes("approved") ||
+     message.includes("declined") ||
+     message.includes("pending") ||
+     message.includes("needs approval"))
+  ) {
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        tab: "veterinarian", // ADDED: Specify veterinarian tab
+      },
+    });
+    return;
+  }
+
+  // HORSE OPERATOR Account Approvals - NEW
+  if (
+    message.includes("horse-operator") ||
+    message.includes("horse operator") ||
+    (message.includes("horse") && message.includes("operator") && 
+     (message.includes("registration") || 
+      message.includes("approved") || 
+      message.includes("declined") || 
+      message.includes("pending")))
+  ) {
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        tab: "horse-operator", // ADDED: Specify horse-operator tab
+      },
+    });
+    return;
+  }
+
+  // KUTSERO Account Approvals - NEW
+  if (
+    message.includes("kutsero") ||
+    (message.includes("registration") && message.includes("kutsero")) ||
+    (message.includes("kutsero") && 
+     (message.includes("approved") || 
+      message.includes("declined") || 
+      message.includes("pending")))
+  ) {
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        tab: "kutsero", // ADDED: Specify kutsero tab
+      },
+    });
+    return;
+  }
+
+  // GENERAL REGISTRATION (catch-all for any registration type)
   if (
     message.includes("new registration") ||
-    message.includes("new veterinarian approved") ||
-    message.includes("veterinarian approved") ||
-    message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered") ||
-    message.includes("veterinarian pending")
+    message.includes("needs approval") ||
+    (message.includes("registration") && 
+     (message.includes("approved") || 
+      message.includes("declined") || 
+      message.includes("pending")))
   ) {
     navigate("/DvmfAccountApproval", {
       state: {
@@ -468,21 +514,26 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
+  // MEDICAL RECORD ACCESS REQUESTS
   if (
-    message.includes("pending medical record access") ||
-    message.includes("requested access")
+    message.includes("medical record") ||
+    message.includes("medical access") ||
+    message.includes("requested access") ||
+    message.includes("medrec") ||
+    (message.includes("record") && message.includes("access"))
   ) {
-    navigate("/DvmfAccessRequest", {
+    navigate("/DvmfDashboard", {
       state: {
         highlightedNotification: notification,
         shouldHighlight: true,
+        section: "medical-records", // Optional: specify section
       },
     });
     return;
   }
 
-  // Only navigate to DvmfAnnouncement for comment-related notifications
-  if (message.includes("comment")) {
+  // COMMENT NOTIFICATIONS
+  if (message.includes("comment") || type === "comment") {
     navigate("/DvmfAnnouncement", {
       state: {
         highlightedNotification: notification,
@@ -492,27 +543,46 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
-  // Default fallback - stay on current page
-  console.log("Notification clicked but no specific action:", notification);
-}
+  // APPOINTMENT NOTIFICATIONS (if you have them)
+  if (
+    message.includes("appointment") ||
+    message.includes("schedule") ||
+    type.includes("appointment")
+  ) {
+    navigate("/DvmfDashboard", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        section: "appointments",
+      },
+    });
+    return;
+  }
+
+  // DEFAULT: Go to dashboard for other notifications
+  console.log("Notification clicked - navigating to dashboard:", notification);
+  navigate("/DvmfDashboard", {
+    state: {
+      highlightedNotification: notification,
+      shouldHighlight: true,
+    },
+  });
+};
 
   const handleNotificationsUpdate = (updatedNotifications) => {
-    console.log("Notifications updated from modal:", updatedNotifications);
-    console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
     setNotifications(updatedNotifications);
   };
 
   const handleOpenUserManagement = (notification = null) => {
-    console.log('Opening User Management from dashboard notification:', notification)
     if (notification) {
-      navigate('/CtuDashboard', { 
+      navigate('/DvmfDashboard', { 
         state: { 
           highlightedNotification: notification,
           shouldHighlight: true
         } 
       })
     } else {
-      navigate('/CtuDashboard')
+      navigate('/DvmfDashboard')
     }
   }
 
@@ -527,7 +597,6 @@ const handleNotificationClick = async (notification) => {
   }, [loadNotifications])
 
   useEffect(() => {
-    console.log("CTU Dashboard initialized")
     loadDashboardData()
   }, [loadDashboardData])
 
@@ -554,20 +623,13 @@ const handleNotificationClick = async (notification) => {
   }, [])
 
   const handleSosItemClick = (emergency) => {
-    console.log("SOS Emergency clicked:", emergency)
+    // You can add additional functionality here if needed
   }
 
   const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
 
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
-      {isLoading && (
-        <div className="fixed top-0 left-0 w-full h-full bg-white/90 flex flex-col items-center justify-center z-[9999]">
-          <div className="text-6xl animate-pulse"></div>
-          <div className="mt-4 text-lg font-bold text-black">Loading Dashboard...</div>
-        </div>
-      )}
-
       {!isImageModalOpen && <Sidebar isOpen={isSidebarOpen} />}
       {!isImageModalOpen && <FloatingMessages />}
 
@@ -603,7 +665,7 @@ const handleNotificationClick = async (notification) => {
             </button>
           </div>
 
-          <NotificationsModal
+          <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
             notifications={notifications}
@@ -773,7 +835,7 @@ const handleNotificationClick = async (notification) => {
                   {sosEmergencies.map((emergency) => (
                     <div
                       key={emergency.id}
-                      className="bg-gradient-to-br from-red-50 to-white border border-red-300 rounded-xl p-3 sm:p-4 overflow-hidden"
+                      className="bg-gradient-to-br from-red-50 to-white border border-red-300 rounded-xl p-3 sm:p-4 overflow-hidden hover:shadow-md transition-shadow"
                       onClick={() => handleSosItemClick(emergency)}
                     >
                       <div className="flex justify-between items-start mb-3 flex-col sm:flex-row gap-2 sm:gap-0">
@@ -788,20 +850,47 @@ const handleNotificationClick = async (notification) => {
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
-                        <div className="flex items-center gap-1.5 text-xs text-gray-700">
-                          <User size={14} className="sm:w-4 sm:h-4" />
-                          <span className="truncate">{emergency.contact}</span>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-700 overflow-x-auto whitespace-nowrap scrollbar-thin">
+                          <User size={14} className="sm:w-4 sm:h-4 flex-shrink-0" />
+                          <span className="truncate min-w-0">{emergency.contact}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 text-xs text-gray-700">
-                          <Phone size={14} className="sm:w-4 sm:h-4" />
-                          <span className="truncate">{emergency.phone}</span>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-700 overflow-x-auto whitespace-nowrap scrollbar-thin">
+                          <Phone size={14} className="sm:w-4 sm:h-4 flex-shrink-0" />
+                          <span className="truncate min-w-0">{emergency.phone}</span>
                         </div>
                       </div>
 
-                      <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-600 italic flex items-center gap-1.5 mb-2">
-                        <MapPin size={12} className="sm:w-3.5 sm:h-3.5" />
-                        <span className="truncate">{emergency.location}</span>
+                      <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-600 mb-2 overflow-x-auto">
+                        <div className="flex items-start gap-1.5 min-w-max">
+                          <MapPin size={12} className="sm:w-3.5 sm:h-3.5 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            {/* Remove the latitude/longitude from the location text */}
+                            <div className="mb-1 min-w-0">
+                              {emergency.location.replace(/\(.*?\)/g, '').replace(/-.*$/, '').trim()}
+                            </div>
+                            {emergency.latitude && emergency.longitude && (
+                              <div className="mt-1 flex items-center gap-1">
+                                <a
+                                  href={`https://www.google.com/maps?q=${emergency.latitude},${emergency.longitude}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-blue-500 hover:text-blue-700 hover:underline text-xs whitespace-nowrap"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <ExternalLink size={10} />
+                                  View on Google Maps
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
+                      {emergency.description && (
+                        <div className="text-xs text-gray-500 mb-2 overflow-x-auto whitespace-nowrap scrollbar-thin">
+                          <div className="font-medium text-gray-600 mb-0.5">Description:</div>
+                          {emergency.description}
+                        </div>
+                      )}
 
                       {emergency.sos_image_url && (
                         <div className="flex justify-end mt-2">
@@ -810,7 +899,7 @@ const handleNotificationClick = async (notification) => {
                               e.stopPropagation()
                               handleViewImage(emergency.sos_image_url, emergency)
                             }}
-                            className="flex items-center gap-1 px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors"
+                            className="flex items-center gap-1 px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors whitespace-nowrap"
                           >
                             <Eye size={12} />
                             View Image
@@ -856,6 +945,50 @@ const handleNotificationClick = async (notification) => {
           </div>
         </div>
       )}
+      
+      <style jsx>{`
+        .scrollbar-thin {
+          scrollbar-width: thin;
+          scrollbar-color: #d1d5db transparent;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar {
+          height: 4px;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar-track {
+          background: transparent;
+          border-radius: 2px;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+          background-color: #d1d5db;
+          border-radius: 2px;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+          background-color: #9ca3af;
+        }
+        
+        /* Only show scrollbar on hover for overflow content */
+        .overflow-x-auto:hover::-webkit-scrollbar {
+          display: block;
+        }
+        
+        .overflow-x-auto::-webkit-scrollbar {
+          display: none;
+        }
+        
+        .overflow-x-auto {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        
+        .overflow-x-auto:hover {
+          -ms-overflow-style: auto;
+          scrollbar-width: thin;
+        }
+      `}</style>
     </div>
   )
 }

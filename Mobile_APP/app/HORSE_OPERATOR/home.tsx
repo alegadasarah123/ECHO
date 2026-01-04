@@ -1,6 +1,6 @@
 // HORSE_OPERATOR/home.tsx
 
-
+"use client"
 
 import React, { useState, useEffect, useCallback, useRef } from "react"
 import {
@@ -63,7 +63,7 @@ const getSafeAreaPadding = () => {
 }
 
 const CARD_WIDTH = width - scale(64)
-const API_BASE_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
+const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
 
 // Configure notifications handler with proper NotificationBehavior type
 Notifications.setNotificationHandler({

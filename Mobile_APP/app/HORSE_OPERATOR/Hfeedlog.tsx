@@ -37,7 +37,7 @@ type Horse = {
   horse_name: string;
 }
 
-
+const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
 
 const FeedLogScreen = () => {
   const router = useRouter();
@@ -94,7 +94,7 @@ const FeedLogScreen = () => {
   const loadHorses = React.useCallback(async (userId: string): Promise<void> => {
     try {
       console.log("Fetching horses for user:", userId);
-      const response = await fetch(`https://echo-ebl8.onrender.com/api/horse_operator/get_horses/?user_id=${userId}`);
+      const response = await fetch(`${API_BASE_URL}/get_horses/?user_id=${userId}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -112,7 +112,7 @@ const FeedLogScreen = () => {
   const loadFeedLogs = React.useCallback(async (userId: string): Promise<void> => {
     try {
       console.log("Fetching feed logs for user:", userId);
-      const response = await fetch(`https://echo-ebl8.onrender.com/api/horse_operator/get_feed_logs/?user_id=${userId}`);
+      const response = await fetch(`${API_BASE_URL}/get_feed_logs/?user_id=${userId}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -286,7 +286,7 @@ const FeedLogScreen = () => {
           style: 'destructive',
           onPress: async () => {
             try {
-              const response = await fetch(`https://echo-ebl8.onrender.com/api/horse_operator/clear_feed_logs/`, {
+              const response = await fetch(`${API_BASE_URL}/clear_feed_logs/`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ user_id: currentUser }),

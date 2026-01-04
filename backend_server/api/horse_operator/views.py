@@ -9787,7 +9787,6 @@ def get_approved_kutseros(request):
         ).eq("op_id", op_id).eq("status", "approved").execute()
         
         if not applications_data.data:
-            logger.info(f"No approved kutseros found for operator {op_id}")
             return Response([], status=status.HTTP_200_OK)
         
         # Get kutsero IDs
@@ -9799,9 +9798,8 @@ def get_approved_kutseros(request):
             "kutsero_id, kutsero_fname, kutsero_mname, kutsero_lname, kutsero_email, kutsero_phone_num, kutsero_image"
         ).in_("kutsero_id", kutsero_ids).execute()
         
-        if kutsero_data.data:
-            for kutsero in kutsero_data.data:
-                kutsero_profiles[kutsero["kutsero_id"]] = kutsero
+        for kutsero in kutsero_data.data if kutsero_data.data else []:
+            kutsero_profiles[kutsero["kutsero_id"]] = kutsero
         
         # Get assigned horses count for each kutsero
         assigned_counts = {}
@@ -9837,7 +9835,7 @@ def get_approved_kutseros(request):
             # Build name
             fname = kutsero_info.get("kutsero_fname", "")
             lname = kutsero_info.get("kutsero_lname", "")
-            kutsero_name = f"{fname} {lname}".strip() or "Unknown Kutsero"
+            kutsero_name = f"{fname} {lname}".strip()
             
             # Handle image
             kutsero_image = None
@@ -9862,13 +9860,12 @@ def get_approved_kutseros(request):
                 "assigned_horses_count": assigned_counts.get(kutsero_id, 0)
             })
         
-        logger.info(f"Returning {len(approved_kutseros)} approved kutseros for operator {op_id}")
-        
         return Response(approved_kutseros, status=status.HTTP_200_OK)
         
     except Exception as e:
-        logger.error(f"Error fetching approved kutseros: {e}", exc_info=True)
+        logger.error(f"Error fetching approved kutseros: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 @api_view(['DELETE'])
 def remove_kutsero_assignment(request):

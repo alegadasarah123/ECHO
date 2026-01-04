@@ -1,6 +1,6 @@
 // HORSE_OPERATOR/Hcalendar.tsx
 
-
+"use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
 import {
@@ -52,7 +52,7 @@ interface VetDetails {
 }
 
 // Configuration
-const API_BASE_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
+const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
 
 const { width, height } = Dimensions.get("window")
 

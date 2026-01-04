@@ -189,7 +189,6 @@ const RoleBadge = ({ role, size = "default" }) => {
     "Veterinarian": "bg-green-100 text-green-800 border border-green-200",
     "Kutsero": "bg-amber-100 text-amber-800 border border-amber-200",
     "Horse Operator": "bg-amber-100 text-amber-800 border border-amber-200",
-    "Kutsero President": "bg-indigo-100 text-indigo-800 border border-indigo-200",
     "Dvmf": "bg-blue-100 text-blue-800 border border-blue-200",
     "Dvmf-Admin": "bg-blue-100 text-blue-800 border border-blue-200",
     "Ctu-Vetmed": "bg-red-100 text-red-800 border border-red-200",

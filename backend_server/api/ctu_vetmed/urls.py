@@ -7,12 +7,13 @@ urlpatterns = [
     path("test-cookie/", views.test_cookie, name="test_cookie"),
     path('signup/', views.signup, name='signup'),
    
-      path("get-vet-profiles/", views.get_vet_profiles, name="get_vet_profiles"),
+    path("get_all_profiles/", views.get_all_profiles, name="get_all_profiles"),
     path("get_vetnotifications/", views.get_vetnotifications, name="get_vetnotifications"),
-    path("update-vet-status/<str:vet_profile_id>/", views.update_vet_status, name="update-vet-status"),
-
+    path("update_user_status/<str:user_profile_id>/", views.update_user_status, name="update_user_status"),
+    path('get_all_profile_counts/', views.get_all_profile_counts, name='get_all_profile_counts'),
     path('users/', views.fetch_users, name='fetch-users'), 
-     path('users/deactivate/<str:user_id>/', views.deactivate_user, name='deactivate_user'),
+    path('get_users/', views.get_users, name='get_users'),
+    path('users/deactivate/<str:user_id>/', views.deactivate_user, name='deactivate_user'),
     path('users/reactivate/<str:user_id>/', views.reactivate_user, name='reactivate_user'),
    
 
@@ -27,7 +28,6 @@ urlpatterns = [
 
 
 
-    path('get-users/', views.get_users, name='get-users'),
     
         # urls.py
     path('get_directory_profiles/', views.get_directory_profiles, name='get_directory_profiles'),
@@ -81,6 +81,7 @@ urlpatterns = [
       path("edit_reply/<uuid:reply_id>/", views.edit_reply, name="edit_reply"),
     path("edit_comment/<uuid:comment_id>/", views.edit_comment, name="edit_comment"),
      path("get_current_user/", views.get_current_user, name="get_current_user"),
+     path("get_current_user_id/", views.get_current_user_id, name="get_current_user_id_id"),
 
      # -------------------- Messaging --------------------
     path("ctu_vet_profile/", views.ctu_vet_profile, name="ctu_vet_profile"),

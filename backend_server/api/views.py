@@ -97,8 +97,8 @@ def login(request):
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=True,
-        samesite="None",
+        secure=False,
+        samesite="Lax",
         max_age=86400
     )
 

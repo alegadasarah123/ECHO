@@ -22,12 +22,10 @@ import DateTimePicker from "@react-native-community/datetimepicker"
 import * as ImagePicker from "expo-image-picker"
 import * as SecureStore from "expo-secure-store"
 // FIX: Import the legacy API as suggested by the error
-import * as FileSystem from "expo-file-system";
-
-
+import * as FileSystem from "expo-file-system/legacy"
 
 // Use your actual API base URL
-const API_BASE_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
+const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
 
 interface DeathRecordForm {
   user_id: string
