@@ -1,7 +1,6 @@
 "use client"
 import Sidebar from "@/components/DvmfSidebar"
 import {
-  AlertTriangle,
   Bell,
   CheckCircle,
   ChevronLeft,
@@ -10,7 +9,6 @@ import {
   CreditCard,
   Eye,
   FileText,
-  Info,
   MapPin,
   RefreshCw,
   Search,
@@ -19,7 +17,7 @@ import {
   UserCheck,
   UserX,
   X,
-  XCircle,
+  XCircle
 } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
@@ -431,104 +429,193 @@ function DvmfAccountApproval() {
     }
   };
 
-  const handleNotificationClick = async (notification) => {
-    const notifId = notification?.notif_id || notification?.id;
+  // HANDLE INDIVIDUAL NOTIFICATION CLICK - UPDATED WITH HORSE OPERATOR & KUTSERO
+const handleNotificationClick = async (notification) => {
+  const notifId = notification?.notif_id || notification?.id;
 
-    if (!notifId) {
-      console.warn("Notification ID is missing:", notification);
-    }
+  if (!notifId) {
+    console.warn("Notification ID is missing:", notification);
+  }
 
-    setNotifications((prev) =>
-      prev.map((notif) =>
-        notif.notif_id === notifId || notif.id === notifId
-          ? { ...notif, read: true }
-          : notif
-      )
-    );
+  setNotifications((prev) =>
+    prev.map((notif) =>
+      notif.notif_id === notifId || notif.id === notifId
+        ? { ...notif, read: true }
+        : notif
+    )
+  );
 
-    if (notifId) {
-      try {
-        await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
-          method: "POST",
-          credentials: "include",
-        });
-      } catch (err) {
-        console.error("Error marking notification as read:", err);
-      }
-    }
-
-    const message = (notification.message || "").toLowerCase();
-    const type = (notification.type || "").toLowerCase();
-
-    if (
-      type === "sos_emergency" ||
-      message.includes("sos") ||
-      message.includes("emergency") ||
-      message.includes("reported") ||
-      message.includes("urgent") ||
-      (message.includes("horse") && 
-       (message.includes("colic") || 
-        message.includes("injured") || 
-        message.includes("trauma")))
-    ) {
-      let sosId = null;
-      if (notification.related_id && notification.related_id.startsWith("sos_")) {
-        sosId = notification.related_id.replace("sos_", "");
-      }
-
-      navigate("/DvmfDashboard", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-          sosId: sosId,
-        },
+  if (notifId) {
+    try {
+      await fetch(`${API_BASE_URL}/mark_notification_read/${notifId}/`, {
+        method: "POST",
+        credentials: "include",
       });
-      return;
+    } catch (err) {
+      console.error("Error marking notification as read:", err);
+    }
+  }
+
+  const message = (notification.message || "").toLowerCase();
+  const type = (notification.type || "").toLowerCase();
+
+  // SOS & Emergency Notifications
+  if (
+    type === "sos_emergency" ||
+    message.includes("sos") ||
+    message.includes("emergency") ||
+    message.includes("reported") ||
+    message.includes("urgent") ||
+    (message.includes("horse") && 
+     (message.includes("colic") || 
+      message.includes("injured") || 
+      message.includes("trauma")))
+  ) {
+    let sosId = null;
+    if (notification.related_id && notification.related_id.startsWith("sos_")) {
+      sosId = notification.related_id.replace("sos_", "");
     }
 
-    if (
-      message.includes("new registration") ||
-      message.includes("new veterinarian approved") ||
-      message.includes("veterinarian approved") ||
-      message.includes("veterinarian declined") ||
-      message.includes("veterinarian registered") ||
-      message.includes("veterinarian pending")
-    ) {
-      navigate("/DvmfAccountApproval", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+    navigate("/DvmfDashboard", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        sosId: sosId,
+      },
+    });
+    return;
+  }
 
-    if (
-      message.includes("pending medical record access") ||
-      message.includes("requested access")
-    ) {
-      navigate("/DvmfDashboard", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  // VETERINARIAN Account Approvals
+  if (
+    message.includes("veterinarian") && 
+    (message.includes("registration") ||
+     message.includes("approved") ||
+     message.includes("declined") ||
+     message.includes("pending") ||
+     message.includes("needs approval"))
+  ) {
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        tab: "veterinarian", // ADDED: Specify veterinarian tab
+      },
+    });
+    return;
+  }
 
-    if (message.includes("comment")) {
-      navigate("/DvmfAnnouncement", {
-        state: {
-          highlightedNotification: notification,
-          shouldHighlight: true,
-        },
-      });
-      return;
-    }
+  // HORSE OPERATOR Account Approvals - NEW
+  if (
+    message.includes("horse-operator") ||
+    message.includes("horse operator") ||
+    (message.includes("horse") && message.includes("operator") && 
+     (message.includes("registration") || 
+      message.includes("approved") || 
+      message.includes("declined") || 
+      message.includes("pending")))
+  ) {
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        tab: "horse-operator", // ADDED: Specify horse-operator tab
+      },
+    });
+    return;
+  }
 
-    console.log("Notification clicked but no specific action:", notification);
-  };
+  // KUTSERO Account Approvals - NEW
+  if (
+    message.includes("kutsero") ||
+    (message.includes("registration") && message.includes("kutsero")) ||
+    (message.includes("kutsero") && 
+     (message.includes("approved") || 
+      message.includes("declined") || 
+      message.includes("pending")))
+  ) {
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        tab: "kutsero", // ADDED: Specify kutsero tab
+      },
+    });
+    return;
+  }
 
+  // GENERAL REGISTRATION (catch-all for any registration type)
+  if (
+    message.includes("new registration") ||
+    message.includes("needs approval") ||
+    (message.includes("registration") && 
+     (message.includes("approved") || 
+      message.includes("declined") || 
+      message.includes("pending")))
+  ) {
+    navigate("/DvmfAccountApproval", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  // MEDICAL RECORD ACCESS REQUESTS
+  if (
+    message.includes("medical record") ||
+    message.includes("medical access") ||
+    message.includes("requested access") ||
+    message.includes("medrec") ||
+    (message.includes("record") && message.includes("access"))
+  ) {
+    navigate("/DvmfDashboard", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        section: "medical-records", // Optional: specify section
+      },
+    });
+    return;
+  }
+
+  // COMMENT NOTIFICATIONS
+  if (message.includes("comment") || type === "comment") {
+    navigate("/DvmfAnnouncement", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+      },
+    });
+    return;
+  }
+
+  // APPOINTMENT NOTIFICATIONS (if you have them)
+  if (
+    message.includes("appointment") ||
+    message.includes("schedule") ||
+    type.includes("appointment")
+  ) {
+    navigate("/DvmfDashboard", {
+      state: {
+        highlightedNotification: notification,
+        shouldHighlight: true,
+        section: "appointments",
+      },
+    });
+    return;
+  }
+
+  // DEFAULT: Go to dashboard for other notifications
+  console.log("Notification clicked - navigating to dashboard:", notification);
+  navigate("/DvmfDashboard", {
+    state: {
+      highlightedNotification: notification,
+      shouldHighlight: true,
+    },
+  });
+};
   const handleNotificationsUpdate = (updatedNotifications) => {
     setNotifications(updatedNotifications);
   };

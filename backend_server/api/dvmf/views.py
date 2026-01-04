@@ -791,6 +791,90 @@ def get_current_user_id_endpoint(request):
         return Response({"error": str(e)}, status=500)
 
 # -------------------- GET VET NOTIFICATIONS --------------------
+from datetime import datetime, timedelta
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+import jwt
+import pytz
+
+# Manila Timezone
+manila_tz = pytz.timezone('Asia/Manila')
+
+def to_manila_time(dt):
+    """Convert datetime to Manila timezone"""
+    if isinstance(dt, str):
+        dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+    if dt.tzinfo is None:
+        dt = pytz.utc.localize(dt)
+    return dt.astimezone(manila_tz)
+
+def get_current_user_id_internal(request):
+    """Extract user ID from JWT token"""
+    try:
+        token = request.COOKIES.get("access_token")
+        if not token:
+            return None
+        
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        return user_id
+    except Exception as e:
+        print(f"Error getting user ID from token: {e}")
+        return None
+
+# -------------------- GET VET NOTIFICATIONS --------------------
+# -------------------- GET VET NOTIFICATIONS (DVMF VERSION) --------------------
+from datetime import datetime, timedelta
+from rest_framework.decorators import api_view
+from rest_framework.response import Response
+import jwt
+import pytz
+
+# Manila Timezone
+manila_tz = pytz.timezone('Asia/Manila')
+
+def to_manila_time(dt):
+    """Convert datetime to Manila timezone"""
+    if isinstance(dt, str):
+        dt = datetime.fromisoformat(dt.replace('Z', '+00:00'))
+    if dt.tzinfo is None:
+        dt = pytz.utc.localize(dt)
+    return dt.astimezone(manila_tz)
+
+def get_current_user_id_internal(request):
+    """Extract user ID from JWT token"""
+    try:
+        token = request.COOKIES.get("access_token")
+        if not token:
+            return None
+        
+        payload = jwt.decode(token, options={"verify_signature": False})
+        user_id = payload.get("sub")
+        return user_id
+    except Exception as e:
+        print(f"Error getting user ID from token: {e}")
+        return None
+
+# -------------------- GET CURRENT USER ID --------------------
+@api_view(["GET"])
+def get_current_user_id_endpoint(request):
+    """
+    Get only the user ID from JWT token.
+    """
+    try:
+        user_id = get_current_user_id_internal(request)
+        if not user_id:
+            return Response({"error": "User not authenticated"}, status=401)
+        
+        return Response({
+            "success": True,
+            "user_id": user_id
+        }, status=200)
+    except Exception as e:
+        print(f"Error getting user ID: {e}")
+        return Response({"error": str(e)}, status=500)
+
+# -------------------- GET VET NOTIFICATIONS (DVMF VERSION WITH COMMENT NOTIFICATIONS) --------------------
 @api_view(["GET"])
 def get_vetnotifications(request):
     try:
@@ -799,131 +883,110 @@ def get_vetnotifications(request):
             return Response({"error": "User not authenticated"}, status=401)
         
         print(f"\n{'='*60}")
-        print(f"FETCHING NOTIFICATIONS for user: {current_user_id}")
+        print(f"DVMF NOTIFICATIONS for user: {current_user_id}")
         print(f"{'='*60}")
         
+        # ============== GET USER ROLE ==============
+        current_user_role = None
+        try:
+            user_res = sr_client.table("users") \
+                .select("role") \
+                .eq("id", current_user_id) \
+                .single() \
+                .execute()
+            
+            if user_res.data:
+                current_user_role = user_res.data.get("role")
+                print(f"  User role: {current_user_role}")
+        except Exception as e:
+            print(f"  Error getting user role: {e}")
+        
+        # ============== CHECK IF USER IS DVMF/ADMIN ==============
+        is_dvmf_admin = False
+        try:
+            # Check if user is DVMF
+            dvmf_check = sr_client.table("dvmf_user_profile") \
+                .select("dvmf_id") \
+                .eq("dvmf_id", current_user_id) \
+                .execute()
+            
+            is_dvmf = len(dvmf_check.data or []) > 0
+            is_admin = current_user_role in ["Ctu-Admin", "Super-Admin"]
+            is_dvmf_admin = is_dvmf or is_admin
+            
+            print(f"  Is DVMF: {is_dvmf}, Is Admin: {is_admin}, Is DVMF/Admin: {is_dvmf_admin}")
+        except Exception as e:
+            print(f"  Error checking DVMF status: {e}")
+        
+        # ============== GET EXISTING NOTIFICATIONS ==============
+        existing_notifs = {}
+        try:
+            existing_notifs_res = sr_client.table("notification") \
+                .select("related_id") \
+                .eq("id", current_user_id) \
+                .execute()
+            
+            for notif in (existing_notifs_res.data or []):
+                related_id = notif.get("related_id")
+                if related_id:
+                    existing_notifs[related_id] = True
+            
+            print(f"  Found {len(existing_notifs)} existing notifications")
+        except Exception as e:
+            print(f"  Error fetching existing notifications: {e}")
+            existing_notifs = {}
+
         notifications_to_insert = []
 
-        # Get current user info
-        user_res = sr_client.table("users") \
-            .select("id, role") \
-            .eq("id", current_user_id) \
-            .execute()
-        
-        current_user_role = None
-        if user_res.data:
-            current_user_role = user_res.data[0].get("role")
-            print(f"Current user role: {current_user_role}")
-
-        # Helper to add notifications - EACH USER GETS THEIR OWN COPY
-        def add_notification(user_id, message, notif_type, event_id, created_at=None):
-            if not user_id:
+        # ============== ADD NOTIFICATION FUNCTION ==============
+        def add_notification(message, notif_type, event_id, created_at=None):
+            """Add notification for current user if it doesn't exist"""
+            # Create UNIQUE related_id with timestamp
+            if created_at:
+                dt_ph = to_manila_time(created_at)
+                timestamp = dt_ph.strftime("%Y%m%d%H%M")
+            else:
+                dt_ph = datetime.now(manila_tz)
+                timestamp = dt_ph.strftime("%Y%m%d%H%M%S")
+            
+            # UNIQUE related_id
+            related_id = f"dvmf_{event_id}_{timestamp}_{current_user_id}"
+            
+            # Check if already exists
+            if related_id in existing_notifs:
+                print(f"    [SKIP] Already has: {event_id}")
                 return False
-            
-            # Generate UNIQUE related_id PER USER
-            import hashlib
-            import json
-            
-            # Create fingerprint: event_id + message + user_id
-            # This ensures EACH USER gets their OWN UNIQUE notification
-            fingerprint_data = {
-                "event_id": event_id,
-                "message": message[:100],  # First 100 chars
-                "user_id": user_id  # INCLUDING USER_ID makes it unique per user
-            }
-            fingerprint = hashlib.md5(json.dumps(fingerprint_data, sort_keys=True).encode()).hexdigest()
-            
-            # Create unique related_id WITH USER_ID in it
-            related_id = f"notif_{user_id}_{fingerprint[:12]}"
-            
-            # Check if THIS SPECIFIC USER already has THIS EXACT notification
-            try:
-                existing_res = sr_client.table("notification") \
-                    .select("notif_id") \
-                    .eq("id", user_id) \
-                    .eq("related_id", related_id) \
-                    .execute()
-                
-                if existing_res.data and len(existing_res.data) > 0:
-                    # THIS USER already has this EXACT notification
-                    print(f"  User {user_id[:8]}... already has: {message[:30]}...")
-                    return False
-                    
-            except Exception as e:
-                print(f"  Error checking duplicate: {e}")
-                # On error, proceed with different related_id
-                related_id = f"notif_error_{user_id}_{event_id}"
-            
-            dt_ph = to_manila_time(created_at) if created_at else datetime.now(manila_tz)
+
+            # Add to insert list
             notifications_to_insert.append({
-                "id": user_id,
+                "id": current_user_id,
                 "notif_message": message,
                 "notif_date": dt_ph.strftime("%Y-%m-%d"),
                 "notif_time": dt_ph.strftime("%H:%M:%S"),
-                "notif_read": False,  # Each user starts with unread
+                "notif_read": False,
                 "notification_type": notif_type,
-                "related_id": related_id  # UNIQUE PER USER
+                "related_id": related_id
             })
-            print(f"  ✓ Adding for user {user_id[:8]}...: {notif_type} - {message[:50]}...")
+            
+            # Mark as existing
+            existing_notifs[related_id] = True
+            
+            print(f"  ✓ Adding: {notif_type} - {message[:50]}...")
             return True
 
-        # Get ALL administrative users (CTU, DVMF, Admin)
-        print(f"\n[1] Getting all administrative users...")
-        try:
-            # Get ALL CTU users
-            ctu_users_res = sr_client.table("ctu_vet_profile") \
-                .select("ctu_id") \
-                .execute()
-            ctu_user_ids = [user.get("ctu_id") for user in (ctu_users_res.data or []) if user.get("ctu_id")]
-            print(f"  Found {len(ctu_user_ids)} CTU users")
-            
-            # Get ALL DVMF users
-            dvmf_users_res = sr_client.table("dvmf_user_profile") \
-                .select("dvmf_id") \
-                .execute()
-            dvmf_user_ids = [user.get("dvmf_id") for user in (dvmf_users_res.data or []) if user.get("dvmf_id")]
-            print(f"  Found {len(dvmf_user_ids)} DVMF users")
-            
-            # Get ALL Admin users (Ctu-Admin)
-            admin_users_res = sr_client.table("users") \
-                .select("id") \
-                .eq("role", "Ctu-Admin") \
-                .execute()
-            admin_user_ids = [user.get("id") for user in (admin_users_res.data or []) if user.get("id")]
-            print(f"  Found {len(admin_user_ids)} Admin users")
-            
-            # Combine ALL administrative users
-            all_admin_users = ctu_user_ids + dvmf_user_ids + admin_user_ids
-            all_admin_users = list(set(all_admin_users))  # Remove duplicates
-            print(f"  Total administrative users: {len(all_admin_users)}")
-            
-        except Exception as e:
-            print(f"  Error getting admin users: {e}")
-            all_admin_users = []
+        # ============== TIME FILTER ==============
+        time_filter = (datetime.now(manila_tz) - timedelta(hours=24)).isoformat()
+        print(f"  Time filter: Last 24 hours")
 
-        # Helper to notify ALL administrative users - EACH GETS THEIR OWN COPY
-        def notify_all_admins(message, notif_type, event_id, created_at=None):
-            if not all_admin_users:
-                return
-            
-            added_count = 0
-            for admin_user_id in all_admin_users:
-                if add_notification(admin_user_id, message, notif_type, event_id, created_at):
-                    added_count += 1
-            
-            if added_count > 0:
-                print(f"    ✅ Notified {added_count}/{len(all_admin_users)} admin users")
-            else:
-                print(f"    ⚠️ All admins already have this notification")
-
-        # ---------------- VET REGISTRATION/APPROVAL/DECLINE ----------------
-        print(f"\n[2] Checking VET REGISTRATION notifications...")
+        # ============== VET REGISTRATION NOTIFICATIONS ==============
+        print(f"\n[1] Checking VET REGISTRATIONS...")
         try:
             vets_res = sr_client.table("vet_profile") \
                 .select("vet_id, vet_fname, vet_lname, created_at, users(id, status, role)") \
+                .gt("created_at", time_filter) \
                 .execute()
             
-            print(f"  Found {len(vets_res.data or [])} vet profiles")
+            print(f"  Found {len(vets_res.data or [])} vet profiles in last 24h")
             
             for vet in (vets_res.data or []):
                 users = vet.get("users") or {}
@@ -935,34 +998,35 @@ def get_vetnotifications(request):
                 vet_user_id = users.get("id")
                 
                 if status == "pending":
-                    print(f"    Processing pending vet: Dr. {vet_name}")
+                    print(f"    Pending vet: Dr. {vet_name}")
                     
-                    # Notify ALL administrative users - EACH GETS THEIR OWN COPY
-                    event_id = f"vet_pending_{vet['vet_id']}"
-                    notify_all_admins(
-                        f"New veterinarian registration: Dr. {vet_name} needs approval.",
-                        "vet_registration",
-                        event_id,
-                        vet.get("created_at")
-                    )
+                    # ONLY DVMF/ADMIN should get pending vet notifications
+                    if is_dvmf_admin:
+                        event_id = f"vet_pending_{vet['vet_id']}"
+                        add_notification(
+                            f"New veterinarian registration: Dr. {vet_name} needs approval.",
+                            "vet_registration",
+                            event_id,
+                            vet.get("created_at")
+                        )
                 
                 elif status in ["approved", "declined"]:
-                    print(f"    Processing vet {status}: Dr. {vet_name}")
+                    print(f"    Vet {status}: Dr. {vet_name}")
                     
-                    # Notify ALL administrative users - EACH GETS THEIR OWN COPY
-                    event_id = f"vet_{status}_{vet['vet_id']}_admin"
-                    notify_all_admins(
-                        f"Veterinarian Dr. {vet_name} has been {status}.",
-                        "vet_status_update",
-                        event_id,
-                        vet.get("created_at")
-                    )
+                    # 1. For DVMF/Admin about status change
+                    if is_dvmf_admin:
+                        event_id = f"vet_{status}_{vet['vet_id']}_admin"
+                        add_notification(
+                            f"Veterinarian Dr. {vet_name} has been {status}.",
+                            "vet_status_update",
+                            event_id,
+                            vet.get("created_at")
+                        )
                     
-                    # Also notify the VET themselves - THEY GET THEIR OWN COPY
-                    if vet_user_id:
+                    # 2. For the vet themselves (if current user is the vet)
+                    if current_user_id == vet_user_id:
                         event_id = f"vet_{status}_{vet['vet_id']}_self"
                         add_notification(
-                            vet_user_id,
                             f"Your veterinarian registration has been {status}.",
                             status,
                             event_id,
@@ -970,185 +1034,365 @@ def get_vetnotifications(request):
                         )
                         
         except Exception as e:
-            print(f"  Error: {e}")
+            print(f"  Vet notifications error: {e}")
 
-        # ---------------- MEDICAL RECORD ACCESS REQUESTS ----------------
-        print(f"\n[3] Checking MEDICAL RECORD REQUEST notifications...")
+        # ============== MEDICAL RECORD REQUESTS ==============
+        print(f"\n[2] Checking MEDICAL RECORD REQUESTS...")
         try:
             medreq_res = sr_client.table("medrec_access_request") \
                 .select("request_id, vet_profile(vet_fname, vet_lname, users(id)), horse_profile(horse_name, horse_op_profile(op_fname, op_lname, op_id)), requested_at, request_status") \
+                .gt("requested_at", time_filter) \
                 .execute()
             
-            print(f"  Found {len(medreq_res.data or [])} medical record access requests")
+            print(f"  Found {len(medreq_res.data or [])} medical record requests in last 24h")
             
             for req in (medreq_res.data or []):
                 request_status = req.get("request_status","").lower()
                 vet = req.get("vet_profile") or {}
                 vet_name = f"{vet.get('vet_fname','')} {vet.get('vet_lname','')}".strip()
+                vet_user_data = vet.get("users") or {}
+                vet_user_id = vet_user_data.get("id") if isinstance(vet_user_data, dict) else None
                 
                 horse_profile = req.get("horse_profile") or {}
                 horse_name = horse_profile.get("horse_name","Unknown Horse")
                 
-                # Get horse owner info
                 horse_op_profile = horse_profile.get("horse_op_profile") or {}
                 horse_owner_name = f"{horse_op_profile.get('op_fname','')} {horse_op_profile.get('op_lname','')}".strip()
                 horse_owner_id = horse_op_profile.get("op_id")
                 
                 if request_status == "pending":
-                    print(f"    Processing pending medical request: Dr. {vet_name} for {horse_name}")
+                    print(f"    Pending medical request: Dr. {vet_name} for {horse_name}")
                     
-                    # Notify ALL administrative users - EACH GETS THEIR OWN COPY
-                    event_id = f"medreq_pending_{req['request_id']}"
-                    notify_all_admins(
-                        f"Medical record access requested by Dr. {vet_name} for {horse_name} (Owner: {horse_owner_name}).",
-                        "medrec_request",
-                        event_id,
-                        req.get("requested_at")
-                    )
+                    # ONLY DVMF/Admin should get pending requests
+                    if is_dvmf_admin:
+                        event_id = f"medreq_pending_{req['request_id']}"
+                        add_notification(
+                            f"Medical record access requested by Dr. {vet_name} for {horse_name} (Owner: {horse_owner_name}).",
+                            "medrec_request",
+                            event_id,
+                            req.get("requested_at")
+                        )
                     
                 elif request_status in ["approved", "declined"]:
-                    print(f"    Processing medical request {request_status}: Dr. {vet_name} for {horse_name}")
+                    print(f"    Medical request {request_status}: Dr. {vet_name} for {horse_name}")
                     
-                    # Notify ALL administrative users - EACH GETS THEIR OWN COPY
-                    event_id = f"medreq_{request_status}_{req['request_id']}_admin"
-                    notify_all_admins(
-                        f"Medical record request by Dr. {vet_name} for {horse_name} has been {request_status}.",
-                        "medrec_status_update",
-                        event_id,
-                        req.get("requested_at")
-                    )
+                    # 1. DVMF/Admin about status change
+                    if is_dvmf_admin:
+                        event_id = f"medreq_{request_status}_{req['request_id']}_admin"
+                        add_notification(
+                            f"Medical record request by Dr. {vet_name} for {horse_name} has been {request_status}.",
+                            "medrec_status_update",
+                            event_id,
+                            req.get("requested_at")
+                        )
+                    
+                    # 2. The requesting vet
+                    if vet_user_id and current_user_id == vet_user_id:
+                        event_id = f"medreq_{request_status}_{req['request_id']}_vet"
+                        add_notification(
+                            f"Your medical record request for {horse_name} has been {request_status}.",
+                            request_status,
+                            event_id,
+                            req.get("requested_at")
+                        )
+                    
+                    # 3. The horse owner
+                    if horse_owner_id and current_user_id == horse_owner_id:
+                        event_id = f"medreq_{request_status}_{req['request_id']}_owner"
+                        add_notification(
+                            f"Medical record request by Dr. {vet_name} for your horse {horse_name} has been {request_status}.",
+                            "medrec_status_update",
+                            event_id,
+                            req.get("requested_at")
+                        )
                         
         except Exception as e:
-            print(f"  Error: {e}")
+            print(f"  Medical request notifications error: {e}")
 
-        # ---------------- COMMENT NOTIFICATIONS ----------------
-        print(f"\n[4] Checking COMMENT notifications...")
+        # ============== SOS REQUESTS ==============
+        print(f"\n[3] Checking SOS REQUESTS...")
         try:
-            comments_res = sr_client.table("comment") \
-                .select("id, comment_text, comment_date, user_id, announcement_id") \
+            sos_res = sr_client.table("sos_requests") \
+                .select("id, user_name, emergency_type, location_text, created_at, status, description, user_id") \
+                .gt("created_at", time_filter) \
+                .limit(20) \
                 .execute()
             
-            print(f"  Found {len(comments_res.data or [])} total comments")
+            print(f"  Found {len(sos_res.data or [])} SOS requests in last 24h")
             
-            for comment in (comments_res.data or []):
-                commenter_id = comment.get("user_id")
-                ann_id = comment.get("announcement_id")
+            for sos in (sos_res.data or []):
+                status = sos.get("status", "").lower()
+                description = sos.get("description", "")
+                sos_user_id = sos.get("user_id")
                 
-                if not commenter_id or not ann_id:
+                if len(description) > 100:
+                    description = description[:100] + "..."
+                
+                if status == "pending":
+                    print(f"    Pending SOS: {sos.get('user_name','Unknown')}")
+                    
+                    if is_dvmf_admin:
+                        event_id = f"sos_pending_{sos['id']}_admin"
+                        add_notification(
+                            f"🚨 SOS EMERGENCY: {sos.get('user_name','Unknown')} needs help! "
+                            f"Type: {sos.get('emergency_type','Emergency')}, "
+                            f"Location: {sos.get('location_text','Unknown')}. {description}",
+                            "sos_request", 
+                            event_id, 
+                            sos.get("created_at")
+                        )
+                
+                elif status in ["responded", "resolved", "cancelled"]:
+                    print(f"    SOS {status}: {sos.get('user_name','Unknown')}")
+                    
+                    # 1. DVMF/Admin about status update
+                    if is_dvmf_admin:
+                        event_id = f"sos_{status}_{sos['id']}_admin"
+                        add_notification(
+                            f"SOS request by {sos.get('user_name','Unknown')} has been {status}. "
+                            f"Type: {sos.get('emergency_type','Emergency')}",
+                            "sos_status_update", 
+                            event_id, 
+                            sos.get("created_at")
+                        )
+                    
+                    # 2. The person who made the SOS request
+                    if sos_user_id and current_user_id == sos_user_id:
+                        event_id = f"sos_{status}_{sos['id']}_user"
+                        add_notification(
+                            f"Your SOS request has been {status}. Help is on the way!",
+                            status,
+                            event_id,
+                            sos.get("created_at")
+                        )
+        except Exception as e:
+            print(f"  SOS notifications error: {e}")
+
+        # ============== REGISTRATION NOTIFICATIONS ==============
+        print(f"\n[4] Checking REGISTRATIONS...")
+        for role in ["Kutsero", "Horse-Operator"]:
+            try:
+                pending_res = sr_client.table("users") \
+                    .select("id, created_at") \
+                    .eq("role", role) \
+                    .eq("status", "pending") \
+                    .gt("created_at", time_filter) \
+                    .execute()
+                    
+                print(f"  Found {len(pending_res.data or [])} pending {role} users")
+                
+                for user in (pending_res.data or []):
+                    try:
+                        if role == "Kutsero":
+                            profile_table = "kutsero_profile"
+                            id_field = "kutsero_id"
+                            fname_field = "kutsero_fname"
+                            lname_field = "kutsero_lname"
+                        else:
+                            profile_table = "horse_op_profile"
+                            id_field = "op_id"
+                            fname_field = "op_fname"
+                            lname_field = "op_lname"
+                        
+                        profile_res = sr_client.table(profile_table) \
+                            .select(f"{fname_field}, {lname_field}") \
+                            .eq(id_field, user['id']) \
+                            .limit(1) \
+                            .execute()
+                        
+                        name = "Unnamed User"
+                        if profile_res.data and len(profile_res.data) > 0:
+                            pdata = profile_res.data[0]
+                            name = f"{pdata.get(fname_field,'')} {pdata.get(lname_field,'')}".strip()
+                            if not name.strip():
+                                name = "Unnamed User"
+                        
+                        if is_dvmf_admin:
+                            event_id = f"reg_{role.lower().replace('-', '_')}_{user['id']}"
+                            add_notification(
+                                f"New {role.lower()} registration: {name} needs approval.", 
+                                "registration", 
+                                event_id, 
+                                user.get("created_at")
+                            )
+                    except Exception as e:
+                        print(f"  Error processing {user['id']}: {e}")
+                        continue
+            except Exception as e:
+                print(f"  {role} registration error: {e}")
+
+        # ============== COMMENT NOTIFICATIONS ==============
+        print(f"\n[5] Checking COMMENT NOTIFICATIONS...")
+        try:
+            comment_res = sr_client.table("comment") \
+                .select("id, comment_text, user_id, created_at, announcement_id") \
+                .gt("created_at", time_filter) \
+                .limit(20) \
+                .execute()
+            
+            print(f"  Found {len(comment_res.data or [])} comments in last 24h")
+            
+            for comment in (comment_res.data or []):
+                commenter_id = comment.get("user_id")
+                announcement_id = comment.get("announcement_id")
+                
+                if not commenter_id or not announcement_id:
                     continue
                 
-                # Fetch announcement owner and details
+                # Skip if commenter is the current user
+                if commenter_id == current_user_id:
+                    continue
+                
+                # Get commenter name
+                commenter_name = "Unknown User"
                 try:
-                    announcement_res = sr_client.table("announcement").select("*") \
-                        .eq("announce_id", ann_id).execute()
+                    # Check different user types to get proper name
+                    
+                    # Check if commenter is a vet
+                    vet_res = sr_client.table("vet_profile") \
+                        .select("vet_fname, vet_lname") \
+                        .eq("vet_id", commenter_id) \
+                        .execute()
+                    
+                    if vet_res.data and len(vet_res.data) > 0:
+                        vet_data = vet_res.data[0]
+                        commenter_name = f"Dr. {vet_data.get('vet_fname','')} {vet_data.get('vet_lname','')}".strip()
+                    
+                    else:
+                        # Check if commenter is kutsero
+                        kutsero_res = sr_client.table("kutsero_profile") \
+                            .select("kutsero_fname, kutsero_lname") \
+                            .eq("kutsero_id", commenter_id) \
+                            .execute()
+                        
+                        if kutsero_res.data and len(kutsero_res.data) > 0:
+                            kutsero_data = kutsero_res.data[0]
+                            commenter_name = f"{kutsero_data.get('kutsero_fname','')} {kutsero_data.get('kutsero_lname','')}".strip()
+                        
+                        else:
+                            # Check if commenter is horse operator
+                            op_res = sr_client.table("horse_op_profile") \
+                                .select("op_fname, op_lname") \
+                                .eq("op_id", commenter_id) \
+                                .execute()
+                            
+                            if op_res.data and len(op_res.data) > 0:
+                                op_data = op_res.data[0]
+                                commenter_name = f"{op_data.get('op_fname','')} {op_data.get('op_lname','')}".strip()
+                            
+                            else:
+                                # Check if commenter is DVMF
+                                dvmf_res = sr_client.table("dvmf_user_profile") \
+                                    .select("dvmf_fname, dvmf_lname") \
+                                    .eq("dvmf_id", commenter_id) \
+                                    .execute()
+                                
+                                if dvmf_res.data and len(dvmf_res.data) > 0:
+                                    dvmf_data = dvmf_res.data[0]
+                                    commenter_name = f"DVMF {dvmf_data.get('dvmf_fname','')} {dvmf_data.get('dvmf_lname','')}".strip()
+                                
+                                else:
+                                    # Check if commenter is admin
+                                    admin_res = sr_client.table("users") \
+                                        .select("role") \
+                                        .eq("id", commenter_id) \
+                                        .in_("role", ["Ctu-Admin", "Super-Admin"]) \
+                                        .execute()
+                                    
+                                    if admin_res.data and len(admin_res.data) > 0:
+                                        commenter_name = f"Admin {commenter_id[:8]}"
+                                        
+                except Exception as e:
+                    print(f"  Error getting commenter name: {e}")
+                
+                # Get announcement details
+                try:
+                    announcement_res = sr_client.table("announcement") \
+                        .select("announce_title, user_id") \
+                        .eq("announce_id", announcement_id) \
+                        .single() \
+                        .execute()
                     
                     if not announcement_res.data:
                         continue
                     
-                    announcement = announcement_res.data[0]
-                    post_owner_id = announcement.get("user_id")
+                    announcement = announcement_res.data
                     post_title = announcement.get("announce_title", "Untitled Post")
+                    post_owner_id = announcement.get("user_id")
                     
-                    if not post_owner_id or post_owner_id == commenter_id:
-                        continue
+                    # Prepare comment preview
+                    comment_text = comment.get("comment_text", "")
+                    message_preview = comment_text[:50]
+                    if len(comment_text) > 50:
+                        message_preview += "..."
+                    
+                    # ============== WHO GETS COMMENT NOTIFICATIONS? ==============
+                    
+                    # 1. DVMF/Admin users get notified about ALL comments
+                    if is_dvmf_admin:
+                        event_id = f"comment_{comment['id']}_admin"
+                        add_notification(
+                            f"{commenter_name} commented: '{message_preview}' on post '{post_title}'",
+                            "comment",
+                            event_id,
+                            comment.get("created_at")
+                        )
+                    
+                    # 2. Post owner gets notified about comments on their post
+                    if post_owner_id and current_user_id == post_owner_id and commenter_id != post_owner_id:
+                        event_id = f"comment_{comment['id']}_owner"
+                        add_notification(
+                            f"{commenter_name} commented on your post '{post_title}': '{message_preview}'",
+                            "comment",
+                            event_id,
+                            comment.get("created_at")
+                        )
                     
                 except Exception as e:
+                    print(f"  Error getting announcement details: {e}")
                     continue
-
-                # Get commenter name
-                commenter_name = "Someone"
-                try:
-                    kutsero_res = sr_client.table("kutsero_profile") \
-                        .select("kutsero_fname,kutsero_lname") \
-                        .eq("kutsero_id", commenter_id).execute()
                     
-                    if kutsero_res.data:
-                        kutsero_data = kutsero_res.data[0]
-                        commenter_name = f"{kutsero_data.get('kutsero_fname','')} {kutsero_data.get('kutsero_lname','')}".strip()
-                    else:
-                        op_res = sr_client.table("horse_op_profile") \
-                            .select("op_fname,op_lname") \
-                            .eq("op_id", commenter_id).execute()
-                        
-                        if op_res.data:
-                            op_data = op_res.data[0]
-                            commenter_name = f"{op_data.get('op_fname','')} {op_data.get('op_lname','')}".strip()
-                        else:
-                            # Check if vet
-                            vet_res = sr_client.table("vet_profile") \
-                                .select("vet_fname,vet_lname") \
-                                .eq("vet_id", commenter_id).execute()
-                            
-                            if vet_res.data:
-                                vet_data = vet_res.data[0]
-                                commenter_name = f"Dr. {vet_data.get('vet_fname','')} {vet_data.get('vet_lname','')}".strip()
-                except:
-                    pass
-                
-                comment_text = comment.get('comment_text','')[:50]
-                if len(comment.get('comment_text','')) > 50:
-                    comment_text += "..."
-                
-                # Notify ALL administrative users about comment - EACH GETS THEIR OWN COPY
-                event_id = f"comment_{comment['id']}_admin"
-                notify_all_admins(
-                    f"{commenter_name} commented '{comment_text}' on post: '{post_title}'",
-                    "comment",
-                    event_id,
-                    comment.get("comment_date")
-                )
-                
-                # Also notify post owner - THEY GET THEIR OWN COPY
-                event_id = f"comment_{comment['id']}_owner"
-                add_notification(
-                    post_owner_id,
-                    f"{commenter_name} commented: '{comment_text}' on your post '{post_title}'",
-                    "comment",
-                    event_id,
-                    comment.get("comment_date")
-                )
         except Exception as e:
-            print(f"  Error: {e}")
+            print(f"  Comment notifications error: {e}")
 
-        # ---------------- BULK INSERT ----------------
-        print(f"\n[5] Inserting new notifications...")
+        # ============== INSERT NOTIFICATIONS ==============
+        print(f"\n[6] Inserting notifications...")
         if notifications_to_insert:
-            try:
-                print(f"  Inserting {len(notifications_to_insert)} new notifications")
-                
-                # Insert in batches
-                batch_size = 50
-                inserted_count = 0
-                for i in range(0, len(notifications_to_insert), batch_size):
-                    batch = notifications_to_insert[i:i + batch_size]
+            print(f"  Inserting {len(notifications_to_insert)} notifications")
+            
+            batch_size = 10
+            inserted_count = 0
+            
+            for i in range(0, len(notifications_to_insert), batch_size):
+                try:
+                    batch = notifications_to_insert[i:i+batch_size]
                     result = sr_client.table("notification").insert(batch).execute()
                     inserted_count += len(batch)
-                    print(f"    Inserted batch {i//batch_size + 1}: {len(batch)} notifications")
-                
-                print(f"  ✓ Successfully inserted {inserted_count} notifications")
-            except Exception as e:
-                print(f"  ✗ Error inserting: {e}")
+                    print(f"  Inserted batch {i//batch_size + 1} ({len(batch)} notifications)")
+                except Exception as e:
+                    print(f"  Error inserting batch {i//batch_size + 1}: {e}")
+            
+            print(f"  Total inserted: {inserted_count} notifications")
         else:
-            print(f"  No new notifications to insert")
+            print("  No new notifications to insert")
 
-        # ---------------- FETCH NOTIFICATIONS FOR CURRENT USER ----------------
-        print(f"\n[6] Fetching notifications for CURRENT USER ({current_user_id})...")
+        # ============== FETCH FINAL NOTIFICATIONS ==============
+        print(f"\n[7] Fetching user notifications...")
         
-        all_notifs_res = sr_client.table("notification").select("*") \
-                            .eq("id", current_user_id) \
-                            .order("notif_date", desc=True) \
-                            .order("notif_time", desc=True) \
-                            .execute()
-        
-        print(f"  Query result: {len(all_notifs_res.data or [])} notifications found")
-        
+        all_notifs_res = sr_client.table("notification") \
+            .select("*") \
+            .eq("id", current_user_id) \
+            .order("notif_date", desc=True) \
+            .order("notif_time", desc=True) \
+            .limit(100) \
+            .execute()
+
         notifications = []
         for row in (all_notifs_res.data or []):
             try:
                 date_str = row.get("notif_date", "")
                 time_str = row.get("notif_time", "")
                 
-                # Handle time format
                 if time_str and isinstance(time_str, str):
                     if len(time_str.split(':')) == 3:
                         time_part = time_str
@@ -1169,22 +1413,10 @@ def get_vetnotifications(request):
                 print(f"    Error processing notification: {e}")
                 continue
 
-        print(f"\n[7] FINAL RESULT for user {current_user_id}")
+        print(f"\n[8] FINAL RESULT")
         print(f"  Total notifications: {len(notifications)}")
-        
-        # Show unread count
-        unread_count = sum(1 for n in notifications if not n.get("read", True))
-        print(f"  Unread notifications: {unread_count}")
-        
-        # Show notification types
-        type_counts = {}
-        for notif in notifications:
-            notif_type = notif.get("type", "unknown")
-            type_counts[notif_type] = type_counts.get(notif_type, 0) + 1
-        
-        for notif_type, count in type_counts.items():
-            print(f"    {notif_type}: {count}")
-        
+        unread = sum(1 for n in notifications if not n.get('read', True))
+        print(f"  Unread: {unread}")
         print(f"{'='*60}\n")
         
         return Response(notifications, status=200)
