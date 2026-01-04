@@ -1,7 +1,7 @@
 "use client"
 
 import Sidebar from "@/components/CtuSidebar"
-import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, Eye, MapPin, Phone, RefreshCw, User, X, XCircle } from "lucide-react"
+import { AlertTriangle, Bell, CheckCircle, ClipboardList, Clock, Eye, MapPin, Phone, RefreshCw, User, X, XCircle, ExternalLink } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./CtuMessage"
@@ -260,10 +260,15 @@ function CtuDashboard() {
       })
       .then((data) => {
         let sosData = [];
-        if (Array.isArray(data)) sosData = data;
-        else if (data.sos_requests && Array.isArray(data.sos_requests)) sosData = data.sos_requests;
-        else if (data.results && Array.isArray(data.results)) sosData = data.results;
-        else {
+        if (Array.isArray(data)) {
+          sosData = data;
+        } else if (data.sos_requests && Array.isArray(data.sos_requests)) {
+          sosData = data.sos_requests;
+        } else if (data.results && Array.isArray(data.results)) {
+          sosData = data.results;
+        } else if (data.data && Array.isArray(data.data)) {
+          sosData = data.data;
+        } else {
           setSosEmergencies([]);
           setSosLoading(false);
           return;
@@ -286,26 +291,39 @@ function CtuDashboard() {
             }
           } catch {}
 
+          // Handle image URL
+          let sos_image_url = null;
+          if (item.sos_image_url) {
+            sos_image_url = item.sos_image_url;
+          } else if (item.sos_image) {
+            const imagePath = item.sos_image;
+            if (typeof imagePath === 'string') {
+              const cleanUrl = imagePath.trim().replace(/^\[|\]|"|'$/g, '');
+              sos_image_url = cleanUrl.startsWith("http") ? cleanUrl : null;
+            }
+          }
+
           return {
             id: item.id,
-            type: item.type || "Emergency",
-            contact: item.contact || "Unknown Contact",
-            phone: item.phone || "N/A",
-            location: item.location || "No location provided",
+            type: item.type || item.emergency_type || "Emergency",
+            contact: item.contact || item.user_name || "Unknown Contact",
+            phone: item.phone || item.contact_number || "N/A",
+            location: item.location || item.location_text || "No location provided",
             time: formattedTime,
-            urgent: item.urgent === true || item.status === "pending",
+            urgent: item.urgent === true || (item.status && item.status.toLowerCase() === "pending"),
             description: item.description || "No description provided",
-            sos_image_url: item.sos_image_url || null,
-            horse_status: item.horse_status || "Unknown",
-            additional_info: item.additional_info || ""
+            sos_image_url: sos_image_url,
+            latitude: item.latitude,
+            longitude: item.longitude
           };
         });
 
         setSosEmergencies(formatted);
         setSosLoading(false);
       })
-      .catch(() => {
+      .catch((error) => {
         setSosLoading(false);
+        setSosEmergencies([]);
       });
   }, []);
 
@@ -366,110 +384,103 @@ function CtuDashboard() {
   }
 
   // HANDLE INDIVIDUAL NOTIFICATION CLICK
-const handleNotificationClick = async (notification) => {
-  const notifId = notification?.notif_id || notification?.id; // fallback support
+  const handleNotificationClick = async (notification) => {
+    const notifId = notification?.notif_id || notification?.id;
 
-  if (!notifId) {
-    console.warn("Notification ID is missing:", notification);
-  }
+    if (!notifId) {
+      console.warn("Notification ID is missing:", notification);
+    }
 
-  // Mark as read in frontend immediately
-  setNotifications((prev) =>
-    prev.map((notif) =>
-      notif.notif_id === notifId || notif.id === notifId
-        ? { ...notif, read: true }
-        : notif
-    )
-  );
+    setNotifications((prev) =>
+      prev.map((notif) =>
+        notif.notif_id === notifId || notif.id === notifId
+          ? { ...notif, read: true }
+          : notif
+      )
+    );
 
-  // Mark as read in backend (only if valid ID)
-  if (notifId) {
-    try {
-      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
-        method: "POST",
-        credentials: "include",
+    if (notifId) {
+      try {
+        await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+          method: "POST",
+          credentials: "include",
+        });
+      } catch (err) {
+        console.error("Error marking notification as read:", err);
+      }
+    }
+
+    const message = (notification.message || "").toLowerCase();
+    const type = (notification.type || "").toLowerCase();
+
+    if (
+      type === "sos_emergency" ||
+      message.includes("sos") ||
+      message.includes("emergency") ||
+      message.includes("reported") ||
+      message.includes("urgent") ||
+      (message.includes("horse") && 
+       (message.includes("colic") || 
+        message.includes("injured") || 
+        message.includes("trauma")))
+    ) {
+      let sosId = null;
+      if (notification.related_id && notification.related_id.startsWith("sos_")) {
+        sosId = notification.related_id.replace("sos_", "");
+      }
+      
+      navigate("/CtuDashboard", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          sosId: sosId,
+        },
       });
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
+      return;
     }
-  }
 
-  const message = (notification.message || "").toLowerCase();
-  const type = (notification.type || "").toLowerCase();
-
-  // Navigate for SOS emergency notifications
-  if (
-    type === "sos_emergency" ||
-    message.includes("sos") ||
-    message.includes("emergency") ||
-    message.includes("reported") ||
-    message.includes("urgent") ||
-    (message.includes("horse") && 
-     (message.includes("colic") || 
-      message.includes("injured") || 
-      message.includes("trauma")))
-  ) {
-    // Extract SOS ID from related_id if available
-    let sosId = null;
-    if (notification.related_id && notification.related_id.startsWith("sos_")) {
-      sosId = notification.related_id.replace("sos_", "");
+    if (
+      message.includes("new registration") ||
+      message.includes("new veterinarian approved") ||
+      message.includes("veterinarian approved") ||
+      message.includes("veterinarian declined") ||
+      message.includes("veterinarian registered") ||
+      message.includes("veterinarian pending")
+    ) {
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
     }
-    
-    navigate("/CtuDashboard", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        sosId: sosId, // Pass the specific SOS ID if available
-      },
-    });
-    return;
-  }
 
-  // Navigate for account-related notifications
-  if (
-    message.includes("new registration") ||
-    message.includes("new veterinarian approved") ||
-    message.includes("veterinarian approved") ||
-    message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered") ||
-    message.includes("veterinarian pending")
-  ) {
-    navigate("/CtuAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
+    if (
+      message.includes("pending medical record access") ||
+      message.includes("requested access")
+    ) {
+      navigate("/CtuDashboard", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
 
-  if (
-    message.includes("pending medical record access") ||
-    message.includes("requested access")
-  ) {
-    navigate("/CtuDashboard", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
+    if (message.includes("comment")) {
+      navigate("/CtuAnnouncement", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
 
-  // Only navigate to CtuAnnouncement for comment-related notifications
-  if (message.includes("comment")) {
-    navigate("/CtuAnnouncement", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
-
-  // Default fallback - stay on current page
-  console.log("Notification clicked but no specific action:", notification);
-};
+    console.log("Notification clicked but no specific action:", notification);
+  };
 
   const handleNotificationsUpdate = (updatedNotifications) => {
     setNotifications(updatedNotifications);
@@ -525,6 +536,7 @@ const handleNotificationClick = async (notification) => {
   }, [])
 
   const handleSosItemClick = (emergency) => {
+    // You can add additional functionality here if needed
   }
 
   const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
@@ -643,71 +655,71 @@ const handleNotificationClick = async (notification) => {
                   <p className="text-xs sm:text-sm">Activity will appear here when available</p>
                 </div>
               ) : (
-               <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
-  {recentActivities
-    .filter((activity) => {
-      const activityDate = new Date(activity.date)
-      const now = new Date()
-      const diffTime = now - activityDate
-      const diffDays = diffTime / (1000 * 60 * 60 * 24)
-      return diffDays <= 2
-    })
-    .map((activity, index) => {
-      const initials = activity.title
-        .split(" ")
-        .map((word) => word[0])
-        .join("")
-        .toUpperCase()
+                <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+                  {recentActivities
+                    .filter((activity) => {
+                      const activityDate = new Date(activity.date)
+                      const now = new Date()
+                      const diffTime = now - activityDate
+                      const diffDays = diffTime / (1000 * 60 * 60 * 24)
+                      return diffDays <= 2
+                    })
+                    .map((activity, index) => {
+                      const initials = activity.title
+                        .split(" ")
+                        .map((word) => word[0])
+                        .join("")
+                        .toUpperCase()
 
-      const colorIndex = getColorIndex(activity, index)
+                      const colorIndex = getColorIndex(activity, index)
 
-      return (
-        <div key={activity.id} className={getActivityCardClasses(colorIndex)}>
-          <div className={getActivityAvatarClasses(colorIndex)}>{initials}</div>
-          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-1 gap-x-2.5 min-w-0">
-            <div className="font-semibold text-sm text-gray-800 sm:col-span-2 truncate">{activity.title}</div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Email</span>
-              <span className="text-xs text-gray-700 truncate">{activity.email}</span>
-            </div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                Description
-              </span>
-              <span className="text-xs text-gray-700 truncate">
-                {activity.description ? 
-                  activity.description.replace('declined', 'Not Approved').replace('Declined', 'Not Approved') 
-                  : "System activity update"
-                }
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
-            <span className={getRoleClasses(activity.status)}>
-              {activity.status === 'declined' ? 'Not Approved' : activity.status}
-            </span>
-            <span className="text-xs text-gray-500 font-medium whitespace-nowrap hidden sm:block">
-              {new Date(activity.date).toLocaleDateString("en-US", {
-                month: "long",
-                day: "numeric",
-                year: "numeric",
-              }) + ' ' + new Date(activity.date).toLocaleTimeString("en-US", {
-                hour: "numeric",
-                minute: "numeric",
-                hour12: true
-              })}
-            </span>
-            <span className="text-xs text-gray-500 font-medium whitespace-nowrap sm:hidden">
-              {new Date(activity.date).toLocaleDateString("en-US", {
-                month: "short",
-                day: "numeric",
-              })}
-            </span>
-          </div>
-        </div>
-      )
-    })}
-</div>
+                      return (
+                        <div key={activity.id} className={getActivityCardClasses(colorIndex)}>
+                          <div className={getActivityAvatarClasses(colorIndex)}>{initials}</div>
+                          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-1 gap-x-2.5 min-w-0">
+                            <div className="font-semibold text-sm text-gray-800 sm:col-span-2 truncate">{activity.title}</div>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Email</span>
+                              <span className="text-xs text-gray-700 truncate">{activity.email}</span>
+                            </div>
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                Description
+                              </span>
+                              <span className="text-xs text-gray-700 truncate">
+                                {activity.description ? 
+                                  activity.description.replace('declined', 'Not Approved').replace('Declined', 'Not Approved') 
+                                  : "System activity update"
+                                }
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end gap-1 flex-shrink-0 ml-2">
+                            <span className={getRoleClasses(activity.status)}>
+                              {activity.status === 'declined' ? 'Not Approved' : activity.status}
+                            </span>
+                            <span className="text-xs text-gray-500 font-medium whitespace-nowrap hidden sm:block">
+                              {new Date(activity.date).toLocaleDateString("en-US", {
+                                month: "long",
+                                day: "numeric",
+                                year: "numeric",
+                              }) + ' ' + new Date(activity.date).toLocaleTimeString("en-US", {
+                                hour: "numeric",
+                                minute: "numeric",
+                                hour12: true
+                              })}
+                            </span>
+                            <span className="text-xs text-gray-500 font-medium whitespace-nowrap sm:hidden">
+                              {new Date(activity.date).toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
               )}
             </div>
 
@@ -736,7 +748,7 @@ const handleNotificationClick = async (notification) => {
                   {sosEmergencies.map((emergency) => (
                     <div
                       key={emergency.id}
-                      className="bg-gradient-to-br from-red-50 to-white border border-red-300 rounded-xl p-3 sm:p-4 overflow-hidden"
+                      className="bg-gradient-to-br from-red-50 to-white border border-red-300 rounded-xl p-3 sm:p-4 overflow-hidden hover:shadow-md transition-shadow"
                       onClick={() => handleSosItemClick(emergency)}
                     >
                       <div className="flex justify-between items-start mb-3 flex-col sm:flex-row gap-2 sm:gap-0">
@@ -751,20 +763,47 @@ const handleNotificationClick = async (notification) => {
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
-                        <div className="flex items-center gap-1.5 text-xs text-gray-700">
-                          <User size={14} className="sm:w-4 sm:h-4" />
-                          <span className="truncate">{emergency.contact}</span>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-700 overflow-x-auto whitespace-nowrap scrollbar-thin">
+                          <User size={14} className="sm:w-4 sm:h-4 flex-shrink-0" />
+                          <span className="truncate min-w-0">{emergency.contact}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 text-xs text-gray-700">
-                          <Phone size={14} className="sm:w-4 sm:h-4" />
-                          <span className="truncate">{emergency.phone}</span>
+                        <div className="flex items-center gap-1.5 text-xs text-gray-700 overflow-x-auto whitespace-nowrap scrollbar-thin">
+                          <Phone size={14} className="sm:w-4 sm:h-4 flex-shrink-0" />
+                          <span className="truncate min-w-0">{emergency.phone}</span>
                         </div>
                       </div>
 
-                      <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-600 italic flex items-center gap-1.5 mb-2">
-                        <MapPin size={12} className="sm:w-3.5 sm:h-3.5" />
-                        <span className="truncate">{emergency.location}</span>
+                      <div className="bg-gray-100 px-3 py-2 rounded-lg text-xs text-gray-600 mb-2 overflow-x-auto">
+                        <div className="flex items-start gap-1.5 min-w-max">
+                          <MapPin size={12} className="sm:w-3.5 sm:h-3.5 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            {/* Remove the latitude/longitude from the location text */}
+                            <div className="mb-1 min-w-0">
+                              {emergency.location.replace(/\(.*?\)/g, '').replace(/-.*$/, '').trim()}
+                            </div>
+                            {emergency.latitude && emergency.longitude && (
+                              <div className="mt-1 flex items-center gap-1">
+                                <a
+                                  href={`https://www.google.com/maps?q=${emergency.latitude},${emergency.longitude}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-1 text-blue-500 hover:text-blue-700 hover:underline text-xs whitespace-nowrap"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <ExternalLink size={10} />
+                                  View on Google Maps
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
+                      {emergency.description && (
+                        <div className="text-xs text-gray-500 mb-2 overflow-x-auto whitespace-nowrap scrollbar-thin">
+                          <div className="font-medium text-gray-600 mb-0.5">Description:</div>
+                          {emergency.description}
+                        </div>
+                      )}
 
                       {emergency.sos_image_url && (
                         <div className="flex justify-end mt-2">
@@ -773,7 +812,7 @@ const handleNotificationClick = async (notification) => {
                               e.stopPropagation()
                               handleViewImage(emergency.sos_image_url, emergency)
                             }}
-                            className="flex items-center gap-1 px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors"
+                            className="flex items-center gap-1 px-3 py-1 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors whitespace-nowrap"
                           >
                             <Eye size={12} />
                             View Image
@@ -819,6 +858,50 @@ const handleNotificationClick = async (notification) => {
           </div>
         </div>
       )}
+      
+      <style jsx>{`
+        .scrollbar-thin {
+          scrollbar-width: thin;
+          scrollbar-color: #d1d5db transparent;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar {
+          height: 4px;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar-track {
+          background: transparent;
+          border-radius: 2px;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+          background-color: #d1d5db;
+          border-radius: 2px;
+        }
+        
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+          background-color: #9ca3af;
+        }
+        
+        /* Only show scrollbar on hover for overflow content */
+        .overflow-x-auto:hover::-webkit-scrollbar {
+          display: block;
+        }
+        
+        .overflow-x-auto::-webkit-scrollbar {
+          display: none;
+        }
+        
+        .overflow-x-auto {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+        
+        .overflow-x-auto:hover {
+          -ms-overflow-style: auto;
+          scrollbar-width: thin;
+        }
+      `}</style>
     </div>
   )
 }

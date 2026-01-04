@@ -49,93 +49,97 @@ function CtuAccountApproval() {
 
   const [registrationData, setRegistrationData] = useState([])
   const [message, setMessage] = useState("")
-  const [vetProfiles, setVetProfiles] = useState([])
 
-  const [activeTab, setActiveTab] = useState("pending")
-  const [recentFilter, setRecentFilter] = useState("all")
+  const [activeTab, setActiveTab] = useState("all")
+  const [roleFilter, setRoleFilter] = useState("all")
   const [searchTerm, setSearchTerm] = useState("")
   const [isSearching, setIsSearching] = useState(false)
-  const [searchResults, setSearchResults] = useState([])
-  const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
 
   const [isLoading, setIsLoading] = useState(true)
   const [isLoadingCounts, setIsLoadingCounts] = useState(true)
-  const [isActionLoading, setIsActionLoading] = useState(false) // NEW: Loading state for approve/decline actions
-  const [loadingActionId, setLoadingActionId] = useState(null) // NEW: Track which action is loading
+  const [isActionLoading, setIsActionLoading] = useState(false)
+  const [loadingActionId, setLoadingActionId] = useState(null)
 
   const [notifications, setNotifications] = useState([])
   const [notifsOpen, setNotifsOpen] = useState(false)
 
   const notificationBellRef = useRef(null)
-  const notificationDropdownRef = useRef(null)
   const [isViewDetailsModalOpen, setIsViewDetailsModalOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState(null)
   const viewDetailsModalOverlayRef = useRef(null)
   const [isConfirmationModalOpen, setIsConfirmationModalOpen] = useState(false)
   const [confirmationDetails, setConfirmationDetails] = useState({ title: "", message: "", action: "" })
   const confirmationOverlayRef = useRef(null)
-  const [isLogoutModalOpen, setIsLogoutModalOpen] = useState(false)
-  const logoutModalRef = useRef(null)
-  const [isSidebarsOpen, setIsSidebarsOpen] = useState(false)
   const [modalActiveTab, setModalActiveTab] = useState("personal")
 
   const [declineReason, setDeclineReason] = useState("")
-
-  // NEW: State for full view profile photo
   const [isProfilePhotoFullView, setIsProfilePhotoFullView] = useState(false)
   const [selectedProfilePhoto, setSelectedProfilePhoto] = useState("")
 
-  // Pagination state
   const [currentPage, setCurrentPage] = useState(1)
   const [itemsPerPage, setItemsPerPage] = useState(10)
-
-  // State for managing pinned posts
-  const [pinnedPosts, setPinnedPosts] = useState(new Set())
-  const [showDropdown, setShowDropdown] = useState({})
-  const [posts, setPosts] = useState([])
-
-  // Helper to format status display
-  const formatStatusDisplay = (status) => {
-    if (!status) return "";
-    if (status === "declined") return "Not approved";
-    return status.charAt(0).toUpperCase() + status.slice(1);
-  };
-
-  // Helper to format time for notifications
-  const formatTimeAgo = useCallback((timestamp) => {
-    const now = new Date()
-    const diffInMinutes = Math.floor((now.getTime() - timestamp.getTime()) / (1000 * 60))
-    if (diffInMinutes < 1) return "Just now"
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`
-    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`
-    return `${Math.floor(diffInMinutes / 1440)}d ago`
-  }, [])
-
-  const getNotificationIcon = (type) => {
-    const icons = {
-      info: Info,
-      success: CheckCircle,
-      warning: AlertTriangle,
-      error: XCircle,
-    }
-    const IconComponent = icons[type] || icons.info
-    return <IconComponent className={`notification-icon ${type}`} size={16} />
-  }
 
   const [counts, setCounts] = useState({
     pending: 0,
     approved: 0,
     declined: 0,
+    all: 0
   })
 
-  // ✅ Refresh counts function
+  const formatStatusDisplay = (status) => {
+    if (!status) return "";
+    if (status === "declined") return "Not approved";
+    if (status === "all") return "All";
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const getRoleColor = (type, status) => {
+    // Color mapping for different user types
+    const roleColors = {
+      "Veterinarian": {
+        pending: "bg-green-100 text-green-800 border border-green-200",
+        approved: "bg-green-50 text-green-700 border border-green-100",
+        declined: "bg-green-50/50 text-green-600/80 border border-green-100/50"
+      },
+      "Kutsero": {
+        pending: "bg-blue-100 text-blue-800 border border-blue-200",
+        approved: "bg-blue-50 text-blue-700 border border-blue-100",
+        declined: "bg-blue-50/50 text-blue-600/80 border border-blue-100/50"
+      },
+      "Horse Operator": {
+        pending: "bg-amber-900/10 text-amber-900 border border-amber-900/20",
+        approved: "bg-amber-800/10 text-amber-800 border border-amber-800/20",
+        declined: "bg-amber-800/5 text-amber-800/70 border border-amber-800/10"
+      },
+      "Unknown": {
+        pending: "bg-gray-100 text-gray-800 border border-gray-200",
+        approved: "bg-gray-50 text-gray-700 border border-gray-100",
+        declined: "bg-gray-50/50 text-gray-600/80 border border-gray-100/50"
+      }
+    };
+
+    const roleType = type || "Unknown";
+    const userStatus = status || "pending";
+    
+    return roleColors[roleType]?.[userStatus] || roleColors["Unknown"][userStatus];
+  };
+
+  // Fetch counts for all user types
   const fetchCounts = async () => {
     setIsLoadingCounts(true)
     try {
-      const response = await fetch("http://localhost:8000/api/ctu_vetmed/get-account-counts/")
-      if (!response.ok) throw new Error("Failed to fetch data")
+      const response = await fetch(`${API_BASE}/get_all_profile_counts/`)
+      if (!response.ok) throw new Error("Failed to fetch counts")
       const result = await response.json()
-      setCounts(result.data || result)
+      
+      if (result.data) {
+        setCounts({
+          pending: result.data.pending || 0,
+          approved: result.data.approved || 0,
+          declined: result.data.declined || 0,
+          all: result.data.all || 0
+        })
+      }
     } catch (error) {
       console.error("Error fetching counts:", error)
     } finally {
@@ -147,47 +151,42 @@ function CtuAccountApproval() {
     fetchCounts()
   }, [])
 
+  // Handle search with debounce
   useEffect(() => {
     const debounceTimer = setTimeout(() => {
       if (searchTerm) {
         setIsSearching(true)
-        setTimeout(() => {
-          const filtered = registrationData.filter(
-            (user) =>
-              user.vet_fname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              user.vet_lname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              user.vet_email.toLowerCase().includes(searchTerm.toLowerCase()),
-          )
-          setSearchResults(filtered)
-          setIsSearching(false)
-        }, 300)
-      } else {
-        setSearchResults([])
         setIsSearching(false)
       }
     }, 500)
 
     return () => clearTimeout(debounceTimer)
-  }, [searchTerm, registrationData])
+  }, [searchTerm])
 
   const filterRegistrations = useCallback(() => {
     let filtered = registrationData
 
-    filtered = filtered.filter((user) => user.users?.status === activeTab)
+    if (activeTab !== "all") {
+      filtered = filtered.filter((user) => user.status === activeTab)
+    }
+
+    if (roleFilter !== "all") {
+      filtered = filtered.filter((user) => 
+        user.type?.toLowerCase().replace(" ", "_") === roleFilter.toLowerCase().replace(" ", "_")
+      )
+    }
 
     if (searchTerm) {
       filtered = filtered.filter(
         (user) =>
-          user.vet_fname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          user.vet_lname.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          user.vet_email.toLowerCase().includes(searchTerm.toLowerCase()),
+          user.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          user.email?.toLowerCase().includes(searchTerm.toLowerCase())
       )
     }
 
     return filtered
-  }, [registrationData, activeTab, searchTerm])
+  }, [registrationData, activeTab, roleFilter, searchTerm])
 
-  // Get paginated data
   const getPaginatedData = () => {
     const filteredRegistrations = filterRegistrations()
     const startIndex = (currentPage - 1) * itemsPerPage
@@ -195,10 +194,11 @@ function CtuAccountApproval() {
     return filteredRegistrations.slice(startIndex, endIndex)
   }
 
-  const viewDetails = (vetId, status) => {
-    const user = registrationData.find((u) => u.vet_id === vetId)
+  // View details - updated to handle different user types
+  const viewDetails = (userId, status, userType) => {
+    const user = registrationData.find((u) => u.id === userId)
     if (user) {
-      setSelectedUser({ ...user, status })
+      setSelectedUser({ ...user, status, userType })
       setIsViewDetailsModalOpen(true)
       setModalActiveTab("personal")
     } else {
@@ -206,7 +206,6 @@ function CtuAccountApproval() {
     }
   }
 
-  // NEW: Function to open profile photo in full view
   const openProfilePhotoFullView = (profilePhoto, userName) => {
     setSelectedProfilePhoto({
       url: profilePhoto,
@@ -215,7 +214,6 @@ function CtuAccountApproval() {
     setIsProfilePhotoFullView(true)
   }
 
-  // NEW: Function to close profile photo full view
   const closeProfilePhotoFullView = () => {
     setIsProfilePhotoFullView(false)
     setSelectedProfilePhoto("")
@@ -224,97 +222,91 @@ function CtuAccountApproval() {
   const closeModal = () => {
     setIsViewDetailsModalOpen(false)
     setSelectedUser(null)
+    setModalActiveTab("personal")
   }
 
-  const showApproveConfirmation = (vetId) => {
-    setSelectedUser({ vet_id: vetId })
+  // Updated confirmation functions to include user type
+  const showApproveConfirmation = (userId, userType, userName) => {
+    setSelectedUser({ id: userId, userType })
     setConfirmationDetails({
       title: "Confirm Approval",
-      message: "Are you sure you want to approve this registration?",
+      message: `Are you sure you want to approve ${userName}'s registration?`,
       action: "approve",
     })
     setIsConfirmationModalOpen(true)
   }
 
-  const showDeclineConfirmation = (vetId) => {
-    setSelectedUser({ vet_id: vetId })
+  const showDeclineConfirmation = (userId, userType, userName) => {
+    setSelectedUser({ id: userId, userType })
     setConfirmationDetails({
       title: "Confirm Not Approved",
-      message: "Are you sure you want to mark this registration as not approved?",
+      message: `Are you sure you want to mark ${userName}'s registration as not approved?`,
       action: "decline",
     })
     setIsConfirmationModalOpen(true)
-  }
-
-  const showApproveConfirmationFromModal = () => {
-    if (selectedUser && selectedUser.status === "pending") {
-      closeModal()
-      showApproveConfirmation(selectedUser.vet_id)
-    }
-  }
-
-  const showDeclineConfirmationFromModal = () => {
-    if (selectedUser && selectedUser.status === "pending") {
-      closeModal()
-      showDeclineConfirmation(selectedUser.vet_id)
-    }
   }
 
   const closeConfirmation = () => {
     setIsConfirmationModalOpen(false)
     setSelectedUser(null)
     setConfirmationDetails({ title: "", message: "", action: "" })
-    setDeclineReason("") // Reset decline reason when closing
+    setDeclineReason("")
   }
 
   const confirmAction = () => {
     if (confirmationDetails.action === "approve" && selectedUser) {
-      approveUser(selectedUser.vet_id)
+      approveUser(selectedUser.id, selectedUser.userType)
     } else if (confirmationDetails.action === "decline" && selectedUser) {
-      declineUser(selectedUser.vet_id)
+      declineUser(selectedUser.id, selectedUser.userType)
     }
   }
 
-  // -------------------- UPDATED: Approve a single user with loading state --------------------
-  const approveUser = async (vetId) => {
+  // Updated approve function to include user type
+  const approveUser = async (userId, userType) => {
     setIsActionLoading(true)
-    setLoadingActionId(vetId)
+    setLoadingActionId(userId)
     
     try {
-      // Optimistically update the UI first
       setRegistrationData((prev) => 
         prev.map((u) => 
-          u.vet_id === vetId ? { ...u, users: { ...u.users, status: "approved" } } : u
+          u.id === userId ? { ...u, status: "approved" } : u
         )
       )
-      setMessage(`Approving user ${vetId}...`)
+      setMessage(`Approving user...`)
 
-      const response = await fetch(`http://localhost:8000/api/ctu_vetmed/update-vet-status/${vetId}/`, {
+      const backendUserType = userType === 'Veterinarian' ? 'vet' : 
+                             userType === 'Kutsero' ? 'kutsero' : 
+                             userType === 'Horse Operator' ? 'horse_operator' : 'vet';
+
+      const response = await fetch(`${API_BASE}/update_user_status/${userId}/`, {
         method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "approved" }),
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({ 
+          status: "approved",
+          user_type: backendUserType 
+        }),
       })
 
       if (!response.ok) {
-        const text = await response.text()
-        throw new Error(`Failed to approve user: ${text}`)
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
+        throw new Error(errorData.error || `Failed to approve user: ${response.status}`)
       }
 
       const data = await response.json()
-      setMessage(`User ${vetId} approved successfully!`)
+      setMessage(`User approved successfully!`)
       
-      // Refresh data after approval
       await handleManualRefresh()
       await fetchCounts()
       
       console.log("User approved:", data)
     } catch (err) {
       console.error(err)
-      // Rollback UI if failed
       setRegistrationData((prev) => 
         prev.map((u) => 
-          u.vet_id === vetId ? { ...u, users: { ...u.users, status: "pending" } } : u
+          u.id === userId ? { ...u, status: "pending" } : u
         )
       )
       setMessage(`Error: ${err.message}`)
@@ -325,40 +317,49 @@ function CtuAccountApproval() {
     }
   }
 
-  // -------------------- UPDATED: Decline a single user with loading state --------------------
-  const declineUser = async (vetId) => {
-    if (!declineReason) {
+  // Updated decline function to include user type
+  const declineUser = async (userId, userType) => {
+    if (!declineReason.trim()) {
       setMessage("Please enter a reason for marking as not approved.")
       return
     }
 
     setIsActionLoading(true)
-    setLoadingActionId(vetId)
+    setLoadingActionId(userId)
 
     try {
       setRegistrationData((prev) => 
         prev.map((u) => 
-          u.vet_id === vetId ? { ...u, users: { ...u.users, status: "declined" } } : u
+          u.id === userId ? { ...u, status: "declined" } : u
         )
       )
-      setMessage(`Marking user ${vetId} as not approved...`)
+      setMessage(`Marking user as not approved...`)
 
-      const response = await fetch(`http://localhost:8000/api/ctu_vetmed/update-vet-status/${vetId}/`, {
+      const backendUserType = userType === 'Veterinarian' ? 'vet' : 
+                             userType === 'Kutsero' ? 'kutsero' : 
+                             userType === 'Horse Operator' ? 'horse_operator' : 'vet';
+
+      const response = await fetch(`${API_BASE}/update_user_status/${userId}/`, {
         method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "declined", decline_reason: declineReason }),
+        headers: { 
+          "Content-Type": "application/json",
+          "Accept": "application/json"
+        },
+        body: JSON.stringify({ 
+          status: "declined", 
+          decline_reason: declineReason.trim(),
+          user_type: backendUserType 
+        }),
       })
 
       if (!response.ok) {
-        const text = await response.text()
-        throw new Error(`Failed to mark user as not approved: ${text}`)
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
+        throw new Error(errorData.error || `Failed to mark user as not approved: ${response.status}`)
       }
 
       const data = await response.json()
-      setMessage(`User ${vetId} marked as not approved successfully!`)
+      setMessage(`User marked as not approved successfully!`)
       
-      // Refresh data after decline
       await handleManualRefresh()
       await fetchCounts()
       
@@ -367,7 +368,7 @@ function CtuAccountApproval() {
       console.error(err)
       setRegistrationData((prev) => 
         prev.map((u) => 
-          u.vet_id === vetId ? { ...u, users: { ...u.users, status: "pending" } } : u
+          u.id === userId ? { ...u, status: "pending" } : u
         )
       )
       setMessage(`Error: ${err.message}`)
@@ -382,38 +383,15 @@ function CtuAccountApproval() {
   const handleSearchInput = (e) => {
     setSearchTerm(e.target.value)
     setCurrentPage(1)
-    if (e.target.value) {
-      setIsSearching(true)
-    }
   }
 
-  const handleRecentFilterChange = (e) => {
-    setRecentFilter(e.target.value)
-  }
-
-  const closeLogoutModal = () => {
-    setIsLogoutModalOpen(false)
-  }
-
-  const loadStats = useCallback(() => {
-    console.log("Loading stats...")
-  }, [])
-
-  const loadRecentActivities = useCallback(() => {
-    console.log("Loading recent activities...")
-  }, [])
-
-  // ✅ Fetch notifications from backend
   const loadNotifications = useCallback(() => {
-    console.log("Loading notifications...")
-
-    fetch("http://localhost:8000/api/ctu_vetmed/get_vetnotifications/")
+    fetch(`${API_BASE}/get_vetnotifications/`)
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch notifications")
         return res.json()
       })
       .then((data) => {
-        console.log("Raw notifications data:", data);
         const formatted = data.map((notif) => ({
           id: notif.id,
           message: notif.message,
@@ -421,14 +399,11 @@ function CtuAccountApproval() {
           read: notif.read || false,
           type: notif.type || "general"
         }))
-        console.log("Formatted notifications:", formatted);
-        console.log("Unread count:", formatted.filter(n => !n.read).length);
         setNotifications(formatted)
       })
       .catch((err) => console.error("Failed to fetch notifications:", err))
   }, [])
 
-  // ✅ MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
       const res = await fetch(`http://localhost:8000/mark_all_notifications_read/`, {
@@ -456,243 +431,259 @@ function CtuAccountApproval() {
     }
   };
 
-  
- // HANDLE INDIVIDUAL NOTIFICATION CLICK
-const handleNotificationClick = async (notification) => {
-  const notifId = notification?.notif_id || notification?.id; // fallback support
+  const handleNotificationClick = async (notification) => {
+    const notifId = notification?.notif_id || notification?.id;
 
-  if (!notifId) {
-    console.warn("Notification ID is missing:", notification);
-  }
+    if (!notifId) {
+      console.warn("Notification ID is missing:", notification);
+    }
 
-  // Mark as read in frontend immediately
-  setNotifications((prev) =>
-    prev.map((notif) =>
-      notif.notif_id === notifId || notif.id === notifId
-        ? { ...notif, read: true }
-        : notif
-    )
-  );
+    setNotifications((prev) =>
+      prev.map((notif) =>
+        notif.notif_id === notifId || notif.id === notifId
+          ? { ...notif, read: true }
+          : notif
+      )
+    );
 
-  // Mark as read in backend (only if valid ID)
-  if (notifId) {
-    try {
-      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
-        method: "POST",
-        credentials: "include",
+    if (notifId) {
+      try {
+        await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+          method: "POST",
+          credentials: "include",
+        });
+      } catch (err) {
+        console.error("Error marking notification as read:", err);
+      }
+    }
+
+    const message = (notification.message || "").toLowerCase();
+    const type = (notification.type || "").toLowerCase();
+
+    if (
+      type === "sos_emergency" ||
+      message.includes("sos") ||
+      message.includes("emergency") ||
+      message.includes("reported") ||
+      message.includes("urgent") ||
+      (message.includes("horse") && 
+       (message.includes("colic") || 
+        message.includes("injured") || 
+        message.includes("trauma")))
+    ) {
+      let sosId = null;
+      if (notification.related_id && notification.related_id.startsWith("sos_")) {
+        sosId = notification.related_id.replace("sos_", "");
+      }
+      
+      navigate("/CtuDashboard", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+          sosId: sosId,
+        },
       });
-    } catch (err) {
-      console.error("Error marking notification as read:", err);
+      return;
     }
-  }
 
-  const message = (notification.message || "").toLowerCase();
-  const type = (notification.type || "").toLowerCase();
-
-  // Navigate for SOS emergency notifications
-  if (
-    type === "sos_emergency" ||
-    message.includes("sos") ||
-    message.includes("emergency") ||
-    message.includes("reported") ||
-    message.includes("urgent") ||
-    (message.includes("horse") && 
-     (message.includes("colic") || 
-      message.includes("injured") || 
-      message.includes("trauma")))
-  ) {
-    // Extract SOS ID from related_id if available
-    let sosId = null;
-    if (notification.related_id && notification.related_id.startsWith("sos_")) {
-      sosId = notification.related_id.replace("sos_", "");
+    if (
+      message.includes("new registration") ||
+      message.includes("new veterinarian approved") ||
+      message.includes("veterinarian approved") ||
+      message.includes("veterinarian declined") ||
+      message.includes("veterinarian registered") ||
+      message.includes("veterinarian pending")
+    ) {
+      navigate("/CtuAccountApproval", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
     }
-    
-    navigate("/CtuDashboard", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-        sosId: sosId, // Pass the specific SOS ID if available
-      },
-    });
-    return;
-  }
 
-  // Navigate for account-related notifications
-  if (
-    message.includes("new registration") ||
-    message.includes("new veterinarian approved") ||
-    message.includes("veterinarian approved") ||
-    message.includes("veterinarian declined") ||
-    message.includes("veterinarian registered") ||
-    message.includes("veterinarian pending")
-  ) {
-    navigate("/CtuAccountApproval", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
+    if (
+      message.includes("pending medical record access") ||
+      message.includes("requested access")
+    ) {
+      navigate("/CtuDashboard", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
 
-  if (
-    message.includes("pending medical record access") ||
-    message.includes("requested access")
-  ) {
-    navigate("/CtuDashboard", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
+    if (message.includes("comment")) {
+      navigate("/CtuAnnouncement", {
+        state: {
+          highlightedNotification: notification,
+          shouldHighlight: true,
+        },
+      });
+      return;
+    }
 
-  // Only navigate to CtuAnnouncement for comment-related notifications
-  if (message.includes("comment")) {
-    navigate("/CtuAnnouncement", {
-      state: {
-        highlightedNotification: notification,
-        shouldHighlight: true,
-      },
-    });
-    return;
-  }
+    console.log("Notification clicked but no specific action:", notification);
+  };
 
-  // Default fallback - stay on current page
-  console.log("Notification clicked but no specific action:", notification);
-};
-
-  // ✅ Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
-    console.log("Notifications updated from modal:", updatedNotifications);
-    console.log("New unread count:", updatedNotifications.filter(n => !n.read).length);
     setNotifications(updatedNotifications);
   };
 
-  // ✅ Auto-refresh notifications every 60s
   useEffect(() => {
     loadNotifications()
-
     const interval = setInterval(() => {
       loadNotifications()
     }, 60000)
-
     return () => clearInterval(interval)
   }, [loadNotifications])
 
-  const loadDashboardData = useCallback(() => {
-    loadStats()
-    loadRecentActivities()
-    loadNotifications()
-  }, [loadStats, loadRecentActivities, loadNotifications])
-
-  // Manual refresh function - UPDATED to be more robust
+  // Updated manual refresh to process all user types
   const handleManualRefresh = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch("http://localhost:8000/api/ctu_vetmed/get-vet-profiles/")
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`)
+      const response = await fetch(`${API_BASE}/get_all_profiles/`)
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`)
+      }
       
       const result = await response.json()
       const data = result.data || []
       
+      // Process and normalize data for different user types
       const processedData = data.map((item) => {
-        let statusValue = item.status
-        if (!statusValue && item.users && item.users.status) {
-          statusValue = item.users.status
+        const userStatus = item.users?.status || item.status || "pending"
+        
+        // Determine user type and extract fields
+        let userType = "Unknown"
+        let firstName = ""
+        let lastName = ""
+        let email = ""
+        let profilePhoto = ""
+        let city = ""
+        let province = ""
+        let userId = ""
+        let dateRegistered = "" // NEW: Add date registered field
+        
+        // Check for Veterinarian
+        if (item.vet_fname) {
+          userType = "Veterinarian"
+          firstName = item.vet_fname || ""
+          lastName = item.vet_lname || ""
+          email = item.vet_email || ""
+          profilePhoto = item.vet_profile_photo || ""
+          city = item.vet_city || ""
+          province = item.vet_province || ""
+          userId = item.vet_id || item.id || item.user_id
+          // Extract registration date - check various possible fields
+          dateRegistered = item.created_at || item.created_date || item.date_created || 
+                          item.registration_date || item.date_registered || 
+                          item.users?.created_at || ""
+        } 
+        // Check for Kutsero
+        else if (item.kutsero_fname) {
+          userType = "Kutsero"
+          firstName = item.kutsero_fname || ""
+          lastName = item.kutsero_lname || ""
+          email = item.kutsero_email || ""
+          profilePhoto = item.kutsero_image || ""
+          city = item.kutsero_city || ""
+          province = item.kutsero_province || ""
+          userId = item.kutsero_id || item.id || item.user_id
+          // Extract registration date
+          dateRegistered = item.created_at || item.created_date || item.date_created || 
+                          item.registration_date || item.date_registered || 
+                          item.users?.created_at || ""
+        } 
+        // Check for Horse Operator
+        else if (item.op_fname) {
+          userType = "Horse Operator"
+          firstName = item.op_fname || ""
+          lastName = item.op_lname || ""
+          email = item.op_email || ""
+          profilePhoto = item.op_image || ""
+          city = item.op_city || ""
+          province = item.op_province || ""
+          userId = item.op_id || item.id || item.user_id
+          // Extract registration date
+          dateRegistered = item.created_at || item.created_date || item.date_created || 
+                          item.registration_date || item.date_registered || 
+                          item.users?.created_at || ""
+        }
+        // Fallback for any other type
+        else {
+          console.warn("Unknown user type or missing fields:", item)
+          userType = item.type || "Unknown"
+          firstName = item.name ? item.name.split(' ')[0] : ""
+          lastName = item.name ? item.name.split(' ').slice(1).join(' ') : ""
+          email = item.email || ""
+          profilePhoto = item.profile_photo || item.profilePhoto || ""
+          city = item.city || ""
+          province = item.province || ""
+          userId = item.id || item.user_id || ""
+          dateRegistered = item.created_at || item.created_date || item.date_created || 
+                          item.registration_date || item.date_registered || 
+                          item.users?.created_at || ""
+        }
+
+        // Format the date if it exists
+        let formattedDate = ""
+        if (dateRegistered) {
+          try {
+            const dateObj = new Date(dateRegistered)
+            if (!isNaN(dateObj.getTime())) {
+              formattedDate = dateObj.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric'
+              })
+            }
+          } catch (e) {
+            console.warn("Error formatting date:", e)
+          }
         }
 
         return {
           ...item,
-          status: statusValue || "pending",
-          type: item.type || "Veterinarian",
+          id: userId,
+          name: `${firstName} ${lastName}`.trim(),
+          firstName,
+          lastName,
+          email,
+          profilePhoto,
+          city,
+          province,
+          status: userStatus,
+          type: userType,
+          originalData: item,
+          declineReason: item.users?.decline_reason || item.decline_reason || "",
+          dateRegistered: formattedDate, // NEW: Add formatted date
+          rawDateRegistered: dateRegistered // Keep raw date for modal
         }
       })
 
       setRegistrationData(processedData)
+      console.log("Processed registration data:", processedData)
     } catch (error) {
       console.error("Failed to refresh data:", error)
+      setMessage(`Error: ${error.message}`)
     } finally {
       setIsLoading(false)
     }
   }
 
+  // Initial load
   useEffect(() => {
-    const controller = new AbortController()
-
-    const loadVetProfiles = async () => {
-      setIsLoading(true)
-      try {
-        const response = await fetch("http://localhost:8000/api/ctu_vetmed/get-vet-profiles/", {
-          signal: controller.signal,
-        })
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`)
-        }
-
-        const result = await response.json()
-        console.log("Fetched vet profiles response:", result)
-
-        const data = result.data || []
-        console.log("Extracted vet profiles data:", data)
-
-        const processedData = data.map((item, index) => {
-          let statusValue = item.status
-          if (!statusValue && item.users && item.users.status) {
-            statusValue = item.users.status
-          }
-
-          return {
-            ...item,
-            status: statusValue || "pending",
-            type: item.type || "Veterinarian",
-          }
-        })
-
-        processedData.forEach((item, index) => {
-          console.log(`[Processed Item ${index}]`, {
-            id: item.vet_id,
-            name: `${item.vet_fname} ${item.vet_lname}`,
-            status: item.status,
-            type: item.type,
-            allFields: Object.keys(item),
-          })
-        })
-
-        setRegistrationData(processedData)
-      } catch (error) {
-        if (error.name !== "AbortError") {
-          console.error("Failed to fetch vet profiles:", error)
-        }
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    loadVetProfiles()
-
-    return () => {
-      controller.abort()
-    }
+    handleManualRefresh()
   }, [])
 
-  // Effects
-  useEffect(() => {
-    loadNotifications()
-  }, [loadNotifications])
-
+  // Close modals when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (
-        notificationBellRef.current &&
-        !notificationBellRef.current.contains(event.target) &&
-        notificationDropdownRef.current &&
-        !notificationDropdownRef.current.contains(event.target)
-      ) {
-        setIsNotificationDropdownOpen(false)
-      }
       if (
         isViewDetailsModalOpen &&
         viewDetailsModalOverlayRef.current &&
@@ -718,16 +709,14 @@ const handleNotificationClick = async (notification) => {
     return () => {
       document.removeEventListener("mousedown", handleClickOutside)
     }
-  }, [isNotificationDropdownOpen, isViewDetailsModalOpen, isConfirmationModalOpen, isProfilePhotoFullView])
+  }, [isViewDetailsModalOpen, isConfirmationModalOpen, isProfilePhotoFullView])
 
   const filteredRegistrations = filterRegistrations()
   const paginatedRegistrations = getPaginatedData()
   const totalPages = Math.ceil(filteredRegistrations.length / itemsPerPage)
 
-  // Calculate unread notifications count
   const unreadNotificationsCount = notifications.filter(notif => !notif.read).length
 
-  // Pagination handlers
   const goToPage = (page) => {
     if (page >= 1 && page <= totalPages) {
       setCurrentPage(page)
@@ -739,34 +728,6 @@ const handleNotificationClick = async (notification) => {
     setCurrentPage(1)
   }
 
-  const togglePin = (postId) => {
-    setPinnedPosts((prev) => {
-      const updated = new Set(prev)
-      updated.add(postId)
-      return updated
-    })
-
-    setShowDropdown((prev) => ({ ...prev, [postId]: false }))
-
-    setPosts((prev) => {
-      const pinned = []
-      const unpinned = []
-
-      prev.forEach((post) => {
-        if (post.id === postId || pinnedPosts.has(post.id)) {
-          pinned.push(post)
-        } else {
-          unpinned.push(post)
-        }
-      })
-
-      return [
-        ...pinned.sort((a, b) => b.timestamp - a.timestamp),
-        ...unpinned.sort((a, b) => b.timestamp - a.timestamp),
-      ]
-    })
-  }
-
   const handleTabChange = (tabName) => {
     setActiveTab(tabName)
     setCurrentPage(1)
@@ -776,7 +737,6 @@ const handleNotificationClick = async (notification) => {
     }, 500)
   }
 
-  // Function to parse documents array from string
   const parseDocuments = (documents) => {
     if (!documents) return [];
     try {
@@ -790,20 +750,102 @@ const handleNotificationClick = async (notification) => {
     }
   };
 
+  // Helper function to get user data for modal
+  const getUserModalData = (user) => {
+    if (!user) return null
+    
+    const originalData = user.originalData || user
+    
+    // Common fields for all user types
+    const commonData = {
+      dateRegistered: user.dateRegistered || "",
+      rawDateRegistered: user.rawDateRegistered || ""
+    }
+    
+    if (user.type === "Veterinarian") {
+      return {
+        ...commonData,
+        firstName: originalData.vet_fname || "",
+        lastName: originalData.vet_lname || "",
+        middleName: originalData.vet_mname || "",
+        email: originalData.vet_email || "",
+        phone: originalData.vet_phone_num || "",
+        dob: originalData.vet_dob || "",
+        sex: originalData.vet_sex || "",
+        profilePhoto: originalData.vet_profile_photo || "",
+        city: originalData.vet_city || "",
+        province: originalData.vet_province || "",
+        barangay: originalData.vet_brgy || "",
+        zipCode: originalData.vet_zipcode || "",
+        licenseNumber: originalData.vet_license_num || "",
+        experienceYears: originalData.vet_exp_yr || "",
+        specialization: originalData.vet_specialization || "",
+        organization: originalData.vet_org || "",
+        clinicProvince: originalData.vet_clinic_province || "",
+        clinicCity: originalData.vet_clinic_city || "",
+        clinicBarangay: originalData.vet_clinic_brgy || "",
+        clinicZipCode: originalData.vet_clinic_zipcode || "",
+        documents: originalData.vet_documents || ""
+      }
+    } else if (user.type === "Kutsero") {
+      return {
+        ...commonData,
+        firstName: originalData.kutsero_fname || "",
+        lastName: originalData.kutsero_lname || "",
+        middleName: originalData.kutsero_mname || "",
+        email: originalData.kutsero_email || "",
+        phone: originalData.kutsero_phone_num || "",
+        dob: originalData.kutsero_dob || "",
+        sex: originalData.kutsero_sex || "",
+        profilePhoto: originalData.kutsero_image || "",
+        city: originalData.kutsero_city || "",
+        province: originalData.kutsero_province || "",
+        barangay: originalData.kutsero_brgy || "",
+        zipCode: originalData.kutsero_zipcode || "",
+        licenseNumber: originalData.kutsero_license_num || "",
+        experienceYears: originalData.years_experience || originalData.kutsero_exp_yr || "",
+        documents: originalData.application_document_url || originalData.membership_document_url || ""
+      }
+    } else if (user.type === "Horse Operator") {
+      return {
+        ...commonData,
+        firstName: originalData.op_fname || "",
+        lastName: originalData.op_lname || "",
+        middleName: originalData.op_mname || "",
+        email: originalData.op_email || "",
+        phone: originalData.op_phone_num || "",
+        dob: originalData.op_dob || "",
+        sex: originalData.op_sex || "",
+        profilePhoto: originalData.op_image || "",
+        city: originalData.op_city || "",
+        province: originalData.op_province || "",
+        barangay: originalData.op_brgy || "",
+        zipCode: originalData.op_zipcode || "",
+        licenseNumber: originalData.op_license_num || "",
+        experienceYears: originalData.op_exp_yr || "",
+        stableName: originalData.op_stable_name || "",
+        stableAddress: originalData.op_stable_address || "",
+        documents: originalData.op_documents || ""
+      }
+    }
+    
+    return null
+  }
+
   return (
     <div className="font-sans bg-gray-100 flex h-screen overflow-x-hidden w-full">
       <div className="sidebars" id="sidebasr">
-        <Sidebar isOpen={isSidebarsOpen} />
+        <Sidebar isOpen={false} />
       </div>
 
       <div className="flex-1 flex flex-col">
         <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
-          <div className="flex flex-col ">
+          <div className="flex flex-col">
             <h2 className="text-2xl font-bold text-gray-800 mb-1">Account Approval</h2>
+            <p className="text-sm text-gray-600">Manage all user registrations</p>
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Manual Refresh Icon */}
             <button
               onClick={handleManualRefresh}
               disabled={isLoading}
@@ -817,7 +859,6 @@ const handleNotificationClick = async (notification) => {
               />
             </button>
 
-            {/* 🔔 Notification Bell */}
             <button
               ref={notificationBellRef}
               className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
@@ -832,7 +873,6 @@ const handleNotificationClick = async (notification) => {
             </button>
           </div>
 
-          {/* 📩 Notification Modal */}
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
@@ -845,75 +885,126 @@ const handleNotificationClick = async (notification) => {
 
         <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
           <div className="mb-6">
-            <div className="flex-1 max-w-md mr-5 relative min-w-[200px] mb-2.5">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <input
-                type="text"
-                className="w-full py-2 px-4 pl-10 border-2 border-white rounded-lg text-sm outline-none min-h-[50px] bg-white"
-                placeholder={isSearching ? "Searching..." : "Search by name or email..."}
-                onChange={handleSearchInput}
-                value={searchTerm}
-              />
-              {isSearching && (
-                <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500"></div>
-                </div>
-              )}
+            <div className="flex flex-col sm:flex-row gap-3 mb-5">
+              <div className="flex-1 max-w-md relative min-w-[200px]">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input
+                  type="text"
+                  className="w-full py-2 px-4 pl-10 border-2 border-white rounded-lg text-sm outline-none min-h-[50px] bg-white"
+                  placeholder={isSearching ? "Searching..." : "Search by name or email..."}
+                  onChange={handleSearchInput}
+                  value={searchTerm}
+                />
+                {isSearching && (
+                  <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500"></div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 flex-1">
+                <select
+                  value={roleFilter}
+                  onChange={(e) => setRoleFilter(e.target.value)}
+                  className="px-4 py-3 border-2 border-white rounded-lg text-base outline-none bg-white h-[46px] min-w-[150px]"
+                >
+                  <option value="all">All Roles</option>
+                  <option value="veterinarian">Veterinarian</option>
+                  <option value="kutsero">Kutsero</option>
+                  <option value="horse_operator">Horse Operator</option>
+                </select>
+              </div>
             </div>
 
-            <div className="flex gap-2 bg-gray-300 p-2 rounded-3xl h-14 w-fit items-center mb-5">
-              {/* Pending Tab */}
+            {/* Status Filter Container - Moved to the left */}
+            <div className="flex flex-wrap gap-2 bg-white p-2 rounded-lg h-auto lg:h-[52px] items-center justify-center border-2 border-white mb-5 w-fit">
               <button
-                className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
-                  activeTab === "pending"
-                    ? "bg-white text-gray-900 font-semibold shadow-sm"
-                    : "hover:bg-white hover:text-gray-900"
+                className={`flex items-center justify-center gap-2 h-full px-4 py-2 bg-none border-none text-sm font-medium cursor-pointer rounded-full transition-all duration-200 min-w-[80px] md:min-w-[90px] ${
+                  activeTab === "all"
+                    ? "bg-blue-500 text-white font-semibold shadow-sm"
+                    : "text-gray-700 hover:bg-gray-100"
                 }`}
-                onClick={() => handleTabChange("pending")}
+                onClick={() => {
+                  setActiveTab("all")
+                  setCurrentPage(1)
+                }}
+              >
+                All{" "}
+                {isLoadingCounts ? (
+                  <div className="animate-pulse bg-gray-300 rounded-full w-5 h-5"></div>
+                ) : (
+                  <span className={`inline-flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full text-[10px] md:text-xs font-semibold ${
+                    activeTab === "all" ? "bg-white/20 text-white" : "bg-blue-500 text-white"
+                  }`}>
+                    {counts.all}
+                  </span>
+                )}
+              </button>
+              
+              <button
+                className={`flex items-center justify-center gap-2 h-full px-4 py-2 bg-none border-none text-sm font-medium cursor-pointer rounded-full transition-all duration-200 min-w-[80px] md:min-w-[90px] ${
+                  activeTab === "pending"
+                    ? "bg-yellow-500 text-white font-semibold shadow-sm"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+                onClick={() => {
+                  setActiveTab("pending")
+                  setCurrentPage(1)
+                }}
               >
                 Pending{" "}
                 {isLoadingCounts ? (
-                  <div className="animate-pulse bg-gray-300 rounded-full w-6 h-6"></div>
+                  <div className="animate-pulse bg-gray-300 rounded-full w-5 h-5"></div>
                 ) : (
-                  <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-yellow-500">
+                  <span className={`inline-flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full text-[10px] md:text-xs font-semibold ${
+                    activeTab === "pending" ? "bg-white/20 text-white" : "bg-yellow-500 text-white"
+                  }`}>
                     {counts.pending}
                   </span>
                 )}
               </button>
-
-              {/* Approved Tab */}
+              
               <button
-                className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
+                className={`flex items-center justify-center gap-2 h-full px-4 py-2 bg-none border-none text-sm font-medium cursor-pointer rounded-full transition-all duration-200 min-w-[80px] md:min-w-[90px] ${
                   activeTab === "approved"
-                    ? "bg-white text-gray-900 font-semibold shadow-sm"
-                    : "hover:bg-white hover:text-gray-900"
+                    ? "bg-green-500 text-white font-semibold shadow-sm"
+                    : "text-gray-700 hover:bg-gray-100"
                 }`}
-                onClick={() => handleTabChange("approved")}
+                onClick={() => {
+                  setActiveTab("approved")
+                  setCurrentPage(1)
+                }}
               >
                 Approved{" "}
                 {isLoadingCounts ? (
-                  <div className="animate-pulse bg-gray-300 rounded-full w-6 h-6"></div>
+                  <div className="animate-pulse bg-gray-300 rounded-full w-5 h-5"></div>
                 ) : (
-                  <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-green-500">
+                  <span className={`inline-flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full text-[10px] md:text-xs font-semibold ${
+                    activeTab === "approved" ? "bg-white/20 text-white" : "bg-green-500 text-white"
+                  }`}>
                     {counts.approved}
                   </span>
                 )}
               </button>
-
-              {/* Not Approved Tab */}
+              
               <button
-                className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
+                className={`flex items-center justify-center gap-2 h-full px-4 py-2 bg-none border-none text-sm font-medium cursor-pointer rounded-full transition-all duration-200 min-w-[100px] md:min-w-[110px] ${
                   activeTab === "declined"
-                    ? "bg-white text-gray-900 font-semibold shadow-sm"
-                    : "hover:bg-white hover:text-gray-900"
+                    ? "bg-red-500 text-white font-semibold shadow-sm"
+                    : "text-gray-700 hover:bg-gray-100"
                 }`}
-                onClick={() => handleTabChange("declined")}
+                onClick={() => {
+                  setActiveTab("declined")
+                  setCurrentPage(1)
+                }}
               >
-                Not approved{" "}
+                Not Approved{" "}
                 {isLoadingCounts ? (
-                  <div className="animate-pulse bg-gray-300 rounded-full w-6 h-6"></div>
+                  <div className="animate-pulse bg-gray-300 rounded-full w-5 h-5"></div>
                 ) : (
-                  <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-red-500">
+                  <span className={`inline-flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full text-[10px] md:text-xs font-semibold ${
+                    activeTab === "declined" ? "bg-white/20 text-white" : "bg-red-500 text-white"
+                  }`}>
                     {counts.declined}
                   </span>
                 )}
@@ -934,91 +1025,115 @@ const handleNotificationClick = async (notification) => {
                   <Clock size={48} className="mb-4 opacity-50" />
                 ) : activeTab === "approved" ? (
                   <UserCheck size={48} className="mb-4 opacity-50" />
-                ) : (
+                ) : activeTab === "declined" ? (
                   <UserX size={48} className="mb-4 opacity-50" />
+                ) : (
+                  <User size={48} className="mb-4 opacity-50" />
                 )}
                 <h3 className="text-lg mb-2 text-gray-700">
-                  No {formatStatusDisplay(activeTab)} registrations
+                  {activeTab === "all" 
+                    ? "No registrations found" 
+                    : `No ${formatStatusDisplay(activeTab)} registrations`}
                 </h3>
                 <p className="text-sm text-gray-500">
                   {activeTab === "pending"
                     ? "New registration requests will appear here"
+                    : activeTab === "all"
+                    ? "No users match your filters"
                     : `${formatStatusDisplay(activeTab)} registrations will appear here`}
                 </p>
               </div>
             ) : (
               <>
-                {paginatedRegistrations.map((user) => (
-                  <div
-                    key={user.vet_id}
-                    className="flex items-center p-4 border-b border-gray-100 transition-colors duration-200 min-h-[80px] overflow-y-auto hover:bg-gray-50 last:border-b-0"
-                  >
-                    {/* Profile Photo - UPDATED with click handler */}
-                    <div 
-                      className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center text-white font-semibold text-base mr-4 flex-shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
-                      onClick={() => user.vet_profile_photo && openProfilePhotoFullView(
-                        user.vet_profile_photo, 
-                        `${user.vet_fname} ${user.vet_lname}`
-                      )}
+                {paginatedRegistrations.map((user) => {
+                  const userData = getUserModalData(user)
+                  const roleColor = getRoleColor(user.type, user.status)
+                  
+                  return (
+                    <div
+                      key={user.id}
+                      className="flex items-center p-4 border-b border-gray-100 transition-colors duration-200 min-h-[80px] overflow-y-auto hover:bg-gray-50 last:border-b-0"
                     >
-                      {user.vet_profile_photo ? (
-                        <img 
-                          src={user.vet_profile_photo} 
-                          alt={`${user.vet_fname} ${user.vet_lname}`}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.target.style.display = 'none';
-                            const fallback = document.createElement('div');
-                            fallback.className = 'w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold';
-                            fallback.textContent = user.vet_fname.charAt(0) + user.vet_lname.charAt(0);
-                            e.target.parentNode.appendChild(fallback);
-                          }}
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold">
-                          {user.vet_fname.charAt(0) + user.vet_lname.charAt(0)}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-gray-900 text-sm mb-0.5 break-words">
-                        {user.vet_fname} {user.vet_mname} {user.vet_lname}
-                        <span
-                          className={`inline-block py-1 px-2 rounded-xl text-xs font-medium ml-2 text-black ${
-                            user.users?.status === "approved"
-                              ? "bg-green-600 text-white"
-                              : user.users?.status === "pending"
-                                ? "bg-orange-500 text-white"
-                                : user.users?.status === "declined"
-                                  ? "bg-red-500 text-white"
-                                  : ""
-                          }`}
-                        >
-                          {formatStatusDisplay(user.users?.status)}
-                        </span>
-                      </div>
-                      <div className="text-gray-500 text-xs mb-0.5 break-words">{user.vet_email}</div>
-                      <div className="text-gray-500 text-xs break-words">
-                        {user.vet_city}, {user.vet_province}
-                        {user.users?.status === "declined" && user.decline_reason
-                          ? ` - Reason: ${user.decline_reason}`
-                          : ""}
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2 ml-4 flex-wrap">
-                      <button
-                        className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px] "
-                        onClick={() => viewDetails(user.vet_id, user.status)}
+                      <div 
+                        className="w-10 h-10 rounded-full bg-gray-500 flex items-center justify-center text-white font-semibold text-base mr-4 flex-shrink-0 overflow-hidden cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={() => userData?.profilePhoto && openProfilePhotoFullView(
+                          userData.profilePhoto, 
+                          user.name
+                        )}
                       >
-                        <Eye size={16} />
-                      </button>
+                        {userData?.profilePhoto ? (
+                          <img 
+                            src={userData.profilePhoto} 
+                            alt={user.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => {
+                              e.target.style.display = 'none';
+                              const fallback = document.createElement('div');
+                              fallback.className = 'w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold';
+                              fallback.textContent = user.firstName?.charAt(0) + user.lastName?.charAt(0) || "U";
+                              e.target.parentNode.appendChild(fallback);
+                            }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-gray-500 text-white font-semibold">
+                            {user.firstName?.charAt(0) + user.lastName?.charAt(0) || "U"}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <div className="font-semibold text-gray-900 text-sm mb-0.5 break-words flex items-center gap-2">
+                          {user.name}
+                          
+                          {/* Role badge with different colors */}
+                          <span className={`text-xs px-2 py-0.5 rounded ${roleColor}`}>
+                            {user.type}
+                          </span>
+                          
+                          {/* Status badge - Only show in "all" tab */}
+                          {activeTab === "all" && (
+                            <span
+                              className={`inline-block py-1 px-2 rounded-xl text-xs font-medium text-black ${
+                                user.status === "approved"
+                                  ? "bg-green-600 text-white"
+                                  : user.status === "pending"
+                                    ? "bg-orange-500 text-white"
+                                    : user.status === "declined"
+                                      ? "bg-red-500 text-white"
+                                      : ""
+                              }`}
+                            >
+                              {formatStatusDisplay(user.status)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-gray-500 text-xs mb-0.5 break-words">{user.email}</div>
+                        <div className="text-gray-500 text-xs break-words">
+                          {user.city}, {user.province}
+                          {/* ADD DATE REGISTERED HERE */}
+                          {user.dateRegistered && (
+                            <span className="text-gray-400 ml-2">• Registered: {user.dateRegistered}</span>
+                          )}
+                          {user.status === "declined" && user.declineReason
+                            ? ` - Reason: ${user.declineReason}`
+                            : ""}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 ml-4 flex-wrap">
+                        {/* Only View button - No Approve/Decline buttons */}
+                        <button
+                          className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px]"
+                          onClick={() => viewDetails(user.id, user.status, user.type)}
+                        >
+                          <Eye size={16} />
+                          View
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
                 
-                {/* Pagination Controls */}
                 {filteredRegistrations.length > 0 && (
                   <div className="flex justify-between items-center bg-gray-50 px-6 py-4 border-t border-gray-200">
                     <div className="text-sm text-gray-600 flex items-center gap-3">
@@ -1096,8 +1211,7 @@ const handleNotificationClick = async (notification) => {
 
       <FloatingMessages />
 
-      {/* NEW: Full View Profile Photo Modal */}
-     {isProfilePhotoFullView && selectedProfilePhoto && (
+      {isProfilePhotoFullView && selectedProfilePhoto && (
         <div 
           className="fixed inset-0 bg-black/95 flex items-center justify-center z-[1100] profile-photo-overlay"
           onClick={closeProfilePhotoFullView}
@@ -1131,8 +1245,18 @@ const handleNotificationClick = async (notification) => {
         </div>
       )}
 
-      {/* View Details Modal - UPDATED with clickable profile photo */}
-      {isViewDetailsModalOpen && selectedUser && (
+    {isViewDetailsModalOpen && selectedUser && (() => {
+      const userData = getUserModalData(selectedUser)
+      if (!userData) return null
+      
+      // Get initials for the user
+      const getInitials = () => {
+        const firstInitial = userData.firstName ? userData.firstName.charAt(0).toUpperCase() : '';
+        const lastInitial = userData.lastName ? userData.lastName.charAt(0).toUpperCase() : '';
+        return `${firstInitial}${lastInitial}` || 'U';
+      };
+      
+      return (
         <div
           className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay"
           ref={viewDetailsModalOverlayRef}
@@ -1145,19 +1269,21 @@ const handleNotificationClick = async (notification) => {
               &times;
             </button>
 
-            <div className="flex justify-center items-center p-8 border-b border-gray-200 bg-white">
-              <div className="flex flex-col items-center text-center gap-4">
-                <div className="flex justify-center mb-2">
-                  {selectedUser.vet_profile_photo ? (
+            {/* Header Section */}
+            <div className="flex justify-center items-center p-6 border-b border-gray-200 bg-white">
+              <div className="flex flex-col items-center text-center gap-3">
+                {/* Profile Photo */}
+                <div className="flex justify-center mb-1">
+                  {userData.profilePhoto ? (
                     <div 
-                      className="w-[120px] h-[120px] border-2 border-gray-200 rounded-full flex items-center justify-center bg-white overflow-hidden cursor-pointer hover:border-red-300 transition-colors"
+                      className="w-[100px] h-[100px] border-2 border-gray-200 rounded-full flex items-center justify-center bg-white overflow-hidden cursor-pointer hover:border-red-300 transition-colors"
                       onClick={() => openProfilePhotoFullView(
-                        selectedUser.vet_profile_photo, 
-                        `${selectedUser.vet_fname} ${selectedUser.vet_lname}`
+                        userData.profilePhoto, 
+                        `${userData.firstName} ${userData.lastName}`
                       )}
                     >
                       <img 
-                        src={selectedUser.vet_profile_photo} 
+                        src={userData.profilePhoto} 
                         alt="Profile" 
                         className="w-full h-full object-cover rounded-full"
                         onError={(e) => {
@@ -1166,351 +1292,331 @@ const handleNotificationClick = async (notification) => {
                         }}
                       />
                       <div className="hidden w-full h-full items-center justify-center bg-gray-100 rounded-full">
-                        <span className="text-base font-medium text-gray-500">Profile</span>
+                        <span className="text-xl font-semibold text-gray-500">
+                          {getInitials()}
+                        </span>
                       </div>
                     </div>
                   ) : (
-                    <div className="w-[120px] h-[120px] border-2 border-gray-200 rounded-full flex items-center justify-center bg-gray-100">
-                      <span className="text-base font-medium text-gray-500">Profile</span>
+                    <div className="w-[100px] h-[100px] border-2 border-gray-200 rounded-full flex items-center justify-center bg-gray-100">
+                      <span className="text-xl font-semibold text-gray-500">
+                        {getInitials()}
+                      </span>
                     </div>
                   )}
                 </div>
 
-                <div className="flex flex-col items-center gap-2">
-                  <h3 className="text-xl font-semibold text-gray-900 m-0">
-                    {selectedUser.vet_fname} {selectedUser.vet_mname} {selectedUser.vet_lname}
+                {/* User Info */}
+                <div className="flex flex-col items-center gap-1">
+                  <h3 className="text-lg font-semibold text-gray-900 m-0">
+                    {userData.firstName} {userData.middleName ? `${userData.middleName} ` : ''}{userData.lastName}
                   </h3>
-                  <p className="text-base text-gray-500 m-0">{selectedUser.type}</p>
+                  <div className="text-xs text-gray-500">
+                    {userData.email}
+                  </div>
                   <div className="flex items-center gap-2 mt-1">
-                    <span className="text-sm text-gray-900 font-medium">Current Status:</span>
+                    <span className={`text-xs px-2 py-0.5 rounded ${getRoleColor(selectedUser.type, selectedUser.status)}`}>
+                      {selectedUser.type}
+                    </span>
                     <span
-                      className={`py-1 px-3 rounded-2xl text-xs font-semibold uppercase ${
-                        selectedUser.users?.status === "pending"
+                      className={`py-1 px-2 rounded-xl text-xs font-semibold uppercase ${
+                        selectedUser.status === "pending"
                           ? "bg-yellow-100 text-yellow-700"
-                          : selectedUser.users?.status === "approved"
+                          : selectedUser.status === "approved"
                             ? "bg-green-100 text-green-700"
-                            : selectedUser.users?.status === "declined"
+                            : selectedUser.status === "declined"
                               ? "bg-red-100 text-red-700"
                               : ""
                       }`}
                     >
-                      {formatStatusDisplay(selectedUser.users?.status)}
+                      {formatStatusDisplay(selectedUser.status)}
                     </span>
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Rest of the modal content remains the same */}
-            <div className="flex border-b border-gray-200">
+            {/* Tab Navigation - Hide Documents tab for Horse Operator */}
+            <div className="flex border-b border-gray-200 overflow-x-auto">
               <button
-                className={`py-3 px-6 bg-none border-none text-sm font-medium text-gray-500 cursor-pointer border-b-2 border-transparent transition-all duration-200 whitespace-nowrap min-h-[44px] ${
-                  modalActiveTab === "personal" ? "text-red-700 border-b-2 border-red-700" : ""
-                }`}
+                className={`py-3 px-4 bg-none border-none text-sm font-medium text-gray-500 cursor-pointer border-b-2 border-transparent transition-all duration-200 whitespace-nowrap min-h-[44px] ${
+                  modalActiveTab === "personal" ? "text-red-700 border-b-2 border-red-700" : "" }`}
                 onClick={() => setModalActiveTab("personal")}
               >
-                Personal Information
+                Personal Info
               </button>
-              <button
-                className={`py-3 px-6 bg-none border-none text-sm font-medium text-gray-500 cursor-pointer border-b-2 border-transparent transition-all duration-200 whitespace-nowrap min-h-[44px] ${
-                  modalActiveTab === "professional" ? "text-red-700 border-b-2 border-red-700" : ""
-                }`}
-                onClick={() => setModalActiveTab("professional")}
-              >
-                Professional Info
-              </button>
-              <button
-                className={`py-3 px-6 bg-none border-none text-sm font-medium text-gray-500 cursor-pointer border-b-2 border-transparent transition-all duration-200 whitespace-nowrap min-h-[44px] ${
-                  modalActiveTab === "documents" ? "text-red-700 border-b-2 border-red-700" : ""
-                }`}
-                onClick={() => setModalActiveTab("documents")}
-              >
-                Documents
-              </button>
+              
+              {selectedUser.type === "Veterinarian" && (
+                <button
+                  className={`py-3 px-4 bg-none border-none text-sm font-medium text-gray-500 cursor-pointer border-b-2 border-transparent transition-all duration-200 whitespace-nowrap min-h-[44px] ${
+                    modalActiveTab === "professional" ? "text-red-700 border-b-2 border-red-700" : "" }`}
+                  onClick={() => setModalActiveTab("professional")}
+                >
+                  Professional
+                </button>
+              )}
+              
+              {/* Show Documents tab only for Veterinarian and Kutsero, NOT for Horse Operator */}
+              {selectedUser.type !== "Horse Operator" && (
+                <button
+                  className={`py-3 px-4 bg-none border-none text-sm font-medium text-gray-500 cursor-pointer border-b-2 border-transparent transition-all duration-200 whitespace-nowrap min-h-[44px] ${
+                    modalActiveTab === "documents" ? "text-red-700 border-b-2 border-red-700" : "" }`}
+                  onClick={() => setModalActiveTab("documents")}
+                >
+                  Documents
+                </button>
+              )}
             </div>
 
-            <div className="mb-5">
+            {/* Content Area */}
+            <div className="py-4">
               {modalActiveTab === "personal" && (
-                <>
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
-                    <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
-                      <User className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
-                      <h4 className="text-base font-semibold text-gray-900 m-0">Name Information</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">First Name:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_fname}
+                <div className="space-y-4">
+                  {/* Name Information */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                      <User className="text-red-700 mr-2" size={16} />
+                      Name Information
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">First Name</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.firstName || "Not provided"}
                         </div>
                       </div>
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Middle Name:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_mname}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Middle Name</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.middleName || "Not provided"}
                         </div>
                       </div>
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Last Name:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_lname}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Last Name</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.lastName || "Not provided"}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
-                    <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
-                      <CreditCard className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
-                      <h4 className="text-base font-semibold text-gray-900 m-0">Personal Information</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Date of Birth:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_dob}
+                  {/* Personal Details */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                      <CreditCard className="text-red-700 mr-2" size={16} />
+                      Personal Details
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Date of Birth</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.dob || "Not provided"}
                         </div>
                       </div>
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Sex:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_sex || "Not specified"}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Sex</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.sex || "Not specified"}
                         </div>
                       </div>
-                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Phone Number:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_phone_num}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Phone Number</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.phone || "Not provided"}
                         </div>
                       </div>
-                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Email:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_email}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Date Registered</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.dateRegistered || "Not available"}
                         </div>
                       </div>
-                      
+                      <div className="md:col-span-2">
+                        <div className="text-xs text-gray-500 mb-1">Email Address</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.email}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
-                    <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
-                      <MapPin className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
-                      <h4 className="text-base font-semibold text-gray-900 m-0">Address Information</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Province:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_province}
-                        </div>
-                      </div>
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">City:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_city}
-                        </div>
-                      </div>
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Barangay:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_brgy}
-                        </div>
-                      </div>
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Zip Code:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_zipcode}
-                        </div>
-                      </div>
-                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Complete Address:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {`${selectedUser.vet_brgy}, ${selectedUser.vet_city}, ${selectedUser.vet_province}`}
-                        </div>
+                  {/* Address Information */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                      <MapPin className="text-red-700 mr-2" size={16} />
+                      Address Information
+                    </h4>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">Complete Address</div>
+                      <div className="text-sm text-gray-900 font-medium bg-white p-3 rounded border border-gray-200">
+                        {userData.barangay ? `${userData.barangay}, ` : ''}
+                        {userData.city ? `${userData.city}, ` : ''}
+                        {userData.province || ''}
+                        {userData.zipCode ? ` ${userData.zipCode}` : ''}
+                        {!userData.barangay && !userData.city && !userData.province ? "Not specified" : ""}
                       </div>
                     </div>
                   </div>
-                </>
+                </div>
               )}
 
-              {modalActiveTab === "professional" && (
-                <>
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
-                    <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
-                      <Stethoscope className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
-                      <h4 className="text-base font-semibold text-gray-900 m-0">Professional Information</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">License Number:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_license_num || "Not provided"}
+              {/* Professional Info Tab - Only for Veterinarians */}
+              {modalActiveTab === "professional" && selectedUser.type === "Veterinarian" && (
+                <div className="space-y-4">
+                  {/* Professional Information */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                      <Stethoscope className="text-red-700 mr-2" size={16} />
+                      Professional Information
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">License Number</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.licenseNumber || "Not provided"}
                         </div>
                       </div>
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Experience Years:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_exp_yr || "Not specified"}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Years of Experience</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.experienceYears || "Not specified"}
                         </div>
                       </div>
-                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Specialization:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_specialization || "Not specified"}
+                      <div className="md:col-span-2">
+                        <div className="text-xs text-gray-500 mb-1">Specialization</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.specialization || "Not specified"}
                         </div>
                       </div>
-                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Organization:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_org || "Not specified"}
+                      <div className="md:col-span-2">
+                        <div className="text-xs text-gray-500 mb-1">Organization</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.organization || "Not specified"}
                         </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* Clinic Address Section */}
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
-                    <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
-                      <MapPin className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
-                      <h4 className="text-base font-semibold text-gray-900 m-0">Clinic Address</h4>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Clinic Province:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_clinic_province || "Not specified"}
-                        </div>
+                  {/* Clinic Address */}
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                      <MapPin className="text-red-700 mr-2" size={16} />
+                      Clinic Address
+                    </h4>
+                    <div>
+                      <div className="text-xs text-gray-500 mb-1">Complete Clinic Address</div>
+                      <div className="text-sm text-gray-900 font-medium bg-white p-3 rounded border border-gray-200">
+                        {userData.clinicBarangay ? `${userData.clinicBarangay}, ` : ''}
+                        {userData.clinicCity ? `${userData.clinicCity}, ` : ''}
+                        {userData.clinicProvince || ''}
+                        {userData.clinicZipCode ? ` ${userData.clinicZipCode}` : ''}
+                        {!userData.clinicBarangay && !userData.clinicCity && !userData.clinicProvince ? "Not specified" : ""}
                       </div>
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Clinic City:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_clinic_city || "Not specified"}
-                        </div>
-                      </div>
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Clinic Barangay:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_clinic_brgy || "Not specified"}
-                        </div>
-                      </div>
-                      <div className="flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Clinic Zip Code:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_clinic_zipcode || "Not specified"}
-                        </div>
-                      </div>
-                      <div className="col-span-2 flex justify-start items-start mb-3 gap-1">
-                        <span className="text-xs text-gray-500 flex-shrink-0 min-w-[120px]">Complete Clinic Address:</span>
-                        <div className="text-sm font-medium text-gray-900 break-words flex-shrink-0 mr-full">
-                          {selectedUser.vet_clinic_province && selectedUser.vet_clinic_city && selectedUser.vet_clinic_brgy 
-                            ? `${selectedUser.vet_clinic_brgy}, ${selectedUser.vet_clinic_city}, ${selectedUser.vet_clinic_province}`
-                            : "Not specified"}
-                        </div>
-                      </div>
-                      
                     </div>
                   </div>
-                </>
+                </div>
               )}
 
-              {modalActiveTab === "documents" && (
-                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4 transition-shadow duration-200 hover:shadow-md">
-                  <div className="flex items-center mb-4 pb-2 border-b border-gray-200">
-                    <FileText className="text-red-700 mr-2 text-base w-5 text-center" size={20} />
-                    <h4 className="text-base font-semibold text-gray-900 m-0">Documents</h4>
-                  </div>
-                  
-                  <div>
-                    <h5 className="text-sm font-semibold text-gray-700 mb-3">License Documents</h5>
-                    <div className="flex flex-col items-center justify-center p-5 border border-dashed border-gray-300 rounded-lg text-center">
-                      {selectedUser.vet_documents && parseDocuments(selectedUser.vet_documents).length > 0 ? (
-                        <div className="w-full">
-                          {parseDocuments(selectedUser.vet_documents).map((docUrl, index) => (
-                            <div key={index} className="mb-4 last:mb-0">
-                              <div className="relative w-full max-w-md mx-auto">
-                                {docUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/) ? (
-                                  <img
-                                    src={docUrl}
-                                    alt={`License Document ${index + 1}`}
-                                    className="w-full h-auto rounded-lg block max-h-64 object-contain"
-                                    onError={(e) => {
-                                      e.target.style.display = "none"
-                                      e.target.nextSibling.style.display = "block"
-                                    }}
-                                  />
-                                ) : (
-                                  <div className="flex flex-col items-center justify-center p-8 border border-gray-200 rounded-lg bg-gray-50">
-                                    <FileText size={48} className="mb-2.5 text-gray-400" />
-                                    <p className="text-sm text-gray-500 mb-2">PDF Document</p>
-                                    <a 
-                                      href={docUrl} 
-                                      target="_blank" 
-                                      rel="noopener noreferrer"
-                                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                                    >
-                                      View PDF Document
-                                    </a>
+              {/* Documents Tab - Only for Veterinarian and Kutsero, NOT for Horse Operator */}
+              {modalActiveTab === "documents" && selectedUser.type !== "Horse Operator" && (
+                <div className="space-y-4">
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-3 flex items-center">
+                      <FileText className="text-red-700 mr-2" size={16} />
+                      Documents
+                    </h4>
+                    
+                    {/* Years of Experience for Kutsero ONLY - ADDED */}
+                    {selectedUser.type === "Kutsero" && (
+                      <div className="mb-4 bg-white border border-gray-200 rounded p-3">
+                        <div className="text-xs text-gray-500 mb-1">Years of Experience</div>
+                        <div className="text-sm text-gray-900 font-medium">
+                          {userData.experienceYears || "Not specified"}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Documents Display */}
+                    <div>
+                      <div className="text-xs text-gray-500 mb-2">
+                        {selectedUser.type === "Veterinarian" ? "License Documents" : "Registration Documents"}
+                      </div>
+                      <div className="border border-gray-300 rounded-lg p-4 bg-white">
+                        {userData.documents && parseDocuments(userData.documents).length > 0 ? (
+                          <div className="space-y-3">
+                            {parseDocuments(userData.documents).map((docUrl, index) => (
+                              <div key={index} className="border border-gray-200 rounded p-3">
+                                <div className="flex items-start justify-between">
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-900">
+                                      Document {index + 1}
+                                    </p>
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      {docUrl.split('/').pop() || 'Document'}
+                                    </p>
                                   </div>
-                                )}
-                                <div className="flex flex-col items-center justify-center text-gray-400 hidden p-8">
-                                  <FileText size={48} className="mb-2.5" />
-                                  <p className="text-sm text-gray-500">Document not available</p>
+                                  <a 
+                                    href={docUrl} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                                  >
+                                    {docUrl.toLowerCase().match(/\.(jpg|jpeg|png|gif|webp)$/) ? 'View Image' : 'View PDF'}
+                                  </a>
                                 </div>
                               </div>
-                              <p className="text-xs text-gray-500 mt-2">Document {index + 1}</p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center text-gray-400 p-8">
-                          <FileText size={48} className="mb-2.5" />
-                          <p className="text-sm text-gray-500">No documents provided</p>
-                        </div>
-                      )}
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-6">
+                            <FileText size={32} className="mx-auto mb-2 text-gray-400" />
+                            <p className="text-sm text-gray-500">No documents provided</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* COMPACT BUTTONS - UPDATED with loading states */}
-            <div className="flex justify-end pt-4 border-t border-gray-200 gap-2 flex-wrap">
-              {selectedUser?.users?.status === "pending" && (
+            {/* Action Buttons */}
+            <div className="flex justify-end pt-4 border-t border-gray-200 gap-2">
+              {selectedUser.status === "pending" && (
                 <>
                   <button
-                    className="inline-flex items-center gap-1.5 py-2 px-3 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 bg-green-500 text-white hover:bg-green-600 min-w-[100px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={() => showApproveConfirmation(selectedUser.vet_id)}
-                    disabled={isActionLoading && loadingActionId === selectedUser.vet_id}
+                    className="inline-flex items-center gap-1.5 py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 bg-green-500 text-white hover:bg-green-600 min-w-[100px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => showApproveConfirmation(selectedUser.id, selectedUser.type, `${userData.firstName} ${userData.lastName}`)}
+                    disabled={isActionLoading && loadingActionId === selectedUser.id}
                   >
-                    {isActionLoading && loadingActionId === selectedUser.vet_id ? (
+                    {isActionLoading && loadingActionId === selectedUser.id ? (
                       <RefreshCw size={16} className="animate-spin" />
                     ) : (
                       <CheckCircle size={16} />
                     )}
-                    {isActionLoading && loadingActionId === selectedUser.vet_id ? "Processing..." : "Approve"}
+                    {isActionLoading && loadingActionId === selectedUser.id ? "Processing..." : "Approve"}
                   </button>
 
                   <button
-                    className="inline-flex items-center gap-1.5 py-2 px-3 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 bg-red-500 text-white hover:bg-red-600 min-w-[100px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
-                    onClick={() => showDeclineConfirmation(selectedUser.vet_id)}
-                    disabled={isActionLoading && loadingActionId === selectedUser.vet_id}
+                    className="inline-flex items-center gap-1.5 py-2 px-4 border-none rounded text-sm font-medium cursor-pointer transition-colors duration-200 bg-red-500 text-white hover:bg-red-600 min-w-[100px] justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+                    onClick={() => showDeclineConfirmation(selectedUser.id, selectedUser.type, `${userData.firstName} ${userData.lastName}`)}
+                    disabled={isActionLoading && loadingActionId === selectedUser.id}
                   >
-                    {isActionLoading && loadingActionId === selectedUser.vet_id ? (
+                    {isActionLoading && loadingActionId === selectedUser.id ? (
                       <RefreshCw size={16} className="animate-spin" />
                     ) : (
                       <XCircle size={16} />
                     )}
-                    {isActionLoading && loadingActionId === selectedUser.vet_id ? "Processing..." : "Not Approved"}
+                    {isActionLoading && loadingActionId === selectedUser.id ? "Processing..." : "Decline"}
                   </button>
                 </>
               )}
+
             </div>
           </div>
         </div>
-      )}
-
-      {/* Confirmation Modal - UPDATED with loading states */}
+      )
+    })()}
       {isConfirmationModalOpen && (
         <div
           className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay"
@@ -1520,15 +1626,20 @@ const handleNotificationClick = async (notification) => {
             <h3 className="text-lg font-semibold text-gray-900 mb-3">{confirmationDetails.title}</h3>
             <p className="text-base text-gray-500 mb-6 leading-relaxed">{confirmationDetails.message}</p>
 
-            {/* Decline Reason Input */}
             {confirmationDetails.action === "decline" && (
-              <textarea
-                placeholder="Enter reason for marking as not approved..."
-                value={declineReason}
-                onChange={(e) => setDeclineReason(e.target.value)}
-                className="w-full p-2 mt-2.5 rounded border border-gray-300 resize-y"
-                disabled={isActionLoading}
-              />
+              <div className="mb-4">
+                <textarea
+                  placeholder="Enter reason for marking as not approved..."
+                  value={declineReason}
+                  onChange={(e) => setDeclineReason(e.target.value)}
+                  className="w-full p-3 mt-2.5 rounded border border-gray-300 resize-y min-h-[100px]"
+                  disabled={isActionLoading}
+                  rows={4}
+                />
+                {!declineReason.trim() && (
+                  <p className="text-sm text-red-500 mt-1">Reason is required</p>
+                )}
+              </div>
             )}
 
             <div className="flex gap-3 justify-center flex-wrap">
@@ -1546,7 +1657,7 @@ const handleNotificationClick = async (notification) => {
                     : "bg-red-500 text-white hover:bg-red-600"
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
                 onClick={confirmAction}
-                disabled={isActionLoading || (confirmationDetails.action === "decline" && !declineReason)}
+                disabled={isActionLoading || (confirmationDetails.action === "decline" && !declineReason.trim())}
               >
                 {isActionLoading ? (
                   <>

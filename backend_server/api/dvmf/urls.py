@@ -6,12 +6,12 @@ urlpatterns = [
      # -------------------- TEST --------------------
     path("test-cookie/", views.test_cookie, name="test_cookie"),
     path('signup/', views.signup, name='signup'),
-   
-     path("get-vet-profiles/", views.get_vet_profiles, name="get_vet_profiles"),
-    path("update-vet-status/<str:vet_profile_id>/", views.update_vet_status, name="update-vet-status"),
+    path("get_all_profiles/", views.get_all_profiles, name="get_all_profiles"),
+    path("update_user_status/<str:user_profile_id>/", views.update_user_status, name="update_user_status"),
+    path('get_all_profile_counts/', views.get_all_profile_counts, name='get_all_profile_counts'),
 
     path('users/', views.fetch_users, name='fetch-users'), 
-     path('users/deactivate/<str:user_id>/', views.deactivate_user, name='deactivate_user'),
+    path('users/deactivate/<str:user_id>/', views.deactivate_user, name='deactivate_user'),
     path('users/reactivate/<str:user_id>/', views.reactivate_user, name='reactivate_user'),
    
 

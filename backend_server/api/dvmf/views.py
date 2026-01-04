@@ -161,60 +161,153 @@ def signup(request):
 
 
 
-# -------------------- GET VET PROFILES --------------------
-# -------------------- GET VET PROFILES --------------------
-@api_view(["GET"])
-def get_vet_profiles(request):
-    import json
-    import logging
-
+# -------------------- GET ALL PROFILES --------------------
+@api_view(['GET'])
+def get_all_profiles(request):
+    """
+    Get all user profiles (vet, kutsero, horse_operator)
+    """
     try:
-        response = sr_client.table("vet_profile").select("*, users(status)").execute()
-        data = response.data or []
+        # Fetch vet profiles
+        vet_res = sr_client.table("vet_profile")\
+            .select("*, users(*)")\
+            .execute()
+        
+        # Fetch kutsero profiles - Note: table name is kutsero_profile
+        kutsero_res = sr_client.table("kutsero_profile")\
+            .select("*, users(*)")\
+            .execute()
+        
+        # Fetch horse operator profiles - Note: table name is horse_op_profile (not horse_operator_profile)
+        horse_op_res = sr_client.table("horse_op_profile")\
+            .select("*, users(*)")\
+            .execute()
+        
+        # Combine all profiles with type identifier
+        all_profiles = []
+        
+        # Process vet profiles
+        for vet in vet_res.data:
+            vet['type'] = 'Veterinarian'
+            vet['user_id'] = vet.get('vet_id')
+            vet['name'] = f"{vet.get('vet_fname', '')} {vet.get('vet_lname', '')}"
+            vet['email'] = vet.get('vet_email')
+            vet['profile_photo'] = vet.get('vet_profile_photo')
+            vet['city'] = vet.get('vet_city')
+            vet['province'] = vet.get('vet_province')
+            vet['status'] = vet.get('users', {}).get('status', 'pending')
+            vet['decline_reason'] = vet.get('users', {}).get('decline_reason', '')
+            all_profiles.append(vet)
+        
+        # Process kutsero profiles - Note field names are kutsero_ prefixed
+        for kutsero in kutsero_res.data:
+            kutsero['type'] = 'Kutsero'
+            kutsero['user_id'] = kutsero.get('kutsero_id')
+            kutsero['name'] = f"{kutsero.get('kutsero_fname', '')} {kutsero.get('kutsero_lname', '')}"
+            kutsero['email'] = kutsero.get('kutsero_email')
+            kutsero['profile_photo'] = kutsero.get('kutsero_image')  # Note: field name is kutsero_image
+            kutsero['city'] = kutsero.get('kutsero_city')
+            kutsero['province'] = kutsero.get('kutsero_province')
+            kutsero['status'] = kutsero.get('users', {}).get('status', 'pending')
+            kutsero['decline_reason'] = kutsero.get('users', {}).get('decline_reason', '')
+            all_profiles.append(kutsero)
+        
+        # Process horse operator profiles - Note field names are op_ prefixed
+        for operator in horse_op_res.data:
+            operator['type'] = 'Horse Operator'
+            operator['user_id'] = operator.get('op_id')
+            operator['name'] = f"{operator.get('op_fname', '')} {operator.get('op_lname', '')}"
+            operator['email'] = operator.get('op_email')
+            operator['profile_photo'] = operator.get('op_image')  # Note: field name is op_image
+            operator['city'] = operator.get('op_city')
+            operator['province'] = operator.get('op_province')
+            operator['status'] = operator.get('users', {}).get('status', 'pending')
+            operator['decline_reason'] = operator.get('users', {}).get('decline_reason', '')
+            all_profiles.append(operator)
+        
+        return Response({
+            "success": True,
+            "data": all_profiles,
+            "count": len(all_profiles)
+        }, status=200)
+        
+    except Exception as e:
+        logging.exception("Error fetching all profiles")
+        return Response({"error": str(e)}, status=500)
 
-        for row in data:
-            # Normalize vet_profile_photo
-            profile_photo = row.get("vet_profile_photo")
-            if profile_photo:
-                if isinstance(profile_photo, str) and not profile_photo.startswith("http"):
-                    # If only filename stored, get full public URL
-                    public_url = sr_client.storage.from_("vet_profile").get_public_url(profile_photo)
-                    row["vet_profile_photo"] = public_url
-                # Else already a full URL — leave as is
 
-            # Normalize vet_documents (may be stored as JSON string or list)
-            documents = row.get("vet_documents", "[]")
-            normalized_docs = []
 
-            # Decode JSON string if needed
-            if isinstance(documents, str):
-                try:
-                    docs_list = json.loads(documents)
-                except json.JSONDecodeError:
-                    docs_list = []
-            elif isinstance(documents, list):
-                docs_list = documents
-            else:
-                docs_list = []
 
-            # Normalize each document URL
-            for doc in docs_list:
-                if isinstance(doc, str) and doc.strip():
-                    if doc.startswith("http"):
-                        normalized_docs.append(doc)
-                    else:
-                        public_url = sr_client.storage.from_("vet_documents").get_public_url(doc)
-                        if public_url:
-                            normalized_docs.append(public_url)
-
-            # Always return vet_documents as a list
-            row["vet_documents"] = normalized_docs
-
-        return Response({"data": data}, status=status.HTTP_200_OK)
-
-    except Exception:
-        logging.exception("Failed to fetch vet profiles")
-        return Response({"error": "Failed to fetch vet profiles"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+# -------------------- GET ACCOUNT COUNTS --------------------
+@api_view(['GET'])
+def get_all_profile_counts(request):
+    """
+    Get counts for all user types
+    """
+    try:
+        # Get all profiles
+        vet_res = sr_client.table("vet_profile")\
+            .select("*, users(*)")\
+            .execute()
+        
+        kutsero_res = sr_client.table("kutsero_profile")\
+            .select("*, users(*)")\
+            .execute()
+        
+        horse_op_res = sr_client.table("horse_op_profile")\
+            .select("*, users(*)")\
+            .execute()
+        
+        # Initialize counters
+        pending_count = 0
+        approved_count = 0
+        declined_count = 0
+        
+        # Count vet profiles
+        for vet in vet_res.data:
+            status = vet.get('users', {}).get('status', 'pending')
+            if status == 'pending':
+                pending_count += 1
+            elif status == 'approved':
+                approved_count += 1
+            elif status == 'declined':
+                declined_count += 1
+        
+        # Count kutsero profiles
+        for kutsero in kutsero_res.data:
+            status = kutsero.get('users', {}).get('status', 'pending')
+            if status == 'pending':
+                pending_count += 1
+            elif status == 'approved':
+                approved_count += 1
+            elif status == 'declined':
+                declined_count += 1
+        
+        # Count horse operator profiles
+        for operator in horse_op_res.data:
+            status = operator.get('users', {}).get('status', 'pending')
+            if status == 'pending':
+                pending_count += 1
+            elif status == 'approved':
+                approved_count += 1
+            elif status == 'declined':
+                declined_count += 1
+        
+        total_count = pending_count + approved_count + declined_count
+        
+        return Response({
+            "success": True,
+            "data": {
+                "pending": pending_count,
+                "approved": approved_count,
+                "declined": declined_count,
+                "all": total_count
+            }
+        }, status=200)
+        
+    except Exception as e:
+        logging.exception("Error fetching profile counts")
+        return Response({"error": str(e)}, status=500)
 
 
 # -------------------- UPDATE STATUS --------------------
@@ -225,50 +318,82 @@ from django.core.mail import send_mail
 from django.conf import settings
 import logging
 
-# assume sr_client is already created at module top
-# sr_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
+# -------------------- UPDATE USER STATUS --------------------
 @api_view(['PATCH'])
-def update_vet_status(request, vet_profile_id):
+def update_user_status(request, user_profile_id):
     """
-    Update the status of a vet user (pending, approved, declined)
+    Update the status of any user (vet, kutsero, horse_operator) 
     and send a modern HTML email notification on approved or declined.
     """
     new_status = request.data.get("status")
-    decline_reason = request.data.get("decline_reason")  # Get decline reason from request
+    decline_reason = request.data.get("decline_reason")
+    user_type = request.data.get("user_type", "vet")  # Get user type from request
+    
     reason_text = decline_reason if decline_reason else "Not provided"
-
     allowed_statuses = ["pending", "approved", "declined"]
+    
     if new_status not in allowed_statuses:
         return Response({"error": f"Invalid status. Allowed: {allowed_statuses}"}, status=400)
 
-    # Get vet profile
-    vet_profile_res = sr_client.table("vet_profile")\
-        .select("vet_id, vet_email, vet_fname, vet_lname")\
-        .eq("vet_id", str(vet_profile_id)).execute()
+    # Define table mapping based on user type
+    table_mapping = {
+        "vet": {
+            "table": "vet_profile",
+            "id_field": "vet_id",
+            "email_field": "vet_email",
+            "fname_field": "vet_fname",
+            "lname_field": "vet_lname"
+        },
+        "kutsero": {
+            "table": "kutsero_profile",
+            "id_field": "kutsero_id",
+            "email_field": "kutsero_email",
+            "fname_field": "kutsero_fname",
+            "lname_field": "kutsero_lname"
+        },
+        "horse_operator": {
+            "table": "horse_op_profile",  # Note: actual table name
+            "id_field": "op_id",  # Note: field name is op_id
+            "email_field": "op_email",  # Note: field name is op_email
+            "fname_field": "op_fname",  # Note: field name is op_fname
+            "lname_field": "op_lname"   # Note: field name is op_lname
+        }
+    }
 
-    if not vet_profile_res.data:
-        return Response({"error": "Vet profile not found"}, status=404)
+    if user_type not in table_mapping:
+        return Response({"error": f"Invalid user type. Allowed: {list(table_mapping.keys())}"}, status=400)
 
-    vet_data = vet_profile_res.data[0]
-    vet_id = vet_data["vet_id"]
-    vet_email = vet_data.get("vet_email")
-    vet_name = f"{vet_data.get('vet_fname','')} {vet_data.get('vet_lname','')}".strip() or "User"
+    table_info = table_mapping[user_type]
+    
+    # Get user profile based on type
+    profile_res = sr_client.table(table_info["table"])\
+        .select(f"{table_info['id_field']}, {table_info['email_field']}, {table_info['fname_field']}, {table_info['lname_field']}")\
+        .eq(table_info["id_field"], str(user_profile_id)).execute()
+
+    if not profile_res.data:
+        return Response({"error": f"{user_type.replace('_', ' ').title()} profile not found"}, status=404)
+
+    profile_data = profile_res.data[0]
+    user_id = profile_data[table_info["id_field"]]
+    user_email = profile_data.get(table_info["email_field"])
+    user_name = f"{profile_data.get(table_info['fname_field'], '')} {profile_data.get(table_info['lname_field'], '')}".strip() or "User"
 
     # Update user status and save decline_reason in users table
     update_data = {"status": new_status}
     if new_status == "declined":
         update_data["decline_reason"] = reason_text
 
-    update_res = sr_client.table("users").update(update_data).eq("id", vet_id).execute()
+    update_res = sr_client.table("users").update(update_data).eq("id", user_id).execute()
     if not update_res.data:
-        return Response({"error": "User not found"}, status=404)
+        return Response({"error": "User not found in users table"}, status=404)
 
     # Send email when approved or declined
-    if vet_email and new_status in ["approved", "declined"]:
+    if user_email and new_status in ["approved", "declined"]:
+        user_type_display = user_type.replace("_", " ").title()
+        
         if new_status == "approved":
-            subject = "Your Veterinarian Account Has Been Approved"
-            plain_message = f"Hello {vet_name},\n\nYour veterinarian account has been approved. You can now log in and start using the system.\n\nBest regards,\nECHOSys Team"
+            subject = f"Your {user_type_display} Account Has Been Approved"
+            plain_message = f"Hello {user_name},\n\nYour {user_type_display} account has been approved. You can now log in and start using the system.\n\nBest regards,\nECHOSys Team"
             html_message = f"""
             <html>
               <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
@@ -277,8 +402,8 @@ def update_vet_status(request, vet_profile_id):
                     <h1 style="margin:0; font-size:24px;">Account Approved ✅</h1>
                   </div>
                   <div style="padding:30px; color:#333; font-size:16px; line-height:1.5;">
-                    <p>Hello {vet_name},</p>
-                    <p>Good news! Your veterinarian account has been approved by the admin. You can now log in and start using the system.</p>
+                    <p>Hello {user_name},</p>
+                    <p>Good news! Your {user_type_display} account has been approved by the admin. You can now log in and start using the system.</p>
                     <div style="text-align:center; margin:30px 0;">
                       <a href="http://localhost:5173/login" style="background-color:#8B4513; color:white; text-decoration:none; padding:12px 25px; border-radius:6px; font-weight:bold;">Login Now</a>
                     </div>
@@ -289,8 +414,8 @@ def update_vet_status(request, vet_profile_id):
             </html>
             """
         else:  # declined
-            subject = "Your Veterinarian Account Has Been Declined"
-            plain_message = f"Hello {vet_name},\n\nWe’re sorry to inform you that your veterinarian account request was NOT APPROVED by the admin. The reason: {reason_text}. Please contact support if needed.\n\nBest regards,\nECHOSys Team"
+            subject = f"Your {user_type_display} Account Has Been Declined"
+            plain_message = f"Hello {user_name},\n\nWe're sorry to inform you that your {user_type_display} account request was NOT APPROVED by the admin. The reason: {reason_text}. Please contact support if needed.\n\nBest regards,\nECHOSys Team"
             html_message = f"""
             <html>
               <body style="font-family: Arial, sans-serif; background-color:#f4f4f4; padding:20px;">
@@ -299,9 +424,8 @@ def update_vet_status(request, vet_profile_id):
                     <h1 style="margin:0; font-size:24px;">Account Declined ⚠️</h1>
                   </div>
                   <div style="padding:30px; color:#333; font-size:16px; line-height:1.5;">
-                    <p>Hello {vet_name},</p>
-                    <p>We’re sorry to inform you that your veterinarian account request has been NOT APPROVED by the admin. The reason: <strong>{reason_text}</strong>.</p>
-                    
+                    <p>Hello {user_name},</p>
+                    <p>We're sorry to inform you that your {user_type_display} account request has been NOT APPROVED by the admin. The reason: <strong>{reason_text}</strong>.</p>
                     <p>Best regards,<br>ECHOSys Team</p>
                   </div>
                 </div>
@@ -315,12 +439,12 @@ def update_vet_status(request, vet_profile_id):
                 subject=subject,
                 message=plain_message,
                 from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
-                recipient_list=[vet_email],
+                recipient_list=[user_email],
                 fail_silently=False,
                 html_message=html_message
             )
         except Exception as e:
-            logging.exception("Failed to send vet status email")
+            logging.exception(f"Failed to send {user_type} status email")
             return Response({
                 "message": f"Status updated to {new_status}, but email failed to send",
                 "error": str(e)
@@ -328,16 +452,9 @@ def update_vet_status(request, vet_profile_id):
 
     return Response({
         "message": f"Status updated to {new_status}",
-        "data": update_res.data[0]
+        "data": update_res.data[0],
+        "user_type": user_type
     }, status=200)
-
-
-
-
-
-
-
-
     
 # -------------------- GET RECENT ACTIVITY --------------------
 @api_view(["GET"])
@@ -3440,22 +3557,6 @@ def get_all_users(request):
                     "avatar": p.get("op_image")
                 }
 
-        # 🧑 Kutsero President
-        if "Kutsero President" in role_groups:
-            ids = role_groups["Kutsero President"]
-            res = safe_execute(
-                sr_client.table("kutsero_pres_profile")
-                .select("user_id, pres_fname, pres_lname")
-                .in_("user_id", ids)
-            )
-            print(f"Debug: Found {len(res.data or [])} Kutsero President profiles")
-            for p in res.data or []:
-                full_name = " ".join(filter(None, [p.get("pres_fname"), p.get("pres_lname")])).strip()
-                profiles_map[p["user_id"]] = {
-                    "name": f"{full_name} (Kutsero President)",
-                    "avatar": None
-                }
-
         # 🧑 DVMF + DVMF-Admin
         for role_key in ["Dvmf", "Dvmf-Admin"]:
             if role_key in role_groups:
@@ -3559,21 +3660,6 @@ def get_user_profile_info(user_id, role):
                 return {
                     "name": f"{full_name} (Horse Operator)",
                     "avatar": p.get("op_image")
-                }
-
-        # 🧑 Kutsero President
-        elif role == "Kutsero President":
-            res = safe_execute(
-                sr_client.table("kutsero_pres_profile")
-                .select("pres_fname, pres_lname")
-                .eq("user_id", user_id)
-            )
-            if res.data:
-                p = res.data[0]
-                full_name = " ".join(filter(None, [p.get("pres_fname"), p.get("pres_lname")])).strip()
-                return {
-                    "name": f"{full_name} (Kutsero President)",
-                    "avatar": None
                 }
 
         # 🧑 DVMF

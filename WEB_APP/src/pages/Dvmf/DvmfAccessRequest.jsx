@@ -26,21 +26,21 @@ import { useNavigate } from "react-router-dom"
 import FloatingMessages from "./DvmfMessage"
 import NotificationModal from "./DvmfNotif"
 
-
-const API_BASE = "http://localhost:8000/api/dvmf";
-
+const API_BASE_URL = "http://localhost:8000/api/dvmf"
 
 const SkeletonLoader = ({ activeTab }) => {
   const getGridConfig = () => {
     switch (activeTab) {
       case "PENDING":
-        return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
+        return "grid-cols-[1fr_1fr_1fr_120px]"
       case "APPROVED":
-        return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
+        return "grid-cols-[1fr_1fr_1fr_120px]"
       case "NOT APPROVED":
+        return "grid-cols-[1fr_1fr_1fr_120px]"
+      case "ALL":
         return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
       default:
-        return "grid-cols-[1fr_1fr_1fr_1fr_120px]"
+        return "grid-cols-[1fr_1fr_1fr_120px]"
     }
   }
 
@@ -52,7 +52,7 @@ const SkeletonLoader = ({ activeTab }) => {
         <div className="h-4 bg-gray-300 rounded"></div>
         <div className="h-4 bg-gray-300 rounded"></div>
         <div className="h-4 bg-gray-300 rounded"></div>
-        <div className="h-4 bg-gray-300 rounded"></div>
+        {activeTab === "ALL" && <div className="h-4 bg-gray-300 rounded"></div>}
         <div className="h-4 bg-gray-300 rounded"></div>
       </div>
       {Array.from({ length: 5 }).map((_, i) => (
@@ -62,8 +62,8 @@ const SkeletonLoader = ({ activeTab }) => {
         >
           <div className="h-4 bg-gray-200 rounded"></div>
           <div className="h-4 bg-gray-200 rounded"></div>
-          <div className="h-6 bg-gray-200 rounded-xl w-20"></div>
           <div className="h-4 bg-gray-200 rounded"></div>
+          {activeTab === "ALL" && <div className="h-6 bg-gray-200 rounded-xl w-20"></div>}
           <div className="h-8 bg-gray-200 rounded w-20"></div>
         </div>
       ))}
@@ -71,9 +71,8 @@ const SkeletonLoader = ({ activeTab }) => {
   )
 }
 
-
 function DvmfAccessRequest() {
- const navigate = useNavigate()
+  const navigate = useNavigate()
   const [isSidebarsOpen, setIsSidebarsOpen] = useState(false)
   const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
@@ -132,7 +131,7 @@ function DvmfAccessRequest() {
   // ✅ MARK ALL NOTIFICATIONS AS READ
   const handleMarkAllAsRead = async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/mark_all_notifications_read/`, {
+      const res = await fetch(`http://localhost:8000/mark_all_notifications_read/`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -158,15 +157,15 @@ function DvmfAccessRequest() {
     }
   };
 
-// ✅ HANDLE INDIVIDUAL NOTIFICATION CLICK
+  
+ // HANDLE INDIVIDUAL NOTIFICATION CLICK
 const handleNotificationClick = async (notification) => {
-  const notifId = notification?.notif_id || notification?.id; // fallback support
+  const notifId = notification?.notif_id || notification?.id;
 
   if (!notifId) {
     console.warn("Notification ID is missing:", notification);
   }
 
-  // Mark as read in frontend immediately
   setNotifications((prev) =>
     prev.map((notif) =>
       notif.notif_id === notifId || notif.id === notifId
@@ -175,10 +174,9 @@ const handleNotificationClick = async (notification) => {
     )
   );
 
-  // Mark as read in backend (only if valid ID)
   if (notifId) {
     try {
-      await fetch(`${API_BASE}/mark_notification_read/${notifId}/`, {
+      await fetch(`${API_BASE_URL}/mark_notification_read/${notifId}/`, {
         method: "POST",
         credentials: "include",
       });
@@ -190,7 +188,6 @@ const handleNotificationClick = async (notification) => {
   const message = (notification.message || "").toLowerCase();
   const type = (notification.type || "").toLowerCase();
 
-  // Navigate for SOS emergency notifications
   if (
     type === "sos_emergency" ||
     message.includes("sos") ||
@@ -202,23 +199,21 @@ const handleNotificationClick = async (notification) => {
       message.includes("injured") || 
       message.includes("trauma")))
   ) {
-    // Extract SOS ID from related_id if available
     let sosId = null;
     if (notification.related_id && notification.related_id.startsWith("sos_")) {
       sosId = notification.related_id.replace("sos_", "");
     }
-    
+
     navigate("/DvmfDashboard", {
       state: {
         highlightedNotification: notification,
         shouldHighlight: true,
-        sosId: sosId, // Pass the specific SOS ID if available
+        sosId: sosId,
       },
     });
     return;
   }
 
-  // Navigate for account-related notifications
   if (
     message.includes("new registration") ||
     message.includes("new veterinarian approved") ||
@@ -240,7 +235,7 @@ const handleNotificationClick = async (notification) => {
     message.includes("pending medical record access") ||
     message.includes("requested access")
   ) {
-    navigate("/DvmfAccessRequest", {
+    navigate("/DvmfDashboard", {
       state: {
         highlightedNotification: notification,
         shouldHighlight: true,
@@ -249,7 +244,6 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
-  // Only navigate to DvmfAnnouncement for comment-related notifications
   if (message.includes("comment")) {
     navigate("/DvmfAnnouncement", {
       state: {
@@ -260,10 +254,8 @@ const handleNotificationClick = async (notification) => {
     return;
   }
 
-  // Default fallback - stay on current page
   console.log("Notification clicked but no specific action:", notification);
-}
-
+};
 
   // ✅ Handle notifications update from modal
   const handleNotificationsUpdate = (updatedNotifications) => {
@@ -299,19 +291,17 @@ const handleNotificationClick = async (notification) => {
 
   // ✅ Auto-refresh every 30s
   useEffect(() => {
-    loadNotifications() // load once
-
+    loadNotifications()
     const interval = setInterval(() => {
       loadNotifications()
-    }, 30000) // 30 seconds
-
+    }, 30000)
     return () => clearInterval(interval)
   }, [loadNotifications])
 
   // Fetch access requests
   const loadAccessRequests = useCallback(() => {
     setIsLoading(true)
-    fetch("http://localhost:8000/api/dvmf/medrec_access_requests/")
+    fetch("http://localhost:8000/api/dvmf/get_access_requests/")
       .then((res) => res.json())
       .then((data) => {
         const formatted = data.map((req) => ({
@@ -325,9 +315,9 @@ const handleNotificationClick = async (notification) => {
           horse: req.horse_name,
           breed: req.horse_breed,
           birthdate: req.horse_dob,
-          vetEmail: req.vet_email ,
-          vetPhone: req.vet_phone_num|| "+1 (555) 123-4567",
-          vetLicense: req.vet_license_num|| "VET-" + Math.random().toString(36).substr(2, 9).toUpperCase(),
+          vetEmail: req.vet_email,
+          vetPhone: req.vet_phone_num || "+1 (555) 123-4567",
+          vetLicense: req.vet_license_num || "VET-" + Math.random().toString(36).substr(2, 9).toUpperCase(),
           vetClinic: req.vet_specialization,
         }))
 
@@ -358,36 +348,36 @@ const handleNotificationClick = async (notification) => {
   }
 
   const approveRequest = async (requestId) => {
-  try {
-    const res = await fetch(
-      `http://localhost:8000/api/dvmf/access-requests/${requestId}/approve/`,
-      {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+    try {
+      const res = await fetch(
+        `http://localhost:8000/api/dvmf/access-requests/${requestId}/approve/`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        console.error("Approve failed:", data.error || "Unknown error");
+        alert("Failed to approve request: " + (data.error || "Unknown error"));
+        return;
       }
-    );
 
-    const data = await res.json();
+      if (data.message) {
+        alert(data.message);
+      }
 
-    if (!res.ok) {
-      console.error("Approve failed:", data.error || "Unknown error");
-      alert("Failed to approve request: " + (data.error || "Unknown error"));
-      return;
+      console.log("Approved:", data);
+      loadAccessRequests();
+      setIsViewModalOpen(false);
+
+    } catch (err) {
+      console.error("Approve failed:", err);
+      alert("Approve request failed. Check console for details.");
     }
-
-    if (data.message) {
-      alert(data.message);
-    }
-
-    console.log("Approved:", data);
-    loadAccessRequests();
-    setIsViewModalOpen(false);
-
-  } catch (err) {
-    console.error("Approve failed:", err);
-    alert("Approve request failed. Check console for details.");
-  }
-};
+  };
 
   const handleDecline = (id) => {
     setCurrentRequestId(id)
@@ -416,7 +406,7 @@ const handleNotificationClick = async (notification) => {
     } else if (actionDetails.action === "decline" && currentRequestId) {
       console.log(`Declining request: ${currentRequestId} with reason: ${declineReason}`)
       setAccessRequests((prev) =>
-        prev.map((req) => (req.id === currentRequestId ? { ...req, status: "DECLINED", note: declineReason } : req)),
+        prev.map((req) => (req.id === currentRequestId ? { ...req, status: "NOT APPROVED", note: declineReason } : req)),
       )
     }
     closeActionModal()
@@ -424,7 +414,7 @@ const handleNotificationClick = async (notification) => {
 
   const handleSearch = (searchValue) => {
     setSearchTerm(searchValue.toLowerCase())
-    setCurrentPage(1) // Reset to first page when searching
+    setCurrentPage(1)
   }
 
   const declineRequest = (requestId) => {
@@ -485,17 +475,17 @@ const handleNotificationClick = async (notification) => {
   const getFilteredAndSortedRequests = () => {
     let filtered = accessRequests
 
-    filtered = filtered.filter((request) => {
-      if (activeTab === "APPROVED") {
-        return request.status === "APPROVED"
-      }
-      if (activeTab === "NOT APPROVED") {
-        return request.status === "DECLINED" // Backend still uses "DECLINED"
-      }
-      return request.status === "PENDING"
-    })
+    if (activeTab === "ALL") {
+      // Show all statuses
+      filtered = filtered
+    } else if (activeTab === "APPROVED") {
+      filtered = filtered.filter(request => request.status === "APPROVED")
+    } else if (activeTab === "NOT APPROVED") {
+      filtered = filtered.filter(request => request.status === "DECLINED")
+    } else {
+      filtered = filtered.filter(request => request.status === "PENDING")
+    }
 
-    // Apply search filter
     if (searchTerm) {
       filtered = filtered.filter((request) => {
         switch (filterBy) {
@@ -505,7 +495,7 @@ const handleNotificationClick = async (notification) => {
             return request.horse.toLowerCase().includes(searchTerm)
           case "date":
             return request.dateRequested.toLocaleDateString().toLowerCase().includes(searchTerm)
-          default: // "all"
+          default:
             return (
               request.requestedBy.toLowerCase().includes(searchTerm) ||
               request.horse.toLowerCase().includes(searchTerm) ||
@@ -515,7 +505,6 @@ const handleNotificationClick = async (notification) => {
       })
     }
 
-    // Sort by most recent (dateRequested descending)
     return filtered.sort((a, b) => new Date(b.dateRequested) - new Date(a.dateRequested))
   }
 
@@ -529,9 +518,10 @@ const handleNotificationClick = async (notification) => {
 
   const getFilterCounts = () => {
     return {
+      all: accessRequests.length,
       pending: accessRequests.filter((req) => req.status === "PENDING").length,
       approved: accessRequests.filter((req) => req.status === "APPROVED").length,
-      notApproved: accessRequests.filter((req) => req.status === "DECLINED").length, // Backend still uses "DECLINED"
+      notApproved: accessRequests.filter((req) => req.status === "DECLINED").length,
     }
   }
 
@@ -607,19 +597,52 @@ const handleNotificationClick = async (notification) => {
 
   const handleItemsPerPageChange = (e) => {
     setItemsPerPage(Number(e.target.value))
-    setCurrentPage(1) // Reset to first page when changing items per page
+    setCurrentPage(1)
   }
 
-  // Simplified grid configuration - same for all tabs
+  // Grid configuration based on active tab
   const getGridConfig = () => {
-    return "grid-cols-[1fr_1fr_1fr_1fr_120px] gap-4"
+    if (activeTab === "ALL") {
+      return "grid-cols-[1fr_1fr_1fr_1fr_120px] gap-4" // Date, Name, Horse, Status, Actions
+    }
+    return "grid-cols-[1fr_1fr_1fr_120px] gap-4" // Date, Name, Horse, Actions
   }
 
   const gridConfig = getGridConfig()
 
-  // Function to display status text (convert "DECLINED" to "NOT APPROVED" in frontend)
+  // Function to display status text
   const getStatusDisplayText = (status) => {
     return status === "DECLINED" ? "NOT APPROVED" : status
+  }
+
+  // Get status badge color
+  const getStatusBadgeColor = (status) => {
+    switch (status) {
+      case "PENDING":
+        return "bg-yellow-100 text-yellow-800"
+      case "APPROVED":
+        return "bg-green-100 text-green-800"
+      case "DECLINED":
+        return "bg-red-100 text-red-800"
+      default:
+        return "bg-gray-100 text-gray-800"
+    }
+  }
+
+  // Get active tab highlight color
+  const getActiveTabColor = (tab) => {
+    switch (tab) {
+      case "ALL":
+        return "bg-blue-500 text-white"
+      case "PENDING":
+        return "bg-yellow-500 text-white"
+      case "APPROVED":
+        return "bg-green-500 text-white"
+      case "NOT APPROVED":
+        return "bg-red-500 text-white"
+      default:
+        return "bg-gray-500 text-white"
+    }
   }
 
   return (
@@ -628,15 +651,13 @@ const handleNotificationClick = async (notification) => {
         <Sidebar isOpen={isSidebarsOpen} />
       </div>
 
-      <div className="flex-1 flex flex-col w-full lg:w-[calc(100%-250px)]">
-       <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
-          {/* ADDED HEADER SECTION */}
+      <div className="flex-1 flex flex-col">
+        <header className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 px-6 py-4 flex items-center justify-between">
           <div className="flex flex-col">
             <h2 className="text-2xl font-bold text-gray-800 mb-1">Access Request</h2>
           </div>
 
           <div className="flex items-center gap-4">
-            {/* Manual Refresh Icon */}
             <button
               onClick={handleManualRefresh}
               disabled={isLoading}
@@ -650,7 +671,6 @@ const handleNotificationClick = async (notification) => {
               />
             </button>
 
-            {/* 🔔 Notification Bell */}
             <button
               ref={notificationBellRef}
               className="relative bg-transparent border-none cursor-pointer p-2 rounded-full hover:bg-gray-100 transition-colors"
@@ -665,7 +685,6 @@ const handleNotificationClick = async (notification) => {
             </button>
           </div>
 
-          {/* 📩 Notification Modal */}
           <NotificationModal
             isOpen={notifsOpen}
             onClose={() => setNotifsOpen(false)}
@@ -676,67 +695,96 @@ const handleNotificationClick = async (notification) => {
           />
         </header>
 
-        <div className="flex-1 p-6 bg-gray-100 overflow-y-auto">
+        <div className="flex-1 p-4 md:p-6 bg-gray-100 overflow-y-auto">
           <div className="mb-6">
-            <div className="flex-1 max-w-md mb-4 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
-              <input
-                type="text"
-                className="w-full pl-10 pr-4 py-3 border-2 border-white rounded-lg text-sm outline-none bg-white"
-                placeholder="Search requests..."
-                onChange={(e) => handleSearch(e.target.value)}
-              />
-            </div>
+            {/* Responsive Search and Status Filter Container */}
+            <div className="flex flex-col lg:flex-row gap-4 mb-6 items-stretch lg:items-center">
+              {/* Search Container - Full width on mobile, flex-1 on desktop */}
+              <div className="flex-1 w-full lg:w-auto relative bg-white border-2 border-white rounded-lg h-[52px]">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-500" />
+                <input
+                  type="text"
+                  className="w-full h-full pl-10 pr-4 text-sm outline-none bg-transparent"
+                  placeholder="Search requests..."
+                  onChange={(e) => handleSearch(e.target.value)}
+                />
+              </div>
 
-            <div className="flex gap-2 bg-gray-300 p-2 rounded-3xl h-14 w-fit items-center mb-5">
-              <button
-                className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
-                  activeTab === "PENDING"
-                    ? "font-semibold bg-white text-gray-900 shadow-sm"
-                    : "hover:bg-white/70 hover:text-gray-900"
-                }`}
-                onClick={() => {
-                  setActiveTab("PENDING")
-                  setCurrentPage(1)
-                }}
-              >
-                Pending{" "}
-                <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-yellow-500">
-                  {filterCounts.pending}
-                </span>
-              </button>
-              <button
-                className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
-                  activeTab === "APPROVED"
-                    ? "font-semibold bg-white text-gray-900 shadow-sm"
-                    : "hover:bg-white/70 hover:text-gray-900"
-                }`}
-                onClick={() => {
-                  setActiveTab("APPROVED")
-                  setCurrentPage(1)
-                }}
-              >
-                Approved{" "}
-                <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-green-500">
-                  {filterCounts.approved}
-                </span>
-              </button>
-              <button
-                className={`flex items-center justify-center gap-2 h-full px-5 py-2 bg-none border-none text-sm font-medium text-gray-700 cursor-pointer rounded-3xl transition-all duration-200 min-w-[120px] ${
-                  activeTab === "NOT APPROVED"
-                    ? "font-semibold bg-white text-gray-900 shadow-sm"
-                    : "hover:bg-white/70 hover:text-gray-900"
-                }`}
-                onClick={() => {
-                  setActiveTab("NOT APPROVED")
-                  setCurrentPage(1)
-                }}
-              >
-                Not Approved{" "}
-                <span className="inline-flex items-center justify-center min-w-[22px] h-[22px] px-1.5 rounded-full text-xs font-semibold text-white bg-red-500">
-                  {filterCounts.notApproved}
-                </span>
-              </button>
+              {/* Status Filter Container - Responsive design */}
+              <div className="flex flex-wrap gap-2 bg-white p-2 rounded-lg h-auto lg:h-[52px] items-center justify-center border-2 border-white">
+                <button
+                  className={`flex items-center justify-center gap-2 h-full px-4 py-2 bg-none border-none text-sm font-medium cursor-pointer rounded-full transition-all duration-200 min-w-[80px] md:min-w-[90px] ${
+                    activeTab === "ALL"
+                      ? `${getActiveTabColor("ALL")} font-semibold shadow-sm`
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                  onClick={() => {
+                    setActiveTab("ALL")
+                    setCurrentPage(1)
+                  }}
+                >
+                  All{" "}
+                  <span className={`inline-flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full text-[10px] md:text-xs font-semibold ${
+                    activeTab === "ALL" ? "bg-white/20 text-white" : "bg-blue-500 text-white"
+                  }`}>
+                    {filterCounts.all}
+                  </span>
+                </button>
+                <button
+                  className={`flex items-center justify-center gap-2 h-full px-4 py-2 bg-none border-none text-sm font-medium cursor-pointer rounded-full transition-all duration-200 min-w-[80px] md:min-w-[90px] ${
+                    activeTab === "PENDING"
+                      ? `${getActiveTabColor("PENDING")} font-semibold shadow-sm`
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                  onClick={() => {
+                    setActiveTab("PENDING")
+                    setCurrentPage(1)
+                  }}
+                >
+                  Pending{" "}
+                  <span className={`inline-flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full text-[10px] md:text-xs font-semibold ${
+                    activeTab === "PENDING" ? "bg-white/20 text-white" : "bg-yellow-500 text-white"
+                  }`}>
+                    {filterCounts.pending}
+                  </span>
+                </button>
+                <button
+                  className={`flex items-center justify-center gap-2 h-full px-4 py-2 bg-none border-none text-sm font-medium cursor-pointer rounded-full transition-all duration-200 min-w-[80px] md:min-w-[90px] ${
+                    activeTab === "APPROVED"
+                      ? `${getActiveTabColor("APPROVED")} font-semibold shadow-sm`
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                  onClick={() => {
+                    setActiveTab("APPROVED")
+                    setCurrentPage(1)
+                  }}
+                >
+                  Approved{" "}
+                  <span className={`inline-flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full text-[10px] md:text-xs font-semibold ${
+                    activeTab === "APPROVED" ? "bg-white/20 text-white" : "bg-green-500 text-white"
+                  }`}>
+                    {filterCounts.approved}
+                  </span>
+                </button>
+                <button
+                  className={`flex items-center justify-center gap-2 h-full px-4 py-2 bg-none border-none text-sm font-medium cursor-pointer rounded-full transition-all duration-200 min-w-[100px] md:min-w-[110px] ${
+                    activeTab === "NOT APPROVED"
+                      ? `${getActiveTabColor("NOT APPROVED")} font-semibold shadow-sm`
+                      : "text-gray-700 hover:bg-gray-100"
+                  }`}
+                  onClick={() => {
+                    setActiveTab("NOT APPROVED")
+                    setCurrentPage(1)
+                  }}
+                >
+                  Not Approved{" "}
+                  <span className={`inline-flex items-center justify-center min-w-[20px] h-[20px] px-1 rounded-full text-[10px] md:text-xs font-semibold ${
+                    activeTab === "NOT APPROVED" ? "bg-white/20 text-white" : "bg-red-500 text-white"
+                  }`}>
+                    {filterCounts.notApproved}
+                  </span>
+                </button>
+              </div>
             </div>
 
             <div className="bg-white rounded-lg shadow-sm overflow-hidden">
@@ -744,12 +792,12 @@ const handleNotificationClick = async (notification) => {
                 <SkeletonLoader activeTab={activeTab} />
               ) : (
                 <>
-                  {/* Table Headers */}
-                  <div className={`bg-gray-50 grid ${gridConfig} px-6 py-4 font-semibold text-gray-700 text-sm border-b border-gray-200`}>
-                    <div>Requested By</div>
-                    <div>Horse</div>
-                    <div>Status</div>
-                    <div>Date Requested</div>
+                  {/* Table Headers - Centered */}
+                  <div className={`bg-gray-50 grid ${gridConfig} px-4 md:px-6 py-4 font-semibold text-gray-700 text-sm border-b border-gray-200`}>
+                    <div className="text-center">Date Requested</div>
+                    <div className="text-center">Requested By</div>
+                    <div className="text-center">Horse</div>
+                    {activeTab === "ALL" && <div className="text-center">Status</div>}
                     <div className="text-center">Actions</div>
                   </div>
 
@@ -758,7 +806,7 @@ const handleNotificationClick = async (notification) => {
                       <FileText size={48} className="mb-4 opacity-50" />
                       <h3 className="text-lg mb-2 text-gray-700">No access requests</h3>
                       <p className="text-sm text-gray-500">
-                        No {activeTab.toLowerCase()} requests found{searchTerm && ` for "${searchTerm}"`}
+                        No {activeTab.toLowerCase() === "all" ? "" : activeTab.toLowerCase()} requests found{searchTerm && ` for "${searchTerm}"`}
                       </p>
                     </div>
                   ) : (
@@ -766,24 +814,20 @@ const handleNotificationClick = async (notification) => {
                       {paginatedRequests.map((request) => (
                         <div
                           key={request.id}
-                          className={`grid ${gridConfig} px-6 py-4 border-b border-gray-100 transition-colors items-center min-h-[60px] hover:bg-gray-50`}
+                          className={`grid ${gridConfig} px-4 md:px-6 py-4 border-b border-gray-100 transition-colors items-center min-h-[60px] hover:bg-gray-50`}
                         >
-                          <div className="font-medium text-gray-900">{request.requestedBy}</div>
-                          <div className="text-gray-700">{request.horse}</div>
-                          <div>
-                            <span
-                              className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
-                                request.status === "PENDING"
-                                  ? "bg-yellow-100 text-yellow-800"
-                                  : request.status === "APPROVED"
-                                    ? "bg-green-100 text-green-800"
-                                    : "bg-red-100 text-red-800"
-                              }`}
-                            >
-                              {getStatusDisplayText(request.status)}
-                            </span>
-                          </div>
-                          <div className="text-gray-600 text-sm">{request.dateRequested.toLocaleDateString()}</div>
+                          <div className="text-gray-600 text-sm text-center">{request.dateRequested.toLocaleDateString()}</div>
+                          <div className="font-medium text-gray-900 text-center">{request.requestedBy}</div>
+                          <div className="text-gray-700 text-center">{request.horse}</div>
+                          {activeTab === "ALL" && (
+                            <div className="text-center">
+                              <span
+                                className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getStatusBadgeColor(request.status)}`}
+                              >
+                                {getStatusDisplayText(request.status)}
+                              </span>
+                            </div>
+                          )}
                           <div className="flex justify-center">
                             <button
                               className="inline-flex items-center justify-center gap-1 bg-transparent text-blue-700 border border-blue-700 py-1.5 px-3 rounded text-xs font-medium cursor-pointer transition-all hover:bg-blue-100 min-h-[32px]"
@@ -796,21 +840,21 @@ const handleNotificationClick = async (notification) => {
                         </div>
                       ))}
                       
-                      {/* Pagination as the last row of the table */}
+                      {/* Responsive Pagination */}
                       {filteredRequests.length > 0 && (
-                        <div className="flex justify-between items-center bg-gray-50 px-6 py-4 border-t border-gray-200">
+                        <div className="flex flex-col sm:flex-row justify-between items-center bg-gray-50 px-4 md:px-6 py-4 border-t border-gray-200 gap-4">
                           <div className="text-sm text-gray-600 flex items-center gap-3">
                             Showing {(currentPage - 1) * itemsPerPage + 1} to{" "}
                             {Math.min(currentPage * itemsPerPage, filteredRequests.length)} of {filteredRequests.length} results
                           </div>
 
-                          <div className="flex items-center gap-3">
+                          <div className="flex flex-col sm:flex-row items-center gap-3">
                             <div className="flex items-center gap-2">
-                              <span className="text-sm">Show:</span>
+                              <span className="text-sm text-gray-600">Show:</span>
                               <select
                                 value={itemsPerPage}
                                 onChange={handleItemsPerPageChange}
-                                className="px-3 py-2 border border-gray-300 rounded bg-white text-sm"
+                                className="px-3 py-2 border border-gray-300 rounded bg-white text-sm focus:outline-none focus:border-blue-500"
                               >
                                 <option value="5">5</option>
                                 <option value="10">10</option>
@@ -845,7 +889,7 @@ const handleNotificationClick = async (notification) => {
                                     key={pageNum}
                                     className={`flex items-center justify-center min-w-[40px] h-10 px-3 border border-gray-300 rounded-md text-sm cursor-pointer transition-all duration-200 ${
                                       currentPage === pageNum
-                                        ? "bg-[#0F3D5A] text-white border-[#0F3D5A]"
+                                        ? "bg-red-700 text-white border-red-700"
                                         : "bg-white text-gray-700 hover:bg-gray-50 hover:border-gray-400"
                                     }`}
                                     onClick={() => goToPage(pageNum)}
@@ -880,7 +924,6 @@ const handleNotificationClick = async (notification) => {
       {isViewModalOpen && selectedRequest && (
         <div className="fixed inset-0 backdrop-blur-sm bg-black/20 flex items-center justify-center z-[1000] modal-overlay">
           <div className="bg-white rounded-lg w-[90%] max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
-            {/* Modal Header with Close Button */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
               <h3 className="text-xl font-semibold text-gray-900">Request Details</h3>
               <button onClick={closeViewModal} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
@@ -888,9 +931,7 @@ const handleNotificationClick = async (notification) => {
               </button>
             </div>
 
-            {/* Modal Content */}
             <div className="p-6">
-              {/* Horse Details Section */}
               <div className="mb-6">
                 <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                   <Heart size={20} className="text-amber-600" />
@@ -912,13 +953,7 @@ const handleNotificationClick = async (notification) => {
                   <div>
                     <label className="block text-sm font-medium text-gray-600 mb-1">Status</label>
                     <span
-                      className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                        selectedRequest.status === "PENDING"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : selectedRequest.status === "APPROVED"
-                            ? "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
-                      }`}
+                      className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${getStatusBadgeColor(selectedRequest.status)}`}
                     >
                       {getStatusDisplayText(selectedRequest.status)}
                     </span>
@@ -926,7 +961,6 @@ const handleNotificationClick = async (notification) => {
                 </div>
               </div>
 
-              {/* Veterinarian Details Section */}
               <div className="mb-6">
                 <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                   <User size={20} className="text-blue-600" />
@@ -971,7 +1005,6 @@ const handleNotificationClick = async (notification) => {
                 </div>
               </div>
 
-              {/* Request Information */}
               <div className="mb-6">
                 <h4 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
                   <FileText size={20} className="text-green-600" />
@@ -991,7 +1024,7 @@ const handleNotificationClick = async (notification) => {
                         <Calendar size={14} />
                         Date Approved
                       </label>
-                    <p className="text-gray-900">{selectedRequest.approvedAt.toLocaleDateString()}</p>
+                      <p className="text-gray-900">{selectedRequest.approvedAt.toLocaleDateString()}</p>
                     </div>
                   )}
                   {selectedRequest.approvedBy && (
@@ -1013,7 +1046,6 @@ const handleNotificationClick = async (notification) => {
               </div>
             </div>
 
-            {/* Modal Footer with Action Buttons (only for pending requests) */}
             {selectedRequest.status === "PENDING" && (
               <div className="flex gap-3 justify-end p-6 border-t border-gray-200 bg-gray-50">
                 <button
@@ -1068,4 +1100,5 @@ const handleNotificationClick = async (notification) => {
     </div>
   )
 }
+
 export default DvmfAccessRequest
