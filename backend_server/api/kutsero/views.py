@@ -4975,13 +4975,68 @@ def operator_notifications(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # =========================================================================== HORSE APPLICATION ==================================================
+def normalize_id(id_value):
+    """
+    Normalize ID to handle integer/UUID mismatches
+    Returns: (normalized_value, original_type)
+    """
+    if id_value is None:
+        return None, None
+    
+    # If it's already an integer
+    if isinstance(id_value, int):
+        return id_value, 'int'
+    
+    # If it's a string that can be integer
+    if isinstance(id_value, str):
+        # Check if it's an integer string
+        if id_value.isdigit():
+            return int(id_value), 'int'
+        # Check if it's a UUID
+        try:
+            uuid_obj = uuid.UUID(id_value)
+            # Convert UUID to integer for database compatibility
+            # This is a simple hash - not perfect but works for demo
+            int_id = hash(id_value) % 2147483647
+            return int_id, 'uuid_converted'
+        except ValueError:
+            # Not a UUID, try as string
+            return id_value, 'string'
+    
+    return id_value, 'unknown'
+
+def query_with_id_fallback(table, column, id_value):
+    """
+    Query a table with ID, trying multiple formats if needed
+    """
+    service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    
+    # Try normalized ID first
+    normalized_id, id_type = normalize_id(id_value)
+    
+    # Try with normalized ID
+    response = service_client.table(table).select("*").eq(column, normalized_id).execute()
+    
+    if response.data:
+        return response.data, normalized_id, id_type
+    
+    # If no results, try with original value
+    response = service_client.table(table).select("*").eq(column, id_value).execute()
+    
+    if response.data:
+        return response.data, id_value, 'original'
+    
+    # Try with string representation
+    response = service_client.table(table).select("*").eq(column, str(id_value)).execute()
+    
+    return response.data or [], id_value, 'string'
+    
 @api_view(['GET'])
 def get_horse_owners(request):
     """
     Get all horse owners with their available horses
     """
     try:
-        # Get the kutsero_id from query params
         kutsero_id = request.GET.get("kutsero_id")
         if not kutsero_id:
             return Response({
@@ -4989,42 +5044,42 @@ def get_horse_owners(request):
                 "error": "kutsero_id is required"
             }, status=status.HTTP_400_BAD_REQUEST)
 
-        # Initialize supabase client
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         owners = []
 
-        # Get all horse owners from horse_op_profile table
+        # Get all horse owners
         owners_response = service_client.table("horse_op_profile").select("*").execute()
         
         print(f"DEBUG: Found {len(owners_response.data or [])} horse owners")
         
-        # Get existing applications by this kutsero
-        applications_response = service_client.table("op_kutsero_application").select("*").eq("kutsero_id", kutsero_id).execute()
+        # Get all applications
+        applications_response = service_client.table("op_kutsero_application").select("*").execute()
         
-        existing_applications = {}
+        # Create a map for quick lookup
+        app_map = {}
         for app in applications_response.data or []:
-            existing_applications[app['op_id']] = app['status']
+            key = f"{str(app['op_id'])}_{str(app['kutsero_id'])}"
+            app_map[key] = app['status']
         
-        print(f"DEBUG: Found {len(existing_applications)} existing applications for kutsero {kutsero_id}")
+        print(f"DEBUG: Application map size: {len(app_map)}")
 
         # Process each owner
         for owner in owners_response.data or []:
             op_id = owner['op_id']
+            op_id_str = str(op_id)  # For consistent comparisons
             
-            # Get available horses for this owner (not deceased)
+            # Get horses for this owner
             horses_response = service_client.table("horse_profile").select("*").eq("op_id", op_id).execute()
             
             available_horses = []
             total_horses = 0
             
             for horse in horses_response.data or []:
-                # Skip deceased horses
                 if horse.get('horse_status') == 'deceased':
                     continue
                 
                 total_horses += 1
                 
-                # Only include available or idle horses
                 if horse.get('horse_status') in ['available', 'idle']:
                     available_horses.append({
                         'horse_id': horse['horse_id'],
@@ -5037,16 +5092,16 @@ def get_horse_owners(request):
                         'horse_sex': horse.get('horse_sex')
                     })
             
-            # Check if kutsero has existing application with this owner
-            has_pending_application = existing_applications.get(op_id) == 'pending'
-            is_approved = existing_applications.get(op_id) == 'approved'
+            # Check applications using string comparison
+            key = f"{op_id_str}_{kutsero_id}"
+            has_pending_application = app_map.get(key) == 'pending'
+            is_approved = app_map.get(key) == 'approved'
             
-            # Get owner's full name
+            # Get owner name
             full_name = f"{owner.get('op_fname', '')} {owner.get('op_mname', '')} {owner.get('op_lname', '')}".strip()
             if not full_name:
                 full_name = "Unknown Owner"
             
-            # Format name for display
             display_name = f"{owner.get('op_lname', '')}, {owner.get('op_fname', '')}".strip()
             if owner.get('op_mname'):
                 display_name += f" {owner.get('op_mname')}"
@@ -5065,7 +5120,7 @@ def get_horse_owners(request):
             address = ", ".join(address_parts) if address_parts else "Address not provided"
             
             owners.append({
-                'op_id': op_id,
+                'op_id': op_id_str,  # Return as string
                 'name': display_name,
                 'full_name': full_name,
                 'email': owner.get('op_email'),
@@ -5091,16 +5146,19 @@ def get_horse_owners(request):
             'success': False,
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+    
 @api_view(['POST'])
 def apply_to_owner(request):
     """
-    Apply to a horse owner for horse usage
+    Apply to a horse owner for horse usage - CORRECTED VERSION
     """
     try:
         data = request.data
         kutsero_id = data.get('kutsero_id')
         op_id = data.get('op_id')
+        
+        print(f"DEBUG: apply_to_owner called with kutsero_id={kutsero_id}, op_id={op_id}")
+        print(f"DEBUG: Request data: {data}")
         
         if not kutsero_id or not op_id:
             return Response({
@@ -5110,8 +5168,26 @@ def apply_to_owner(request):
         
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
+        # Validate UUIDs
+        try:
+            # Convert to UUID objects to ensure proper format
+            op_id_uuid = uuid.UUID(str(op_id))
+            kutsero_id_uuid = uuid.UUID(str(kutsero_id))
+            
+            # Convert back to strings for database query
+            op_id_str = str(op_id_uuid)
+            kutsero_id_str = str(kutsero_id_uuid)
+        except ValueError as e:
+            print(f"DEBUG: Invalid UUID format: {e}")
+            return Response({
+                'success': False,
+                'error': f'Invalid UUID format: {str(e)}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
         # Check if owner exists
-        owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id).execute()
+        owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id_str).execute()
+        
+        print(f"DEBUG: Owner response data: {owner_response.data}")
         
         if not owner_response.data:
             return Response({
@@ -5119,38 +5195,59 @@ def apply_to_owner(request):
                 'error': 'Owner not found'
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Check if already has an application with this owner
-        existing_app_response = service_client.table("op_kutsero_application").select("*").eq("op_id", op_id).eq("kutsero_id", kutsero_id).execute()
+        owner = owner_response.data[0]
+        owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
         
-        if existing_app_response.data:
-            existing_app = existing_app_response.data[0]
+        # Check existing applications
+        existing_response = service_client.table("op_kutsero_application").select("*")\
+            .eq("op_id", op_id_str)\
+            .eq("kutsero_id", kutsero_id_str).execute()
+        
+        print(f"DEBUG: Existing applications found: {len(existing_response.data or [])}")
+        
+        if existing_response.data:
+            existing_app = existing_response.data[0]
+            status_val = existing_app.get('status', 'pending')
             
-            if existing_app['status'] == 'pending':
+            print(f"DEBUG: Existing application status: {status_val}")
+            
+            if status_val == 'pending':
                 return Response({
                     'success': False,
-                    'error': 'You already have a pending application with this owner'
+                    'error': 'You already have a pending application'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            elif existing_app['status'] == 'approved':
+
+            elif status_val == 'approved':
                 return Response({
                     'success': False,
-                    'error': 'You are already approved by this owner'
+                    'error': 'You are already approved'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            elif existing_app['status'] == 'rejected':
-                # Delete rejected application to allow re-application
-                service_client.table("op_kutsero_application").delete().eq("application_id", existing_app['application_id']).execute()
+
+            elif status_val == 'rejected':
+                # allow re-apply by deleting old application
+                try:
+                    delete_response = service_client.table("op_kutsero_application")\
+                        .delete()\
+                        .eq("application_id", existing_app['application_id']).execute()
+                    print(f"DEBUG: Deleted rejected application: {delete_response}")
+                except Exception as e:
+                    print(f"DEBUG: Error deleting rejected application: {e}")
         
-        # Create new application
+        # Create application - DO NOT include application_id (it's auto-generated by serial)
         application_data = {
-            'application_id': str(uuid.uuid4()),
-            'op_id': op_id,
-            'kutsero_id': kutsero_id,
-            'application_date': datetime.now().isoformat(),
+            'op_id': op_id_str,  # UUID as string
+            'kutsero_id': kutsero_id_str,  # UUID as string
             'status': 'pending',
-            'created_at': datetime.now().isoformat(),
-            'updated_at': datetime.now().isoformat()
+            'application_date': datetime.now().date().isoformat()  # Date only, not timestamp
         }
         
-        application_response = service_client.table("op_kutsero_application").insert(application_data).execute()
+        print(f"DEBUG: Inserting application data: {application_data}")
+        
+        # Insert the application
+        application_response = service_client.table("op_kutsero_application")\
+            .insert(application_data).execute()
+        
+        print(f"DEBUG: Application insert response: {application_response}")
         
         if not application_response.data:
             return Response({
@@ -5160,32 +5257,54 @@ def apply_to_owner(request):
         
         new_application = application_response.data[0]
         
-        # Get owner name for response
-        owner = owner_response.data[0]
-        owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
+        print(f"DEBUG: Created application: {new_application}")
+        
+        # Format dates properly for response
+        application_date = new_application.get('application_date')
+        if application_date:
+            if isinstance(application_date, str):
+                try:
+                    application_date = datetime.fromisoformat(application_date.replace('Z', '+00:00')).date().isoformat()
+                except:
+                    pass
         
         return Response({
             'success': True,
-            'message': 'Application submitted successfully',
+            'message': f'Application submitted to {owner_name}',
             'application': {
-                'id': new_application['application_id'],
-                'op_id': new_application['op_id'],
+                'application_id': new_application.get('application_id'),  # This will be an integer
+                'op_id': new_application.get('op_id'),
+                'kutsero_id': new_application.get('kutsero_id'),
                 'owner_name': owner_name,
-                'application_date': new_application['application_date'],
-                'status': new_application['status']
+                'application_date': application_date,
+                'status': new_application.get('status'),
+                'created_at': new_application.get('created_at'),
+                'updated_at': new_application.get('updated_at')
             }
         }, status=status.HTTP_201_CREATED)
         
     except Exception as e:
         print(f"ERROR in apply_to_owner: {str(e)}")
         traceback.print_exc()
+        error_message = str(e)
+        # Clean up error message for display
+        if "'message':" in error_message:
+            try:
+                # Extract message from error string
+                import re
+                match = re.search(r"'message':\s*'([^']+)'", error_message)
+                if match:
+                    error_message = match.group(1)
+            except:
+                pass
         return Response({
             'success': False,
-            'error': str(e)
+            'error': error_message
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        
 @api_view(['GET'])
 def get_my_applications(request):
+
     """
     Get all applications by the current kutsero
     """
@@ -5260,6 +5379,8 @@ def get_approved_owners_horses(request):
         
         approved_op_ids = [app['op_id'] for app in approved_apps_response.data or []]
         
+        print(f"DEBUG: Approved op_ids for kutsero {kutsero_id}: {approved_op_ids}")
+        
         if not approved_op_ids:
             return Response({
                 'success': True,
@@ -5272,6 +5393,7 @@ def get_approved_owners_horses(request):
         all_horses = []
         
         for op_id in approved_op_ids:
+            # Get horses for this owner
             horses_response = service_client.table("horse_profile").select("*").eq("op_id", op_id).execute()
             
             # Get owner details
@@ -5281,13 +5403,15 @@ def get_approved_owners_horses(request):
                 owner = owner_response.data[0]
                 owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
             
+            print(f"DEBUG: Found {len(horses_response.data or [])} horses for owner {owner_name}")
+            
             for horse in horses_response.data or []:
                 # Skip deceased horses
                 if horse.get('horse_status') == 'deceased':
                     continue
                 
-                # Check if horse is already assigned (using horse_assignments table)
-                assignment_response = service_client.table("horse_assignments").select("*").eq("horse_id", horse['horse_id']).eq("status", "active").execute()
+                # Check if horse is already assigned
+                assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse['horse_id']).eq("status", "active").execute()
                 is_assigned = bool(assignment_response.data)
                 
                 # Check if assigned to this specific kutsero
@@ -5301,16 +5425,18 @@ def get_approved_owners_horses(request):
                     'name': horse['horse_name'],
                     'breed': horse['horse_breed'],
                     'age': horse['horse_age'],
-                    'sex': horse['horse_sex'],
-                    'color': horse['horse_color'],
+                    'sex': horse.get('horse_sex', 'Unknown'),
+                    'color': horse.get('horse_color', 'Unknown'),
                     'image': horse.get('horse_image'),
                     'owner_id': op_id,
                     'owner_name': owner_name,
                     'status': horse.get('horse_status', 'unknown'),
                     'is_assigned': is_assigned,
                     'is_assigned_to_me': is_assigned_to_me,
-                    'can_select': not is_assigned or is_assigned_to_me  # Can select if not assigned or already assigned to me
+                    'can_select': not is_assigned or is_assigned_to_me
                 })
+        
+        print(f"DEBUG: Total horses found: {len(all_horses)}")
         
         return Response({
             'success': True,
@@ -5325,6 +5451,7 @@ def get_approved_owners_horses(request):
             'success': False,
             'error': str(e)
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 @api_view(['POST'])
 def assign_horse_to_kutsero(request):
@@ -5373,7 +5500,8 @@ def assign_horse_to_kutsero(request):
             }, status=status.HTTP_400_BAD_REQUEST)
         
         # Check if horse is already assigned to someone else
-        assignment_response = service_client.table("horse_assignments").select("*").eq("horse_id", horse_id).eq("status", "active").execute()
+        # FIX: Changed from horse_assignments to horse_assignment
+        assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse_id).eq("status", "active").execute()
         
         if assignment_response.data:
             assignment = assignment_response.data[0]
@@ -5401,7 +5529,8 @@ def assign_horse_to_kutsero(request):
             'updated_at': datetime.now().isoformat()
         }
         
-        assignment_result = service_client.table("horse_assignments").insert(assignment_data).execute()
+        # FIX: Changed from horse_assignments to horse_assignment
+        assignment_result = service_client.table("horse_assignment").insert(assignment_data).execute()
         
         if not assignment_result.data:
             return Response({
@@ -5450,7 +5579,8 @@ def test_horse_owners_endpoint(request):
             '/api/kutsero/horse_owners/',
             '/api/kutsero/apply_to_owner/',
             '/api/kutsero/my_applications/',
-            '/api/kutsero/approved_horses/',
+            '/api/kutsero/get_approved_owners_horses/',
             '/api/kutsero/assign_horse/'
         ]
     }, status=status.HTTP_200_OK)
+
