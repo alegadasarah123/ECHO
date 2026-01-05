@@ -82,11 +82,12 @@ urlpatterns = [
     path('check-current-schedules/', views.check_current_schedules, name='check_current_schedules'),
 
     #Horse Application Endpoints
-    path('get_owners/', views.get_owners, name='get_owners'),
-    path('get_owner_horses/', views.get_owner_horses, name='get_owner_horses'),
+    path('horse_owners/', views.get_horse_owners, name='get_horse_owners'),
     path('apply_to_owner/', views.apply_to_owner, name='apply_to_owner'),
-    path('check_application_status/', views.check_application_status, name='check_application_status'),
-    path('kutsero_applications/', views.get_kutsero_applications, name='get_kutsero_applications'),
+    path('my_applications/', views.get_my_applications, name='get_my_applications'),
+    path('approved_owners_horses/', views.get_approved_owners_horses, name='get_approved_owners_horses'),
+    path('assign_horse/', views.assign_horse_to_kutsero, name='assign_horse_to_kutsero'),
+    path('test_horse_endpoint/', views.test_horse_owners_endpoint, name='test_horse_endpoint'),
     
 
 ]
