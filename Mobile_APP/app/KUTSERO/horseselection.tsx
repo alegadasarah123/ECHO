@@ -1,5 +1,3 @@
-"use client"
-
 import { useFocusEffect, useRouter } from "expo-router"
 import * as SecureStore from "expo-secure-store"
 import { useCallback, useEffect, useState } from "react"
@@ -16,11 +14,8 @@ import {
   View,
   Modal,
   Image,
-  FlatList,
 } from "react-native"
 import FontAwesome5 from '@expo/vector-icons/FontAwesome5'
-import FontAwesome from '@expo/vector-icons/FontAwesome'
-import MaterialIcons from '@expo/vector-icons/MaterialIcons'
 
 const { width, height } = Dimensions.get("window")
 
@@ -57,6 +52,50 @@ const getSafeAreaPadding = () => {
   }
 }
 
+interface Owner {
+  id: string
+  name: string
+  username?: string
+  firstName?: string
+  lastName?: string
+  middleName?: string
+  email?: string
+  phone?: string
+  address?: string
+  totalHorses: number
+  availableHorses: number
+  image?: string
+  isApproved: boolean
+  approvalStatus: "pending" | "approved" | "rejected"
+  hasApplied?: boolean
+  applicationDate?: string
+  approvalDate?: string
+  rejectionDate?: string
+  rejectionReason?: string
+}
+
+interface Horse {
+  id: string
+  name: string
+  healthStatus: "Healthy" | "Sick" | "Deceased"
+  status: string
+  image: string
+  breed?: string
+  age?: number
+  color?: string
+  ownerId: string
+  ownerName: string
+  assignmentStatus?: "available" | "assigned"
+  currentAssignmentId?: string
+  lastCheckup?: string
+  nextCheckup?: string
+  assignmentId?: string
+  checkedInAt?: string
+  checkedOutAt?: string
+  alive?: boolean
+  canSelect: boolean
+}
+
 interface UserData {
   id: string
   email: string
@@ -71,85 +110,19 @@ interface UserData {
   access_token: string
 }
 
-// New interfaces
-interface HorseOwner {
-  op_id: string
-  name: string
-  full_name: string
-  email: string
-  phone: string
-  address: string
-  image: string
-  total_horses: number
-  available_horses: any[]
-  has_pending_application: boolean
-  is_approved: boolean
-}
 
-interface Application {
-  application_id: string
-  op_id: string
-  owner_name: string
-  application_date: string
-  status: 'pending' | 'approved' | 'rejected'
-  review_date?: string
-  review_notes?: string
-  created_at: string
-  updated_at: string
-}
-
-interface AvailableHorse {
-  id: string
-  name: string
-  breed: string
-  age: number
-  sex: string
-  color: string
-  image: string
-  owner_id: string
-  owner_name: string
-  status: string
-  is_assigned: boolean
-  is_assigned_to_me: boolean
-  can_select: boolean
-  owner_approved: boolean
-  alive?: boolean
-  assignmentStatus?: string
-}
-
-interface HorseFromAvailable {
-  id: string
-  name: string
-  healthStatus: string
-  status: string
-  image: string
-  breed?: string
-  age?: number
-  color?: string
-  operatorName?: string
-  ownerName?: string
-  opName?: string
-  op_id?: string
-  assignmentStatus?: string
-  alive?: boolean
-}
-
-// Backend API configuration
-const API_BASE_URL = "https://echo-ebl8.onrender.com/api/kutsero"
 
 // Helper function to fix image URLs
 const cleanImageUrl = (url: string | undefined): string => {
   if (!url || url === "" || url === "null" || url === "undefined") {
-    return "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgdmlld0JveD0iMCAwIDE1MCAxNTAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjE1MCIgaGVpZ2hhdD0iMTUwIiBmaWxsPSIjRjBGMEYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJTeXN0ZW0iIGZvbnQtc2l6ZT0iMTIiIGZpbGw9IiM5OTkiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIj5ObyBJbWFnZTwvdGV4dD48L3N2Zz4="
+    return "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgdmlld0JveD0iMCAwIDE1MCAxNTAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjE1MCIgaGVpZ2h0PSIxNTAiIGZpbGw9IiNGMEYwRjAiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IlN5c3RlbSIgZm9udC1zaXplPSIxMiIgZmlsbD0iIzk5OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPk5vIEltYWdlPC90ZXh0Pjwvc3ZnPg=="
   }
   
   let cleanUrl = url.split('?')[0]
-  
   const baseStoragePath = "https://drgknejiqupegkyxfaab.supabase.co/storage/v1/object/public/horse_image/"
   
   if (cleanUrl.includes(baseStoragePath)) {
     const count = (cleanUrl.match(new RegExp(baseStoragePath, 'g')) || []).length
-    
     if (count > 1) {
       const lastIndex = cleanUrl.lastIndexOf(baseStoragePath)
       const actualPath = cleanUrl.substring(lastIndex + baseStoragePath.length)
@@ -162,1025 +135,1627 @@ const cleanImageUrl = (url: string | undefined): string => {
   return cleanUrl
 }
 
+// Helper function to clean owner image URLs
+const cleanOwnerImageUrl = (url: string | undefined): string => {
+  if (!url || url === "" || url === "null" || url === "undefined") {
+    return "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTUwIiBoZWlnaHQ9IjE1MCIgdmlld0JveD0iMCAwIDE1MCAxNTAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjE1MCIgaGVpZ2h0PSIxNTAiIGZpbGw9IiNGMEYwRjAiLz48Y2lyY2xlIGN4PSI3NSIgY3k9IjYwIiByPSIzMCIgZmlsbD0iI0NEQ0RDRCIvPjxjaXJjbGUgY3g9Ijc1IiBjeT0iMzAiIHI9IjIwIiBmaWxsPSIjQ0RDRENEIi8+PC9zdmc+"
+  }
+  
+  let cleanUrl = url.split('?')[0]
+  const baseStoragePath = "https://drgknejiqupegkyxfaab.supabase.co/storage/v1/object/public/owner_images/"
+  
+  if (cleanUrl.includes(baseStoragePath)) {
+    const count = (cleanUrl.match(new RegExp(baseStoragePath, 'g')) || []).length
+    if (count > 1) {
+      const lastIndex = cleanUrl.lastIndexOf(baseStoragePath)
+      const actualPath = cleanUrl.substring(lastIndex + baseStoragePath.length)
+      cleanUrl = baseStoragePath + actualPath
+    }
+  } else if (!cleanUrl.startsWith('http')) {
+    cleanUrl = baseStoragePath + (cleanUrl.startsWith('/') ? cleanUrl.substring(1) : cleanUrl)
+  }
+  
+  return cleanUrl
+}
+
+// Helper function to test API connectivity
+const testAPIConnection = async () => {
+  try {
+    const response = await fetch(`https://echo-ebl8.onrender.com/api/kutsero/test/`, {
+      method: "GET",
+      headers: { "Content-Type": "application/json" },
+    })
+
+    if (response.ok) {
+      const data = await response.json()
+      console.log("Backend connection successful:", data)
+      return true
+    } else {
+      console.error("Backend connection failed:", response.status, response.statusText)
+      return false
+    }
+  } catch (error) {
+    console.error("Backend connection error:", error)
+    return false
+  }
+}
+
+// Function to save application to local storage
+const saveApplicationToLocalStorage = async (ownerId: string, status: string = "pending") => {
+  try {
+    const applications = await SecureStore.getItemAsync("owner_applications")
+    let applicationsMap = applications ? JSON.parse(applications) : {}
+    
+    applicationsMap[ownerId] = {
+      status,
+      appliedAt: new Date().toISOString(),
+    }
+    
+    await SecureStore.setItemAsync("owner_applications", JSON.stringify(applicationsMap))
+    console.log("Saved application to local storage for owner:", ownerId)
+  } catch (error) {
+    console.error("Error saving application to local storage:", error)
+  }
+}
+
+// Function to load applications from local storage
+const loadApplicationsFromLocalStorage = async () => {
+  try {
+    const applications = await SecureStore.getItemAsync("owner_applications")
+    return applications ? JSON.parse(applications) : {}
+  } catch (error) {
+    console.error("Error loading applications from local storage:", error)
+    return {}
+  }
+}
+
+// Filter types for horses
+type HorseFilterType = "all" | "healthy" | "sick" | "deceased" | "available" | "assigned"
+
+// Filter types for owners
+type OwnerFilterType = "all" | "approved" | "pending" | "applied"
+
 export default function HorseSelectionScreen() {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<'owners' | 'applications' | 'horses'>('owners')
   const [searchText, setSearchText] = useState("")
+  const [selectedHorse, setSelectedHorse] = useState<Horse | null>(null)
+  const [selectedOwner, setSelectedOwner] = useState<Owner | null>(null)
+  const [owners, setOwners] = useState<Owner[]>([])
+  const [horses, setHorses] = useState<Horse[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [isApplying, setIsApplying] = useState(false)
+  const [isLoadingHorses, setIsLoadingHorses] = useState(false)
   const [isAssigning, setIsAssigning] = useState(false)
+  const [isApplying, setIsApplying] = useState(false)
   const [userData, setUserData] = useState<UserData | null>(null)
-  
-  const [horseOwners, setHorseOwners] = useState<HorseOwner[]>([])
-  const [myApplications, setMyApplications] = useState<Application[]>([])
-  const [approvedHorses, setApprovedHorses] = useState<AvailableHorse[]>([])
-  const [ownerDetailModal, setOwnerDetailModal] = useState(false)
-  const [selectedOwnerForDetail, setSelectedOwnerForDetail] = useState<HorseOwner | null>(null)
+  const [statsData, setStatsData] = useState({
+    total: 0,
+    healthy: 0,
+    sick: 0,
+    deceased: 0,
+  })
+  const [ownerStatsData, setOwnerStatsData] = useState({
+    total: 0,
+    approved: 0,
+    pending: 0,
+    applied: 0,
+  })
+  const [filterModalVisible, setFilterModalVisible] = useState(false)
+  const [horseFilterModalVisible, setHorseFilterModalVisible] = useState(false)
+  const [selectedHorseFilter, setSelectedHorseFilter] = useState<HorseFilterType>("all")
+  const [selectedOwnerFilter, setSelectedOwnerFilter] = useState<OwnerFilterType>("all")
   const [fullScreenImage, setFullScreenImage] = useState<string | null>(null)
-  const [connectionMode, setConnectionMode] = useState<'new_endpoint' | 'available_horses' | 'no_data'>('no_data')
-
+  const [activeSection, setActiveSection] = useState<"owners" | "horses">("owners")
+  const [retryCount, setRetryCount] = useState(0)
   const safeArea = getSafeAreaPadding()
 
-  // Load user data on mount
+  // Load user data and owners on mount
   useEffect(() => {
-    loadUserData()
+    loadUserDataAndOwners()
   }, [])
 
-  // Refresh data when screen is focused
+  // Use useFocusEffect for proper screen focus handling
   useFocusEffect(
     useCallback(() => {
       console.log("Screen focused, refreshing data...")
       if (userData) {
         refreshData()
       }
-    }, [userData])
+    }, [userData]),
   )
 
-  const loadUserData = async () => {
-    try {
-      setIsLoading(true)
-      
-      const storedUserData = await SecureStore.getItemAsync("user_data")
-      const storedAccessToken = await SecureStore.getItemAsync("access_token")
+  const loadUserDataAndOwners = async () => {
+  try {
+    setIsLoading(true)
 
-      if (storedUserData && storedAccessToken) {
-        const parsedUserData = JSON.parse(storedUserData)
-        
-        const kutsero_id = parsedUserData.profile?.kutsero_id || parsedUserData.kutsero_id || parsedUserData.id
-        
-        if (!kutsero_id) {
-          Alert.alert("Error", "Could not find your user ID. Please log in again.")
-          router.back()
-          return
-        }
-        
-        const unifiedUserData: UserData = {
-          id: parsedUserData.id,
-          email: parsedUserData.email,
-          profile: {
-            ...parsedUserData.profile,
-            kutsero_id: kutsero_id
-          },
-          access_token: storedAccessToken,
-        }
-        
-        setUserData(unifiedUserData)
-        console.log("User data loaded. kutsero_id:", kutsero_id)
-        
-        // Load data
-        await loadHorseOwners()
-        await loadMyApplications()
-        await loadApprovedHorses()
-      } else {
-        Alert.alert("Error", "User session not found. Please login again.")
-        router.back()
-      }
-    } catch (error) {
-      console.error("Error loading user data:", error)
-      setHorseOwners([])
-      setMyApplications([])
-      setApprovedHorses([])
-      setConnectionMode('no_data')
-    } finally {
-      setIsLoading(false)
+    // Test API connection first
+    console.log("Testing backend connection...")
+    const isConnected = await testAPIConnection()
+    if (!isConnected) {
+      Alert.alert("Connection Error", "Cannot connect to the backend server. Please check if the server is running.")
+      return
     }
-  }
 
-  const loadHorseOwners = async () => {
-    try {
-      const kutsero_id = userData?.profile?.kutsero_id
-      
-      // First try the new horse_owners endpoint
-      if (kutsero_id) {
-        try {
-          const horseOwnersResponse = await fetch(
-            `${API_BASE_URL}/horse_owners/?kutsero_id=${kutsero_id}`,
-            {
-              method: "GET",
-              headers: {
-                "Content-Type": "application/json"
-              }
-            }
-          )
-          
-          if (horseOwnersResponse.ok) {
-            const data = await horseOwnersResponse.json()
-            console.log("Using new horse_owners endpoint")
-            console.log("DEBUG: Real owners data from horse_owners endpoint:", {
-              count: data.owners?.length || 0,
-              sample: data.owners?.slice(0, 2)
-            })
-            setHorseOwners(data.owners || [])
-            setConnectionMode(data.owners?.length ? 'new_endpoint' : 'no_data')
-            return
-          } else {
-            console.log("Horse owners endpoint returned status:", horseOwnersResponse.status)
-          }
-        } catch (error) {
-          console.log("Horse owners endpoint error:", error)
-        }
+    // Load user data from SecureStore
+    const storedUserData = await SecureStore.getItemAsync("user_data")
+    const storedAccessToken = await SecureStore.getItemAsync("access_token")
+
+    if (storedUserData && storedAccessToken) {
+      const parsedUserData = JSON.parse(storedUserData)
+      const unifiedUserData: UserData = {
+        id: parsedUserData.id,
+        email: parsedUserData.email,
+        profile: parsedUserData.profile,
+        access_token: storedAccessToken,
       }
+      setUserData(unifiedUserData)
+      console.log("User data loaded:", unifiedUserData)
+
+      // Load owners and sync application status
+      await loadAndSyncOwners(unifiedUserData)
       
-      // If horse_owners endpoint doesn't exist, get REAL owners from available_horses
-      console.log("Getting REAL horse owners from available_horses endpoint...")
+      // Load current assignment if any
+      await loadCurrentAssignment(unifiedUserData.profile?.kutsero_id || unifiedUserData.id)
+    } else {
+      Alert.alert("Error", "User session not found. Please login again.")
+    }
+  } catch (error) {
+    console.error("Error loading user data and owners:", error)
+    Alert.alert("Error", "Failed to load data. Please try again.")
+  } finally {
+    setIsLoading(false)
+  }
+}
+
+const loadAndSyncOwners = async (userData: UserData) => {
+  try {
+    console.log("Loading and syncing owners...")
+    
+    const kutseroId = userData.profile?.kutsero_id || userData.id
+    
+    // Try WITHOUT trailing slash first (more common in Django REST)
+    let url = `https://echo-ebl8.onrender.com/api/kutsero/get_owners?kutsero_id=${kutseroId}`
+    console.log("Full URL (no slash):", url)
+    
+    let response = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+
+    console.log("Owners response status (no slash):", response.status)
+    
+    // If 404, try WITH trailing slash
+    if (response.status === 404) {
+      console.log("Trying with trailing slash...")
+      url = `https://echo-ebl8.onrender.com/api/kutsero/get_owners/?kutsero_id=${kutseroId}`
+      console.log("Full URL (with slash):", url)
       
-      const response = await fetch(`${API_BASE_URL}/available_horses/`, {
+      response = await fetch(url, {
         method: "GET",
         headers: {
-          "Content-Type": "application/json"
-        }
+          "Content-Type": "application/json",
+        },
       })
-
-      if (response.ok) {
-        const data = await response.json()
-        console.log("DEBUG: Raw available horses data:", {
-          total: data.horses?.length || 0,
-          sample: data.horses?.slice(0, 3)
-        })
-        
-        if (data.horses && data.horses.length > 0) {
-          // Get REAL owners from the horse data
-          const realOwners = getRealOwnersFromHorses(data.horses)
-          console.log("DEBUG: Found", realOwners.length, "real owners from horse data")
-          
-          if (realOwners.length > 0) {
-            setHorseOwners(realOwners)
-            setConnectionMode('available_horses')
-          } else {
-            console.log("No real owners could be extracted from horse data")
-            setHorseOwners([])
-            setConnectionMode('no_data')
-          }
-        } else {
-          console.log("No horses found in backend")
-          setHorseOwners([])
-          setConnectionMode('no_data')
-        }
-      } else {
-        console.log("Backend error, no data available")
-        setHorseOwners([])
-        setConnectionMode('no_data')
-      }
-    } catch (error) {
-      console.error("Error loading horse owners:", error)
-      setHorseOwners([])
-      setConnectionMode('no_data')
+      
+      console.log("Owners response status (with slash):", response.status)
     }
-  }
-
-  const getRealOwnersFromHorses = (horses: HorseFromAvailable[]): HorseOwner[] => {
-    const ownersMap = new Map<string, HorseOwner>()
     
-    console.log("DEBUG: Processing", horses.length, "horses to find real owners")
-    
-    horses.forEach((horse, index) => {
-      console.log(`DEBUG: Horse ${index + 1}:`, {
-        name: horse.name,
-        ownerName: horse.ownerName,
-        opName: horse.opName,
-        operatorName: horse.operatorName,
-        op_id: horse.op_id
-      })
+    if (response.ok) {
+      const data = await response.json()
+      console.log("DEBUG: Full owners response:", JSON.stringify(data, null, 2))
       
-      // Get owner name from available fields (in order of priority)
-      const ownerName = horse.ownerName || horse.opName || horse.operatorName || 'Unknown Owner'
-      
-      // Skip if no owner information
-      if (!ownerName || ownerName === 'Unknown Owner' || ownerName === '') {
-        console.warn(`DEBUG: Horse ${horse.name} has no owner information`)
+      if (data.error) {
+        console.error("Backend error:", data.error)
+        Alert.alert("Info", "No owners available at the moment.")
+        setOwners([])
+        return
+      }
+        
+      if (!data.owners || !Array.isArray(data.owners)) {
+        console.error("Invalid owners data structure:", data)
+        setOwners([])
         return
       }
       
-      // Create a unique ID from the owner name (lowercase, remove spaces, special chars)
-      const ownerId = ownerName.toLowerCase()
-        .replace(/\s+/g, '_')
-        .replace(/[^a-z0-9_]/g, '')
+      // Load applications from local storage FIRST
+      const applications = await loadApplicationsFromLocalStorage()
+      console.log("Loaded applications from local storage:", applications)
       
-      if (!ownersMap.has(ownerId)) {
-        // This is a REAL owner from your database
-        ownersMap.set(ownerId, {
-          op_id: ownerId, // Use generated ID since we don't have real op_id
-          name: ownerName,
-          full_name: ownerName,
-          email: '', // We don't have email from horse data
-          phone: '', // We don't have phone from horse data
-          address: '', // We don't have address from horse data
-          image: '', // We don't have owner image from horse data
-          total_horses: 0,
-          available_horses: [],
-          has_pending_application: false,
-          is_approved: false
-        })
-      }
-      
-      const owner = ownersMap.get(ownerId)!
-      owner.total_horses++
-      
-      // Add this horse to owner's available horses
-      owner.available_horses.push({
-        horse_id: horse.id,
-        horse_name: horse.name,
-        horse_breed: horse.breed || 'Unknown',
-        horse_age: horse.age || 0,
-        horse_image: horse.image,
-        horse_status: horse.status || 'available',
-        horse_color: horse.color || 'Unknown',
-        horse_sex: 'Unknown'
-      })
-    })
-    
-    const owners = Array.from(ownersMap.values())
-    console.log("DEBUG: Created", owners.length, "real owners from database:", 
-      owners.map(o => ({ name: o.full_name, horses: o.total_horses }))
-    )
-    
-    return owners
-  }
-
-  const loadMyApplications = async () => {
-    try {
-      const kutsero_id = userData?.profile?.kutsero_id
-      
-      if (kutsero_id) {
-        try {
-          const response = await fetch(
-            `${API_BASE_URL}/my_applications/?kutsero_id=${kutsero_id}`,
-            {
-              method: "GET",
-              headers: {
-                "Content-Type": "application/json"
-              }
-            }
-          )
+      // Also try to fetch application status from backend for each owner
+      const ownersWithSyncedStatus = await Promise.all(
+        data.owners.map(async (owner: any) => {
+          // Start with backend data
+          let approvalStatus: "pending" | "approved" | "rejected" = "pending"
+          let isApproved = false
+          let hasApplied = false
           
-          if (response.ok) {
-            const data = await response.json()
-            console.log("DEBUG: Real applications data:", data.applications?.length || 0)
-            setMyApplications(data.applications || [])
-            return
-          } else {
-            console.log("My applications endpoint returned status:", response.status)
-          }
-        } catch (error) {
-          console.log("My applications endpoint error:", error)
-        }
-      }
-      
-      // No real data available
-      console.log("No real applications data available")
-      setMyApplications([])
-      
-    } catch (error) {
-      console.error("Error loading applications:", error)
-      setMyApplications([])
-    }
-  }
-
-  const loadApprovedHorses = async () => {
-    try {
-      const kutsero_id = userData?.profile?.kutsero_id
-      
-      if (!kutsero_id) {
-        console.log("No kutsero_id available")
-        setApprovedHorses([])
-        return
-      }
-
-      // First, get my applications to know which owners have approved me
-      try {
-        const applicationsResponse = await fetch(
-          `${API_BASE_URL}/my_applications/?kutsero_id=${kutsero_id}`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json"
-            }
-          }
-        )
-        
-        if (applicationsResponse.ok) {
-          const applicationsData = await applicationsResponse.json()
-          const myApplicationsData = applicationsData.applications || []
-          setMyApplications(myApplicationsData)
-          
-          // Get list of owner IDs who have approved me
-          const approvedOwnerIds = myApplicationsData
-            .filter((app: Application) => app.status === 'approved')
-            .map((app: Application) => app.op_id)
-          
-          console.log("DEBUG: Approved owner IDs:", approvedOwnerIds)
-          
-          if (approvedOwnerIds.length === 0) {
-            console.log("No approved owners found")
-            setApprovedHorses([])
-            return
-          }
-          
-          // Now get horses from these approved owners
+          // Check backend application status first
           try {
-            const horsesResponse = await fetch(
-              `${API_BASE_URL}/approved_horses/?kutsero_id=${kutsero_id}`,
+            const statusResponse = await fetch(
+              `https://echo-ebl8.onrender.com/api/kutsero/check_application_status?kutsero_id=${kutseroId}&owner_id=${owner.id}`,
               {
                 method: "GET",
-                headers: {
-                  "Content-Type": "application/json"
-                }
+                headers: { "Content-Type": "application/json" },
               }
             )
             
-            if (horsesResponse.ok) {
-              const horsesData = await horsesResponse.json()
+            if (statusResponse.ok) {
+              const statusData = await statusResponse.json()
+              console.log(`Backend status for owner ${owner.id}:`, statusData)
               
-              // Filter horses to only include those from approved owners
-              const approvedHorsesData = (horsesData.horses || []).filter((horse: any) => 
-                approvedOwnerIds.includes(horse.owner_id || horse.op_id)
-              )
-              
-              console.log("DEBUG: Found", approvedHorsesData.length, "horses from approved owners")
-              
-              // Transform the data
-              const transformedHorses: AvailableHorse[] = approvedHorsesData.map((horse: any) => ({
-                id: horse.id || horse.horse_id || '',
-                name: horse.name || horse.horse_name || '',
-                breed: horse.breed || horse.horse_breed || 'Unknown',
-                age: horse.age || horse.horse_age || 0,
-                sex: horse.sex || horse.horse_sex || 'Unknown',
-                color: horse.color || horse.horse_color || 'Unknown',
-                image: horse.image || horse.horse_image || '',
-                owner_id: horse.owner_id || horse.op_id || '',
-                owner_name: horse.owner_name || horse.op_name || 'Unknown Owner',
-                status: horse.status || horse.horse_status || 'available',
-                is_assigned: horse.is_assigned || false,
-                is_assigned_to_me: horse.is_assigned_to_me || false,
-                can_select: !horse.is_assigned && !horse.is_assigned_to_me,
-                owner_approved: true // These are from approved owners
-              }))
-              
-              setApprovedHorses(transformedHorses)
-              return
-            } else {
-              console.log("Approved horses endpoint failed, trying available_horses")
+              if (statusData.status) {
+                hasApplied = true
+                approvalStatus = statusData.status === "approved" ? "approved" :
+                                statusData.status === "rejected" ? "rejected" : "pending"
+                isApproved = statusData.status === "approved"
+                
+                // Update local storage with backend status
+                await saveApplicationToLocalStorage(owner.id, statusData.status)
+              }
             }
-          } catch (horsesError) {
-            console.log("Approved horses endpoint error, trying alternative", horsesError)
+          } catch (statusError) {
+            console.error(`Error fetching status for owner ${owner.id}:`, statusError)
           }
-        } else {
-          console.log("My applications endpoint failed")
+          
+          // If no backend status, check local storage
+          if (!hasApplied) {
+            const localApplication = applications[owner.id]
+            
+            if (localApplication) {
+              // Use local storage data
+              hasApplied = true
+              approvalStatus = localApplication.status === "approved" ? "approved" :
+                              localApplication.status === "rejected" ? "rejected" : "pending"
+              isApproved = localApplication.status === "approved"
+            } else {
+              // Fallback to raw backend fields
+              hasApplied = owner.hasApplied || owner.application_date || false
+              isApproved = owner.isApproved || owner.approvalStatus === "approved" || false
+              
+              if (isApproved) {
+                approvalStatus = "approved"
+              } else if (owner.approvalStatus === "rejected") {
+                approvalStatus = "rejected"
+              } else if (hasApplied) {
+                approvalStatus = "pending"
+              }
+            }
+          }
+          
+          console.log(`Owner ${owner.id} final status:`, {
+            hasApplied,
+            isApproved,
+            approvalStatus,
+            name: owner.name
+          })
+          
+          return {
+            id: owner.id,
+            name: owner.name || `${owner.firstName || ''} ${owner.lastName || ''}`.trim(),
+            username: owner.username,
+            firstName: owner.firstName,
+            lastName: owner.lastName,
+            middleName: owner.middleName,
+            email: owner.email,
+            phone: owner.phone,
+            address: owner.address,
+            totalHorses: owner.totalHorses || 0,
+            availableHorses: owner.availableHorses || 0,
+            image: cleanOwnerImageUrl(owner.image),
+            isApproved,
+            approvalStatus,
+            hasApplied,
+            applicationDate: owner.applicationDate || owner.application_date,
+            approvalDate: owner.approvalDate,
+            rejectionDate: owner.rejectionDate,
+            rejectionReason: owner.rejectionReason,
+          }
+        })
+      )
+
+      console.log("Synced owners list:", ownersWithSyncedStatus)
+      setOwners(ownersWithSyncedStatus)
+
+      // Update owner stats
+      const approvedCount = ownersWithSyncedStatus.filter(o => o.approvalStatus === "approved").length
+      const pendingCount = ownersWithSyncedStatus.filter(o => o.approvalStatus === "pending").length
+      const rejectedCount = ownersWithSyncedStatus.filter(o => o.approvalStatus === "rejected").length
+      const notAppliedCount = ownersWithSyncedStatus.filter(o => !o.hasApplied).length
+        
+      console.log("Owner stats after sync:", { approvedCount, pendingCount, rejectedCount, notAppliedCount })
+        
+      setOwnerStatsData({
+        total: ownersWithSyncedStatus.length,
+        approved: approvedCount,
+        pending: pendingCount + notAppliedCount,
+        applied: pendingCount + rejectedCount,
+      })
+
+    } else {
+      console.error("HTTP Error:", response.status, response.statusText)
+      try {
+        const errorText = await response.text()
+        console.error("Error response:", errorText)
+        
+        if (errorText.includes('<!doctype html>')) {
+          console.error("ERROR: Received HTML page instead of JSON. This means:")
+          console.error("1. The endpoint doesn't exist")
+          console.error("2. Check Django URL configuration")
+          console.error("3. Check if the view is properly registered")
         }
-      } catch (appsError) {
-        console.log("Error loading applications", appsError)
+      } catch (e) {
+        console.error("Could not read error response")
+      }
+        
+      if (response.status === 404) {
+        Alert.alert(
+          "Endpoint Not Found", 
+          `The owners endpoint was not found.\n\n` +
+          `Tried:\n` +
+          `1. https://echo-ebl8.onrender.com/api/kutsero/get_owners\n` +
+          `2. https://echo-ebl8.onrender.com/api/kutsero/get_owners/\n\n` +
+          `Please check backend URL configuration.`
+        )
+      } else if (response.status === 500) {
+        Alert.alert("Server Error", "There was a problem with the server.")
+      } else {
+        Alert.alert("Error", `Failed to load owners (${response.status})`)
+      }
+        
+      setOwners([])
+    }
+  } catch (error) {
+    console.error("Network error loading owners:", error)
+    Alert.alert(
+      "Connection Error", 
+      `Cannot connect to server.\n\n` +
+      `URL: https://echo-ebl8.onrender.com/api/kutsero/get_owners\n` +
+      `Error: ${(error as Error).message}`
+    )
+    setOwners([])
+  }
+}
+
+  const loadOwners = async () => {
+    try {
+      console.log("Loading owners...")
+      
+      const kutseroId = userData?.profile?.kutsero_id || userData?.id
+      let url = `https://echo-ebl8.onrender.com/api/kutsero/get_owners?kutsero_id=${kutseroId}`
+      console.log("Full URL:", url)
+      
+      let response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      console.log("Owners response status:", response.status)
+      
+      if (response.status === 404) {
+        url = `https://echo-ebl8.onrender.com/api/kutsero/get_owners/?kutsero_id=${kutseroId}`
+        response = await fetch(url, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        })
       }
       
-      // Fallback: If no dedicated endpoint, get all horses and filter by approved owners
-      console.log("Using fallback method to get horses from approved owners...")
-      
-      // First get all applications to find approved owners
-      const approvedOwnerIds: string[] = []
-      
-      if (myApplications.length > 0) {
-        myApplications
-          .filter(app => app.status === 'approved')
-          .forEach(app => {
-            if (app.op_id && !approvedOwnerIds.includes(app.op_id)) {
-              approvedOwnerIds.push(app.op_id)
+      if (response.ok) {
+        const data = await response.json()
+        console.log("DEBUG: Full owners response:", JSON.stringify(data, null, 2))
+        
+        if (data.error) {
+          console.error("Backend error:", data.error)
+          Alert.alert("Info", "No owners available at the moment.")
+          setOwners([])
+          return
+        }
+          
+        if (!data.owners || !Array.isArray(data.owners)) {
+          console.error("Invalid owners data structure:", data)
+          setOwners([])
+          return
+        }
+        
+        // Load applications from local storage
+        const applications = await loadApplicationsFromLocalStorage()
+        console.log("Loaded applications from local storage:", applications)
+        
+        const ownersList: Owner[] = data.owners.map((owner: any) => {
+          // Check local storage for application status
+          const localApplication = applications[owner.id]
+          
+          // Determine status based on both backend and local storage
+          let hasApplied = false
+          let approvalStatus: "pending" | "approved" | "rejected" = "pending"
+          let isApproved = false
+          
+          if (localApplication) {
+            // Use local storage data if available
+            hasApplied = true
+            approvalStatus = localApplication.status === "approved" ? "approved" :
+                            localApplication.status === "rejected" ? "rejected" : "pending"
+            isApproved = localApplication.status === "approved"
+          } else {
+            // Fallback to backend data
+            hasApplied = owner.hasApplied || owner.application_date || false
+            isApproved = owner.isApproved || owner.approvalStatus === "approved" || false
+            
+            if (isApproved) {
+              approvalStatus = "approved"
+            } else if (owner.approvalStatus === "rejected") {
+              approvalStatus = "rejected"
+            } else if (hasApplied) {
+              approvalStatus = "pending"
+            }
+          }
+          
+          console.log(`Owner ${owner.id} (${owner.name}):`, {
+            hasApplied,
+            isApproved,
+            approvalStatus,
+            localApplication,
+            rawFields: {
+              hasApplied: owner.hasApplied,
+              isApproved: owner.isApproved,
+              approvalStatus: owner.approvalStatus,
+              application_date: owner.application_date,
             }
           })
-      }
-      
-      console.log("DEBUG: Approved owners from my applications:", approvedOwnerIds)
-      
-      if (approvedOwnerIds.length === 0) {
-        console.log("No approved owners - can't show any horses")
-        setApprovedHorses([])
-        return
-      }
-      
-      // Now get all available horses
-      try {
-        const response = await fetch(`${API_BASE_URL}/available_horses/`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json"
+          
+          return {
+            id: owner.id,
+            name: owner.name || `${owner.firstName || ''} ${owner.lastName || ''}`.trim(),
+            username: owner.username,
+            firstName: owner.firstName,
+            lastName: owner.lastName,
+            middleName: owner.middleName,
+            email: owner.email,
+            phone: owner.phone,
+            address: owner.address,
+            totalHorses: owner.totalHorses || 0,
+            availableHorses: owner.availableHorses || 0,
+            image: cleanOwnerImageUrl(owner.image),
+            isApproved,
+            approvalStatus,
+            hasApplied,
+            applicationDate: owner.applicationDate || owner.application_date,
+            approvalDate: owner.approvalDate,
+            rejectionDate: owner.rejectionDate,
+            rejectionReason: owner.rejectionReason,
           }
         })
 
-        if (response.ok) {
-          const data = await response.json()
+        console.log("Processed owners list:", ownersList)
+        setOwners(ownersList)
+
+        // Update owner stats
+        const approvedCount = ownersList.filter(o => o.approvalStatus === "approved").length
+        const pendingCount = ownersList.filter(o => o.approvalStatus === "pending").length
+        const rejectedCount = ownersList.filter(o => o.approvalStatus === "rejected").length
+        const notAppliedCount = ownersList.filter(o => !o.hasApplied).length
           
-          if (data.horses && data.horses.length > 0) {
-            // Filter horses to only those from approved owners
-            const approvedHorsesFromData = data.horses.filter((horse: HorseFromAvailable) => {
-              // Get the owner ID from the horse
-              const ownerName = horse.ownerName || horse.opName || horse.operatorName
-              if (!ownerName) return false
-              
-              // Generate owner ID (same logic as in getRealOwnersFromHorses)
-              const ownerId = ownerName.toLowerCase()
-                .replace(/\s+/g, '_')
-                .replace(/[^a-z0-9_]/g, '')
-              
-              // Check if this owner is in our approved list
-              return approvedOwnerIds.includes(ownerId)
-            })
-            
-            console.log("DEBUG: Found", approvedHorsesFromData.length, "horses from approved owners (fallback)")
-            
-            // Transform the filtered horses
-            const transformedHorses: AvailableHorse[] = approvedHorsesFromData.map((horse: HorseFromAvailable) => {
-              const ownerName = horse.ownerName || horse.opName || horse.operatorName || 'Unknown Owner'
-              const ownerId = ownerName.toLowerCase()
-                .replace(/\s+/g, '_')
-                .replace(/[^a-z0-9_]/g, '')
-              
-              return {
-                id: horse.id || '',
-                name: horse.name || '',
-                breed: horse.breed || 'Unknown',
-                age: horse.age || 0,
-                sex: 'Unknown',
-                color: horse.color || 'Unknown',
-                image: horse.image || '',
-                owner_id: ownerId,
-                owner_name: ownerName,
-                status: horse.status || 'available',
-                is_assigned: horse.assignmentStatus === 'assigned',
-                is_assigned_to_me: false,
-                can_select: horse.alive !== false && horse.assignmentStatus !== 'assigned',
-                owner_approved: true
-              }
-            })
-            
-            setApprovedHorses(transformedHorses)
-          } else {
-            console.log("No horses found for approved view")
-            setApprovedHorses([])
-          }
-        } else {
-          console.log("Backend error for horses")
-          setApprovedHorses([])
+        console.log("Owner stats:", { approvedCount, pendingCount, rejectedCount, notAppliedCount })
+          
+        setOwnerStatsData({
+          total: ownersList.length,
+          approved: approvedCount,
+          pending: pendingCount + notAppliedCount,
+          applied: pendingCount + rejectedCount,
+        })
+
+      } else {
+        console.error("HTTP Error:", response.status, response.statusText)
+        try {
+          const errorText = await response.text()
+          console.error("Error response:", errorText)
+        } catch (e) {
+          console.error("Could not read error response")
         }
-      } catch (error) {
-        console.error("Error in fallback method:", error)
-        setApprovedHorses([])
+          
+        if (response.status === 404) {
+          Alert.alert("Not Found", "The owners endpoint was not found.")
+        } else if (response.status === 500) {
+          Alert.alert("Server Error", "There was a problem with the server.")
+        } else {
+          Alert.alert("Error", `Failed to load owners (${response.status})`)
+        }
+          
+        setOwners([])
+      }
+    } catch (error) {
+      console.error("Network error loading owners:", error)
+      Alert.alert("Connection Error", "Cannot connect to server. Please check your internet connection.")
+      setOwners([])
+    }
+  }
+
+  // Function to sync application status with backend
+  const syncApplicationStatus = async (ownerId: string) => {
+    try {
+      const kutseroId = userData?.profile?.kutsero_id || userData?.id
+      const response = await fetch(
+        `https://echo-ebl8.onrender.com/api/kutsero/check_application_status?kutsero_id=${kutseroId}&owner_id=${ownerId}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Synced application status:", data)
+        
+        // Update local storage with actual status from backend
+        if (data.status) {
+          await saveApplicationToLocalStorage(ownerId, data.status)
+          
+          // Update the owner in the local state
+          setOwners(prevOwners =>
+            prevOwners.map(o => {
+              if (o.id === ownerId) {
+                return {
+                  ...o,
+                  hasApplied: true,
+                  approvalStatus: data.status === "approved" ? "approved" : 
+                                 data.status === "rejected" ? "rejected" : "pending",
+                }
+              }
+              return o
+            })
+          )
+          
+          return data.status
+        }
+      }
+    } catch (error) {
+      console.error("Error syncing application status:", error)
+    }
+    return null
+  }
+
+  // Function to load owner horses with better error handling
+  const loadOwnerHorsesWithFallback = async (ownerId: string) => {
+    try {
+      await loadOwnerHorses(ownerId)
+    } catch (error) {
+      console.error("Error in loadOwnerHorsesWithFallback:", error)
+    }
+  }
+
+  const loadOwnerHorses = async (ownerId: string) => {
+    try {
+      setIsLoadingHorses(true)
+      console.log("Loading horses for owner:", ownerId)
+      
+      const kutseroId = userData?.profile?.kutsero_id || userData?.id
+      let url = `https://echo-ebl8.onrender.com/api/kutsero/get_owner_horses?owner_id=${ownerId}&kutsero_id=${kutseroId}`
+      console.log("Full URL for horses:", url)
+      
+      let response = await fetch(
+        url,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      )
+
+      console.log("Owner horses response status:", response.status)
+      
+      if (response.status === 404) {
+        url = `https://echo-ebl8.onrender.com/api/kutsero/get_owner_horses/?owner_id=${ownerId}&kutsero_id=${kutseroId}`
+        response = await fetch(url, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        })
       }
       
+      // Try to read the response text first for debugging
+      let responseText = ""
+      try {
+        responseText = await response.text()
+        console.log("Raw response text (first 1000 chars):", responseText.substring(0, 1000))
+      } catch (textError) {
+        console.error("Could not read response text:", textError)
+      }
+
+      if (response.ok) {
+        let data
+        try {
+          data = JSON.parse(responseText)
+          console.log("DEBUG: Parsed horses data structure:", {
+            hasHorses: !!data.horses,
+            horsesType: Array.isArray(data.horses) ? 'array' : typeof data.horses,
+            horsesLength: Array.isArray(data.horses) ? data.horses.length : 'not array',
+            dataKeys: Object.keys(data),
+            stats: data.stats
+          })
+        } catch (parseError) {
+          console.error("Failed to parse JSON response:", parseError, "\nResponse text:", responseText)
+          Alert.alert(
+            "Data Format Error",
+            "Received invalid data from server. Please try again.",
+            [{ text: "OK" }]
+          )
+          setHorses([])
+          setStatsData({ total: 0, healthy: 0, sick: 0, deceased: 0 })
+          return
+        }
+        
+        // Handle case when no horses are returned - check both possible keys
+        const horsesData = data.horses || data.horses_list || []
+        
+        if (!Array.isArray(horsesData)) {
+          console.log("Horses data is not an array:", horsesData)
+          Alert.alert(
+            "Data Error",
+            "Invalid data format received from server.",
+            [{ text: "OK" }]
+          )
+          setHorses([])
+          setStatsData({ total: 0, healthy: 0, sick: 0, deceased: 0 })
+          return
+        }
+        
+        if (horsesData.length === 0) {
+          console.log("No horses data returned")
+          Alert.alert(
+            "No Horses Available",
+            "This owner doesn't have any horses registered yet.",
+            [{ text: "OK" }]
+          )
+          setHorses([])
+          
+          // Use stats from backend if available
+          if (data.stats) {
+            setStatsData({
+              total: data.stats.total || 0,
+              healthy: data.stats.healthy || 0,
+              sick: data.stats.sick || 0,
+              deceased: data.stats.deceased || 0,
+            })
+          } else {
+            setStatsData({ total: 0, healthy: 0, sick: 0, deceased: 0 })
+          }
+          
+          return
+        }
+        
+        console.log("Processing", horsesData.length, "horses")
+        
+        const horsesList: Horse[] = horsesData.map((horse: any, index: number) => {
+          console.log(`Horse ${index + 1}:`, {
+            id: horse.id,
+            name: horse.name,
+            healthStatus: horse.healthStatus,
+            canSelect: horse.canSelect,
+            assignmentStatus: horse.assignmentStatus,
+            alive: horse.alive
+          })
+          
+          return {
+            id: horse.id || horse.horse_id || `horse-${Math.random()}`,
+            name: horse.name || horse.horse_name || "Unnamed Horse",
+            healthStatus: horse.healthStatus === "Unhealthy" || horse.health_status === "Unhealthy" ? "Sick" : 
+                         (horse.healthStatus === "Deceased" || horse.health_status === "Deceased" ? "Deceased" : 
+                         horse.healthStatus || "Healthy"),
+            status: horse.status || horse.horse_status || "Unknown",
+            image: cleanImageUrl(horse.image || horse.horse_image),
+            breed: horse.breed || horse.horse_breed || "Unknown",
+            age: horse.age || horse.horse_age || 0,
+            color: horse.color || horse.horse_color || "Unknown",
+            ownerId: horse.ownerId || horse.owner_id || horse.op_id || ownerId,
+            ownerName: horse.ownerName || horse.owner_name || selectedOwner?.name || "Unknown Owner",
+            assignmentStatus: horse.assignmentStatus || horse.assignment_status || "available",
+            currentAssignmentId: horse.currentAssignmentId || horse.current_assignment_id,
+            lastCheckup: horse.lastCheckup || horse.last_checkup,
+            nextCheckup: horse.nextCheckup || horse.next_checkup,
+            alive: horse.alive !== false,
+            canSelect: horse.canSelect || horse.can_select || false,
+          }
+        })
+
+        console.log("Processed horses list:", horsesList)
+        setHorses(horsesList)
+        
+        // Cache the horses data
+        await SecureStore.setItemAsync(`cached_horses_${ownerId}`, JSON.stringify(horsesList))
+        
+        // Use stats from backend if available, otherwise calculate
+        if (data.stats) {
+          setStatsData({
+            total: data.stats.total || horsesList.length,
+            healthy: data.stats.healthy || 0,
+            sick: data.stats.sick || 0,
+            deceased: data.stats.deceased || 0,
+          })
+        } else {
+          // Calculate stats from horses list
+          const deceasedCount = horsesList.filter(h => h.alive === false || h.healthStatus === "Deceased").length
+          const sickCount = horsesList.filter(h => h.alive !== false && h.healthStatus === "Sick").length
+          const healthyCount = horsesList.filter(h => h.alive !== false && h.healthStatus === "Healthy").length
+          
+          setStatsData({
+            total: horsesList.length,
+            healthy: healthyCount,
+            sick: sickCount,
+            deceased: deceasedCount,
+          })
+        }
+
+        // Switch to horses section
+        setActiveSection("horses")
+        
+      } else {
+        // Handle specific HTTP errors
+        console.error("HTTP Error Details:", {
+          status: response.status,
+          statusText: response.statusText,
+          body: responseText
+        })
+        
+        try {
+          const errorData = JSON.parse(responseText)
+          console.error("Error data from backend:", errorData)
+          
+          if (errorData.error) {
+            Alert.alert(
+              "Backend Error",
+              `Server error: ${errorData.error}\n\nPlease contact support.`,
+              [{ text: "OK" }]
+            )
+          }
+        } catch (e) {
+          // Not JSON
+        }
+        
+        if (response.status === 500) {
+          Alert.alert(
+            "Server Error",
+            "The server encountered an error while loading horses. Please try again later.",
+            [
+              { text: "OK" },
+              { text: "Retry", onPress: () => loadOwnerHorses(ownerId) }
+            ]
+          )
+        } else if (response.status === 404) {
+          Alert.alert(
+            "Not Found",
+            "This owner doesn't have any horses registered yet.",
+            [{ text: "OK" }]
+          )
+        } else {
+          Alert.alert(
+            "Error",
+            `Failed to load horses (${response.status}). Please try again.`,
+            [
+              { text: "OK" },
+              { text: "Retry", onPress: () => loadOwnerHorses(ownerId) }
+            ]
+          )
+        }
+        
+        // Try to use cached data
+        try {
+          const cachedData = await SecureStore.getItemAsync(`cached_horses_${ownerId}`)
+          if (cachedData) {
+            const horses = JSON.parse(cachedData)
+            setHorses(horses)
+            
+            const deceasedCount = horses.filter((h: Horse) => h.alive === false || h.healthStatus === "Deceased").length
+            const sickCount = horses.filter((h: Horse) => h.alive !== false && h.healthStatus === "Sick").length
+            const healthyCount = horses.filter((h: Horse) => h.alive !== false && h.healthStatus === "Healthy").length
+            
+            setStatsData({
+              total: horses.length,
+              healthy: healthyCount,
+              sick: sickCount,
+              deceased: deceasedCount,
+            })
+            
+            setActiveSection("horses")
+          } else {
+            setHorses([])
+            setStatsData({ total: 0, healthy: 0, sick: 0, deceased: 0 })
+          }
+        } catch (cacheError) {
+          console.error("Cache error:", cacheError)
+          setHorses([])
+          setStatsData({ total: 0, healthy: 0, sick: 0, deceased: 0 })
+        }
+      }
     } catch (error) {
-      console.error("Error loading approved horses:", error)
-      setApprovedHorses([])
+      console.error("Network error loading owner horses:", error)
+      
+      // More specific error messages
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        Alert.alert(
+          "Connection Error", 
+          "Cannot connect to the server. Please check:\n1. Your internet connection\n2. Backend server is running" ,
+          [
+            { text: "OK" },
+            { text: "Retry", onPress: () => loadOwnerHorses(ownerId) },
+            { text: "Use Cached", onPress: async () => {
+              const cachedData = await SecureStore.getItemAsync(`cached_horses_${ownerId}`)
+              if (cachedData) {
+                const horses = JSON.parse(cachedData)
+                setHorses(horses)
+                setActiveSection("horses")
+              }
+            }}
+          ]
+        )
+      } else {
+        Alert.alert(
+          "Error", 
+          "Failed to load horses. " + (error as Error).message,
+          [
+            { text: "OK" },
+            { text: "Retry", onPress: () => loadOwnerHorses(ownerId) }
+          ]
+        )
+      }
+      
+      // Try cached data
+      try {
+        const cachedData = await SecureStore.getItemAsync(`cached_horses_${ownerId}`)
+        if (cachedData) {
+          const horses = JSON.parse(cachedData)
+          setHorses(horses)
+          setActiveSection("horses")
+        }
+      } catch (cacheError) {
+        console.error("Cache error:", cacheError)
+      }
+    } finally {
+      setIsLoadingHorses(false)
+    }
+  }
+
+  const loadCurrentAssignment = async (kutseroId: string) => {
+    try {
+      console.log("Loading current assignment for kutsero ID:", kutseroId)
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/kutsero/current_assignment/?kutsero_id=${kutseroId}`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      })
+
+      console.log("Current assignment response status:", response.status)
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Current assignment data:", data)
+
+        if (data.assignment && data.assignment.horse) {
+          const horse: Horse = {
+            id: data.assignment.horse.id,
+            name: data.assignment.horse.name,
+            healthStatus: data.assignment.horse.healthStatus as Horse["healthStatus"],
+            status: data.assignment.horse.status,
+            image: cleanImageUrl(data.assignment.horse.image),
+            breed: data.assignment.horse.breed,
+            age: data.assignment.horse.age,
+            color: data.assignment.horse.color,
+            ownerId: data.assignment.horse.ownerId,
+            ownerName: data.assignment.horse.ownerName,
+            assignmentStatus: "assigned",
+            currentAssignmentId: data.assignment.assignmentId,
+            lastCheckup: data.assignment.horse.lastCheckup,
+            nextCheckup: data.assignment.horse.nextCheckup,
+            alive: data.assignment.horse.alive !== false,
+            canSelect: true,
+          }
+
+          setSelectedHorse(horse)
+
+          // Save to SecureStore
+          const horseDataToStore = {
+            ...horse,
+            assignmentId: data.assignment.assignmentId,
+            checkedInAt: data.assignment.checkedInAt,
+            checkedOutAt: data.assignment.checkedOutAt,
+          }
+
+          await SecureStore.setItemAsync("selectedHorseData", JSON.stringify(horseDataToStore))
+          await SecureStore.setItemAsync("currentAssignmentId", data.assignment.assignmentId)
+
+          console.log("Current assignment loaded:", horse.name)
+        } else {
+          setSelectedHorse(null)
+          await SecureStore.deleteItemAsync("selectedHorseData")
+          await SecureStore.deleteItemAsync("currentAssignmentId")
+        }
+      } else {
+        setSelectedHorse(null)
+        await SecureStore.deleteItemAsync("selectedHorseData")
+        await SecureStore.deleteItemAsync("currentAssignmentId")
+      }
+    } catch (error) {
+      console.error("Error loading current assignment:", error)
     }
   }
 
   const refreshData = async () => {
-    setIsLoading(true)
-    try {
-      await Promise.all([
-        loadHorseOwners(),
-        loadMyApplications(),
-        loadApprovedHorses()
-      ])
-    } catch (error) {
-      console.error("Error refreshing data:", error)
-    } finally {
-      setIsLoading(false)
+  setIsLoading(true)
+  try {
+    if (userData) {
+      await loadAndSyncOwners(userData)
+      const kutseroId = userData.profile?.kutsero_id || userData.id
+      await loadCurrentAssignment(kutseroId)
+      setRetryCount(0) // Reset retry count on success
+    }
+  } catch (error) {
+    console.error("Error refreshing data:", error)
+    
+    // Auto-retry up to 3 times
+    if (retryCount < 3) {
+      setRetryCount(prev => prev + 1)
+      setTimeout(() => {
+        refreshData()
+      }, 2000 * retryCount)
+    } else {
+      Alert.alert(
+        "Connection Error",
+        "Unable to load data. Please check your internet connection and try again.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Retry", onPress: () => {
+            setRetryCount(0)
+            refreshData()
+          }}
+        ]
+      )
+    }
+  } finally {
+    setIsLoading(false)
+  }
+}
+
+
+  const handleOwnerSelection = async (owner: Owner) => {
+    console.log("Owner selected:", {
+      id: owner.id,
+      name: owner.name,
+      approvalStatus: owner.approvalStatus,
+      hasApplied: owner.hasApplied,
+      availableHorses: owner.availableHorses
+    })
+    
+    // If owner has applied but status might be outdated, sync first
+    if (owner.hasApplied && owner.approvalStatus === "pending") {
+      const syncedStatus = await syncApplicationStatus(owner.id)
+      if (syncedStatus === "approved") {
+        // If just approved, reload owner data
+        await loadOwners()
+      }
+    }
+    
+    // Get updated owner from state
+    const updatedOwner = owners.find(o => o.id === owner.id) || owner
+    
+    switch (updatedOwner.approvalStatus) {
+      case "approved":
+        // If owner is approved, load their horses
+        if (updatedOwner.availableHorses > 0) {
+          setSelectedOwner(updatedOwner)
+          loadOwnerHorsesWithFallback(updatedOwner.id)
+        } else {
+          Alert.alert(
+            "No Available Horses",
+            `${updatedOwner.name} has no available horses at the moment.`
+          )
+        }
+        break
+        
+      case "rejected":
+        Alert.alert(
+          "Application Rejected",
+          `Your application to work with ${updatedOwner.name} was rejected.${
+            updatedOwner.rejectionReason ? `\n\nReason: ${updatedOwner.rejectionReason}` : ''
+          }`,
+          [
+            { text: "OK", style: "cancel" },
+            { 
+              text: "Apply Again", 
+              onPress: () => applyToOwner(updatedOwner) 
+            }
+          ]
+        )
+        break
+        
+      case "pending":
+        if (updatedOwner.hasApplied) {
+          Alert.alert(
+            "Application Pending",
+            `Your application to work with ${updatedOwner.name} is still pending approval.${
+              updatedOwner.applicationDate ? `\n\nApplied on: ${new Date(updatedOwner.applicationDate).toLocaleDateString()}` : ''
+            }`,
+            [
+              { text: "OK", style: "default" },
+            ]
+          )
+        } else {
+          Alert.alert(
+            "Apply to Work with Owner",
+            `Would you like to apply to work with ${updatedOwner.name}? Once approved, you'll be able to select their horses.`,
+            [
+              { text: "Cancel", style: "cancel" },
+              { text: "Apply", onPress: () => applyToOwner(updatedOwner) },
+            ]
+          )
+        }
+        break
+        
+      default:
+        // Not applied
+        Alert.alert(
+          "Apply to Work with Owner",
+          `Would you like to apply to work with ${updatedOwner.name}? Once approved, you'll be able to select their horses.`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Apply", onPress: () => applyToOwner(updatedOwner) },
+          ]
+        )
     }
   }
 
-  const handleApplyToOwner = async (owner: HorseOwner) => {
+  const applyToOwner = async (owner: Owner) => {
+  if (!userData) {
+    Alert.alert("Error", "User information not available")
+    return
+  }
+
+  setIsApplying(true)
+  try {
+    const kutseroId = userData.profile?.kutsero_id || userData.id
+    const applicationData = {
+      kutsero_id: kutseroId,
+      owner_id: owner.id,
+    }
+
+    console.log("DEBUG: Applying to owner with data:", applicationData)
+
+    const response = await fetch(`https://echo-ebl8.onrender.com/api/kutsero/apply_to_owner`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(applicationData),
+    })
+
+    console.log("Application response status:", response.status)
+    
+    if (response.ok) {
+      const result = await response.json()
+      console.log("Application successful:", result)
+
+      // Save to local storage
+      await saveApplicationToLocalStorage(owner.id, "pending")
+
+      // Immediately update the owner in the state
+      setOwners(prevOwners =>
+        prevOwners.map(o => {
+          if (o.id === owner.id) {
+            return {
+              ...o,
+              hasApplied: true,
+              approvalStatus: "pending",
+              applicationDate: new Date().toISOString(),
+              rejectionDate: undefined,
+              rejectionReason: undefined,
+            }
+          }
+          return o
+        })
+      )
+
+      // Update the selected owner if it's the same one
+      if (selectedOwner?.id === owner.id) {
+        setSelectedOwner(prev => prev ? {
+          ...prev,
+          hasApplied: true,
+          approvalStatus: "pending",
+          applicationDate: new Date().toISOString(),
+        } : prev)
+      }
+
+      Alert.alert(
+        "Application Submitted",
+        `Your application to work with ${owner.name} has been submitted. You'll be notified once reviewed.`,
+        [{ text: "OK" }]
+      )
+    } else {
+      // Handle different error cases
+      const errorText = await response.text()
+      console.error("Application failed. Response:", errorText)
+      
+      let errorMessage = "Failed to submit application"
+      
+      try {
+        const errorData = JSON.parse(errorText)
+        console.error("Parsed error data:", errorData)
+        
+        if (errorData.error === "Already applied to this owner") {
+          // This means we already applied but frontend state was out of sync
+          errorMessage = `You have already applied to work with ${owner.name}. Status: ${errorData.status}`
+          
+          // Save to local storage with the actual status
+          await saveApplicationToLocalStorage(owner.id, errorData.status)
+          
+          // Update local state to reflect that we've already applied
+          setOwners(prevOwners =>
+            prevOwners.map(o => {
+              if (o.id === owner.id) {
+                return {
+                  ...o,
+                  hasApplied: true,
+                  approvalStatus: errorData.status === "approved" ? "approved" : 
+                                 errorData.status === "rejected" ? "rejected" : "pending",
+                }
+              }
+              return o
+            })
+          )
+          
+          // Update the selected owner if it's the same one
+          if (selectedOwner?.id === owner.id) {
+            setSelectedOwner(prev => prev ? {
+              ...prev,
+              hasApplied: true,
+              approvalStatus: errorData.status === "approved" ? "approved" : 
+                            errorData.status === "rejected" ? "rejected" : "pending",
+            } : prev)
+          }
+        } else if (errorData.error) {
+          errorMessage = errorData.error
+        } else if (errorData.detail) {
+          errorMessage = errorData.detail
+        }
+      } catch (e) {
+        console.error("Could not parse error response:", e)
+        errorMessage = `Server error: ${response.status} ${response.statusText}`
+      }
+      
+      Alert.alert("Application Failed", errorMessage)
+    }
+  } catch (error) {
+    console.error("Network error applying to owner:", error)
+    Alert.alert("Connection Error", "Failed to submit application. Please check your internet connection.")
+  } finally {
+    setIsApplying(false)
+  }
+}
+
+  const handleHorseSelection = async (horse: Horse) => {
+    if (!horse.canSelect) {
+      Alert.alert(
+        "Cannot Select Horse",
+        "You don't have permission to select this horse. Please make sure you're approved to work with this owner."
+      )
+      return
+    }
+
+    if (horse.alive === false || horse.healthStatus === "Deceased") {
+      Alert.alert(
+        "Horse Unavailable",
+        "This horse is deceased and cannot be selected."
+      )
+      return
+    }
+
+    if (horse.healthStatus === "Sick") {
+      Alert.alert(
+        "Horse Requires Medical Care",
+        "This horse is sick and needs medical attention."
+      )
+      return
+    }
+
     if (!userData) {
       Alert.alert("Error", "User information not available")
       return
     }
 
-    if (owner.is_approved) {
-      Alert.alert("Already Approved", "You are already approved by this owner. You can now use their horses.")
-      setActiveTab('horses')
-      return
-    }
-
-    if (owner.has_pending_application) {
-      Alert.alert("Pending Application", "You already have a pending application with this owner.")
-      return
-    }
-
-    Alert.alert(
-      "Apply to Owner",
-      `Are you sure you want to apply to ${owner.full_name}? You will need to wait for their approval before using their horses.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Apply", 
-          onPress: () => proceedWithApplication(owner) 
-        }
-      ]
-    )
-  }
-
-  const proceedWithApplication = async (owner: HorseOwner) => {
-    setIsApplying(true)
-    try {
-      if (userData?.profile?.kutsero_id) {
-        const response = await fetch(`${API_BASE_URL}/apply_to_owner/`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            op_id: owner.op_id,
-            kutsero_id: userData.profile.kutsero_id
-          })
-        })
-
-        if (response.ok) {
-          const data = await response.json()
-          
-          Alert.alert(
-            "Application Submitted",
-            `Your application to ${owner.full_name} has been submitted. You will be notified once they review it.`,
-            [
-              {
-                text: "OK",
-                onPress: () => {
-                  loadMyApplications()
-                  loadHorseOwners()
-                  setActiveTab('applications')
-                }
-              }
-            ]
-          )
-          return
-        } else {
-          console.log("Apply to owner endpoint returned status:", response.status)
-        }
-      }
-      
-      // If backend endpoint doesn't exist or fails
+    if (horse.assignmentStatus === "assigned" && selectedHorse?.id !== horse.id) {
       Alert.alert(
-        "Feature Not Available",
-        "The application feature requires backend deployment. Please contact support.",
-        [{ text: "OK" }]
+        "Horse Unavailable",
+        "This horse is currently assigned to another kutsero."
       )
-      
-    } catch (error) {
-      console.error("Error submitting application:", error)
-      Alert.alert("Error", "Failed to submit application. Please try again later.")
-    } finally {
-      setIsApplying(false)
-    }
-  }
-
-  const handleSelectHorse = (horse: AvailableHorse) => {
-    if (!horse.can_select) {
-      Alert.alert("Horse Unavailable", "This horse is already assigned to you or another kutsero.")
       return
     }
 
-    if (!horse.owner_approved) {
-      Alert.alert("Owner Not Approved", "You need to be approved by this horse's owner first.")
-      return
-    }
-
-    Alert.alert(
-      "Assign Horse",
-      `Do you want to assign ${horse.name} to yourself for work?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { 
-          text: "Assign", 
-          onPress: () => assignHorseToKutsero(horse) 
-        }
-      ]
-    )
+    Alert.alert("Confirm Selection", `Are you sure you want to select ${horse.name}?`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "OK", onPress: () => proceedWithHorseSelection(horse) },
+    ])
   }
 
-  const assignHorseToKutsero = async (horse: AvailableHorse) => {
+  const proceedWithHorseSelection = async (horse: Horse) => {
+    if (selectedHorse && selectedHorse.id !== horse.id) {
+      Alert.alert(
+        "Switch Horse Assignment",
+        `You currently have ${selectedHorse.name} assigned. Selecting ${horse.name} will end your current assignment.`,
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Switch Horse", onPress: () => performHorseAssignment(horse) },
+        ],
+      )
+    } else if (selectedHorse && selectedHorse.id === horse.id) {
+      Alert.alert("Already Assigned", `${horse.name} is already assigned to you.`)
+    } else {
+      performHorseAssignment(horse)
+    }
+  }
+
+  const performHorseAssignment = async (horse: Horse) => {
     setIsAssigning(true)
+
     try {
-      if (userData?.profile?.kutsero_id) {
-        const response = await fetch(`${API_BASE_URL}/assign_horse/`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            horse_id: horse.id,
-            op_id: horse.owner_id,
-            kutsero_id: userData.profile.kutsero_id
-          })
-        })
-        
-        if (response.ok) {
-          const data = await response.json()
-          Alert.alert("Success", data.message, [
-            {
-              text: "OK",
-              onPress: () => {
-                router.back()
-              }
-            }
-          ])
-          return
-        } else {
-          console.log("Assign horse endpoint returned status:", response.status)
-        }
+      const kutseroId = userData?.profile?.kutsero_id || userData?.id
+      console.log("Assigning horse:", horse.name)
+
+      const previousHorseId = selectedHorse?.id
+
+      const assignmentData = {
+        kutsero_id: kutseroId,
+        horse_id: horse.id,
+        date_start: new Date().toISOString(),
+        force_switch: true,
       }
-      
-      // If backend endpoint doesn't exist or fails
-      Alert.alert(
-        "Feature Not Available",
-        "The horse assignment feature requires backend deployment. Please contact support.",
-        [{ text: "OK" }]
-      )
-      
+
+      const response = await fetch(`https://echo-ebl8.onrender.com/api/kutsero/assign_horse/`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(assignmentData),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        console.log("Assignment successful:", result)
+
+        const updatedHorse: Horse = {
+          id: result.horse.id,
+          name: result.horse.name,
+          healthStatus: result.horse.healthStatus === "Unhealthy" ? "Sick" : result.horse.healthStatus as Horse["healthStatus"],
+          status: result.horse.status,
+          image: cleanImageUrl(result.horse.image),
+          breed: result.horse.breed,
+          age: result.horse.age,
+          color: result.horse.color,
+          ownerId: result.horse.ownerId,
+          ownerName: result.horse.ownerName,
+          assignmentStatus: "assigned",
+          currentAssignmentId: result.assignment.assign_id,
+          lastCheckup: result.horse.lastCheckup,
+          nextCheckup: result.horse.nextCheckup,
+          alive: result.horse.alive !== false,
+          canSelect: true,
+        }
+
+        setSelectedHorse(updatedHorse)
+
+        // Update horses list
+        setHorses(prevHorses =>
+          prevHorses.map(h => {
+            if (h.id === horse.id) {
+              return { ...h, assignmentStatus: "assigned", currentAssignmentId: result.assignment.assign_id }
+            } else if (previousHorseId && h.id === previousHorseId) {
+              return { ...h, assignmentStatus: "available", currentAssignmentId: undefined }
+            }
+            return h
+          })
+        )
+
+        // Save to SecureStore
+        const horseDataToStore = {
+          ...updatedHorse,
+          assignmentId: result.assignment.assign_id,
+          checkedInAt: result.assignment.date_start,
+          checkedOutAt: result.assignment.date_end,
+        }
+
+        await SecureStore.setItemAsync("selectedHorseData", JSON.stringify(horseDataToStore))
+        await SecureStore.setItemAsync("currentAssignmentId", result.assignment.assign_id)
+
+        const switchMessage =
+          result.previous_assignments_ended > 0
+            ? `Your previous assignment has been ended. ${horse.name} is now assigned to you.`
+            : `${horse.name} has been assigned to you.`
+
+        Alert.alert("Horse Assigned Successfully", switchMessage, [
+          {
+            text: "OK",
+            onPress: () => {
+              // Go back to owners list after assignment
+              setActiveSection("owners")
+              router.back()
+            },
+          },
+        ])
+      } else {
+        const errorData = await response.json()
+        Alert.alert("Assignment Failed", errorData.error || "Failed to assign horse")
+      }
     } catch (error) {
       console.error("Error assigning horse:", error)
-      Alert.alert("Error", "Failed to assign horse. Please try again later.")
+      Alert.alert("Error", "Failed to assign horse. Please try again.")
     } finally {
       setIsAssigning(false)
     }
   }
 
-  const getApplicationStatusColor = (status: string) => {
-    switch (status) {
-      case 'approved': return '#4CAF50'
-      case 'rejected': return '#F44336'
-      case 'pending': return '#FF9800'
-      default: return '#666'
-    }
+  const goBackToOwners = () => {
+    setSelectedOwner(null)
+    setActiveSection("owners")
+    setSelectedHorseFilter("all")
+    setSearchText("")
   }
 
-  const getApplicationStatusIcon = (status: string) => {
-    switch (status) {
-      case 'approved': return 'check-circle'
-      case 'rejected': return 'cancel'
-      case 'pending': return 'schedule'
-      default: return 'help'
-    }
-  }
-
-  // Filter data based on search text
-  const filteredOwners = horseOwners.filter(owner => 
-    owner.full_name.toLowerCase().includes(searchText.toLowerCase()) ||
-    owner.email.toLowerCase().includes(searchText.toLowerCase()) ||
-    owner.phone.includes(searchText) ||
-    owner.address.toLowerCase().includes(searchText.toLowerCase())
-  )
-
-  const filteredApplications = myApplications.filter(app =>
-    app.owner_name.toLowerCase().includes(searchText.toLowerCase()) ||
-    app.status.toLowerCase().includes(searchText.toLowerCase())
-  )
-
-  const filteredHorses = approvedHorses.filter(horse =>
-    horse.name.toLowerCase().includes(searchText.toLowerCase()) ||
-    horse.breed.toLowerCase().includes(searchText.toLowerCase()) ||
-    horse.owner_name.toLowerCase().includes(searchText.toLowerCase())
-  )
-
-  // Render Owner List Item
-  const renderOwnerItem = ({ item }: { item: HorseOwner }) => (
-    <TouchableOpacity
-      style={styles.ownerCard}
-      onPress={() => {
-        setSelectedOwnerForDetail(item)
-        setOwnerDetailModal(true)
-      }}
-      activeOpacity={0.7}
-    >
-      <View style={styles.ownerHeader}>
-        {item.image ? (
-          <Image 
-            source={{ uri: cleanImageUrl(item.image) }} 
-            style={styles.ownerAvatar}
-            onError={(e) => console.log("Failed to load owner image:", e.nativeEvent.error)}
-          />
-        ) : (
-          <View style={styles.ownerAvatarPlaceholder}>
-            <Text style={styles.ownerInitials}>
-              {item.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-            </Text>
-          </View>
-        )}
-        
-        <View style={styles.ownerInfo}>
-          <Text style={styles.ownerName}>{item.full_name}</Text>
-          <Text style={styles.ownerHorsesCount}>
-            {item.total_horses} horse{item.total_horses !== 1 ? 's' : ''}
-          </Text>
-          {item.phone ? (
-            <Text style={styles.ownerContact}>{item.phone}</Text>
-          ) : null}
-        </View>
-        
-        <View style={styles.ownerActions}>
-          {item.is_approved ? (
-            <View style={styles.approvedBadge}>
-              <FontAwesome name="check" size={14} color="white" />
-              <Text style={styles.approvedText}>Approved</Text>
-            </View>
-          ) : item.has_pending_application ? (
-            <View style={styles.pendingBadge}>
-              <MaterialIcons name="schedule" size={14} color="white" />
-              <Text style={styles.pendingText}>Pending</Text>
-            </View>
-          ) : (
-            <TouchableOpacity
-              style={styles.applyButton}
-              onPress={() => handleApplyToOwner(item)}
-              disabled={isApplying}
-            >
-              <Text style={styles.applyButtonText}>
-                {isApplying ? '...' : 'Apply'}
-              </Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-      
-      <View style={styles.ownerFooter}>
-        {item.address ? (
-          <Text style={styles.ownerAddress} numberOfLines={1}>
-            <MaterialIcons name="location-on" size={12} color="#666" /> {item.address}
-          </Text>
-        ) : (
-          <Text style={styles.ownerAddress} numberOfLines={1}>
-            <MaterialIcons name="location-on" size={12} color="#666" /> Address not available
-          </Text>
-        )}
-      </View>
-    </TouchableOpacity>
-  )
-
-  // Render Application List Item
-  const renderApplicationItem = ({ item }: { item: Application }) => (
-    <View style={[
-      styles.applicationCard,
-      { borderLeftWidth: 4, borderLeftColor: getApplicationStatusColor(item.status) }
-    ]}>
-      <View style={styles.applicationHeader}>
-        <MaterialIcons 
-          name={getApplicationStatusIcon(item.status) as any} 
-          size={24} 
-          color={getApplicationStatusColor(item.status)} 
-        />
-        <View style={styles.applicationInfo}>
-          <Text style={styles.applicationOwner}>{item.owner_name}</Text>
-          <Text style={styles.applicationDate}>
-            Applied: {new Date(item.application_date).toLocaleDateString()}
-          </Text>
-        </View>
-      </View>
-      
-      <View style={styles.applicationStatusContainer}>
-        <Text style={[
-          styles.applicationStatus,
-          { color: getApplicationStatusColor(item.status) }
-        ]}>
-          Status: {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-        </Text>
-      </View>
-      
-      {item.review_notes && (
-        <Text style={styles.applicationNotes}>
-          Notes: {item.review_notes}
-        </Text>
-      )}
-      
-      {item.review_date && (
-        <Text style={styles.applicationReviewDate}>
-          Reviewed: {new Date(item.review_date).toLocaleDateString()}
-        </Text>
-      )}
-    </View>
-  )
-
-  // Render Horse List Item
-  const renderHorseItem = ({ item }: { item: AvailableHorse }) => (
-    <TouchableOpacity
-      style={[
-        styles.horseCard,
-        (!item.can_select || !item.owner_approved) && styles.horseCardDisabled
-      ]}
-      onPress={() => item.can_select && item.owner_approved && handleSelectHorse(item)}
-      disabled={!item.can_select || !item.owner_approved}
-      activeOpacity={(item.can_select && item.owner_approved) ? 0.7 : 1}
-    >
-      {!item.owner_approved && (
-        <View style={styles.notApprovedOverlay}>
-          <Text style={styles.notApprovedText}>Owner Not Approved</Text>
-        </View>
-      )}
-      
-      <TouchableOpacity
-        onPress={() => {
-          if (item.image) {
-            setFullScreenImage(cleanImageUrl(item.image))
-          }
-        }}
-        activeOpacity={0.9}
-      >
-        <Image 
-          source={{ uri: cleanImageUrl(item.image) }} 
-          style={styles.horseImage}
-          onError={(e) => console.log(`Failed to load horse image:`, e.nativeEvent.error)}
-        />
-      </TouchableOpacity>
-      
-      <View style={styles.horseInfo}>
-        <View style={styles.horseHeader}>
-          <Text style={styles.horseName}>{item.name}</Text>
-          {item.is_assigned && (
-            <View style={styles.assignedBadge}>
-              <Text style={styles.assignedBadgeText}>
-                {item.is_assigned_to_me ? 'Your Horse' : 'Assigned'}
-              </Text>
-            </View>
-          )}
-        </View>
-        
-        <Text style={styles.horseDetails}>
-          {item.breed} • {item.age} years • {item.color}
-        </Text>
-        
-        <Text style={styles.horseOwner}>
-          <FontAwesome name="user" size={12} color="#666" /> {item.owner_name}
-        </Text>
-        
-        {!item.can_select && (
-          <Text style={styles.notAvailableText}>
-            Not available for assignment
-          </Text>
-        )}
-      </View>
-      
-      <View style={styles.horseAction}>
-        {item.can_select && item.owner_approved ? (
-          <TouchableOpacity
-            style={styles.selectHorseButton}
-            onPress={() => handleSelectHorse(item)}
-            disabled={isAssigning}
-          >
-            <Text style={styles.selectHorseButtonText}>
-              {isAssigning ? '...' : 'Select'}
-            </Text>
-          </TouchableOpacity>
-        ) : !item.owner_approved ? (
-          <MaterialIcons name="lock" size={24} color="#999" />
-        ) : (
-          <MaterialIcons name="block" size={24} color="#999" />
-        )}
-      </View>
-    </TouchableOpacity>
-  )
-
-  const renderEmptyState = (type: 'owners' | 'applications' | 'horses') => {
-    const config = {
-      owners: {
-        icon: 'people',
-        title: 'No horse owners found',
-        message: connectionMode === 'no_data' 
-          ? 'There are no horse owners in the database' 
-          : searchText 
-            ? 'Try adjusting your search terms' 
-            : 'No horse owners available'
-      },
-      applications: {
-        icon: 'description',
-        title: 'No applications found',
-        message: 'You have not applied to any horse owners yet'
-      },
-      horses: {
-        icon: 'pets',
-        title: approvedHorses.length === 0 && myApplications.filter(app => app.status === 'approved').length === 0
-          ? 'No approved owners yet'
-          : 'No horses available',
-        message: approvedHorses.length === 0 && myApplications.filter(app => app.status === 'approved').length === 0
-          ? 'You need to be approved by horse owners first'
-          : searchText
-            ? 'No matching horses found'
-            : 'No horses available from your approved owners'
+  const filteredOwners = owners.filter((owner) => {
+    let matchesFilter = true
+    
+    if (selectedOwnerFilter !== "all") {
+      switch (selectedOwnerFilter) {
+        case "approved":
+          matchesFilter = owner.approvalStatus === "approved"
+          break
+        case "pending":
+          matchesFilter = owner.approvalStatus === "pending" || !owner.hasApplied
+          break
+        case "applied":
+          matchesFilter = owner.hasApplied === true
+          break
       }
     }
 
-    const { icon, title, message } = config[type]
+    if (!matchesFilter) return false
 
-    return (
-      <View style={styles.emptyState}>
-        <MaterialIcons name={icon as any} size={60} color="#ccc" />
-        <Text style={styles.emptyStateText}>{title}</Text>
-        <Text style={styles.emptyStateSubtext}>{message}</Text>
-        
-        {type === 'horses' && myApplications.filter(app => app.status === 'approved').length === 0 && (
-          <TouchableOpacity
-            style={styles.browseOwnersButton}
-            onPress={() => setActiveTab('owners')}
-          >
-            <Text style={styles.browseOwnersButtonText}>Browse Owners to Apply</Text>
-          </TouchableOpacity>
-        )}
-        
-        {type === 'horses' && myApplications.filter(app => app.status === 'approved').length > 0 && approvedHorses.length === 0 && (
-          <TouchableOpacity
-            style={styles.browseOwnersButton}
-            onPress={() => refreshData()}
-          >
-            <Text style={styles.browseOwnersButtonText}>Refresh Horses List</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    )
-  }
+    const searchLower = searchText.toLowerCase()
+    const matchesSearch =
+      owner.name.toLowerCase().includes(searchLower) ||
+      (owner.username && owner.username.toLowerCase().includes(searchLower)) ||
+      (owner.email && owner.email.toLowerCase().includes(searchLower))
 
-  const renderStatusBanner = () => {
-    if (connectionMode === 'new_endpoint') {
-      return (
-        <View style={styles.onlineBanner}>
-          <MaterialIcons name="cloud-done" size={16} color="white" />
-          <Text style={styles.onlineText}>Connected to Server</Text>
-        </View>
-      )
-    } else if (connectionMode === 'available_horses' && horseOwners.length > 0) {
-      return (
-        <View style={styles.partialBanner}>
-          <MaterialIcons name="sync" size={16} color="white" />
-          <Text style={styles.partialText}>
-            Showing {horseOwners.length} real horse owners from database
-          </Text>
-        </View>
-      )
-    } else if (horseOwners.length === 0) {
-      return (
-        <View style={styles.noDataBanner}>
-          <MaterialIcons name="error" size={16} color="white" />
-          <Text style={styles.noDataText}>
-            No horse owners found in database
-          </Text>
-        </View>
-      )
-    }
+    return matchesSearch
+  })
+
+  const filteredHorses = horses.filter((horse) => {
+    let matchesFilter = true
+    const isAlive = horse.alive !== false
     
-    return null
-  }
+    if (selectedHorseFilter !== "all") {
+      switch (selectedHorseFilter) {
+        case "healthy":
+          matchesFilter = isAlive && horse.healthStatus === "Healthy"
+          break
+        case "sick":
+          matchesFilter = isAlive && horse.healthStatus === "Sick"
+          break
+        case "deceased":
+          matchesFilter = !isAlive || horse.healthStatus === "Deceased"
+          break
+        case "available":
+          matchesFilter = horse.assignmentStatus !== "assigned" && isAlive
+          break
+        case "assigned":
+          matchesFilter = horse.assignmentStatus === "assigned"
+          break
+      }
+    }
 
-  const renderContent = () => {
-    switch (activeTab) {
-      case 'owners':
-        return (
-          <FlatList
-            data={filteredOwners}
-            renderItem={renderOwnerItem}
-            keyExtractor={(item) => item.op_id}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={renderEmptyState('owners')}
-            contentContainerStyle={styles.listContent}
-          />
-        )
-      case 'applications':
-        return (
-          <FlatList
-            data={filteredApplications}
-            renderItem={renderApplicationItem}
-            keyExtractor={(item) => item.application_id}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={renderEmptyState('applications')}
-            contentContainerStyle={styles.listContent}
-          />
-        )
-      case 'horses':
-        return (
-          <FlatList
-            data={filteredHorses}
-            renderItem={renderHorseItem}
-            keyExtractor={(item) => item.id}
-            showsVerticalScrollIndicator={false}
-            ListEmptyComponent={renderEmptyState('horses')}
-            contentContainerStyle={styles.listContent}
-          />
-        )
+    if (!matchesFilter) return false
+
+    const searchLower = searchText.toLowerCase()
+    const matchesSearch =
+      horse.name.toLowerCase().includes(searchLower) ||
+      horse.breed?.toLowerCase().includes(searchLower) ||
+      horse.color?.toLowerCase().includes(searchLower)
+
+    return matchesSearch
+  })
+
+  const getHealthStatusColor = (status: Horse["healthStatus"], isAlive: boolean = true) => {
+    if (isAlive === false) return "#999999"
+    switch (status) {
+      case "Healthy": return "#4CAF50"
+      case "Sick": return "#F44336"
+      case "Deceased": return "#999999"
+      default: return "#666"
     }
   }
+
+  const getOwnerStatusColor = (owner: Owner) => {
+    if (owner.approvalStatus === "approved") return "#4CAF50"
+    if (owner.approvalStatus === "rejected") return "#F44336"
+    if (owner.hasApplied) return "#FF9800"
+    return "#9E9E9E"
+  }
+
+  const getOwnerStatusText = (owner: Owner) => {
+    if (owner.approvalStatus === "approved") return "Approved"
+    if (owner.approvalStatus === "rejected") return "Rejected"
+    if (owner.hasApplied) return "Pending"
+    return "Not Applied"
+  }
+
+  const getHorseFilterLabel = (filter: HorseFilterType) => {
+    switch (filter) {
+      case "all": return "All Horses"
+      case "healthy": return "Healthy"
+      case "sick": return "Sick"
+      case "deceased": return "Deceased"
+      case "available": return "Available"
+      case "assigned": return "Assigned"
+      default: return "All Horses"
+    }
+  }
+
+  const getOwnerFilterLabel = (filter: OwnerFilterType) => {
+    switch (filter) {
+      case "all": return "All Owners"
+      case "approved": return "Approved"
+      case "pending": return "Pending"
+      case "applied": return "Applied"
+      default: return "All Owners"
+    }
+  }
+
+  // Render filter modal for owners
+  const renderOwnerFilterModal = () => (
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={filterModalVisible}
+      onRequestClose={() => setFilterModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Filter Owners</Text>
+            <TouchableOpacity onPress={() => setFilterModalVisible(false)}>
+              <Text style={styles.modalClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.filterList}>
+            {["all", "approved", "pending", "applied"].map((filter) => (
+              <TouchableOpacity
+                key={filter}
+                style={[
+                  styles.filterItem,
+                  selectedOwnerFilter === filter && styles.filterItemSelected,
+                ]}
+                onPress={() => {
+                  setSelectedOwnerFilter(filter as OwnerFilterType)
+                  setFilterModalVisible(false)
+                }}
+              >
+                <Text style={[
+                  styles.filterItemText,
+                  selectedOwnerFilter === filter && styles.filterItemTextSelected,
+                ]}>
+                  {getOwnerFilterLabel(filter as OwnerFilterType)}
+                </Text>
+                {selectedOwnerFilter === filter && (
+                  <Text style={styles.filterItemCheck}>✓</Text>
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          
+          <TouchableOpacity
+            style={styles.clearFilterButton}
+            onPress={() => {
+              setSelectedOwnerFilter("all")
+              setFilterModalVisible(false)
+            }}
+          >
+            <Text style={styles.clearFilterText}>Clear Filter</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  )
+
+  // Render filter modal for horses
+  const renderHorseFilterModal = () => (
+    <Modal
+      animationType="slide"
+      transparent={true}
+      visible={horseFilterModalVisible}
+      onRequestClose={() => setHorseFilterModalVisible(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Filter Horses</Text>
+            <TouchableOpacity onPress={() => setHorseFilterModalVisible(false)}>
+              <Text style={styles.modalClose}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.filterList}>
+            {["all", "healthy", "sick", "deceased", "available", "assigned"].map((filter) => (
+              <TouchableOpacity
+                key={filter}
+                style={[
+                  styles.filterItem,
+                  selectedHorseFilter === filter && styles.filterItemSelected,
+                ]}
+                onPress={() => {
+                  setSelectedHorseFilter(filter as HorseFilterType)
+                  setHorseFilterModalVisible(false)
+                }}
+              >
+                <Text style={[
+                  styles.filterItemText,
+                  selectedHorseFilter === filter && styles.filterItemTextSelected,
+                ]}>
+                  {getHorseFilterLabel(filter as HorseFilterType)}
+                </Text>
+                {selectedHorseFilter === filter && (
+                  <Text style={styles.filterItemCheck}>✓</Text>
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          
+          <TouchableOpacity
+            style={styles.clearFilterButton}
+            onPress={() => {
+              setSelectedHorseFilter("all")
+              setHorseFilterModalVisible(false)
+            }}
+          >
+            <Text style={styles.clearFilterText}>Clear Filter</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  )
 
   if (isLoading) {
     return (
       <View style={[styles.container, styles.loadingContainer]}>
-        <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
+        <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
         <ActivityIndicator size="large" color="white" />
-        <Text style={styles.loadingText}>Loading real data...</Text>
+        <Text style={styles.loadingText}>Loading...</Text>
       </View>
     )
   }
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#C17A47" />
+      <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: safeArea.top }]}>
         <View style={styles.headerContent}>
-          <TouchableOpacity onPress={() => router.back()}>
+          <TouchableOpacity
+            onPress={() => {
+              if (activeSection === "horses") {
+                goBackToOwners()
+              } else {
+                router.back()
+              }
+            }}
+          >
             <Text style={styles.backButtonText}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Horse Selection</Text>
-          <TouchableOpacity style={styles.refreshButton} onPress={refreshData}>
+          <Text style={styles.headerTitle}>
+            {activeSection === "owners" ? "Select Owner" : `Select Horse - ${selectedOwner?.name}`}
+          </Text>
+          <TouchableOpacity style={styles.refreshButton} onPress={() => refreshData()}>
             <Text style={styles.refreshButtonText}>↻</Text>
           </TouchableOpacity>
         </View>
@@ -1192,201 +1767,462 @@ export default function HorseSelectionScreen() {
             value={searchText}
             onChangeText={setSearchText}
             placeholder={
-              activeTab === 'owners' ? "Search owners..." :
-              activeTab === 'applications' ? "Search applications..." :
-              "Search horses..."
+              activeSection === "owners" 
+                ? "Search owners by name, username, or email..." 
+                : "Search horses by name, breed, or color..."
             }
             placeholderTextColor="#999"
           />
-          {searchText ? (
-            <TouchableOpacity onPress={() => setSearchText("")}>
-              <Text style={styles.searchIconText}>✕</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity>
-              <Text style={styles.searchIconText}>🔍</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={styles.searchButton}>
+            <Text style={styles.searchIconText}>🔍</Text>
+          </TouchableOpacity>
         </View>
 
-        {/* Tabs */}
-        <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'owners' && styles.activeTab]}
-            onPress={() => setActiveTab('owners')}
-          >
-            <Text style={[styles.tabText, activeTab === 'owners' && styles.activeTabText]}>
-              Owners ({horseOwners.length})
+        {/* Filter Indicator */}
+        {(activeSection === "owners" ? selectedOwnerFilter : selectedHorseFilter) !== "all" && (
+          <View style={styles.filterIndicator}>
+            <Text style={styles.filterIndicatorText}>
+              Filter: {activeSection === "owners" 
+                ? getOwnerFilterLabel(selectedOwnerFilter) 
+                : getHorseFilterLabel(selectedHorseFilter)}
             </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'applications' && styles.activeTab]}
-            onPress={() => setActiveTab('applications')}
-          >
-            <Text style={[styles.tabText, activeTab === 'applications' && styles.activeTabText]}>
-              Applications ({myApplications.length})
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.tab, activeTab === 'horses' && styles.activeTab]}
-            onPress={() => setActiveTab('horses')}
-          >
-            <Text style={[styles.tabText, activeTab === 'horses' && styles.activeTabText]}>
-              Horses ({approvedHorses.filter(h => h.can_select && h.owner_approved).length})
-            </Text>
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity onPress={() => 
+              activeSection === "owners" 
+                ? setSelectedOwnerFilter("all") 
+                : setSelectedHorseFilter("all")
+            }>
+              <Text style={styles.filterClearText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
-
-      {/* Status Banner */}
-      {renderStatusBanner()}
 
       {/* Content */}
       <View style={styles.content}>
-        {renderContent()}
-      </View>
+        {/* Stats Section */}
+        {activeSection === "owners" ? (
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{ownerStatsData.total}</Text>
+              <Text style={styles.statLabel}>Total Owners</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, { color: "#4CAF50" }]}>{ownerStatsData.approved}</Text>
+              <Text style={styles.statLabel}>Approved</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, { color: "#FF9800" }]}>{ownerStatsData.applied}</Text>
+              <Text style={styles.statLabel}>Applied</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, { color: "#F44336" }]}>{ownerStatsData.pending}</Text>
+              <Text style={styles.statLabel}>Pending/Not Applied</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Text style={styles.statNumber}>{statsData.total}</Text>
+              <Text style={styles.statLabel}>Total Horses</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, { color: "#4CAF50" }]}>{statsData.healthy}</Text>
+              <Text style={styles.statLabel}>Healthy</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, { color: "#F44336" }]}>{statsData.sick}</Text>
+              <Text style={styles.statLabel}>Sick</Text>
+            </View>
+            <View style={styles.statItem}>
+              <Text style={[styles.statNumber, { color: "#999999" }]}>{statsData.deceased}</Text>
+              <Text style={styles.statLabel}>Deceased</Text>
+            </View>
+          </View>
+        )}
 
-      {/* Owner Detail Modal */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={ownerDetailModal}
-        onRequestClose={() => setOwnerDetailModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {selectedOwnerForDetail && (
-              <>
-                <View style={styles.modalHeader}>
-                  <TouchableOpacity onPress={() => setOwnerDetailModal(false)}>
-                    <Text style={styles.modalClose}>✕</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.modalTitle}>Owner Details</Text>
-                  <View style={{ width: 24 }} />
+        {/* Current Selection */}
+        {selectedHorse && activeSection === "owners" && (
+          <View style={styles.currentSelectionContainer}>
+            <Text style={styles.currentSelectionTitle}>Currently Assigned Horse</Text>
+            <View style={styles.currentSelectionCard}>
+              <TouchableOpacity
+                style={styles.currentHorseAvatar}
+                onPress={() => setFullScreenImage(selectedHorse.image)}
+                activeOpacity={0.9}
+              >
+                <Image 
+                  source={{ uri: selectedHorse.image }} 
+                  style={styles.horseImage}
+                  resizeMode="cover"
+                  onError={(e) => console.log("Failed to load selected horse image:", e.nativeEvent.error)}
+                />
+              </TouchableOpacity>
+              <View style={styles.currentHorseInfo}>
+                <Text style={styles.currentHorseName}>{selectedHorse.name}</Text>
+                <Text style={styles.currentHorseBreed}>
+                  {selectedHorse.breed} • {selectedHorse.age} years
+                </Text>
+                <Text style={styles.currentHorseOperator}>Owner: {selectedHorse.ownerName}</Text>
+                <View style={styles.currentHorseHealthRow}>
+                  <View
+                    style={[
+                      styles.currentHorseHealthDot,
+                      { 
+                        backgroundColor: getHealthStatusColor(
+                          selectedHorse.healthStatus,
+                          selectedHorse.alive !== false
+                        ) 
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[styles.currentHorseHealthText, { 
+                      color: getHealthStatusColor(
+                        selectedHorse.healthStatus,
+                        selectedHorse.alive !== false
+                      ) 
+                    }]}
+                  >
+                    {selectedHorse.healthStatus}
+                  </Text>
                 </View>
+              </View>
+              <View style={styles.currentSelectedIndicator}>
+                <Text style={styles.currentSelectedIndicatorText}>✓</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        {/* Owners or Horses List */}
+        <View style={styles.listContainer}>
+          <View style={styles.listHeader}>
+            <Text style={styles.listTitle}>
+              {activeSection === "owners" 
+                ? `${getOwnerFilterLabel(selectedOwnerFilter)} (${filteredOwners.length})`
+                : `${getHorseFilterLabel(selectedHorseFilter)} (${filteredHorses.length})`}
+            </Text>
+            <TouchableOpacity 
+              style={[
+                styles.filterHeaderButton,
+                (activeSection === "owners" ? selectedOwnerFilter : selectedHorseFilter) !== "all" && 
+                styles.filterHeaderButtonActive
+              ]}
+              onPress={() => 
+                activeSection === "owners" 
+                  ? setFilterModalVisible(true)
+                  : setHorseFilterModalVisible(true)
+              }
+            >
+              <FontAwesome5 name="filter" size={16} color={
+                (activeSection === "owners" ? selectedOwnerFilter : selectedHorseFilter) !== "all" 
+                  ? "#C17A47" 
+                  : "#666"
+              } />
+              <Text style={[
+                styles.filterHeaderText,
+                (activeSection === "owners" ? selectedOwnerFilter : selectedHorseFilter) !== "all" && 
+                styles.filterHeaderTextActive
+              ]}>
+                Filter
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {activeSection === "owners" ? (
+            <ScrollView
+              style={styles.list}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.listContent}
+            >
+              {filteredOwners.map((owner) => {
+                const isApproved = owner.approvalStatus === "approved"
+                const isRejected = owner.approvalStatus === "rejected"
+                const hasApplied = owner.hasApplied
                 
-                <ScrollView style={styles.modalBody} showsVerticalScrollIndicator={false}>
-                  <View style={styles.ownerDetailHeader}>
-                    {selectedOwnerForDetail.image ? (
-                      <TouchableOpacity
-                        onPress={() => {
-                          if (selectedOwnerForDetail.image) {
-                            setFullScreenImage(cleanImageUrl(selectedOwnerForDetail.image))
-                            setOwnerDetailModal(false)
-                          }
-                        }}
-                        activeOpacity={0.9}
-                      >
-                        <Image 
-                          source={{ uri: cleanImageUrl(selectedOwnerForDetail.image) }} 
-                          style={styles.ownerDetailAvatar}
-                        />
-                      </TouchableOpacity>
-                    ) : (
-                      <View style={styles.ownerDetailAvatarPlaceholder}>
-                        <Text style={styles.ownerDetailInitials}>
-                          {selectedOwnerForDetail.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                        </Text>
-                      </View>
-                    )}
-                    
-                    <Text style={styles.ownerDetailName}>
-                      {selectedOwnerForDetail.full_name}
-                    </Text>
-                    
-                    <View style={styles.ownerDetailStatus}>
-                      {selectedOwnerForDetail.is_approved ? (
-                        <View style={styles.statusBadgeApproved}>
-                          <Text style={styles.statusBadgeText}>✓ Approved</Text>
-                        </View>
-                      ) : selectedOwnerForDetail.has_pending_application ? (
-                        <View style={styles.statusBadgePending}>
-                          <Text style={styles.statusBadgeText}>⏳ Pending</Text>
-                        </View>
-                      ) : (
-                        <View style={styles.statusBadgeNotApplied}>
-                          <Text style={styles.statusBadgeText}>Not Applied</Text>
-                        </View>
-                      )}
+                return (
+                  <TouchableOpacity
+                    key={owner.id}
+                    style={[
+                      styles.ownerItem,
+                      isApproved && styles.approvedOwnerItem,
+                      isRejected && styles.rejectedOwnerItem,
+                      !isApproved && !isRejected && hasApplied && styles.appliedOwnerItem,
+                    ]}
+                    onPress={() => handleOwnerSelection(owner)}
+                    activeOpacity={0.7}
+                  >
+                    <View style={styles.ownerAvatar}>
+                      <Image 
+                        source={{ uri: owner.image }} 
+                        style={styles.ownerImage}
+                        resizeMode="cover"
+                      />
                     </View>
-                  </View>
-                  
-                  <View style={styles.detailSection}>
-                    <Text style={styles.detailSectionTitle}>Owner Information</Text>
-                    {selectedOwnerForDetail.email ? (
-                      <View style={styles.detailItem}>
-                        <MaterialIcons name="email" size={20} color="#666" />
-                        <Text style={styles.detailText}>{selectedOwnerForDetail.email}</Text>
-                      </View>
-                    ) : null}
-                    {selectedOwnerForDetail.phone ? (
-                      <View style={styles.detailItem}>
-                        <MaterialIcons name="phone" size={20} color="#666" />
-                        <Text style={styles.detailText}>{selectedOwnerForDetail.phone}</Text>
-                      </View>
-                    ) : null}
-                    {selectedOwnerForDetail.address ? (
-                      <View style={styles.detailItem}>
-                        <MaterialIcons name="location-on" size={20} color="#666" />
-                        <Text style={styles.detailText} numberOfLines={3}>
-                          {selectedOwnerForDetail.address}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-                  
-                  <View style={styles.detailSection}>
-                    <Text style={styles.detailSectionTitle}>
-                      Horses ({selectedOwnerForDetail.total_horses})
-                    </Text>
-                    {selectedOwnerForDetail.available_horses && selectedOwnerForDetail.available_horses.length > 0 ? (
-                      selectedOwnerForDetail.available_horses.map((horse: any) => (
-                        <View key={horse.horse_id} style={styles.horseListItem}>
-                          <Text style={styles.horseListItemName}>{horse.horse_name}</Text>
-                          <Text style={styles.horseListItemDetails}>
-                            {horse.horse_breed} • {horse.horse_age} years • {horse.horse_color}
+                    <View style={styles.ownerInfo}>
+                      <View style={styles.ownerHeader}>
+                        <Text style={styles.ownerName}>{owner.name}</Text>
+                        <View style={[
+                          styles.ownerStatusBadge,
+                          { backgroundColor: getOwnerStatusColor(owner) }
+                        ]}>
+                          <Text style={styles.ownerStatusText}>
+                            {getOwnerStatusText(owner)}
                           </Text>
                         </View>
-                      ))
-                    ) : (
-                      <Text style={styles.noHorsesText}>No horses available</Text>
-                    )}
+                      </View>
+                      <Text style={styles.ownerUsername}>@{owner.username || "no_username"}</Text>
+                      <Text style={styles.ownerEmail}>{owner.email}</Text>
+                      <View style={styles.ownerHorsesRow}>
+                        <Text style={styles.ownerHorsesText}>
+                          {owner.totalHorses} horses • {owner.availableHorses} available
+                        </Text>
+                        {isApproved && owner.availableHorses > 0 && (
+                          <Text style={styles.viewHorsesText}>View Horses →</Text>
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                )
+              })}
+              {filteredOwners.length === 0 && (
+                <View style={styles.emptyStateContainer}>
+                  <View style={styles.emptyStateIcon}>
+                    <FontAwesome5 name="user-friends" size={48} color="#CCCCCC" />
                   </View>
-                  
-                  {!selectedOwnerForDetail.is_approved && !selectedOwnerForDetail.has_pending_application && (
+                  <Text style={styles.emptyStateTitle}>
+                    {searchText ? "No owners found" : "No owners available"}
+                  </Text>
+                  <Text style={styles.emptyStateSubtitle}>
+                    {searchText 
+                      ? "Try adjusting your search terms" 
+                      : "No owners match the current filter"}
+                  </Text>
+                  {(searchText || selectedOwnerFilter !== "all") && (
                     <TouchableOpacity
-                      style={styles.applyNowButton}
+                      style={styles.emptyStateButton}
                       onPress={() => {
-                        setOwnerDetailModal(false)
-                        handleApplyToOwner(selectedOwnerForDetail)
+                        setSearchText("")
+                        setSelectedOwnerFilter("all")
                       }}
-                      disabled={isApplying}
                     >
-                      <Text style={styles.applyNowButtonText}>
-                        {isApplying ? 'Applying...' : 'Apply Now'}
+                      <Text style={styles.emptyStateButtonText}>Clear Filters</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </ScrollView>
+          ) : (
+            <ScrollView
+              style={styles.list}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.listContent}
+            >
+              {filteredHorses.map((horse) => {
+                const isAlive = horse.alive !== false
+                const isDeceased = !isAlive || horse.healthStatus === "Deceased"
+                const isSick = isAlive && horse.healthStatus === "Sick"
+                const isAssignedToOther = horse.assignmentStatus === "assigned" && selectedHorse?.id !== horse.id
+                const isCurrentlySelected = selectedHorse?.id === horse.id
+                const isSelectable = horse.canSelect && !isDeceased && !isSick && !isAssignedToOther
+
+                return (
+                  <TouchableOpacity
+                    key={horse.id}
+                    style={[
+                      styles.horseItem,
+                      isCurrentlySelected && styles.selectedHorseItem,
+                      !isSelectable && styles.unavailableHorseItem,
+                      isSick && styles.sickHorseItem,
+                      isDeceased && styles.deceasedHorseItem,
+                    ]}
+                    onPress={() => isSelectable && handleHorseSelection(horse)}
+                    activeOpacity={isSelectable ? 0.7 : 1}
+                    disabled={isAssigning || !isSelectable}
+                  >
+                    <TouchableOpacity
+                      style={[
+                        styles.horseAvatar,
+                        isDeceased && styles.deceasedAvatar,
+                        isSick && styles.sickAvatar,
+                      ]}
+                      onPress={() => setFullScreenImage(horse.image)}
+                      activeOpacity={0.9}
+                    >
+                      <Image 
+                        source={{ uri: horse.image }} 
+                        style={styles.horseImage}
+                        resizeMode="cover"
+                      />
+                      {isDeceased && (
+                        <View style={styles.deceasedOverlay}>
+                          <Text style={styles.deceasedOverlayText}>✝</Text>
+                        </View>
+                      )}
+                      {isSick && !isDeceased && (
+                        <View style={styles.sickOverlay}>
+                          <Text style={styles.sickOverlayText}>⚠</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                    <View style={styles.horseInfo}>
+                      <View style={styles.horseHeader}>
+                        <Text style={[
+                          styles.horseName,
+                          !isSelectable && styles.unavailableText,
+                          isDeceased && styles.deceasedText,
+                          isSick && styles.sickText,
+                        ]}>
+                          {horse.name}
+                        </Text>
+                        {isDeceased && (
+                          <View style={styles.deceasedBadge}>
+                            <Text style={styles.deceasedBadgeText}>Deceased</Text>
+                          </View>
+                        )}
+                        {isSick && !isDeceased && (
+                          <View style={styles.sickBadge}>
+                            <Text style={styles.sickBadgeText}>Sick</Text>
+                          </View>
+                        )}
+                        {isAssignedToOther && !isDeceased && !isSick && (
+                          <View style={styles.assignedBadge}>
+                            <Text style={styles.assignedBadgeText}>Assigned</Text>
+                          </View>
+                        )}
+                        {isCurrentlySelected && isSelectable && (
+                          <View style={styles.currentBadge}>
+                            <Text style={styles.currentBadgeText}>Current</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={[
+                        styles.horseBreed,
+                        !isSelectable && styles.unavailableText,
+                        isDeceased && styles.deceasedText,
+                        isSick && styles.sickText,
+                      ]}>
+                        {horse.breed} • {horse.age} years old
                       </Text>
-                    </TouchableOpacity>
-                  )}
+                      <View style={styles.horseHealthRow}>
+                        <View
+                          style={[
+                            styles.horseHealthDot, 
+                            { 
+                              backgroundColor: getHealthStatusColor(
+                                horse.healthStatus,
+                                isAlive
+                              ) 
+                            }
+                          ]}
+                        />
+                        <Text style={[
+                          styles.horseHealthText, 
+                          { 
+                            color: getHealthStatusColor(
+                              horse.healthStatus,
+                              isAlive
+                            ) 
+                          }
+                        ]}>
+                          {horse.healthStatus}
+                        </Text>
+                        {!isDeceased && !isSick && (
+                          <>
+                            <Text style={styles.horseSeparator}>•</Text>
+                            <Text style={[styles.horseStatus, !isSelectable && styles.unavailableText]}>
+                              {horse.status}
+                            </Text>
+                          </>
+                        )}
+                        {isSick && (
+                          <>
+                            <Text style={styles.horseSeparator}>•</Text>
+                            <Text style={styles.sickStatusText}>
+                              Needs Medical Care
+                            </Text>
+                          </>
+                        )}
+                      </View>
+                      <Text style={[
+                        styles.horseCheckup,
+                        !isSelectable && styles.unavailableText,
+                        isDeceased && styles.deceasedText,
+                        isSick && styles.sickText,
+                      ]}>
+                        {isDeceased ? "Deceased" : 
+                         isSick ? "Requires medical attention" :
+                         `Last checkup: ${horse.lastCheckup}`}
+                      </Text>
+                    </View>
+                    <View style={styles.selectIndicator}>
+                      {isDeceased ? (
+                        <View style={styles.deceasedIndicator}>
+                          <Text style={styles.deceasedIndicatorText}>✝</Text>
+                        </View>
+                      ) : isSick ? (
+                        <View style={styles.sickIndicator}>
+                          <Text style={styles.sickIndicatorText}>⚠</Text>
+                        </View>
+                      ) : isCurrentlySelected ? (
+                        <View style={styles.selectedIndicator}>
+                          <Text style={styles.selectedIndicatorText}>✓</Text>
+                        </View>
+                      ) : isAssignedToOther ? (
+                        <View style={styles.assignedIndicator}>
+                          <Text style={styles.assignedIndicatorText}>×</Text>
+                        </View>
+                      ) : (
+                        <View style={styles.unselectedIndicator} />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                )
+              })}
+              {filteredHorses.length === 0 && (
+                <View style={styles.emptyStateContainer}>
+                  <View style={styles.emptyStateIcon}>
+                    <FontAwesome5 name="horse" size={48} color="#CCCCCC" />
+                  </View>
+                  <Text style={styles.emptyStateTitle}>
+                    {searchText ? "No horses found" : "No horses available"}
+                  </Text>
+                  <Text style={styles.emptyStateSubtitle}>
+                    {searchText 
+                      ? "Try adjusting your search terms" 
+                      : selectedOwner?.availableHorses === 0
+                        ? "This owner has no available horses at the moment"
+                        : "No horses match the current filter"}
+                  </Text>
                   
-                  {selectedOwnerForDetail.is_approved && (
+                  {searchText || selectedHorseFilter !== "all" ? (
                     <TouchableOpacity
-                      style={styles.viewHorsesButton}
+                      style={styles.emptyStateButton}
                       onPress={() => {
-                        setOwnerDetailModal(false)
-                        setActiveTab('horses')
+                        setSearchText("")
+                        setSelectedHorseFilter("all")
                       }}
                     >
-                      <Text style={styles.viewHorsesButtonText}>View Available Horses</Text>
+                      <Text style={styles.emptyStateButtonText}>Clear Filters</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity
+                      style={styles.emptyStateButton}
+                      onPress={goBackToOwners}
+                    >
+                      <Text style={styles.emptyStateButtonText}>Back to Owners</Text>
                     </TouchableOpacity>
                   )}
-                </ScrollView>
-              </>
-            )}
-          </View>
+                </View>
+              )}
+            </ScrollView>
+          )}
         </View>
-      </Modal>
+      </View>
+
+      {/* Modals */}
+      {renderOwnerFilterModal()}
+      {renderHorseFilterModal()}
 
       {/* Full Screen Image Modal */}
       <Modal
@@ -1396,13 +2232,7 @@ export default function HorseSelectionScreen() {
         onRequestClose={() => setFullScreenImage(null)}
       >
         <View style={styles.fullScreenContainer}>
-          <TouchableOpacity 
-            style={[
-              styles.fullScreenCloseButton, 
-              { top: getSafeAreaPadding().top + scale(20) }
-            ]} 
-            onPress={() => setFullScreenImage(null)}
-          >
+          <TouchableOpacity style={styles.fullScreenCloseButton} onPress={() => setFullScreenImage(null)}>
             <Text style={styles.fullScreenCloseText}>✕</Text>
           </TouchableOpacity>
           {fullScreenImage && (
@@ -1411,12 +2241,30 @@ export default function HorseSelectionScreen() {
         </View>
       </Modal>
 
-      {/* Loading Overlay for Assigning */}
+      {/* Loading Overlays */}
+      {isLoadingHorses && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContent}>
+            <ActivityIndicator size="large" color="#C17A47" />
+            <Text style={styles.loadingOverlayText}>Loading horses...</Text>
+          </View>
+        </View>
+      )}
+
       {isAssigning && (
         <View style={styles.loadingOverlay}>
           <View style={styles.loadingContent}>
             <ActivityIndicator size="large" color="#C17A47" />
             <Text style={styles.loadingOverlayText}>Assigning horse...</Text>
+          </View>
+        </View>
+      )}
+
+      {isApplying && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContent}>
+            <ActivityIndicator size="large" color="#C17A47" />
+            <Text style={styles.loadingOverlayText}>Submitting application...</Text>
           </View>
         </View>
       )}
@@ -1443,7 +2291,7 @@ const styles = StyleSheet.create({
   header: {
     backgroundColor: "#C17A47",
     paddingHorizontal: scale(16),
-    paddingBottom: dynamicSpacing(8),
+    paddingBottom: dynamicSpacing(16),
   },
   headerContent: {
     flexDirection: "row",
@@ -1497,595 +2345,671 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 3,
     elevation: 3,
-    marginBottom: verticalScale(12),
   },
   searchInput: {
     flex: 1,
     fontSize: moderateScale(15),
     color: "#333",
     paddingVertical: 0,
+    fontFamily: "System",
+  },
+  searchButton: {
+    padding: scale(4),
+    marginLeft: scale(8),
   },
   searchIconText: {
     fontSize: moderateScale(18),
     color: "#666",
   },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#C17A47',
-    paddingHorizontal: scale(8),
+  filterIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    marginTop: verticalScale(12),
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(20),
+    alignSelf: "flex-start",
   },
-  tab: {
-    flex: 1,
-    paddingVertical: verticalScale(12),
-    alignItems: 'center',
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
-  },
-  activeTab: {
-    borderBottomColor: 'white',
-  },
-  tabText: {
-    color: 'rgba(255,255,255,0.8)',
+  filterIndicatorText: {
+    color: "white",
     fontSize: moderateScale(12),
-    fontWeight: '500',
+    fontWeight: "500",
   },
-  activeTabText: {
-    color: 'white',
-    fontWeight: '600',
+  filterClearText: {
+    color: "white",
+    fontSize: moderateScale(14),
+    fontWeight: "bold",
+    marginLeft: scale(12),
+    paddingHorizontal: scale(4),
   },
   content: {
     flex: 1,
     backgroundColor: "white",
   },
-  listContent: {
-    paddingVertical: dynamicSpacing(16),
-    paddingBottom: dynamicSpacing(80),
-  },
-
-  // Status Banners
-  onlineBanner: {
-    backgroundColor: '#4CAF50',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  onlineText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-  partialBanner: {
-    backgroundColor: '#2196F3',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  partialText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-  noDataBanner: {
-    backgroundColor: '#F44336',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  noDataText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '500',
-    marginLeft: 8,
-  },
-
-  // Owner Card Styles
-  ownerCard: {
-    backgroundColor: 'white',
-    borderRadius: scale(12),
-    padding: scale(16),
-    marginHorizontal: scale(16),
-    marginVertical: verticalScale(8),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  ownerHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  ownerAvatar: {
-    width: scale(50),
-    height: scale(50),
-    borderRadius: scale(25),
-    backgroundColor: '#F0F0F0',
-  },
-  ownerAvatarPlaceholder: {
-    width: scale(50),
-    height: scale(50),
-    borderRadius: scale(25),
-    backgroundColor: '#C17A47',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  ownerInitials: {
-    color: 'white',
-    fontSize: moderateScale(18),
-    fontWeight: 'bold',
-  },
-  ownerInfo: {
-    flex: 1,
-    marginLeft: scale(12),
-  },
-  ownerName: {
-    fontSize: moderateScale(16),
-    fontWeight: '600',
-    color: '#333',
-  },
-  ownerHorsesCount: {
-    fontSize: moderateScale(12),
-    color: '#666',
-    marginTop: verticalScale(2),
-  },
-  ownerContact: {
-    fontSize: moderateScale(12),
-    color: '#999',
-    marginTop: verticalScale(2),
-  },
-  ownerActions: {
-    marginLeft: scale(8),
-  },
-  applyButton: {
-    backgroundColor: '#C17A47',
+  statsContainer: {
+    flexDirection: "row",
     paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(6),
-    borderRadius: scale(20),
-  },
-  applyButtonText: {
-    color: 'white',
-    fontSize: moderateScale(12),
-    fontWeight: '600',
-  },
-  approvedBadge: {
-    backgroundColor: '#4CAF50',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(4),
-    borderRadius: scale(20),
-  },
-  approvedText: {
-    color: 'white',
-    fontSize: moderateScale(12),
-    fontWeight: '600',
-    marginLeft: scale(4),
-  },
-  pendingBadge: {
-    backgroundColor: '#FF9800',
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(4),
-    borderRadius: scale(20),
-  },
-  pendingText: {
-    color: 'white',
-    fontSize: moderateScale(12),
-    fontWeight: '600',
-    marginLeft: scale(4),
-  },
-  ownerFooter: {
-    marginTop: verticalScale(12),
-    paddingTop: verticalScale(12),
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0',
-  },
-  ownerAddress: {
-    fontSize: moderateScale(12),
-    color: '#666',
-  },
-
-  // Application Card Styles
-  applicationCard: {
-    backgroundColor: 'white',
-    borderRadius: scale(12),
-    padding: scale(16),
-    marginHorizontal: scale(16),
-    marginVertical: verticalScale(8),
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
+    paddingVertical: dynamicSpacing(20),
+    backgroundColor: "#C17A47",
+    justifyContent: "space-around",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
     shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowRadius: 3,
+    elevation: 3,
   },
-  applicationHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  statItem: {
+    alignItems: "center",
+    justifyContent: "center",
   },
-  applicationInfo: {
-    flex: 1,
-    marginLeft: scale(12),
+  statNumber: {
+    fontSize: moderateScale(20),
+    fontWeight: "bold",
+    color: "white",
+    marginBottom: verticalScale(4),
   },
-  applicationOwner: {
-    fontSize: moderateScale(16),
-    fontWeight: '600',
-    color: '#333',
-  },
-  applicationDate: {
-    fontSize: moderateScale(12),
-    color: '#666',
-    marginTop: verticalScale(2),
-  },
-  applicationStatusContainer: {
-    marginTop: verticalScale(12),
-  },
-  applicationStatus: {
-    fontSize: moderateScale(14),
-    fontWeight: '500',
-  },
-  applicationNotes: {
-    fontSize: moderateScale(12),
-    color: '#666',
-    marginTop: verticalScale(8),
-    fontStyle: 'italic',
-  },
-  applicationReviewDate: {
+  statLabel: {
     fontSize: moderateScale(11),
-    color: '#999',
-    marginTop: verticalScale(4),
+    color: "rgba(255,255,255,0.9)",
+    textAlign: "center",
+    fontWeight: "500",
   },
-
-  // Horse Card Styles
-  horseCard: {
-    backgroundColor: 'white',
+  currentSelectionContainer: {
+    backgroundColor: "#F8F9FA",
+    paddingHorizontal: scale(16),
+    paddingVertical: dynamicSpacing(16),
+    borderBottomWidth: 1,
+    borderBottomColor: "#E0E0E0",
+  },
+  currentSelectionTitle: {
+    fontSize: moderateScale(15),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(12),
+    fontFamily: "System",
+  },
+  currentSelectionCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "white",
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(14),
     borderRadius: scale(12),
-    padding: scale(16),
-    marginHorizontal: scale(16),
-    marginVertical: verticalScale(8),
-    flexDirection: 'row',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
+    borderWidth: 2,
+    borderColor: "#C17A47",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
     elevation: 2,
   },
-  horseCardDisabled: {
-    opacity: 0.6,
-  },
-  notApprovedOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: scale(12),
-    zIndex: 1,
-  },
-  notApprovedText: {
-    color: 'white',
-    fontSize: moderateScale(12),
-    fontWeight: '600',
-    backgroundColor: 'rgba(244, 67, 54, 0.8)',
-    paddingHorizontal: scale(12),
-    paddingVertical: verticalScale(4),
-    borderRadius: scale(4),
+  currentHorseAvatar: {
+    width: scale(52),
+    height: scale(52),
+    borderRadius: scale(26),
+    backgroundColor: "#F0F0F0",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: scale(16),
+    overflow: "hidden",
   },
   horseImage: {
-    width: scale(60),
-    height: scale(60),
-    borderRadius: scale(8),
-    backgroundColor: '#F0F0F0',
+    width: '100%',
+    height: '100%',
   },
-  horseInfo: {
+  currentHorseInfo: {
     flex: 1,
-    marginLeft: scale(12),
   },
-  horseHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  horseName: {
+  currentHorseName: {
     fontSize: moderateScale(16),
-    fontWeight: '600',
-    color: '#333',
-    flex: 1,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(3),
+    fontFamily: "System",
   },
-  horseDetails: {
+  currentHorseBreed: {
     fontSize: moderateScale(12),
-    color: '#666',
-    marginTop: verticalScale(2),
+    color: "#666",
+    marginBottom: verticalScale(3),
+    fontFamily: "System",
   },
-  horseOwner: {
-    fontSize: moderateScale(12),
-    color: '#999',
-    marginTop: verticalScale(4),
-  },
-  notAvailableText: {
+  currentHorseOperator: {
     fontSize: moderateScale(11),
-    color: '#F44336',
-    marginTop: verticalScale(4),
-    fontStyle: 'italic',
+    color: "#999",
+    marginBottom: verticalScale(4),
+    fontFamily: "System",
   },
-  horseAction: {
-    marginLeft: scale(8),
+  currentHorseHealthRow: {
+    flexDirection: "row",
+    alignItems: "center",
   },
-  selectHorseButton: {
-    backgroundColor: '#C17A47',
+  currentHorseHealthDot: {
+    width: scale(6),
+    height: scale(6),
+    borderRadius: scale(3),
+    marginRight: scale(6),
+  },
+  currentHorseHealthText: {
+    fontSize: moderateScale(11),
+    fontWeight: "500",
+    fontFamily: "System",
+  },
+  currentSelectedIndicator: {
+    width: scale(28),
+    height: scale(28),
+    borderRadius: scale(14),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  currentSelectedIndicatorText: {
+    color: "white",
+    fontSize: moderateScale(14),
+    fontWeight: "bold",
+    fontFamily: "System",
+  },
+  listContainer: {
+    flex: 1,
+    paddingHorizontal: scale(16),
+    paddingTop: dynamicSpacing(16),
+  },
+  listHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: verticalScale(16),
+    paddingHorizontal: scale(4),
+  },
+  listTitle: {
+    fontSize: moderateScale(18),
+    fontWeight: "600",
+    color: "#333",
+    fontFamily: "System",
+  },
+  filterHeaderButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F5F5F5",
     paddingHorizontal: scale(16),
     paddingVertical: verticalScale(8),
     borderRadius: scale(20),
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
   },
-  selectHorseButtonText: {
-    color: 'white',
+  filterHeaderButtonActive: {
+    backgroundColor: "#FFF8F0",
+    borderColor: "#C17A47",
+  },
+  filterHeaderText: {
+    fontSize: moderateScale(14),
+    color: "#666",
+    fontWeight: "500",
+    marginLeft: scale(6),
+    fontFamily: "System",
+  },
+  filterHeaderTextActive: {
+    color: "#C17A47",
+    fontWeight: "600",
+  },
+  list: {
+    flex: 1,
+  },
+  listContent: {
+    paddingBottom: dynamicSpacing(20),
+  },
+  // Owner Item Styles
+  ownerItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(16),
+    borderRadius: scale(12),
+    marginBottom: verticalScale(12),
+    backgroundColor: "#F8F8F8",
+    borderWidth: 1,
+    borderColor: "transparent",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  approvedOwnerItem: {
+    backgroundColor: "#E8F5E8",
+    borderColor: "#4CAF50",
+  },
+  rejectedOwnerItem: {
+    backgroundColor: "#FFEBEE",
+    borderColor: "#F44336",
+  },
+  appliedOwnerItem: {
+    backgroundColor: "#FFF3E0",
+    borderColor: "#FF9800",
+  },
+  ownerAvatar: {
+    width: scale(56),
+    height: scale(56),
+    borderRadius: scale(28),
+    backgroundColor: "#F0F0F0",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: scale(16),
+    overflow: "hidden",
+  },
+  ownerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  ownerInfo: {
+    flex: 1,
+  },
+  ownerHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: verticalScale(4),
+    flexWrap: 'wrap',
+  },
+  ownerName: {
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+    color: "#333",
+    flex: 1,
+    fontFamily: "System",
+    marginRight: scale(8),
+  },
+  ownerStatusBadge: {
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(5),
+    borderRadius: scale(12),
+    marginLeft: scale(8),
+    minWidth: scale(80),
+    alignItems: 'center',
+  },
+  ownerStatusText: {
+    color: "white",
+    fontSize: moderateScale(10),
+    fontWeight: "600",
+    fontFamily: "System",
+    textAlign: 'center',
+  },
+  ownerUsername: {
     fontSize: moderateScale(12),
-    fontWeight: '600',
+    color: "#666",
+    marginBottom: verticalScale(2),
+    fontFamily: "System",
+  },
+  ownerEmail: {
+    fontSize: moderateScale(11),
+    color: "#999",
+    marginBottom: verticalScale(6),
+    fontFamily: "System",
+  },
+  ownerHorsesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  ownerHorsesText: {
+    fontSize: moderateScale(12),
+    color: "#666",
+    fontFamily: "System",
+  },
+  viewHorsesText: {
+    fontSize: moderateScale(12),
+    color: "#C17A47",
+    fontWeight: "600",
+    fontFamily: "System",
+  },
+  // Horse Item Styles
+  horseItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: scale(16),
+    paddingVertical: verticalScale(14),
+    borderRadius: scale(12),
+    marginBottom: verticalScale(10),
+    backgroundColor: "#F8F8F8",
+    borderWidth: 1,
+    borderColor: "transparent",
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  selectedHorseItem: {
+    backgroundColor: "#E8F5E8",
+    borderColor: "#C17A47",
+    shadowColor: "#C17A47",
+    shadowOpacity: 0.1,
+  },
+  unavailableHorseItem: {
+    backgroundColor: "#F0F0F0",
+    opacity: 0.7,
+  },
+  sickHorseItem: {
+    backgroundColor: "#FFF5F5",
+    borderColor: "#FFCDD2",
+    opacity: 0.8,
+  },
+  deceasedHorseItem: {
+    backgroundColor: "#F5F5F5",
+    borderColor: "#E0E0E0",
+    opacity: 0.6,
+  },
+  horseAvatar: {
+    width: scale(56),
+    height: scale(56),
+    borderRadius: scale(28),
+    backgroundColor: "#F0F0F0",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: scale(16),
+    overflow: "hidden",
+    position: "relative",
+  },
+  deceasedAvatar: {
+    backgroundColor: "#E0E0E0",
+  },
+  sickAvatar: {
+    backgroundColor: "#FFEBEE",
+  },
+  deceasedOverlay: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(0,0,0,0.3)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  deceasedOverlayText: {
+    color: "white",
+    fontSize: moderateScale(24),
+    fontWeight: "bold",
+  },
+  sickOverlay: {
+    position: "absolute",
+    width: "100%",
+    height: "100%",
+    backgroundColor: "rgba(244, 67, 54, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  sickOverlayText: {
+    color: "#F44336",
+    fontSize: moderateScale(24),
+    fontWeight: "bold",
+  },
+  horseInfo: {
+    flex: 1,
+  },
+  horseHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: verticalScale(3),
+  },
+  horseName: {
+    fontSize: moderateScale(16),
+    fontWeight: "600",
+    color: "#333",
+    flex: 1,
+    fontFamily: "System",
+  },
+  unavailableText: {
+    color: "#999",
+  },
+  sickText: {
+    color: "#F44336",
+    fontStyle: "italic",
+  },
+  deceasedText: {
+    color: "#999",
+    textDecorationLine: "line-through",
   },
   assignedBadge: {
-    backgroundColor: '#FF6B6B',
-    paddingHorizontal: scale(8),
-    paddingVertical: verticalScale(2),
+    backgroundColor: "#FF6B6B",
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(3),
     borderRadius: scale(12),
     marginLeft: scale(8),
   },
   assignedBadgeText: {
-    color: 'white',
-    fontSize: moderateScale(10),
-    fontWeight: '600',
+    color: "white",
+    fontSize: moderateScale(9),
+    fontWeight: "600",
+    fontFamily: "System",
   },
-
-  // Empty State
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: verticalScale(60),
-    paddingHorizontal: scale(32),
+  currentBadge: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(3),
+    borderRadius: scale(12),
+    marginLeft: scale(8),
   },
-  emptyStateText: {
-    fontSize: moderateScale(18),
-    color: '#666',
-    marginTop: verticalScale(16),
-    fontWeight: '500',
-    textAlign: 'center',
+  currentBadgeText: {
+    color: "white",
+    fontSize: moderateScale(9),
+    fontWeight: "600",
+    fontFamily: "System",
   },
-  emptyStateSubtext: {
-    fontSize: moderateScale(14),
-    color: '#999',
-    marginTop: verticalScale(8),
-    textAlign: 'center',
-    lineHeight: moderateScale(20),
+  deceasedBadge: {
+    backgroundColor: "#999999",
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(3),
+    borderRadius: scale(12),
+    marginLeft: scale(8),
   },
-  browseOwnersButton: {
-    backgroundColor: '#C17A47',
-    paddingHorizontal: scale(24),
-    paddingVertical: verticalScale(12),
-    borderRadius: scale(25),
-    marginTop: verticalScale(20),
+  deceasedBadgeText: {
+    color: "white",
+    fontSize: moderateScale(9),
+    fontWeight: "600",
+    fontFamily: "System",
   },
-  browseOwnersButtonText: {
-    color: 'white',
-    fontSize: moderateScale(14),
-    fontWeight: '600',
+  sickBadge: {
+    backgroundColor: "#F44336",
+    paddingHorizontal: scale(10),
+    paddingVertical: verticalScale(3),
+    borderRadius: scale(12),
+    marginLeft: scale(8),
   },
-
-  // Owner Detail Modal Styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
+  sickBadgeText: {
+    color: "white",
+    fontSize: moderateScale(9),
+    fontWeight: "600",
+    fontFamily: "System",
   },
-  modalContent: {
-    backgroundColor: 'white',
-    borderTopLeftRadius: scale(20),
-    borderTopRightRadius: scale(20),
-    maxHeight: height * 0.9,
+  horseBreed: {
+    fontSize: moderateScale(13),
+    color: "#666",
+    marginBottom: verticalScale(3),
+    fontFamily: "System",
   },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: scale(20),
-    paddingVertical: verticalScale(16),
-    borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+  horseHealthRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: verticalScale(3),
   },
-  modalTitle: {
-    fontSize: moderateScale(18),
-    fontWeight: '600',
-    color: '#333',
+  horseHealthDot: {
+    width: scale(8),
+    height: scale(8),
+    borderRadius: scale(4),
+    marginRight: scale(8),
   },
-  modalClose: {
-    fontSize: moderateScale(24),
-    color: '#666',
+  horseHealthText: {
+    fontSize: moderateScale(12),
+    fontWeight: "500",
+    marginRight: scale(8),
+    fontFamily: "System",
   },
-  modalBody: {
-    padding: scale(20),
+  horseSeparator: {
+    fontSize: moderateScale(12),
+    color: "#999",
+    marginRight: scale(8),
   },
-  ownerDetailHeader: {
-    alignItems: 'center',
-    marginBottom: verticalScale(24),
+  horseStatus: {
+    fontSize: moderateScale(12),
+    color: "#666",
+    fontFamily: "System",
   },
-  ownerDetailAvatar: {
-    width: scale(80),
-    height: scale(80),
-    borderRadius: scale(40),
-    backgroundColor: '#F0F0F0',
+  sickStatusText: {
+    fontSize: moderateScale(11),
+    color: "#F44336",
+    fontWeight: "500",
+    fontFamily: "System",
   },
-  ownerDetailAvatarPlaceholder: {
-    width: scale(80),
-    height: scale(80),
-    borderRadius: scale(40),
-    backgroundColor: '#C17A47',
-    justifyContent: 'center',
-    alignItems: 'center',
+  horseCheckup: {
+    fontSize: moderateScale(11),
+    color: "#999",
+    fontFamily: "System",
   },
-  ownerDetailInitials: {
-    color: 'white',
-    fontSize: moderateScale(28),
-    fontWeight: 'bold',
+  selectIndicator: {
+    marginLeft: scale(8),
   },
-  ownerDetailName: {
+  selectedIndicator: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#C17A47",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  selectedIndicatorText: {
+    color: "white",
+    fontSize: moderateScale(16),
+    fontWeight: "bold",
+    fontFamily: "System",
+  },
+  assignedIndicator: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#FF6B6B",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  assignedIndicatorText: {
+    color: "white",
     fontSize: moderateScale(20),
-    fontWeight: '600',
-    color: '#333',
-    marginTop: verticalScale(12),
-    textAlign: 'center',
+    fontWeight: "bold",
+    fontFamily: "System",
   },
-  ownerDetailStatus: {
-    marginTop: verticalScale(8),
+  deceasedIndicator: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#999999",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  statusBadgeApproved: {
-    backgroundColor: '#4CAF50',
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(6),
-    borderRadius: scale(20),
-  },
-  statusBadgePending: {
-    backgroundColor: '#FF9800',
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(6),
-    borderRadius: scale(20),
-  },
-  statusBadgeNotApplied: {
-    backgroundColor: '#666',
-    paddingHorizontal: scale(16),
-    paddingVertical: verticalScale(6),
-    borderRadius: scale(20),
-  },
-  statusBadgeText: {
-    color: 'white',
-    fontSize: moderateScale(12),
-    fontWeight: '600',
-  },
-  detailSection: {
-    marginBottom: verticalScale(24),
-  },
-  detailSectionTitle: {
+  deceasedIndicatorText: {
+    color: "white",
     fontSize: moderateScale(16),
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: verticalScale(12),
+    fontWeight: "bold",
+    fontFamily: "System",
   },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: verticalScale(8),
+  sickIndicator: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: "#F44336",
+    justifyContent: "center",
+    alignItems: "center",
   },
-  detailText: {
-    fontSize: moderateScale(14),
-    color: '#666',
-    marginLeft: scale(12),
+  sickIndicatorText: {
+    color: "white",
+    fontSize: moderateScale(16),
+    fontWeight: "bold",
+    fontFamily: "System",
+  },
+  unselectedIndicator: {
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    borderWidth: 2,
+    borderColor: "#E0E0E0",
+    backgroundColor: "white",
+  },
+  // Empty State Styles
+  emptyStateContainer: {
     flex: 1,
-    lineHeight: moderateScale(20),
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: verticalScale(60),
+    paddingHorizontal: scale(40),
   },
-  horseListItem: {
-    backgroundColor: '#F8F8F8',
-    padding: scale(12),
-    borderRadius: scale(8),
+  emptyStateIcon: {
+    marginBottom: verticalScale(20),
+    opacity: 0.5,
+  },
+  emptyStateTitle: {
+    fontSize: moderateScale(20),
+    fontWeight: "600",
+    color: "#666",
     marginBottom: verticalScale(8),
+    textAlign: "center",
+    fontFamily: "System",
   },
-  horseListItemName: {
-    fontSize: moderateScale(14),
-    fontWeight: '500',
-    color: '#333',
+  emptyStateSubtitle: {
+    fontSize: moderateScale(15),
+    color: "#999",
+    textAlign: "center",
+    marginBottom: verticalScale(30),
+    lineHeight: moderateScale(22),
+    fontFamily: "System",
   },
-  horseListItemDetails: {
-    fontSize: moderateScale(12),
-    color: '#666',
-    marginTop: verticalScale(2),
+  emptyStateButton: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(24),
+    paddingVertical: verticalScale(14),
+    borderRadius: scale(25),
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
   },
-  noHorsesText: {
-    fontSize: moderateScale(14),
-    color: '#999',
-    fontStyle: 'italic',
-    textAlign: 'center',
-    paddingVertical: verticalScale(12),
+  emptyStateButtonText: {
+    color: "white",
+    fontSize: moderateScale(15),
+    fontWeight: "600",
+    fontFamily: "System",
   },
-  applyNowButton: {
-    backgroundColor: '#C17A47',
-    paddingVertical: verticalScale(16),
-    borderRadius: scale(12),
-    alignItems: 'center',
-    marginTop: verticalScale(8),
-  },
-  applyNowButtonText: {
-    color: 'white',
-    fontSize: moderateScale(16),
-    fontWeight: '600',
-  },
-  viewHorsesButton: {
-    backgroundColor: '#4CAF50',
-    paddingVertical: verticalScale(16),
-    borderRadius: scale(12),
-    alignItems: 'center',
-    marginTop: verticalScale(8),
-  },
-  viewHorsesButtonText: {
-    color: 'white',
-    fontSize: moderateScale(16),
-    fontWeight: '600',
-  },
-
-  // Full Screen Image Modal Styles
-  fullScreenContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullScreenCloseButton: {
-    position: 'absolute',
-    right: scale(20),
-    zIndex: 10,
-    width: scale(40),
-    height: scale(40),
-    borderRadius: scale(20),
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  fullScreenCloseText: {
-    color: 'white',
-    fontSize: moderateScale(24),
-    fontWeight: '600',
-  },
-  fullScreenImage: {
-    width: '100%',
-    height: '100%',
-  },
-
-  // Loading Overlay
   loadingOverlay: {
-    position: 'absolute',
+    position: "absolute",
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   loadingContent: {
-    backgroundColor: 'white',
+    backgroundColor: "white",
     paddingHorizontal: scale(30),
     paddingVertical: verticalScale(20),
     borderRadius: scale(12),
-    alignItems: 'center',
-    shadowColor: '#000',
+    alignItems: "center",
+    shadowColor: "#000",
     shadowOffset: {
       width: 0,
       height: 4,
@@ -2096,7 +3020,124 @@ const styles = StyleSheet.create({
   },
   loadingOverlayText: {
     fontSize: moderateScale(15),
-    color: '#333',
+    color: "#333",
     marginTop: verticalScale(12),
+    fontFamily: "System",
+  },
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "white",
+    borderTopLeftRadius: scale(24),
+    borderTopRightRadius: scale(24),
+    paddingBottom: dynamicSpacing(24),
+    maxHeight: height * 0.7,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: -2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: scale(24),
+    paddingVertical: verticalScale(20),
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F0F0",
+  },
+  modalTitle: {
+    fontSize: moderateScale(20),
+    fontWeight: "600",
+    color: "#333",
+    fontFamily: "System",
+  },
+  modalClose: {
+    fontSize: moderateScale(24),
+    color: "#666",
+    padding: scale(4),
+    fontFamily: "System",
+  },
+  filterList: {
+    maxHeight: height * 0.5,
+  },
+  filterItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: scale(24),
+    paddingVertical: verticalScale(18),
+    borderBottomWidth: 1,
+    borderBottomColor: "#F5F5F5",
+  },
+  filterItemSelected: {
+    backgroundColor: "#FFF8F0",
+  },
+  filterItemText: {
+    fontSize: moderateScale(17),
+    color: "#333",
+    fontFamily: "System",
+  },
+  filterItemTextSelected: {
+    color: "#C17A47",
+    fontWeight: "600",
+  },
+  filterItemCheck: {
+    color: "#C17A47",
+    fontSize: moderateScale(18),
+    fontWeight: "bold",
+    fontFamily: "System",
+  },
+  clearFilterButton: {
+    marginHorizontal: scale(24),
+    marginTop: verticalScale(16),
+    paddingVertical: verticalScale(16),
+    backgroundColor: "#F5F5F5",
+    borderRadius: scale(12),
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E0E0E0",
+  },
+  clearFilterText: {
+    fontSize: moderateScale(16),
+    color: "#666",
+    fontWeight: "600",
+    fontFamily: "System",
+  },
+  // Full Screen Image Modal
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.95)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullScreenImage: {
+    width: "100%",
+    height: "100%",
+  },
+  fullScreenCloseButton: {
+    position: "absolute",
+    top: scale(50),
+    right: scale(20),
+    zIndex: 10,
+    width: scale(40),
+    height: scale(40),
+    borderRadius: scale(20),
+    backgroundColor: "rgba(255,255,255,0.2)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fullScreenCloseText: {
+    color: "white",
+    fontSize: moderateScale(24),
+    fontWeight: "600",
   },
 })

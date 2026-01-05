@@ -20,7 +20,7 @@ import {
 } from "react-native"
 import DateTimePicker from "@react-native-community/datetimepicker"
 import * as ImagePicker from "expo-image-picker"
-import * as FileSystem from 'expo-file-system'
+import * as FileSystem from 'expo-file-system/legacy'
 
 const { width, height } = Dimensions.get("window")
 
@@ -848,39 +848,39 @@ export default function Signup() {
   };
 
   const convertImageToBase64 = async (uri: string): Promise<string> => {
-    try {
-      const base64 = await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      
-      // Determine mime type from file extension
-      let mimeType = 'image/jpeg';
-      if (uri.toLowerCase().includes('.png')) mimeType = 'image/png';
-      if (uri.toLowerCase().includes('.jpeg')) mimeType = 'image/jpeg';
-      if (uri.toLowerCase().includes('.jpg')) mimeType = 'image/jpeg';
-      
-      return `data:${mimeType};base64,${base64}`;
-    } catch (error) {
-      console.error("Error converting image to base64:", error);
-      throw error;
-    }
+  try {
+    const base64 = await FileSystem.readAsStringAsync(uri, {
+      encoding: 'base64',
+    });
+    
+    // Determine mime type from file extension
+    let mimeType = 'image/jpeg';
+    if (uri.toLowerCase().includes('.png')) mimeType = 'image/png';
+    if (uri.toLowerCase().includes('.jpeg')) mimeType = 'image/jpeg';
+    if (uri.toLowerCase().includes('.jpg')) mimeType = 'image/jpeg';
+    
+    return `data:${mimeType};base64,${base64}`;
+  } catch (error) {
+    console.error("Error converting image to base64:", error);
+    throw error;
   }
+}
 
-  const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
-    try {
-      // Use expo-file-system to read the file
-      const base64 = await FileSystem.readAsStringAsync(file.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-      
-      // Create proper data URL with correct mime type
-      const mimeType = file.type || 'image/jpeg';
-      return `data:${mimeType};base64,${base64}`;
-    } catch (error) {
-      console.error("Error converting file to base64:", error);
-      throw error;
-    }
-  };
+const convertFileToBase64 = async (file: DocumentFile): Promise<string> => {
+  try {
+    // Use expo-file-system to read the file
+    const base64 = await FileSystem.readAsStringAsync(file.uri, {
+      encoding: 'base64',
+    });
+    
+    // Create proper data URL with correct mime type
+    const mimeType = file.type || 'image/jpeg';
+    return `data:${mimeType};base64,${base64}`;
+  } catch (error) {
+    console.error("Error converting file to base64:", error);
+    throw error;
+  }
+};
 
   const handleSignUp = async () => {
     if (isLoading) return
