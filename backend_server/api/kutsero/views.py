@@ -5362,10 +5362,12 @@ def get_my_applications(request):
 @api_view(['GET'])
 def get_approved_owners_horses(request):
     """
-    Get horses from owners who have approved the kutsero
+    Get horses from owners who have approved the kutsero - CORRECTED VERSION
     """
     try:
         kutsero_id = request.GET.get("kutsero_id")
+        print(f"DEBUG get_approved_owners_horses: Received kutsero_id={kutsero_id}")
+        
         if not kutsero_id:
             return Response({
                 "success": False,
@@ -5374,8 +5376,13 @@ def get_approved_owners_horses(request):
 
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
-        # Get approved applications
-        approved_apps_response = service_client.table("op_kutsero_application").select("op_id").eq("kutsero_id", kutsero_id).eq("status", "approved").execute()
+        # Get approved applications (status from op_kutsero_application table)
+        try:
+            approved_apps_response = service_client.table("op_kutsero_application").select("*").eq("kutsero_id", kutsero_id).eq("status", "approved").execute()
+            print(f"DEBUG: Approved apps found: {len(approved_apps_response.data or [])}")
+        except Exception as e:
+            print(f"DEBUG: Error getting approved apps: {e}")
+            approved_apps_response = type('obj', (object,), {'data': []})
         
         approved_op_ids = [app['op_id'] for app in approved_apps_response.data or []]
         
@@ -5393,48 +5400,74 @@ def get_approved_owners_horses(request):
         all_horses = []
         
         for op_id in approved_op_ids:
-            # Get horses for this owner
-            horses_response = service_client.table("horse_profile").select("*").eq("op_id", op_id).execute()
-            
-            # Get owner details
-            owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id).execute()
-            owner_name = "Unknown Owner"
-            if owner_response.data:
-                owner = owner_response.data[0]
-                owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
-            
-            print(f"DEBUG: Found {len(horses_response.data or [])} horses for owner {owner_name}")
-            
-            for horse in horses_response.data or []:
-                # Skip deceased horses
-                if horse.get('horse_status') == 'deceased':
-                    continue
+            try:
+                # Get horses for this owner
+                horses_response = service_client.table("horse_profile").select("*").eq("op_id", op_id).execute()
+                print(f"DEBUG: Horses for owner {op_id}: {len(horses_response.data or [])}")
                 
-                # Check if horse is already assigned
-                assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse['horse_id']).eq("status", "active").execute()
-                is_assigned = bool(assignment_response.data)
+                # Get owner details
+                owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id).execute()
+                owner_name = "Unknown Owner"
+                if owner_response.data:
+                    owner = owner_response.data[0]
+                    owner_name = f"{owner.get('op_fname', '')} {owner.get('op_lname', '')}".strip()
+                    print(f"DEBUG: Owner name: {owner_name}")
                 
-                # Check if assigned to this specific kutsero
-                is_assigned_to_me = False
-                if assignment_response.data:
-                    assignment = assignment_response.data[0]
-                    is_assigned_to_me = assignment.get('kutsero_id') == kutsero_id
-                
-                all_horses.append({
-                    'horse_id': horse['horse_id'],
-                    'name': horse['horse_name'],
-                    'breed': horse['horse_breed'],
-                    'age': horse['horse_age'],
-                    'sex': horse.get('horse_sex', 'Unknown'),
-                    'color': horse.get('horse_color', 'Unknown'),
-                    'image': horse.get('horse_image'),
-                    'owner_id': op_id,
-                    'owner_name': owner_name,
-                    'status': horse.get('horse_status', 'unknown'),
-                    'is_assigned': is_assigned,
-                    'is_assigned_to_me': is_assigned_to_me,
-                    'can_select': not is_assigned or is_assigned_to_me
-                })
+                for horse in horses_response.data or []:
+                    # Skip deceased horses
+                    if horse.get('horse_status') == 'deceased':
+                        continue
+                    
+                    # Check if horse is already assigned (check horse_assignment table where date_end IS NULL)
+                    try:
+                        # Check for active assignments (date_end IS NULL means horse is currently assigned)
+                        assignment_response = service_client.table("horse_assignment").select("*").eq("horse_id", horse['horse_id']).is_("date_end", "null").execute()
+                        is_assigned = bool(assignment_response.data)
+                        
+                        # Check if assigned to this specific kutsero
+                        is_assigned_to_me = False
+                        if assignment_response.data:
+                            for assignment in assignment_response.data:
+                                if str(assignment.get('kutsero_id')) == str(kutsero_id):
+                                    is_assigned_to_me = True
+                                    break
+                    except Exception as assign_error:
+                        print(f"DEBUG: Error checking assignment: {assign_error}")
+                        is_assigned = False
+                        is_assigned_to_me = False
+                    
+                    # Transform horse data to match frontend expectations
+                    horse_data = {
+                        'id': horse.get('horse_id'),
+                        'horse_id': horse.get('horse_id'),  # Keep both for compatibility
+                        'name': horse.get('horse_name'),
+                        'horse_name': horse.get('horse_name'),  # Keep both
+                        'breed': horse.get('horse_breed'),
+                        'horse_breed': horse.get('horse_breed'),  # Keep both
+                        'age': horse.get('horse_age'),
+                        'horse_age': horse.get('horse_age'),  # Keep both
+                        'sex': horse.get('horse_sex', 'Unknown'),
+                        'horse_sex': horse.get('horse_sex', 'Unknown'),  # Keep both
+                        'color': horse.get('horse_color', 'Unknown'),
+                        'horse_color': horse.get('horse_color', 'Unknown'),  # Keep both
+                        'image': horse.get('horse_image'),
+                        'horse_image': horse.get('horse_image'),  # Keep both
+                        'owner_id': op_id,
+                        'owner_name': owner_name,
+                        'status': horse.get('horse_status', 'unknown'),
+                        'horse_status': horse.get('horse_status', 'unknown'),  # Keep both
+                        'is_assigned': is_assigned,
+                        'is_assigned_to_me': is_assigned_to_me,
+                        'can_select': not is_assigned or is_assigned_to_me,
+                        'owner_approved': True
+                    }
+                    
+                    print(f"DEBUG: Adding horse: {horse_data['name']}, is_assigned: {is_assigned}, is_assigned_to_me: {is_assigned_to_me}")
+                    all_horses.append(horse_data)
+                    
+            except Exception as owner_error:
+                print(f"DEBUG: Error processing owner {op_id}: {owner_error}")
+                continue
         
         print(f"DEBUG: Total horses found: {len(all_horses)}")
         
@@ -5449,10 +5482,10 @@ def get_approved_owners_horses(request):
         traceback.print_exc()
         return Response({
             'success': False,
-            'error': str(e)
+            'error': str(e),
+            'horses': []  # Always return empty array on error
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
+    
 @api_view(['POST'])
 def assign_horse_to_kutsero(request):
     """
