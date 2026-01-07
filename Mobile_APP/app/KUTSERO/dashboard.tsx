@@ -1,6 +1,6 @@
 // KUTSERO Dashboard Screen
 
-"use client"
+
 
 import { useFocusEffect, useRouter } from "expo-router"
 import { useCallback, useEffect, useState, useRef } from "react"
@@ -158,7 +158,7 @@ interface SearchUserProfile {
   }
 }
 
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/kutsero"
 
 // Image Carousel Component
 const ImageCarousel = ({ images }: { images: string[] }) => {

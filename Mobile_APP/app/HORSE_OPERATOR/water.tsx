@@ -1,6 +1,6 @@
 // HORSE_OPERATOR/water.tsx
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,13 +11,11 @@ import {
   TouchableOpacity,
   Alert,
   RefreshControl,
-  Modal,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 import * as Notifications from 'expo-notifications';
-import { Checkbox } from 'expo-checkbox';
 
 type WaterSchedule = {
   id: string;
@@ -32,16 +30,9 @@ type WaterSchedule = {
   user_type?: string;
 };
 
-type Horse = {
-  id: string;
-  name: string;
-  selected?: boolean;
-  is_deceased?: boolean;
-};
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/horse_operator"
 
-const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator";
-
-// Configure notifications handler
+// Configure notifications handler - FIXED with complete NotificationBehavior properties
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -56,10 +47,15 @@ const WaterScreen = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
   
-  const horseName = params.horseName as string || 'Unknown Horse';
+  // Get parameters from navigation - try both 'id' and 'horseId' for compatibility
   const horseId = params.horseId as string || params.id as string || '';
-  const [currentUser, setCurrentUser] = useState<string>('');
+  const horseName = params.horseName as string || 'Unknown Horse';
   
+  console.log("WaterScreen params:", params);
+  console.log("Extracted horseId:", horseId);
+  console.log("Extracted horseName:", horseName);
+  
+  const [currentUser, setCurrentUser] = useState<string>('');
   const [wateringSchedule, setWateringSchedule] = useState<WaterSchedule[]>([]);
   const [showEditView, setShowEditView] = useState(false);
   const [showAddView, setShowAddView] = useState(false);
@@ -76,41 +72,6 @@ const WaterScreen = () => {
 
   const [waterAmount, setWaterAmount] = useState('');
   const [waterPeriod, setWaterPeriod] = useState<'Morning' | 'Noon' | 'Evening' | ''>('');
-  
-  // New state for horse selection
-  const [availableHorses, setAvailableHorses] = useState<Horse[]>([]);
-  const [selectedHorses, setSelectedHorses] = useState<Horse[]>([]);
-  const [selectAllHorses, setSelectAllHorses] = useState(false);
-  const [horseSelectionMode, setHorseSelectionMode] = useState<'single' | 'multiple'>('single');
-  const [showSettingsModal, setShowSettingsModal] = useState(false);
-
-  // Use refs to avoid dependencies in callbacks
-  const selectedHorsesRef = useRef<Horse[]>([]);
-  const horseIdRef = useRef<string>(horseId);
-  const currentUserRef = useRef<string>('');
-  const horseNameRef = useRef<string>(horseName);
-  const wateringScheduleRef = useRef<WaterSchedule[]>([]);
-
-  // Update refs when state changes
-  useEffect(() => {
-    selectedHorsesRef.current = selectedHorses;
-  }, [selectedHorses]);
-
-  useEffect(() => {
-    horseIdRef.current = horseId;
-  }, [horseId]);
-
-  useEffect(() => {
-    currentUserRef.current = currentUser;
-  }, [currentUser]);
-
-  useEffect(() => {
-    horseNameRef.current = horseName;
-  }, [horseName]);
-
-  useEffect(() => {
-    wateringScheduleRef.current = wateringSchedule;
-  }, [wateringSchedule]);
 
   // Helper function to generate local ID
   const generateLocalId = (): string => {
@@ -136,15 +97,8 @@ const WaterScreen = () => {
     });
   }, []);
 
-  // Filter out deceased horses
-  const filterOutDeceasedHorses = (horses: Horse[]): Horse[] => {
-    return horses.filter(horse => !horse.is_deceased);
-  };
-
   // Get current user
   const getCurrentUser = useCallback(async (): Promise<string | null> => {
-    if (currentUserRef.current) return currentUserRef.current;
-    
     try {
       const storedUser = await SecureStore.getItemAsync("user_data");
       if (storedUser) {
@@ -153,7 +107,6 @@ const WaterScreen = () => {
         if (id) {
           console.log("Loaded user_id from storage:", id);
           setCurrentUser(id);
-          currentUserRef.current = id;
           return id;
         }
       }
@@ -163,108 +116,15 @@ const WaterScreen = () => {
     return null;
   }, []);
 
-  // Load available horses from API - Filter out deceased horses
-  const loadAvailableHorses = useCallback(async (): Promise<void> => {
-    try {
-      const userId = await getCurrentUser();
-      if (!userId) return;
-
-      // Fetch horses from API
-      const response = await fetch(`${API_BASE_URL}/get_horses/?user_id=${encodeURIComponent(userId)}`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        
-        if (data && Array.isArray(data)) {
-          // Filter out deceased horses
-          const aliveHorses = data.filter((horse: any) => 
-            !horse.is_deceased && horse.horse_status !== 'deceased'
-          );
-          
-          const horses = aliveHorses.map((horse: any) => ({
-            id: horse.horse_id,
-            name: horse.horse_name,
-            selected: false,
-            is_deceased: horse.is_deceased || horse.horse_status === 'deceased'
-          }));
-          
-          setAvailableHorses(horses);
-          
-          // Auto-select current horse if it exists in the list
-          if (horseIdRef.current) {
-            const currentHorseExists = horses.some((h: Horse) => h.id === horseIdRef.current);
-            
-            if (currentHorseExists) {
-              const updatedHorses = horses.map((h: Horse) => ({
-                ...h,
-                selected: h.id === horseIdRef.current
-              }));
-              setAvailableHorses(updatedHorses);
-              const selected = updatedHorses.filter((h: Horse) => h.selected);
-              setSelectedHorses(selected);
-              selectedHorsesRef.current = selected;
-            } else {
-              // If current horse not found (might be deceased), select first horse
-              if (horses.length > 0) {
-                const updatedHorses = horses.map((h: Horse, index: number) => ({
-                  ...h,
-                  selected: index === 0
-                }));
-                setAvailableHorses(updatedHorses);
-                const selected = updatedHorses.filter((h: Horse) => h.selected);
-                setSelectedHorses(selected);
-                selectedHorsesRef.current = selected;
-              }
-            }
-          }
-        } else {
-          // Fallback mock data
-          const mockHorses: Horse[] = [
-            { id: horseIdRef.current, name: horseNameRef.current, selected: true, is_deceased: false },
-            { id: '2', name: 'Spirit', selected: false, is_deceased: false },
-            { id: '3', name: 'Thunder', selected: false, is_deceased: false },
-            { id: '4', name: 'Shadow', selected: false, is_deceased: true },
-            { id: '5', name: 'Daisy', selected: false, is_deceased: false },
-          ];
-          
-          const aliveMockHorses = filterOutDeceasedHorses(mockHorses);
-          setAvailableHorses(aliveMockHorses);
-          const selected = aliveMockHorses.filter((h: Horse) => h.selected);
-          setSelectedHorses(selected);
-          selectedHorsesRef.current = selected;
-        }
-      } else {
-        throw new Error('Failed to fetch horses');
-      }
-    } catch (error) {
-      console.error('Error loading available horses:', error);
-      
-      // Fallback mock data on error
-      const mockHorses: Horse[] = [
-        { id: horseIdRef.current, name: horseNameRef.current, selected: true, is_deceased: false },
-        { id: '2', name: 'Spirit', selected: false, is_deceased: false },
-        { id: '3', name: 'Thunder', selected: false, is_deceased: false },
-        { id: '4', name: 'Shadow', selected: false, is_deceased: true },
-        { id: '5', name: 'Daisy', selected: false, is_deceased: false },
-      ];
-      
-      const aliveMockHorses = filterOutDeceasedHorses(mockHorses);
-      setAvailableHorses(aliveMockHorses);
-      const selected = aliveMockHorses.filter((h: Horse) => h.selected);
-      setSelectedHorses(selected);
-      selectedHorsesRef.current = selected;
-    }
-  }, [getCurrentUser]);
-
   // Load today's water records
   const loadTodaysWaterRecords = useCallback(async (userId: string): Promise<WaterSchedule[]> => {
     try {
-      if (!horseIdRef.current) {
+      if (!horseId) {
         console.error("No horseId available for loading water records");
         return [];
       }
       
-      const url = `${API_BASE_URL}/get_watering_schedule/?user_id=${encodeURIComponent(userId)}&horse_id=${encodeURIComponent(horseIdRef.current)}`;
+      const url = `${API_BASE_URL}/get_watering_schedule/?user_id=${encodeURIComponent(userId)}&horse_id=${encodeURIComponent(horseId)}`;
       console.log("Loading today's water records:", url);
 
       const response = await fetch(url);
@@ -298,7 +158,7 @@ const WaterScreen = () => {
     
     console.log('Returning empty water records array');
     return [];
-  }, [sortWaterByPeriod]);
+  }, [horseId, sortWaterByPeriod]);
 
   // Parse time string to hours and minutes
   const parseTimeString = (timeString: string): { hours: number, minutes: number } | null => {
@@ -372,8 +232,8 @@ const WaterScreen = () => {
   const storeLastViewedWaterTime = useCallback(async (schedule: WaterSchedule[]): Promise<void> => {
     try {
       const lastViewedData = {
-        horseId: horseIdRef.current,
-        horseName: horseNameRef.current,
+        horseId,
+        horseName,
         schedule: schedule.map(water => ({
           period: water.period,
           time: water.time,
@@ -382,18 +242,18 @@ const WaterScreen = () => {
         lastUpdated: new Date().toISOString(),
       };
       
-      await SecureStore.setItemAsync(`last_water_schedule_${horseIdRef.current}`, JSON.stringify(lastViewedData));
+      await SecureStore.setItemAsync(`last_water_schedule_${horseId}`, JSON.stringify(lastViewedData));
       console.log('Stored last viewed water time for automatic notifications');
     } catch (error) {
       console.error('Error storing last viewed water time:', error);
     }
-  }, []);
+  }, [horseId, horseName]);
 
   // Schedule automatic daily notifications based on last viewed water time
   const scheduleAutomaticDailyNotifications = useCallback(async (): Promise<void> => {
     try {
       // Get the last stored water schedule
-      const storedData = await SecureStore.getItemAsync(`last_water_schedule_${horseIdRef.current}`);
+      const storedData = await SecureStore.getItemAsync(`last_water_schedule_${horseId}`);
       if (!storedData) {
         console.log('No stored water schedule found for automatic notifications');
         return;
@@ -414,7 +274,7 @@ const WaterScreen = () => {
         const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
         const autoNotifications = scheduledNotifications.filter(notification => 
           notification.content.data?.type === 'auto_water_reminder' && 
-          notification.content.data?.horseId === horseIdRef.current
+          notification.content.data?.horseId === horseId
         );
         
         for (const notification of autoNotifications) {
@@ -437,17 +297,17 @@ const WaterScreen = () => {
 
             await Notifications.scheduleNotificationAsync({
               content: {
-                title: `${periodEmoji} ${water.period} Water - ${horseNameRef.current}`,
+                title: `${periodEmoji} ${water.period} Water - ${horseName}`,
                 subtitle: subtitle,
                 body: `💧 ${water.amount}\n${motivationalMessage}`,
                 data: { 
                   type: 'auto_water_reminder',
-                  horseId: horseIdRef.current,
-                  horseName: horseNameRef.current,
+                  horseId: horseId,
+                  horseName: horseName,
                   period: water.period,
                   amount: water.amount,
                   time: water.time,
-                  notificationId: `auto_water_${horseIdRef.current}_${water.period}_${Date.now()}`
+                  notificationId: `auto_water_${horseId}_${water.period}_${Date.now()}`
                 },
                 sound: 'default',
                 priority: 'high',
@@ -463,25 +323,24 @@ const WaterScreen = () => {
     } catch (error) {
       console.error('Error scheduling automatic daily notifications:', error);
     }
-  }, []);
+  }, [horseId, horseName]);
 
   // Schedule water notifications
-  const scheduleWaterNotifications = useCallback(async (schedule: WaterSchedule[], horses: Horse[] = []): Promise<void> => {
+  const scheduleWaterNotifications = useCallback(async (schedule: any[]): Promise<void> => {
     try {
       // First, get all currently scheduled notifications
       const scheduledNotifications = await Notifications.getAllScheduledNotificationsAsync();
       console.log(`Currently have ${scheduledNotifications.length} scheduled notifications`);
       
-      // Cancel only water-related notifications for selected horses
-      const horseIds = horses.length > 0 ? horses.map(h => h.id) : [horseIdRef.current];
+      // Cancel only water-related notifications for this horse
       const waterNotifications = scheduledNotifications.filter(notification => 
         (notification.content.data?.type === 'water_reminder' || 
          notification.content.data?.type === 'auto_water_reminder') && 
-        horseIds.includes(notification.content.data?.horseId as string)
+        notification.content.data?.horseId === horseId
       );
       
       if (waterNotifications.length > 0) {
-        console.log(`Canceling ${waterNotifications.length} existing water notifications for horse ${horseIdRef.current}`);
+        console.log(`Canceling ${waterNotifications.length} existing water notifications for horse ${horseId}`);
         for (const notification of waterNotifications) {
           await Notifications.cancelScheduledNotificationAsync(notification.identifier);
         }
@@ -491,46 +350,43 @@ const WaterScreen = () => {
       await storeLastViewedWaterTime(schedule);
 
       // Schedule new notifications for each water schedule
-      console.log(`Scheduling ${schedule.length} new water notifications for ${horses.length} horses`);
+      console.log(`Scheduling ${schedule.length} new water notifications`);
       
       for (const water of schedule) {
         const notificationTime = parseTimeString(water.time);
         if (notificationTime) {
-          // Schedule for each selected horse
-          for (const horse of horses) {
-            const trigger: Notifications.DailyTriggerInput = {
-              type: Notifications.SchedulableTriggerInputTypes.DAILY,
-              hour: notificationTime.hours,
-              minute: notificationTime.minutes,
-            };
+          const trigger: Notifications.DailyTriggerInput = {
+            type: Notifications.SchedulableTriggerInputTypes.DAILY,
+            hour: notificationTime.hours,
+            minute: notificationTime.minutes,
+          };
 
-            const periodEmoji = getPeriodEmoji(water.period);
-            const subtitle = getNotificationSubtitle(water.period);
-            const motivationalMessage = getMotivationalMessage(water.period);
+          const periodEmoji = getPeriodEmoji(water.period);
+          const subtitle = getNotificationSubtitle(water.period);
+          const motivationalMessage = getMotivationalMessage(water.period);
 
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: `${periodEmoji} ${water.period} Water - ${horse.name}`,
-                subtitle: subtitle,
-                body: `💧 ${water.amount}\n${motivationalMessage}`,
-                data: { 
-                  type: 'water_reminder',
-                  horseId: horse.id,
-                  horseName: horse.name,
-                  period: water.period,
-                  amount: water.amount,
-                  time: water.time,
-                  notificationId: `water_${horse.id}_${water.period}_${Date.now()}`
-                },
-                sound: 'default',
-                priority: 'high',
-                badge: 1,
+          const notificationId = await Notifications.scheduleNotificationAsync({
+            content: {
+              title: `${periodEmoji} ${water.period} Water - ${horseName}`,
+              subtitle: subtitle,
+              body: `💧 ${water.amount}\n${motivationalMessage}`,
+              data: { 
+                type: 'water_reminder',
+                horseId: horseId,
+                horseName: horseName,
+                period: water.period,
+                amount: water.amount,
+                time: water.time,
+                notificationId: `water_${horseId}_${water.period}_${Date.now()}`
               },
-              trigger,
-            });
+              sound: 'default',
+              priority: 'high',
+              badge: 1,
+            },
+            trigger,
+          });
 
-            console.log(`✅ Scheduled ${water.period} notification for ${horse.name} at ${notificationTime.hours}:${notificationTime.minutes}`);
-          }
+          console.log(`✅ Scheduled ${water.period} notification for ${notificationTime.hours}:${notificationTime.minutes} (ID: ${notificationId})`);
         } else {
           console.warn(`❌ Could not parse time for ${water.period}: ${water.time}`);
         }
@@ -540,18 +396,18 @@ const WaterScreen = () => {
       const finalScheduled = await Notifications.getAllScheduledNotificationsAsync();
       const waterScheduled = finalScheduled.filter(notification => 
         notification.content.data?.type === 'water_reminder' && 
-        horseIds.includes(notification.content.data?.horseId as string)
+        notification.content.data?.horseId === horseId
       );
-      console.log(`✅ Successfully scheduled ${waterScheduled.length} water notifications`);
+      console.log(`✅ Successfully scheduled ${waterScheduled.length} water notifications for horse ${horseId}`);
       
     } catch (error) {
       console.error('❌ Error scheduling notifications:', error);
     }
-  }, [storeLastViewedWaterTime]);
+  }, [horseId, horseName, storeLastViewedWaterTime]);
 
   // Save schedule to database
-  const saveScheduleToDatabase = async (schedule: WaterSchedule[], horses: Horse[] = [], isEdit: boolean = false, waterToUpdate?: WaterSchedule): Promise<boolean> => {
-    if (!currentUserRef.current || !horseIdRef.current) {
+  const saveScheduleToDatabase = async (schedule: WaterSchedule[]): Promise<boolean> => {
+    if (!currentUser || !horseId) {
       console.error('Cannot save schedule: Missing user ID or horse ID');
       return false;
     }
@@ -564,29 +420,18 @@ const WaterScreen = () => {
           time: water.time,
           amount: water.amount,
           period: water.period,
-          water_id: water.water_id,
         }));
 
-      // Use different endpoint for edits vs new schedules
-      const endpoint = isEdit ? 'update_watering_schedule' : 'save_watering_schedule';
-      const requestBody: any = {
-        user_id: currentUserRef.current,
-        horse_id: horseIdRef.current,
-        schedule: scheduleToSave,
-      };
-
-      // For edits, include the specific water to update
-      if (isEdit && waterToUpdate) {
-        requestBody.water_id = waterToUpdate.water_id;
-        requestBody.period = waterToUpdate.period;
-      }
-
-      const response = await fetch(`${API_BASE_URL}/${endpoint}/`, {
+      const response = await fetch(`${API_BASE_URL}/save_watering_schedule/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({
+          user_id: currentUser,
+          horse_id: horseId,
+          schedule: scheduleToSave,
+        }),
       });
 
       if (response.ok) {
@@ -594,7 +439,7 @@ const WaterScreen = () => {
         console.log('Watering schedule saved to database.');
         
         // Schedule notifications for all active schedules
-        await scheduleWaterNotifications(schedule, horses);
+        await scheduleWaterNotifications(scheduleToSave);
         
         return true;
       } else {
@@ -608,66 +453,14 @@ const WaterScreen = () => {
     }
   };
 
-  // Check if water is completed (by anyone)
-  const isWaterCompleted = useCallback((period: string): boolean => {
-    const existingWater = wateringScheduleRef.current.find(water => 
-      water.period === period && 
-      water.completed
-    );
-    return !!existingWater;
-  }, []);
-
-  // Get completed water info
-  const getCompletedWaterInfo = useCallback((period: string): { given_by: string, user_type: string } | null => {
-    const existingWater = wateringScheduleRef.current.find(water => 
-      water.period === period && 
-      water.completed
-    );
-    return existingWater ? { 
-      given_by: existingWater.given_by || 'Unknown', 
-      user_type: existingWater.user_type || 'unknown' 
-    } : null;
-  }, []);
-
-  // Check if all waters are completed
-  const areAllWatersCompleted = useCallback((): boolean => {
-    const periods = ['Morning', 'Noon', 'Evening'];
-    return periods.every(period => isWaterCompleted(period));
-  }, [isWaterCompleted]);
-
-  // Get available periods for adding new schedules
-  const getAvailablePeriods = useCallback((): ('Morning' | 'Noon' | 'Evening')[] => {
-    const allPeriods: ('Morning' | 'Noon' | 'Evening')[] = ['Morning', 'Noon', 'Evening'];
-    
-    return allPeriods.filter(period => {
-      // Check if this period is completed
-      if (isWaterCompleted(period)) {
-        return false; // Cannot add schedule for completed periods
-      }
-      
-      // Check if there's already an existing schedule for this period
-      const existingSchedule = wateringScheduleRef.current.find(water => water.period === period);
-      if (existingSchedule) {
-        return false; // Cannot add schedule for existing periods
-      }
-      
-      return true; // This period is available for new schedules
-    });
-  }, [isWaterCompleted]);
-
-  // Get scheduled periods (for display purposes)
-  const getScheduledPeriods = useCallback((): string[] => {
-    return wateringScheduleRef.current.map(water => water.period);
-  }, []);
-
-  // Initialize water screen
+  // Initialize water screen - FIXED VERSION
   const initializeWaterScreen = useCallback(async (): Promise<void> => {
     console.log("Initializing water screen...");
-    console.log("Horse ID:", horseIdRef.current);
-    console.log("Horse Name:", horseNameRef.current);
+    console.log("Horse ID:", horseId);
+    console.log("Horse Name:", horseName);
     
     // Ensure we have horseId
-    if (!horseIdRef.current) {
+    if (!horseId) {
       console.error("No horseId provided");
       setIsLoading(false);
       Alert.alert('Error', 'No horse selected. Please go back and select a horse.');
@@ -683,12 +476,8 @@ const WaterScreen = () => {
         return;
       }
 
-      console.log(`Loading water records for horse: ${horseIdRef.current}, user: ${userId}`);
+      console.log(`Loading water records for horse: ${horseId}, user: ${userId}`);
       
-      // Load available horses
-      await loadAvailableHorses();
-
-      // Load today's water records
       const todaysRecords = await loadTodaysWaterRecords(userId);
       console.log(`Loaded ${todaysRecords.length} watering schedule items`);
       
@@ -699,7 +488,7 @@ const WaterScreen = () => {
       if (todaysRecords.length > 0) {
         const activeSchedules = todaysRecords.filter(water => !water.completed);
         if (activeSchedules.length > 0) {
-          await scheduleWaterNotifications(activeSchedules, selectedHorsesRef.current);
+          await scheduleWaterNotifications(activeSchedules);
         }
       }
       
@@ -711,13 +500,14 @@ const WaterScreen = () => {
       setWateringSchedule([]);
       Alert.alert('Error', 'Failed to load watering schedule. Please try again.');
     } finally {
-      // ALWAYS set isLoading to false
+      // ALWAYS set isLoading to false - this was the main issue
       setIsLoading(false);
       console.log("Initialization complete, isLoading set to false");
     }
   }, [
+    horseId, 
+    horseName,
     getCurrentUser, 
-    loadAvailableHorses,
     loadTodaysWaterRecords, 
     scheduleWaterNotifications, 
     scheduleAutomaticDailyNotifications
@@ -760,7 +550,7 @@ const WaterScreen = () => {
     return () => subscription.remove();
   }, []);
 
-  // Initialize on component mount
+  // Initialize on component mount - FIXED
   useEffect(() => {
     let mounted = true;
     
@@ -785,22 +575,18 @@ const WaterScreen = () => {
     setRefreshing(true);
     
     try {
-      const userId = await getCurrentUser();
-      if (userId && horseIdRef.current) {
-        const todaysRecords = await loadTodaysWaterRecords(userId);
+      if (currentUser && horseId) {
+        const todaysRecords = await loadTodaysWaterRecords(currentUser);
         setWateringSchedule(todaysRecords);
         
         // Update notifications for active schedules
         const activeSchedules = todaysRecords.filter(water => !water.completed);
         if (activeSchedules.length > 0) {
-          await scheduleWaterNotifications(activeSchedules, selectedHorsesRef.current);
+          await scheduleWaterNotifications(activeSchedules);
         }
         
         // Schedule automatic daily notifications
         await scheduleAutomaticDailyNotifications();
-        
-        // Load available horses
-        await loadAvailableHorses();
       }
     } catch (error) {
       console.error('Error refreshing:', error);
@@ -808,36 +594,78 @@ const WaterScreen = () => {
       setRefreshing(false);
     }
   }, [
-    getCurrentUser, 
+    currentUser, 
+    horseId, 
     loadTodaysWaterRecords, 
     scheduleWaterNotifications, 
-    scheduleAutomaticDailyNotifications,
-    loadAvailableHorses
+    scheduleAutomaticDailyNotifications
   ]);
 
   // Focus effect
   useFocusEffect(
     useCallback(() => {
       console.log("WaterScreen focused");
-      let mounted = true;
-      
-      const refreshData = async () => {
-        if (mounted && currentUserRef.current && isInitialized) {
-          await onRefresh();
-        }
-      };
-      
-      refreshData();
-      
-      return () => {
-        mounted = false;
-      };
-    }, [isInitialized, onRefresh])
+      if (currentUser && isInitialized) {
+        onRefresh();
+      }
+    }, [currentUser, isInitialized, onRefresh])
   );
+
+  // Check if water is completed (by anyone)
+  const isWaterCompleted = useCallback((period: string): boolean => {
+    const existingWater = wateringSchedule.find(water => 
+      water.period === period && 
+      water.completed
+    );
+    return !!existingWater;
+  }, [wateringSchedule]);
+
+  // Get completed water info
+  const getCompletedWaterInfo = useCallback((period: string): { given_by: string, user_type: string } | null => {
+    const existingWater = wateringSchedule.find(water => 
+      water.period === period && 
+      water.completed
+    );
+    return existingWater ? { 
+      given_by: existingWater.given_by || 'Unknown', 
+      user_type: existingWater.user_type || 'unknown' 
+    } : null;
+  }, [wateringSchedule]);
+
+  // Check if all waters are completed
+  const areAllWatersCompleted = useCallback((): boolean => {
+    const periods = ['Morning', 'Noon', 'Evening'];
+    return periods.every(period => isWaterCompleted(period));
+  }, [isWaterCompleted]);
+
+  // Get available periods for adding new schedules
+  const getAvailablePeriods = useCallback((): ('Morning' | 'Noon' | 'Evening')[] => {
+    const allPeriods: ('Morning' | 'Noon' | 'Evening')[] = ['Morning', 'Noon', 'Evening'];
+    
+    return allPeriods.filter(period => {
+      // Check if this period is completed
+      if (isWaterCompleted(period)) {
+        return false; // Cannot add schedule for completed periods
+      }
+      
+      // Check if there's already an existing schedule for this period
+      const existingSchedule = wateringSchedule.find(water => water.period === period);
+      if (existingSchedule) {
+        return false; // Cannot add schedule for existing periods
+      }
+      
+      return true; // This period is available for new schedules
+    });
+  }, [wateringSchedule, isWaterCompleted]);
+
+  // Get scheduled periods (for display purposes)
+  const getScheduledPeriods = useCallback((): string[] => {
+    return wateringSchedule.map(water => water.period);
+  }, [wateringSchedule]);
 
   // Handle mark as given
   const handleMarkAsGiven = async (water: WaterSchedule): Promise<void> => {
-    if (!currentUserRef.current) {
+    if (!currentUser) {
       Alert.alert('Error', 'User not found');
       return;
     }
@@ -853,8 +681,8 @@ const WaterScreen = () => {
       const completedAt = now.toISOString();
 
       console.log('Marking water as given:', {
-        user_id: currentUserRef.current,
-        horse_id: horseIdRef.current,
+        user_id: currentUser,
+        horse_id: horseId,
         water_time: water.time,
         water_period: water.period,
         water_amount: water.amount,
@@ -867,8 +695,8 @@ const WaterScreen = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          user_id: currentUserRef.current,
-          horse_id: horseIdRef.current,
+          user_id: currentUser,
+          horse_id: horseId,
           water_time: water.time,
           water_period: water.period,
           water_amount: water.amount,
@@ -924,7 +752,7 @@ const WaterScreen = () => {
         const notificationToCancel = scheduledNotifications.find(notification => 
           (notification.content.data?.type === 'water_reminder' || 
            notification.content.data?.type === 'auto_water_reminder') && 
-          notification.content.data?.horseId === horseIdRef.current &&
+          notification.content.data?.horseId === horseId &&
           notification.content.data?.period === water.period
         );
         
@@ -936,7 +764,7 @@ const WaterScreen = () => {
         console.error('Error cancelling notification:', error);
       }
       
-      Alert.alert('Success', `Water given to ${horseNameRef.current} and recorded in database!`);
+      Alert.alert('Success', `Water given to ${horseName} and recorded in database!`);
     } catch (error: any) {
       console.error('Error marking water as given:', error);
       Alert.alert('Error', error.message || 'Failed to record watering');
@@ -955,41 +783,25 @@ const WaterScreen = () => {
       return;
     }
 
-    // Check if water period and time are set
-    if (!waterPeriod) {
-      Alert.alert(
-        'Water Period Required',
-        'Please set a water period first using the settings button below.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    // Check if water period is already completed
-    if (isWaterCompleted(waterPeriod)) {
-      const completedInfo = getCompletedWaterInfo(waterPeriod);
-      Alert.alert(
-        'Cannot Add Schedule',
-        `This ${waterPeriod} water has already been completed by ${completedInfo?.given_by}. You cannot add a new schedule for completed periods.`,
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    // Check if water period already exists
-    const existingWater = wateringSchedule.find(water => water.period === waterPeriod);
-    if (existingWater) {
-      Alert.alert(
-        'Water Period Exists',
-        `A ${waterPeriod} schedule already exists. Please edit or delete the existing schedule first.`,
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    // Reset water amount
-    setWaterAmount('');
+    // Get available periods
+    const availablePeriods = getAvailablePeriods();
     
+    if (availablePeriods.length === 0) {
+      Alert.alert(
+        'No Available Periods',
+        `All periods either have existing schedules or have been completed.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
+    setWateringTime({
+      hour: '06',
+      minute: '00',
+      period: 'AM',
+    });
+    setWaterAmount('');
+    setWaterPeriod('');
     setShowAddView(true);
   };
 
@@ -1029,7 +841,7 @@ const WaterScreen = () => {
       return;
     }
 
-    if (!currentUserRef.current) {
+    if (!currentUser) {
       Alert.alert('Error', 'User not found');
       return;
     }
@@ -1045,7 +857,7 @@ const WaterScreen = () => {
           onPress: async () => {
             try {
               console.log('Attempting to delete water schedule:', {
-                user_id: currentUserRef.current,
+                user_id: currentUser,
                 water_id: water.water_id,
                 period: water.period
               });
@@ -1060,7 +872,7 @@ const WaterScreen = () => {
                     'Content-Type': 'application/json',
                   },
                   body: JSON.stringify({
-                    user_id: currentUserRef.current,
+                    user_id: currentUser,
                     water_id: water.water_id,
                   }),
                 });
@@ -1104,7 +916,7 @@ const WaterScreen = () => {
                 const notificationToCancel = scheduledNotifications.find(notification => 
                   (notification.content.data?.type === 'water_reminder' || 
                    notification.content.data?.type === 'auto_water_reminder') && 
-                  notification.content.data?.horseId === horseIdRef.current &&
+                  notification.content.data?.horseId === horseId &&
                   notification.content.data?.period === water.period
                 );
                 
@@ -1116,7 +928,7 @@ const WaterScreen = () => {
                 // Reschedule remaining notifications to ensure they're properly set
                 const activeSchedules = updatedSchedule.filter(w => !w.completed);
                 if (activeSchedules.length > 0) {
-                  await scheduleWaterNotifications(activeSchedules, selectedHorsesRef.current);
+                  await scheduleWaterNotifications(activeSchedules);
                 }
               } catch (error) {
                 console.error('Error updating notifications:', error);
@@ -1153,7 +965,7 @@ const WaterScreen = () => {
 
   // Handle water log navigation
   const handleWaterLog = (): void => {
-    if (!horseIdRef.current) {
+    if (!horseId) {
       Alert.alert('Error', 'No horse selected. Cannot view water log.');
       return;
     }
@@ -1161,9 +973,9 @@ const WaterScreen = () => {
     router.push({
       pathname: '../HORSE_OPERATOR/waterlog',
       params: {
-        id: horseIdRef.current,
-        horseId: horseIdRef.current,
-        horseName: horseNameRef.current
+        id: horseId,
+        horseId: horseId,
+        horseName: horseName
       }
     });
   };
@@ -1181,120 +993,6 @@ const WaterScreen = () => {
     setWaterAmount(amount);
   };
 
-  // Handle open settings modal
-  const handleOpenSettingsModal = (): void => {
-    setShowSettingsModal(true);
-  };
-
-  // Handle close settings modal
-  const handleCloseSettingsModal = (): void => {
-    setShowSettingsModal(false);
-  };
-
-  // Handle horse selection mode change
-  const handleHorseSelectionModeChange = (mode: 'single' | 'multiple'): void => {
-    setHorseSelectionMode(mode);
-    
-    if (mode === 'single') {
-      // If switching to single mode and more than one horse is selected, keep only the first selected
-      if (selectedHorses.length > 1) {
-        const firstSelected = selectedHorses[0];
-        const updatedHorses = availableHorses.map(horse => ({
-          ...horse,
-          selected: horse.id === firstSelected.id
-        }));
-        setAvailableHorses(updatedHorses);
-        setSelectedHorses([firstSelected]);
-        setSelectAllHorses(false);
-      }
-    }
-  };
-
-  // Handle select/deselect horse
-  const handleToggleHorse = (horseId: string): void => {
-    const updatedHorses = availableHorses.map(horse => {
-      if (horse.id === horseId) {
-        const newSelected = !horse.selected;
-        
-        // If single mode and selecting a new horse, deselect all others
-        if (horseSelectionMode === 'single' && newSelected) {
-          return { ...horse, selected: true };
-        }
-        return { ...horse, selected: newSelected };
-      }
-      
-      // In single mode, deselect all other horses when selecting one
-      if (horseSelectionMode === 'single') {
-        return { ...horse, selected: false };
-      }
-      
-      return horse;
-    });
-    
-    setAvailableHorses(updatedHorses);
-    const newSelectedHorses = updatedHorses.filter(h => h.selected);
-    setSelectedHorses(newSelectedHorses);
-    selectedHorsesRef.current = newSelectedHorses;
-    
-    // Update select all state
-    setSelectAllHorses(newSelectedHorses.length === availableHorses.length);
-  };
-
-  // Handle select all horses
-  const handleSelectAllHorses = (): void => {
-    const newSelectAll = !selectAllHorses;
-    setSelectAllHorses(newSelectAll);
-    
-    if (newSelectAll) {
-      // Select all horses
-      const updatedHorses = availableHorses.map(horse => ({
-        ...horse,
-        selected: true
-      }));
-      setAvailableHorses(updatedHorses);
-      setSelectedHorses(updatedHorses);
-      selectedHorsesRef.current = updatedHorses;
-    } else {
-      // Deselect all horses
-      const updatedHorses = availableHorses.map(horse => ({
-        ...horse,
-        selected: false
-      }));
-      setAvailableHorses(updatedHorses);
-      setSelectedHorses([]);
-      selectedHorsesRef.current = [];
-    }
-  };
-
-  // Handle apply settings
-  const handleApplySettings = (): void => {
-    if (!waterPeriod) {
-      Alert.alert('Missing Setting', 'Please select a water period before proceeding.');
-      return;
-    }
-
-    if (selectedHorses.length === 0) {
-      Alert.alert('Missing Setting', 'Please select at least one horse before proceeding.');
-      return;
-    }
-
-    // Filter out deceased horses from selected horses
-    const aliveSelectedHorses = selectedHorses.filter(horse => !horse.is_deceased);
-    if (aliveSelectedHorses.length === 0) {
-      Alert.alert('No Alive Horses Selected', 'Please select at least one alive horse before proceeding.');
-      return;
-    }
-
-    const horseNames = aliveSelectedHorses.map(h => h.name).join(', ');
-    handleCloseSettingsModal();
-    
-    Alert.alert(
-      'Settings Saved',
-      `Settings saved for ${aliveSelectedHorses.length} horse(s): ${horseNames}\n\nWater Period: ${waterPeriod}\nTime: ${wateringTime.hour}:${wateringTime.minute} ${wateringTime.period}\n\nYou can now add a watering schedule.`,
-      [{ text: 'OK' }]
-    );
-  };
-
   // Handle save new schedule
   const handleSaveNewSchedule = async (): Promise<void> => {
     if (!waterAmount.trim()) {
@@ -1303,12 +1001,7 @@ const WaterScreen = () => {
     }
 
     if (!waterPeriod) {
-      Alert.alert('Error', 'Please select a water period.');
-      return;
-    }
-
-    if (selectedHorses.length === 0) {
-      Alert.alert('Error', 'Please select at least one horse in settings.');
+      Alert.alert('Error', 'Please select a period.');
       return;
     }
 
@@ -1362,9 +1055,9 @@ const WaterScreen = () => {
                 setWateringSchedule(sortWaterByPeriod(updatedSchedule));
                 setShowAddView(false);
                 
-                const success = await saveScheduleToDatabase(updatedSchedule, selectedHorses, true, existingWater);
+                const success = await saveScheduleToDatabase(updatedSchedule);
                 if (success) {
-                  Alert.alert('Success', `${waterPeriod} schedule updated for selected horses!`);
+                  Alert.alert('Success', `${waterPeriod} schedule updated for ${horseName}!`);
                 } else {
                   Alert.alert('Warning', 'Schedule updated locally but failed to save to database');
                 }
@@ -1387,9 +1080,9 @@ const WaterScreen = () => {
       setWateringSchedule(sortWaterByPeriod(updatedSchedule));
       setShowAddView(false);
       
-      const success = await saveScheduleToDatabase(updatedSchedule, selectedHorses, false);
+      const success = await saveScheduleToDatabase(updatedSchedule);
       if (success) {
-        Alert.alert('Success', `${waterPeriod} schedule added for selected horses!`);
+        Alert.alert('Success', `${waterPeriod} schedule added for ${horseName}!`);
       } else {
         Alert.alert('Warning', 'Schedule added locally but failed to save to database');
       }
@@ -1406,7 +1099,7 @@ const WaterScreen = () => {
       return;
     }
           
-    if (!editingWater || !currentUserRef.current) return;
+    if (!editingWater || !currentUser) return;
 
     // Check if this water is completed
     if (editingWater.completed) {
@@ -1436,9 +1129,9 @@ const WaterScreen = () => {
       setWateringSchedule(sortWaterByPeriod(updatedSchedule));
       setShowEditView(false);
       
-      const success = await saveScheduleToDatabase(updatedSchedule, selectedHorses, true, editingWater);
+      const success = await saveScheduleToDatabase(updatedSchedule);
       if (success) {
-        Alert.alert('Success', `Watering schedule updated for selected horses!`);
+        Alert.alert('Success', `Watering schedule updated for ${horseName}!`);
       } else {
         Alert.alert('Warning', 'Schedule updated locally but failed to save to database');
       }
@@ -1473,33 +1166,6 @@ const WaterScreen = () => {
     return scheduledPeriods.includes(period);
   };
 
-  // Handle edit schedule settings
-  const handleEditScheduleSettings = (water: WaterSchedule): void => {
-    if (water.completed) {
-      const givenBy = water.given_by || 'someone';
-      Alert.alert(
-        'Cannot Edit',
-        `This water was already given by ${givenBy}. You cannot edit completed schedules.`,
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    // Open settings modal with current water settings
-    setWaterPeriod(water.period as any);
-    
-    // Set time from existing water
-    const timeParts = water.time.split(' ');
-    const time = timeParts[0].split(':');
-    setWateringTime({
-      hour: time[0],
-      minute: time[1],
-      period: timeParts[1] || 'AM',
-    });
-    
-    setShowSettingsModal(true);
-  };
-
   // Show loading state
   if (isLoading) {
     return (
@@ -1525,6 +1191,93 @@ const WaterScreen = () => {
 
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Period</Text>
+              <View style={styles.periodContainer}>
+                {(['Morning', 'Noon', 'Evening'] as const).map((period) => (
+                  <TouchableOpacity
+                    key={period}
+                    style={[
+                      styles.periodButton,
+                      waterPeriod === period && styles.periodButtonSelected,
+                      (isWaterCompleted(period) || isPeriodScheduled(period)) && styles.periodButtonDisabled
+                    ]}
+                    onPress={() => {
+                      if (isWaterCompleted(period)) {
+                        const completedInfo = getCompletedWaterInfo(period);
+                        Alert.alert(
+                          'Cannot Select',
+                          `This ${period} water has been completed by ${completedInfo?.given_by} and cannot be modified.`,
+                          [{ text: 'OK' }]
+                        );
+                        return;
+                      }
+                      if (isPeriodScheduled(period) && period !== editingWater?.period) {
+                        Alert.alert(
+                          'Already Scheduled',
+                          `A ${period} schedule already exists. You cannot have multiple schedules for the same period.`,
+                          [{ text: 'OK' }]
+                        );
+                        return;
+                      }
+                      setWaterPeriod(period);
+                    }}
+                    disabled={isWaterCompleted(period) || (isPeriodScheduled(period) && period !== editingWater?.period)}
+                  >
+                    <Text style={[
+                      styles.periodButtonText,
+                      waterPeriod === period && styles.periodButtonTextSelected,
+                      (isWaterCompleted(period) || isPeriodScheduled(period)) && styles.periodButtonTextDisabled
+                    ]}>
+                      {period}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Watering Time</Text>
+              <View style={styles.timeInputContainer}>
+                <TextInput
+                  style={styles.timeInput}
+                  value={wateringTime.hour}
+                  onChangeText={(value) => handleTimeChange('hour', value)}
+                  placeholder="HH"
+                  keyboardType="numeric"
+                  maxLength={2}
+                />
+                <Text style={styles.timeSeparator}>:</Text>
+                <TextInput
+                  style={styles.timeInput}
+                  value={wateringTime.minute}
+                  onChangeText={(value) => handleTimeChange('minute', value)}
+                  placeholder="MM"
+                  keyboardType="numeric"
+                  maxLength={2}
+                />
+                <View style={styles.periodTimeContainer}>
+                  {(['AM', 'PM'] as const).map((period) => (
+                    <TouchableOpacity
+                      key={period}
+                      style={[
+                        styles.periodTimeButton,
+                        wateringTime.period === period && styles.periodTimeButtonSelected
+                      ]}
+                      onPress={() => handleTimeChange('period', period)}
+                    >
+                      <Text style={[
+                        styles.periodTimeButtonText,
+                        wateringTime.period === period && styles.periodTimeButtonTextSelected
+                      ]}>
+                        {period}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Water Amount</Text>
               <View style={styles.amountContainer}>
@@ -1567,42 +1320,89 @@ const WaterScreen = () => {
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Current Settings</Text>
-              <View style={styles.currentSettingsContainer}>
-                <View style={styles.settingRow}>
-                  <Text style={styles.settingLabel}>Water Period:</Text>
-                  <Text style={styles.settingValue}>{waterPeriod || 'Not Set'}</Text>
-                </View>
-                <View style={styles.settingRow}>
-                  <Text style={styles.settingLabel}>Watering Time:</Text>
-                  <Text style={styles.settingValue}>
-                    {wateringTime.hour}:{wateringTime.minute} {wateringTime.period}
-                  </Text>
-                </View>
-                <View style={styles.settingRow}>
-                  <Text style={styles.settingLabel}>Selected Horses:</Text>
-                  <Text style={styles.settingValue}>
-                    {selectedHorses.filter(h => !h.is_deceased).length} horse(s)
-                  </Text>
-                </View>
-                <View style={styles.selectedHorsesList}>
-                  {selectedHorses.filter(h => !h.is_deceased).map((horse, index) => (
-                    <View key={horse.id} style={styles.horseBadge}>
-                      <FontAwesome5 name="horse-head" size={12} color="#3B82F6" />
-                      <Text style={styles.horseBadgeText}>{horse.name}</Text>
-                    </View>
+              <Text style={styles.sectionTitle}>Water Period</Text>
+              <View style={styles.periodContainer}>
+                {(['Morning', 'Noon', 'Evening'] as const).map((period) => (
+                  <TouchableOpacity
+                    key={period}
+                    style={[
+                      styles.periodButton,
+                      waterPeriod === period && styles.periodButtonSelected,
+                      (isWaterCompleted(period) || isPeriodScheduled(period)) && styles.periodButtonDisabled
+                    ]}
+                    onPress={() => {
+                      if (isWaterCompleted(period)) {
+                        const completedInfo = getCompletedWaterInfo(period);
+                        Alert.alert(
+                          'Cannot Select',
+                          `This ${period} water has been completed by ${completedInfo?.given_by} and cannot be modified.`,
+                          [{ text: 'OK' }]
+                        );
+                        return;
+                      }
+                      if (isPeriodScheduled(period)) {
+                        Alert.alert(
+                          'Already Scheduled',
+                          `A ${period} schedule already exists. You cannot have multiple schedules for the same period.`,
+                          [{ text: 'OK' }]
+                        );
+                        return;
+                      }
+                      setWaterPeriod(period);
+                    }}
+                    disabled={isWaterCompleted(period) || isPeriodScheduled(period)}
+                  >
+                    <Text style={[
+                      styles.periodButtonText,
+                      waterPeriod === period && styles.periodButtonTextSelected,
+                      (isWaterCompleted(period) || isPeriodScheduled(period)) && styles.periodButtonTextDisabled
+                    ]}>
+                      {period}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Watering Time</Text>
+              <View style={styles.timeInputContainer}>
+                <TextInput
+                  style={styles.timeInput}
+                  value={wateringTime.hour}
+                  onChangeText={(value) => handleTimeChange('hour', value)}
+                  placeholder="HH"
+                  keyboardType="numeric"
+                  maxLength={2}
+                />
+                <Text style={styles.timeSeparator}>:</Text>
+                <TextInput
+                  style={styles.timeInput}
+                  value={wateringTime.minute}
+                  onChangeText={(value) => handleTimeChange('minute', value)}
+                  placeholder="MM"
+                  keyboardType="numeric"
+                  maxLength={2}
+                />
+                <View style={styles.periodTimeContainer}>
+                  {(['AM', 'PM'] as const).map((period) => (
+                    <TouchableOpacity
+                      key={period}
+                      style={[
+                        styles.periodTimeButton,
+                        wateringTime.period === period && styles.periodTimeButtonSelected
+                      ]}
+                      onPress={() => handleTimeChange('period', period)}
+                    >
+                      <Text style={[
+                        styles.periodTimeButtonText,
+                        wateringTime.period === period && styles.periodTimeButtonTextSelected
+                      ]}>
+                        {period}
+                      </Text>
+                    </TouchableOpacity>
                   ))}
                 </View>
-                <TouchableOpacity 
-                  style={styles.changeSettingsButton}
-                  onPress={() => {
-                    setShowAddView(false);
-                    handleOpenSettingsModal();
-                  }}
-                >
-                  <FontAwesome5 name="cog" size={14} color="#3B82F6" />
-                  <Text style={styles.changeSettingsButtonText}>Change Settings</Text>
-                </TouchableOpacity>
               </View>
             </View>
 
@@ -1628,10 +1428,10 @@ const WaterScreen = () => {
           <TouchableOpacity 
             style={[
               styles.saveButton,
-              (!waterPeriod || !waterAmount.trim() || selectedHorses.filter(h => !h.is_deceased).length === 0) && styles.saveButtonDisabled
+              !waterPeriod && styles.saveButtonDisabled
             ]} 
             onPress={handleSaveNewSchedule}
-            disabled={!waterPeriod || !waterAmount.trim() || selectedHorses.filter(h => !h.is_deceased).length === 0}
+            disabled={!waterPeriod}
           >
             <Text style={styles.saveButtonText}>Add Schedule</Text>
           </TouchableOpacity>
@@ -1687,12 +1487,9 @@ const WaterScreen = () => {
               <FontAwesome5 name="tint" size={64} color="#E2E8F0" />
               <Text style={styles.emptyStateTitle}>No water schedule found</Text>
               <Text style={styles.emptyStateText}>
-                Set your watering time, water period, and select horses first, then add a schedule.
+                Add your first watering schedule to get started. Your schedule will be saved for today.
               </Text>
-              <TouchableOpacity 
-                style={styles.addFirstScheduleButton} 
-                onPress={handleAddNewSchedule}
-              >
+              <TouchableOpacity style={styles.addFirstScheduleButton} onPress={handleAddNewSchedule}>
                 <FontAwesome5 name="plus" size={16} color="#fff" />
                 <Text style={styles.addFirstScheduleButtonText}>Add New Water Schedule</Text>
               </TouchableOpacity>
@@ -1719,12 +1516,6 @@ const WaterScreen = () => {
                     <View style={styles.waterActions}>
                       {!water.completed && (
                         <>
-                          <TouchableOpacity 
-                            style={styles.editButton}
-                            onPress={() => handleEditScheduleSettings(water)}
-                          >
-                            <FontAwesome5 name="cog" size={14} color="#3B82F6" />
-                          </TouchableOpacity>
                           <TouchableOpacity 
                             style={styles.editButton}
                             onPress={() => handleEdit(water)}
@@ -1779,353 +1570,14 @@ const WaterScreen = () => {
               ))}
 
               {availablePeriods.length > 0 && (
-                <TouchableOpacity 
-                  style={styles.addScheduleButton} 
-                  onPress={handleAddNewSchedule}
-                >
-                  <FontAwesome5 name="plus" size={16} color="#fff" />
-                  <Text style={styles.addScheduleButtonText}>Add New Water Schedule</Text>
+                <TouchableOpacity style={styles.addScheduleButton} onPress={handleAddNewSchedule}>
+                  <Text style={styles.addScheduleButtonText}>Add Water Schedule</Text>
                 </TouchableOpacity>
               )}
             </>
           )}
         </View>
       </ScrollView>
-
-      {/* Secondary Floating Action Button for Settings */}
-      <TouchableOpacity 
-        style={styles.secondaryFloatingButton}
-        onPress={handleOpenSettingsModal}
-      >
-        <FontAwesome5 name="cog" size={24} color="#fff" />
-      </TouchableOpacity>
-
-      {/* Settings Modal */}
-      <Modal
-        visible={showSettingsModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={handleCloseSettingsModal}
-      >
-        <View style={styles.settingsModalOverlay}>
-          <View style={styles.settingsModalContent}>
-            <View style={styles.settingsModalHeader}>
-              <Text style={styles.settingsModalTitle}>Schedule Settings</Text>
-              <TouchableOpacity onPress={handleCloseSettingsModal}>
-                <FontAwesome5 name="times" size={20} color="#64748B" />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={styles.settingsModalBody}>
-              <View style={styles.settingsSection}>
-                <Text style={styles.settingsSectionTitle}>Horse Selection</Text>
-                <Text style={styles.settingsSectionSubtitle}>
-                  Choose which horses this schedule applies to (deceased horses are excluded)
-                </Text>
-                
-                <View style={styles.horseSelectionModeContainer}>
-                  <TouchableOpacity
-                    style={[
-                      styles.selectionModeButton,
-                      horseSelectionMode === 'single' && styles.selectionModeButtonActive
-                    ]}
-                    onPress={() => handleHorseSelectionModeChange('single')}
-                  >
-                    <FontAwesome5 
-                      name="horse" 
-                      size={16} 
-                      color={horseSelectionMode === 'single' ? '#fff' : '#3B82F6'} 
-                    />
-                    <Text style={[
-                      styles.selectionModeButtonText,
-                      horseSelectionMode === 'single' && styles.selectionModeButtonTextActive
-                    ]}>
-                      Single Horse
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[
-                      styles.selectionModeButton,
-                      horseSelectionMode === 'multiple' && styles.selectionModeButtonActive
-                    ]}
-                    onPress={() => handleHorseSelectionModeChange('multiple')}
-                  >
-                    <FontAwesome5 
-                      name="horse" 
-                      size={16} 
-                      color={horseSelectionMode === 'multiple' ? '#fff' : '#3B82F6'} 
-                    />
-                    <Text style={[
-                      styles.selectionModeButtonText,
-                      horseSelectionMode === 'multiple' && styles.selectionModeButtonTextActive
-                    ]}>
-                      Multiple Horses
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-                
-                {/* Select All Button */}
-                {horseSelectionMode === 'multiple' && (
-                  <TouchableOpacity
-                    style={styles.selectAllButton}
-                    onPress={handleSelectAllHorses}
-                  >
-                    <Checkbox
-                      value={selectAllHorses}
-                      onValueChange={handleSelectAllHorses}
-                      color={selectAllHorses ? '#3B82F6' : undefined}
-                    />
-                    <Text style={styles.selectAllButtonText}>
-                      Select All Horses ({availableHorses.filter(h => !h.is_deceased).length})
-                    </Text>
-                  </TouchableOpacity>
-                )}
-                
-                {/* Horses List */}
-                <View style={styles.horsesListContainer}>
-                  {availableHorses.filter(h => !h.is_deceased).map((horse) => (
-                    <TouchableOpacity
-                      key={horse.id}
-                      style={[
-                        styles.horseItem,
-                        horse.selected && styles.horseItemSelected
-                      ]}
-                      onPress={() => handleToggleHorse(horse.id)}
-                      disabled={horseSelectionMode === 'single' && horse.selected}
-                    >
-                      <Checkbox
-                        value={horse.selected}
-                        onValueChange={() => handleToggleHorse(horse.id)}
-                        color={horse.selected ? '#3B82F6' : undefined}
-                        disabled={horseSelectionMode === 'single' && horse.selected}
-                      />
-                      <View style={styles.horseItemContent}>
-                        <Text style={[
-                          styles.horseItemName,
-                          horse.selected && styles.horseItemNameSelected,
-                          horse.id === horseId && styles.currentHorseName
-                        ]}>
-                          {horse.name}
-                          {horse.id === horseId && ' (Current)'}
-                        </Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                  
-                  {/* Show deceased horses separately (disabled) */}
-                  {availableHorses.filter(h => h.is_deceased).length > 0 && (
-                    <View style={styles.deceasedHorsesSection}>
-                      <Text style={styles.deceasedHorsesTitle}>Deceased Horses (Unavailable)</Text>
-                      {availableHorses.filter(h => h.is_deceased).map((horse) => (
-                        <View key={horse.id} style={styles.deceasedHorseItem}>
-                          <FontAwesome5 name="times" size={14} color="#9CA3AF" />
-                          <Text style={styles.deceasedHorseName}>{horse.name}</Text>
-                          <Text style={styles.deceasedBadge}>Deceased</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-                
-                {/* Selected Horses Summary */}
-                {selectedHorses.filter(h => !h.is_deceased).length > 0 && (
-                  <View style={styles.selectedHorsesSummary}>
-                    <Text style={styles.selectedHorsesSummaryTitle}>
-                      Selected Horses ({selectedHorses.filter(h => !h.is_deceased).length}):
-                    </Text>
-                    <View style={styles.selectedHorsesChips}>
-                      {selectedHorses.filter(h => !h.is_deceased).slice(0, 3).map((horse) => (
-                        <View key={horse.id} style={styles.selectedHorseChip}>
-                          <FontAwesome5 name="horse-head" size={12} color="#3B82F6" />
-                          <Text style={styles.selectedHorseChipText}>{horse.name}</Text>
-                        </View>
-                      ))}
-                      {selectedHorses.filter(h => !h.is_deceased).length > 3 && (
-                        <View style={styles.selectedHorseChip}>
-                          <Text style={styles.selectedHorseChipText}>
-                            +{selectedHorses.filter(h => !h.is_deceased).length - 3} more
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.settingsSection}>
-                <Text style={styles.settingsSectionTitle}>Water Period</Text>
-                <Text style={styles.settingsSectionSubtitle}>
-                  Select the water period for your new schedule
-                </Text>
-                <View style={styles.periodContainer}>
-                  {(['Morning', 'Noon', 'Evening'] as const).map((period) => (
-                    <TouchableOpacity
-                      key={period}
-                      style={[
-                        styles.periodButton,
-                        waterPeriod === period && styles.periodButtonSelected,
-                        (isWaterCompleted(period) || isPeriodScheduled(period)) && styles.periodButtonDisabled
-                      ]}
-                      onPress={() => {
-                        if (isWaterCompleted(period)) {
-                          const completedInfo = getCompletedWaterInfo(period);
-                          Alert.alert(
-                            'Cannot Select',
-                            `This ${period} water has been completed by ${completedInfo?.given_by} and cannot be modified.`,
-                            [{ text: 'OK' }]
-                          );
-                          return;
-                        }
-                        if (isPeriodScheduled(period)) {
-                          Alert.alert(
-                            'Already Scheduled',
-                            `A ${period} schedule already exists. You cannot have multiple schedules for the same water period.`,
-                            [{ text: 'OK' }]
-                          );
-                          return;
-                        }
-                        setWaterPeriod(period);
-                      }}
-                      disabled={isWaterCompleted(period) || isPeriodScheduled(period)}
-                    >
-                      <FontAwesome5 
-                        name={getPeriodIcon(period)} 
-                        size={16} 
-                        color={waterPeriod === period ? '#fff' : (isWaterCompleted(period) || isPeriodScheduled(period)) ? '#94A3B8' : '#3B82F6'} 
-                      />
-                      <Text style={[
-                        styles.periodButtonText,
-                        waterPeriod === period && styles.periodButtonTextSelected,
-                        (isWaterCompleted(period) || isPeriodScheduled(period)) && styles.periodButtonTextDisabled
-                      ]}>
-                        {period}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-                
-                <View style={styles.periodStatusContainer}>
-                  {['Morning', 'Noon', 'Evening'].map((period) => {
-                    if (isWaterCompleted(period)) {
-                      const info = getCompletedWaterInfo(period);
-                      return (
-                        <View key={period} style={styles.periodStatusItem}>
-                          <FontAwesome5 name="check-circle" size={12} color="#10B981" />
-                          <Text style={styles.periodStatusText}>
-                            {period}: Completed by {info?.given_by}
-                          </Text>
-                        </View>
-                      );
-                    }
-                    if (isPeriodScheduled(period)) {
-                      return (
-                        <View key={period} style={styles.periodStatusItem}>
-                          <FontAwesome5 name="clock" size={12} color="#3B82F6" />
-                          <Text style={styles.periodStatusText}>
-                            {period}: Already scheduled
-                          </Text>
-                        </View>
-                      );
-                    }
-                    return null;
-                  })}
-                </View>
-              </View>
-
-              <View style={styles.settingsSection}>
-                <Text style={styles.settingsSectionTitle}>Watering Time</Text>
-                <Text style={styles.settingsSectionSubtitle}>
-                  Set the time for this watering schedule
-                </Text>
-                
-                <View style={styles.timeInputContainer}>
-                  <TextInput
-                    style={styles.timeInput}
-                    value={wateringTime.hour}
-                    onChangeText={(value) => handleTimeChange('hour', value)}
-                    placeholder="HH"
-                    keyboardType="numeric"
-                    maxLength={2}
-                  />
-                  <Text style={styles.timeSeparator}>:</Text>
-                  <TextInput
-                    style={styles.timeInput}
-                    value={wateringTime.minute}
-                    onChangeText={(value) => handleTimeChange('minute', value)}
-                    placeholder="MM"
-                    keyboardType="numeric"
-                    maxLength={2}
-                  />
-                  <View style={styles.periodTimeContainer}>
-                    {(['AM', 'PM'] as const).map((period) => (
-                      <TouchableOpacity
-                        key={period}
-                        style={[
-                          styles.periodTimeButton,
-                          wateringTime.period === period && styles.periodTimeButtonSelected
-                        ]}
-                        onPress={() => handleTimeChange('period', period)}
-                      >
-                        <Text style={[
-                          styles.periodTimeButtonText,
-                          wateringTime.period === period && styles.periodTimeButtonTextSelected
-                        ]}>
-                          {period}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-              </View>
-
-              <View style={styles.settingsSection}>
-                <Text style={styles.settingsSectionTitle}>Current Settings</Text>
-                <View style={styles.currentSettingsDisplay}>
-                  <View style={styles.settingDisplayRow}>
-                    <FontAwesome5 name="horse" size={16} color="#64748B" />
-                    <Text style={styles.settingDisplayLabel}>Selected Horses:</Text>
-                    <Text style={styles.settingDisplayValue}>
-                      {selectedHorses.filter(h => !h.is_deceased).length} horse(s)
-                    </Text>
-                  </View>
-                  <View style={styles.settingDisplayRow}>
-                    <FontAwesome5 name="tint" size={16} color="#64748B" />
-                    <Text style={styles.settingDisplayLabel}>Water Period:</Text>
-                    <Text style={styles.settingDisplayValue}>{waterPeriod || 'Not Set'}</Text>
-                  </View>
-                  <View style={styles.settingDisplayRow}>
-                    <FontAwesome5 name="clock" size={16} color="#64748B" />
-                    <Text style={styles.settingDisplayLabel}>Watering Time:</Text>
-                    <Text style={styles.settingDisplayValue}>
-                      {wateringTime.hour}:{wateringTime.minute} {wateringTime.period}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </ScrollView>
-            
-            <View style={styles.settingsModalFooter}>
-              <TouchableOpacity 
-                style={styles.settingsCancelButton}
-                onPress={handleCloseSettingsModal}
-              >
-                <Text style={styles.settingsCancelButtonText}>Close</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[
-                  styles.settingsApplyButton,
-                  (!waterPeriod || selectedHorses.filter(h => !h.is_deceased).length === 0) && styles.settingsApplyButtonDisabled
-                ]}
-                onPress={handleApplySettings}
-                disabled={!waterPeriod || selectedHorses.filter(h => !h.is_deceased).length === 0}
-              >
-                <Text style={styles.settingsApplyButtonText}>Apply Settings</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 };
@@ -2208,7 +1660,6 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 20,
-    paddingBottom: 120, // Extra padding for floating buttons
   },
   allCompletedAlert: {
     flexDirection: 'row',
@@ -2257,7 +1708,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     elevation: 3,
-    marginBottom: 16,
   },
   addFirstScheduleButtonText: {
     color: '#fff',
@@ -2412,13 +1862,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#3B82F6',
+    backgroundColor: '#10B981',
     paddingVertical: 16,
-    paddingHorizontal: 24,
     borderRadius: 16,
     marginTop: 20,
     marginBottom: 5,
-    shadowColor: '#3B82F6',
+    shadowColor: '#10B981', 
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -2428,313 +1877,30 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
-    marginLeft: 8,
   },
-  secondaryFloatingButton: {
-    position: 'absolute',
-    right: 24,
-    bottom: 64,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#3B82F6',
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    zIndex: 9,
-  },
-  // Current Settings in Add View
-  currentSettingsContainer: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  settingRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  settingLabel: {
-    fontSize: 14,
-    color: '#64748B',
-    fontWeight: '500',
-  },
-  settingValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1E293B',
-  },
-  selectedHorsesList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 12,
-  },
-  horseBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F0F9FF',
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  horseBadgeText: {
-    fontSize: 12,
-    color: '#0369A1',
-    fontWeight: '500',
-    marginLeft: 4,
-  },
-  changeSettingsButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#EFF6FF',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  changeSettingsButtonText: {
-    color: '#3B82F6',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  // Settings Modal Styles
-  settingsModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  settingsModalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '85%',
-  },
-  settingsModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E2E8F0',
-  },
-  settingsModalTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#1E293B',
-  },
-  settingsModalBody: {
-    padding: 24,
-    paddingBottom: 0,
-  },
-  settingsModalFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    borderTopWidth: 1,
-    borderTopColor: '#E2E8F0',
-    gap: 12,
-  },
-  settingsSection: {
+  section: {
     marginBottom: 24,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.1)',
   },
-  settingsSectionTitle: {
-    fontSize: 18,
+  sectionTitle: {
+    fontSize: 20,
     fontWeight: '700',
     color: '#1E293B',
-    marginBottom: 8,
-  },
-  settingsSectionSubtitle: {
-    fontSize: 14,
-    color: '#64748B',
     marginBottom: 16,
   },
-  // Horse Selection Mode Styles
-  horseSelectionModeContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-    marginBottom: 16,
-  },
-  selectionModeButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  selectionModeButtonActive: {
-    backgroundColor: '#3B82F6',
-    borderColor: '#3B82F6',
-  },
-  selectionModeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#64748B',
-  },
-  selectionModeButtonTextActive: {
-    color: '#FFFFFF',
-  },
-  // Select All Button
-  selectAllButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 16,
-  },
-  selectAllButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334155',
-    marginLeft: 12,
-  },
-  // Horses List
-  horsesListContainer: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 8,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 16,
-  },
-  horseItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    marginBottom: 4,
-  },
-  horseItemSelected: {
-    backgroundColor: '#EFF6FF',
-    borderWidth: 1,
-    borderColor: '#BFDBFE',
-  },
-  horseItemContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    marginLeft: 12,
-  },
-  horseItemName: {
-    fontSize: 14,
-    color: '#64748B',
-    marginLeft: 8,
-    flex: 1,
-  },
-  horseItemNameSelected: {
-    color: '#1E293B',
-    fontWeight: '600',
-  },
-  currentHorseName: {
-    color: '#3B82F6',
-  },
-  // Deceased horses section
-  deceasedHorsesSection: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  deceasedHorsesTitle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#9CA3AF',
-    marginBottom: 8,
-    textTransform: 'uppercase',
-  },
-  deceasedHorseItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: '#F9FAFB',
-    marginBottom: 4,
-    opacity: 0.6,
-  },
-  deceasedHorseName: {
-    fontSize: 14,
-    color: '#9CA3AF',
-    marginLeft: 12,
-    flex: 1,
-    textDecorationLine: 'line-through',
-  },
-  deceasedBadge: {
-    fontSize: 10,
-    fontWeight: '600',
-    color: '#FFFFFF',
-    backgroundColor: '#9CA3AF',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  // Selected Horses Summary
-  selectedHorsesSummary: {
-    backgroundColor: '#F0F9FF',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-  },
-  selectedHorsesSummaryTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#0369A1',
-    marginBottom: 12,
-  },
-  selectedHorsesChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  selectedHorseChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-  selectedHorseChipText: {
-    fontSize: 12,
-    color: '#0369A1',
-    fontWeight: '500',
-    marginLeft: 4,
-  },
-  // Period Styles
   periodContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     gap: 12,
-    marginBottom: 12,
   },
   periodButton: {
     flex: 1,
@@ -2768,22 +1934,6 @@ const styles = StyleSheet.create({
   periodButtonTextDisabled: {
     color: '#94A3B8',
   },
-  periodStatusContainer: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 12,
-    gap: 8,
-  },
-  periodStatusItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  periodStatusText: {
-    fontSize: 12,
-    color: '#64748B',
-  },
-  // Time Input Styles
   timeInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2831,84 +1981,6 @@ const styles = StyleSheet.create({
   },
   periodTimeButtonTextSelected: {
     color: '#FFFFFF',
-  },
-  // Current Settings Display
-  currentSettingsDisplay: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  settingDisplayRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  settingDisplayLabel: {
-    fontSize: 14,
-    color: '#64748B',
-    fontWeight: '500',
-    marginLeft: 8,
-    marginRight: 12,
-  },
-  settingDisplayValue: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1E293B',
-    flex: 1,
-  },
-  // Settings Buttons
-  settingsCancelButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#94A3B8',
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    flex: 1,
-    alignItems: 'center',
-  },
-  settingsCancelButtonText: {
-    color: '#64748B',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  settingsApplyButton: {
-    backgroundColor: '#3B82F6',
-    borderRadius: 12,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    flex: 1,
-    alignItems: 'center',
-  },
-  settingsApplyButtonDisabled: {
-    backgroundColor: '#9CA3AF',
-  },
-  settingsApplyButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  // Section Styles (for Edit/Add views)
-  section: {
-    marginBottom: 24,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.1)',
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1E293B',
-    marginBottom: 16,
   },
   amountContainer: {
     flexDirection: 'row',

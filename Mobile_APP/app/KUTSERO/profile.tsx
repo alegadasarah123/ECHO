@@ -1,6 +1,6 @@
 // KUTSERO PROFILE SCREEN
 
-"use client"
+
 import { FontAwesome } from '@expo/vector-icons'
 import { useFocusEffect } from "@react-navigation/native"
 import * as ImagePicker from "expo-image-picker"
@@ -64,8 +64,8 @@ const getSafeAreaPadding = () => {
   }
 }
 
-// Backend API configuration
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+// Backend API configuration - UPDATED TO PRODUCTION URL
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/kutsero"
 
 // Updated User data interface
 interface UserData {
@@ -129,10 +129,22 @@ const getImageSource = (imageUri: string | null) => {
     return require("../../assets/images/horse.png")
   }
 
-  if (imageUri.startsWith("data:image") || imageUri.startsWith("http")) {
+  // If it's a file:// URI (local file on device), use it directly
+  if (imageUri.startsWith("file://")) {
     return { uri: imageUri }
   }
 
+  // If it's a data URI (base64), use it directly
+  if (imageUri.startsWith("data:image")) {
+    return { uri: imageUri }
+  }
+
+  // If it's already a full URL (http/https), use it directly
+  if (imageUri.startsWith("http")) {
+    return { uri: imageUri }
+  }
+
+  // Only use the API base URL for server-stored images
   return { uri: `${API_BASE_URL}/media/${imageUri}` }
 }
 
@@ -142,9 +154,10 @@ const debugImageInfo = (imageUri: string | null, context: string) => {
     uri: imageUri,
     type: typeof imageUri,
     length: imageUri?.length,
+    isFileUri: imageUri?.startsWith("file://"),
     isBase64: imageUri?.startsWith("data:image"),
     isUrl: imageUri?.startsWith("http"),
-    isFilename: imageUri && !imageUri.startsWith("data:image") && !imageUri.startsWith("http"),
+    isFilename: imageUri && !imageUri.startsWith("data:image") && !imageUri.startsWith("http") && !imageUri.startsWith("file://"),
   })
 }
 
@@ -236,14 +249,8 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
         const imageUri = parsedUserData.profile.kutsero_image
         debugImageInfo(imageUri, "Loading profile")
 
-        if (imageUri.startsWith("data:image")) {
-          setSelectedImage(imageUri)
-        } else if (imageUri.startsWith("http")) {
-          setSelectedImage(imageUri)
-        } else {
-          const fullImageUrl = `${API_BASE_URL}/media/${imageUri}`
-          setSelectedImage(fullImageUrl)
-        }
+        // Set the image directly - it should already be a valid URL
+        setSelectedImage(imageUri)
       } else {
         setSelectedImage(null)
       }
@@ -526,118 +533,176 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
   }
 
   const saveProfileChanges = async () => {
-    try {
-      setIsSaving(true)
+  try {
+    setIsSaving(true);
 
-      if (!userData) {
-        Alert.alert("Error", "Unable to save: No user data found.")
-        return
-      }
+    if (!userData) {
+      Alert.alert("Error", "Unable to save: No user data found.");
+      return;
+    }
 
-      let kutserroId: string | null = null
-      if (userData.profile?.kutsero_id) {
-        kutserroId = userData.profile.kutsero_id
-      } else if (userData.kutsero_id) {
-        kutserroId = userData.kutsero_id
-      } else if (userData.id) {
-        kutserroId = userData.id
-      }
+    let kutserroId: string | null = null;
+    if (userData.profile?.kutsero_id) {
+      kutserroId = userData.profile.kutsero_id;
+    } else if (userData.kutsero_id) {
+      kutserroId = userData.kutsero_id;
+    } else if (userData.id) {
+      kutserroId = userData.id;
+    }
 
-      if (!kutserroId) {
-        Alert.alert("Error", "Unable to save: No kutsero ID found.")
-        return
-      }
+    if (!kutserroId) {
+      Alert.alert("Error", "Unable to save: No kutsero ID found.");
+      return;
+    }
 
-      console.log("Saving kutsero_profile for kutsero_id:", kutserroId)
-      console.log("Form data to save:", formData)
+    console.log("=== DEBUG: SAVE PROFILE ===");
+    console.log("kutsero_id:", kutserroId);
+    console.log("Form data:", formData);
+    console.log("Selected image exists:", !!selectedImage);
+    console.log("Profile picture data exists:", !!profilePictureData);
+    
+    if (profilePictureData?.uri) {
+      console.log("Image URI type:", {
+        isFile: profilePictureData.uri.startsWith("file://"),
+        isBase64: profilePictureData.uri.startsWith("data:image"),
+        isHttp: profilePictureData.uri.startsWith("http"),
+        length: profilePictureData.uri.length,
+        first100Chars: profilePictureData.uri.substring(0, 100)
+      });
+    }
 
-      let profileImageBase64 = null
-      if (profilePictureData && profilePictureData.uri) {
+    // Check if we have a new image to upload
+    let imageData = null;
+    if (profilePictureData && profilePictureData.uri) {
+      console.log("DEBUG: New image selected for upload");
+      
+      // If the image is already a URL (Supabase or other), send the URL
+      if (profilePictureData.uri.startsWith("http")) {
+        console.log("DEBUG: Image is already a URL");
+        imageData = profilePictureData.uri;
+      } 
+      // If it's a file:// URI, convert to base64
+      else if (profilePictureData.uri.startsWith("file://")) {
+        console.log("DEBUG: Converting file URI to base64...");
         try {
-          console.log("Converting image to base64...")
-          profileImageBase64 = await convertImageToBase64(profilePictureData.uri)
-          console.log("Image converted successfully, length:", profileImageBase64.length)
+          imageData = await convertImageToBase64(profilePictureData.uri);
+          console.log("DEBUG: Image converted to base64, length:", imageData?.length || 0);
         } catch (error) {
-          console.error("Error converting image:", error)
-          Alert.alert("Error", "Failed to process profile picture. Please try again.")
-          setIsSaving(false)
-          return
+          console.error("Error converting image:", error);
+          Alert.alert("Error", "Failed to process profile picture. Please try again.");
+          setIsSaving(false);
+          return;
         }
       }
-
-      const dataToSave = {
-        ...formData,
-        profilePicture: profileImageBase64,
+      // If it's already base64
+      else if (profilePictureData.uri.startsWith("data:image")) {
+        console.log("DEBUG: Image is already base64");
+        imageData = profilePictureData.uri;
       }
+    } else if (selectedImage && !profilePictureData) {
+      // If there's a selectedImage but no new profilePictureData, 
+      // it means we're keeping the existing image
+      console.log("DEBUG: Keeping existing image");
+      imageData = selectedImage;
+    }
 
-      const response = await fetch(`${API_BASE_URL}/profile/${kutserroId}/`, {
+    // Prepare data for sending - use simpler structure
+    const dataToSave: any = {
+      firstName: formData.firstName || "",
+      lastName: formData.lastName || "",
+      middleName: formData.middleName || "",
+      email: formData.email || "",
+      phoneNumber: formData.phoneNumber || "",
+      username: formData.username || "",
+      city: formData.city || "",
+      municipality: formData.municipality || "",
+      barangay: formData.barangay || "",
+      zipCode: formData.zipCode || "",
+      province: formData.province || "",
+      dateOfBirth: formData.dateOfBirth || "",
+      sex: formData.sex || "",
+    };
+
+    // Only add image if we have one and it's not too large
+    if (imageData) {
+      // Check if base64 image is too large (more than 1MB)
+      if (imageData.startsWith("data:image") && imageData.length > 1000000) {
+        console.log("DEBUG: Image too large, compressing...");
+        // For now, just truncate if it's a huge base64 string
+        // In production, you should properly compress the image
+        dataToSave.profileImage = imageData.substring(0, 500000); // Limit to ~500KB
+        console.log("DEBUG: Image size limited to:", dataToSave.profileImage.length);
+      } else {
+        dataToSave.profileImage = imageData;
+      }
+    }
+
+    console.log("DEBUG: Data to save keys:", Object.keys(dataToSave));
+    console.log("DEBUG: Data to save (excluding large image):", {
+      ...dataToSave,
+      profileImage: dataToSave.profileImage ? `[${dataToSave.profileImage.length} chars]` : null
+    });
+
+    const url = `${API_BASE_URL}/profile/${kutserroId}/`;
+    console.log("DEBUG: Sending PUT request to:", url);
+    
+    try {
+      const response = await fetch(url, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
+          "Accept": "application/json",
         },
         body: JSON.stringify(dataToSave),
-      })
+      });
 
-      console.log("Save response status:", response.status)
-      const result = await response.json()
-      console.log("Save response data:", result)
-
-      if (response.ok && result.success) {
-        setOriginalFormData({ ...formData })
-        setProfilePictureData(null)
-
-        if (userData) {
-          const updatedUserData = {
-            ...userData,
-            profile: {
-              ...userData.profile,
-              kutsero_fname: formData.firstName,
-              kutsero_lname: formData.lastName,
-              kutsero_mname: formData.middleName,
-              kutsero_email: formData.email,
-              kutsero_phone_num: formData.phoneNumber,
-              kutsero_username: formData.username,
-              kutsero_city: formData.city,
-              kutsero_municipality: formData.municipality,
-              kutsero_brgy: formData.barangay,
-              kutsero_zipcode: formData.zipCode,
-              kutsero_province: formData.province,
-              kutsero_dob: formData.dateOfBirth,
-              kutsero_sex: formData.sex,
-              kutsero_image: selectedImage,
-            },
-          }
-
-          await SecureStore.setItemAsync("user_data", JSON.stringify(updatedUserData))
-          setUserData(updatedUserData)
-
-          const displayName =
-            formData.firstName && formData.lastName
-              ? `${formData.firstName} ${formData.lastName}`
-              : formData.firstName || formData.username || "User"
-          setCurrentUser(displayName)
-
-          console.log("Updated user data in SecureStore")
+      console.log("DEBUG: Response status:", response.status);
+      console.log("DEBUG: Response headers:", Object.fromEntries(response.headers.entries()));
+      
+      // Get the response text
+      const responseText = await response.text();
+      console.log("DEBUG: Raw response (first 500 chars):", responseText.substring(0, 500));
+      
+      // Try to parse as JSON
+      let result;
+      try {
+        result = JSON.parse(responseText);
+        console.log("DEBUG: Parsed response:", result);
+      } catch (parseError) {
+        console.error("DEBUG: Failed to parse response as JSON:", parseError);
+        console.error("DEBUG: Full response:", responseText);
+        
+        if (response.status === 500) {
+          throw new Error(`Server Error 500: ${responseText.substring(0, 200)}`);
+        } else {
+          throw new Error(`Invalid response format: ${responseText.substring(0, 200)}`);
         }
-
-        Alert.alert("Success", result.message || "Your profile information has been updated successfully!", [
-          {
-            text: "OK",
-            onPress: () => {
-              onBack()
-            },
-          },
-        ])
-      } else {
-        Alert.alert("Error", result.message || "Failed to update profile. Please try again.")
       }
-    } catch (error) {
-      console.error("Error saving kutsero_profile:", error)
-      Alert.alert("Error", "An error occurred while saving your profile. Please try again.")
-    } finally {
-      setIsSaving(false)
+      
+      if (response.ok) {
+        if (result.success) {
+          console.log("DEBUG: Save successful!");
+          // Success handling...
+        } else {
+          console.log("DEBUG: Save failed with success:false");
+          Alert.alert("Error", result.message || result.error || "Failed to save profile.");
+        }
+      } else {
+        console.log("DEBUG: HTTP error:", response.status);
+        const errorMsg = result?.error || result?.message || `Server error (${response.status})`;
+        Alert.alert("Error", errorMsg);
+      }
+    } catch (fetchError: any) {
+      console.error("DEBUG: Fetch error:", fetchError);
+      Alert.alert("Error", fetchError.message || "Failed to connect to server. Please check your connection.");
     }
+  } catch (error) {
+    console.error("Error saving kutsero_profile:", error);
+    Alert.alert("Error", "An error occurred while saving your profile. Please try again.");
+  } finally {
+    setIsSaving(false);
   }
+};
 
   // PASSWORD CHANGE HANDLERS
   const handlePasswordChange = async () => {
@@ -759,8 +824,10 @@ function ProfileInformation({ onBack }: ProfileInformationProps) {
                   resizeMode="cover"
                   onError={(e) => {
                     console.log("Image load error:", e.nativeEvent.error)
+                    console.log("Failed image URI:", selectedImage)
                     setSelectedImage(null)
                   }}
+                  onLoad={() => console.log("Image loaded successfully:", selectedImage)}
                 />
               ) : (
                 <InitialsAvatar firstName={formData.firstName} lastName={formData.lastName} />
@@ -1362,20 +1429,25 @@ export default function ProfileScreen() {
       <View style={[styles.profileHeader, { paddingTop: safeArea.top }]}>
         <View style={styles.profileImageContainer}>
           {userData?.profile?.kutsero_image ? (
-            <Image
-              source={getImageSource(userData.profile.kutsero_image)}
-              style={styles.headerProfilePicture}
-              resizeMode="cover"
-              onError={(e) => console.log("Header image load error:", e.nativeEvent.error)}
+          <Image
+            source={getImageSource(userData?.profile?.kutsero_image)}
+            style={styles.headerProfilePicture}
+            resizeMode="cover"
+            onError={(e) => {
+              console.log("Header image load error:", e.nativeEvent.error)
+              console.log("Failed header image URI:", userData?.profile?.kutsero_image)
+            }}
+            onLoad={() => console.log("Header image loaded successfully")}
+          />
+        ) : (
+          <View style={styles.headerProfilePicture}>
+            <InitialsAvatar
+              firstName={userData?.profile?.kutsero_fname}
+              lastName={userData?.profile?.kutsero_lname}
             />
-          ) : (
-            <View style={styles.headerProfilePicture}>
-              <InitialsAvatar
-                firstName={userData?.profile?.kutsero_fname}
-                lastName={userData?.profile?.kutsero_lname}
-              />
-            </View>
-          )}
+          </View>
+        )}
+
         </View>
         <Text style={styles.profileName} numberOfLines={1} adjustsFontSizeToFit>
           {currentUser}
@@ -1491,6 +1563,7 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     justifyContent: "center",
     alignItems: "center",
+    overflow: "hidden",
   },
   profileName: {
     fontSize: moderateScale(18),

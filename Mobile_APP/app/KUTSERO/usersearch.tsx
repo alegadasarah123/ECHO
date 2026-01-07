@@ -1,4 +1,4 @@
-"use client"
+
 
 import { useLocalSearchParams, useRouter } from "expo-router"
 import * as SecureStore from "expo-secure-store"
@@ -17,7 +17,8 @@ import {
 
 const { width } = Dimensions.get("window")
 
-const API_BASE_URL = "http://1192.168.31.58:8000/api/kutsero"
+// ✅ UPDATED: Changed from localhost to Render URL
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/kutsero"
 
 interface SearchUserProfile {
   id: string
@@ -73,6 +74,7 @@ export default function UserSearchScreen() {
     setIsLoading(true)
     try {
       console.log("🔍 Fetching all users from API...")
+      // ✅ Using the Render URL
       const response = await fetch(`${API_BASE_URL}/get_all_users/`, {
         method: "GET",
         headers: {
@@ -125,6 +127,7 @@ export default function UserSearchScreen() {
     setIsSearching(true)
     try {
       console.log(`🔍 Performing search for: "${query}"`)
+      // ✅ Using the Render URL
       const response = await fetch(
         `${API_BASE_URL}/search_all_users/?query=${encodeURIComponent(query)}&limit=50`,
         {

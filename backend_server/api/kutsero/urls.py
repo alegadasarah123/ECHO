@@ -14,28 +14,12 @@ urlpatterns = [
     path('unassign_horse/', views.unassign_horse, name='unassign_horse'),  # Backward compatibility
     path('assignment_history/', views.get_assignment_history, name='get_assignment_history'),
     
-     # Feeding Schedule Endpoints
-    path('feeding-schedule/', views.get_feeding_schedule, name='get_feeding_schedule'),
-    path('feeding-schedule/update/', views.update_feeding_schedule, name='update_feeding_schedule'),
-    path('feeding-schedule/mark-completed/', views.mark_feed_completed, name='mark_feed_completed'),
-    path('feeding-schedule/reset/', views.reset_daily_feeds, name='reset_daily_feeds'),
-    
-    # Feed Log Endpoints
-    path('feed-logs/', views.get_feed_logs, name='get_feed_logs'),
-    path('feed-logs/create/', views.create_feed_log, name='create_feed_log'),
-    
-    # Feed Management Endpoints
-    path('feeding-schedule/delete/', views.delete_feed_entry, name='delete_feed_entry'),
-
-    # Watering Schedule Endpoints
-    path('water-schedule/', views.get_water_schedule, name='get_water_schedule'),
-    path('water-schedule/update/', views.update_water_schedule, name='update_water_schedule'),
-    path('water-schedule/mark-completed/', views.mark_water_completed, name='mark_water_completed'),
-    path('water-schedule/reset/', views.reset_water_schedule, name='reset_water_schedule'),
-    path('water-schedule/delete/', views.delete_water_entry, name='delete_water_entry'),
-    
-    # Water Log endpoints
-    path('water-logs/', views.get_water_logs, name='get_water_logs'),
+     # Feeding and Watering Schedule Endpoints
+    path('feed_schedule/', views.get_feed_schedule, name='feed_schedule'),
+    path('water_schedule/', views.get_water_schedule, name='water_schedule'),
+    path('today_schedule/', views.get_today_schedule, name='today_schedule'),
+    path('complete_feed/', views.mark_feed_completed, name='complete_feed'),
+    path('complete_water/', views.mark_water_completed, name='complete_water'),
 
      # Get single kutsero profile by kutsero_id (string identifier) 
 
@@ -96,6 +80,16 @@ urlpatterns = [
     #Reminders and Notifications
     path('feed-water-notifications/', views.feed_water_notifications, name='feed_water_notifications'),
     path('check-current-schedules/', views.check_current_schedules, name='check_current_schedules'),
+
+    #Horse Application Endpoints
+    path('horse_owners/', views.get_horse_owners, name='get_horse_owners'),
+    path('apply_to_owner/', views.apply_to_owner, name='apply_to_owner'),
+    path('my_applications/', views.get_my_applications, name='my_applications'),
+    path('get_approved_owners_horses/', views.get_approved_owners_horses, name='get_approved_owners_horses'),
+    path('assign_horse_to_kutsero/', views.assign_horse_to_kutsero, name='assign_horse_to_kutsero'),
+    path('test_horse/', views.test_horse_owners_endpoint, name='test_horse'),
+    
+
 ]
 
 

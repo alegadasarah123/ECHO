@@ -1,4 +1,4 @@
-"use client"
+
 
 import { useFocusEffect, useRouter } from "expo-router"
 import * as SecureStore from "expo-secure-store"
@@ -16,7 +16,6 @@ import {
   TouchableOpacity,
   View,
 } from "react-native"
-import FeedPage from "./feedpage"
 import NotificationsPage from "./notifications"
 import SOSEmergencyScreen from "./sos"
 
@@ -125,14 +124,26 @@ interface CareActivity {
   markedAsGiven?: boolean // Specific for water activities
 }
 
-// Backend API configuration
-const API_BASE_URL = "http://192.168.31.58:8000/api/kutsero"
+interface CareReminder {
+  id: string
+  type: "feed" | "water"
+  title: string
+  description: string
+  time: string
+  scheduledTime: string // Actual scheduled time from API (e.g., "07:00:00")
+  isDue: boolean
+  completed: boolean
+  completedTime?: string
+  apiId?: string // ID from database (fd_id or water_id)
+  originalData?: any // Original data from API
+}
+
+// Backend API configuration - CORRECT ENDPOINTS
+const API_BASE_URL = "https://echo-ebl8.onrender.com/api/kutsero"
 
 export default function HorseCareScreen() {
   const router = useRouter()
   const [searchText, setSearchText] = useState("")
-  const [showFeedPage, setShowFeedPage] = useState(false)
-  const [feedType, setFeedType] = useState<"feed" | "water">("feed")
   const [showNotifications, setShowNotifications] = useState(false)
   const [showSOSEmergency, setShowSOSEmergency] = useState(false)
 
@@ -152,17 +163,92 @@ export default function HorseCareScreen() {
     nextCheckup: "N/A",
   })
 
-  // Care activities state
+  // Care activities and reminders state
   const [recentActivities, setRecentActivities] = useState<CareActivity[]>([])
+  const [careReminders, setCareReminders] = useState<CareReminder[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isCheckedIn, setIsCheckedIn] = useState(false)
   const [checkInTime, setCheckInTime] = useState<string | null>(null)
+  const [apiError, setApiError] = useState<string | null>(null)
 
   const safeArea = getSafeAreaPadding()
+
+  // Dashboard/Home Icon Component
+  const DashboardIcon = ({ color }: { color: string }) => (
+    <View style={styles.iconContainer}>
+      <View style={styles.dashboardGrid}>
+        <View style={[styles.gridSquare, styles.gridTopLeft, { backgroundColor: color }]} />
+        <View style={[styles.gridSquare, styles.gridTopRight, { backgroundColor: color }]} />
+        <View style={[styles.gridSquare, styles.gridBottomLeft, { backgroundColor: color }]} />
+        <View style={[styles.gridSquare, styles.gridBottomRight, { backgroundColor: color }]} />
+      </View>
+    </View>
+  )
+
+  // Profile Icon Component
+  const ProfileIcon = ({ color }: { color: string }) => (
+    <View style={styles.iconContainer}>
+      <View style={styles.profileContainer}>
+        <View style={[styles.profileHead, { backgroundColor: color }]} />
+        <View style={[styles.profileBody, { backgroundColor: color }]} />
+      </View>
+    </View>
+  )
+
+  // TabButton Component
+  const TabButton = ({
+    iconSource,
+    label,
+    tabKey,
+    isActive,
+  }: {
+    iconSource: any
+    label: string
+    tabKey: string
+    isActive: boolean
+  }) => (
+    <TouchableOpacity
+      style={styles.tabButton}
+      onPress={() => {
+        // Navigate directly without updating local state
+        if (tabKey === "home") {
+          router.push("./dashboard") // Navigate to dashboard in same folder
+        } else if (tabKey === "horse") {
+          // Stay on horse care - already here
+        } else if (tabKey === "chat") {
+          router.push("./messages")
+        } else if (tabKey === "calendar") {
+          router.push("./calendar")
+        } else if (tabKey === "history") {
+          router.push("./history")
+        } else if (tabKey === "profile") {
+          router.push("./profile")
+        }
+      }}
+    >
+      <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
+        {iconSource ? (
+          <Image
+            source={iconSource}
+            style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
+            resizeMode="contain"
+          />
+        ) : tabKey === "home" ? (
+          <DashboardIcon color={isActive ? "white" : "#666"} />
+        ) : tabKey === "profile" ? (
+          <ProfileIcon color={isActive ? "white" : "#666"} />
+        ) : (
+          <View style={styles.fallbackIcon} />
+        )}
+      </View>
+      <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
+    </TouchableOpacity>
+  )
 
   // Load user data and horse information
   const loadUserData = async () => {
     setIsLoading(true)
+    setApiError(null)
     try {
       // Get stored user data
       const storedUserData = await SecureStore.getItemAsync("user_data")
@@ -198,8 +284,9 @@ export default function HorseCareScreen() {
         // Load selected horse from SecureStore (shared with dashboard)
         await loadSelectedHorse()
 
-        // Load care activities
+        // Load care activities and schedule
         await loadCareActivities()
+        await loadTodaySchedule()
 
         // Load check-in status
         await loadCheckInStatus()
@@ -210,6 +297,7 @@ export default function HorseCareScreen() {
       }
     } catch (error) {
       console.error("Error loading user data:", error)
+      setApiError("Failed to load user data")
     } finally {
       setIsLoading(false)
     }
@@ -256,6 +344,524 @@ export default function HorseCareScreen() {
     }
   }
 
+  // Fetch today's complete schedule from API - USING CORRECT ENDPOINT
+  const loadTodaySchedule = async () => {
+  try {
+    if (selectedHorse.id === "default" || !userData?.profile?.kutsero_id) {
+      setCareReminders([])
+      return
+    }
+
+    const accessToken = await SecureStore.getItemAsync("access_token")
+    if (!accessToken) {
+      console.log("No access token available")
+      setCareReminders([])
+      return
+    }
+
+    const kutseroId = userData.profile.kutsero_id
+    const horseId = selectedHorse.id
+
+    console.log("Fetching schedule for:", { kutseroId, horseId })
+
+    // Try the new endpoint first
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/today_schedule/?kutsero_id=${kutseroId}&horse_id=${horseId}`,
+        {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("Today's schedule response:", data)
+        
+        if (data.success && data.data) {
+          // Transform API data to CareReminder format
+          const reminders: CareReminder[] = data.data.map((task: any) => {
+            const isDue = isTimeDue(task.time)
+            
+            return {
+              id: `${task.type}-${task.id}`,
+              type: task.type,
+              title: task.title,
+              description: task.description,
+              time: formatTimeForDisplay(task.time),
+              scheduledTime: task.time,
+              isDue: !task.completed && isDue,
+              completed: task.completed || false,
+              completedTime: task.completed_at,
+              apiId: task.id,
+              originalData: task.original_data
+            }
+          })
+          
+          setCareReminders(reminders)
+          setApiError(null)
+          return // Exit early if successful
+        }
+      }
+    } catch (todayScheduleError) {
+      console.log("Today schedule endpoint failed:", todayScheduleError)
+    }
+
+    // If today_schedule fails, try individual endpoints
+    console.log("Trying individual endpoints...")
+    
+    // Try feed schedule endpoint
+    try {
+      const feedResponse = await fetch(
+        `${API_BASE_URL}/feed_schedule/?kutsero_id=${kutseroId}&horse_id=${horseId}`,
+        {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+
+      // Try water schedule endpoint
+      const waterResponse = await fetch(
+        `${API_BASE_URL}/water_schedule/?kutsero_id=${kutseroId}&horse_id=${horseId}`,
+        {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+
+      let feedReminders: CareReminder[] = []
+      let waterReminders: CareReminder[] = []
+
+      if (feedResponse.ok) {
+        const feedData = await feedResponse.json()
+        if (feedData.success && feedData.data) {
+          feedReminders = feedData.data.map((feed: any) => {
+            const isDue = isTimeDue(feed.time)
+            return {
+              id: `feed-${feed.id}`,
+              type: "feed" as const,
+              title: `${feed.meal_type || 'Feeding'}`,
+              description: `${feed.quantity || ''} of ${feed.food_type || 'food'}`,
+              time: formatTimeForDisplay(feed.time),
+              scheduledTime: feed.time,
+              isDue: !feed.completed && isDue,
+              completed: feed.completed || false,
+              completedTime: feed.completed_at,
+              apiId: feed.id,
+              originalData: feed
+            }
+          })
+        }
+      }
+
+      if (waterResponse.ok) {
+        const waterData = await waterResponse.json()
+        if (waterData.success && waterData.data) {
+          waterReminders = waterData.data.map((water: any) => {
+            const isDue = isTimeDue(water.time)
+            return {
+              id: `water-${water.id}`,
+              type: "water" as const,
+              title: `${water.period || 'Water'}`,
+              description: `${water.amount || ''} of water`,
+              time: formatTimeForDisplay(water.time),
+              scheduledTime: water.time,
+              isDue: !water.completed && isDue,
+              completed: water.completed || false,
+              completedTime: water.completed_at,
+              apiId: water.id,
+              originalData: water
+            }
+          })
+        }
+      }
+
+      const allReminders = [...feedReminders, ...waterReminders]
+      
+      if (allReminders.length > 0) {
+        setCareReminders(allReminders)
+        console.log(`Loaded ${feedReminders.length} feed and ${waterReminders.length} water reminders`)
+        setApiError(null)
+      } else {
+        console.log("No data from individual endpoints, creating default schedule")
+        createDefaultSchedule()
+      }
+    } catch (individualError) {
+      console.error("Error trying individual endpoints:", individualError)
+      createDefaultSchedule()
+    }
+  } catch (error) {
+    console.error("Error loading schedule:", error)
+    setCareReminders([])
+    createDefaultSchedule()
+  }
+}
+
+  // Try individual endpoints as fallback
+  const tryIndividualEndpoints = async (kutseroId: string, horseId: string, accessToken: string) => {
+    try {
+      console.log("Trying individual endpoints...")
+      
+      // Try feed schedule endpoint
+      const feedResponse = await fetch(
+        `${API_BASE_URL}/feed_schedule/?kutsero_id=${kutseroId}&horse_id=${horseId}`,
+        {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+
+      // Try water schedule endpoint
+      const waterResponse = await fetch(
+        `${API_BASE_URL}/water_schedule/?kutsero_id=${kutseroId}&horse_id=${horseId}`,
+        {
+          method: "GET",
+          headers: {
+            "Authorization": `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+        }
+      )
+
+      let feedReminders: CareReminder[] = []
+      let waterReminders: CareReminder[] = []
+
+      if (feedResponse.ok) {
+        const feedData = await feedResponse.json()
+        if (feedData.success && feedData.data) {
+          feedReminders = feedData.data.map((feed: any) => {
+            const isDue = isTimeDue(feed.time)
+            return {
+              id: `feed-${feed.id}`,
+              type: "feed" as const,
+              title: `${feed.meal_type || 'Feeding'}`,
+              description: `${feed.quantity || ''} of ${feed.food_type || 'food'}`,
+              time: formatTimeForDisplay(feed.time),
+              scheduledTime: feed.time,
+              isDue: !feed.completed && isDue,
+              completed: feed.completed || false,
+              completedTime: feed.completed_at,
+              apiId: feed.id,
+              originalData: feed
+            }
+          })
+        }
+      }
+
+      if (waterResponse.ok) {
+        const waterData = await waterResponse.json()
+        if (waterData.success && waterData.data) {
+          waterReminders = waterData.data.map((water: any) => {
+            const isDue = isTimeDue(water.time)
+            return {
+              id: `water-${water.id}`,
+              type: "water" as const,
+              title: `${water.period || 'Water'}`,
+              description: `${water.amount || ''} of water`,
+              time: formatTimeForDisplay(water.time),
+              scheduledTime: water.time,
+              isDue: !water.completed && isDue,
+              completed: water.completed || false,
+              completedTime: water.completed_at,
+              apiId: water.id,
+              originalData: water
+            }
+          })
+        }
+      }
+
+      const allReminders = [...feedReminders, ...waterReminders]
+      
+      if (allReminders.length > 0) {
+        setCareReminders(allReminders)
+        console.log(`Loaded ${feedReminders.length} feed and ${waterReminders.length} water reminders`)
+      } else {
+        console.log("No data from individual endpoints, creating default schedule")
+        createDefaultSchedule()
+      }
+    } catch (error) {
+      console.error("Error trying individual endpoints:", error)
+      createDefaultSchedule()
+    }
+  }
+
+  // Create default schedule when API fails or returns empty
+  const createDefaultSchedule = () => {
+    if (!userData?.profile?.kutsero_id || selectedHorse.id === "default") {
+      return
+    }
+
+    const now = new Date()
+    const currentHour = now.getHours()
+    
+    const defaultReminders: CareReminder[] = [
+      {
+        id: `${selectedHorse.id}-breakfast-feed`,
+        type: "feed",
+        title: "Breakfast Feeding",
+        description: `${selectedHorse.name} needs 2 kg of Hay`,
+        time: "7:00 AM",
+        scheduledTime: "07:00:00",
+        isDue: currentHour >= 7 && currentHour < 10,
+        completed: false
+      },
+      {
+        id: `${selectedHorse.id}-lunch-feed`,
+        type: "feed",
+        title: "Lunch Feeding",
+        description: `${selectedHorse.name} needs 1.5 kg of Grain Mix`,
+        time: "12:00 PM",
+        scheduledTime: "12:00:00",
+        isDue: currentHour >= 12 && currentHour < 14,
+        completed: false
+      },
+      {
+        id: `${selectedHorse.id}-dinner-feed`,
+        type: "feed",
+        title: "Dinner Feeding",
+        description: `${selectedHorse.name} needs 2.5 kg of Hay`,
+        time: "5:00 PM",
+        scheduledTime: "17:00:00",
+        isDue: currentHour >= 17 && currentHour < 20,
+        completed: false
+      },
+      {
+        id: `${selectedHorse.id}-morning-water`,
+        type: "water",
+        title: "Morning Water",
+        description: `${selectedHorse.name} needs 10 liters of water`,
+        time: "8:00 AM",
+        scheduledTime: "08:00:00",
+        isDue: currentHour >= 8 && currentHour < 11,
+        completed: false
+      },
+      {
+        id: `${selectedHorse.id}-afternoon-water`,
+        type: "water",
+        title: "Afternoon Water",
+        description: `${selectedHorse.name} needs 8 liters of water`,
+        time: "1:00 PM",
+        scheduledTime: "13:00:00",
+        isDue: currentHour >= 13 && currentHour < 16,
+        completed: false
+      },
+      {
+        id: `${selectedHorse.id}-evening-water`,
+        type: "water",
+        title: "Evening Water",
+        description: `${selectedHorse.name} needs 12 liters of water`,
+        time: "6:00 PM",
+        scheduledTime: "18:00:00",
+        isDue: currentHour >= 18 && currentHour < 21,
+        completed: false
+      }
+    ]
+
+    setCareReminders(defaultReminders)
+    console.log("Created default schedule")
+  }
+
+  // Convert 24-hour time to 12-hour format
+  const formatTimeForDisplay = (time24: string) => {
+    try {
+      // Remove seconds if present
+      const timeWithoutSeconds = time24.split(':').slice(0, 2).join(':')
+      const [hours, minutes] = timeWithoutSeconds.split(':').map(Number)
+      const period = hours >= 12 ? 'PM' : 'AM'
+      const hours12 = hours % 12 || 12
+      return `${hours12}:${minutes.toString().padStart(2, '0')} ${period}`
+    } catch (error) {
+      console.error("Error formatting time:", error, time24)
+      return time24
+    }
+  }
+
+  // Check if a scheduled time is due (within a 30-minute window)
+  const isTimeDue = (scheduledTime: string) => {
+    try {
+      const now = new Date()
+      const currentHour = now.getHours()
+      const currentMinute = now.getMinutes()
+      
+      // Parse scheduled time (could be "07:00:00" or "07:00")
+      const timeParts = scheduledTime.split(':')
+      const scheduledHour = parseInt(timeParts[0], 10)
+      const scheduledMinute = parseInt(timeParts[1], 10)
+      
+      // Calculate time difference in minutes
+      const currentTotalMinutes = currentHour * 60 + currentMinute
+      const scheduledTotalMinutes = scheduledHour * 60 + scheduledMinute
+      const timeDifference = Math.abs(currentTotalMinutes - scheduledTotalMinutes)
+      
+      // Consider due if within 30 minutes before or after scheduled time
+      return timeDifference <= 30
+    } catch (error) {
+      console.error("Error checking if time is due:", error)
+      return false
+    }
+  }
+
+  // Mark a reminder as completed (with API call)
+  const markReminderAsCompleted = async (reminderId: string, reminderType: string, apiId?: string) => {
+    try {
+      if (!userData?.profile?.kutsero_id) {
+        Alert.alert("Error", "User information not found")
+        return
+      }
+
+      const accessToken = await SecureStore.getItemAsync("access_token")
+      if (!accessToken) {
+        Alert.alert("Error", "Authentication required")
+        return
+      }
+
+      const kutseroId = userData.profile.kutsero_id
+      
+      // Try the new API endpoints
+      let endpoint = ""
+      let idField = ""
+      
+      if (reminderType === "feed") {
+        endpoint = "complete_feed"
+        idField = "feed_id"
+      } else {
+        endpoint = "complete_water"
+        idField = "water_id"
+      }
+
+      console.log(`Marking ${reminderType} as completed:`, { endpoint, idField, apiId, kutseroId })
+
+      // Call API to mark as completed in database
+      const response = await fetch(`${API_BASE_URL}/${endpoint}/`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          [idField]: apiId || reminderId,
+          kutsero_id: kutseroId
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("API response:", data)
+        
+        if (data.success) {
+          // Update local state
+          setCareReminders(prev => 
+            prev.map(reminder => 
+              reminder.id === reminderId 
+                ? { ...reminder, completed: true, completedTime: new Date().toISOString(), isDue: false }
+                : reminder
+            )
+          )
+
+          // Save as a care activity
+          const completedReminder = careReminders.find(r => r.id === reminderId)
+          if (completedReminder) {
+            const now = new Date()
+            const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
+            
+            const activity: CareActivity = {
+              id: generateUniqueId(),
+              type: completedReminder.type as "feed" | "water",
+              timestamp: now.toISOString(),
+              horseId: selectedHorse.id,
+              horseName: selectedHorse.name,
+              notes: `${completedReminder.title} - Completed at ${formatTimeForDisplay(currentTime)}`,
+              completed: true,
+              markedAsFed: completedReminder.type === "feed",
+              markedAsGiven: completedReminder.type === "water"
+            }
+
+            // Load existing activities
+            const storedActivities = await SecureStore.getItemAsync("careActivities")
+            let activities: CareActivity[] = storedActivities ? JSON.parse(storedActivities) : []
+
+            // Add new activity
+            activities.unshift(activity)
+
+            // Remove duplicates and keep only last 100 activities
+            activities = removeDuplicateActivities(activities).slice(0, 100)
+
+            // Save back to storage
+            await SecureStore.setItemAsync("careActivities", JSON.stringify(activities))
+
+            // Update local state - only show completed activities
+            const horseActivities = activities
+              .filter((act) => act.horseId === selectedHorse.id && act.completed === true)
+              .slice(0, 10)
+
+            setRecentActivities(horseActivities)
+          }
+
+          Alert.alert("Task Completed", "Care task has been marked as completed!")
+        } else {
+          Alert.alert("Error", data.error || "Failed to mark task as completed")
+        }
+      } else {
+        console.error("API error:", response.status)
+        // Even if API fails, update local state
+        setCareReminders(prev => 
+          prev.map(reminder => 
+            reminder.id === reminderId 
+              ? { ...reminder, completed: true, completedTime: new Date().toISOString(), isDue: false }
+              : reminder
+          )
+        )
+        
+        // Save as a care activity locally
+        const completedReminder = careReminders.find(r => r.id === reminderId)
+        if (completedReminder) {
+          const now = new Date()
+          const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
+          
+          const activity: CareActivity = {
+            id: generateUniqueId(),
+            type: completedReminder.type as "feed" | "water",
+            timestamp: now.toISOString(),
+            horseId: selectedHorse.id,
+            horseName: selectedHorse.name,
+            notes: `${completedReminder.title} - Completed at ${formatTimeForDisplay(currentTime)} (offline)`,
+            completed: true,
+            markedAsFed: completedReminder.type === "feed",
+            markedAsGiven: completedReminder.type === "water"
+          }
+
+          const storedActivities = await SecureStore.getItemAsync("careActivities")
+          let activities: CareActivity[] = storedActivities ? JSON.parse(storedActivities) : []
+          activities.unshift(activity)
+          activities = removeDuplicateActivities(activities).slice(0, 100)
+          await SecureStore.setItemAsync("careActivities", JSON.stringify(activities))
+          
+          const horseActivities = activities
+            .filter((act) => act.horseId === selectedHorse.id && act.completed === true)
+            .slice(0, 10)
+          setRecentActivities(horseActivities)
+        }
+        
+        Alert.alert("Task Completed", "Care task marked as completed (offline mode)")
+      }
+    } catch (error) {
+      console.error("Error marking reminder as completed:", error)
+      Alert.alert("Error", "Failed to mark task as completed")
+    }
+  }
+
   // Load check-in status
   const loadCheckInStatus = async () => {
     try {
@@ -272,184 +878,103 @@ export default function HorseCareScreen() {
     }
   }
 
-  // Save care activity (synced with dashboard) - only when marked as complete
-  const saveCareActivity = async (
-    type: "feed" | "water", 
-    notes?: string, 
-    completed: boolean = false,
-    markedAsFed?: boolean,
-    markedAsGiven?: boolean
-  ) => {
-    // Only save if the activity is marked as completed
-    if (!completed) {
-      return
-    }
-
+  // Refresh all data
+  const refreshAllData = async () => {
+    setIsLoading(true)
     try {
-      const activity: CareActivity = {
-        id: generateUniqueId(),
-        type: type,
-        timestamp: new Date().toISOString(),
-        horseId: selectedHorse.id,
-        horseName: selectedHorse.name,
-        notes: notes,
-        completed: true,
-        markedAsFed: markedAsFed,
-        markedAsGiven: markedAsGiven
-      }
-
-      // Load existing activities
-      const storedActivities = await SecureStore.getItemAsync("careActivities")
-      let activities: CareActivity[] = storedActivities ? JSON.parse(storedActivities) : []
-
-      // Add new activity
-      activities.unshift(activity)
-
-      // Remove duplicates and keep only last 100 activities
-      activities = removeDuplicateActivities(activities).slice(0, 100)
-
-      // Save back to storage
-      await SecureStore.setItemAsync("careActivities", JSON.stringify(activities))
-
-      // Update local state - only show completed activities
-      const horseActivities = activities
-        .filter((act) => act.horseId === selectedHorse.id && act.completed === true)
-        .slice(0, 10)
-
-      setRecentActivities(horseActivities)
-
-      console.log(`${type} activity saved for ${selectedHorse.name}`, { completed, markedAsFed, markedAsGiven })
+      await loadTodaySchedule()
+      await loadCareActivities()
     } catch (error) {
-      console.error("Error saving care activity:", error)
+      console.error("Error refreshing data:", error)
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  // Dashboard/Home Icon Component
-  const DashboardIcon = ({ color }: { color: string }) => (
-    <View style={styles.iconContainer}>
-      <View style={styles.dashboardGrid}>
-        <View style={[styles.gridSquare, styles.gridTopLeft, { backgroundColor: color }]} />
-        <View style={[styles.gridSquare, styles.gridTopRight, { backgroundColor: color }]} />
-        <View style={[styles.gridSquare, styles.gridBottomLeft, { backgroundColor: color }]} />
-        <View style={[styles.gridSquare, styles.gridBottomRight, { backgroundColor: color }]} />
-      </View>
-    </View>
+  // Load data on focus and mount
+  useEffect(() => {
+    loadUserData()
+    
+    // Check reminders every 15 minutes
+    const intervalId = setInterval(() => {
+      loadTodaySchedule()
+    }, 15 * 60 * 1000) // 15 minutes
+
+    return () => clearInterval(intervalId)
+  }, [])
+
+  useFocusEffect(
+    useCallback(() => {
+      loadUserData()
+    }, []),
   )
 
-  // Profile Icon Component
-  const ProfileIcon = ({ color }: { color: string }) => (
-    <View style={styles.iconContainer}>
-      <View style={styles.profileContainer}>
-        <View style={[styles.profileHead, { backgroundColor: color }]} />
-        <View style={[styles.profileBody, { backgroundColor: color }]} />
-      </View>
-    </View>
-  )
-
-  const TabButton = ({
-    iconSource,
-    label,
-    tabKey,
-    isActive,
-    onPress,
-  }: {
-    iconSource: any
-    label: string
-    tabKey: string
-    isActive: boolean
-    onPress?: () => void
-  }) => (
-    <TouchableOpacity
-      style={styles.tabButton}
-      onPress={() => {
-        if (onPress) {
-          onPress()
-        } else {
-          // Navigate directly without updating local state
-          if (tabKey === "home") {
-            router.push("./dashboard") // Navigate to dashboard in same folder
-          } else if (tabKey === "horse") {
-            // Stay on horse care - already here
-          } else if (tabKey === "chat") {
-            router.push("./messages")
-          } else if (tabKey === "calendar") {
-            router.push("./calendar")
-          } else if (tabKey === "history") {
-            router.push("./history")
-          } else if (tabKey === "profile") {
-            router.push("./profile")
-          }
-        }
-      }}
-    >
-      <View style={[styles.tabIcon, isActive && styles.activeTabIcon]}>
-        {iconSource ? (
-          <Image
-            source={iconSource}
-            style={[styles.tabIconImage, { tintColor: isActive ? "white" : "#666" }]}
-            resizeMode="contain"
-          />
-        ) : tabKey === "home" ? (
-          <DashboardIcon color={isActive ? "white" : "#666"} />
-        ) : tabKey === "profile" ? (
-          <ProfileIcon color={isActive ? "white" : "#666"} />
-        ) : (
-          <View style={styles.fallbackIcon} />
-        )}
-      </View>
-      <Text style={[styles.tabLabel, isActive && styles.activeTabLabel]}>{label}</Text>
-    </TouchableOpacity>
-  )
-
-  const MenuIcon = ({ color }: { color: string }) => (
-    <View style={styles.iconContainer}>
-      <View style={[styles.menuBar, { backgroundColor: color }]} />
-      <View style={[styles.menuBar, { backgroundColor: color, marginTop: scale(3) }]} />
-      <View style={[styles.menuBar, { backgroundColor: color, marginTop: scale(3) }]} />
-    </View>
-  )
-
-  const handleFeedPress = async () => {
-    if (selectedHorse.id === "default") {
-      Alert.alert("No Horse Assigned", "Please select a horse first before feeding.")
-      return
+  // Reload activities and reminders when selected horse changes
+  useEffect(() => {
+    if (selectedHorse.id !== "default") {
+      loadCareActivities()
+      loadTodaySchedule()
+      loadCheckInStatus()
+    } else {
+      setCareReminders([])
     }
+  }, [selectedHorse.id])
 
-    setFeedType("feed")
-    setShowFeedPage(true)
+  // Show loading screen
+  if (isLoading) {
+    return (
+      <View style={[styles.container, styles.loadingContainer]}>
+        <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
+        <ActivityIndicator size="large" color="white" />
+        <Text style={styles.loadingText}>Loading horse care...</Text>
+      </View>
+    )
   }
 
-  const handleWaterPress = async () => {
-    if (selectedHorse.id === "default") {
-      Alert.alert("No Horse Assigned", "Please select a horse first before providing water.")
-      return
-    }
-
-    setFeedType("water")
-    setShowFeedPage(true)
+  // Show Notifications page when requested
+  if (showNotifications) {
+    return <NotificationsPage onBack={() => setShowNotifications(false)} userName={currentUser} />
   }
 
-  const handleLogout = () => {
-    Alert.alert("Log Out", "Are you sure you want to log out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Log Out",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await SecureStore.deleteItemAsync("access_token")
-            await SecureStore.deleteItemAsync("refresh_token")
-            await SecureStore.deleteItemAsync("user_data")
-            await SecureStore.deleteItemAsync("selectedHorseData")
-            await SecureStore.deleteItemAsync("checkInData")
-            router.replace("../../pages/auth/login")
-          } catch (error) {
-            console.error("Error during logout:", error)
-            router.replace("../../pages/auth/login")
-          }
-        },
-      },
-    ])
+  // Show SOS Emergency page when requested
+  if (showSOSEmergency) {
+    return <SOSEmergencyScreen onBack={() => setShowSOSEmergency(false)} />
+  }
+
+  const getHealthStatusColor = (status: Horse["healthStatus"]) => {
+    switch (status) {
+      case "Healthy":
+        return "#4CAF50"
+      case "Under Care":
+        return "#FF9800"
+      case "Recovering":
+        return "#2196F3"
+      default:
+        return "#666"
+    }
+  }
+
+  // Get reminder color based on status
+  const getReminderColor = (reminder: CareReminder) => {
+    if (reminder.completed) {
+      return "#4CAF50" // Green for completed
+    } else if (reminder.isDue) {
+      return "#FF6B6B" // Red for due tasks
+    } else {
+      return "#2196F3" // Blue for upcoming tasks
+    }
+  }
+
+  // Get reminder icon
+  const getReminderIcon = (type: string) => {
+    switch (type) {
+      case "feed":
+        return "🥕"
+      case "water":
+        return "💧"
+      default:
+        return "🔔"
+    }
   }
 
   // Format activity time for display
@@ -482,89 +1007,6 @@ export default function HorseCareScreen() {
         return "🧼"
       default:
         return "📝"
-    }
-  }
-
-  // Get activity status text
-  const getActivityStatusText = (activity: CareActivity) => {
-    if (activity.type === "feed" && activity.markedAsFed) {
-      return "Marked as fed"
-    } else if (activity.type === "water" && activity.markedAsGiven) {
-      return "Marked as given"
-    } else if (activity.completed) {
-      return "Completed"
-    }
-    return ""
-  }
-
-  // Load data on focus and mount
-  useEffect(() => {
-    loadUserData()
-  }, [])
-
-  useFocusEffect(
-    useCallback(() => {
-      loadUserData()
-    }, []),
-  )
-
-  // Reload activities when selected horse changes
-  useEffect(() => {
-    if (selectedHorse.id !== "default") {
-      loadCareActivities()
-      loadCheckInStatus()
-    }
-  }, [selectedHorse.id])
-
-  // Show loading screen
-  if (isLoading) {
-    return (
-      <View style={[styles.container, styles.loadingContainer]}>
-        <StatusBar barStyle="light-content" backgroundColor="#C17A47" translucent={false} />
-        <ActivityIndicator size="large" color="white" />
-        <Text style={styles.loadingText}>Loading horse care...</Text>
-      </View>
-    )
-  }
-
-  // Show FeedPage when user clicks Feed or Water buttons
-  if (showFeedPage) {
-    return (
-      <FeedPage
-        onBack={() => {
-          setShowFeedPage(false)
-          // Reload activities after returning from feed page
-          loadCareActivities()
-        }}
-        feedType={feedType}
-        horseName={selectedHorse.name}
-        horseId={selectedHorse.id}
-        userId={userData?.id || ""}
-        userName={currentUser}
-      />
-    )
-  }
-
-  // Show Notifications page when requested
-  if (showNotifications) {
-    return <NotificationsPage onBack={() => setShowNotifications(false)} userName={currentUser} />
-  }
-
-  // Show SOS Emergency page when requested
-  if (showSOSEmergency) {
-    return <SOSEmergencyScreen onBack={() => setShowSOSEmergency(false)} />
-  }
-
-  const getHealthStatusColor = (status: Horse["healthStatus"]) => {
-    switch (status) {
-      case "Healthy":
-        return "#4CAF50"
-      case "Under Care":
-        return "#FF9800"
-      case "Recovering":
-        return "#2196F3"
-      default:
-        return "#666"
     }
   }
 
@@ -659,30 +1101,6 @@ export default function HorseCareScreen() {
               </View>
             </View>
 
-            {/* Action Buttons */}
-            <View style={styles.actionButtonsContainer}>
-              <TouchableOpacity
-                style={[styles.feedButton, selectedHorse.id === "default" && styles.disabledButton]}
-                onPress={handleFeedPress}
-                activeOpacity={0.7}
-                disabled={selectedHorse.id === "default"}
-              >
-                <Text style={[styles.actionButtonText, selectedHorse.id === "default" && styles.disabledButtonText]}>
-                  Feed
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.waterButton, selectedHorse.id === "default" && styles.disabledButton]}
-                onPress={handleWaterPress}
-                activeOpacity={0.7}
-                disabled={selectedHorse.id === "default"}
-              >
-                <Text style={[styles.actionButtonText, selectedHorse.id === "default" && styles.disabledButtonText]}>
-                  Water
-                </Text>
-              </TouchableOpacity>
-            </View>
-
             {/* Change Horse Button */}
             {selectedHorse.id === "default" && (
               <TouchableOpacity style={styles.selectHorseButton} onPress={() => router.push("./horseselection")}>
@@ -691,8 +1109,136 @@ export default function HorseCareScreen() {
             )}
           </View>
 
-          {/* REMOVED: Recent Care Activities Section */}
-          
+          {/* Care Reminders Section */}
+          {selectedHorse.id !== "default" && (
+            <View style={styles.remindersSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Daily Care Schedule</Text>
+                <TouchableOpacity onPress={refreshAllData}>
+                  <Text style={styles.refreshText}>Refresh</Text>
+                </TouchableOpacity>
+              </View>
+
+              {apiError && (
+                <View style={styles.errorBanner}>
+                  <Text style={styles.errorText}>{apiError}</Text>
+                </View>
+              )}
+
+              {careReminders.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Text style={styles.emptyStateText}>No schedule found for this horse</Text>
+                  <TouchableOpacity style={styles.addScheduleButton} onPress={refreshAllData}>
+                    <Text style={styles.addScheduleButtonText}>Load Schedule</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                careReminders.map((reminder) => (
+                  <TouchableOpacity
+                    key={reminder.id}
+                    style={[styles.reminderCard, { borderLeftColor: getReminderColor(reminder) }]}
+                    onPress={() => {
+                      if (!reminder.completed) {
+                        Alert.alert(
+                          "Mark as Completed",
+                          `Mark ${reminder.type === "feed" ? "feeding" : "watering"} task as completed?`,
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                              text: "Mark Complete",
+                              onPress: () => markReminderAsCompleted(reminder.id, reminder.type, reminder.apiId),
+                            },
+                          ]
+                        )
+                      }
+                    }}
+                  >
+                    <View style={styles.reminderHeader}>
+                      <View style={styles.reminderIconContainer}>
+                        <Text style={styles.reminderIcon}>{getReminderIcon(reminder.type)}</Text>
+                      </View>
+                      <View style={styles.reminderInfo}>
+                        <Text style={styles.reminderTitle}>{reminder.title}</Text>
+                        <Text style={styles.reminderDescription}>{reminder.description}</Text>
+                        <View style={styles.reminderMeta}>
+                          <Text style={styles.reminderTime}>🕒 {reminder.time}</Text>
+                          {reminder.completedTime && (
+                            <Text style={styles.completedTime}>
+                              Completed: {formatActivityTime(reminder.completedTime)}
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                      <View style={styles.reminderStatus}>
+                        {reminder.completed ? (
+                          <View style={styles.completedBadge}>
+                            <Text style={styles.completedBadgeText}>✓ Done</Text>
+                          </View>
+                        ) : reminder.isDue ? (
+                          <View style={styles.dueBadge}>
+                            <Text style={styles.dueBadgeText}>⚠️ Due Now</Text>
+                          </View>
+                        ) : (
+                          <View style={styles.upcomingBadge}>
+                            <Text style={styles.upcomingBadgeText}>Upcoming</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))
+              )}
+
+              {/* Schedule Summary */}
+              {careReminders.length > 0 && (
+                <View style={styles.scheduleSummary}>
+                  <Text style={styles.summaryTitle}>Schedule Summary</Text>
+                  <View style={styles.summaryStats}>
+                    <View style={styles.summaryStat}>
+                      <Text style={styles.summaryStatNumber}>
+                        {careReminders.filter(r => r.type === "feed").length}
+                      </Text>
+                      <Text style={styles.summaryStatLabel}>Feeding Times</Text>
+                    </View>
+                    <View style={styles.summaryStat}>
+                      <Text style={styles.summaryStatNumber}>
+                        {careReminders.filter(r => r.type === "water").length}
+                      </Text>
+                      <Text style={styles.summaryStatLabel}>Water Times</Text>
+                    </View>
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+
+          {/* Recent Care Activities Section */}
+          {selectedHorse.id !== "default" && recentActivities.length > 0 && (
+            <View style={styles.activitiesSection}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Recent Care Activities</Text>
+              </View>
+              {recentActivities.map((activity) => (
+                <View key={activity.id} style={styles.activityCard}>
+                  <View style={styles.activityHeader}>
+                    <Text style={styles.activityIcon}>{getActivityIcon(activity.type)}</Text>
+                    <View style={styles.activityInfo}>
+                      <Text style={styles.activityTitle}>
+                        {activity.type.charAt(0).toUpperCase() + activity.type.slice(1)} - {activity.horseName}
+                      </Text>
+                      <Text style={styles.activityTime}>{formatActivityTime(activity.timestamp)}</Text>
+                    </View>
+                    <View style={styles.activityStatus}>
+                      <View style={styles.completedBadge}>
+                        <Text style={styles.completedBadgeText}>Completed</Text>
+                      </View>
+                    </View>
+                  </View>
+                  {activity.notes && <Text style={styles.activityNotes}>{activity.notes}</Text>}
+                </View>
+              ))}
+            </View>
+          )}
         </ScrollView>
 
         {/* Bottom Tab Navigation */}
@@ -855,6 +1401,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: verticalScale(12),
   },
+  sectionTitle: {
+    fontSize: moderateScale(16),
+    fontWeight: "bold",
+    color: "#333",
+  },
   refreshText: {
     fontSize: moderateScale(12),
     color: "#C17A47",
@@ -916,56 +1467,6 @@ const styles = StyleSheet.create({
     color: "#4CAF50",
     fontWeight: "500",
   },
-  actionButtonsContainer: {
-    flexDirection: "row",
-    gap: scale(10),
-    marginBottom: verticalScale(12),
-  },
-  feedButton: {
-    flex: 1,
-    backgroundColor: "#4CAF50",
-    paddingVertical: verticalScale(12),
-    borderRadius: scale(8),
-    alignItems: "center",
-    minHeight: 44,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  waterButton: {
-    flex: 1,
-    backgroundColor: "#2196F3",
-    paddingVertical: verticalScale(12),
-    borderRadius: scale(8),
-    alignItems: "center",
-    minHeight: 44,
-    shadowColor: "#000",
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  disabledButton: {
-    backgroundColor: "#CCCCCC",
-    elevation: 0,
-    shadowOpacity: 0,
-  },
-  actionButtonText: {
-    color: "white",
-    fontSize: moderateScale(14),
-    fontWeight: "600",
-  },
-  disabledButtonText: {
-    color: "#999",
-  },
   selectHorseButton: {
     backgroundColor: "#C17A47",
     paddingVertical: verticalScale(12),
@@ -978,7 +1479,200 @@ const styles = StyleSheet.create({
     fontSize: moderateScale(14),
     fontWeight: "600",
   },
-  // REMOVED: activitiesSection and all related activity styles
+  // Reminders Section Styles
+  remindersSection: {
+    backgroundColor: "white",
+    marginHorizontal: scale(16),
+    marginTop: dynamicSpacing(12),
+    borderRadius: scale(12),
+    padding: scale(16),
+  },
+  errorBanner: {
+    backgroundColor: "#FFEBEE",
+    padding: scale(12),
+    borderRadius: scale(8),
+    marginBottom: verticalScale(12),
+  },
+  errorText: {
+    color: "#D32F2F",
+    fontSize: moderateScale(12),
+    textAlign: "center",
+  },
+  emptyState: {
+    padding: verticalScale(20),
+    alignItems: "center",
+  },
+  emptyStateText: {
+    fontSize: moderateScale(14),
+    color: "#999",
+    marginBottom: verticalScale(10),
+  },
+  addScheduleButton: {
+    backgroundColor: "#C17A47",
+    paddingHorizontal: scale(20),
+    paddingVertical: verticalScale(8),
+    borderRadius: scale(20),
+  },
+  addScheduleButtonText: {
+    color: "white",
+    fontSize: moderateScale(12),
+    fontWeight: "600",
+  },
+  reminderCard: {
+    backgroundColor: "#FAFAFA",
+    borderRadius: scale(8),
+    padding: scale(12),
+    marginBottom: verticalScale(8),
+    borderLeftWidth: scale(4),
+    borderLeftColor: "#2196F3",
+  },
+  reminderHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  reminderIconContainer: {
+    marginRight: scale(10),
+  },
+  reminderIcon: {
+    fontSize: moderateScale(24),
+  },
+  reminderInfo: {
+    flex: 1,
+  },
+  reminderTitle: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(2),
+  },
+  reminderDescription: {
+    fontSize: moderateScale(12),
+    color: "#666",
+    marginBottom: verticalScale(4),
+  },
+  reminderMeta: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  reminderTime: {
+    fontSize: moderateScale(11),
+    color: "#888",
+  },
+  completedTime: {
+    fontSize: moderateScale(11),
+    color: "#4CAF50",
+  },
+  reminderStatus: {
+    marginLeft: scale(8),
+  },
+  completedBadge: {
+    backgroundColor: "#E8F5E9",
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+    borderRadius: scale(12),
+  },
+  completedBadgeText: {
+    fontSize: moderateScale(10),
+    color: "#4CAF50",
+    fontWeight: "600",
+  },
+  dueBadge: {
+    backgroundColor: "#FFEBEE",
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+    borderRadius: scale(12),
+  },
+  dueBadgeText: {
+    fontSize: moderateScale(10),
+    color: "#FF6B6B",
+    fontWeight: "600",
+  },
+  upcomingBadge: {
+    backgroundColor: "#E3F2FD",
+    paddingHorizontal: scale(8),
+    paddingVertical: scale(4),
+    borderRadius: scale(12),
+  },
+  upcomingBadgeText: {
+    fontSize: moderateScale(10),
+    color: "#2196F3",
+    fontWeight: "600",
+  },
+  scheduleSummary: {
+    marginTop: verticalScale(16),
+    paddingTop: verticalScale(12),
+    borderTopWidth: 1,
+    borderTopColor: "#E0E0E0",
+  },
+  summaryTitle: {
+    fontSize: moderateScale(14),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(8),
+  },
+  summaryStats: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+  },
+  summaryStat: {
+    alignItems: "center",
+  },
+  summaryStatNumber: {
+    fontSize: moderateScale(20),
+    fontWeight: "bold",
+    color: "#C17A47",
+  },
+  summaryStatLabel: {
+    fontSize: moderateScale(12),
+    color: "#666",
+  },
+  // Activities Section Styles
+  activitiesSection: {
+    backgroundColor: "white",
+    marginHorizontal: scale(16),
+    marginTop: dynamicSpacing(12),
+    borderRadius: scale(12),
+    padding: scale(16),
+    marginBottom: dynamicSpacing(20),
+  },
+  activityCard: {
+    backgroundColor: "#FAFAFA",
+    borderRadius: scale(8),
+    padding: scale(12),
+    marginBottom: verticalScale(8),
+  },
+  activityHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: verticalScale(6),
+  },
+  activityIcon: {
+    fontSize: moderateScale(20),
+    marginRight: scale(10),
+  },
+  activityInfo: {
+    flex: 1,
+  },
+  activityTitle: {
+    fontSize: moderateScale(13),
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: verticalScale(2),
+  },
+  activityTime: {
+    fontSize: moderateScale(11),
+    color: "#888",
+  },
+  activityStatus: {
+    marginLeft: scale(8),
+  },
+  activityNotes: {
+    fontSize: moderateScale(12),
+    color: "#666",
+    fontStyle: "italic",
+    paddingLeft: scale(30),
+  },
   tabBar: {
     flexDirection: "row",
     backgroundColor: "white",
@@ -1033,11 +1727,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     position: "relative",
-  },
-  // Professional Menu Icon
-  menuBar: {
-    width: scale(10),
-    height: scale(1.5),
   },
   // Dashboard/Home Icon Styles
   dashboardGrid: {
