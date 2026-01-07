@@ -1,4 +1,6 @@
-import React, { useState, useCallback, useEffect } from 'react';
+// HORSE_OPERATOR/horsehandling.tsx
+
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { 
   View, 
   Text, 
@@ -8,11 +10,14 @@ import {
   TouchableOpacity, 
   Image, 
   Alert,
-  ActivityIndicator 
+  ActivityIndicator,
+  RefreshControl
 } from 'react-native';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { FontAwesome5 } from '@expo/vector-icons';
 import * as SecureStore from "expo-secure-store";
+import * as Notifications from 'expo-notifications';
+import moment from 'moment';
 
 interface HorseAssignment {
   assign_id: string;
@@ -25,18 +30,363 @@ interface HorseAssignment {
   kutsero_name?: string;
   horse_name?: string;
   kutsero_image?: string;
+  status?: 'upcoming' | 'active' | 'completed';
 }
 
 const API_BASE_URL = "http://192.168.101.4:8000/api/horse_operator"
+
+// Notification storage keys
+const LAST_NOTIFIED_HORSE_ASSIGNMENTS_KEY = "last_notified_horse_assignments"
+const CACHED_HORSE_ASSIGNMENTS_KEY = "cached_horse_assignments"
+const CACHE_DURATION_MS = 5 * 60 * 1000 // 5 minutes cache duration
+
+// Configure notifications handler
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 const HorseHandlingScreen = () => {
   const router = useRouter();
   const params = useLocalSearchParams();
   const [assignments, setAssignments] = useState<HorseAssignment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [horseId, setHorseId] = useState<string | null>(null);
   const [horseName, setHorseName] = useState<string>('');
+  
+  // Refs to track state
+  const isMounted = useRef(false);
+  const hasFetchedRef = useRef(false);
+  const isFetchingRef = useRef(false);
+
+  // ============================
+  // NOTIFICATION FUNCTIONS
+  // ============================
+
+  const requestNotificationPermissions = useCallback(async () => {
+    try {
+      const { status } = await Notifications.requestPermissionsAsync()
+      if (status === 'granted') {
+        console.log('✅ Notification permissions granted for Horse Handling')
+        return true
+      } else {
+        console.log('⚠️ Notification permissions denied for Horse Handling')
+        return false
+      }
+    } catch (error) {
+      console.error('❌ Error requesting notification permissions:', error)
+      return false
+    }
+  }, [])
+
+  const sendNewHorseAssignmentNotification = useCallback(async (assignment: HorseAssignment) => {
+    try {
+      console.log(`📢 Sending new horse assignment notification: ${assignment.assign_id}`)
+      
+      const hasPermission = await requestNotificationPermissions()
+      if (!hasPermission) {
+        console.log('⏭️ No notification permission, skipping')
+        return false
+      }
+
+      const title = '🐴 New Horse Assignment!'
+      const horseName = assignment.horse_name || 'Unknown Horse'
+      const kutseroName = assignment.kutsero_name || 'Unknown Kutsero'
+      const startDate = moment(assignment.date_start).format('MMM D, YYYY h:mm A')
+      const body = `${kutseroName} will start handling ${horseName} on ${startDate}`
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          data: {
+            type: 'new_horse_assignment',
+            assignId: assignment.assign_id,
+            horseId: assignment.horse_id,
+            horseName: assignment.horse_name,
+            kutseroId: assignment.kutsero_id,
+            kutseroName: assignment.kutsero_name,
+            dateStart: assignment.date_start,
+            dateEnd: assignment.date_end,
+          },
+          sound: 'default',
+        },
+        trigger: null,
+      })
+
+      console.log(`✅ Sent new horse assignment notification for ${assignment.assign_id}`)
+      return true
+    } catch (error) {
+      console.error('❌ Error sending new horse assignment notification:', error)
+      return false
+    }
+  }, [requestNotificationPermissions])
+
+  const sendHorseAssignmentEndNotification = useCallback(async (assignment: HorseAssignment) => {
+    try {
+      console.log(`📢 Sending horse assignment end notification: ${assignment.assign_id}`)
+      
+      const hasPermission = await requestNotificationPermissions()
+      if (!hasPermission) {
+        console.log('⏭️ No notification permission, skipping')
+        return false
+      }
+
+      const title = '✅ Horse Assignment Completed!'
+      const horseName = assignment.horse_name || 'Unknown Horse'
+      const kutseroName = assignment.kutsero_name || 'Unknown Kutsero'
+      const endDate = moment(assignment.date_end).format('MMM D, YYYY h:mm A')
+      const body = `${kutseroName} has completed handling ${horseName} on ${endDate}`
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          data: {
+            type: 'horse_assignment_end',
+            assignId: assignment.assign_id,
+            horseId: assignment.horse_id,
+            horseName: assignment.horse_name,
+            kutseroId: assignment.kutsero_id,
+            kutseroName: assignment.kutsero_name,
+            dateStart: assignment.date_start,
+            dateEnd: assignment.date_end,
+          },
+          sound: 'default',
+        },
+        trigger: null,
+      })
+
+      console.log(`✅ Sent horse assignment end notification for ${assignment.assign_id}`)
+      return true
+    } catch (error) {
+      console.error('❌ Error sending horse assignment end notification:', error)
+      return false
+    }
+  }, [requestNotificationPermissions])
+
+  const sendActiveHorseAssignmentNotification = useCallback(async (assignment: HorseAssignment) => {
+    try {
+      console.log(`📢 Sending active horse assignment notification: ${assignment.assign_id}`)
+      
+      const hasPermission = await requestNotificationPermissions()
+      if (!hasPermission) {
+        console.log('⏭️ No notification permission, skipping')
+        return false
+      }
+
+      const title = '🏇 Horse Currently Being Handled!'
+      const horseName = assignment.horse_name || 'Unknown Horse'
+      const kutseroName = assignment.kutsero_name || 'Unknown Kutsero'
+      const startDate = moment(assignment.date_start).format('MMM D, YYYY h:mm A')
+      const body = `${kutseroName} is currently handling ${horseName} since ${startDate}`
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          data: {
+            type: 'active_horse_assignment',
+            assignId: assignment.assign_id,
+            horseId: assignment.horse_id,
+            horseName: assignment.horse_name,
+            kutseroId: assignment.kutsero_id,
+            kutseroName: assignment.kutsero_name,
+            dateStart: assignment.date_start,
+            dateEnd: assignment.date_end,
+          },
+          sound: 'default',
+        },
+        trigger: null,
+      })
+
+      console.log(`✅ Sent active horse assignment notification for ${assignment.assign_id}`)
+      return true
+    } catch (error) {
+      console.error('❌ Error sending active horse assignment notification:', error)
+      return false
+    }
+  }, [requestNotificationPermissions])
+
+  const loadLastNotifiedHorseAssignments = useCallback(async () => {
+    try {
+      const stored = await SecureStore.getItemAsync(LAST_NOTIFIED_HORSE_ASSIGNMENTS_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        console.log('📋 Loaded last notified horse assignments:', Object.keys(parsed).length)
+        return parsed as {[key: string]: {date_end: string | null, status: string, created_at: string}}
+      }
+      console.log('📋 No previously notified horse assignments found')
+      return {}
+    } catch (error) {
+      console.error('❌ Error loading last notified horse assignments:', error)
+      return {}
+    }
+  }, [])
+
+  const saveLastNotifiedHorseAssignments = useCallback(async (notifiedAssignments: {[key: string]: {date_end: string | null, status: string, created_at: string}}) => {
+    try {
+      await SecureStore.setItemAsync(LAST_NOTIFIED_HORSE_ASSIGNMENTS_KEY, JSON.stringify(notifiedAssignments))
+      console.log('💾 Saved last notified horse assignments:', Object.keys(notifiedAssignments).length)
+    } catch (error) {
+      console.error('❌ Error saving last notified horse assignments:', error)
+    }
+  }, [])
+
+  const checkAndSendHorseAssignmentNotifications = useCallback(async (currentAssignments: HorseAssignment[]) => {
+    if (currentAssignments.length === 0) {
+      return
+    }
+
+    console.log('🔍 Checking horse assignments for notifications...')
+    console.log('📊 Current horse assignments count:', currentAssignments.length)
+
+    try {
+      const lastNotified = await loadLastNotifiedHorseAssignments()
+      const updatedNotified: {[key: string]: {date_end: string | null, status: string, created_at: string}} = { ...lastNotified }
+      let notificationsSent = 0
+
+      for (const assignment of currentAssignments) {
+        const assignId = assignment.assign_id
+        const currentDateEnd = assignment.date_end
+        const currentStatus = assignment.status || 'unknown'
+        const createdAt = assignment.created_at || ''
+
+        const previouslyNotified = lastNotified[assignId]
+        
+        if (!previouslyNotified) {
+          // New assignment
+          console.log(`🎯 New horse assignment detected: ${assignId}`)
+          
+          let notificationSent = false
+          if (currentStatus === 'upcoming') {
+            notificationSent = await sendNewHorseAssignmentNotification(assignment)
+          } else if (currentStatus === 'active') {
+            notificationSent = await sendActiveHorseAssignmentNotification(assignment)
+          }
+          
+          if (notificationSent) {
+            notificationsSent++
+          }
+          
+          updatedNotified[assignId] = { date_end: currentDateEnd, status: currentStatus, created_at: createdAt }
+        } else if (previouslyNotified.date_end !== currentDateEnd) {
+          // Assignment end date changed
+          console.log(`🎯 Horse assignment end date changed: ${assignId}`)
+          
+          let notificationSent = false
+          if (previouslyNotified.date_end === null && currentDateEnd !== null) {
+            // Assignment just ended
+            notificationSent = await sendHorseAssignmentEndNotification(assignment)
+          } else if (previouslyNotified.date_end !== null && currentDateEnd === null) {
+            // Assignment reactivated (date_end removed)
+            notificationSent = await sendActiveHorseAssignmentNotification(assignment)
+          } else if (currentStatus === 'active' && previouslyNotified.status !== 'active') {
+            // Became active
+            notificationSent = await sendActiveHorseAssignmentNotification(assignment)
+          }
+          
+          if (notificationSent) {
+            notificationsSent++
+          }
+          
+          updatedNotified[assignId] = { date_end: currentDateEnd, status: currentStatus, created_at: createdAt }
+        } else if (previouslyNotified.status !== currentStatus) {
+          // Status changed
+          console.log(`🎯 Horse assignment status changed: ${assignId} (${previouslyNotified.status} -> ${currentStatus})`)
+          
+          let notificationSent = false
+          if (currentStatus === 'active' && previouslyNotified.status === 'upcoming') {
+            // Assignment started
+            notificationSent = await sendActiveHorseAssignmentNotification(assignment)
+          } else if (currentStatus === 'completed' && previouslyNotified.status !== 'completed') {
+            // Assignment completed
+            notificationSent = await sendHorseAssignmentEndNotification(assignment)
+          }
+          
+          if (notificationSent) {
+            notificationsSent++
+          }
+          
+          updatedNotified[assignId] = { date_end: currentDateEnd, status: currentStatus, created_at: createdAt }
+        } else {
+          // No changes, update record anyway
+          updatedNotified[assignId] = { date_end: currentDateEnd, status: currentStatus, created_at: createdAt }
+        }
+      }
+
+      // Clean up old assignments that are no longer in current list
+      const currentAssignmentIds = new Set(currentAssignments.map(assign => assign.assign_id))
+      Object.keys(updatedNotified).forEach(id => {
+        if (!currentAssignmentIds.has(id)) {
+          delete updatedNotified[id]
+        }
+      })
+
+      await saveLastNotifiedHorseAssignments(updatedNotified)
+
+      console.log(`✅ Horse assignment notification check complete. Sent ${notificationsSent} notification(s)`)
+      return notificationsSent
+    } catch (error) {
+      console.error('❌ Error in horse assignment notification check:', error)
+      return 0
+    }
+  }, [
+    loadLastNotifiedHorseAssignments, 
+    saveLastNotifiedHorseAssignments, 
+    sendNewHorseAssignmentNotification, 
+    sendHorseAssignmentEndNotification,
+    sendActiveHorseAssignmentNotification
+  ])
+
+  // ============================
+  // DATA STORAGE FUNCTIONS
+  // ============================
+
+  const saveAssignmentsToCache = useCallback(async (assignmentsData: HorseAssignment[]) => {
+    try {
+      const cacheData = {
+        assignments: assignmentsData,
+        timestamp: Date.now()
+      }
+      await SecureStore.setItemAsync(CACHED_HORSE_ASSIGNMENTS_KEY, JSON.stringify(cacheData))
+      console.log('💾 Horse assignments cached successfully')
+    } catch (error) {
+      console.error('❌ Error caching horse assignments:', error)
+    }
+  }, [])
+
+  const loadAssignmentsFromCache = useCallback(async () => {
+    try {
+      const cachedData = await SecureStore.getItemAsync(CACHED_HORSE_ASSIGNMENTS_KEY)
+      if (cachedData) {
+        const parsed = JSON.parse(cachedData)
+        const { assignments, timestamp } = parsed
+        
+        if (Date.now() - timestamp < CACHE_DURATION_MS) {
+          console.log('📂 Loading horse assignments from cache')
+          return assignments as HorseAssignment[]
+        } else {
+          console.log('⏰ Cache expired, will fetch fresh data')
+        }
+      }
+      return null
+    } catch (error) {
+      console.error('❌ Error loading cached horse assignments:', error)
+      return null
+    }
+  }, [])
+
+  // ============================
+  // CORE FUNCTIONS
+  // ============================
 
   // Load horse ID from params or SecureStore
   const loadHorseId = useCallback(async () => {
@@ -83,17 +433,36 @@ const HorseHandlingScreen = () => {
     return null;
   }, []);
 
-  // Initialize IDs on mount
-  useEffect(() => {
-    const initializeData = async () => {
-      await loadUserId();
-      await loadHorseId();
-    };
-    initializeData();
-  }, [loadUserId, loadHorseId]);
+  // Determine assignment status
+  const determineAssignmentStatus = useCallback((assignment: HorseAssignment): 'upcoming' | 'active' | 'completed' => {
+    const now = new Date();
+    const startDate = new Date(assignment.date_start);
+    const endDate = assignment.date_end ? new Date(assignment.date_end) : null;
 
-  // Fetch horse assignments for specific horse
-  const fetchHorseAssignments = useCallback(async () => {
+    if (now < startDate) {
+      return 'upcoming';
+    } else if (!endDate || now <= endDate) {
+      return 'active';
+    } else {
+      return 'completed';
+    }
+  }, []);
+
+  // Fetch horse assignments for specific horse with refresh control
+  const fetchHorseAssignments = useCallback(async (showRefreshIndicator = false) => {
+    if (isFetchingRef.current) {
+      console.log("Fetch already in progress, skipping...");
+      return;
+    }
+
+    isFetchingRef.current = true;
+
+    if (showRefreshIndicator) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+
     try {
       let uid = userId;
       if (!uid) {
@@ -101,6 +470,7 @@ const HorseHandlingScreen = () => {
         if (!uid) {
           console.error("❌ No user_id found, cannot fetch assignments.");
           setLoading(false);
+          setRefreshing(false);
           return;
         }
       }
@@ -112,12 +482,45 @@ const HorseHandlingScreen = () => {
           console.error("❌ No horse_id found, cannot fetch assignments.");
           Alert.alert("Error", "Horse ID not found. Please select a horse first.");
           setLoading(false);
+          setRefreshing(false);
+          return;
+        }
+      }
+
+      // Only use cache for initial load (not for pull-to-refresh)
+      if (!showRefreshIndicator) {
+        const cachedAssignments = await loadAssignmentsFromCache();
+        if (cachedAssignments) {
+          console.log('📂 Using cached horse assignments');
+          const assignmentsWithStatus = cachedAssignments.map(assign => ({
+            ...assign,
+            status: determineAssignmentStatus(assign)
+          }));
+          setAssignments(assignmentsWithStatus);
+          
+          // Set horse name
+          if (params?.horseName) {
+            setHorseName(params.horseName as string);
+          } else if (cachedAssignments.length > 0 && cachedAssignments[0].horse_name) {
+            setHorseName(cachedAssignments[0].horse_name);
+          }
+          
+          setLoading(false);
+          hasFetchedRef.current = true;
+          
+          // Fetch fresh data in background after showing cached data
+          setTimeout(() => {
+            if (isMounted.current) {
+              fetchHorseAssignments(true);
+            }
+          }, 1000);
+          
+          isFetchingRef.current = false;
           return;
         }
       }
 
       console.log("📡 Fetching horse assignments for user_id:", uid, "horse_id:", hid);
-      setLoading(true);
       
       const url = `${API_BASE_URL}/get_horse_assignments/?user_id=${encodeURIComponent(uid)}&horse_id=${encodeURIComponent(hid)}`;
       console.log("🌐 Request URL:", url);
@@ -135,33 +538,76 @@ const HorseHandlingScreen = () => {
       console.log("✅ Raw assignments data:", data);
       console.log("📊 Number of assignments received:", Array.isArray(data) ? data.length : 'Not array');
 
-      setAssignments(Array.isArray(data) ? data : []);
+      const fetchedAssignments = Array.isArray(data) ? data : [];
+      
+      // Add status to each assignment
+      const assignmentsWithStatus = fetchedAssignments.map((assign: HorseAssignment) => ({
+        ...assign,
+        status: determineAssignmentStatus(assign)
+      }));
+      
+      setAssignments(assignmentsWithStatus);
       
       // Set horse name from params or data
       if (params?.horseName) {
         setHorseName(params.horseName as string);
-      } else if (data.length > 0 && data[0].horse_name) {
-        setHorseName(data[0].horse_name);
+      } else if (fetchedAssignments.length > 0 && fetchedAssignments[0].horse_name) {
+        setHorseName(fetchedAssignments[0].horse_name);
       }
+
+      await saveAssignmentsToCache(fetchedAssignments);
+      
+      hasFetchedRef.current = true;
 
     } catch (error: any) {
       console.error("❌ Error loading horse assignments:", error);
-      Alert.alert("Error", error.message || "Unable to load horse assignments");
-      setAssignments([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [userId, horseId, params?.horseName, loadUserId, loadHorseId]);
-
-  // Refresh assignments when screen is focused and IDs are available
-  useFocusEffect(
-    useCallback(() => {
-      if (userId && horseId) {
-        console.log("🎯 Horse handling screen focused - refreshing assignments...");
-        fetchHorseAssignments();
+      
+      // Only fallback to cache if this is not a pull-to-refresh
+      if (!showRefreshIndicator) {
+        const cachedAssignments = await loadAssignmentsFromCache();
+        if (cachedAssignments) {
+          const assignmentsWithStatus = cachedAssignments.map(assign => ({
+            ...assign,
+            status: determineAssignmentStatus(assign)
+          }));
+          setAssignments(assignmentsWithStatus);
+          
+          if (params?.horseName) {
+            setHorseName(params.horseName as string);
+          } else if (cachedAssignments.length > 0 && cachedAssignments[0].horse_name) {
+            setHorseName(cachedAssignments[0].horse_name);
+          }
+          hasFetchedRef.current = true;
+        } else {
+          Alert.alert("Error", error.message || "Unable to load horse assignments");
+          setAssignments([]);
+        }
+      } else {
+        Alert.alert("Error", "Failed to refresh assignments. Please try again.");
       }
-    }, [userId, horseId, fetchHorseAssignments])
-  );
+    } finally {
+      isFetchingRef.current = false;
+      if (showRefreshIndicator) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
+    }
+  }, [
+    userId, 
+    horseId, 
+    params?.horseName, 
+    loadUserId, 
+    loadHorseId, 
+    loadAssignmentsFromCache, 
+    saveAssignmentsToCache,
+    determineAssignmentStatus
+  ]);
+
+  // Pull-to-refresh handler
+  const onRefresh = useCallback(() => {
+    fetchHorseAssignments(true);
+  }, [fetchHorseAssignments]);
 
   const handleGoBack = () => {
     router.back();
@@ -169,18 +615,7 @@ const HorseHandlingScreen = () => {
 
   const formatDateTime = (dateTimeString: string) => {
     try {
-      const date = new Date(dateTimeString);
-      const dateStr = date.toLocaleDateString('en-US', { 
-        month: 'short', 
-        day: 'numeric', 
-        year: 'numeric' 
-      });
-      const timeStr = date.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true 
-      });
-      return `${dateStr} | ${timeStr}`;
+      return moment(dateTimeString).format('MMM D, YYYY | h:mm A');
     } catch (error) {
       console.error("Error formatting date:", error);
       return dateTimeString;
@@ -188,16 +623,17 @@ const HorseHandlingScreen = () => {
   };
 
   const getStatusText = (assignment: HorseAssignment) => {
-    const now = new Date();
-    const startDate = new Date(assignment.date_start);
-    const endDate = assignment.date_end ? new Date(assignment.date_end) : null;
-
-    if (now < startDate) {
-      return { text: "Upcoming", color: "#FFA500" };
-    } else if (!endDate || now <= endDate) {
-      return { text: "Active", color: "#28A745" };
-    } else {
-      return { text: "Completed", color: "#6C757D" };
+    const status = assignment.status || determineAssignmentStatus(assignment);
+    
+    switch (status) {
+      case 'upcoming':
+        return { text: "Upcoming", color: "#FFA500" };
+      case 'active':
+        return { text: "Active", color: "#28A745" };
+      case 'completed':
+        return { text: "Completed", color: "#6C757D" };
+      default:
+        return { text: "Unknown", color: "#6C757D" };
     }
   };
 
@@ -215,7 +651,6 @@ const HorseHandlingScreen = () => {
     }
     
     // If it's a relative path, construct the full URL
-    // FIXED: Use the correct base URL
     const supabaseUrl = "https://drgknejiqupegkyxfaab.supabase.co";
     
     // Check what type of image it is
@@ -246,6 +681,120 @@ const HorseHandlingScreen = () => {
     </View>
   );
 
+  // Set up notification response handling
+  useEffect(() => {
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      
+      if (data.type === 'new_horse_assignment' || data.type === 'active_horse_assignment' || data.type === 'horse_assignment_end') {
+        console.log('Horse assignment notification tapped:', data);
+        
+        // Refresh assignments when notification is tapped
+        fetchHorseAssignments(true);
+      }
+    });
+
+    return () => subscription.remove();
+  }, [fetchHorseAssignments]);
+
+  // Initialize notification permissions
+  useEffect(() => {
+    requestNotificationPermissions();
+  }, [requestNotificationPermissions]);
+
+  // Check for notifications when assignments update
+  useEffect(() => {
+    if (assignments.length > 0 && !loading && !refreshing && isMounted.current) {
+      console.log('🔄 Horse assignments updated, checking for notifications...');
+      checkAndSendHorseAssignmentNotifications(assignments);
+    }
+  }, [assignments, loading, refreshing, checkAndSendHorseAssignmentNotifications]);
+
+  // Initialize IDs on mount
+  useEffect(() => {
+    const initializeData = async () => {
+      if (isMounted.current) {
+        return;
+      }
+
+      setLoading(true);
+      try {
+        console.log('🚀 Initializing horse handling data...');
+        
+        const cachedAssignments = await loadAssignmentsFromCache();
+        
+        if (cachedAssignments) {
+          console.log('📂 Using cached data');
+          const assignmentsWithStatus = cachedAssignments.map(assign => ({
+            ...assign,
+            status: determineAssignmentStatus(assign)
+          }));
+          setAssignments(assignmentsWithStatus);
+          
+          // Set horse name
+          if (params?.horseName) {
+            setHorseName(params.horseName as string);
+          } else if (cachedAssignments.length > 0 && cachedAssignments[0].horse_name) {
+            setHorseName(cachedAssignments[0].horse_name);
+          }
+          
+          setLoading(false);
+          hasFetchedRef.current = true;
+          
+          setTimeout(async () => {
+            if (isMounted.current) {
+              await fetchHorseAssignments(true);
+            }
+          }, 1000);
+        } else {
+          console.log('📡 Fetching fresh data (no cache)');
+          await fetchHorseAssignments(false);
+        }
+        
+        isMounted.current = true;
+      } catch (error) {
+        console.error("❌ Error initializing data:", error);
+        setLoading(false);
+      }
+    };
+
+    initializeData();
+
+    return () => {
+      isMounted.current = false;
+    };
+  }, [fetchHorseAssignments, loadAssignmentsFromCache, determineAssignmentStatus, params?.horseName]);
+
+  // Refresh assignments when screen is focused and IDs are available
+  useFocusEffect(
+    useCallback(() => {
+      if (userId && horseId && hasFetchedRef.current && !isFetchingRef.current) {
+        console.log("🎯 Horse handling screen focused - refreshing assignments...");
+        fetchHorseAssignments(true);
+      }
+    }, [userId, horseId, fetchHorseAssignments])
+  );
+
+  if (loading && assignments.length === 0) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={handleGoBack} style={styles.backButton}>
+            <FontAwesome5 name="arrow-left" size={24} color="#fff" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>
+            {horseName ? `${horseName}'s Handlers` : "Kutsero's Horse Handling"}
+          </Text>
+        </View>
+        
+        <View style={styles.loadingContainerFull}>
+          <ActivityIndicator size="large" color="#CD853F" />
+          <Text style={styles.loadingText}>Loading horse assignments...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* Header */}
@@ -262,18 +811,20 @@ const HorseHandlingScreen = () => {
         style={styles.container} 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#CD853F']}
+            tintColor="#CD853F"
+          />
+        }
       >
-        {loading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#CD853F" />
-            <Text style={styles.loadingText}>Loading assignments...</Text>
-          </View>
-        ) : assignments.length === 0 ? (
+        {assignments.length === 0 ? (
           <EmptyState />
         ) : (
           assignments.map((assignment, index) => {
             const status = getStatusText(assignment);
-            // Use the simple version for better reliability
             const imageSource = getImageSourceSimple(assignment.kutsero_image);
             
             return (
@@ -371,7 +922,7 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 100,
   },
-  loadingContainer: {
+  loadingContainerFull: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',

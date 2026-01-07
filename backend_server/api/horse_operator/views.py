@@ -695,6 +695,71 @@ def save_feeding_schedule(request):
         logger.error(f"Error saving feeding schedule: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@api_view(['POST'])
+def update_feeding_schedule(request):
+    """
+    NEW: Update existing feeding schedule in database
+    This is called when editing an existing meal schedule
+    """
+    user_id = request.data.get("user_id")
+    horse_id = request.data.get("horse_id")
+    fd_id = request.data.get("fd_id")
+    schedule = request.data.get("schedule")
+    
+    if not user_id or not horse_id or not fd_id:
+        return Response({"error": "user_id, horse_id, and fd_id are required"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+        
+        # Check if the feed schedule exists and belongs to this user
+        feed_check = service_client.table("feed_detail").select("*").eq("fd_id", fd_id).execute()
+        
+        if not feed_check.data:
+            return Response({"error": "Feed schedule not found"}, status=status.HTTP_404_NOT_FOUND)
+        
+        feed_schedule = feed_check.data[0]
+        
+        # Check if the schedule is completed
+        if feed_schedule.get("completed", False):
+            return Response({"error": "Cannot update completed feed schedules"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verify ownership (either op_id or kutsero_id should match)
+        if feed_schedule.get("op_id") != user_id and feed_schedule.get("kutsero_id") != user_id:
+            return Response({"error": "Unauthorized to update this schedule"}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Update the schedule with new data from the schedule array
+        if schedule and len(schedule) > 0:
+            meal = schedule[0]  # Get the first meal (should be only one for edits)
+            
+            update_data = {
+                "fd_time": meal.get("time", feed_schedule["fd_time"]),
+                "fd_food_type": meal.get("food", feed_schedule["fd_food_type"]),
+                "fd_qty": meal.get("amount", feed_schedule["fd_qty"]),
+                "fd_meal_type": meal.get("meal_type", feed_schedule["fd_meal_type"]),
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            # Perform the update
+            update_result = service_client.table("feed_detail").update(update_data).eq("fd_id", fd_id).execute()
+            
+            if update_result.data:
+                logger.info(f"Updated feed schedule {fd_id} for user {user_id}, horse {horse_id}")
+                return Response({
+                    "message": "Feeding schedule updated successfully",
+                    "fd_id": fd_id,
+                    "updated_data": update_data
+                }, status=status.HTTP_200_OK)
+            else:
+                return Response({"error": "Failed to update feed schedule"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            return Response({"error": "No schedule data provided"}, status=status.HTTP_400_BAD_REQUEST)
+            
+    except Exception as e:
+        logger.error(f"Error updating feeding schedule: {e}")
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
         
 
 @api_view(['POST'])
@@ -9658,7 +9723,7 @@ def update_kutsero_application(request, application_id):
         if not new_status:
             return Response({"error": "status is required"}, status=status.HTTP_400_BAD_REQUEST)
         
-        # Validate status
+        # Validate status - only 'pending', 'approved', 'rejected' are allowed by constraint
         valid_statuses = ["pending", "approved", "rejected"]
         if new_status not in valid_statuses:
             return Response({
@@ -9870,7 +9935,7 @@ def get_approved_kutseros(request):
 @api_view(['DELETE'])
 def remove_kutsero_assignment(request):
     """
-    Remove a kutsero assignment (unassign from all horses)
+    Remove a kutsero assignment (unassign from all horses AND update application status)
     """
     try:
         op_id = request.data.get("op_id")
@@ -9891,7 +9956,7 @@ def remove_kutsero_assignment(request):
                 "error": "Kutsero not approved or not found"
             }, status=status.HTTP_404_NOT_FOUND)
         
-        # Get kutsero name for logging
+        # Get kutsero name for logging and response
         kutsero_data = service_client.table("kutsero_profile").select(
             "kutsero_fname, kutsero_lname"
         ).eq("kutsero_id", kutsero_id).execute()
@@ -9901,12 +9966,13 @@ def remove_kutsero_assignment(request):
             kutsero = kutsero_data.data[0]
             kutsero_name = f"{kutsero.get('kutsero_fname', '')} {kutsero.get('kutsero_lname', '')}".strip()
         
+        deleted_assignments_count = 0
+        
+        # STEP 1: Remove all horse assignments for this kutsero and operator
         # Get all horses owned by this operator
         operator_horses = service_client.table("horse_profile").select(
-            "horse_id"
+            "horse_id, horse_name"
         ).eq("op_id", op_id).execute()
-        
-        deleted_count = 0
         
         if operator_horses.data:
             operator_horse_ids = [horse["horse_id"] for horse in operator_horses.data]
@@ -9918,19 +9984,43 @@ def remove_kutsero_assignment(request):
                 ).eq("kutsero_id", kutsero_id).execute()
                 
                 if delete_result.data:
-                    deleted_count += len(delete_result.data)
+                    deleted_assignments_count += len(delete_result.data)
         
-        logger.info(f"Removed {deleted_count} horse assignments for kutsero {kutsero_name}")
+        # STEP 2: Update the application status to 'rejected' 
+        # (since 'removed' is not allowed by the database constraint)
+        application_id = application_check.data[0].get("application_id")
+        
+        update_data = {
+            "status": "rejected",
+            "review_notes": f"Kutsero removed and unassigned from all horses on {datetime.now().date().isoformat()}",
+            "updated_at": datetime.now(pytz.UTC).isoformat()
+        }
+        
+        update_result = service_client.table("op_kutsero_application").update(update_data).eq(
+            "application_id", application_id
+        ).execute()
+        
+        if not update_result.data:
+            logger.error(f"Failed to update application status for {application_id}")
+            # Even if status update fails, we still report the assignments removed
+        
+        logger.info(f"Removed {deleted_assignments_count} horse assignments and updated application status for kutsero {kutsero_name}")
         
         return Response({
-            "message": f"Removed {kutsero_name} from {deleted_count} horse(s)",
-            "deleted_count": deleted_count,
-            "kutsero_name": kutsero_name
+            "message": f"Successfully removed {kutsero_name}",
+            "details": f"Unassigned from {deleted_assignments_count} horse(s) and application status updated to 'rejected'",
+            "kutsero_name": kutsero_name,
+            "assignments_removed": deleted_assignments_count,
+            "application_updated": True if update_result.data else False,
+            "new_status": "rejected"
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
         logger.error(f"Error removing kutsero assignment: {e}")
-        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        return Response({
+            "error": "Failed to remove kutsero assignment",
+            "detail": str(e)
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
 
 @api_view(['GET'])
@@ -10076,73 +10166,32 @@ def get_kutsero_profile_details(request):
                     "review_notes": application.get("review_notes")
                 }
             
-            # Get assigned horses count - FIXED: Check if horse_assignment has op_id column
+            # Get assigned horses count
             try:
-                # First, let's check the table structure
-                assigned_data = service_client.table("horse_assignment").select(
-                    "assign_id"
-                ).eq("kutsero_id", kutsero_id).execute()
+                # Get horses owned by this operator
+                operator_horses = service_client.table("horse_profile").select(
+                    "horse_id"
+                ).eq("op_id", op_id).execute()
                 
-                # Filter by operator if op_id exists in the assignment records
-                if assigned_data.data:
-                    # Check if assignment has operator relationship
-                    # This depends on your schema - if assignments are operator-specific
-                    # If not, we need to get horses owned by operator and check assignments
+                if operator_horses.data:
+                    operator_horse_ids = [horse["horse_id"] for horse in operator_horses.data]
                     
-                    # Get horses owned by this operator
-                    operator_horses = service_client.table("horse_profile").select(
-                        "horse_id"
-                    ).eq("op_id", op_id).execute()
+                    # Count assignments for these horses and this kutsero
+                    assignments_count = 0
+                    for horse_id in operator_horse_ids:
+                        assignment_check = service_client.table("horse_assignment").select(
+                            "assign_id"
+                        ).eq("horse_id", horse_id).eq("kutsero_id", kutsero_id).execute()
+                        
+                        if assignment_check.data:
+                            assignments_count += 1
                     
-                    if operator_horses.data:
-                        operator_horse_ids = [horse["horse_id"] for horse in operator_horses.data]
-                        
-                        # Get assignments for these horses and this kutsero
-                        filtered_assignments = []
-                        for assignment in assigned_data.data:
-                            # We need to get the horse_id from each assignment
-                            assignment_detail = service_client.table("horse_assignment").select(
-                                "horse_id, kutsero_id"
-                            ).eq("assign_id", assignment["assign_id"]).execute()
-                            
-                            if assignment_detail.data:
-                                assignment_info = assignment_detail.data[0]
-                                if assignment_info.get("horse_id") in operator_horse_ids:
-                                    filtered_assignments.append(assignment)
-                        
-                        assigned_horses = len(filtered_assignments)
-                    else:
-                        assigned_horses = 0
+                    assigned_horses = assignments_count
                 else:
                     assigned_horses = 0
-                    
             except Exception as e:
                 logger.error(f"Error fetching assigned horses count: {e}")
-                # Fallback: try alternative approach
-                try:
-                    # Get assignments by checking horse profiles
-                    operator_horses = service_client.table("horse_profile").select(
-                        "horse_id"
-                    ).eq("op_id", op_id).execute()
-                    
-                    if operator_horses.data:
-                        operator_horse_ids = [horse["horse_id"] for horse in operator_horses.data]
-                        
-                        # Check assignments for these horses
-                        assignments_count = 0
-                        for horse_id in operator_horse_ids:
-                            assignment_check = service_client.table("horse_assignment").select(
-                                "assign_id"
-                            ).eq("horse_id", horse_id).eq("kutsero_id", kutsero_id).execute()
-                            
-                            if assignment_check.data:
-                                assignments_count += 1
-                        
-                        assigned_horses = assignments_count
-                    else:
-                        assigned_horses = 0
-                except:
-                    assigned_horses = 0
+                assigned_horses = 0
         
         # Get complete name
         fname = profile.get("kutsero_fname", "")
@@ -10214,7 +10263,6 @@ def get_kutsero_profile_details(request):
 def get_kutsero_horse_assignments(request):
     """
     Get all horse assignments for a specific kutsero under a horse operator
-    FIXED: Now correctly fetches horse age and other details from horse_profile
     """
     op_id = request.GET.get("op_id")
     kutsero_id = request.GET.get("kutsero_id")
@@ -10278,7 +10326,6 @@ def get_kutsero_horse_assignments(request):
                 "horse_id": horse_id,
                 "horse_name": horse_details.get("horse_name", "Unknown Horse"),
                 "horse_age": horse_details.get("horse_age", "Unknown"),
-                "horse_age_from_profile": horse_details.get("horse_age", "Unknown"),  # Added for clarity
                 "horse_breed": horse_details.get("horse_breed"),
                 "horse_color": horse_details.get("horse_color"),
                 "horse_image": horse_details.get("horse_image"),

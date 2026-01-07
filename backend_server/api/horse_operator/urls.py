@@ -18,6 +18,7 @@ urlpatterns = [
     # ============== FEEDING SCHEDULE ==============
     path('get_feeding_schedule/', views.get_feeding_schedule, name='get_feeding_schedule'),
     path('save_feeding_schedule/', views.save_feeding_schedule, name='save_feeding_schedule'),
+    path('update_feeding_schedule/', views.update_feeding_schedule, name='update_feeding_schedule'),
     path('mark_meal_fed/', views.mark_meal_fed, name='mark_meal_fed'),
     path('get_feed_logs/', views.get_feed_logs, name='get_feed_logs'),
     path('clear_feed_logs/', views.clear_feed_logs, name='clear_feed_logs'),
@@ -153,6 +154,7 @@ urlpatterns = [
     path('get_kutsero_application_stats/', views.get_kutsero_application_stats, name='get_kutsero_application_stats'),
     path('get_kutsero_profile_details/', views.get_kutsero_profile_details, name='get_kutsero_profile_details'),
     path('get_kutsero_horse_assignments/', views.get_kutsero_horse_assignments, name='get_kutsero_horse_assignments'),
+    path('remove_kutsero_assignment/', views.remove_kutsero_assignment, name='remove_kutsero_assignment'),
 
 
     

@@ -1,4 +1,4 @@
-// HORSE_OPERATOR Horse Screen
+// HORSE_OPERATOR/horse.tsx
 
 import { useState, useCallback, useEffect, useRef } from "react"
 import {
@@ -14,6 +14,7 @@ import {
   TextInput,
   Platform,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native"
 import { useRouter, useFocusEffect } from "expo-router"
 import { FontAwesome5 } from "@expo/vector-icons"
@@ -121,6 +122,8 @@ const HorseScreen = () => {
   const [activeHorseTab, setActiveHorseTab] = useState<HorseTab>('alive')
   const [medicalRecords, setMedicalRecords] = useState<{[key: string]: MedicalRecord | null}>({})
   const [loadingMedicalRecords, setLoadingMedicalRecords] = useState<{[key: string]: boolean}>({})
+  const [refreshing, setRefreshing] = useState(false)
+  const [loading, setLoading] = useState(true)
   
   // Track if notification has been scheduled to prevent duplicates
   const notificationScheduledRef = useRef<boolean>(false)
@@ -364,13 +367,19 @@ const HorseScreen = () => {
   }, [])
 
   const fetchHorses = useCallback(
-    async (uid?: string) => {
+    async (uid?: string, isPullToRefresh = false) => {
+      if (!isPullToRefresh) {
+        setLoading(true)
+      }
+      
       try {
         let targetUid = uid || userId
         if (!targetUid) {
           targetUid = await loadUserId()
           if (!targetUid) {
             console.error("❌ No user_id found, cannot fetch horses.")
+            setLoading(false)
+            if (isPullToRefresh) setRefreshing(false)
             return
           }
         }
@@ -397,11 +406,15 @@ const HorseScreen = () => {
         setHorses(horsesArray)
 
         // Fetch latest medical records for each horse
-        horsesArray.forEach((horse: Horse) => {
+        const medicalRecordPromises = horsesArray.map((horse: Horse) => {
           if (horse.horse_id && horse.horse_status !== 'Deceased') {
-            fetchLatestMedicalRecord(horse.horse_id, targetUid!)
+            return fetchLatestMedicalRecord(horse.horse_id, targetUid!)
           }
+          return Promise.resolve()
         })
+
+        // Wait for all medical records to load
+        await Promise.all(medicalRecordPromises)
 
         // Count alive horses (excluding deceased)
         const aliveHorsesCount = horsesArray.filter((horse: Horse) => 
@@ -416,10 +429,34 @@ const HorseScreen = () => {
       } catch (error: any) {
         console.error("❌ Error loading horses:", error)
         Alert.alert("Error", error.message || "Unable to load horses")
+      } finally {
+        setLoading(false)
+        if (isPullToRefresh) {
+          setRefreshing(false)
+        }
       }
     },
     [userId, scheduleDailyHealthCheck, fetchLatestMedicalRecord],
   )
+
+  // Handle pull-to-refresh
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true)
+    console.log("🔄 Pull-to-refresh triggered")
+    
+    try {
+      let uid = userId
+      if (!uid) {
+        uid = await loadUserId()
+      }
+      if (uid) {
+        await fetchHorses(uid, true)
+      }
+    } catch (error) {
+      console.error("❌ Error during refresh:", error)
+      setRefreshing(false)
+    }
+  }, [userId, fetchHorses])
 
   // Filter horses based on active tab
   const filteredHorsesByTab = horses.filter(horse => {
@@ -791,6 +828,160 @@ const HorseScreen = () => {
     )
   }
 
+  const renderContent = () => {
+    if (loading && !refreshing) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#CD853F" />
+          <Text style={styles.loadingText}>Loading horses...</Text>
+        </View>
+      )
+    }
+
+    return (
+      <ScrollView
+        style={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContentContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={['#CD853F']}
+            tintColor="#CD853F"
+            title="Pull to refresh"
+            titleColor="#CD853F"
+          />
+        }
+      >
+        {/* Page Title */}
+        <View style={styles.titleSection}>
+          <Text style={styles.pageTitle}>My Horses</Text>
+        </View>
+
+        {/* Horse Status Tabs */}
+        <View style={styles.horseTabsContainer}>
+          <HorseTabButton
+            label="Active Horses"
+            count={aliveHorsesCount}
+            isActive={activeHorseTab === 'alive'}
+            onPress={() => setActiveHorseTab('alive')}
+            type="alive"
+          />
+          <HorseTabButton
+            label="Deceased Horses"
+            count={deceasedHorsesCount}
+            isActive={activeHorseTab === 'deceased'}
+            onPress={() => setActiveHorseTab('deceased')}
+            type="deceased"
+          />
+        </View>
+
+        <View style={styles.content}>
+          {filteredHorses.length === 0 ? (
+            <EmptyState isDeceasedTab={activeHorseTab === 'deceased'} />
+          ) : (
+            filteredHorses.map((horse, index) => (
+              <View
+                key={horse.horse_id}
+                style={[
+                  styles.horseCard, 
+                  { 
+                    marginTop: index === 0 ? 0 : dynamicSpacing(16),
+                    opacity: horse.horse_status === 'Deceased' ? 0.7 : 1
+                  }
+                ]}
+              >
+                {horse.horse_status === 'Deceased' && (
+                  <View style={styles.deceasedOverlay}>
+                    <Text style={styles.deceasedText}>Deceased</Text>
+                  </View>
+                )}
+                
+                <TouchableOpacity
+                  style={styles.horseCardContent}
+                  onPress={() => handleHorseProfile(horse)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.horseHeader}>
+                    <View style={styles.horseImageContainer}>
+                      <View style={[
+                        styles.horseAvatarWrapper,
+                        horse.horse_status === 'Deceased' && styles.deceasedAvatar
+                      ]}>
+                        <Image
+                          source={
+                            horse.horse_image && !horse.horse_image.startsWith("file:///")
+                              ? { uri: horse.horse_image }
+                              : require("../../assets/images/horse.png")
+                          }
+                          style={styles.horseImage}
+                        />
+                      </View>
+                    </View>
+
+                    <View style={styles.horseInfo}>
+                      <Text style={styles.horseName}>{horse.horse_name}</Text>
+                      <View style={styles.horseMetaRow}>
+                        <View style={styles.horseMetaItem}>
+                          <FontAwesome5 name="birthday-cake" size={scale(12)} color="#CD853F" />
+                          <Text style={styles.horseMetaText}>Age {horse.horse_age}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.horseMetaRow}>
+                        <View style={styles.horseMetaItem}>
+                          <FontAwesome5 name="dna" size={scale(12)} color="#CD853F" />
+                          <Text style={styles.horseMetaText}>{horse.horse_breed}</Text>
+                        </View>
+                      </View>
+                      <View style={styles.horseMetaRow}>
+                        <View style={styles.horseMetaItem}>
+                          <FontAwesome5 
+                            name="venus-mars" 
+                            size={scale(12)} 
+                            color={horse.horse_sex === 'Stallion' ? '#4A90E2' : 
+                                   horse.horse_sex === 'Mare' ? '#E91E63' : 
+                                   horse.horse_sex === 'Gelding' ? '#795548' : 
+                                   '#6C757D'} 
+                          />
+                          <Text style={[
+                            styles.horseMetaText,
+                            {
+                              color: horse.horse_sex === 'Stallion' ? '#4A90E2' : 
+                                     horse.horse_sex === 'Mare' ? '#E91E63' : 
+                                     horse.horse_sex === 'Gelding' ? '#795548' : 
+                                     '#6C757D',
+                              fontWeight: '600'
+                            }
+                          ]}>
+                            {horse.horse_sex || 'Unknown'}
+                          </Text>
+                        </View>
+                      </View>
+                    </View>
+
+                    {activeHorseTab === 'alive' && (
+                      <TouchableOpacity
+                        style={styles.deceasedButton}
+                        onPress={() => handleMarkDeceased(horse)}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                      >
+                        <FontAwesome5 name="skull" size={scale(16)} color="#6C757D" />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {/* Basic Information Section */}
+                  {activeHorseTab === 'alive' && renderBasicInfoSection(horse)}
+                </TouchableOpacity>
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+    )
+  }
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#CD853F" translucent={false} />
@@ -820,140 +1011,11 @@ const HorseScreen = () => {
 
       {/* Content Section */}
       <View style={styles.contentContainer}>
-        <ScrollView
-          style={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContentContainer}
-        >
-          {/* Page Title */}
-          <View style={styles.titleSection}>
-            <Text style={styles.pageTitle}>My Horses</Text>
-          </View>
-
-          {/* Horse Status Tabs */}
-          <View style={styles.horseTabsContainer}>
-            <HorseTabButton
-              label="Active Horses"
-              count={aliveHorsesCount}
-              isActive={activeHorseTab === 'alive'}
-              onPress={() => setActiveHorseTab('alive')}
-              type="alive"
-            />
-            <HorseTabButton
-              label="Deceased Horses"
-              count={deceasedHorsesCount}
-              isActive={activeHorseTab === 'deceased'}
-              onPress={() => setActiveHorseTab('deceased')}
-              type="deceased"
-            />
-          </View>
-
-          <View style={styles.content}>
-            {filteredHorses.length === 0 ? (
-              <EmptyState isDeceasedTab={activeHorseTab === 'deceased'} />
-            ) : (
-              filteredHorses.map((horse, index) => (
-                <View
-                  key={horse.horse_id}
-                  style={[
-                    styles.horseCard, 
-                    { 
-                      marginTop: index === 0 ? 0 : dynamicSpacing(16),
-                      opacity: horse.horse_status === 'Deceased' ? 0.7 : 1
-                    }
-                  ]}
-                >
-                  {horse.horse_status === 'Deceased' && (
-                    <View style={styles.deceasedOverlay}>
-                      <Text style={styles.deceasedText}>Deceased</Text>
-                    </View>
-                  )}
-                  
-                  <TouchableOpacity
-                    style={styles.horseCardContent}
-                    onPress={() => handleHorseProfile(horse)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.horseHeader}>
-                      <View style={styles.horseImageContainer}>
-                        <View style={[
-                          styles.horseAvatarWrapper,
-                          horse.horse_status === 'Deceased' && styles.deceasedAvatar
-                        ]}>
-                          <Image
-                            source={
-                              horse.horse_image && !horse.horse_image.startsWith("file:///")
-                                ? { uri: horse.horse_image }
-                                : require("../../assets/images/horse.png")
-                            }
-                            style={styles.horseImage}
-                          />
-                        </View>
-                      </View>
-
-                      <View style={styles.horseInfo}>
-                        <Text style={styles.horseName}>{horse.horse_name}</Text>
-                        <View style={styles.horseMetaRow}>
-                          <View style={styles.horseMetaItem}>
-                            <FontAwesome5 name="birthday-cake" size={scale(12)} color="#CD853F" />
-                            <Text style={styles.horseMetaText}>Age {horse.horse_age}</Text>
-                          </View>
-                        </View>
-                        <View style={styles.horseMetaRow}>
-                          <View style={styles.horseMetaItem}>
-                            <FontAwesome5 name="dna" size={scale(12)} color="#CD853F" />
-                            <Text style={styles.horseMetaText}>{horse.horse_breed}</Text>
-                          </View>
-                        </View>
-                        <View style={styles.horseMetaRow}>
-                          <View style={styles.horseMetaItem}>
-                            <FontAwesome5 
-                              name="venus-mars" 
-                              size={scale(12)} 
-                              color={horse.horse_sex === 'Stallion' ? '#4A90E2' : 
-                                     horse.horse_sex === 'Mare' ? '#E91E63' : 
-                                     horse.horse_sex === 'Gelding' ? '#795548' : 
-                                     '#6C757D'} 
-                            />
-                            <Text style={[
-                              styles.horseMetaText,
-                              {
-                                color: horse.horse_sex === 'Stallion' ? '#4A90E2' : 
-                                       horse.horse_sex === 'Mare' ? '#E91E63' : 
-                                       horse.horse_sex === 'Gelding' ? '#795548' : 
-                                       '#6C757D',
-                                fontWeight: '600'
-                              }
-                            ]}>
-                              {horse.horse_sex || 'Unknown'}
-                            </Text>
-                          </View>
-                        </View>
-                      </View>
-
-                      {activeHorseTab === 'alive' && (
-                        <TouchableOpacity
-                          style={styles.deceasedButton}
-                          onPress={() => handleMarkDeceased(horse)}
-                          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
-                          <FontAwesome5 name="skull" size={scale(16)} color="#6C757D" />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-
-                    {/* Basic Information Section */}
-                    {activeHorseTab === 'alive' && renderBasicInfoSection(horse)}
-                  </TouchableOpacity>
-                </View>
-              ))
-            )}
-          </View>
-        </ScrollView>
+        {renderContent()}
       </View>
 
       {/* Floating Add Button */}
-      {activeHorseTab === 'alive' && (
+      {activeHorseTab === 'alive' && !loading && (
         <TouchableOpacity
           style={styles.addButton}
           onPress={() => router.push("/HORSE_OPERATOR/addhorse")}
@@ -1112,6 +1174,21 @@ const styles = StyleSheet.create({
   scrollContentContainer: {
     paddingBottom: verticalScale(100),
   },
+  
+  // Loading Container
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#F5F5F5',
+  },
+  loadingText: {
+    marginTop: verticalScale(16),
+    fontSize: moderateScale(16),
+    color: '#666',
+    fontWeight: '500',
+  },
+
   titleSection: {
     paddingHorizontal: scale(16),
     paddingTop: dynamicSpacing(16),
