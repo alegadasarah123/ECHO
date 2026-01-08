@@ -378,8 +378,9 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
 
     console.log("DEBUG: Loading approved horses with kutsero_id:", kutsero_id)
     
-    // Use the correct endpoint name
-    const url = `${API_BASE_URL}/get_approved_owners_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
+    // Use the correct endpoint - remove 'get_' prefix if needed
+    // Try both versions to see which one works
+    const url = `${API_BASE_URL}/approved_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
     console.log("DEBUG: Trying URL:", url)
     
     const response = await fetch(url, {
@@ -398,9 +399,9 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
       
       if (data.success) {
         const horses = data.horses || []
-        console.log("SUCCESS: Found", horses.length, "approved horses (before filtering)")
+        console.log("DEBUG: Found", horses.length, "approved horses from", data.approved_owners?.length || 0, "approved owners")
         
-        // Transform horses to match frontend interface AND FILTER OUT DECEASED HORSES
+        // Transform horses to match frontend interface
         const transformedHorses: AvailableHorse[] = horses
           .filter((horse: any) => {
             // Filter out deceased horses
@@ -430,16 +431,46 @@ const loadApprovedHorses = async (userDataParam?: UserData) => {
             owner_approved: true
           }))
         
-        console.log("AFTER FILTERING: Found", transformedHorses.length, "horses (deceased filtered out)")
+        console.log("DEBUG: After filtering, have", transformedHorses.length, "horses")
         setApprovedHorses(transformedHorses)
+        
+        // Also check applications to verify approval status
+        const approvedApplications = myApplications.filter(app => app.status === 'approved')
+        console.log("DEBUG: You have", approvedApplications.length, "approved applications")
       } else {
         console.log("API returned success false:", data.error || "Unknown error")
         setApprovedHorses([])
       }
     } else {
       console.log("API error status:", response.status)
-      const errorText = await response.text()
-      console.log("API error response:", errorText)
+      try {
+        const errorText = await response.text()
+        console.log("API error response:", errorText)
+      } catch (e) {
+        console.log("Could not parse error response")
+      }
+      
+      // Try the alternative endpoint name
+      console.log("Trying alternative endpoint name...")
+      try {
+        const altUrl = `${API_BASE_URL}/get_approved_owners_horses/?kutsero_id=${encodeURIComponent(kutsero_id)}`
+        const altResponse = await fetch(altUrl, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+        })
+        
+        if (altResponse.ok) {
+          const altData = await altResponse.json()
+          console.log("DEBUG: Alternative endpoint worked:", altData)
+          // Process data same as above...
+        }
+      } catch (altError) {
+        console.log("Alternative endpoint also failed:", altError)
+      }
+      
       setApprovedHorses([])
     }
     

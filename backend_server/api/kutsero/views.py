@@ -5250,7 +5250,10 @@ def get_approved_owners_horses(request):
     """
     try:
         kutsero_id = request.GET.get("kutsero_id")
+        print(f"DEBUG [get_approved_owners_horses]: Received request with kutsero_id: {kutsero_id}")
+        
         if not kutsero_id:
+            print("DEBUG: No kutsero_id provided")
             return Response({
                 "success": False,
                 "error": "kutsero_id is required"
@@ -5259,11 +5262,17 @@ def get_approved_owners_horses(request):
         service_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
         
         # Get approved applications
+        print(f"DEBUG: Checking approved applications for kutsero_id: {kutsero_id}")
         approved_apps_response = service_client.table("op_kutsero_application").select("op_id").eq("kutsero_id", kutsero_id).eq("status", "approved").execute()
         
+        print(f"DEBUG: Approved apps query result: {approved_apps_response}")
+        print(f"DEBUG: Number of approved owners: {len(approved_apps_response.data or [])}")
+        
         approved_op_ids = [app['op_id'] for app in approved_apps_response.data or []]
+        print(f"DEBUG: Approved op_ids: {approved_op_ids}")
         
         if not approved_op_ids:
+            print("DEBUG: No approved owners found")
             return Response({
                 'success': True,
                 'horses': [],
@@ -5275,7 +5284,10 @@ def get_approved_owners_horses(request):
         all_horses = []
         
         for op_id in approved_op_ids:
+            print(f"DEBUG: Getting horses for owner: {op_id}")
             horses_response = service_client.table("horse_profile").select("*").eq("op_id", op_id).execute()
+            
+            print(f"DEBUG: Found {len(horses_response.data or [])} horses for owner {op_id}")
             
             # Get owner details
             owner_response = service_client.table("horse_op_profile").select("*").eq("op_id", op_id).execute()
@@ -5287,6 +5299,7 @@ def get_approved_owners_horses(request):
             for horse in horses_response.data or []:
                 # Skip deceased horses
                 if horse.get('horse_status') == 'deceased':
+                    print(f"DEBUG: Skipping deceased horse: {horse.get('horse_name')}")
                     continue
                 
                 # Check if horse is already assigned (using horse_assignments table)
@@ -5299,26 +5312,40 @@ def get_approved_owners_horses(request):
                     assignment = assignment_response.data[0]
                     is_assigned_to_me = assignment.get('kutsero_id') == kutsero_id
                 
-                all_horses.append({
+                horse_data = {
                     'id': horse['horse_id'],
+                    'horse_id': horse['horse_id'],  # Add both formats for compatibility
                     'name': horse['horse_name'],
+                    'horse_name': horse['horse_name'],
                     'breed': horse['horse_breed'],
+                    'horse_breed': horse['horse_breed'],
                     'age': horse['horse_age'],
+                    'horse_age': horse['horse_age'],
                     'sex': horse['horse_sex'],
+                    'horse_sex': horse['horse_sex'],
                     'color': horse['horse_color'],
+                    'horse_color': horse['horse_color'],
                     'image': horse.get('horse_image'),
+                    'horse_image': horse.get('horse_image'),
                     'owner_id': op_id,
                     'owner_name': owner_name,
                     'status': horse.get('horse_status', 'unknown'),
+                    'horse_status': horse.get('horse_status', 'unknown'),
                     'is_assigned': is_assigned,
                     'is_assigned_to_me': is_assigned_to_me,
-                    'can_select': not is_assigned or is_assigned_to_me  # Can select if not assigned or already assigned to me
-                })
+                    'can_select': not is_assigned or is_assigned_to_me,
+                    'owner_approved': True
+                }
+                all_horses.append(horse_data)
+                
+                print(f"DEBUG: Added horse: {horse['horse_name']}, status: {horse.get('horse_status')}, assigned: {is_assigned}, assigned_to_me: {is_assigned_to_me}")
         
+        print(f"DEBUG: Total horses returned: {len(all_horses)}")
         return Response({
             'success': True,
             'horses': all_horses,
-            'total': len(all_horses)
+            'total': len(all_horses),
+            'approved_owners': approved_op_ids
         }, status=status.HTTP_200_OK)
         
     except Exception as e:
